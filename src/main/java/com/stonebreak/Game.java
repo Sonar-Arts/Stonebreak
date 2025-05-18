@@ -13,7 +13,7 @@ public class Game {
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WaterEffects waterEffects; // Water effects manager
-    // private InputHandler inputHandler; // Removed: InputHandler is accessed via Main.getInputHandler()
+    private InputHandler inputHandler; // Added InputHandler field
     
     // Game state
     private long lastFrameTime;
@@ -45,20 +45,20 @@ public class Game {
         return instance;
     }
       /**     * Initializes game components.
-     */
-    public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas) {
+      */
+     public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler) {
         this.world = world;
         this.player = player;
         this.renderer = renderer;
+        this.inputHandler = inputHandler; // Store InputHandler
         this.pauseMenu = new PauseMenu();
         this.waterEffects = new WaterEffects(); // Initialize water effects
-        // InputHandler is accessed through Main.getInputHandler()
         
-        // Initialize InventoryScreen - assumes Player, Renderer and TextureAtlas are already initialized
-        if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer);
+        // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
+        if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.inputHandler);
         } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, or TextureAtlas).");
+            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, or InputHandler).");
             // Handle error appropriately, maybe throw an exception or set inventoryScreen to a safe non-functional state
         }
     }/**
@@ -197,10 +197,10 @@ public class Game {
      * Gets the input handler.
      */
     public InputHandler getInputHandler() {
-        return Main.getInputHandler();
-    }
+       return this.inputHandler; // Return the stored instance
+   }
 
-    /**
+   /**
      * Toggles the inventory screen visibility.
      */
     public void toggleInventoryScreen() {

@@ -585,9 +585,9 @@ public class Renderer {
             glDrawArrays(GL_LINES, 0, 4);
             
             // Render hotbar background (e.g., dark semi-transparent)
-            shaderProgram.setUniform("u_color", new Vector4f(0.3f, 0.3f, 0.3f, 0.7f));
-            GL30.glBindVertexArray(hotbarVao);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            // shaderProgram.setUniform("u_color", new Vector4f(0.3f, 0.3f, 0.3f, 0.7f));
+            // GL30.glBindVertexArray(hotbarVao);
+            // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             
             // Render breath meter if player is underwater
             renderBreathMeter(player);

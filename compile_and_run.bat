@@ -20,6 +20,12 @@ for %%f in (%LIB_DIR%\*.jar) do (
 REM Create target directory if it doesn't exist
 if not exist %TARGET_DIR% mkdir %TARGET_DIR%
 
+REM Clean previous class files to ensure a fresh compile
+echo Cleaning previous build...
+if exist "%TARGET_DIR%\com\stonebreak\*.class" (
+    del /Q "%TARGET_DIR%\com\stonebreak\*.class"
+)
+
 REM Compile the files
 echo Compiling Stonebreak files...
 javac -cp %CLASSPATH% -d %TARGET_DIR% %SRC_DIR%\com\stonebreak\*.java

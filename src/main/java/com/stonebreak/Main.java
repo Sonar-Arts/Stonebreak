@@ -95,30 +95,13 @@ public class Main {
             }
             // Update the Game singleton with new dimensions
             Game.getInstance().setWindowDimensions(width, height);
-        });        // Setup mouse button callback for UI interactions and game interactions
-        glfwSetMouseButtonCallback(window, (window, button, action, mods) -> {
-            if (Game.getInstance().isPaused()) {
-                // Handle UI interactions when paused
-                if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_LEFT) {
-                    // Get the current cursor position
-                    double[] xpos = new double[1];
-                    double[] ypos = new double[1];
-                    glfwGetCursorPos(window, xpos, ypos);
-                    
-                    // Convert screen coordinates to normalized device coordinates (-1 to 1)
-                    float normalizedX = ((float) xpos[0] / width) * 2.0f - 1.0f;
-                    float normalizedY = 1.0f - ((float) ypos[0] / height) * 2.0f; // Y is inverted
-                    
-                    // Check if the quit button was clicked
-                    if (Game.getInstance().getPauseMenu().isQuitButtonClicked(normalizedX, normalizedY)) {
-                        glfwSetWindowShouldClose(window, true);
-                    }
-                }
-            } else {
-                // Forward to InputHandler for game interactions when not paused
-                if (inputHandler != null) {
-                    inputHandler.handleMouseClick(button, action);
-                }
+        });
+        // Setup mouse button callback
+        // This now directly calls InputHandler's processMouseButton method.
+        // InputHandler will then decide how to process the click based on game state (paused, inventory open, etc.)
+        glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
+            if (inputHandler != null) {
+                inputHandler.processMouseButton(button, action, mods);
             }
         });
         
@@ -179,7 +162,8 @@ public class Main {
         textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
 
           // Initialize the Game singleton
-        Game.getInstance().init(world, player, renderer, textureAtlas);
+        // Pass inputHandler to Game's init method
+        Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler);
         Game.getInstance().setWindowDimensions(width, height);
         
         running = true;
@@ -196,6 +180,11 @@ public class Main {
         while (!glfwWindowShouldClose(window) && running) {
             // Record the start time of this frame
             long frameStartTime = System.currentTimeMillis();
+
+            // Prepare InputHandler for new frame (e.g., clear single-frame press states)
+            if (inputHandler != null) {
+                inputHandler.prepareForNewFrame();
+            }
             
             // Poll for window events
             glfwPollEvents();
@@ -204,7 +193,9 @@ public class Main {
             Game.getInstance().update();
             
             // Handle input
-            inputHandler.handleInput(player);
+            if (inputHandler != null) { // Ensure inputHandler is not null
+                inputHandler.handleInput(player);
+            }
             
             // Update game state
             update();
@@ -246,6 +237,18 @@ public class Main {
         
         // Render the world
         renderer.renderWorld(world, player, Game.getInstance().getTotalTimeElapsed()); // Pass totalTimeElapsed
+        
+        // Render UI elements
+        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
+        if (inventoryScreen != null) {
+            if (inventoryScreen.isVisible()) {
+                // Render full inventory screen when visible
+                inventoryScreen.render(width, height);
+            } else {
+                // Always render hotbar when inventory is not open
+                inventoryScreen.renderHotbar(width, height);
+            }
+        }
     }
       private void cleanup() {
         // Free the window callbacks and destroy the window
