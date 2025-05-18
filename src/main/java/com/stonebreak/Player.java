@@ -13,13 +13,13 @@ public class Player {      // Player settings
     private static final float MOVE_SPEED = 40.0f; // Increased to better balance with gravity
     private static final float SWIM_SPEED = 20.0f; // Swimming is slower than walking
     private static final float JUMP_FORCE = 8.0f;
-    private static final float GRAVITY = 20.0f;
+    private static final float GRAVITY = 15.0f;
     private static final float WATER_GRAVITY = 4.0f; // Reduced gravity in water
     private static final float RAY_CAST_DISTANCE = 5.0f;
     private static final float ATTACK_ANIMATION_DURATION = 0.3f; // Duration of the arm swing animation
       // Player state
-    private Vector3f position;
-    private Vector3f velocity;
+    private final Vector3f position;
+    private final Vector3f velocity;
     private boolean onGround;
     private boolean isAttacking;
     private boolean headInWater; // True if player's head is in water (for breathing)
@@ -32,13 +32,13 @@ public class Player {      // Player settings
     private boolean isDrowning;
     
     // Camera
-    private Camera camera;
+    private final Camera camera;
     
     // Reference to the world
-    private World world;
+    private final World world;
     
     // Inventory
-    private Inventory inventory;
+    private final Inventory inventory;
     
     /**
      * Creates a new player in the specified world.
@@ -61,8 +61,18 @@ public class Player {      // Player settings
      */
     public void update() {
         // Check if player is in water
+        boolean oldPhysicallyInWater = this.physicallyInWater;
+        boolean oldHeadInWater = this.headInWater;
+
         headInWater = isInWater(); // Check for breathing
         physicallyInWater = isPartiallyInWater(); // Check for physics
+
+        if (oldPhysicallyInWater != this.physicallyInWater) {
+            System.out.println("DEBUG: Player physicallyInWater changed from " + oldPhysicallyInWater + " to " + this.physicallyInWater + " at position " + position);
+        }
+        if (oldHeadInWater != this.headInWater) {
+            System.out.println("DEBUG: Player headInWater changed from " + oldHeadInWater + " to " + this.headInWater + " at position " + position);
+        }
 
         // Handle breathing underwater
         if (headInWater) {
@@ -122,137 +132,164 @@ public class Player {      // Player settings
      * Handles collision on the X axis.
      */
     private void handleCollisionX() {
-        float x1 = position.x - PLAYER_WIDTH / 2;
-        float x2 = position.x + PLAYER_WIDTH / 2;
-        float y1 = position.y;
-        float y2 = position.y + PLAYER_HEIGHT;
-        float z1 = position.z - PLAYER_WIDTH / 2;
-        float z2 = position.z + PLAYER_WIDTH / 2;
-        
-        boolean collision = false;
-        
-        // Check all blocks in the player's bounding box
-        for (int y = (int) Math.floor(y1); y < (int) Math.ceil(y2); y++) {
-            for (int z = (int) Math.floor(z1); z < (int) Math.ceil(z2); z++) {
-                // Check left side
-                if (velocity.x < 0) {
-                    if (world.getBlockAt((int) Math.floor(x1), y, z).isSolid()) {
-                        position.x = (float) Math.floor(x1) + 1 + PLAYER_WIDTH / 2;
-                        velocity.x = 0;
-                        collision = true;
-                        break;
+        float halfWidth = PLAYER_WIDTH / 2;
+        // position.x is the tentative position after adding velocity.x * deltaTime
+
+        float correctedPositionX = position.x;
+        boolean collisionOccurred = false;
+
+        float playerFootY = position.y;
+        float playerHeadY = position.y + PLAYER_HEIGHT;
+        float checkMinZ = position.z - halfWidth; // Player's Z extent
+        float checkMaxZ = position.z + halfWidth; // Player's Z extent
+
+        // Iterate over the Y and Z cells the player's volume spans
+        for (int yi = (int)Math.floor(playerFootY); yi < (int)Math.ceil(playerHeadY); yi++) {
+            for (int zi = (int)Math.floor(checkMinZ); zi < (int)Math.ceil(checkMaxZ); zi++) {
+                if (velocity.x < 0) { // Moving left
+                    float playerLeftEdge = position.x - halfWidth; // Tentative left edge
+                    int blockToCheckX = (int)Math.floor(playerLeftEdge);
+
+                    if (world.getBlockAt(blockToCheckX, yi, zi).isSolid()) {
+                        // Player needs to be positioned so its left edge is at blockToCheckX + 1
+                        float potentialNewX = (float)(blockToCheckX + 1) + halfWidth;
+                        if (!collisionOccurred || potentialNewX > correctedPositionX) { // Greater means less penetration
+                            correctedPositionX = potentialNewX;
+                        }
+                        collisionOccurred = true;
+                    }
+                } else if (velocity.x > 0) { // Moving right
+                    float playerRightEdge = position.x + halfWidth; // Tentative right edge
+                    int blockToCheckX = (int)Math.floor(playerRightEdge);
+
+                    if (world.getBlockAt(blockToCheckX, yi, zi).isSolid()) {
+                        // Player needs to be positioned so its right edge is at blockToCheckX
+                        float potentialNewX = (float)blockToCheckX - halfWidth;
+                        if (!collisionOccurred || potentialNewX < correctedPositionX) { // Lesser means less penetration
+                            correctedPositionX = potentialNewX;
+                        }
+                        collisionOccurred = true;
                     }
                 }
-                
-                // Check right side
-                if (velocity.x > 0) {
-                    if (world.getBlockAt((int) Math.floor(x2), y, z).isSolid()) {
-                        position.x = (float) Math.floor(x2) - PLAYER_WIDTH / 2;
-                        velocity.x = 0;
-                        collision = true;
-                        break;
-                    }
-                }
-            }
-            
-            if (collision) {
-                break;
             }
         }
+
+        if (collisionOccurred) {
+            position.x = correctedPositionX;
+            // Sliding is allowed, so velocity.x is not zeroed here.
+        }
     }
-    
+
     /**
      * Handles collision on the Y axis.
      */
     private void handleCollisionY() {
-        float x1 = position.x - PLAYER_WIDTH / 2;
-        float x2 = position.x + PLAYER_WIDTH / 2;
-        float y1 = position.y;
-        float y2 = position.y + PLAYER_HEIGHT;
-        float z1 = position.z - PLAYER_WIDTH / 2;
-        float z2 = position.z + PLAYER_WIDTH / 2;
-        
-        boolean collision = false;
-        
-        // Check all blocks in the player's bounding box
-        for (int x = (int) Math.floor(x1); x < (int) Math.ceil(x2); x++) {
-            for (int z = (int) Math.floor(z1); z < (int) Math.ceil(z2); z++) {
-                // Check bottom side
-                if (velocity.y < 0) {
-                    if (world.getBlockAt(x, (int) Math.floor(y1), z).isSolid()) {
-                        position.y = (float) Math.floor(y1) + 1;
-                        velocity.y = 0;
-                        onGround = true;
-                        collision = true;
-                        break;
+        float halfWidth = PLAYER_WIDTH / 2;
+        // position.y is the tentative position after adding velocity.y * deltaTime
+
+        float correctedPositionY = position.y;
+        boolean collisionOccurred = false;
+        boolean downwardCollision = false; // Specifically for onGround state
+
+        float playerMinX = position.x - halfWidth;
+        float playerMaxX = position.x + halfWidth;
+        float playerMinZ = position.z - halfWidth;
+        float playerMaxZ = position.z + halfWidth;
+
+        // Iterate over the X and Z cells the player's base spans
+        for (int xi = (int)Math.floor(playerMinX); xi < (int)Math.ceil(playerMaxX); xi++) {
+            for (int zi = (int)Math.floor(playerMinZ); zi < (int)Math.ceil(playerMaxZ); zi++) {
+                if (velocity.y < 0) { // Moving down
+                    int blockToCheckY = (int)Math.floor(position.y); // Block at player's feet
+                    if (world.getBlockAt(xi, blockToCheckY, zi).isSolid()) {
+                        // Player's base needs to be at blockToCheckY + 1
+                        float potentialNewY = (float)(blockToCheckY + 1);
+                        if (!collisionOccurred || potentialNewY > correctedPositionY) {
+                            correctedPositionY = potentialNewY;
+                        }
+                        collisionOccurred = true;
+                        downwardCollision = true;
+                    }
+                } else if (velocity.y > 0) { // Moving up
+                    int blockToCheckY = (int)Math.floor(position.y + PLAYER_HEIGHT); // Block at player's head
+                    if (world.getBlockAt(xi, blockToCheckY, zi).isSolid()) {
+                        // Player's head needs to be at blockToCheckY, so base is blockToCheckY - PLAYER_HEIGHT
+                        float potentialNewY = (float)blockToCheckY - PLAYER_HEIGHT;
+                        if (!collisionOccurred || potentialNewY < correctedPositionY) {
+                            correctedPositionY = potentialNewY;
+                        }
+                        collisionOccurred = true;
                     }
                 }
-                
-                // Check top side
-                if (velocity.y > 0) {
-                    if (world.getBlockAt(x, (int) Math.floor(y2), z).isSolid()) {
-                        position.y = (float) Math.floor(y2) - PLAYER_HEIGHT;
-                        velocity.y = 0;
-                        collision = true;
-                        break;
-                    }
-                }
-            }
-            
-            if (collision) {
-                break;
             }
         }
-        
-        // Check if still on ground
-        if (!collision && velocity.y < 0) {
-            onGround = false;
+
+        if (collisionOccurred) {
+            position.y = correctedPositionY;
+            velocity.y = 0; // Stop vertical movement on collision
+            if (downwardCollision) {
+                onGround = true;
+            }
+        } else {
+            // If no collision occurred while moving downwards, player is not on ground
+            if (velocity.y < 0) {
+                onGround = false;
+            }
         }
     }
-    
+
     /**
      * Handles collision on the Z axis.
      */
     private void handleCollisionZ() {
-        float x1 = position.x - PLAYER_WIDTH / 2;
-        float x2 = position.x + PLAYER_WIDTH / 2;
-        float y1 = position.y;
-        float y2 = position.y + PLAYER_HEIGHT;
-        float z1 = position.z - PLAYER_WIDTH / 2;
-        float z2 = position.z + PLAYER_WIDTH / 2;
-        
-        boolean collision = false;
-        
-        // Check all blocks in the player's bounding box
-        for (int x = (int) Math.floor(x1); x < (int) Math.ceil(x2); x++) {
-            for (int y = (int) Math.floor(y1); y < (int) Math.ceil(y2); y++) {
-                // Check front side
-                if (velocity.z < 0) {
-                    if (world.getBlockAt(x, y, (int) Math.floor(z1)).isSolid()) {
-                        position.z = (float) Math.floor(z1) + 1 + PLAYER_WIDTH / 2;
-                        velocity.z = 0;
-                        collision = true;
-                        break;
+        float halfWidth = PLAYER_WIDTH / 2;
+        // position.z is the tentative position after adding velocity.z * deltaTime
+
+        float correctedPositionZ = position.z;
+        boolean collisionOccurred = false;
+
+        float playerFootY = position.y;
+        float playerHeadY = position.y + PLAYER_HEIGHT;
+        float checkMinX = position.x - halfWidth; // Player's X extent
+        float checkMaxX = position.x + halfWidth; // Player's X extent
+
+        // Iterate over the Y and X cells the player's volume spans
+        for (int yi = (int)Math.floor(playerFootY); yi < (int)Math.ceil(playerHeadY); yi++) {
+            for (int xi = (int)Math.floor(checkMinX); xi < (int)Math.ceil(checkMaxX); xi++) {
+                if (velocity.z < 0) { // Moving towards -Z (front)
+                    float playerFrontEdge = position.z - halfWidth; // Tentative front edge
+                    int blockToCheckZ = (int)Math.floor(playerFrontEdge);
+
+                    if (world.getBlockAt(xi, yi, blockToCheckZ).isSolid()) {
+                        // Player needs to be positioned so its front edge is at blockToCheckZ + 1
+                        float potentialNewZ = (float)(blockToCheckZ + 1) + halfWidth;
+                        if (!collisionOccurred || potentialNewZ > correctedPositionZ) {
+                            correctedPositionZ = potentialNewZ;
+                        }
+                        collisionOccurred = true;
+                    }
+                } else if (velocity.z > 0) { // Moving towards +Z (back)
+                    float playerBackEdge = position.z + halfWidth; // Tentative back edge
+                    int blockToCheckZ = (int)Math.floor(playerBackEdge);
+
+                    if (world.getBlockAt(xi, yi, blockToCheckZ).isSolid()) {
+                        // Player needs to be positioned so its back edge is at blockToCheckZ
+                        float potentialNewZ = (float)blockToCheckZ - halfWidth;
+                        if (!collisionOccurred || potentialNewZ < correctedPositionZ) {
+                            correctedPositionZ = potentialNewZ;
+                        }
+                        collisionOccurred = true;
                     }
                 }
-                
-                // Check back side
-                if (velocity.z > 0) {
-                    if (world.getBlockAt(x, y, (int) Math.floor(z2)).isSolid()) {
-                        position.z = (float) Math.floor(z2) - PLAYER_WIDTH / 2;
-                        velocity.z = 0;
-                        collision = true;
-                        break;
-                    }
-                }
-            }
-            
-            if (collision) {
-                break;
             }
         }
+
+        if (collisionOccurred) {
+            position.z = correctedPositionZ;
+            // Sliding is allowed, so velocity.z is not zeroed here.
+        }
     }
-    
+
     /**
      * Checks if there's a solid block beneath the player.
      * If not, sets onGround to false so the player will fall.
@@ -315,12 +352,12 @@ public class Player {      // Player settings
         
         if (right) {
             velocity.x += rightDirection.x * speed * Game.getDeltaTime();
-            velocity.z += rightDirection.z * Game.getDeltaTime();
+            velocity.z += rightDirection.z * speed * Game.getDeltaTime();
         }
         
         if (left) {
             velocity.x -= rightDirection.x * speed * Game.getDeltaTime();
-            velocity.z -= rightDirection.z * Game.getDeltaTime();
+            velocity.z -= rightDirection.z * speed * Game.getDeltaTime();
         }
         
         // Apply jump force
@@ -382,24 +419,49 @@ public class Player {      // Player settings
             return;
         }
         
-        // Try to place block against existing blocks
-        Vector3i blockPos = raycast();
-        
-        if (blockPos != null) {
-            // Find the face of the block
-            Vector3i placePos = findPlacePosition(blockPos);
+        Vector3i hitSolidBlockPos = raycast(); // This is the first SOLID block hit by ray. Null if only air.
+        Vector3i placePos = null;
+
+        if (hitSolidBlockPos != null) {
+            // Player is aiming at a solid block. Try to place on its face.
+            placePos = findPlacePosition(hitSolidBlockPos);
+        } else {
+            // Player is aiming at AIR (or beyond reach, but raycast handles distance).
+            // Determine the air block cell player is targeting.
+            // Use rayOrigin similar to raycast()
+            Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+            // Target point is at RAY_CAST_DISTANCE or slightly less to be within the last cell.
+            Vector3f targetPointInAir = new Vector3f(camera.getFront()).mul(RAY_CAST_DISTANCE - 0.1f).add(rayOrigin);
             
-            if (placePos != null) {
-                // Place block
+            placePos = new Vector3i(
+                (int)Math.floor(targetPointInAir.x),
+                (int)Math.floor(targetPointInAir.y),
+                (int)Math.floor(targetPointInAir.z)
+            );
+            // Ensure this calculated air position is actually AIR, otherwise invalid.
+            if (world.getBlockAt(placePos.x, placePos.y, placePos.z) != BlockType.AIR) {
+                placePos = null; // Don't place if calculated target isn't air.
+            }
+        }
+        
+        if (placePos != null) {
+            // Now we have a candidate placePos, either adjacent to a solid block or directly in an air block.
+            // Final check: the block AT placePos must be AIR and must not intersect player.
+            if (world.getBlockAt(placePos.x, placePos.y, placePos.z) == BlockType.AIR) {
+                if (intersectsWithPlayer(placePos)) {
+                    // System.out.println("DEBUG: Placement at " + placePos + " denied due to intersection with player.");
+                    return; // Collision with player, abort.
+                }
+                // All checks passed, place the block.
                 world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.getById(selectedBlockTypeId));
-                
-                // Remove from inventory
                 inventory.removeItem(selectedBlockTypeId);
-  
             } else {
+                // This case should ideally not be hit if logic above is correct.
+                // System.out.println("DEBUG: Target final placement spot " + placePos + " is not AIR.");
             }
         } else {
-
+            // No valid position found to place block (e.g. aimed at sky, or findPlacePosition failed, or calculated air spot was not air).
+            // System.out.println("DEBUG: No valid placePos found for placement.");
         }
     }
     
@@ -537,7 +599,6 @@ public class Player {      // Player settings
             if (hitPoint.y >= blockMinY && hitPoint.y <= blockMaxY &&
                 hitPoint.z >= blockMinZ && hitPoint.z <= blockMaxZ) {
                 placePos = new Vector3i(hitBlock.x - 1, hitBlock.y, hitBlock.z);
-                minDist = dist;
             }
         }
         
@@ -561,61 +622,33 @@ public class Player {      // Player settings
     /**
      * Checks if a block at the specified position would intersect with the player.
      * Uses more precise AABB (Axis-Aligned Bounding Box) collision detection.
-     * Allows placing blocks at feet level when not directly under the player.
+     * Uses the player's actual physics bounding box.
      */
     private boolean intersectsWithPlayer(Vector3i blockPos) {
-        // Player's bounding box (reduced significantly to allow placing blocks closer to the player)
-        float x1 = position.x - (PLAYER_WIDTH / 2) * 0.8f;
-        float x2 = position.x + (PLAYER_WIDTH / 2) * 0.8f;
-        
-        // Special handling for blocks at feet level
-        // Check if the block is at the player's feet level
-        boolean isAtFeetLevel = (blockPos.y == Math.floor(position.y));
-        
-        // Use different Y coordinates based on whether the block is at feet level
-        float y1 = position.y + (isAtFeetLevel ? 0.2f : 0.0f); // Allow blocks at feet level
-        float y2 = position.y + PLAYER_HEIGHT * 0.95f; // Reduced height slightly
-        
-        float z1 = position.z - (PLAYER_WIDTH / 2) * 0.8f;
-        float z2 = position.z + (PLAYER_WIDTH / 2) * 0.8f;
+        // Player's actual physics bounding box
+        float halfPlayerWidth = PLAYER_WIDTH / 2;
+        float pMinX = position.x - halfPlayerWidth;
+        float pMaxX = position.x + halfPlayerWidth;
+        float pMinY = position.y; // Player's feet
+        float pMaxY = position.y + PLAYER_HEIGHT; // Player's head
+        float pMinZ = position.z - halfPlayerWidth;
+        float pMaxZ = position.z + halfPlayerWidth;
         
         // Block's bounding box
-        float blockX1 = blockPos.x;
-        float blockX2 = blockPos.x + 1.0f;
-        float blockY1 = blockPos.y;
-        float blockY2 = blockPos.y + 1.0f;
-        float blockZ1 = blockPos.z;
-        float blockZ2 = blockPos.z + 1.0f;
+        float bMinX = blockPos.x;
+        float bMaxX = blockPos.x + 1.0f;
+        float bMinY = blockPos.y;
+        float bMaxY = blockPos.y + 1.0f;
+        float bMinZ = blockPos.z;
+        float bMaxZ = blockPos.z + 1.0f;
         
-        // Calculate the player's center position on the XZ plane
-        float playerCenterX = position.x;
-        float playerCenterZ = position.z;
+        // Standard AABB collision check
+        boolean collisionX = (pMinX < bMaxX) && (pMaxX > bMinX);
+        boolean collisionY = (pMinY < bMaxY) && (pMaxY > bMinY); // True if Y volumes overlap
+        boolean collisionZ = (pMinZ < bMaxZ) && (pMaxZ > bMinZ);
         
-        // Calculate the block's center position on the XZ plane
-        float blockCenterX = blockPos.x + 0.5f;
-        float blockCenterZ = blockPos.z + 0.5f;
-        
-        // For blocks at feet level, check if the block is directly under the player's center
-        if (isAtFeetLevel) {
-            // Distance from player center to block center on XZ plane
-            float distX = Math.abs(playerCenterX - blockCenterX);
-            float distZ = Math.abs(playerCenterZ - blockCenterZ);
-            
-            // If the block is not directly under the center of the player (with some margin),
-            // allow placement even if it intersects slightly with the player's bounding box
-            if (distX > 0.25f || distZ > 0.25f) {
-                // Relaxed check for blocks at feet level that aren't directly under the player
-                return (x1 < blockX2) && (x2 > blockX1) &&
-                       (y1 < blockY2) && (y2 > blockY1) &&
-                       (z1 < blockZ2) && (z2 > blockZ1) &&
-                       (distX < 0.4f && distZ < 0.4f); // Only block if very close to center
-            }
-        }
-        
-        // Standard AABB collision check for other cases
-        return (x1 < blockX2) && (x2 > blockX1) &&
-               (y1 < blockY2) && (y2 > blockY1) &&
-               (z1 < blockZ2) && (z2 > blockZ1);
+        // Return true if all three axes have overlapping volumes
+        return collisionX && collisionY && collisionZ;
     }
     
     /**
@@ -685,17 +718,52 @@ public class Player {      // Player settings
      * @return true if any part of the player is in water
      */
     private boolean isPartiallyInWater() {
-        // Check multiple points inside the player's body
-        for (float y = position.y; y <= position.y + PLAYER_HEIGHT; y += 0.5f) {
-            int blockX = (int) Math.floor(position.x);
-            int blockY = (int) Math.floor(y);
-            int blockZ = (int) Math.floor(position.z);
-            
-            if (world.getBlockAt(blockX, blockY, blockZ) == BlockType.WATER) {
-                return true;
+        // Check slightly above feet up to player height to ensure full body check
+        // Small epsilon added to checkYStart to avoid issues if position.y is exactly on a block boundary
+        // and ensure the lowest part of the player is checked.
+        float checkYBottom = position.y + 0.01f;
+        float checkYTop = position.y + PLAYER_HEIGHT - 0.01f; // Check just below the very top
+
+        float halfWidth = PLAYER_WIDTH / 2.0f;
+        float nearEdgeOffset = 0.01f; // To check just inside the player's boundary
+
+        // Define a set of points to check horizontally relative to player's center
+        // Checking center, and points near the edges of the player's bounding box
+        Vector3f[] horizontalCheckOffsets = {
+            new Vector3f(0, 0, 0),                                  // Center
+            new Vector3f(0, 0, -halfWidth + nearEdgeOffset),        // Front edge
+            new Vector3f(0, 0, halfWidth - nearEdgeOffset),         // Back edge
+            new Vector3f(-halfWidth + nearEdgeOffset, 0, 0),        // Left edge
+            new Vector3f(halfWidth - nearEdgeOffset, 0, 0),         // Right edge
+            // Optional: corner checks if needed for very specific interactions
+            // new Vector3f(-halfWidth + nearEdgeOffset, 0, -halfWidth + nearEdgeOffset), // Front-Left
+            // new Vector3f( halfWidth - nearEdgeOffset, 0, -halfWidth + nearEdgeOffset), // Front-Right
+            // new Vector3f(-halfWidth + nearEdgeOffset, 0,  halfWidth - nearEdgeOffset), // Back-Left
+            // new Vector3f( halfWidth - nearEdgeOffset, 0,  halfWidth - nearEdgeOffset)  // Back-Right
+        };
+
+        // Iterate vertically through the player's height at a reasonable step
+        for (float yCurrent = checkYBottom; yCurrent <= checkYTop; yCurrent += 0.4f) { // Adjusted step for thoroughness
+            int blockY = (int) Math.floor(yCurrent);
+
+            // Ensure y-check is within world bounds
+            if (blockY < 0 || blockY >= World.WORLD_HEIGHT) {
+                continue;
+            }
+
+            for (Vector3f offset : horizontalCheckOffsets) {
+                int blockX = (int) Math.floor(position.x + offset.x);
+                int blockZ = (int) Math.floor(position.z + offset.z);
+
+                if (world.getBlockAt(blockX, blockY, blockZ) == BlockType.WATER) {
+                    // This debug line can be helpful to pinpoint which check triggers water detection
+                    // System.out.println("DEBUG: isPartiallyInWater TRUE at [" + blockX + "," + blockY + "," + blockZ + "] for player Y: " + yCurrent + " offset: " + offset);
+                    return true;
+                }
             }
         }
-        return false;    }
+        return false;
+    }
     
     /**
      * Sets the player's position.

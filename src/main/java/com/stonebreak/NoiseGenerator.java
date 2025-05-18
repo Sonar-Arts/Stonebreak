@@ -8,8 +8,8 @@ import java.util.Random;
  */
 public class NoiseGenerator {
     
-    private static final int OCTAVES = 6;
-    private static final double PERSISTENCE = 0.5;
+    private static final int OCTAVES = 8;
+    private static final double PERSISTENCE = 0.45;
     private static final double LACUNARITY = 2.0;
     
     private final int[] permutation;
@@ -35,9 +35,7 @@ public class NoiseGenerator {
         }
         
         // Duplicate permutation for faster lookup
-        for (int i = 0; i < 256; i++) {
-            permutation[i + 256] = permutation[i];
-        }
+        System.arraycopy(permutation, 0, permutation, 256, 256);
     }
       /**
      * Gets noise value in 2D space.

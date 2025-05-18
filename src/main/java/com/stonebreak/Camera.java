@@ -14,11 +14,11 @@ public class Camera {
     private static final float MAX_PITCH = 89.0f;
     
     // Camera attributes
-    private Vector3f position;
-    private Vector3f front;
+    private final Vector3f position;
+    private final Vector3f front;
     private Vector3f up;
     private Vector3f right;
-    private Vector3f worldUp;
+    private final Vector3f worldUp;
     
     // Euler angles
     private float yaw;
