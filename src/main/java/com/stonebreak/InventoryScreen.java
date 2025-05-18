@@ -3,7 +3,6 @@ package com.stonebreak;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
-
 import org.joml.Matrix4f;
 
 import java.util.Map;
@@ -39,7 +38,6 @@ public class InventoryScreen {
     private static final int TEXT_COLOR_R = 255;
     private static final int TEXT_COLOR_G = 255;
     private static final int TEXT_COLOR_B = 255;
-    
     /**
      * Creates a new inventory screen.
      */
@@ -71,6 +69,9 @@ public class InventoryScreen {
         if (!visible) {
             return;
         }
+        
+        // Save GL state
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
         
         ShaderProgram shaderProgram = renderer.getShaderProgram();
         
@@ -124,11 +125,20 @@ public class InventoryScreen {
         renderer.drawQuad(startX, startY, inventoryWidth, inventoryHeight,
                 BACKGROUND_COLOR_R, BACKGROUND_COLOR_G, BACKGROUND_COLOR_B, 200);
         
+        // Enable blending for text
+        if (!blendWasEnabled) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+
         // Draw title
         String title = "Inventory";
         float titleWidth = font.getTextWidth(title);
-        font.drawString(startX + (inventoryWidth - titleWidth) / 2, 
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", true);
+        font.drawString(startX + (inventoryWidth - titleWidth) / 2,
                 startY + 10, title, TEXT_COLOR_R, TEXT_COLOR_G, TEXT_COLOR_B, shaderProgram);
+        shaderProgram.setUniform("u_isText", false);
         
         // Calculate starting Y position after the title
         int contentStartY = startY + TITLE_HEIGHT;
@@ -176,9 +186,13 @@ public class InventoryScreen {
                 String countText = String.valueOf(count);
                 float textWidth = font.getTextWidth(countText);
                 float textHeight = font.getLineHeight();
-                font.drawString(slotX + SLOT_SIZE - textWidth - 3, 
-                        slotY + SLOT_SIZE - textHeight - 1, 
-                        countText, TEXT_COLOR_R, TEXT_COLOR_G, TEXT_COLOR_B, shaderProgram);
+                shaderProgram.setUniform("u_isText", true);
+                shaderProgram.setUniform("u_useSolidColor", false);
+                shaderProgram.setUniform("u_isText", true);
+                font.drawString(slotX + SLOT_SIZE - textWidth - 3,
+                        slotY + SLOT_SIZE - textHeight - 1,
+                        countText, 255, 220, 0, shaderProgram);
+                shaderProgram.setUniform("u_isText", false);
             }
             
             currentSlot++;
@@ -203,6 +217,11 @@ public class InventoryScreen {
                     BORDER_COLOR_R, BORDER_COLOR_G, BORDER_COLOR_B, 255);
             renderer.drawQuad(slotX + 1, slotY + 1, SLOT_SIZE - 2, SLOT_SIZE - 2, 
                     SLOT_BACKGROUND_R, SLOT_BACKGROUND_G, SLOT_BACKGROUND_B, 255);
+        }
+        
+        // Restore blend state
+        if (!blendWasEnabled) {
+            glDisable(GL_BLEND);
         }
         
         // Restore original OpenGL state

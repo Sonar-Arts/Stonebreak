@@ -68,6 +68,7 @@ public class Font {    private final int fontTextureId;
 
         // Ensure shader is set for text rendering
         // This is typically done by the Renderer before calling this method
+        shaderProgram.setUniform("u_color", textColor);
         
         // Initialize VAO and VBO on first use if not yet created
         if (textVao == 0) {
