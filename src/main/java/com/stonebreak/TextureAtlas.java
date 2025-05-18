@@ -269,19 +269,37 @@ public class TextureAtlas {
                             buffer.put(r).put(g).put(b).put(a);
                             continue; // Skip the opaque setting below
                         }
-                        break;                    case 8: // Sand
-                        // Sand with granular texture and subtle dunes
-                        float sandNoiseX = (float) Math.sin(x * 1.2 + y * 0.8) * 0.5f + 0.5f;
-                        float sandNoiseY = (float) Math.cos(x * 0.9 + y * 1.1) * 0.5f + 0.5f;
-                        float sandNoise = (sandNoiseX + sandNoiseY) * 0.5f;
-                        
-                        // Add some dune-like patterns
-                        float duneEffect = (float) Math.sin((x + y * 0.7) * 0.2) * 0.3f + 0.7f;
-                        
-                        r = (byte) (194 * duneEffect + sandNoise * 30);
-                        g = (byte) (178 * duneEffect + sandNoise * 20);
-                        b = (byte) (128 * duneEffect + sandNoise * 15);
-                        break;                    case 9: // Water (Initial frame, will be updated by updateAnimatedWater)
+                        break;
+                    case 8: // Sand (Minecraft-like)
+                        // Using per-tile coordinates for noise to ensure each sand tile is self-contained
+                        int pixelXInTileSand = x % texturePixelSize; // Renamed to avoid conflict
+                        int pixelYInTileSand = y % texturePixelSize; // Renamed to avoid conflict
+
+                        // Simple noise for a speckled effect
+                        // Combine two sine/cosine waves for a slightly more irregular pattern
+                        // Scale noise to be roughly in 0-1 range
+                        double noise1 = Math.sin(pixelXInTileSand * 0.8 + pixelYInTileSand * 1.1); // Output: -1 to 1
+                        double noise2 = Math.cos(pixelXInTileSand * 0.5 - pixelYInTileSand * 0.9); // Output: -1 to 1
+                        // (noise1 + noise2) is -2 to 2.
+                        // ((noise1 + noise2) / 4.0) is -0.5 to 0.5.
+                        // ((noise1 + noise2) / 4.0 + 0.5) is 0.0 to 1.0.
+                        float combinedNoise = (float) ((noise1 + noise2) / 4.0 + 0.5); 
+
+                        // Base color: Light yellowish-tan (inspired by Minecraft sand)
+                        int baseR = 220; 
+                        int baseG = 205; 
+                        int baseB = 160; 
+
+                        // Apply noise for speckling - subtle variations
+                        // combinedNoise is 0 to 1. (combinedNoise - 0.5f) is -0.5 to 0.5.
+                        // Let variation be +/- 15 for a subtle effect
+                        float variation = (combinedNoise - 0.5f) * 30; // Results in variation from -15 to 15
+
+                        r = (byte) Math.max(0, Math.min(255, (int)(baseR + variation)));
+                        g = (byte) Math.max(0, Math.min(255, (int)(baseG + variation)));
+                        b = (byte) Math.max(0, Math.min(255, (int)(baseB + variation * 0.8f))); // Blue channel varies a bit less
+                        break;
+                    case 9: // Water (Initial frame, will be updated by updateAnimatedWater)
                         // Generate the initial (time=0) frame for water
                         // The main atlas buffer is 'buffer'. We need to fill the portion for this tile.
                         // x and y here are global pixel coordinates in the main atlas buffer.

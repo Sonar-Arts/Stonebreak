@@ -17,7 +17,10 @@ public enum BlockType {
     SAND(7, "Sand", true, true, 8, 0),       // Atlas X changed from 7 to 8
     WATER(8, "Water", false, false, 9, 0),    // Atlas X changed from 8 to 9
     COAL_ORE(9, "Coal Ore", true, true, 0, 1),
-    IRON_ORE(10, "Iron Ore", true, true, 1, 1);
+    IRON_ORE(10, "Iron Ore", true, true, 1, 1),
+    OBSIDIAN(11, "Obsidian", true, true, 2, 1), // Placeholder atlas coords
+    MAGMA(12, "Magma", true, true, 3, 1),       // Placeholder atlas coords
+    CRYSTAL(13, "Crystal", true, true, 4, 1);   // Placeholder atlas coords
     
     private final int id;
     private final String name;
@@ -110,6 +113,12 @@ public enum BlockType {
                 return new float[]{0, 1};
             case IRON_ORE:
                 return new float[]{1, 1};
+            case OBSIDIAN:
+                return new float[]{2, 1}; // Placeholder atlas coords
+            case MAGMA:
+                return new float[]{3, 1}; // Placeholder atlas coords
+            case CRYSTAL:
+                return new float[]{4, 1}; // Placeholder atlas coords
             default:
                 return new float[]{0, 0};
         }

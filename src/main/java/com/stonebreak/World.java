@@ -27,6 +27,7 @@ public class World {
     private long seed;
     private Random random;
     private NoiseGenerator terrainNoise;
+    private NoiseGenerator temperatureNoise; // For biome determination
     
     // Stores all chunks in the world
     private Map<ChunkPosition, Chunk> chunks;
@@ -45,6 +46,7 @@ public class World {
         this.seed = System.currentTimeMillis();
         this.random = new Random(seed);
         this.terrainNoise = new NoiseGenerator(seed);
+        this.temperatureNoise = new NoiseGenerator(seed + 1); // Use a different seed for temperature
         this.chunks = new ConcurrentHashMap<>();
         
         // Initialize thread pool for chunk mesh building
@@ -294,34 +296,55 @@ public class World {
                 
                 // Generate height map using noise
                 int height = generateTerrainHeight(worldX, worldZ);
+                BiomeType biome = getBiomeType(worldX, worldZ);
                 
-                // Generate blocks based on height
+                // Generate blocks based on height and biome
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     BlockType blockType;
                     
                     if (y == 0) {
                         blockType = BlockType.BEDROCK;
                     } else if (y < height - 4) {
-                        blockType = BlockType.STONE;
-                        // Ores will be generated in populateChunkWithFeatures
+                        // Deeper layers - biome can influence stone type
+                        if (biome == BiomeType.VOLCANIC && y < height - 10 && random.nextFloat() < 0.6f) {
+                            blockType = BlockType.MAGMA; // More magma deeper in volcanic areas
+                        } else {
+                            blockType = BlockType.STONE;
+                        }
                     } else if (y < height - 1) {
-                        blockType = BlockType.DIRT;
+                        // Sub-surface layer
+                        if (biome == BiomeType.VOLCANIC) {
+                            blockType = BlockType.OBSIDIAN;
+                        } else {
+                            blockType = BlockType.DIRT;
+                        }
                     } else if (y < height) {
                         // Top layer
-                        float moisture = generateMoisture(worldX, worldZ);
-                        if (moisture < 0.3) {
-                            blockType = BlockType.SAND;
-                        } else {
-                            blockType = BlockType.GRASS;
+                        switch (biome) {
+                            case DESERT:
+                                blockType = BlockType.SAND;
+                                break;
+                            case VOLCANIC:
+                                blockType = BlockType.OBSIDIAN; // Surface of volcanic biome
+                                break;
+                            case PLAINS:
+                            default:
+                                blockType = BlockType.GRASS;
+                                break;
                         }
                     } else if (y < 64) { // Water level
-                        blockType = BlockType.WATER;
+                        // No water in volcanic biomes above a certain height
+                        if (biome == BiomeType.VOLCANIC && height > 64) {
+                             blockType = BlockType.AIR;
+                        } else {
+                            blockType = BlockType.WATER;
+                        }
                     } else {
                         blockType = BlockType.AIR;
                     }
                     chunk.setBlock(x, y, z, blockType); // Local placement
                 }
-                // Trees will be generated in populateChunkWithFeatures
+                // Trees and other features will be generated in populateChunkWithFeatures
             }
         }
         chunk.setFeaturesPopulated(false); // Explicitly mark as not populated
@@ -357,46 +380,49 @@ public class World {
                  if (surfaceHeight == 0 && chunk.getBlock(x,0,z) != BlockType.AIR) { // Edge case: column is solid to y=0
                     surfaceHeight = 1; // Place features starting at y=1 if ground is at y=0
                 }
+                
+                BiomeType biome = getBiomeType(worldX, worldZ);
 
+                // Generate Ores & Biome Specific Features
+                for (int y = 1; y < surfaceHeight -1; y++) { // Iterate up to just below surface
+                    BlockType currentBlock = chunk.getBlock(x, y, z);
+                    BlockType oreType = null;
 
-                // Generate Ores
-                // Iterate from bedrock up to just below the determined surfaceHeight for ore placement
-                for (int y = 1; y < surfaceHeight - 4; y++) { // Avoid placing ores in top layers of dirt/grass
-                     if (chunk.getBlock(x, y, z) == BlockType.STONE) { // Only replace stone with ore
-                        BlockType oreType = null;
+                    if (currentBlock == BlockType.STONE) {
                         synchronized (this.random) {
-                            if (this.random.nextFloat() < 0.01) { // Coal
+                            if (this.random.nextFloat() < 0.015) { // Increased coal slightly
                                 oreType = BlockType.COAL_ORE;
-                            } else if (this.random.nextFloat() < 0.005 && y < 40) { // Iron
+                            } else if (this.random.nextFloat() < 0.008 && y < 50) { // Increased iron slightly, wider range
                                 oreType = BlockType.IRON_ORE;
                             }
                         }
-                        if (oreType != null) {
-                            // Use this.setBlockAt for ores as they might be at chunk edges
-                            // but ore veins are usually small, so direct chunk.setBlock might be okay too if we ensure height is correct.
-                            // For consistency and future larger veins, using this.setBlockAt is safer.
-                            this.setBlockAt(worldX, y, worldZ, oreType);
+                    } else if (biome == BiomeType.VOLCANIC && (currentBlock == BlockType.OBSIDIAN || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
+                        // Crystal generation in Volcanic biomes, embedded in Obsidian, Stone or Magma
+                        synchronized (this.random) {
+                            if (this.random.nextFloat() < 0.02) { // Chance for Crystal
+                                oreType = BlockType.CRYSTAL;
+                            }
                         }
+                    }
+                    
+                    if (oreType != null) {
+                        this.setBlockAt(worldX, y, worldZ, oreType);
                     }
                 }
                 
-                // Generate Trees
-                // Tree base 'y' should be the first air block on top of solid ground.
-                // The 'surfaceHeight' calculated earlier is the y-coordinate of the first air block above ground.
-                // So, trees should be placed at 'surfaceHeight'.
-                // The original height for tree gen was from generateTerrainHeight, which might differ slightly
-                // from actual surface after block placement. Using actual surface is better.
-                if (chunk.getBlock(x, surfaceHeight -1, z) == BlockType.GRASS || chunk.getBlock(x, surfaceHeight -1, z) == BlockType.DIRT ) { // Ensure tree spawns on grass or dirt
-                    boolean shouldGenerateTree;
-                    synchronized (this.random) {
-                        // surfaceHeight is the y-coord of the first air block. Tree base is at surfaceHeight.
-                        // Ensure there's enough space above water level (64) for a tree.
-                        shouldGenerateTree = (this.random.nextFloat() < 0.01 && surfaceHeight > 64);
-                    }
-                    if (shouldGenerateTree) {
-                        generateTree(chunk, x, surfaceHeight, z); // generateTree uses world coords and this.setBlockAt
+                // Generate Trees (only in PLAINS biome for now)
+                if (biome == BiomeType.PLAINS) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) { // Ensure tree spawns on grass
+                        boolean shouldGenerateTree;
+                        synchronized (this.random) {
+                            shouldGenerateTree = (this.random.nextFloat() < 0.01 && surfaceHeight > 64);
+                        }
+                        if (shouldGenerateTree) {
+                            generateTree(chunk, x, surfaceHeight, z);
+                        }
                     }
                 }
+                // No trees in DESERT or VOLCANIC biomes by default
             }
         }
         chunk.setFeaturesPopulated(true);
@@ -554,7 +580,35 @@ public class World {
         float nx = x / 200.0f;
         float nz = z / 200.0f;
         
-        return terrainNoise.noise(nx + 100, nz + 100) * 0.5f + 0.5f;
+        return terrainNoise.noise(nx + 100, nz + 100) * 0.5f + 0.5f; // Range 0.0 to 1.0
+    }
+    
+    private float generateTemperature(int x, int z) {
+        float nx = x / 300.0f; // Different scale for temperature
+        float nz = z / 300.0f;
+        return temperatureNoise.noise(nx - 50, nz - 50) * 0.5f + 0.5f; // Range 0.0 to 1.0
+    }
+    
+    private BiomeType getBiomeType(int x, int z) {
+        float moisture = generateMoisture(x, z);
+        float temperature = generateTemperature(x, z);
+
+        if (temperature > 0.65f) { // Hot
+            if (moisture < 0.35f) {
+                return BiomeType.DESERT;
+            } else {
+                return BiomeType.VOLCANIC; // Hot and somewhat moist/varied = Volcanic
+            }
+        } else if (temperature < 0.35f) { // Cold
+            // Could add TUNDRA or SNOWY biomes here later
+            return BiomeType.PLAINS; // Default to PLAINS for cold for now
+        } else { // Temperate
+            if (moisture < 0.3f) {
+                return BiomeType.DESERT; // Temperate but dry = also desert like
+            } else {
+                return BiomeType.PLAINS;
+            }
+        }
     }
     
     /**
