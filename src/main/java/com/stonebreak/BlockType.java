@@ -18,9 +18,11 @@ public enum BlockType {
     WATER(8, "Water", false, false, 9, 0),    // Atlas X changed from 8 to 9
     COAL_ORE(9, "Coal Ore", true, true, 0, 1),
     IRON_ORE(10, "Iron Ore", true, true, 1, 1),
-    OBSIDIAN(11, "Obsidian", true, true, 2, 1), // Placeholder atlas coords
+    RED_SAND(11, "Red Sand", true, true, 2, 1), // Was Obsidian, now red sand at old obsidian atlas coords
     MAGMA(12, "Magma", true, true, 3, 1),       // Placeholder atlas coords
-    CRYSTAL(13, "Crystal", true, true, 4, 1);   // Placeholder atlas coords
+    CRYSTAL(13, "Crystal", true, true, 4, 1),   // Placeholder atlas coords
+    SANDSTONE(14, "Sandstone", true, true, 5, 1), // Top texture for icon
+    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1); // Top texture for icon
     
     private final int id;
     private final String name;
@@ -113,12 +115,20 @@ public enum BlockType {
                 return new float[]{0, 1};
             case IRON_ORE:
                 return new float[]{1, 1};
-            case OBSIDIAN:
-                return new float[]{2, 1}; // Placeholder atlas coords
+            case RED_SAND:
+                return new float[]{2, 1}; // Use its unique atlas coordinates
             case MAGMA:
                 return new float[]{3, 1}; // Placeholder atlas coords
             case CRYSTAL:
                 return new float[]{4, 1}; // Placeholder atlas coords
+            case SANDSTONE:
+                if (face == 0) return new float[]{5, 1}; // Top
+                if (face == 1) return new float[]{5, 1}; // Bottom (same as top)
+                return new float[]{7, 1}; // Sides
+            case RED_SANDSTONE:
+                if (face == 0) return new float[]{6, 1}; // Top
+                if (face == 1) return new float[]{6, 1}; // Bottom (same as top)
+                return new float[]{8, 1}; // Sides
             default:
                 return new float[]{0, 0};
         }

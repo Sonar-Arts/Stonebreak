@@ -25,6 +25,14 @@ public class InventoryScreen {
     private ItemStack draggedItemStack;
     private int draggedItemOriginalSlotIndex; // -1 if not dragging, or index in combined (hotbar + main)
     private boolean isDraggingFromHotbar;
+    private ItemStack hoveredItemStack; // For tooltip (inventory screen)
+
+    // Hotbar selection tooltip state
+    private String hotbarSelectedItemName;
+    private float hotbarSelectedItemTooltipAlpha;
+    private float hotbarSelectedItemTooltipTimer;
+    private static final float HOTBAR_TOOLTIP_DISPLAY_DURATION = 1.5f; // seconds
+    private static final float HOTBAR_TOOLTIP_FADE_DURATION = 0.5f;   // seconds
 
 
     // UI constants
@@ -48,6 +56,19 @@ public class InventoryScreen {
     private static final int TEXT_COLOR_R = 255;
     private static final int TEXT_COLOR_G = 255;
     private static final int TEXT_COLOR_B = 255;
+
+    // Tooltip Colors
+    private static final int TOOLTIP_BORDER_R = 20;
+    private static final int TOOLTIP_BORDER_G = 20;
+    private static final int TOOLTIP_BORDER_B = 20;
+    private static final int TOOLTIP_BORDER_A = 230;
+    private static final int TOOLTIP_BACKGROUND_R = 50;
+    private static final int TOOLTIP_BACKGROUND_G = 50;
+    private static final int TOOLTIP_BACKGROUND_B = 50;
+    private static final int TOOLTIP_BACKGROUND_A = 220;
+    private static final int TOOLTIP_TEXT_R = 220;
+    private static final int TOOLTIP_TEXT_G = 220;
+    private static final int TOOLTIP_TEXT_B = 220;
     /**
      * Creates a new inventory screen.
      */
@@ -59,6 +80,10 @@ public class InventoryScreen {
         this.inputHandler = inputHandler; // Initialize InputHandler
         this.draggedItemStack = null;
         this.draggedItemOriginalSlotIndex = -1;
+        this.hoveredItemStack = null;
+        this.hotbarSelectedItemName = null;
+        this.hotbarSelectedItemTooltipAlpha = 0.0f;
+        this.hotbarSelectedItemTooltipTimer = 0.0f;
     }
 
     /**
@@ -75,6 +100,37 @@ public class InventoryScreen {
         return visible;
     }
 
+    public void update(float deltaTime) {
+        if (hotbarSelectedItemTooltipTimer > 0) {
+            hotbarSelectedItemTooltipTimer -= deltaTime;
+            if (hotbarSelectedItemTooltipTimer <= 0) {
+                hotbarSelectedItemTooltipTimer = 0;
+                hotbarSelectedItemTooltipAlpha = 0;
+                hotbarSelectedItemName = null; // Clear name when timer expires
+            } else if (hotbarSelectedItemTooltipTimer <= HOTBAR_TOOLTIP_FADE_DURATION) {
+                hotbarSelectedItemTooltipAlpha = Math.max(0.0f, hotbarSelectedItemTooltipTimer / HOTBAR_TOOLTIP_FADE_DURATION);
+            } else {
+                hotbarSelectedItemTooltipAlpha = 1.0f; // Fully visible during display duration
+            }
+        }
+    }
+
+    /**
+     * Call this when a hotbar item is selected to show its name.
+     */
+    public void displayHotbarItemTooltip(BlockType blockType) {
+        if (blockType != null && blockType != BlockType.AIR) {
+            this.hotbarSelectedItemName = blockType.getName();
+            this.hotbarSelectedItemTooltipTimer = HOTBAR_TOOLTIP_DISPLAY_DURATION + HOTBAR_TOOLTIP_FADE_DURATION;
+            this.hotbarSelectedItemTooltipAlpha = 1.0f;
+        } else {
+            // If AIR or null is selected, effectively hide any current tooltip
+            this.hotbarSelectedItemName = null;
+            this.hotbarSelectedItemTooltipTimer = 0.0f;
+            this.hotbarSelectedItemTooltipAlpha = 0.0f;
+        }
+    }
+
     /**
      * Renders the inventory screen.
      */
@@ -82,6 +138,9 @@ public class InventoryScreen {
         if (!visible) {
             return;
         }
+
+        // Reset hovered item at the start of each render pass
+        hoveredItemStack = null;
 
         // Save GL state
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
@@ -143,6 +202,7 @@ public class InventoryScreen {
             int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
             int slotY = contentStartY + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
             drawSlot(mainSlots[i], slotX, slotY, shaderProgram, uiProjection, identityView, false, -1);
+            checkHover(mainSlots[i], slotX, slotY, screenWidth, screenHeight);
         }
         
         // Draw Hotbar Slots (as part of the main inventory panel, visually)
@@ -156,6 +216,7 @@ public class InventoryScreen {
             int slotY = hotbarRowYOffset;
              // Pass true for isHotbarSlot and the actual hotbar index
             drawSlot(hotbarSlots[i], slotX, slotY, shaderProgram, uiProjection, identityView, true, i);
+            checkHover(hotbarSlots[i], slotX, slotY, screenWidth, screenHeight);
         }
 
 
@@ -187,6 +248,55 @@ public class InventoryScreen {
                                     countText, 255, 220, 0, shaderProgram);
                     shaderProgram.setUniform("u_isText", false);
                 }
+            }
+        }
+
+        // Draw Tooltip
+        if (hoveredItemStack != null && !hoveredItemStack.isEmpty() && draggedItemStack == null) { // Only show tooltip if not dragging
+            BlockType type = BlockType.getById(hoveredItemStack.getBlockTypeId());
+            if (type != null && type != BlockType.AIR) {
+                String itemName = type.getName();
+                float textWidth = font.getTextWidth(itemName);
+                float textHeight = font.getLineHeight();
+                float tooltipPadding = 7.0f; // Increased padding
+
+                float tooltipWidth = textWidth + 2 * tooltipPadding;
+                float tooltipHeight = textHeight + 2 * tooltipPadding;
+
+                Vector2f mousePos = inputHandler.getMousePosition();
+                float tooltipX = mousePos.x + 15; // Offset from cursor
+                float tooltipY = mousePos.y + 15;
+
+                // Adjust tooltip position to stay within screen bounds
+                if (tooltipX + tooltipWidth > screenWidth) {
+                    tooltipX = screenWidth - tooltipWidth;
+                }
+                if (tooltipY + tooltipHeight > screenHeight) {
+                    tooltipY = screenHeight - tooltipHeight;
+                }
+                if (tooltipX < 0) tooltipX = 0;
+                if (tooltipY < 0) tooltipY = 0;
+
+
+                // Draw tooltip background
+                shaderProgram.setUniform("u_useSolidColor", true);
+                shaderProgram.setUniform("u_isText", false);
+                // Draw outer border
+                renderer.drawQuad((int)tooltipX, (int)tooltipY, (int)tooltipWidth, (int)tooltipHeight,
+                                  TOOLTIP_BORDER_R, TOOLTIP_BORDER_G, TOOLTIP_BORDER_B, TOOLTIP_BORDER_A);
+                // Draw inner background
+                renderer.drawQuad((int)tooltipX + 1, (int)tooltipY + 1, (int)tooltipWidth - 2, (int)tooltipHeight - 2,
+                                  TOOLTIP_BACKGROUND_R, TOOLTIP_BACKGROUND_G, TOOLTIP_BACKGROUND_B, TOOLTIP_BACKGROUND_A);
+
+                // Draw item name
+                shaderProgram.setUniform("u_useSolidColor", false);
+                shaderProgram.setUniform("u_isText", true);
+                float textDrawX = tooltipX + tooltipPadding;
+                float textDrawY = tooltipY + tooltipPadding + (textHeight * 0.75f); // Adjusted for better baseline placement
+                font.drawString(textDrawX,
+                                textDrawY,
+                                itemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, shaderProgram);
+                shaderProgram.setUniform("u_isText", false);
             }
         }
 
@@ -290,6 +400,79 @@ public class InventoryScreen {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int slotX = hotbarStartX + SLOT_PADDING + i * (SLOT_SIZE + SLOT_PADDING);
             drawSlot(hotbarItems[i], slotX, hotbarStartY, shaderProgram, uiProjection, identityView, true, i);
+        }
+
+        // Render Hotbar Selection Tooltip
+        if (hotbarSelectedItemName != null && hotbarSelectedItemTooltipAlpha > 0.0f && !visible) {
+            float textWidth = font.getTextWidth(hotbarSelectedItemName);
+            float textHeight = font.getLineHeight();
+            float tooltipPadding = 7.0f;
+
+            float tooltipWidth = textWidth + 2 * tooltipPadding;
+            float tooltipHeight = textHeight + 2 * tooltipPadding;
+
+            // Position above the *selected* hotbar slot
+            int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
+            float selectedSlotX = hotbarStartX + SLOT_PADDING + selectedSlotIndex * (SLOT_SIZE + SLOT_PADDING);
+            float selectedSlotCenterX = selectedSlotX + SLOT_SIZE / 2.0f;
+
+            float tooltipX = selectedSlotCenterX - tooltipWidth / 2.0f;
+            float tooltipY = hotbarStartY - tooltipHeight - (SLOT_PADDING * 2); // Position above the hotbar with some padding
+
+            // Adjust tooltip position to stay within screen bounds (simple horizontal check)
+            if (tooltipX < 0) tooltipX = 0;
+            if (tooltipX + tooltipWidth > screenWidth) tooltipX = screenWidth - tooltipWidth;
+
+
+            // Calculate alpha-adjusted colors
+            int currentTooltipBorderA = (int)(TOOLTIP_BORDER_A * hotbarSelectedItemTooltipAlpha);
+            int currentTooltipBackgroundA = (int)(TOOLTIP_BACKGROUND_A * hotbarSelectedItemTooltipAlpha);
+            // For text, we'll need to pass alpha to drawString or use a shader that supports vertex alpha for text.
+            // For now, let's assume font.drawString can take an alpha or we modify its color.
+            // The font.drawString method takes R,G,B. We'll need to adjust the shader or font rendering for text alpha.
+            // As a simpler approach for now, we'll just render text with full alpha but the background will fade.
+            // A more robust solution would involve passing alpha to the text rendering.
+
+            shaderProgram.setUniform("u_useSolidColor", true);
+            shaderProgram.setUniform("u_isText", false);
+            renderer.drawQuad((int)tooltipX, (int)tooltipY, (int)tooltipWidth, (int)tooltipHeight,
+                              TOOLTIP_BORDER_R, TOOLTIP_BORDER_G, TOOLTIP_BORDER_B, currentTooltipBorderA);
+            renderer.drawQuad((int)tooltipX + 1, (int)tooltipY + 1, (int)tooltipWidth - 2, (int)tooltipHeight - 2,
+                              TOOLTIP_BACKGROUND_R, TOOLTIP_BACKGROUND_G, TOOLTIP_BACKGROUND_B, currentTooltipBackgroundA);
+
+            shaderProgram.setUniform("u_useSolidColor", false);
+            shaderProgram.setUniform("u_isText", true);
+            // For text alpha, ideally the shader and font.drawString would support it.
+            // If not, the text might not fade perfectly with the background.
+            // We'll use a modified text color for the fading effect if the font renderer doesn't directly support alpha.
+            // Let's assume the text color is also affected by the alpha for now.
+            // The font rendering would need to use this alpha.
+            // For now, we pass the base text color, but the background will fade.
+            // To make text fade, we'd need to modify Font.drawString or the shader.
+            // Let's assume for now the text color's alpha is implicitly handled or we just fade the background.
+            // For a visual fade, the text color's alpha component should also be modulated.
+            // We will pass the alpha to the font drawing method if it's extended, or use a shader uniform.
+            // For now, we'll render text with full opacity and only fade the background.
+            // A proper text fade would require changes to Font.java or its shader.
+            // Let's try to pass alpha to drawString if it were available:
+            // font.drawString(textDrawX, textDrawY, hotbarSelectedItemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, (int)(255 * hotbarSelectedItemTooltipAlpha), shaderProgram);
+            // Since it's not, we'll just draw it. The background fade will give the primary effect.
+
+            float textDrawX = tooltipX + tooltipPadding;
+            float textDrawY = tooltipY + tooltipPadding + (textHeight * 0.75f);
+
+            // To actually make the text fade, the Font.drawString method or the text shader needs to use an alpha value.
+            // We can simulate this by changing the text color if the shader doesn't support per-vertex alpha for text.
+            // For now, we'll render the text with its standard color, and the background will fade.
+            // If Font.drawString could take an alpha:
+            // font.drawString(textDrawX, textDrawY, hotbarSelectedItemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, (int)(255 * hotbarSelectedItemTooltipAlpha), shaderProgram);
+            // Since it doesn't, we draw as is. The background fade is the main visual cue.
+            if (hotbarSelectedItemTooltipAlpha > 0.1f) { // Only draw text if substantially visible
+                 font.drawString(textDrawX,
+                                textDrawY,
+                                hotbarSelectedItemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, shaderProgram);
+            }
+            shaderProgram.setUniform("u_isText", false);
         }
 
         if (!blendWasEnabled) {
@@ -574,6 +757,21 @@ public class InventoryScreen {
         }
          if (draggedItemStack != null && draggedItemStack.isEmpty()){ // If count became zero after trying to return
             draggedItemStack = null;
+        }
+    }
+
+    private void checkHover(ItemStack itemStack, int slotX, int slotY, int screenWidth, int screenHeight) {
+        if (itemStack == null || itemStack.isEmpty() || !visible) {
+            return;
+        }
+
+        Vector2f mousePos = inputHandler.getMousePosition();
+        float mouseX = mousePos.x;
+        float mouseY = mousePos.y;
+
+        if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
+            mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+            hoveredItemStack = itemStack;
         }
     }
 }

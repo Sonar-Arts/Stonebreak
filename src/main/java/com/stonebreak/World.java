@@ -306,15 +306,17 @@ public class World {
                         blockType = BlockType.BEDROCK;
                     } else if (y < height - 4) {
                         // Deeper layers - biome can influence stone type
-                        if (biome == BiomeType.VOLCANIC && y < height - 10 && random.nextFloat() < 0.6f) {
+                        if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 && random.nextFloat() < 0.6f) {
                             blockType = BlockType.MAGMA; // More magma deeper in volcanic areas
                         } else {
                             blockType = BlockType.STONE;
                         }
                     } else if (y < height - 1) {
                         // Sub-surface layer
-                        if (biome == BiomeType.VOLCANIC) {
-                            blockType = BlockType.OBSIDIAN;
+                        if (biome == BiomeType.RED_SAND_DESERT) {
+                            blockType = BlockType.RED_SANDSTONE; // Changed from RED_SAND to RED_SANDSTONE
+                        } else if (biome == BiomeType.DESERT) {
+                            blockType = BlockType.SANDSTONE; // Changed from DIRT to SANDSTONE
                         } else {
                             blockType = BlockType.DIRT;
                         }
@@ -324,8 +326,8 @@ public class World {
                             case DESERT:
                                 blockType = BlockType.SAND;
                                 break;
-                            case VOLCANIC:
-                                blockType = BlockType.OBSIDIAN; // Surface of volcanic biome
+                            case RED_SAND_DESERT:
+                                blockType = BlockType.RED_SAND; // Surface of red sand desert biome
                                 break;
                             case PLAINS:
                             default:
@@ -334,7 +336,7 @@ public class World {
                         }
                     } else if (y < 64) { // Water level
                         // No water in volcanic biomes above a certain height
-                        if (biome == BiomeType.VOLCANIC && height > 64) {
+                        if (biome == BiomeType.RED_SAND_DESERT && height > 64) {
                              blockType = BlockType.AIR;
                         } else {
                             blockType = BlockType.WATER;
@@ -396,7 +398,7 @@ public class World {
                                 oreType = BlockType.IRON_ORE;
                             }
                         }
-                    } else if (biome == BiomeType.VOLCANIC && (currentBlock == BlockType.OBSIDIAN || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
+                    } else if (biome == BiomeType.RED_SAND_DESERT && (currentBlock == BlockType.RED_SAND || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
                         // Crystal generation in Volcanic biomes, embedded in Obsidian, Stone or Magma
                         synchronized (this.random) {
                             if (this.random.nextFloat() < 0.02) { // Chance for Crystal
@@ -597,7 +599,7 @@ public class World {
             if (moisture < 0.35f) {
                 return BiomeType.DESERT;
             } else {
-                return BiomeType.VOLCANIC; // Hot and somewhat moist/varied = Volcanic
+                return BiomeType.RED_SAND_DESERT; // Hot and somewhat moist/varied = Red Sand Desert
             }
         } else if (temperature < 0.35f) { // Cold
             // Could add TUNDRA or SNOWY biomes here later

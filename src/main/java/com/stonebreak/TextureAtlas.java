@@ -22,6 +22,22 @@ public class TextureAtlas {
     // Atlas coordinates for the water tile (assuming previous fix to BlockType.java)
     private static final int WATER_ATLAS_X = 9;
     private static final int WATER_ATLAS_Y = 0;
+
+    // Atlas coordinates for the new RED_SAND block
+    private static final int RED_SAND_ATLAS_X = 2;
+    private static final int RED_SAND_ATLAS_Y = 1;
+
+    // Atlas coordinates for SANDSTONE textures
+    private static final int SANDSTONE_TOP_ATLAS_X = 5;
+    private static final int SANDSTONE_TOP_ATLAS_Y = 1;
+    private static final int SANDSTONE_SIDE_ATLAS_X = 7;
+    private static final int SANDSTONE_SIDE_ATLAS_Y = 1;
+
+    // Atlas coordinates for RED_SANDSTONE textures
+    private static final int RED_SANDSTONE_TOP_ATLAS_X = 6;
+    private static final int RED_SANDSTONE_TOP_ATLAS_Y = 1;
+    private static final int RED_SANDSTONE_SIDE_ATLAS_X = 8;
+    private static final int RED_SANDSTONE_SIDE_ATLAS_Y = 1;
     
     /**
      * Creates a texture atlas with the specified texture size.
@@ -145,34 +161,230 @@ public class TextureAtlas {
                 byte r, g, b, a;
                 
                 // Determine color based on tile position (as if it were a block type)
+                
+                // Special handling for RED_SAND texture
+                if (tileX == RED_SAND_ATLAS_X && tileY == RED_SAND_ATLAS_Y) {
+                    // Use sand pattern with orangish-red color for RED_SAND
+                    int pixelXInTileRedSand = x % texturePixelSize;
+                    int pixelYInTileRedSand = y % texturePixelSize;
+
+                    double noise1_rs = Math.sin(pixelXInTileRedSand * 0.8 + pixelYInTileRedSand * 1.1);
+                    double noise2_rs = Math.cos(pixelXInTileRedSand * 0.5 - pixelYInTileRedSand * 0.9);
+                    float combinedNoise_rs = (float) ((noise1_rs + noise2_rs) / 4.0 + 0.5);
+
+                    // Base color: Orangish-Red
+                    int baseR_rs = 200;
+                    int baseG_rs = 100;
+                    int baseB_rs = 50;
+
+                    float variation_rs = (combinedNoise_rs - 0.5f) * 30; // Variation from -15 to 15
+
+                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_rs + variation_rs)));
+                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_rs + variation_rs * 0.8f))); // Vary green a bit less
+                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_rs + variation_rs * 0.6f))); // Vary blue even less for redness
+
+                    a = (byte) 255; // Fully opaque
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue; // Skip the general switch statement for this tile
+                }
+                // Special handling for SANDSTONE_TOP texture
+                else if (tileX == SANDSTONE_TOP_ATLAS_X && tileY == SANDSTONE_TOP_ATLAS_Y) {
+                    int pX = x % texturePixelSize;
+                    int pY = y % texturePixelSize;
+
+                    // Base color: Light beige/yellowish
+                    int baseR_st = 235; // 218;
+                    int baseG_st = 225; // 210;
+                    int baseB_st = 190; // 175;
+
+                    // Noise for subtle speckling
+                    double noise1_st = Math.sin(pX * 0.7 + pY * 1.2 + tileX * 0.3);
+                    double noise2_st = Math.cos(pX * 0.4 - pY * 0.9 + tileY * 0.2);
+                    float combinedNoise_st = (float) ((noise1_st + noise2_st) / 4.0 + 0.5); // 0.0 to 1.0
+
+                    float variation_st = (combinedNoise_st - 0.5f) * 25; // Variation from -12.5 to 12.5
+
+                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_st + variation_st)));
+                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_st + variation_st)));
+                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_st + variation_st * 0.8f))); // Less variation in blue
+
+                    a = (byte) 255;
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for SANDSTONE_SIDE texture
+                else if (tileX == SANDSTONE_SIDE_ATLAS_X && tileY == SANDSTONE_SIDE_ATLAS_Y) {
+                    int pX = x % texturePixelSize;
+                    int pY = y % texturePixelSize;
+
+                    // Base color: Similar to top, slightly more saturated or varied
+                    int baseR_ss = 220;
+                    int baseG_ss = 200;
+                    int baseB_ss = 160;
+
+                    // Horizontal banding
+                    // Bands are roughly 3-5 pixels high. Let's try 4 pixels.
+                    int band = (pY / 4) % 4; // Creates 4 distinct band types that repeat
+                    float bandShadeFactor = 0.0f;
+
+                    // Introduce slight waviness to bands based on pX
+                    int wavyPY = pY + (int)(Math.sin(pX * 0.3 + tileX * 0.5) * 1.5); // tileX adds variation per tile instance
+                    band = (wavyPY / 4) % 4;
+
+
+                    switch (band) {
+                        case 0: bandShadeFactor = 0.0f; break;  // Base
+                        case 1: bandShadeFactor = -0.08f; break; // Slightly darker
+                        case 2: bandShadeFactor = 0.05f; break; // Slightly lighter
+                        case 3: bandShadeFactor = -0.05f; break; // Medium dark
+                    }
+                    
+                    // Add overall noise for roughness
+                    double noise1_ss = Math.sin(pX * 0.6 + pY * 1.1 + tileY * 0.4);
+                    double noise2_ss = Math.cos(pX * 0.3 - pY * 0.8 + tileX * 0.6);
+                    float combinedNoise_ss = (float) ((noise1_ss + noise2_ss) / 4.0 + 0.5); // 0.0 to 1.0
+
+                    float variation_ss = (combinedNoise_ss - 0.5f) * 35; // Variation from -17.5 to 17.5
+
+                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_ss * (1 + bandShadeFactor) + variation_ss)));
+                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_ss * (1 + bandShadeFactor * 0.9f) + variation_ss)));
+                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_ss * (1 + bandShadeFactor * 0.8f) + variation_ss * 0.7f)));
+                    
+
+
+// Add occasional darker, brownish inclusions
+                    if (combinedNoise_ss < 0.12) { // 12% chance for an inclusion
+                        // Define a specific color for inclusions - a darker, slightly desaturated orangey-brown
+                        r = (byte)180; 
+                        g = (byte)150; 
+                        b = (byte)110; 
+                    }
+                    a = (byte) 255;
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for RED_SANDSTONE_TOP texture
+                else if (tileX == RED_SANDSTONE_TOP_ATLAS_X && tileY == RED_SANDSTONE_TOP_ATLAS_Y) {
+                    int pX = x % texturePixelSize;
+                    int pY = y % texturePixelSize;
+
+                    // Base color: Red Sand palette
+                    int baseR_rst = 200;
+                    int baseG_rst = 100;
+                    int baseB_rst = 50;
+
+                    // Noise for subtle speckling (same logic as Sandstone Top)
+                    double noise1_rst = Math.sin(pX * 0.7 + pY * 1.2 + tileX * 0.3);
+                    double noise2_rst = Math.cos(pX * 0.4 - pY * 0.9 + tileY * 0.2);
+                    float combinedNoise_rst = (float) ((noise1_rst + noise2_rst) / 4.0 + 0.5); // 0.0 to 1.0
+
+                    float variation_rst = (combinedNoise_rst - 0.5f) * 25; // Variation from -12.5 to 12.5
+
+                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_rst + variation_rst)));
+                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_rst + variation_rst * 0.8f))); // Vary green a bit less
+                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_rst + variation_rst * 0.6f))); // Vary blue even less
+
+                    a = (byte) 255;
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for RED_SANDSTONE_SIDE texture
+                else if (tileX == RED_SANDSTONE_SIDE_ATLAS_X && tileY == RED_SANDSTONE_SIDE_ATLAS_Y) {
+                    int pX = x % texturePixelSize;
+                    int pY = y % texturePixelSize;
+
+                    // Base color: Red Sand palette
+                    int baseR_rss = 200;
+                    int baseG_rss = 100;
+                    int baseB_rss = 50;
+
+                    // Horizontal banding (same logic as Sandstone Side)
+                    int wavyPY_rss = pY + (int)(Math.sin(pX * 0.3 + tileX * 0.5) * 1.5);
+                    int band_rss = (wavyPY_rss / 4) % 4;
+                    float bandShadeFactor_rss = 0.0f;
+
+                    switch (band_rss) {
+                        case 0: bandShadeFactor_rss = 0.0f; break;
+                        case 1: bandShadeFactor_rss = -0.08f; break;
+                        case 2: bandShadeFactor_rss = 0.05f; break;
+                        case 3: bandShadeFactor_rss = -0.05f; break;
+                    }
+                    
+                    // Add overall noise for roughness (same logic as Sandstone Side)
+                    double noise1_rss = Math.sin(pX * 0.6 + pY * 1.1 + tileY * 0.4);
+                    double noise2_rss = Math.cos(pX * 0.3 - pY * 0.8 + tileX * 0.6);
+                    float combinedNoise_rss = (float) ((noise1_rss + noise2_rss) / 4.0 + 0.5);
+
+                    float variation_rss = (combinedNoise_rss - 0.5f) * 35;
+
+                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_rss * (1 + bandShadeFactor_rss) + variation_rss)));
+                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_rss * (1 + bandShadeFactor_rss * 0.9f) + variation_rss * 0.8f)));
+                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_rss * (1 + bandShadeFactor_rss * 0.8f) + variation_rss * 0.6f)));
+                    
+                    // Add occasional darker, reddish-brown inclusions
+                    if (combinedNoise_rss < 0.12) {
+                        r = (byte)160; // Darker red
+                        g = (byte)70;  // Darker, less saturated green component
+                        b = (byte)30;  // Darker, less saturated blue component
+                    }
+
+                    a = (byte) 255;
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+
                 int tileIndex = tileY * textureSize + tileX;
-                  switch (tileIndex % 12) {
+                  switch (tileIndex % 12) { // Ensure this switch is only hit if not handled above
                     case 0: // Grass top
-                        // Improved grass top with varied green tones and occasional flowers
-                        float noise = (float) Math.sin(x * 0.7 + y * 0.5) * 0.5f + 0.5f;
-                        r = (byte) (65 + noise * 25);
-                        g = (byte) (180 + noise * 30);
-                        b = (byte) (80 + noise * 20);
-                        
-                        // Add some small flowers or variation
-                        if ((x % 5 == 0 && y % 7 == 0) || (x % 7 == 0 && y % 5 == 0)) {
-                            r = (byte) 220; // yellow flower
-                            g = (byte) 220;
-                            b = (byte) 50;
-                        } else if ((x % 6 == 0 && y % 6 == 0)) {
-                            r = (byte) 240; // red flower
-                            g = (byte) 50;
-                            b = (byte) 50;
+                        // Minecraft-style Grass Top - V2 (based on reference image)
+                        int pixelX_gt = x % this.texturePixelSize;
+                        int pixelY_gt = y % this.texturePixelSize;
+
+                        // Pseudo-random noise to select shade
+                        int noiseVal_gt = (pixelX_gt * 13 + pixelY_gt * 29 + tileX * 11 + tileY * 17) % 21; // Increased range for more granular choice
+
+                        if (noiseVal_gt < 7) { // Darkest green
+                            r = (byte) 80; g = (byte) 120; b = (byte) 50;
+                        } else if (noiseVal_gt < 14) { // Medium green
+                            r = (byte) 95; g = (byte) 150; b = (byte) 60;
+                        } else { // Lightest green
+                            r = (byte) 120; g = (byte) 180; b = (byte) 80;
                         }
                         break;
                     case 1: // Grass side
-                        // Grass side is now entirely grass, similar to grass top but no flowers.
-                        // Using x % texturePixelSize and y % texturePixelSize for noise input
-                        // to make the pattern consistent for each grass side tile.
-                        float fullGrassSideNoise = (float) Math.sin((x % texturePixelSize) * 0.7 + (y % texturePixelSize) * 0.5) * 0.5f + 0.5f;
-                        r = (byte) (65 + fullGrassSideNoise * 25);
-                        g = (byte) (180 + fullGrassSideNoise * 30);
-                        b = (byte) (80 + fullGrassSideNoise * 20);
+                        // Minecraft-style Grass Side - V4 (grass at top, exact dirt match)
+                        int pixelX_gs = x % this.texturePixelSize;
+                        int pixelY_gs = y % this.texturePixelSize; // y-coordinate within the 16x16 tile
+                        
+                        int grassLayerHeight = 3; // Top 3 pixels are grass
+
+                        if (pixelY_gs < grassLayerHeight) { // Grass part (top of the tile)
+                            int noiseVal_gs_grass = (pixelX_gs * 17 + pixelY_gs * 23 + tileX * 7 + tileY * 13) % 21;
+                            if (noiseVal_gs_grass < 7) { // Darkest green
+                                r = (byte) 75; g = (byte) 115; b = (byte) 45;
+                            } else if (noiseVal_gs_grass < 14) { // Medium green
+                                r = (byte) 90; g = (byte) 145; b = (byte) 55;
+                            } else { // Lightest green
+                                r = (byte) 115; g = (byte) 175; b = (byte) 75;
+                            }
+                        } else { // Dirt part (below grass) - EXACT COPY of case 2 (Dirt block) logic
+                            // 'x' and 'y' are global atlas pixel coordinates.
+                            float dirtX_case1 = (float) Math.sin(x * 0.7 + y * 0.3) * 0.5f + 0.5f;
+                            float dirtY_case1 = (float) Math.cos(x * 0.4 + y * 0.8) * 0.5f + 0.5f;
+                            float dirtNoise_case1 = (dirtX_case1 + dirtY_case1) * 0.5f;
+                            
+                            r = (byte) (135 + dirtNoise_case1 * 40);
+                            g = (byte) (95 + dirtNoise_case1 * 35);
+                            b = (byte) (70 + dirtNoise_case1 * 25);
+                            
+                            // Add occasional small rocks or roots (exact from case 2)
+                            if ((x % 5 == 0 && y % 5 == 0) ||
+                                ((x+2) % 7 == 0 && (y+3) % 6 == 0)) {
+                                r = (byte) (r - 30); // Let byte casting handle underflow, like in original dirt
+                                g = (byte) (g - 25);
+                                b = (byte) (b - 20);
+                            }
+                        }
                         break;
                     case 2: // Dirt
                         // Richer dirt texture with clumps and variations

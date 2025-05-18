@@ -57,6 +57,14 @@ public class Game {
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.inputHandler);
+            // Now that inventoryScreen is created, give the inventory a reference to it.
+            player.getInventory().setInventoryScreen(this.inventoryScreen);
+            // Trigger initial tooltip for the currently selected item
+            ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
+            if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
+                inventoryScreen.displayHotbarItemTooltip(BlockType.getById(initialSelectedItem.getBlockTypeId()));
+            }
+
         } else {
             System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, or InputHandler).");
             // Handle error appropriately, maybe throw an exception or set inventoryScreen to a safe non-functional state
@@ -79,8 +87,26 @@ public class Game {
         totalTimeElapsed += deltaTime;
 
         // If game is paused, don't update game entities
-        if (paused) {
+        if (paused && !inventoryScreen.isVisible()) { // Allow inventory screen updates even if paused for other reasons
+            // If only pause menu is active, inventory screen doesn't need update.
+            // If inventory is visible, it should update its timers.
+             if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                inventoryScreen.update(deltaTime);
+            }
             return;
+        } else if (paused && inventoryScreen.isVisible()) {
+            // Game is paused but inventory is open, still update inventory screen
+             if (inventoryScreen != null) {
+                inventoryScreen.update(deltaTime);
+            }
+            // No game world updates below this
+            return;
+        }
+
+
+        // Update inventory screen (handles its own visibility check for rendering, but update logic for timers)
+        if (inventoryScreen != null) {
+            inventoryScreen.update(deltaTime);
         }
         
         // Update world (processes chunk loading, mesh building, etc.)

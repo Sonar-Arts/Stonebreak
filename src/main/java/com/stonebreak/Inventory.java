@@ -15,11 +15,13 @@ public class Inventory {
     private ItemStack[] hotbarSlots;
     private ItemStack[] mainInventorySlots;
     private int selectedHotbarSlotIndex; // 0-8
+    private InventoryScreen inventoryScreen; // Reference to InventoryScreen for tooltip
 
     /**
      * Creates a new inventory with fixed slots.
      */
     public Inventory() {
+        // this.inventoryScreen = inventoryScreen; // Removed: Will be set via setter
         this.hotbarSlots = new ItemStack[HOTBAR_SIZE];
         this.mainInventorySlots = new ItemStack[MAIN_INVENTORY_SIZE];
         for (int i = 0; i < HOTBAR_SIZE; i++) {
@@ -35,6 +37,8 @@ public class Inventory {
         addItem(BlockType.DIRT.getId(), 10);
         addItem(BlockType.STONE.getId(), 10);
         addItem(BlockType.WOOD.getId(), 10);
+
+        // Initial tooltip will be triggered by Game.init() after setInventoryScreen is called.
     }
 
     /**
@@ -296,7 +300,21 @@ public class Inventory {
      */
     public void setSelectedHotbarSlotIndex(int selectedHotbarSlotIndex) {
         if (selectedHotbarSlotIndex >= 0 && selectedHotbarSlotIndex < HOTBAR_SIZE) {
+            boolean changed = this.selectedHotbarSlotIndex != selectedHotbarSlotIndex;
             this.selectedHotbarSlotIndex = selectedHotbarSlotIndex;
+            if (changed && inventoryScreen != null) {
+                ItemStack newItem = hotbarSlots[this.selectedHotbarSlotIndex];
+                inventoryScreen.displayHotbarItemTooltip(BlockType.getById(newItem.getBlockTypeId()));
+            }
         }
+    }
+
+    /**
+     * Sets the InventoryScreen reference.
+     * This is called by Game after InventoryScreen is initialized.
+     * @param screen The InventoryScreen instance.
+     */
+    public void setInventoryScreen(InventoryScreen screen) {
+        this.inventoryScreen = screen;
     }
 }

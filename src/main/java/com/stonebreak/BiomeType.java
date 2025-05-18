@@ -6,5 +6,5 @@ package com.stonebreak;
 public enum BiomeType {
     PLAINS,
     DESERT,
-    VOLCANIC;
+    RED_SAND_DESERT;
 }

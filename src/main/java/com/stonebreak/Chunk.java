@@ -394,10 +394,43 @@ public class Chunk {
         float texY = texCoords[1] / 16.0f;
         float texSize = 1.0f / 16.0f;
         
-        textureCoords.add(texX);             textureCoords.add(texY);
-        textureCoords.add(texX);             textureCoords.add(texY + texSize);
-        textureCoords.add(texX + texSize);   textureCoords.add(texY + texSize);
-        textureCoords.add(texX + texSize);   textureCoords.add(texY);
+        float u_topLeft = texX;
+        float v_topLeft = texY;
+        float u_bottomLeft = texX;
+        float v_bottomLeft = texY + texSize;
+        float u_bottomRight = texX + texSize;
+        float v_bottomRight = texY + texSize;
+        float u_topRight = texX + texSize;
+        float v_topRight = texY;
+
+        // Determine UV mapping based on face to ensure grass is always "up" on sides
+        if (face == 0 || face == 1) { // Top or Bottom face - current mapping is likely fine
+            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // Original V0 UV
+            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // Original V1 UV
+            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // Original V2 UV
+            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // Original V3 UV
+        } else if (face == 2 || face == 5) { // Front (+Z) or Left (-X)
+            // Vertices for these faces are ordered: BL, TL, TR, BR
+            // Desired UVs: BottomLeft, TopLeft, TopRight, BottomRight
+            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
+            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V1 (TL of face)
+            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
+            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V3 (BR of face)
+        } else if (face == 3) { // Back (-Z)
+            // Vertices for this face are ordered: BR_face, BL_face, TL_face, TR_face
+            // Desired UVs: BottomRight, BottomLeft, TopLeft, TopRight
+            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V0 (BR of face)
+            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V1 (BL of face)
+            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V2 (TL of face)
+            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V3 (TR of face)
+        } else if (face == 4) { // Right (+X)
+            // Vertices for this face are ordered: BL_face, BR_face, TR_face, TL_face
+            // Desired UVs: BottomLeft, BottomRight, TopRight, TopLeft
+            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
+            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V1 (BR of face)
+            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
+            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V3 (TL of face)
+        }
 
         // Add isWater flag for each of the 4 vertices of this face
         float isWaterValue = (blockType == BlockType.WATER) ? 1.0f : 0.0f;
