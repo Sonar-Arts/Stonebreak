@@ -1,13 +1,11 @@
 package com.stonebreak;
 
 import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
-// import java.util.List; // Unused
-// import java.util.ArrayList; // Unused
-import java.util.Queue;
-import java.util.Set;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap; // Added
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -208,10 +206,11 @@ public class World {
     
     /**
      * Sets the block type at the specified world position.
+     * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
      */
-    public void setBlockAt(int x, int y, int z, BlockType blockType) {
+    public boolean setBlockAt(int x, int y, int z, BlockType blockType) {
         if (y < 0 || y >= WORLD_HEIGHT) {
-            return;
+            return false;
         }
         
         int chunkX = Math.floorDiv(x, CHUNK_SIZE);
@@ -276,11 +275,12 @@ public class World {
                     neighbor.setMeshDataGenerationScheduledOrInProgress(false);
                 }
                 conditionallyScheduleMeshBuild(neighbor);
-            }
-        }
-    }
-    
-    /**
+           }
+       }
+       return true;
+   }
+   
+   /**
      * Generates only the bare terrain for a new chunk (no features like ores or trees).
      * Uses chunk.setBlock() for local block placement.
      */

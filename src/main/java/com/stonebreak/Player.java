@@ -453,8 +453,10 @@ public class Player {      // Player settings
                     return; // Collision with player, abort.
                 }
                 // All checks passed, place the block.
-                world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.getById(selectedBlockTypeId));
-                inventory.removeItem(selectedBlockTypeId);
+                boolean blockPlacedSuccessfully = world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.getById(selectedBlockTypeId));
+                if (blockPlacedSuccessfully) {
+                    inventory.removeItem(selectedBlockTypeId);
+                }
             } else {
                 // This case should ideally not be hit if logic above is correct.
                 // System.out.println("DEBUG: Target final placement spot " + placePos + " is not AIR.");
