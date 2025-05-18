@@ -2,27 +2,6 @@
 
 A 3D voxel-based sandbox game created with Java and LWJGL, inspired by Minecraft.
 
-## Features
-
-- Procedural terrain generation using Simplex noise
-- Chunk-based world system
-- Efficient block rendering with face culling
-- First-person player controller
-- Block breaking and placement
-- Simple inventory system
-- Basic lighting
-- Tree generation
-
-## Controls
-
-- **WASD**: Move
-- **Space**: Jump
-- **Mouse**: Look around
-- **Left Click**: Break blocks
-- **Right Click**: Place blocks
-- **Mouse Wheel**: Cycle through block types
-- **Number Keys (1-0)**: Select block type
-- **Escape**: Close the game
 
 ## Building and Running
 
