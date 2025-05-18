@@ -32,6 +32,7 @@ public class Chunk {
     private boolean meshGenerated;
     private volatile boolean dataReadyForGL = false; // Added flag
     private volatile boolean meshDataGenerationScheduledOrInProgress = false; // New flag
+    private boolean featuresPopulated = false; // New flag for feature population status
     
     /**
      * Creates a new chunk at the specified position.
@@ -541,6 +542,22 @@ public class Chunk {
      */
     public int getWorldZ(int localZ) {
         return z * World.CHUNK_SIZE + localZ;
+    }
+
+    public int getChunkX() {
+        return this.x;
+    }
+
+    public int getChunkZ() {
+        return this.z;
+    }
+
+    public boolean areFeaturesPopulated() {
+        return featuresPopulated;
+    }
+
+    public void setFeaturesPopulated(boolean featuresPopulated) {
+        this.featuresPopulated = featuresPopulated;
     }
 
     // Package-private setters to be controlled by World.java

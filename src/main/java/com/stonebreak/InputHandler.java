@@ -270,12 +270,8 @@ public class InputHandler {
             if (player != null && player.getInventory() != null) {
                 player.getInventory().setSelectedHotbarSlotIndex(currentSelectedHotbarIndex);
                 
-                ItemStack selectedStack = player.getInventory().getHotbarSlot(currentSelectedHotbarIndex); // Get the actual stack
-                if (selectedStack != null && !selectedStack.isEmpty()) {
-                    System.out.println("Selected hotbar slot " + (currentSelectedHotbarIndex + 1) + ": " + BlockType.getById(selectedStack.getBlockTypeId()).getName());
-                } else {
-                    System.out.println("Selected hotbar slot " + (currentSelectedHotbarIndex + 1) + ": Empty");
-                }
+                // ItemStack selectedStack = player.getInventory().getHotbarSlot(currentSelectedHotbarIndex); // Get the actual stack - Unused
+                // Hotbar slot selection handled silently
             }
         }
     }

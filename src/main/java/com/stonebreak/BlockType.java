@@ -97,7 +97,8 @@ public enum BlockType {
             case BEDROCK:
                 return new float[]{4, 0};
             case WOOD:
-                if (face <= 1) return new float[]{5, 1}; // Top/bottom
+                if (face == 0) return new float[]{5, 1}; // Top
+                if (face == 1) return new float[]{2, 0}; // Bottom - using DIRT texture for now
                 return new float[]{5, 0}; // Sides
             case LEAVES:
                 return new float[]{7, 0}; // Atlas X changed from 6 to 7

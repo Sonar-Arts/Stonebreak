@@ -95,29 +95,49 @@ public class World {
                 ChunkPosition position = new ChunkPosition(cx, cz);
                 Chunk chunk = chunks.get(position);
 
-                if (chunk != null) { // Chunk exists
-                    // Check if it's NOT in a "perfectly fine" state (i.e. mesh generated AND data ready for GL)
-                    boolean isPerfectlyFine = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
-                    
-                    if (!isPerfectlyFine) {
-                        // System.out.println("EnsureVisible: Chunk (" + cx + "," + cz + ") is not perfect. Resetting and scheduling.");
-                        // Forcefully reset flags for the primary chunk
-                        synchronized (chunk) {
-                            chunk.setDataReadyForGL(false);
-                            chunk.setMeshDataGenerationScheduledOrInProgress(false);
-                        }
-                        conditionallyScheduleMeshBuild(chunk);
+                if (chunk == null) {
+                    chunk = getChunkAt(cx, cz); // This will create a bare chunk if it doesn't exist
+                    if (chunk == null) {
+                        // Failed to create/get chunk, skip
+                        continue;
+                    }
+                }
 
-                        // Also reset flags and schedule direct neighbors, similar to setBlockAt
-                        int[][] neighborOffsets = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-                        for (int[] offset : neighborOffsets) {
-                            ChunkPosition neighborPos = new ChunkPosition(cx + offset[0], cz + offset[1]);
-                            Chunk neighbor = chunks.get(neighborPos);
-                            if (neighbor != null) {
-                                // Check if neighbor also needs a refresh based on its own state
+                // At this point, 'chunk' exists. Populate if not already populated.
+                if (!chunk.areFeaturesPopulated()) {
+                    populateChunkWithFeatures(chunk); // This sets featuresPopulated to true internally
+                    // Mark for mesh rebuild as population changes blocks
+                    synchronized (chunk) {
+                        chunk.setDataReadyForGL(false);
+                        chunk.setMeshDataGenerationScheduledOrInProgress(false);
+                    }
+                    conditionallyScheduleMeshBuild(chunk);
+                    // Neighbors affected by setBlockAt during population are handled by setBlockAt itself.
+                }
+
+                // Now proceed with mesh status check for the (potentially newly populated) chunk
+                boolean isPerfectlyFine = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
+                
+                if (!isPerfectlyFine) {
+                    // System.out.println("EnsureVisible: Chunk (" + cx + "," + cz + ") is not perfect. Resetting and scheduling.");
+                    synchronized (chunk) {
+                        chunk.setDataReadyForGL(false); // Ensure it's reset if not perfect
+                        chunk.setMeshDataGenerationScheduledOrInProgress(false);
+                    }
+                    conditionallyScheduleMeshBuild(chunk);
+
+                    // Also check and schedule direct neighbors if they are not perfect
+                    int[][] neighborOffsets = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+                    for (int[] offset : neighborOffsets) {
+                        ChunkPosition neighborPos = new ChunkPosition(cx + offset[0], cz + offset[1]);
+                        Chunk neighbor = chunks.get(neighborPos); // Get neighbor, don't auto-create here
+                        if (neighbor != null) {
+                            // If neighbor exists but isn't populated, it will be handled when its turn comes in the outer loop
+                            // or by getChunksAroundPlayer if it's an edge chunk.
+                            // Only force a re-mesh if it's populated but not perfect.
+                            if (neighbor.areFeaturesPopulated()) {
                                 boolean neighborIsPerfect = neighbor.isMeshGenerated() && neighbor.isDataReadyForGL();
                                 if (!neighborIsPerfect) {
-                                     // System.out.println("EnsureVisible: Resetting flags for neighbor (" + neighborPos.getX() + "," + neighborPos.getZ() + ") of chunk (" + cx + "," + cz + ")");
                                     synchronized (neighbor) {
                                         neighbor.setDataReadyForGL(false);
                                         neighbor.setMeshDataGenerationScheduledOrInProgress(false);
@@ -126,14 +146,11 @@ public class World {
                                 }
                             }
                         }
-                    } else {
-                        // Chunk is perfectly fine, but still call conditionallyScheduleMeshBuild
-                        // in case it was perfect but somehow dropped from queues (highly unlikely).
-                        // The internal checks in conditionallyScheduleMeshBuild will prevent redundant processing.
-                        conditionallyScheduleMeshBuild(chunk);
                     }
-                } else { // Chunk doesn't exist in the map
-                    getChunkAt(cx, cz);
+                } else {
+                    // Chunk is perfectly fine, but still call conditionallyScheduleMeshBuild
+                    // to catch rare cases where it might have been dropped from queues.
+                    conditionallyScheduleMeshBuild(chunk);
                 }
             }
         }
@@ -262,9 +279,10 @@ public class World {
     }
     
     /**
-     * Generates a new chunk at the specified position.
+     * Generates only the bare terrain for a new chunk (no features like ores or trees).
+     * Uses chunk.setBlock() for local block placement.
      */
-    private Chunk generateChunk(int chunkX, int chunkZ) {
+    private Chunk generateBareChunk(int chunkX, int chunkZ) {
         Chunk chunk = new Chunk(chunkX, chunkZ);
         
         // Generate terrain
@@ -285,19 +303,7 @@ public class World {
                         blockType = BlockType.BEDROCK;
                     } else if (y < height - 4) {
                         blockType = BlockType.STONE;
-                        
-                        // Generate some ore veins (synchronized access to random)
-                        BlockType oreType = null;
-                        synchronized (this.random) {
-                            if (this.random.nextFloat() < 0.01) {
-                                oreType = BlockType.COAL_ORE;
-                            } else if (this.random.nextFloat() < 0.005 && y < 40) {
-                                oreType = BlockType.IRON_ORE;
-                            }
-                        }
-                        if (oreType != null) {
-                            blockType = oreType;
-                        }
+                        // Ores will be generated in populateChunkWithFeatures
                     } else if (y < height - 1) {
                         blockType = BlockType.DIRT;
                     } else if (y < height) {
@@ -307,59 +313,146 @@ public class World {
                             blockType = BlockType.SAND;
                         } else {
                             blockType = BlockType.GRASS;
-                        }                    } else if (y < 64) {
-                        // Water level - fill all areas below y=64 with water (unless above terrain)
+                        }
+                    } else if (y < 64) { // Water level
                         blockType = BlockType.WATER;
                     } else {
                         blockType = BlockType.AIR;
                     }
-                    
-                    chunk.setBlock(x, y, z, blockType);
+                    chunk.setBlock(x, y, z, blockType); // Local placement
+                }
+                // Trees will be generated in populateChunkWithFeatures
+            }
+        }
+        chunk.setFeaturesPopulated(false); // Explicitly mark as not populated
+        return chunk;
+    }
+
+    /**
+     * Populates an existing chunk with features like ores and trees.
+     * Uses this.setBlockAt() for global block placement.
+     */
+    private void populateChunkWithFeatures(Chunk chunk) {
+        if (chunk == null || chunk.areFeaturesPopulated()) {
+            return; // Already populated or null chunk
+        }
+
+        int chunkX = chunk.getChunkX();
+        int chunkZ = chunk.getChunkZ();
+
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int worldX = chunkX * CHUNK_SIZE + x;
+                int worldZ = chunkZ * CHUNK_SIZE + z;
+
+                // Determine surface height for this column *within this chunk*
+                // This height is relative to the chunk's own blocks, not a fresh noise query
+                int surfaceHeight = 0;
+                for (int yScan = WORLD_HEIGHT - 1; yScan >= 0; yScan--) {
+                    if (chunk.getBlock(x, yScan, z) != BlockType.AIR) {
+                        surfaceHeight = yScan + 1; // surfaceHeight is the first AIR block *above* solid ground, or top of solid ground
+                        break;
+                    }
+                }
+                 if (surfaceHeight == 0 && chunk.getBlock(x,0,z) != BlockType.AIR) { // Edge case: column is solid to y=0
+                    surfaceHeight = 1; // Place features starting at y=1 if ground is at y=0
+                }
+
+
+                // Generate Ores
+                // Iterate from bedrock up to just below the determined surfaceHeight for ore placement
+                for (int y = 1; y < surfaceHeight - 4; y++) { // Avoid placing ores in top layers of dirt/grass
+                     if (chunk.getBlock(x, y, z) == BlockType.STONE) { // Only replace stone with ore
+                        BlockType oreType = null;
+                        synchronized (this.random) {
+                            if (this.random.nextFloat() < 0.01) { // Coal
+                                oreType = BlockType.COAL_ORE;
+                            } else if (this.random.nextFloat() < 0.005 && y < 40) { // Iron
+                                oreType = BlockType.IRON_ORE;
+                            }
+                        }
+                        if (oreType != null) {
+                            // Use this.setBlockAt for ores as they might be at chunk edges
+                            // but ore veins are usually small, so direct chunk.setBlock might be okay too if we ensure height is correct.
+                            // For consistency and future larger veins, using this.setBlockAt is safer.
+                            this.setBlockAt(worldX, y, worldZ, oreType);
+                        }
+                    }
                 }
                 
-                // Generate trees (synchronized access to random)
-                boolean shouldGenerateTree;
-                synchronized (this.random) {
-                    shouldGenerateTree = (this.random.nextFloat() < 0.01 && height > 64);
-                }
-                if (shouldGenerateTree) {
-                    generateTree(chunk, x, height, z);
+                // Generate Trees
+                // Tree base 'y' should be the first air block on top of solid ground.
+                // The 'surfaceHeight' calculated earlier is the y-coordinate of the first air block above ground.
+                // So, trees should be placed at 'surfaceHeight'.
+                // The original height for tree gen was from generateTerrainHeight, which might differ slightly
+                // from actual surface after block placement. Using actual surface is better.
+                if (chunk.getBlock(x, surfaceHeight -1, z) == BlockType.GRASS || chunk.getBlock(x, surfaceHeight -1, z) == BlockType.DIRT ) { // Ensure tree spawns on grass or dirt
+                    boolean shouldGenerateTree;
+                    synchronized (this.random) {
+                        // surfaceHeight is the y-coord of the first air block. Tree base is at surfaceHeight.
+                        // Ensure there's enough space above water level (64) for a tree.
+                        shouldGenerateTree = (this.random.nextFloat() < 0.01 && surfaceHeight > 64);
+                    }
+                    if (shouldGenerateTree) {
+                        generateTree(chunk, x, surfaceHeight, z); // generateTree uses world coords and this.setBlockAt
+                    }
                 }
             }
         }
-        
-        return chunk;
+        chunk.setFeaturesPopulated(true);
     }
     
     /**
      * Generates a tree at the specified position.
      */
-    private void generateTree(Chunk chunk, int x, int y, int z) {
-        // Check if we have enough space for the tree
-        if (y + 6 >= WORLD_HEIGHT || x < 2 || x >= CHUNK_SIZE - 2 || z < 2 || z >= CHUNK_SIZE - 2) {
+    private void generateTree(Chunk chunk, int x, int y, int z) { // x, z are local to chunk; y is worldYBase
+        // Calculate world coordinates for the base of the trunk
+        int worldXBase = chunk.getWorldX(x); // x is localXInOriginChunk
+        int worldZBase = chunk.getWorldZ(z); // z is localZInOriginChunk
+        int worldYBase = y;                  // y is worldYBase for the bottom of the trunk
+
+        // Check if the top of the tree goes out of world bounds vertically.
+        // Trunk is 5 blocks (worldYBase to worldYBase+4), leaves extend to worldYBase+6.
+        if (worldYBase + 6 >= WORLD_HEIGHT) {
             return;
         }
-        
+
+        // Removed: Old check that restricted tree trunk origin (x,z) based on CHUNK_SIZE.
+        // Trees can now originate near chunk edges and their parts will be placed in correct chunks.
+
         // Place tree trunk
-        for (int dy = 0; dy < 5; dy++) {
-            chunk.setBlock(x, y + dy, z, BlockType.WOOD);
+        for (int dyTrunk = 0; dyTrunk < 5; dyTrunk++) { // 5 blocks high trunk
+            if (worldYBase + dyTrunk < WORLD_HEIGHT) { // Ensure trunk block is within height limits
+                 this.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.WOOD);
+            }
         }
-        
+
         // Place leaves
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                for (int dy = 3; dy <= 6; dy++) {
-                    // Skip the corners and center
-                    if ((Math.abs(dx) == 2 && Math.abs(dz) == 2) || (dx == 0 && dz == 0 && dy < 5)) {
+        int leafRadius = 2; // Leaves spread -2 to +2 blocks from the trunk's center line
+        // Leaf layers are relative to worldYBase, starting at an offset of 3 blocks up, to 6 blocks up.
+        for (int leafLayerYOffset = 3; leafLayerYOffset <= 6; leafLayerYOffset++) {
+            int currentLeafWorldY = worldYBase + leafLayerYOffset;
+
+            // Ensure this leaf layer is within world height (mostly covered by initial check)
+            if (currentLeafWorldY >= WORLD_HEIGHT) {
+                continue;
+            }
+
+            for (int dxLeaf = -leafRadius; dxLeaf <= leafRadius; dxLeaf++) {
+                for (int dzLeaf = -leafRadius; dzLeaf <= leafRadius; dzLeaf++) {
+                    // Skip the four far corners of the 5x5 leaf square for a rounder canopy
+                    if (Math.abs(dxLeaf) == leafRadius && Math.abs(dzLeaf) == leafRadius) {
                         continue;
                     }
-                    
-                    // Skip if outside chunk bounds
-                    if (x + dx < 0 || x + dx >= CHUNK_SIZE || z + dz < 0 || z + dz >= CHUNK_SIZE) {
+                    // Skip the center column (directly above trunk) for the lower two leaf layers (offset 3 and 4)
+                    // This makes the tree look less blocky from underneath.
+                    if (dxLeaf == 0 && dzLeaf == 0 && leafLayerYOffset < 5) {
                         continue;
                     }
-                    
-                    chunk.setBlock(x + dx, y + dy, z + dz, BlockType.LEAVES);
+
+                    // Removed: Old check for leaf x+dx, z+dz being outside local chunk bounds.
+                    // this.setBlockAt handles world coordinates and places blocks in correct chunks.
+                    this.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.LEAVES);
                 }
             }
         }
@@ -378,7 +471,7 @@ public class World {
         }
 
         try {
-            Chunk newGeneratedChunk = generateChunk(chunkX, chunkZ);
+            Chunk newGeneratedChunk = generateBareChunk(chunkX, chunkZ);
             
             if (newGeneratedChunk == null) {
                 // This indicates a problem in generateChunk if it's designed to return null on error
@@ -580,38 +673,40 @@ public class World {
         Map<ChunkPosition, Chunk> visibleChunks = new HashMap<>();
         
         // First pass: Generate all chunks that should be visible
+        // First pass: Ensure chunks within render distance are loaded and populated
         for (int x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
             for (int z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
                 ChunkPosition position = new ChunkPosition(x, z);
-                if (!chunks.containsKey(position)) {
-                    // Generate new chunk safely
-                    safelyGenerateAndRegisterChunk(x, z);
+                Chunk chunk = getChunkAt(x, z); // Gets or creates a bare chunk
+
+                if (chunk != null) {
+                    if (!chunk.areFeaturesPopulated()) {
+                        populateChunkWithFeatures(chunk);
+                        // Mark for mesh rebuild as population changes blocks
+                        synchronized (chunk) {
+                            chunk.setDataReadyForGL(false);
+                            chunk.setMeshDataGenerationScheduledOrInProgress(false);
+                        }
+                        conditionallyScheduleMeshBuild(chunk);
+                    }
+                    visibleChunks.put(position, chunk); // Add to visible map
                 }
             }
         }
         
-        // Second pass: Add one extra chunk in each direction to ensure edge chunks have valid neighbors
-        // This fixes the "holes" in rendering by ensuring all visible chunk borders have neighbors
+        // Second pass: Ensure border chunks (just outside render_distance) exist (as bare chunks) for meshing purposes.
+        // These are not added to `visibleChunks` and are not populated here.
         for (int x = playerChunkX - RENDER_DISTANCE - 1; x <= playerChunkX + RENDER_DISTANCE + 1; x++) {
             for (int z = playerChunkZ - RENDER_DISTANCE - 1; z <= playerChunkZ + RENDER_DISTANCE + 1; z++) {
-                // Only process edge chunks
-                if ((x == playerChunkX - RENDER_DISTANCE - 1 || x == playerChunkX + RENDER_DISTANCE + 1 ||
-                     z == playerChunkZ - RENDER_DISTANCE - 1 || z == playerChunkZ + RENDER_DISTANCE + 1)) {
-                    
-                    ChunkPosition position = new ChunkPosition(x, z);
-                    if (!chunks.containsKey(position)) {
-                        // Generate new chunk safely
-                        safelyGenerateAndRegisterChunk(x, z);
-                    }
+                // Only process chunks that are in the border strip (i.e., not in the main render_distance loop above)
+                boolean isInsideRenderDist = (x >= playerChunkX - RENDER_DISTANCE && x <= playerChunkX + RENDER_DISTANCE &&
+                                              z >= playerChunkZ - RENDER_DISTANCE && z <= playerChunkZ - RENDER_DISTANCE);
+                if (isInsideRenderDist) {
+                    continue; // Already handled by the first pass
                 }
-            }
-        }
-        
-        // Add only visible chunks to the return map
-        for (int x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
-            for (int z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
-                ChunkPosition position = new ChunkPosition(x, z);
-                visibleChunks.put(position, chunks.get(position));
+                
+                // If we are here, it's a border chunk. Ensure it exists as at least a bare chunk.
+                getChunkAt(x, z); // This will create a bare chunk if it doesn't exist. No need to populate.
             }
         }
         
