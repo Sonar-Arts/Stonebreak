@@ -6,7 +6,9 @@ package com.stonebreak;
 public class Game {
     
     // Singleton instance
-    private static Game instance;    // Game components
+    private static Game instance;
+    
+    // Game components
     private World world;
     private Player player;
     private Renderer renderer;
@@ -14,8 +16,11 @@ public class Game {
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
+    private UIRenderer uiRenderer; // UI renderer for menus
+    private MainMenu mainMenu; // Main menu
     
     // Game state
+    private GameState currentState = GameState.MAIN_MENU;
     private long lastFrameTime;
     private float deltaTime;
     private float totalTimeElapsed = 0.0f; // Added to track total time for animations
@@ -54,6 +59,11 @@ public class Game {
         this.pauseMenu = new PauseMenu();
         this.waterEffects = new WaterEffects(); // Initialize water effects
         
+        // Initialize UI components
+        this.uiRenderer = new UIRenderer();
+        this.uiRenderer.init();
+        this.mainMenu = new MainMenu(this.uiRenderer);
+        
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.inputHandler);
@@ -85,6 +95,11 @@ public class Game {
         
         // Accumulate total time
         totalTimeElapsed += deltaTime;
+
+        // Only update game world if we're in the playing state
+        if (currentState != GameState.PLAYING) {
+            return;
+        }
 
         // If game is paused, don't update game entities
         if (paused && !inventoryScreen.isVisible()) { // Allow inventory screen updates even if paused for other reasons
@@ -251,11 +266,55 @@ public class Game {
     }
     
     /**
+     * Gets the current game state.
+     */
+    public GameState getState() {
+        return currentState;
+    }
+    
+    /**
+     * Sets the current game state.
+     */
+    public void setState(GameState state) {
+        GameState previousState = this.currentState;
+        this.currentState = state;
+        
+        // Handle cursor visibility based on state transitions
+        long windowHandle = Main.getWindowHandle();
+        if (windowHandle != 0) {
+            if (state == GameState.PLAYING && previousState == GameState.MAIN_MENU) {
+                // Hide cursor when entering game
+                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+            } else if (state == GameState.MAIN_MENU && previousState == GameState.PLAYING) {
+                // Show cursor when returning to menu
+                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+            }
+        }
+    }
+    
+    /**
+     * Gets the main menu.
+     */
+    public MainMenu getMainMenu() {
+        return mainMenu;
+    }
+    
+    /**
+     * Gets the UI renderer.
+     */
+    public UIRenderer getUIRenderer() {
+        return uiRenderer;
+    }
+    
+    /**
      * Cleanup game resources.
      */
     public void cleanup() {
         if (pauseMenu != null) {
             pauseMenu.cleanup();
+        }
+        if (uiRenderer != null) {
+            uiRenderer.cleanup();
         }
     }
     

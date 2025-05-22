@@ -35,24 +35,8 @@ public class InputHandler {
         Arrays.fill(mouseButtonPressedThisFrame, false);
         
         try {
-            // Set up mouse input
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            
-            // Setup mouse callback for position
-            glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
-                if (firstMouse) {
-                    currentMouseX = (float) xpos;
-                    currentMouseY = (float) ypos;
-                    firstMouse = false;
-                }
-                
-                float xOffset = (float) xpos - currentMouseX;
-                float yOffset = currentMouseY - (float) ypos; // Reversed since y-coordinates go from bottom to top
-                
-                currentMouseX = (float) xpos;
-                currentMouseY = (float) ypos;
-                handleMouseLook(xOffset, yOffset);
-            });
+            // Don't set cursor mode here - let Game.setState handle it based on game state
+            // Note: Main.java handles cursor position callback for both UI and game mouse look
             
             // Setup mouse button callback (this will be called by Main)
             // For now, we assume Main calls a method like `processMouseButton` in this class.
@@ -300,6 +284,26 @@ public class InputHandler {
      */
     public void resetMousePosition() {
         firstMouse = true;
+    }
+    
+    /**
+     * Update mouse position and handle mouse look (called from Main.java cursor callback)
+     */
+    public void updateMousePosition(float xpos, float ypos) {
+        if (firstMouse) {
+            currentMouseX = xpos;
+            currentMouseY = ypos;
+            firstMouse = false;
+            return; // Don't process movement on first mouse event
+        }
+        
+        float xOffset = xpos - currentMouseX;
+        float yOffset = currentMouseY - ypos; // Reversed since y-coordinates go from bottom to top
+        
+        currentMouseX = xpos;
+        currentMouseY = ypos;
+        
+        handleMouseLook(xOffset, yOffset);
     }
 
     // Mouse helper methods for InventoryScreen - now correctly inside the InputHandler class

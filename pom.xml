@@ -71,6 +71,20 @@
             <scope>runtime</scope>
         </dependency>
         
+        <!-- LWJGL NanoVG for UI rendering -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-nanovg</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-nanovg</artifactId>
+            <version>${lwjgl.version}</version>
+            <classifier>${lwjgl.natives}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+        
         <!-- Java OpenGL Math Library -->
         <dependency>
             <groupId>org.joml</groupId>

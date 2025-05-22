@@ -1,22 +1,61 @@
 package com.stonebreak;
 
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.joml.Matrix4f;
-import org.joml.Vector4f;
+import org.joml.Vector4f; // Added import for ByteBuffer
 import org.lwjgl.BufferUtils;
+import static org.lwjgl.opengl.GL11.GL_BLEND;
+import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
+import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
+import static org.lwjgl.opengl.GL11.GL_LINES;
+import static org.lwjgl.opengl.GL11.GL_NEAREST;
+import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
+import static org.lwjgl.opengl.GL11.GL_POINTS;
+import static org.lwjgl.opengl.GL11.GL_REPEAT;
+import static org.lwjgl.opengl.GL11.GL_RGBA;
+import static org.lwjgl.opengl.GL11.GL_SCISSOR_BOX;
+import static org.lwjgl.opengl.GL11.GL_SCISSOR_TEST;
+import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_WRAP_S;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_WRAP_T;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLE_FAN;
+import static org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE;
+import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
+import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
+import static org.lwjgl.opengl.GL11.glBegin;
+import static org.lwjgl.opengl.GL11.glBindTexture;
+import static org.lwjgl.opengl.GL11.glBlendFunc;
+import static org.lwjgl.opengl.GL11.glClear;
+import static org.lwjgl.opengl.GL11.glDeleteTextures;
+import static org.lwjgl.opengl.GL11.glDepthMask;
+import static org.lwjgl.opengl.GL11.glDisable;
+import static org.lwjgl.opengl.GL11.glDrawArrays;
+import static org.lwjgl.opengl.GL11.glDrawElements;
+import static org.lwjgl.opengl.GL11.glEnable;
+import static org.lwjgl.opengl.GL11.glEnd;
+import static org.lwjgl.opengl.GL11.glGenTextures;
+import static org.lwjgl.opengl.GL11.glGetIntegerv;
+import static org.lwjgl.opengl.GL11.glIsEnabled;
+import static org.lwjgl.opengl.GL11.glPointSize;
+import static org.lwjgl.opengl.GL11.glScissor;
+import static org.lwjgl.opengl.GL11.glTexImage2D;
+import static org.lwjgl.opengl.GL11.glTexParameteri;
+import static org.lwjgl.opengl.GL11.glVertex3f;
+import static org.lwjgl.opengl.GL11.glViewport;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
-
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.nio.ByteBuffer; // Added import for ByteBuffer
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
- 
-import static org.lwjgl.opengl.GL11.*;
 
 /**
  * Handles rendering of the world and UI elements.
@@ -24,17 +63,17 @@ import static org.lwjgl.opengl.GL11.*;
 public class Renderer {
     
     // Shader program
-    private ShaderProgram shaderProgram;
+    private final ShaderProgram shaderProgram;
     
     // Textures
-    private TextureAtlas textureAtlas;
+    private final TextureAtlas textureAtlas;
     private int armTextureId; // Texture ID for the player arm
-    private Font font; // Added Font instance
+    private final Font font; // Added Font instance
     private int windowWidth;
     private int windowHeight;
     
     // Matrices
-    private Matrix4f projectionMatrix;
+    private final Matrix4f projectionMatrix;
     
     // UI elements
     private int crosshairVao;
@@ -100,7 +139,7 @@ public class Renderer {
         this.windowWidth = width;
         this.windowHeight = height;
         float aspectRatio = (float) width / height;
-        projectionMatrix = new Matrix4f().perspective((float) Math.toRadians(70.0f), aspectRatio, 0.1f, 1000.0f);
+        projectionMatrix.setPerspective((float) Math.toRadians(70.0f), aspectRatio, 0.1f, 1000.0f);
     }
 
     public int getWindowWidth() {
@@ -411,25 +450,22 @@ public class Renderer {
         // Sort chunks from back to front for transparent pass
         List<Chunk> sortedTransparentChunks = new ArrayList<>(visibleChunks.values());
         org.joml.Vector3f playerPos = player.getPosition();
-        Collections.sort(sortedTransparentChunks, new Comparator<Chunk>() {
-            @Override
-            public int compare(Chunk c1, Chunk c2) {
-                // Calculate distance squared from player to center of each chunk
-                // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
-                // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
-                float c1CenterX = c1.getWorldX(World.CHUNK_SIZE / 2);
-                float c1CenterZ = c1.getWorldZ(World.CHUNK_SIZE / 2);
-                float c2CenterX = c2.getWorldX(World.CHUNK_SIZE / 2);
-                float c2CenterZ = c2.getWorldZ(World.CHUNK_SIZE / 2);
+        Collections.sort(sortedTransparentChunks, (c1, c2) -> {
+            // Calculate distance squared from player to center of each chunk
+            // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
+            // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
+            float c1CenterX = c1.getWorldX(World.CHUNK_SIZE / 2);
+            float c1CenterZ = c1.getWorldZ(World.CHUNK_SIZE / 2);
+            float c2CenterX = c2.getWorldX(World.CHUNK_SIZE / 2);
+            float c2CenterZ = c2.getWorldZ(World.CHUNK_SIZE / 2);
 
-                float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
-                                (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
-                float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
-                                (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
-                
-                // Sort in descending order of distance (farthest first)
-                return Float.compare(distSq2, distSq1);
-            }
+            float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
+                            (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
+            float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
+                            (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
+            
+            // Sort in descending order of distance (farthest first)
+            return Float.compare(distSq2, distSq1);
         });
 
         for (Chunk chunk : sortedTransparentChunks) {
@@ -494,7 +530,7 @@ public class Renderer {
         }
 
         // Swinging animation
-        if (player.isAttacking()) {
+        if (player != null && player.isAttacking()) {
             float progress = player.getAttackAnimationProgress();
             float angle = (float) Math.sin(progress * Math.PI) * -45.0f; // Swing down and back up
             armViewModel.rotate((float) Math.toRadians(angle), 1.0f, 0.0f, 0.0f); // Rotate around X-axis
@@ -515,20 +551,28 @@ public class Renderer {
             shaderProgram.setUniform("u_transformUVsForItem", true);
             
             // Get UV coordinates for the selected block type
-            float[] atlasUVs = textureAtlas.getUVCoordinates(selectedBlockType.getAtlasX(), selectedBlockType.getAtlasY());
-            shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(atlasUVs[0], atlasUVs[1]));
-            shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(atlasUVs[2] - atlasUVs[0], atlasUVs[3] - atlasUVs[1]));
-            
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-            shaderProgram.setUniform("texture_sampler", 0);
-            
-            // No tint for block texture
-            shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-            
-            // Use the 3D cube for blocks
-            GL30.glBindVertexArray(itemCubeVao);
-            glDrawElements(GL_TRIANGLES, itemCubeIndexCount, GL_UNSIGNED_INT, 0);
+            // Add a redundant check for selectedBlockType to satisfy static analyzers
+            if (selectedBlockType == null) {
+                // This path should ideally not be reached if displayingBlock is true due to its definition.
+                // Log this inconsistency.
+                System.err.println("Inconsistent state: displayingBlock is true, but selectedBlockType is null in renderPlayerArm.");
+                // Fallback or error handling: perhaps render nothing or a default.
+            } else {
+                float[] atlasUVs = textureAtlas.getUVCoordinates(selectedBlockType.getAtlasX(), selectedBlockType.getAtlasY());
+                shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(atlasUVs[0], atlasUVs[1]));
+                shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(atlasUVs[2] - atlasUVs[0], atlasUVs[3] - atlasUVs[1]));
+                
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+                shaderProgram.setUniform("texture_sampler", 0);
+                
+                // No tint for block texture
+                shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+                
+                // Use the 3D cube for blocks
+                GL30.glBindVertexArray(itemCubeVao);
+                glDrawElements(GL_TRIANGLES, itemCubeIndexCount, GL_UNSIGNED_INT, 0);
+            }
         } else {
             // Fallback to the default arm texture
             shaderProgram.setUniform("u_useSolidColor", false);
@@ -997,76 +1041,78 @@ public class Renderer {
         // This is a placeholder - in a real implementation, this would load the resource from the classpath
         
         if (path.endsWith("vertex.glsl")) {
-            return "#version 330 core\n" +
-                   "layout (location=0) in vec3 position;\n" +
-                   "layout (location=1) in vec2 texCoord;\n" +
-                   "layout (location=2) in vec3 normal;\n" +
-                   "layout (location=3) in float isWater; // New attribute: 1.0 if water, 0.0 otherwise\n" +
-                   "out vec2 outTexCoord;\n" +
-                   "out vec3 outNormal;\n" +
-                   "out vec3 fragPos;\n" +
-                   "out float v_isWater;\n" + // Pass isWater to fragment shader
-                   "uniform mat4 projectionMatrix;\n" +
-                   "uniform mat4 viewMatrix;\n" +
-                   "uniform bool u_transformUVsForItem;\n" +      // Added
-                   "uniform vec2 u_atlasUVOffset;\n" +        // Added
-                   "uniform vec2 u_atlasUVScale;\n" +         // Added
-                   "void main() {\n" +
-                   "    gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);\n" +
-                   "    if (u_transformUVsForItem) {\n" +
-                   "        outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;\n" +
-                   "    } else {\n" +
-                   "        outTexCoord = texCoord;\n" +
-                   "    }\n" +
-                   "    outNormal = normal;\n" +
-                   "    fragPos = position;\n" +
-                   "    v_isWater = isWater;\n" + // Assign to out variable
-                   "}";
+            return """
+                   #version 330 core
+                   layout (location=0) in vec3 position;
+                   layout (location=1) in vec2 texCoord;
+                   layout (location=2) in vec3 normal;
+                   layout (location=3) in float isWater; // New attribute: 1.0 if water, 0.0 otherwise
+                   out vec2 outTexCoord;
+                   out vec3 outNormal;
+                   out vec3 fragPos;
+                   out float v_isWater; // Pass isWater to fragment shader
+                   uniform mat4 projectionMatrix;
+                   uniform mat4 viewMatrix;
+                   uniform bool u_transformUVsForItem;      // Added
+                   uniform vec2 u_atlasUVOffset;        // Added
+                   uniform vec2 u_atlasUVScale;         // Added
+                   void main() {
+                       gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
+                       if (u_transformUVsForItem) {
+                           outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;
+                       } else {
+                           outTexCoord = texCoord;
+                       }
+                       outNormal = normal;
+                       fragPos = position;
+                       v_isWater = isWater; // Assign to out variable
+                   }""";
         } else if (path.endsWith("fragment.glsl")) {
-            return "#version 330 core\n" +
-                   "in vec2 outTexCoord;\n" +
-                   "in vec3 outNormal;\n" +
-                   "in vec3 fragPos;\n" +
-                   "in float v_isWater; // Received from vertex shader\n" +
-                   "out vec4 fragColor;\n" +
-                   "uniform sampler2D texture_sampler;\n" +
-                   "uniform vec4 u_color;            // Uniform for solid color or text tint\n" +
-                   "uniform bool u_useSolidColor;    // Uniform to toggle solid color mode\n" +
-                   "uniform bool u_isText;           // Uniform to toggle text rendering mode\n" +
-                   "uniform int u_renderPass;        // 0 for opaque/non-water, 1 for transparent/water\n" +
-                   "void main() {\n" +
-                   "    // Discard fragments based on render pass and if they are water\n" +
-                   "    if (u_renderPass == 0 && v_isWater > 0.5) { // Opaque pass, but this is water\n" +
-                   "        discard;\n" +
-                   "    }\n" +
-                   "    if (u_renderPass == 1 && v_isWater < 0.5) { // Transparent pass, but this is not water\n" +
-                   "        discard;\n" +
-                   "    }\n" + // Added closing brace for the if block
-                   "    if (u_isText) {\n" +
-                   "        float alpha = texture(texture_sampler, outTexCoord).a; // Font texture is alpha only\n" +
-                   "        fragColor = vec4(u_color.rgb, u_color.a * alpha); // Tint with u_color\n" +
-                   "    } else if (u_useSolidColor) {\n" +
-                   "        fragColor = u_color;\n" +
-                   "    } else { // Textured and lit (for world objects)\n" +
-                   "        vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));\n" +
-                   "        float ambient = 0.3;\n" +
-                   "        float diffuse = max(dot(outNormal, lightDir), 0.0);\n" +
-                   "        float brightness = ambient + diffuse * 0.7;\n" +
-                   "        vec4 textureColor = texture(texture_sampler, outTexCoord);\n" +
-                   "\n" +
-                   "        // For water in the transparent pass, ensure its alpha is used correctly.\n" +
-                   "        // For non-water in the opaque pass, its original alpha (likely 1.0) is used.\n" +
-                   "        if (textureColor.a < 0.01 && v_isWater < 0.5) { // Fallback for non-water if texture is missing alpha\n" +
-                   "            fragColor = vec4(abs(outNormal) * brightness, 1.0);\n" +
-                   "        } else if (textureColor.a < 0.01 && v_isWater > 0.5) { // Water texture missing alpha?\n" +
-                   "            // This case might mean the water texture itself has no alpha, which would be an issue.\n" +
-                   "            // Forcing some transparency for water if its texture alpha is bad.\n" +
-                   "            fragColor = vec4(textureColor.rgb * brightness, 0.7); // Default water alpha\n" +
-                   "        } else {\n" +
-                   "            fragColor = vec4(textureColor.rgb * brightness, textureColor.a);\n" +
-                   "        }\n" +
-                   "    }\n" +
-                   "}";
+            return """
+                   #version 330 core
+                   in vec2 outTexCoord;
+                   in vec3 outNormal;
+                   in vec3 fragPos;
+                   in float v_isWater; // Received from vertex shader
+                   out vec4 fragColor;
+                   uniform sampler2D texture_sampler;
+                   uniform vec4 u_color;            // Uniform for solid color or text tint
+                   uniform bool u_useSolidColor;    // Uniform to toggle solid color mode
+                   uniform bool u_isText;           // Uniform to toggle text rendering mode
+                   uniform int u_renderPass;        // 0 for opaque/non-water, 1 for transparent/water
+                   void main() {
+                       // Discard fragments based on render pass and if they are water
+                       if (u_renderPass == 0 && v_isWater > 0.5) { // Opaque pass, but this is water
+                           discard;
+                       }
+                       if (u_renderPass == 1 && v_isWater < 0.5) { // Transparent pass, but this is not water
+                           discard;
+                       } // Added closing brace for the if block
+                       if (u_isText) {
+                           float alpha = texture(texture_sampler, outTexCoord).a; // Font texture is alpha only
+                           fragColor = vec4(u_color.rgb, u_color.a * alpha); // Tint with u_color
+                       } else if (u_useSolidColor) {
+                           fragColor = u_color;
+                       } else { // Textured and lit (for world objects)
+                           vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+                           float ambient = 0.3;
+                           float diffuse = max(dot(outNormal, lightDir), 0.0);
+                           float brightness = ambient + diffuse * 0.7;
+                           vec4 textureColor = texture(texture_sampler, outTexCoord);
+
+                           // For water in the transparent pass, ensure its alpha is used correctly.
+                           // For non-water in the opaque pass, its original alpha (likely 1.0) is used.
+                           if (textureColor.a < 0.01 && v_isWater < 0.5) { // Fallback for non-water if texture is missing alpha
+                               fragColor = vec4(abs(outNormal) * brightness, 1.0);
+                           } else if (textureColor.a < 0.01 && v_isWater > 0.5) { // Water texture missing alpha?
+                               // This case might mean the water texture itself has no alpha, which would be an issue.
+                               // Forcing some transparency for water if its texture alpha is bad.
+                               fragColor = vec4(textureColor.rgb * brightness, 0.7); // Default water alpha
+                           } else {
+                               fragColor = vec4(textureColor.rgb * brightness, textureColor.a);
+                           }
+                       }
+                   }""";
         }
         
         return "";

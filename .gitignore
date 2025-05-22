@@ -70,8 +70,10 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
+OpenJDK-24/
 src/main/java/com/stonebreak/OpenJDK-24/
 target/classes/com/stonebreak/OpenJDK-24/
+claude.MD
 
 # Local configuration files
 *.properties
