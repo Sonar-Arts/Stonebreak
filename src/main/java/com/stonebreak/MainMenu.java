@@ -1,9 +1,15 @@
 package com.stonebreak;
 
-import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
+import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
+import static org.lwjgl.glfw.GLFW.glfwGetKey;
 
 public class MainMenu {
-    private UIRenderer uiRenderer;
+    private final UIRenderer uiRenderer;
     private int selectedButton = -1; // -1 = no selection, 0 = Singleplayer, 1 = Settings, 2 = Quit Game
     
     public MainMenu(UIRenderer uiRenderer) {
@@ -36,8 +42,6 @@ public class MainMenu {
     public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
-        
-        int previousButton = selectedButton;
         
         // Check which button mouse is over (updated for new layout)
         if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - 200, centerY - 20, 400, 40)) {
@@ -77,15 +81,12 @@ public class MainMenu {
     
     private void executeSelectedAction() {
         switch (selectedButton) {
-            case 0: // Play
+            case 0 -> // Play
                 Game.getInstance().setState(GameState.PLAYING);
-                break;
-            case 1: // Settings
+            case 1 -> // Settings
                 Game.getInstance().setState(GameState.SETTINGS);
-                break;
-            case 2: // Exit
+            case 2 -> // Exit
                 System.exit(0);
-                break;
         }
     }
     

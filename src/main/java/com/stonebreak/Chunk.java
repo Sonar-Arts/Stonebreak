@@ -1,14 +1,14 @@
 package com.stonebreak;
 
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.system.MemoryUtil;
-
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.system.MemoryUtil;
 
 /**
  * Represents a chunk of the world, storing block data and mesh information.
@@ -26,7 +26,8 @@ public class Chunk {
     private int vertexVboId;
     private int textureVboId;
     private int normalVboId;
-    private int isWaterVboId; // New VBO for isWater flag
+    private int isWaterVboId; // VBO for isWater flag
+    private int isAlphaTestedVboId; // New VBO for isAlphaTested flag
     private int indexVboId;
     private int vertexCount;
     private boolean meshGenerated;
@@ -85,7 +86,7 @@ public class Chunk {
             this.dataReadyForGL = true; // Mark data as ready for GL upload ONLY on success
         } catch (Exception e) {
             System.err.println("CRITICAL: Exception during generateMeshData for chunk (" + x + ", " + z + "): " + e.getMessage());
-            e.printStackTrace(); // Print stack trace for better debugging
+            // e.printStackTrace(); // Print stack trace for better debugging
             this.dataReadyForGL = false; // Ensure it's false on error
             // meshDataGenerationScheduledOrInProgress is reset by the worker task's finally block in World.java.
         }
@@ -105,7 +106,7 @@ public class Chunk {
                 cleanupMesh(); // Deletes current this.vaoId, this.vertexVboId etc.
                 this.meshGenerated = false;
                 // Ensure IDs are zeroed out after cleanup for clarity
-                this.vaoId = 0; this.vertexVboId = 0; this.textureVboId = 0; this.normalVboId = 0; this.isWaterVboId = 0; this.indexVboId = 0;
+                this.vaoId = 0; this.vertexVboId = 0; this.textureVboId = 0; this.normalVboId = 0; this.isWaterVboId = 0; this.isAlphaTestedVboId = 0; this.indexVboId = 0;
             }
             this.dataReadyForGL = false; // Data processed
             return;
@@ -117,7 +118,8 @@ public class Chunk {
         int tempOldVertexVboId = this.vertexVboId;
         int tempOldTextureVboId = this.textureVboId;
         int tempOldNormalVboId = this.normalVboId;
-        int tempOldIsWaterVboId = this.isWaterVboId; // Store old isWaterVboId
+        int tempOldIsWaterVboId = this.isWaterVboId;
+        int tempOldIsAlphaTestedVboId = this.isAlphaTestedVboId; // Store old isAlphaTestedVboId
         int tempOldIndexVboId = this.indexVboId;
         boolean oldMeshWasActuallyGenerated = this.meshGenerated;
 
@@ -136,7 +138,8 @@ public class Chunk {
                      GL15.glDeleteBuffers(tempOldVertexVboId);
                      GL15.glDeleteBuffers(tempOldTextureVboId);
                      GL15.glDeleteBuffers(tempOldNormalVboId);
-                     GL15.glDeleteBuffers(tempOldIsWaterVboId); // Delete old isWaterVboId
+                     GL15.glDeleteBuffers(tempOldIsWaterVboId);
+                     GL15.glDeleteBuffers(tempOldIsAlphaTestedVboId); // Delete old isAlphaTestedVboId
                      GL15.glDeleteBuffers(tempOldIndexVboId);
                 } else if (tempOldVaoId != 0 && tempOldVaoId == this.vaoId) {
                     // This is an unexpected state, log a warning.
@@ -146,13 +149,13 @@ public class Chunk {
             }
         } catch (Exception e) {
             System.err.println("CRITICAL: Error during createMesh for chunk (" + x + ", " + z + "): " + e.getMessage());
-            e.printStackTrace();
+            // e.printStackTrace();
             
             // createMesh failed. this.vaoId etc. might now hold IDs of partially created, invalid GL objects.
             // These new, failed GL objects need to be cleaned up. cleanupMesh() uses this.vaoId etc.
             // It's important that createMesh() sets this.vaoId etc. to 0 or valid new IDs before throwing.
             // If createMesh sets IDs before potential failure points, cleanupMesh() will target the new, bad IDs.
-            if (this.vaoId != tempOldVaoId || this.vertexVboId != tempOldVertexVboId || this.isWaterVboId != tempOldIsWaterVboId ) { // Check if createMesh changed any ID before failing
+            if (this.vaoId != tempOldVaoId || this.vertexVboId != tempOldVertexVboId || this.isWaterVboId != tempOldIsWaterVboId || this.isAlphaTestedVboId != tempOldIsAlphaTestedVboId ) { // Check if createMesh changed any ID before failing
                  cleanupMesh(); // This will attempt to delete the new, partially created GL objects.
             }
 
@@ -162,7 +165,8 @@ public class Chunk {
                 this.vertexVboId = tempOldVertexVboId;
                 this.textureVboId = tempOldTextureVboId;
                 this.normalVboId = tempOldNormalVboId;
-                this.isWaterVboId = tempOldIsWaterVboId; // Restore old isWaterVboId
+                this.isWaterVboId = tempOldIsWaterVboId;
+                this.isAlphaTestedVboId = tempOldIsAlphaTestedVboId; // Restore old isAlphaTestedVboId
                 this.indexVboId = tempOldIndexVboId;
                 // vertexCount should still correspond to the old mesh if data wasn't changed,
                 // but generateMeshData would have updated vertexCount for the new data.
@@ -173,9 +177,9 @@ public class Chunk {
             } else {
                 // No old mesh, and new one failed. Chunk has no valid mesh.
                 this.meshGenerated = false;
-                this.vaoId = 0; this.vertexVboId = 0; this.textureVboId = 0; this.normalVboId = 0; this.isWaterVboId = 0; this.indexVboId = 0;
-            }
-        } finally {
+                this.vaoId = 0; this.vertexVboId = 0; this.textureVboId = 0; this.normalVboId = 0; this.isWaterVboId = 0; this.isAlphaTestedVboId = 0; this.indexVboId = 0;
+           }
+       } finally {
             this.dataReadyForGL = false; // Data has been processed (or attempt failed)
         }
     }
@@ -186,25 +190,33 @@ public class Chunk {
         List<Float> vertices = new ArrayList<>();
         List<Float> textureCoords = new ArrayList<>();
         List<Float> normals = new ArrayList<>();
-        List<Float> isWaterFlags = new ArrayList<>(); // New list for isWater flags
+        List<Float> isWaterFlags = new ArrayList<>();
+        List<Float> isAlphaTestedFlags = new ArrayList<>(); // New list for isAlphaTested flags
         List<Integer> indices = new ArrayList<>();
         
         int index = 0;
         
         // Iterate through all blocks in the chunk
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int y = 0; y < World.WORLD_HEIGHT; y++) {
-                for (int z = 0; z < World.CHUNK_SIZE; z++) {
-                    BlockType blockType = blocks[x][y][z];
+        for (int lx = 0; lx < World.CHUNK_SIZE; lx++) {
+            for (int ly = 0; ly < World.WORLD_HEIGHT; ly++) {
+                for (int lz = 0; lz < World.CHUNK_SIZE; lz++) {
+                    BlockType blockType = blocks[lx][ly][lz];
                     
                     // Skip air blocks
                     if (blockType == BlockType.AIR) {
                         continue;
-                    }                    
+                    }
+                    
+                    // Handle flowers with cross-shaped geometry
+                    if (blockType == BlockType.ROSE || blockType == BlockType.DANDELION) {
+                        index = addFlowerCross(lx, ly, lz, blockType, vertices, textureCoords, normals, isWaterFlags, isAlphaTestedFlags, indices, index);
+                        continue;
+                    }
+                    
                     // Check each face of the block
                     for (int face = 0; face < 6; face++) {
                         // Check if the adjacent block is solid
-                        BlockType adjacentBlock = getAdjacentBlock(x, y, z, face, world);
+                        BlockType adjacentBlock = getAdjacentBlock(lx, ly, lz, face, world);
                         
                         // Determine if the face should be rendered
                         boolean renderFace;
@@ -217,8 +229,8 @@ public class Chunk {
                                      (blockType.isTransparent() && !adjacentBlock.isTransparent());
 
                         if (renderFace) {
-                            // Add face vertices, texture coordinates, normals, isWater flags, and indices
-                            index = addFace(x, y, z, face, blockType, vertices, textureCoords, normals, isWaterFlags, indices, index);
+                            // Add face vertices, texture coordinates, normals, isWater flags, isAlphaTested flags, and indices
+                            index = addFace(lx, ly, lz, face, blockType, vertices, textureCoords, normals, isWaterFlags, isAlphaTestedFlags, indices, index);
                         }
                     }
                 }
@@ -241,9 +253,14 @@ public class Chunk {
             normalData[i] = normals.get(i);
         }
         
-        isWaterData = new float[isWaterFlags.size()]; // Convert isWaterFlags list to array
+        isWaterData = new float[isWaterFlags.size()];
         for (int i = 0; i < isWaterFlags.size(); i++) {
             isWaterData[i] = isWaterFlags.get(i);
+        }
+        
+        isAlphaTestedData = new float[isAlphaTestedFlags.size()]; // Convert isAlphaTestedFlags list to array
+        for (int i = 0; i < isAlphaTestedFlags.size(); i++) {
+            isAlphaTestedData[i] = isAlphaTestedFlags.get(i);
         }
         
         indexData = new int[indices.size()];
@@ -259,42 +276,45 @@ public class Chunk {
         // Determine adjacent block coordinates based on the face
         // 0: Top, 1: Bottom, 2: Front, 3: Back, 4: Right, 5: Left
         try {
-            switch (face) {
-                case 0: // Top
-                    return y + 1 < World.WORLD_HEIGHT ? blocks[x][y + 1][z] : BlockType.AIR;
-                case 1: // Bottom
-                    return y - 1 >= 0 ? blocks[x][y - 1][z] : BlockType.AIR;
-                case 2: // Front
+            return switch (face) {
+                case 0 -> // Top
+                    y + 1 < World.WORLD_HEIGHT ? blocks[x][y + 1][z] : BlockType.AIR;
+                case 1 -> // Bottom
+                    y - 1 >= 0 ? blocks[x][y - 1][z] : BlockType.AIR;
+                case 2 -> { // Front
                     if (z + 1 < World.CHUNK_SIZE) {
-                        return blocks[x][y][z + 1];
+                        yield blocks[x][y][z + 1];
                     } else {
                         // Get block from neighboring chunk
-                        return world.getBlockAt(getWorldX(x), y, getWorldZ(z + 1));
+                        yield world.getBlockAt(getWorldX(x), y, getWorldZ(z + 1));
                     }
-                case 3: // Back
+                }
+                case 3 -> { // Back
                     if (z - 1 >= 0) {
-                        return blocks[x][y][z - 1];
+                        yield blocks[x][y][z - 1];
                     } else {
                         // Get block from neighboring chunk
-                        return world.getBlockAt(getWorldX(x), y, getWorldZ(z - 1));
+                        yield world.getBlockAt(getWorldX(x), y, getWorldZ(z - 1));
                     }
-                case 4: // Right
+                }
+                case 4 -> { // Right
                     if (x + 1 < World.CHUNK_SIZE) {
-                        return blocks[x + 1][y][z];
+                        yield blocks[x + 1][y][z];
                     } else {
                         // Get block from neighboring chunk
-                        return world.getBlockAt(getWorldX(x + 1), y, getWorldZ(z));
+                        yield world.getBlockAt(getWorldX(x + 1), y, getWorldZ(z));
                     }
-                case 5: // Left
+                }
+                case 5 -> { // Left
                     if (x - 1 >= 0) {
-                        return blocks[x - 1][y][z];
+                        yield blocks[x - 1][y][z];
                     } else {
                         // Get block from neighboring chunk
-                        return world.getBlockAt(getWorldX(x - 1), y, getWorldZ(z));
+                        yield world.getBlockAt(getWorldX(x - 1), y, getWorldZ(z));
                     }
-                default:
-                    return BlockType.AIR;
-            }
+                }
+                default -> BlockType.AIR;
+            };
         } catch (Exception e) {
             // If there's any issue getting the adjacent block, assume it's air
             // This prevents crashes when dealing with chunk borders
@@ -307,7 +327,7 @@ public class Chunk {
      */
     private int addFace(int x, int y, int z, int face, BlockType blockType,
                        List<Float> vertices, List<Float> textureCoords,
-                       List<Float> normals, List<Float> isWaterFlags, List<Integer> indices, int index) {
+                       List<Float> normals, List<Float> isWaterFlags, List<Float> isAlphaTestedFlags, List<Integer> indices, int index) {
         // Convert to world coordinates
         float worldX = x + this.x * World.CHUNK_SIZE;
         float worldY = y;
@@ -315,7 +335,7 @@ public class Chunk {
         
         // Define vertices for each face
         switch (face) {
-            case 0: // Top face (y+1)
+            case 0 -> { // Top face (y+1)
                 vertices.add(worldX);        vertices.add(worldY + 1); vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
@@ -325,9 +345,8 @@ public class Chunk {
                 normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
                 normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
                 normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
-                break;
-                
-            case 1: // Bottom face (y-1)
+            }
+            case 1 -> { // Bottom face (y-1)
                 vertices.add(worldX);        vertices.add(worldY); vertices.add(worldZ);
                 vertices.add(worldX);        vertices.add(worldY); vertices.add(worldZ + 1);
                 vertices.add(worldX + 1);    vertices.add(worldY); vertices.add(worldZ + 1);
@@ -337,9 +356,8 @@ public class Chunk {
                 normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
                 normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
                 normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
-                break;
-                
-            case 2: // Front face (z+1)
+            }
+            case 2 -> { // Front face (z+1)
                 vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ + 1);
                 vertices.add(worldX);        vertices.add(worldY + 1); vertices.add(worldZ + 1);
                 vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
@@ -349,9 +367,8 @@ public class Chunk {
                 normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
                 normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
                 normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
-                break;
-                
-            case 3: // Back face (z-1)
+            }
+            case 3 -> { // Back face (z-1)
                 vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ);
@@ -361,9 +378,8 @@ public class Chunk {
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
-                break;
-                
-            case 4: // Right face (x+1)
+            }
+            case 4 -> { // Right face (x+1)
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ + 1);
                 vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
@@ -373,9 +389,8 @@ public class Chunk {
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
-                break;
-                
-            case 5: // Left face (x-1)
+            }
+            case 5 -> { // Left face (x-1)
                 vertices.add(worldX);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX);    vertices.add(worldY + 1); vertices.add(worldZ);
                 vertices.add(worldX);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
@@ -385,7 +400,7 @@ public class Chunk {
                 normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
                 normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
                 normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
-                break;
+            }
         }
         
         // Add texture coordinates
@@ -404,38 +419,49 @@ public class Chunk {
         float v_topRight = texY;
 
         // Determine UV mapping based on face to ensure grass is always "up" on sides
-        if (face == 0 || face == 1) { // Top or Bottom face - current mapping is likely fine
-            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // Original V0 UV
-            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // Original V1 UV
-            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // Original V2 UV
-            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // Original V3 UV
-        } else if (face == 2 || face == 5) { // Front (+Z) or Left (-X)
-            // Vertices for these faces are ordered: BL, TL, TR, BR
-            // Desired UVs: BottomLeft, TopLeft, TopRight, BottomRight
-            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
-            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V1 (TL of face)
-            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
-            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V3 (BR of face)
-        } else if (face == 3) { // Back (-Z)
-            // Vertices for this face are ordered: BR_face, BL_face, TL_face, TR_face
-            // Desired UVs: BottomRight, BottomLeft, TopLeft, TopRight
-            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V0 (BR of face)
-            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V1 (BL of face)
-            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V2 (TL of face)
-            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V3 (TR of face)
-        } else if (face == 4) { // Right (+X)
-            // Vertices for this face are ordered: BL_face, BR_face, TR_face, TL_face
-            // Desired UVs: BottomLeft, BottomRight, TopRight, TopLeft
-            textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
-            textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V1 (BR of face)
-            textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
-            textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V3 (TL of face)
+        switch (face) {
+            case 0, 1 -> { // Top or Bottom face - current mapping is likely fine
+                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // Original V0 UV
+                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // Original V1 UV
+                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // Original V2 UV
+                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // Original V3 UV
+            }
+            case 2, 5 -> { // Front (+Z) or Left (-X)
+                // Vertices for these faces are ordered: BL, TL, TR, BR
+                // Desired UVs: BottomLeft, TopLeft, TopRight, BottomRight
+                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
+                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V1 (TL of face)
+                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
+                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V3 (BR of face)
+            }
+            case 3 -> { // Back (-Z)
+                // Vertices for this face are ordered: BR_face, BL_face, TL_face, TR_face
+                // Desired UVs: BottomRight, BottomLeft, TopLeft, TopRight
+                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V0 (BR of face)
+                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V1 (BL of face)
+                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V2 (TL of face)
+                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V3 (TR of face)
+            }
+            case 4 -> { // Right (+X)
+                // Vertices for this face are ordered: BL_face, BR_face, TR_face, TL_face
+                // Desired UVs: BottomLeft, BottomRight, TopRight, TopLeft
+                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
+                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V1 (BR of face)
+                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
+                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V3 (TL of face)
+            }
         }
 
         // Add isWater flag for each of the 4 vertices of this face
         float isWaterValue = (blockType == BlockType.WATER) ? 1.0f : 0.0f;
         for (int i = 0; i < 4; i++) {
             isWaterFlags.add(isWaterValue);
+        }
+        
+        // Add isAlphaTested flag for each of the 4 vertices of this face
+        float isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+        for (int i = 0; i < 4; i++) {
+            isAlphaTestedFlags.add(isAlphaTestedValue);
         }
         
         // Add indices
@@ -450,11 +476,191 @@ public class Chunk {
         return index + 4;
     }
     
+    /**
+     * Adds cross-shaped geometry for flower blocks.
+     */
+    private int addFlowerCross(int x, int y, int z, BlockType blockType,
+                              List<Float> vertices, List<Float> textureCoords,
+                              List<Float> normals, List<Float> isWaterFlags, List<Float> isAlphaTestedFlags, List<Integer> indices, int index) {
+        // Convert to world coordinates
+        float worldX = x + this.x * World.CHUNK_SIZE;
+        float worldY = y;
+        float worldZ = z + this.z * World.CHUNK_SIZE;
+        
+        // Offset for centering the cross in the block
+        float centerX = worldX + 0.5f;
+        float centerZ = worldZ + 0.5f;
+        float crossSize = 0.45f; // Slightly smaller than full block
+        
+        // Get texture coordinates for the flower
+        float[] texCoords = blockType.getTextureCoords(0); // Use face 0 texture
+        float texX = texCoords[0] / 16.0f;
+        float texY = texCoords[1] / 16.0f;
+        float texSize = 1.0f / 16.0f;
+        
+        float u_left = texX;
+        float v_top = texY;
+        float u_right = texX + texSize;
+        float v_bottom = texY + texSize;
+        
+        // First cross plane (diagonal from NW to SE)
+        // Quad 1: NW to SE
+        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NW
+        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NW
+        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SE
+        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SE
+        
+        // Normals for first plane (pointing towards camera when viewing diagonally)
+        float norm1X = 0.707f, norm1Z = -0.707f; // Perpendicular to the NW-SE diagonal
+        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
+        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
+        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
+        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
+        
+        // Texture coordinates for first plane
+        textureCoords.add(u_left); textureCoords.add(v_bottom);
+        textureCoords.add(u_left); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_bottom);
+        
+        // IsWater flags for first plane
+        for (int i = 0; i < 4; i++) {
+            isWaterFlags.add(0.0f); // Flowers are not water
+        }
+        // IsAlphaTested flags for first plane
+        for (int i = 0; i < 4; i++) {
+            isAlphaTestedFlags.add(1.0f); // Flowers are alpha-tested
+        }
+        
+        // Indices for first plane
+        indices.add(index);
+        indices.add(index + 1);
+        indices.add(index + 2);
+        indices.add(index);
+        indices.add(index + 2);
+        indices.add(index + 3);
+        
+        index += 4;
+        
+        // Second cross plane (diagonal from NE to SW) - back face
+        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NE
+        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NE
+        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SW
+        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SW
+        
+        // Normals for second plane (opposite direction)
+        float norm2X = -0.707f, norm2Z = 0.707f;
+        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
+        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
+        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
+        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
+        
+        // Texture coordinates for second plane
+        textureCoords.add(u_left); textureCoords.add(v_bottom);
+        textureCoords.add(u_left); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_bottom);
+        
+        // IsWater flags for second plane
+        for (int i = 0; i < 4; i++) {
+            isWaterFlags.add(0.0f);
+        }
+        // IsAlphaTested flags for second plane
+        for (int i = 0; i < 4; i++) {
+            isAlphaTestedFlags.add(1.0f);
+        }
+        
+        // Indices for second plane
+        indices.add(index);
+        indices.add(index + 1);
+        indices.add(index + 2);
+        indices.add(index);
+        indices.add(index + 2);
+        indices.add(index + 3);
+        
+        index += 4;
+        
+        // Third cross plane (same as first but flipped for double-sided rendering)
+        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SE
+        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SE
+        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NW
+        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NW
+        
+        // Normals for third plane (opposite of first)
+        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
+        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
+        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
+        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
+        
+        // Texture coordinates for third plane
+        textureCoords.add(u_left); textureCoords.add(v_bottom);
+        textureCoords.add(u_left); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_bottom);
+        
+        // IsWater flags for third plane
+        for (int i = 0; i < 4; i++) {
+            isWaterFlags.add(0.0f);
+        }
+        // IsAlphaTested flags for third plane
+        for (int i = 0; i < 4; i++) {
+            isAlphaTestedFlags.add(1.0f);
+        }
+        
+        // Indices for third plane
+        indices.add(index);
+        indices.add(index + 1);
+        indices.add(index + 2);
+        indices.add(index);
+        indices.add(index + 2);
+        indices.add(index + 3);
+        
+        index += 4;
+        
+        // Fourth cross plane (same as second but flipped for double-sided rendering)
+        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SW
+        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SW
+        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NE
+        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NE
+        
+        // Normals for fourth plane (opposite of second)
+        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
+        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
+        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
+        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
+        
+        // Texture coordinates for fourth plane
+        textureCoords.add(u_left); textureCoords.add(v_bottom);
+        textureCoords.add(u_left); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_top);
+        textureCoords.add(u_right); textureCoords.add(v_bottom);
+        
+        // IsWater flags for fourth plane
+        for (int i = 0; i < 4; i++) {
+            isWaterFlags.add(0.0f);
+        }
+        // IsAlphaTested flags for fourth plane
+        for (int i = 0; i < 4; i++) {
+            isAlphaTestedFlags.add(1.0f);
+        }
+        
+        // Indices for fourth plane
+        indices.add(index);
+        indices.add(index + 1);
+        indices.add(index + 2);
+        indices.add(index);
+        indices.add(index + 2);
+        indices.add(index + 3);
+        
+        return index + 4; // Return the next available index
+    }
+    
     // Mesh data
     private float[] vertexData;
     private float[] textureData;
     private float[] normalData;
-    private float[] isWaterData; // New array for isWater flags
+    private float[] isWaterData;
+    private float[] isAlphaTestedData; // New array for isAlphaTested flags
     private int[] indexData;
       /**
      * Creates the OpenGL mesh for this chunk.
@@ -503,9 +709,19 @@ public class Chunk {
         FloatBuffer isWaterBuffer = MemoryUtil.memAllocFloat(isWaterData.length);
         isWaterBuffer.put(isWaterData).flip();
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, isWaterBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(3, 1, GL20.GL_FLOAT, false, 0, 0); // Location 3, 1 float
+        GL20.glVertexAttribPointer(3, 1, GL20.GL_FLOAT, false, 0, 0); // Location 3, 1 float for isWater
         GL20.glEnableVertexAttribArray(3); // Enable attribute in VAO
         MemoryUtil.memFree(isWaterBuffer);
+
+        // Create and bind isAlphaTested VBO
+        isAlphaTestedVboId = GL15.glGenBuffers();
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isAlphaTestedVboId);
+        FloatBuffer isAlphaTestedBuffer = MemoryUtil.memAllocFloat(isAlphaTestedData.length);
+        isAlphaTestedBuffer.put(isAlphaTestedData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, isAlphaTestedBuffer, GL15.GL_STATIC_DRAW);
+        GL20.glVertexAttribPointer(4, 1, GL20.GL_FLOAT, false, 0, 0); // Location 4, 1 float for isAlphaTested
+        GL20.glEnableVertexAttribArray(4); // Enable attribute in VAO
+        MemoryUtil.memFree(isAlphaTestedBuffer);
         
         // Create and bind index VBO
         indexVboId = GL15.glGenBuffers();
@@ -531,6 +747,7 @@ public class Chunk {
         GL20.glDisableVertexAttribArray(1);
         GL20.glDisableVertexAttribArray(2);
         GL20.glDisableVertexAttribArray(3); // Disable isWater attribute
+        GL20.glDisableVertexAttribArray(4); // Disable isAlphaTested attribute
         
         // Unbind VAO
         GL30.glBindVertexArray(0);
@@ -539,7 +756,8 @@ public class Chunk {
         GL15.glDeleteBuffers(vertexVboId);
         GL15.glDeleteBuffers(textureVboId);
         GL15.glDeleteBuffers(normalVboId);
-        GL15.glDeleteBuffers(isWaterVboId); // Delete isWater VBO
+        GL15.glDeleteBuffers(isWaterVboId);
+        GL15.glDeleteBuffers(isAlphaTestedVboId); // Delete isAlphaTested VBO
         GL15.glDeleteBuffers(indexVboId);
         
         // Delete VAO
@@ -594,10 +812,6 @@ public class Chunk {
     }
 
     // Package-private setters to be controlled by World.java
-    void setMeshGenerated(boolean meshGenerated) {
-        this.meshGenerated = meshGenerated;
-    }
-
     void setDataReadyForGL(boolean dataReadyForGL) {
         this.dataReadyForGL = dataReadyForGL;
     }
@@ -632,7 +846,8 @@ public class Chunk {
         vertexData = null;
         textureData = null;
         normalData = null;
-        isWaterData = null; // Nullify isWaterData
+        isWaterData = null;
+        isAlphaTestedData = null; // Nullify isAlphaTestedData
         indexData = null;
         vertexCount = 0;
         dataReadyForGL = false;

@@ -1046,11 +1046,13 @@ public class Renderer {
                    layout (location=0) in vec3 position;
                    layout (location=1) in vec2 texCoord;
                    layout (location=2) in vec3 normal;
-                   layout (location=3) in float isWater; // New attribute: 1.0 if water, 0.0 otherwise
+                   layout (location=3) in float isWater;
+                   layout (location=4) in float isAlphaTested; // New attribute for alpha-tested blocks
                    out vec2 outTexCoord;
                    out vec3 outNormal;
                    out vec3 fragPos;
-                   out float v_isWater; // Pass isWater to fragment shader
+                   out float v_isWater;
+                   out float v_isAlphaTested; // Pass isAlphaTested to fragment shader
                    uniform mat4 projectionMatrix;
                    uniform mat4 viewMatrix;
                    uniform bool u_transformUVsForItem;      // Added
@@ -1065,15 +1067,17 @@ public class Renderer {
                        }
                        outNormal = normal;
                        fragPos = position;
-                       v_isWater = isWater; // Assign to out variable
+                       v_isWater = isWater;
+                       v_isAlphaTested = isAlphaTested; // Assign to out variable
                    }""";
-        } else if (path.endsWith("fragment.glsl")) {
-            return """
+       } else if (path.endsWith("fragment.glsl")) {
+           return """
                    #version 330 core
                    in vec2 outTexCoord;
                    in vec3 outNormal;
                    in vec3 fragPos;
-                   in float v_isWater; // Received from vertex shader
+                   in float v_isWater;
+                   in float v_isAlphaTested; // Received from vertex shader
                    out vec4 fragColor;
                    uniform sampler2D texture_sampler;
                    uniform vec4 u_color;            // Uniform for solid color or text tint
@@ -1081,35 +1085,37 @@ public class Renderer {
                    uniform bool u_isText;           // Uniform to toggle text rendering mode
                    uniform int u_renderPass;        // 0 for opaque/non-water, 1 for transparent/water
                    void main() {
-                       // Discard fragments based on render pass and if they are water
-                       if (u_renderPass == 0 && v_isWater > 0.5) { // Opaque pass, but this is water
-                           discard;
-                       }
-                       if (u_renderPass == 1 && v_isWater < 0.5) { // Transparent pass, but this is not water
-                           discard;
-                       } // Added closing brace for the if block
                        if (u_isText) {
-                           float alpha = texture(texture_sampler, outTexCoord).a; // Font texture is alpha only
-                           fragColor = vec4(u_color.rgb, u_color.a * alpha); // Tint with u_color
+                           float alpha = texture(texture_sampler, outTexCoord).a;
+                           fragColor = vec4(u_color.rgb, u_color.a * alpha);
                        } else if (u_useSolidColor) {
                            fragColor = u_color;
-                       } else { // Textured and lit (for world objects)
+                       } else {
                            vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
                            float ambient = 0.3;
                            float diffuse = max(dot(outNormal, lightDir), 0.0);
                            float brightness = ambient + diffuse * 0.7;
                            vec4 textureColor = texture(texture_sampler, outTexCoord);
+                           float sampledAlpha = textureColor.a;
 
-                           // For water in the transparent pass, ensure its alpha is used correctly.
-                           // For non-water in the opaque pass, its original alpha (likely 1.0) is used.
-                           if (textureColor.a < 0.01 && v_isWater < 0.5) { // Fallback for non-water if texture is missing alpha
-                               fragColor = vec4(abs(outNormal) * brightness, 1.0);
-                           } else if (textureColor.a < 0.01 && v_isWater > 0.5) { // Water texture missing alpha?
-                               // This case might mean the water texture itself has no alpha, which would be an issue.
-                               // Forcing some transparency for water if its texture alpha is bad.
-                               fragColor = vec4(textureColor.rgb * brightness, 0.7); // Default water alpha
-                           } else {
-                               fragColor = vec4(textureColor.rgb * brightness, textureColor.a);
+                           if (v_isAlphaTested > 0.5) { // Alpha-tested object (e.g., flower, leaf)
+                               if (sampledAlpha < 0.1) {
+                                   discard; // Alpha test
+                               }
+                               // Render opaque parts of alpha-tested objects
+                               fragColor = vec4(textureColor.rgb * brightness, 1.0);
+                           } else if (v_isWater > 0.5) { // Water object
+                               if (u_renderPass == 0) { // Opaque pass
+                                   discard; // Water is not drawn in opaque pass
+                               } else { // Transparent pass
+                                   fragColor = vec4(textureColor.rgb * brightness, sampledAlpha); // Use water's actual alpha for blending
+                               }
+                           } else { // Truly opaque object (e.g., stone, dirt)
+                               if (u_renderPass == 0) { // Opaque pass
+                                   fragColor = vec4(textureColor.rgb * brightness, 1.0); // Render fully opaque
+                               } else { // Transparent pass
+                                   discard; // Opaque objects already drawn in opaque pass
+                               }
                            }
                        }
                    }""";

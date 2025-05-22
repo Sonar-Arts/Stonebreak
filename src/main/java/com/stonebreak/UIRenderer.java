@@ -2,7 +2,30 @@ package com.stonebreak;
 
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
-import static org.lwjgl.nanovg.NanoVG.*;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
+import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATX;
+import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATY;
+import static org.lwjgl.nanovg.NanoVG.nvgBeginFrame;
+import static org.lwjgl.nanovg.NanoVG.nvgBeginPath;
+import static org.lwjgl.nanovg.NanoVG.nvgClosePath;
+import static org.lwjgl.nanovg.NanoVG.nvgCreateFont;
+import static org.lwjgl.nanovg.NanoVG.nvgCreateImageRGBA;
+import static org.lwjgl.nanovg.NanoVG.nvgEndFrame;
+import static org.lwjgl.nanovg.NanoVG.nvgFill;
+import static org.lwjgl.nanovg.NanoVG.nvgFillColor;
+import static org.lwjgl.nanovg.NanoVG.nvgFillPaint;
+import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
+import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
+import static org.lwjgl.nanovg.NanoVG.nvgImagePattern;
+import static org.lwjgl.nanovg.NanoVG.nvgLineTo;
+import static org.lwjgl.nanovg.NanoVG.nvgMoveTo;
+import static org.lwjgl.nanovg.NanoVG.nvgRect;
+import static org.lwjgl.nanovg.NanoVG.nvgStroke;
+import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
+import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
+import static org.lwjgl.nanovg.NanoVG.nvgText;
+import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
 import static org.lwjgl.nanovg.NanoVGGL3.NVG_ANTIALIAS;
 import static org.lwjgl.nanovg.NanoVGGL3.NVG_STENCIL_STROKES;
 import static org.lwjgl.nanovg.NanoVGGL3.nvgCreate;
@@ -155,16 +178,15 @@ public class UIRenderer {
                 nvgFontFace(vg, fontName);
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
                 
-                if (i == 0) {
-                    // Top layer - bright white with slight yellow tint (like Minecraft logo)
-                    nvgFillColor(vg, nvgRGBA(255, 255, 240, 255, NVGColor.malloc(stack)));
-                } else if (i == 1) {
-                    // Second layer - light gray for depth
-                    nvgFillColor(vg, nvgRGBA(200, 200, 190, 255, NVGColor.malloc(stack)));
-                } else {
-                    // Shadow layers - progressively darker for depth
-                    int darkness = Math.max(20, 80 - (i * 15));
-                    nvgFillColor(vg, nvgRGBA(darkness, darkness, darkness, 220, NVGColor.malloc(stack)));
+                switch (i) {
+                    case 0 -> // Top layer - bright white with slight yellow tint (like Minecraft logo)
+                        nvgFillColor(vg, nvgRGBA(255, 255, 240, 255, NVGColor.malloc(stack)));
+                    case 1 -> // Second layer - light gray for depth
+                        nvgFillColor(vg, nvgRGBA(200, 200, 190, 255, NVGColor.malloc(stack)));
+                    default -> { // Shadow layers - progressively darker for depth
+                        int darkness = Math.max(20, 80 - (i * 15));
+                        nvgFillColor(vg, nvgRGBA(darkness, darkness, darkness, 220, NVGColor.malloc(stack)));
+                    }
                 }
                 
                 // Increase offset for more pronounced 3D effect

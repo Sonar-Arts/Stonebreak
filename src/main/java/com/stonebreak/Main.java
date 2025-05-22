@@ -241,6 +241,7 @@ public class Main {
         
         running = true;
     }
+      @SuppressWarnings("BusyWait")
       private void loop() {
         // Set the clear color
         glClearColor(0.5f, 0.8f, 1.0f, 0.0f);

@@ -22,7 +22,9 @@ public enum BlockType {
     MAGMA(12, "Magma", true, true, 3, 1),       // Placeholder atlas coords
     CRYSTAL(13, "Crystal", true, true, 4, 1),   // Placeholder atlas coords
     SANDSTONE(14, "Sandstone", true, true, 5, 1), // Top texture for icon
-    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1); // Top texture for icon
+    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1), // Top texture for icon
+    ROSE(16, "Rose", false, true, 10, 1), // Moved from 7,1
+    DANDELION(17, "Dandelion", false, true, 11, 1); // Moved from 8,1
     
     private final int id;
     private final String name;
@@ -61,7 +63,7 @@ public enum BlockType {
      * @return true if the block is transparent (like air or water)
      */
     public boolean isTransparent() {
-        return this == AIR || this == WATER || this == LEAVES;
+        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION;
     }
 
     public int getAtlasX() {
@@ -90,47 +92,41 @@ public enum BlockType {
      * @return Array with [x, y] coordinates in the texture atlas
      */
     public float[] getTextureCoords(int face) {
-        switch (this) {
-            case GRASS:
-                if (face == 0) return new float[]{0, 0}; // Top - grass
-                if (face == 1) return new float[]{2, 0}; // Bottom - dirt
-                return new float[]{1, 0}; // Sides - grass side
-            case DIRT:
-                return new float[]{2, 0};
-            case STONE:
-                return new float[]{3, 0};
-            case BEDROCK:
-                return new float[]{4, 0};
-            case WOOD:
-                if (face == 0) return new float[]{5, 1}; // Top
-                if (face == 1) return new float[]{2, 0}; // Bottom - using DIRT texture for now
-                return new float[]{5, 0}; // Sides
-            case LEAVES:
-                return new float[]{7, 0}; // Atlas X changed from 6 to 7
-            case SAND:
-                return new float[]{8, 0}; // Atlas X changed from 7 to 8
-            case WATER:
-                return new float[]{9, 0}; // Atlas X changed from 8 to 9
-            case COAL_ORE:
-                return new float[]{0, 1};
-            case IRON_ORE:
-                return new float[]{1, 1};
-            case RED_SAND:
-                return new float[]{2, 1}; // Use its unique atlas coordinates
-            case MAGMA:
-                return new float[]{3, 1}; // Placeholder atlas coords
-            case CRYSTAL:
-                return new float[]{4, 1}; // Placeholder atlas coords
-            case SANDSTONE:
-                if (face == 0) return new float[]{5, 1}; // Top
-                if (face == 1) return new float[]{5, 1}; // Bottom (same as top)
-                return new float[]{7, 1}; // Sides
-            case RED_SANDSTONE:
-                if (face == 0) return new float[]{6, 1}; // Top
-                if (face == 1) return new float[]{6, 1}; // Bottom (same as top)
-                return new float[]{8, 1}; // Sides
-            default:
-                return new float[]{0, 0};
-        }
+        return switch (this) {
+            case GRASS -> {
+                if (face == 0) yield new float[]{0, 0}; // Top - grass
+                if (face == 1) yield new float[]{2, 0}; // Bottom - dirt
+                yield new float[]{1, 0}; // Sides - grass side
+            }
+            case DIRT -> new float[]{2, 0};
+            case STONE -> new float[]{3, 0};
+            case BEDROCK -> new float[]{4, 0};
+            case WOOD -> {
+                if (face == 0) yield new float[]{5, 1}; // Top
+                if (face == 1) yield new float[]{2, 0}; // Bottom - using DIRT texture for now
+                yield new float[]{5, 0}; // Sides
+            }
+            case LEAVES -> new float[]{7, 0}; // Atlas X changed from 6 to 7
+            case SAND -> new float[]{8, 0}; // Atlas X changed from 7 to 8
+            case WATER -> new float[]{9, 0}; // Atlas X changed from 8 to 9
+            case COAL_ORE -> new float[]{0, 1};
+            case IRON_ORE -> new float[]{1, 1};
+            case RED_SAND -> new float[]{2, 1}; // Use its unique atlas coordinates
+            case MAGMA -> new float[]{3, 1}; // Placeholder atlas coords
+            case CRYSTAL -> new float[]{4, 1}; // Placeholder atlas coords
+            case SANDSTONE -> {
+                if (face == 0) yield new float[]{5, 1}; // Top
+                if (face == 1) yield new float[]{5, 1}; // Bottom (same as top)
+                yield new float[]{7, 1}; // Sides
+            }
+            case RED_SANDSTONE -> {
+                if (face == 0) yield new float[]{6, 1}; // Top
+                if (face == 1) yield new float[]{6, 1}; // Bottom (same as top)
+                yield new float[]{8, 1}; // Sides
+            }
+            case ROSE -> new float[]{10, 1}; // Moved from 7,1
+            case DANDELION -> new float[]{11, 1}; // Moved from 8,1
+            default -> new float[]{0, 0};
+        };
     }
 }

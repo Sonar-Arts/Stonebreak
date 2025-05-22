@@ -14,10 +14,10 @@ import org.lwjgl.system.MemoryStack;
  */
 public class TextureAtlas {
     
-    private int textureId;
-    private int textureSize;
-    private int texturePixelSize = 16; // Size of each tile in pixels
-    private ByteBuffer waterTileUpdateBuffer; // Buffer for updating water tile
+    private final int textureId;
+    private final int textureSize;
+    private final int texturePixelSize = 16; // Size of each tile in pixels
+    private final ByteBuffer waterTileUpdateBuffer; // Buffer for updating water tile
 
     // Atlas coordinates for the water tile (assuming previous fix to BlockType.java)
     private static final int WATER_ATLAS_X = 9;
@@ -38,6 +38,12 @@ public class TextureAtlas {
     private static final int RED_SANDSTONE_TOP_ATLAS_Y = 1;
     private static final int RED_SANDSTONE_SIDE_ATLAS_X = 8;
     private static final int RED_SANDSTONE_SIDE_ATLAS_Y = 1;
+
+    // Atlas coordinates for flowers - MOVED to (10,1) and (11,1)
+    private static final int ROSE_ATLAS_X = 10; // Was 7
+    private static final int ROSE_ATLAS_Y = 1;
+    private static final int DANDELION_ATLAS_X = 11; // Was 8
+    private static final int DANDELION_ATLAS_Y = 1;
     
     /**
      * Creates a texture atlas with the specified texture size.
@@ -117,7 +123,7 @@ public class TextureAtlas {
      * @param face The face of the block (for multi-textured blocks)
      * @return An array of UV coordinates [u1, v1, u2, v2] for the texture
      */
-    public float[] getUVCoordinates(int x, int y) {
+    public float[] getUVCoordinates(int x, int y) { // Reverted parameter names for consistency with original intent, will be tileX, tileY in usage
         float tileSize = 1.0f / textureSize;
         float u1 = x * tileSize;
         float v1 = y * tileSize;
@@ -131,8 +137,8 @@ public class TextureAtlas {
      */
     private int generateTextureAtlas() {
         // Create a texture ID
-        int textureId = GL11.glGenTextures();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+        int generatedTextureId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, generatedTextureId);
         
         // Set texture parameters - use clearer settings to ensure textures are visible
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
@@ -144,7 +150,7 @@ public class TextureAtlas {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_BASE_LEVEL, 0);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
         
-        System.out.println("Generating texture atlas with ID: " + textureId);
+        System.out.println("Generating texture atlas with ID: " + generatedTextureId);
         
         // Create a simple placeholder texture
         // int texturePixelSize = 16; // Now a class field
@@ -152,10 +158,10 @@ public class TextureAtlas {
         ByteBuffer buffer = BufferUtils.createByteBuffer(totalSize * totalSize * 4);
         
         // Fill the texture with colors for each block type
-        for (int y = 0; y < totalSize; y++) {
-            for (int x = 0; x < totalSize; x++) {
-                int tileX = x / texturePixelSize;
-                int tileY = y / texturePixelSize;
+        for (int globalY = 0; globalY < totalSize; globalY++) {
+            for (int globalX = 0; globalX < totalSize; globalX++) {
+                int tileX = globalX / texturePixelSize;
+                int tileY = globalY / texturePixelSize;
                 
                 // Color based on tile position
                 byte r, g, b, a;
@@ -165,8 +171,8 @@ public class TextureAtlas {
                 // Special handling for RED_SAND texture
                 if (tileX == RED_SAND_ATLAS_X && tileY == RED_SAND_ATLAS_Y) {
                     // Use sand pattern with orangish-red color for RED_SAND
-                    int pixelXInTileRedSand = x % texturePixelSize;
-                    int pixelYInTileRedSand = y % texturePixelSize;
+                    int pixelXInTileRedSand = globalX % texturePixelSize;
+                    int pixelYInTileRedSand = globalY % texturePixelSize;
 
                     double noise1_rs = Math.sin(pixelXInTileRedSand * 0.8 + pixelYInTileRedSand * 1.1);
                     double noise2_rs = Math.cos(pixelXInTileRedSand * 0.5 - pixelYInTileRedSand * 0.9);
@@ -189,8 +195,8 @@ public class TextureAtlas {
                 }
                 // Special handling for SANDSTONE_TOP texture
                 else if (tileX == SANDSTONE_TOP_ATLAS_X && tileY == SANDSTONE_TOP_ATLAS_Y) {
-                    int pX = x % texturePixelSize;
-                    int pY = y % texturePixelSize;
+                    int pX = globalX % texturePixelSize;
+                    int pY = globalY % texturePixelSize;
 
                     // Base color: Light beige/yellowish
                     int baseR_st = 235; // 218;
@@ -212,10 +218,46 @@ public class TextureAtlas {
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }
+                // Special handling for ROSE texture
+                else if (tileX == ROSE_ATLAS_X && tileY == ROSE_ATLAS_Y) {
+                    int pX_tile = globalX % texturePixelSize;
+                    int pY_tile = globalY % texturePixelSize;
+                    byte r_pixel = 0, g_pixel = 0, b_pixel = 0, a_pixel = 0; // Default transparent
+
+                    int h_offset = 4; // Horizontal offset for 8-pixel wide image on 16-pixel tile
+
+                    // Rose Petals (Red: 204,0,0)
+                    if (pX_tile == h_offset + 3 && pY_tile == 0) { r_pixel=(byte)204; g_pixel=(byte)0; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 2 && pX_tile <= h_offset + 3 && pY_tile == 1) { r_pixel=(byte)204; g_pixel=(byte)0; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if ((pX_tile == h_offset + 0 || (pX_tile >= h_offset + 2 && pX_tile <= h_offset + 5)) && pY_tile == 2) { r_pixel=(byte)204; g_pixel=(byte)0; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 1 && pX_tile <= h_offset + 5 && pY_tile == 3) { r_pixel=(byte)204; g_pixel=(byte)0; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if ((pX_tile == h_offset + 2 || pX_tile == h_offset + 4) && pY_tile == 4) { r_pixel=(byte)204; g_pixel=(byte)0; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    // Stem (Green: 34,177,76)
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 5) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    // Thorns (Brown: 136,68,0) & Stem
+                    else if (pX_tile == h_offset + 2 && pY_tile == 6) { r_pixel=(byte)136; g_pixel=(byte)68; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 6) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 7) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile == h_offset + 5 && pY_tile == 7) { r_pixel=(byte)136; g_pixel=(byte)68; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 8) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile == h_offset + 2 && pY_tile == 9) { r_pixel=(byte)136; g_pixel=(byte)68; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 9) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 10) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile == h_offset + 5 && pY_tile == 10) { r_pixel=(byte)136; g_pixel=(byte)68; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 11) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile == h_offset + 2 && pY_tile == 12) { r_pixel=(byte)136; g_pixel=(byte)68; b_pixel=(byte)0; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 12) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 13) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile >= h_offset + 3 && pX_tile <= h_offset + 4 && pY_tile == 14) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    else if (pX_tile == h_offset + 3 && pY_tile == 15) { r_pixel=(byte)34; g_pixel=(byte)177; b_pixel=(byte)76; a_pixel=(byte)255; }
+                    
+                    buffer.put(r_pixel).put(g_pixel).put(b_pixel).put(a_pixel);
+                    continue;
+                }
                 // Special handling for SANDSTONE_SIDE texture
                 else if (tileX == SANDSTONE_SIDE_ATLAS_X && tileY == SANDSTONE_SIDE_ATLAS_Y) {
-                    int pX = x % texturePixelSize;
-                    int pY = y % texturePixelSize;
+                    int pX = globalX % texturePixelSize;
+                    int pY = globalY % texturePixelSize;
 
                     // Base color: Similar to top, slightly more saturated or varied
                     int baseR_ss = 220;
@@ -224,20 +266,20 @@ public class TextureAtlas {
 
                     // Horizontal banding
                     // Bands are roughly 3-5 pixels high. Let's try 4 pixels.
-                    int band = (pY / 4) % 4; // Creates 4 distinct band types that repeat
-                    float bandShadeFactor = 0.0f;
+                    float bandShadeFactor;
 
                     // Introduce slight waviness to bands based on pX
                     int wavyPY = pY + (int)(Math.sin(pX * 0.3 + tileX * 0.5) * 1.5); // tileX adds variation per tile instance
-                    band = (wavyPY / 4) % 4;
+                    int band = (wavyPY / 4) % 4; // Declare and assign here
 
 
-                    switch (band) {
-                        case 0: bandShadeFactor = 0.0f; break;  // Base
-                        case 1: bandShadeFactor = -0.08f; break; // Slightly darker
-                        case 2: bandShadeFactor = 0.05f; break; // Slightly lighter
-                        case 3: bandShadeFactor = -0.05f; break; // Medium dark
-                    }
+                    bandShadeFactor = switch (band) {
+                        case 0 -> 0.0f;  // Base
+                        case 1 -> -0.08f; // Slightly darker
+                        case 2 -> 0.05f; // Slightly lighter
+                        case 3 -> -0.05f; // Medium dark
+                        default -> 0.0f; // Should not happen with % 4
+                    };
                     
                     // Add overall noise for roughness
                     double noise1_ss = Math.sin(pX * 0.6 + pY * 1.1 + tileY * 0.4);
@@ -265,8 +307,8 @@ public class TextureAtlas {
                 }
                 // Special handling for RED_SANDSTONE_TOP texture
                 else if (tileX == RED_SANDSTONE_TOP_ATLAS_X && tileY == RED_SANDSTONE_TOP_ATLAS_Y) {
-                    int pX = x % texturePixelSize;
-                    int pY = y % texturePixelSize;
+                    int pX = globalX % texturePixelSize;
+                    int pY = globalY % texturePixelSize;
 
                     // Base color: Red Sand palette
                     int baseR_rst = 200;
@@ -288,10 +330,48 @@ public class TextureAtlas {
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }
+                // Special handling for DANDELION texture
+                else if (tileX == DANDELION_ATLAS_X && tileY == DANDELION_ATLAS_Y) {
+                    int pX_tile = globalX % texturePixelSize;
+                    int pY_tile = globalY % texturePixelSize;
+                    // Changed default transparent to white (255,255,255,0) from black (0,0,0,0)
+                    byte r_pixel = (byte)255, g_pixel = (byte)255, b_pixel = (byte)255, a_pixel = 0;
+
+                    int h_offset = 4; // Horizontal offset for 7-pixel wide image on 16-pixel tile
+                    int v_offset = 3; // Vertical offset for 13-pixel tall image (bottom aligned)
+
+                    // Flower Petals (Yellow: 255,217,26 / Orange: 255,175,23)
+                    // Y=0 of image (tile pY_tile = v_offset + 0 = 3)
+                    if (pY_tile == v_offset + 0 && pX_tile >= h_offset + 2 && pX_tile <= h_offset + 4) { r_pixel=(byte)255; g_pixel=(byte)217; b_pixel=(byte)26; a_pixel=(byte)255; }
+                    // Y=1 of image (tile pY_tile = v_offset + 1 = 4)
+                    else if (pY_tile == v_offset + 1 && pX_tile >= h_offset + 1 && pX_tile <= h_offset + 5) { r_pixel=(byte)255; g_pixel=(byte)217; b_pixel=(byte)26; a_pixel=(byte)255; }
+                    // Y=2 of image (tile pY_tile = v_offset + 2 = 5)
+                    else if (pY_tile == v_offset + 2) {
+                        if ((pX_tile >= h_offset + 0 && pX_tile <= h_offset + 2) || (pX_tile >= h_offset + 4 && pX_tile <= h_offset + 6)) { r_pixel=(byte)255; g_pixel=(byte)217; b_pixel=(byte)26; a_pixel=(byte)255; } // Yellow
+                        else if (pX_tile == h_offset + 3) { r_pixel=(byte)255; g_pixel=(byte)175; b_pixel=(byte)23; a_pixel=(byte)255; } // Orange
+                    }
+                    // Y=3 of image (tile pY_tile = v_offset + 3 = 6)
+                    else if (pY_tile == v_offset + 3) {
+                        if ((pX_tile >= h_offset + 0 && pX_tile <= h_offset + 1) || (pX_tile >= h_offset + 5 && pX_tile <= h_offset + 6)) { r_pixel=(byte)255; g_pixel=(byte)217; b_pixel=(byte)26; a_pixel=(byte)255; } // Yellow
+                        else if (pX_tile == h_offset + 2 || pX_tile == h_offset + 4) { r_pixel=(byte)255; g_pixel=(byte)175; b_pixel=(byte)23; a_pixel=(byte)255; } // Orange
+                    }
+                    // Y=4 of image (tile pY_tile = v_offset + 4 = 7)
+                    else if (pY_tile == v_offset + 4) {
+                        if (pX_tile == h_offset + 1 || pX_tile == h_offset + 5) { r_pixel=(byte)255; g_pixel=(byte)217; b_pixel=(byte)26; a_pixel=(byte)255; } // Yellow
+                        else if (pX_tile >= h_offset + 2 && pX_tile <= h_offset + 4) { r_pixel=(byte)255; g_pixel=(byte)175; b_pixel=(byte)23; a_pixel=(byte)255; } // Orange
+                    }
+                    // Y=5 of image (tile pY_tile = v_offset + 5 = 8)
+                    else if (pY_tile == v_offset + 5 && pX_tile >= h_offset + 2 && pX_tile <= h_offset + 4) { r_pixel=(byte)255; g_pixel=(byte)217; b_pixel=(byte)26; a_pixel=(byte)255; } // Yellow
+                    // Stem (Green: 0,154,23) - Y=6 to Y=12 of image
+                    else if (pX_tile == h_offset + 3 && pY_tile >= v_offset + 6 && pY_tile <= v_offset + 12) { r_pixel=(byte)0; g_pixel=(byte)154; b_pixel=(byte)23; a_pixel=(byte)255; }
+                    
+                    buffer.put(r_pixel).put(g_pixel).put(b_pixel).put(a_pixel);
+                    continue;
+                }
                 // Special handling for RED_SANDSTONE_SIDE texture
                 else if (tileX == RED_SANDSTONE_SIDE_ATLAS_X && tileY == RED_SANDSTONE_SIDE_ATLAS_Y) {
-                    int pX = x % texturePixelSize;
-                    int pY = y % texturePixelSize;
+                    int pX = globalX % texturePixelSize;
+                    int pY = globalY % texturePixelSize;
 
                     // Base color: Red Sand palette
                     int baseR_rss = 200;
@@ -301,14 +381,15 @@ public class TextureAtlas {
                     // Horizontal banding (same logic as Sandstone Side)
                     int wavyPY_rss = pY + (int)(Math.sin(pX * 0.3 + tileX * 0.5) * 1.5);
                     int band_rss = (wavyPY_rss / 4) % 4;
-                    float bandShadeFactor_rss = 0.0f;
+                    float bandShadeFactor_rss;
 
-                    switch (band_rss) {
-                        case 0: bandShadeFactor_rss = 0.0f; break;
-                        case 1: bandShadeFactor_rss = -0.08f; break;
-                        case 2: bandShadeFactor_rss = 0.05f; break;
-                        case 3: bandShadeFactor_rss = -0.05f; break;
-                    }
+                    bandShadeFactor_rss = switch (band_rss) {
+                        case 0 -> 0.0f;
+                        case 1 -> -0.08f;
+                        case 2 -> 0.05f;
+                        case 3 -> -0.05f;
+                        default -> 0.0f; // Should not happen with % 4
+                    };
                     
                     // Add overall noise for roughness (same logic as Sandstone Side)
                     double noise1_rss = Math.sin(pX * 0.6 + pY * 1.1 + tileY * 0.4);
@@ -335,10 +416,10 @@ public class TextureAtlas {
 
                 int tileIndex = tileY * textureSize + tileX;
                   switch (tileIndex % 12) { // Ensure this switch is only hit if not handled above
-                    case 0: // Grass top
+                    case 0 -> { // Grass top
                         // Minecraft-style Grass Top - V2 (based on reference image)
-                        int pixelX_gt = x % this.texturePixelSize;
-                        int pixelY_gt = y % this.texturePixelSize;
+                        int pixelX_gt = globalX % this.texturePixelSize;
+                        int pixelY_gt = globalY % this.texturePixelSize;
 
                         // Pseudo-random noise to select shade
                         int noiseVal_gt = (pixelX_gt * 13 + pixelY_gt * 29 + tileX * 11 + tileY * 17) % 21; // Increased range for more granular choice
@@ -350,11 +431,11 @@ public class TextureAtlas {
                         } else { // Lightest green
                             r = (byte) 120; g = (byte) 180; b = (byte) 80;
                         }
-                        break;
-                    case 1: // Grass side
+                    }
+                    case 1 -> { // Grass side
                         // Minecraft-style Grass Side - V4 (grass at top, exact dirt match)
-                        int pixelX_gs = x % this.texturePixelSize;
-                        int pixelY_gs = y % this.texturePixelSize; // y-coordinate within the 16x16 tile
+                        int pixelX_gs = globalX % this.texturePixelSize;
+                        int pixelY_gs = globalY % this.texturePixelSize; // y-coordinate within the 16x16 tile
                         
                         int grassLayerHeight = 3; // Top 3 pixels are grass
 
@@ -368,9 +449,9 @@ public class TextureAtlas {
                                 r = (byte) 115; g = (byte) 175; b = (byte) 75;
                             }
                         } else { // Dirt part (below grass) - EXACT COPY of case 2 (Dirt block) logic
-                            // 'x' and 'y' are global atlas pixel coordinates.
-                            float dirtX_case1 = (float) Math.sin(x * 0.7 + y * 0.3) * 0.5f + 0.5f;
-                            float dirtY_case1 = (float) Math.cos(x * 0.4 + y * 0.8) * 0.5f + 0.5f;
+                            // 'globalX' and 'globalY' are global atlas pixel coordinates.
+                            float dirtX_case1 = (float) Math.sin(globalX * 0.7 + globalY * 0.3) * 0.5f + 0.5f;
+                            float dirtY_case1 = (float) Math.cos(globalX * 0.4 + globalY * 0.8) * 0.5f + 0.5f;
                             float dirtNoise_case1 = (dirtX_case1 + dirtY_case1) * 0.5f;
                             
                             r = (byte) (135 + dirtNoise_case1 * 40);
@@ -378,18 +459,18 @@ public class TextureAtlas {
                             b = (byte) (70 + dirtNoise_case1 * 25);
                             
                             // Add occasional small rocks or roots (exact from case 2)
-                            if ((x % 5 == 0 && y % 5 == 0) ||
-                                ((x+2) % 7 == 0 && (y+3) % 6 == 0)) {
+                            if ((globalX % 5 == 0 && globalY % 5 == 0) ||
+                                ((globalX+2) % 7 == 0 && (globalY+3) % 6 == 0)) {
                                 r = (byte) (r - 30); // Let byte casting handle underflow, like in original dirt
                                 g = (byte) (g - 25);
                                 b = (byte) (b - 20);
                             }
                         }
-                        break;
-                    case 2: // Dirt
+                    }
+                    case 2 -> { // Dirt
                         // Richer dirt texture with clumps and variations
-                        float dirtX = (float) Math.sin(x * 0.7 + y * 0.3) * 0.5f + 0.5f;
-                        float dirtY = (float) Math.cos(x * 0.4 + y * 0.8) * 0.5f + 0.5f;
+                        float dirtX = (float) Math.sin(globalX * 0.7 + globalY * 0.3) * 0.5f + 0.5f;
+                        float dirtY = (float) Math.cos(globalX * 0.4 + globalY * 0.8) * 0.5f + 0.5f;
                         float dirtNoise = (dirtX + dirtY) * 0.5f;
                         
                         r = (byte) (135 + dirtNoise * 40);
@@ -397,33 +478,34 @@ public class TextureAtlas {
                         b = (byte) (70 + dirtNoise * 25);
                         
                         // Add occasional small rocks or roots
-                        if ((x % 5 == 0 && y % 5 == 0) || 
-                            ((x+2) % 7 == 0 && (y+3) % 6 == 0)) {
+                        if ((globalX % 5 == 0 && globalY % 5 == 0) ||
+                            ((globalX+2) % 7 == 0 && (globalY+3) % 6 == 0)) {
                             r = (byte) (r - 30);
                             g = (byte) (g - 25);
                             b = (byte) (b - 20);
                         }
-                        break;
-                    case 3: // Stone
+                    }
+                    case 3 -> { // Stone
                         // Stone with cracks, variations and depth
                         float stoneNoise = (float) (
-                            Math.sin(x * 0.8 + y * 0.2) * 0.3 + 
-                            Math.cos(x * 0.3 + y * 0.7) * 0.3 +
-                            Math.sin((x+y) * 0.5) * 0.4
+                            Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3 +
+                            Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3 +
+                            Math.sin((globalX+globalY) * 0.5) * 0.4
                         ) * 0.5f + 0.5f;
                           r = (byte) (120 + stoneNoise * 30);
                         g = (byte) (120 + stoneNoise * 30);
                         b = (byte) (125 + stoneNoise * 30);
-                        break;
-                    case 4: // Bedrock
+                    }
+                    case 4 -> { // Bedrock
                         r = (byte) 50;
                         g = (byte) 50;
                         b = (byte) 50;
-                        break;                    case 5: // Wood side
+                    }
+                    case 5 -> { // Wood side
                         // Wood with grain patterns
-                        float woodGrain = (float) Math.sin(y * 1.5) * 0.5f + 0.5f;
+                        float woodGrain = (float) Math.sin(globalY * 1.5) * 0.5f + 0.5f;
                         // Create rings effect
-                        int ringX = (x % texturePixelSize);
+                        int ringX = (globalX % texturePixelSize);
                         float ringEffect = (float) Math.sin(ringX * 0.7) * 0.4f + 0.6f;
                         
                         r = (byte) (120 + woodGrain * 60 * ringEffect);
@@ -433,31 +515,32 @@ public class TextureAtlas {
                         // Add occasional knots
                         int centerX = texturePixelSize / 2;
                         int centerY = texturePixelSize / 2;
-                        float distToCenter = (float) Math.sqrt(Math.pow(x % texturePixelSize - centerX, 2) + 
-                                                              Math.pow(y % texturePixelSize - centerY, 2));
+                        float distToCenter = (float) Math.sqrt(Math.pow(globalX % texturePixelSize - centerX, 2) +
+                                                              Math.pow(globalY % texturePixelSize - centerY, 2));
                         
-                        if (distToCenter < 3 && (x / texturePixelSize + y / texturePixelSize) % 3 == 0) {
+                        if (distToCenter < 3 && (globalX / texturePixelSize + globalY / texturePixelSize) % 3 == 0) {
                             r = (byte) (r - 20);
                             g = (byte) (g - 15);
                             b = (byte) (b - 10);
                         }
-                        break;
-                    case 6: // Wood top
+                    }
+                    case 6 -> { // Wood top
                         // Concentric ring pattern for top of wood
-                        int dx = (x % texturePixelSize) - texturePixelSize/2;
-                        int dy = (y % texturePixelSize) - texturePixelSize/2;
+                        int dx = (globalX % texturePixelSize) - texturePixelSize/2;
+                        int dy = (globalY % texturePixelSize) - texturePixelSize/2;
                         float distFromCenter = (float) Math.sqrt(dx*dx + dy*dy);
                         float ringPattern = (float) Math.sin(distFromCenter * 1.2) * 0.5f + 0.5f;
                         
                         r = (byte) (150 + ringPattern * 50);
                         g = (byte) (95 + ringPattern * 35);
                         b = (byte) (45 + ringPattern * 20);
-                        break;                    case 7: // Leaves
+                    }
+                    case 7 -> { // Leaves
                         // Varied leaf texture with depth and transparency
                         float leafNoise = (float) (
-                            Math.sin(x * 0.9 + y * 0.6) * 0.25 + 
-                            Math.cos(x * 0.7 + y * 0.9) * 0.25 +
-                            Math.sin((x+y) * 0.8) * 0.5
+                            Math.sin(globalX * 0.9 + globalY * 0.6) * 0.25 +
+                            Math.cos(globalX * 0.7 + globalY * 0.9) * 0.25 +
+                            Math.sin((globalX+globalY) * 0.8) * 0.5
                         ) * 0.5f + 0.5f;
                         
                         r = (byte) (30 + leafNoise * 60);
@@ -465,27 +548,27 @@ public class TextureAtlas {
                         b = (byte) (20 + leafNoise * 40);
                         
                         // Some variation for fruit or flowers
-                        if ((x % 8 == 0 && y % 8 == 0) || ((x+4) % 8 == 0 && (y+4) % 8 == 0)) {
+                        if ((globalX % 8 == 0 && globalY % 8 == 0) || ((globalX+4) % 8 == 0 && (globalY+4) % 8 == 0)) {
                             r = (byte) 220;
                             g = (byte) 30;
                             b = (byte) 30;
                         }
                         
                         // Add transparency at edges for a less blocky look
-                        int edgeX = x % texturePixelSize;
-                        int edgeY = y % texturePixelSize;
-                        if (edgeX <= 1 || edgeX >= texturePixelSize-2 || 
+                        int edgeX = globalX % texturePixelSize;
+                        int edgeY = globalY % texturePixelSize;
+                        if (edgeX <= 1 || edgeX >= texturePixelSize-2 ||
                             edgeY <= 1 || edgeY >= texturePixelSize-2) {
                             // More transparent at edges
                             a = (byte) (200 + (leafNoise * 55));
                             buffer.put(r).put(g).put(b).put(a);
                             continue; // Skip the opaque setting below
                         }
-                        break;
-                    case 8: // Sand (Minecraft-like)
+                    }
+                    case 8 -> { // Sand (Minecraft-like)
                         // Using per-tile coordinates for noise to ensure each sand tile is self-contained
-                        int pixelXInTileSand = x % texturePixelSize; // Renamed to avoid conflict
-                        int pixelYInTileSand = y % texturePixelSize; // Renamed to avoid conflict
+                        int pixelXInTileSand = globalX % texturePixelSize; // Renamed to avoid conflict
+                        int pixelYInTileSand = globalY % texturePixelSize; // Renamed to avoid conflict
 
                         // Simple noise for a speckled effect
                         // Combine two sine/cosine waves for a slightly more irregular pattern
@@ -495,12 +578,12 @@ public class TextureAtlas {
                         // (noise1 + noise2) is -2 to 2.
                         // ((noise1 + noise2) / 4.0) is -0.5 to 0.5.
                         // ((noise1 + noise2) / 4.0 + 0.5) is 0.0 to 1.0.
-                        float combinedNoise = (float) ((noise1 + noise2) / 4.0 + 0.5); 
+                        float combinedNoise = (float) ((noise1 + noise2) / 4.0 + 0.5);
 
                         // Base color: Light yellowish-tan (inspired by Minecraft sand)
-                        int baseR = 220; 
-                        int baseG = 205; 
-                        int baseB = 160; 
+                        int baseR = 220;
+                        int baseG = 205;
+                        int baseB = 160;
 
                         // Apply noise for speckling - subtle variations
                         // combinedNoise is 0 to 1. (combinedNoise - 0.5f) is -0.5 to 0.5.
@@ -510,11 +593,11 @@ public class TextureAtlas {
                         r = (byte) Math.max(0, Math.min(255, (int)(baseR + variation)));
                         g = (byte) Math.max(0, Math.min(255, (int)(baseG + variation)));
                         b = (byte) Math.max(0, Math.min(255, (int)(baseB + variation * 0.8f))); // Blue channel varies a bit less
-                        break;
-                    case 9: // Water (Initial frame, will be updated by updateAnimatedWater)
+                    }
+                    case 9 -> { // Water (Initial frame, will be updated by updateAnimatedWater)
                         // Generate the initial (time=0) frame for water
                         // The main atlas buffer is 'buffer'. We need to fill the portion for this tile.
-                        // x and y here are global pixel coordinates in the main atlas buffer.
+                        // globalX and globalY here are global pixel coordinates in the main atlas buffer.
                         // We need to generate data for a single tile and put it into the correct place.
 
                         // Create a temporary buffer for one tile's data
@@ -527,10 +610,10 @@ public class TextureAtlas {
                         // We only want to do this if current tile (tileX, tileY) is the water tile.
                         // The switch case (tileIndex % 12) == 9 already ensures this.
 
-                        // (x, y) are the current global pixel coordinates in the atlas buffer.
+                        // (globalX, globalY) are the current global pixel coordinates in the atlas buffer.
                         // (pixelXInTile, pixelYInTile) are coordinates *within* the current 16x16 tile.
-                        int pixelXInTile = x % this.texturePixelSize;
-                        int pixelYInTile = y % this.texturePixelSize;
+                        int pixelXInTile = globalX % this.texturePixelSize;
+                        int pixelYInTile = globalY % this.texturePixelSize;
                         
                         int tempBufferPosition = (pixelYInTile * this.texturePixelSize + pixelXInTile) * 4;
 
@@ -544,12 +627,13 @@ public class TextureAtlas {
                             buffer.put((byte)255).put((byte)0).put((byte)255).put((byte)255);
                         }
                         continue; // Skip the generic opaque setting below
-                    case 10: // Coal Ore
+                    }
+                    case 10 -> { // Coal Ore
                         // Stone base with coal seams
                         float coalStoneBase = (float) (
-                            Math.sin(x * 0.8 + y * 0.2) * 0.3 + 
-                            Math.cos(x * 0.3 + y * 0.7) * 0.3 +
-                            Math.sin((x+y) * 0.5) * 0.4
+                            Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3 +
+                            Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3 +
+                            Math.sin((globalX+globalY) * 0.5) * 0.4
                         ) * 0.5f + 0.5f;
                         
                         // Stone base color same as stone block but slightly darker
@@ -558,23 +642,23 @@ public class TextureAtlas {
                         b = (byte) (115 + coalStoneBase * 25);
                         
                         // Add coal veins - more organic looking
-                        float veinFactor = (float) Math.sin(x * 1.5 + y * 1.7) * 0.5f + 0.5f;
+                        float veinFactor = (float) Math.sin(globalX * 1.5 + globalY * 1.7) * 0.5f + 0.5f;
                         if (veinFactor > 0.7) {
                             // Size and shape of coal deposits
-                            float veinSize = (float) Math.sin((x + y) * 0.8) * 0.3f + 0.7f;
+                            float veinSize = (float) Math.sin((globalX + globalY) * 0.8) * 0.3f + 0.7f;
                             if (veinSize > 0.6) {
                                 r = (byte) (40 + veinSize * 20);
                                 g = (byte) (40 + veinSize * 20);
                                 b = (byte) (40 + veinSize * 20);
                             }
                         }
-                        break;
-                    case 11: // Iron Ore
+                    }
+                    case 11 -> { // Iron Ore
                         // Stone base with iron deposits
                         float ironStoneBase = (float) (
-                            Math.sin(x * 0.8 + y * 0.2) * 0.3 + 
-                            Math.cos(x * 0.3 + y * 0.7) * 0.3 +
-                            Math.sin((x+y) * 0.5) * 0.4
+                            Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3 +
+                            Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3 +
+                            Math.sin((globalX+globalY) * 0.5) * 0.4
                         ) * 0.5f + 0.5f;
                         
                         // Stone base color
@@ -583,22 +667,22 @@ public class TextureAtlas {
                         b = (byte) (115 + ironStoneBase * 25);
                         
                         // Add iron veins - reddish brown
-                        float ironVeinFactor = (float) Math.sin(x * 1.2 + y * 1.3) * 0.5f + 0.5f;
+                        float ironVeinFactor = (float) Math.sin(globalX * 1.2 + globalY * 1.3) * 0.5f + 0.5f;
                         if (ironVeinFactor > 0.7) {
                             // Iron deposits
-                            float veinSize = (float) Math.sin((x + y) * 0.9) * 0.3f + 0.7f;
+                            float veinSize = (float) Math.sin((globalX + globalY) * 0.9) * 0.3f + 0.7f;
                             if (veinSize > 0.6) {
                                 r = (byte) (160 + veinSize * 40);
                                 g = (byte) (110 + veinSize * 20);
                                 b = (byte) (70 + veinSize * 10);
                             }
                         }
-                        break;
-                    default:
+                    }
+                    default -> {
                         r = (byte) 255;
                         g = (byte) 0;
                         b = (byte) 255; // Magenta for unknown
-                        break;
+                    }
                 }
                 
                 a = (byte) 255; // Fully opaque for most blocks
@@ -614,7 +698,7 @@ public class TextureAtlas {
         // Note: In OpenGL 3.0+, we would use GL30.glGenerateMipmap() here
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
         
-        return textureId;
+        return generatedTextureId;
     }    /**
      * Loads a texture from an image file.
      * Note: In a real implementation, you'd load from an actual file rather than generating.
@@ -623,8 +707,8 @@ public class TextureAtlas {
      */
     @SuppressWarnings("unused")
     private int loadTextureFromFile(String filePath) {
-        int textureId = GL11.glGenTextures();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+        int loadedTextureId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, loadedTextureId);
         
         // Set texture parameters
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
@@ -650,7 +734,7 @@ public class TextureAtlas {
             STBImage.stbi_image_free(image);
         }
         
-        return textureId;
+        return loadedTextureId;
     }
     
     /**

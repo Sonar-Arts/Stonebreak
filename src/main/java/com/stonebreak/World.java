@@ -424,6 +424,24 @@ public class World {
                         }
                     }
                 }
+                
+                // Generate Flowers on grass surfaces in PLAINS biome
+                if (biome == BiomeType.PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS && 
+                        chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+                        boolean shouldGenerateFlower;
+                        synchronized (this.random) {
+                            shouldGenerateFlower = this.random.nextFloat() < 0.08; // 8% chance for flowers
+                        }
+                        if (shouldGenerateFlower) {
+                            BlockType flowerType;
+                            synchronized (this.random) {
+                                flowerType = this.random.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION;
+                            }
+                            this.setBlockAt(worldX, surfaceHeight, worldZ, flowerType);
+                        }
+                    }
+                }
                 // No trees in DESERT or VOLCANIC biomes by default
             }
         }
