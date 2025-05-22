@@ -177,71 +177,118 @@ public class UIRenderer {
     
     private void drawMinecraftButton(String text, float x, float y, float w, float h, boolean highlighted) {
         try (MemoryStack stack = stackPush()) {
-            // Stone-like button background with better hover effects
-            NVGPaint bg = NVGPaint.malloc(stack);
+            // Minecraft-style button with authentic colors and beveled edges
+            float bevelSize = 3.0f;
+            
+            // Main button body - stone/cobblestone colors
             if (highlighted) {
-                // Brighter and more noticeable when hovered
-                nvgLinearGradient(vg, x, y, x, y + h,
-                    nvgRGBA(160, 160, 180, 255, NVGColor.malloc(stack)),
-                    nvgRGBA(120, 120, 140, 255, NVGColor.malloc(stack)), bg);
+                // Highlighted state - lighter stone with blue-ish tint (like Minecraft hover)
+                nvgBeginPath(vg);
+                nvgRect(vg, x + bevelSize, y + bevelSize, w - 2 * bevelSize, h - 2 * bevelSize);
+                nvgFillColor(vg, nvgRGBA(170, 170, 190, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
             } else {
-                // Standard stone color
-                nvgLinearGradient(vg, x, y, x, y + h,
-                    nvgRGBA(130, 130, 130, 255, NVGColor.malloc(stack)),
-                    nvgRGBA(90, 90, 90, 255, NVGColor.malloc(stack)), bg);
+                // Normal state - dark stone gray
+                nvgBeginPath(vg);
+                nvgRect(vg, x + bevelSize, y + bevelSize, w - 2 * bevelSize, h - 2 * bevelSize);
+                nvgFillColor(vg, nvgRGBA(130, 130, 130, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
             }
             
+            // Add texture pattern to simulate cobblestone
+            for (int i = 0; i < 8; i++) {
+                float px = x + bevelSize + (i % 4) * (w - 2 * bevelSize) / 4;
+                float py = y + bevelSize + (i / 4) * (h - 2 * bevelSize) / 2;
+                float size = 6;
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, px, py, size, size);
+                if (highlighted) {
+                    nvgFillColor(vg, nvgRGBA(150, 150, 170, 100, NVGColor.malloc(stack)));
+                } else {
+                    nvgFillColor(vg, nvgRGBA(110, 110, 110, 100, NVGColor.malloc(stack)));
+                }
+                nvgFill(vg);
+            }
+            
+            // Top bevel - light highlight
             nvgBeginPath(vg);
-            nvgRect(vg, x, y, w, h);
-            nvgFillPaint(vg, bg);
+            nvgMoveTo(vg, x, y);
+            nvgLineTo(vg, x + w, y);
+            nvgLineTo(vg, x + w - bevelSize, y + bevelSize);
+            nvgLineTo(vg, x + bevelSize, y + bevelSize);
+            nvgClosePath(vg);
+            if (highlighted) {
+                nvgFillColor(vg, nvgRGBA(220, 220, 240, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+            }
             nvgFill(vg);
             
-            // Enhanced 3D border effects
-            float borderWidth = highlighted ? 3.0f : 2.0f;
-            
-            // Top/left light edge - brighter when hovered
+            // Left bevel - light highlight
             nvgBeginPath(vg);
-            nvgMoveTo(vg, x, y + h);
-            nvgLineTo(vg, x, y);
-            nvgLineTo(vg, x + w, y);
+            nvgMoveTo(vg, x, y);
+            nvgLineTo(vg, x + bevelSize, y + bevelSize);
+            nvgLineTo(vg, x + bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x, y + h);
+            nvgClosePath(vg);
             if (highlighted) {
-                nvgStrokeColor(vg, nvgRGBA(240, 240, 240, 255, NVGColor.malloc(stack)));
+                nvgFillColor(vg, nvgRGBA(200, 200, 220, 255, NVGColor.malloc(stack)));
             } else {
-                nvgStrokeColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+                nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
             }
-            nvgStrokeWidth(vg, borderWidth);
-            nvgStroke(vg);
+            nvgFill(vg);
             
-            // Bottom/right dark edge - more pronounced when hovered
+            // Bottom bevel - dark shadow
             nvgBeginPath(vg);
             nvgMoveTo(vg, x, y + h);
+            nvgLineTo(vg, x + bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x + w - bevelSize, y + h - bevelSize);
             nvgLineTo(vg, x + w, y + h);
-            nvgLineTo(vg, x + w, y);
+            nvgClosePath(vg);
             if (highlighted) {
-                nvgStrokeColor(vg, nvgRGBA(30, 30, 30, 255, NVGColor.malloc(stack)));
+                nvgFillColor(vg, nvgRGBA(80, 80, 100, 255, NVGColor.malloc(stack)));
             } else {
-                nvgStrokeColor(vg, nvgRGBA(50, 50, 50, 255, NVGColor.malloc(stack)));
+                nvgFillColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
             }
-            nvgStrokeWidth(vg, borderWidth);
+            nvgFill(vg);
+            
+            // Right bevel - dark shadow
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + w, y);
+            nvgLineTo(vg, x + w, y + h);
+            nvgLineTo(vg, x + w - bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x + w - bevelSize, y + bevelSize);
+            nvgClosePath(vg);
+            if (highlighted) {
+                nvgFillColor(vg, nvgRGBA(100, 100, 120, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
+            }
+            nvgFill(vg);
+            
+            // Outer border for definition
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStrokeColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
             nvgStroke(vg);
             
-            // Add subtle glow effect when highlighted
-            if (highlighted) {
-                nvgBeginPath(vg);
-                nvgRect(vg, x - 2, y - 2, w + 4, h + 4);
-                nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 50, NVGColor.malloc(stack)));
-                nvgStrokeWidth(vg, 1.0f);
-                nvgStroke(vg);
-            }
-            
-            // Button text - slightly brighter when hovered
+            // Button text with Minecraft font if available
+            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans";
             nvgFontSize(vg, UI_FONT_SIZE);
-            nvgFontFace(vg, "sans");
+            nvgFontFace(vg, fontName);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            
+            // Text shadow for depth
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+            nvgText(vg, x + w * 0.5f + 1, y + h * 0.5f + 1, text);
+            
+            // Main text
             if (highlighted) {
                 nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
             } else {
-                nvgFillColor(vg, nvgRGBA(235, 235, 235, 255, NVGColor.malloc(stack)));
+                nvgFillColor(vg, nvgRGBA(240, 240, 240, 255, NVGColor.malloc(stack)));
             }
             nvgText(vg, x + w * 0.5f, y + h * 0.5f, text);
         }
