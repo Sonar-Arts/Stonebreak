@@ -191,13 +191,18 @@ public class InputHandler {
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
             if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                // Convert screen coordinates to NDC (-1 to 1)
-                // Use currentMouseX, currentMouseY which are continuously updated
-                float x = (2.0f * currentMouseX / Game.getWindowWidth()) - 1.0f;
-                float y = 1.0f - (2.0f * currentMouseY / Game.getWindowHeight());
-                
-                if (pauseMenu.isQuitButtonClicked(x, y)) {
-                    glfwSetWindowShouldClose(window, true);
+                UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+                if (uiRenderer != null) {
+                    // Check resume button
+                    if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
+                        Game.getInstance().togglePauseMenu(); // Resume the game
+                    }
+                    // Check quit button
+                    else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
+                        // Return to main menu
+                        Game.getInstance().setState(GameState.MAIN_MENU);
+                        Game.getInstance().getPauseMenu().setVisible(false);
+                    }
                 }
             }
             return; // Pause menu handled the click (or ignored it)
@@ -304,7 +309,16 @@ public class InputHandler {
         currentMouseX = xpos;
         currentMouseY = ypos;
         
-        handleMouseLook(xOffset, yOffset);
+        // Update pause menu hover state if visible
+        PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
+        if (pauseMenu != null && pauseMenu.isVisible()) {
+            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+            if (uiRenderer != null) {
+                pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
+            }
+        } else {
+            handleMouseLook(xOffset, yOffset);
+        }
     }
 
     // Mouse helper methods for InventoryScreen - now correctly inside the InputHandler class

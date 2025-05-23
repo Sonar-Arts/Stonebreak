@@ -349,6 +349,17 @@ public class Main {
                     inventoryScreen.renderHotbar(width, height);
                 }
             }
+            
+            // Render pause menu if paused
+            PauseMenu pauseMenu = game.getPauseMenu();
+            if (pauseMenu != null && pauseMenu.isVisible()) {
+                UIRenderer uiRenderer = game.getUIRenderer();
+                if (uiRenderer != null) {
+                    uiRenderer.beginFrame(width, height, 1.0f);
+                    pauseMenu.render(uiRenderer, width, height);
+                    uiRenderer.endFrame();
+                }
+            }
         }
     }
       private void cleanup() {

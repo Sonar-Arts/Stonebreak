@@ -233,67 +233,51 @@ public class UIRenderer {
                 nvgFill(vg);
             }
             
-            // Top bevel - light highlight
+            // Top bevel - enhanced light highlight
             nvgBeginPath(vg);
             nvgMoveTo(vg, x, y);
             nvgLineTo(vg, x + w, y);
             nvgLineTo(vg, x + w - bevelSize, y + bevelSize);
             nvgLineTo(vg, x + bevelSize, y + bevelSize);
             nvgClosePath(vg);
-            if (highlighted) {
-                nvgFillColor(vg, nvgRGBA(220, 220, 240, 255, NVGColor.malloc(stack)));
-            } else {
-                nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
-            }
+            nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
             nvgFill(vg);
             
-            // Left bevel - light highlight
+            // Left bevel - enhanced light highlight
             nvgBeginPath(vg);
             nvgMoveTo(vg, x, y);
             nvgLineTo(vg, x + bevelSize, y + bevelSize);
             nvgLineTo(vg, x + bevelSize, y + h - bevelSize);
             nvgLineTo(vg, x, y + h);
             nvgClosePath(vg);
-            if (highlighted) {
-                nvgFillColor(vg, nvgRGBA(200, 200, 220, 255, NVGColor.malloc(stack)));
-            } else {
-                nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
-            }
+            nvgFillColor(vg, nvgRGBA(160, 160, 160, 255, NVGColor.malloc(stack)));
             nvgFill(vg);
             
-            // Bottom bevel - dark shadow
+            // Bottom bevel - enhanced dark shadow
             nvgBeginPath(vg);
             nvgMoveTo(vg, x, y + h);
             nvgLineTo(vg, x + bevelSize, y + h - bevelSize);
             nvgLineTo(vg, x + w - bevelSize, y + h - bevelSize);
             nvgLineTo(vg, x + w, y + h);
             nvgClosePath(vg);
-            if (highlighted) {
-                nvgFillColor(vg, nvgRGBA(80, 80, 100, 255, NVGColor.malloc(stack)));
-            } else {
-                nvgFillColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
-            }
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
             nvgFill(vg);
             
-            // Right bevel - dark shadow
+            // Right bevel - enhanced dark shadow
             nvgBeginPath(vg);
             nvgMoveTo(vg, x + w, y);
             nvgLineTo(vg, x + w, y + h);
             nvgLineTo(vg, x + w - bevelSize, y + h - bevelSize);
             nvgLineTo(vg, x + w - bevelSize, y + bevelSize);
             nvgClosePath(vg);
-            if (highlighted) {
-                nvgFillColor(vg, nvgRGBA(100, 100, 120, 255, NVGColor.malloc(stack)));
-            } else {
-                nvgFillColor(vg, nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
-            }
+            nvgFillColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
             nvgFill(vg);
             
-            // Outer border for definition
+            // Outer border for strong definition
             nvgBeginPath(vg);
             nvgRect(vg, x, y, w, h);
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStrokeColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 2.5f);
+            nvgStrokeColor(vg, nvgRGBA(20, 20, 20, 255, NVGColor.malloc(stack)));
             nvgStroke(vg);
             
             // Button text with Minecraft font if available
@@ -320,9 +304,168 @@ public class UIRenderer {
         drawMinecraftButton(text, x, y, w, h, highlighted);
     }
     
+    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        
+        // Draw semi-transparent overlay
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, windowWidth, windowHeight);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+        
+        // Draw main pause panel with enhanced Minecraft styling
+        float panelWidth = 520;
+        float panelHeight = 380;
+        float panelX = centerX - panelWidth / 2;
+        float panelY = centerY - panelHeight / 2;
+        
+        drawMinecraftPanel(panelX, panelY, panelWidth, panelHeight);
+        
+        // Draw pause menu title with better positioning
+        drawPauseMenuTitle(centerX, panelY + 70, "GAME PAUSED");
+        
+        // Draw resume button
+        float buttonWidth = 360;
+        float buttonHeight = 50;
+        float resumeY = centerY - 30;
+        drawMinecraftButton("Resume Game", centerX - buttonWidth/2, resumeY, buttonWidth, buttonHeight, false);
+        
+        // Draw quit button with better spacing
+        float quitY = centerY + 50;
+        drawMinecraftButton("Quit to Main Menu", centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight, isQuitButtonHovered);
+    }
+    
+    private void drawPauseMenuTitle(float centerX, float centerY, String title) {
+        try (MemoryStack stack = stackPush()) {
+            // Use Minecraft font if available, otherwise fall back to bold
+            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans-bold";
+            
+            // Draw enhanced 3D shadow effect optimized for pause menu
+            for (int i = 4; i >= 0; i--) {
+                nvgFontSize(vg, 42); // Slightly smaller than main menu
+                nvgFontFace(vg, fontName);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                
+                switch (i) {
+                    case 0 -> // Top layer - bright red/orange for attention
+                        nvgFillColor(vg, nvgRGBA(255, 220, 100, 255, NVGColor.malloc(stack)));
+                    case 1 -> // Second layer - warm orange
+                        nvgFillColor(vg, nvgRGBA(220, 180, 80, 255, NVGColor.malloc(stack)));
+                    default -> { // Shadow layers - darker
+                        int darkness = Math.max(30, 100 - (i * 20));
+                        nvgFillColor(vg, nvgRGBA(darkness, darkness, darkness, 200, NVGColor.malloc(stack)));
+                    }
+                }
+                
+                float offsetX = i * 2.0f;
+                float offsetY = i * 2.0f;
+                nvgText(vg, centerX + offsetX, centerY + offsetY, title);
+            }
+        }
+    }
+    
+    private void drawMinecraftPanel(float x, float y, float w, float h) {
+        try (MemoryStack stack = stackPush()) {
+            float bevelSize = 5.0f; // Slightly larger bevel for more depth
+            
+            // Main panel body - enhanced stone color with gradient-like effect
+            nvgBeginPath(vg);
+            nvgRect(vg, x + bevelSize, y + bevelSize, w - 2 * bevelSize, h - 2 * bevelSize);
+            nvgFillColor(vg, nvgRGBA(95, 95, 95, 250, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Add enhanced stone texture pattern with variation
+            int textureRows = 6;
+            int textureCols = 8;
+            for (int i = 0; i < textureRows * textureCols; i++) {
+                float px = x + bevelSize + (i % textureCols) * (w - 2 * bevelSize) / textureCols;
+                float py = y + bevelSize + (i / textureCols) * (h - 2 * bevelSize) / textureRows;
+                float size = 12;
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, px + (i % 3), py + (i % 2), size, size);
+                
+                // Vary the texture darkness for more realistic stone look
+                int variation = (i * 17) % 40; // Pseudo-random variation
+                nvgFillColor(vg, nvgRGBA(75 + variation/2, 75 + variation/2, 75 + variation/2, 150, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+            
+            // Top bevel - light highlight
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x, y);
+            nvgLineTo(vg, x + w, y);
+            nvgLineTo(vg, x + w - bevelSize, y + bevelSize);
+            nvgLineTo(vg, x + bevelSize, y + bevelSize);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(160, 160, 160, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Left bevel - light highlight
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x, y);
+            nvgLineTo(vg, x + bevelSize, y + bevelSize);
+            nvgLineTo(vg, x + bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x, y + h);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(140, 140, 140, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Bottom bevel - dark shadow
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x, y + h);
+            nvgLineTo(vg, x + bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x + w - bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x + w, y + h);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Right bevel - dark shadow
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + w, y);
+            nvgLineTo(vg, x + w, y + h);
+            nvgLineTo(vg, x + w - bevelSize, y + h - bevelSize);
+            nvgLineTo(vg, x + w - bevelSize, y + bevelSize);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Outer border
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgStrokeWidth(vg, 2.0f);
+            nvgStrokeColor(vg, nvgRGBA(20, 20, 20, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+        }
+    }
+    
     public boolean isButtonClicked(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
         return mouseX >= buttonX && mouseX <= buttonX + buttonW && 
                mouseY >= buttonY && mouseY <= buttonY + buttonH;
+    }
+    
+    public boolean isPauseResumeClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        float buttonWidth = 360;
+        float buttonHeight = 50;
+        float resumeY = centerY - 30;
+        
+        return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, resumeY, buttonWidth, buttonHeight);
+    }
+    
+    public boolean isPauseQuitClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        float buttonWidth = 360;
+        float buttonHeight = 50;
+        float quitY = centerY + 50;
+        
+        return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
     }
     
     public void cleanup() {

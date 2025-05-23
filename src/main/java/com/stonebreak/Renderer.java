@@ -708,13 +708,9 @@ public class Renderer {
             renderBreathMeter(player);
         }
         
-        // Render pause menu if game is paused
-        PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
-        if (pauseMenu != null && pauseMenu.isVisible()) {
-            // PauseMenu's render method will set its own u_useSolidColor and u_color for panels/buttons
-            // and then call this.drawText for text elements.
-            pauseMenu.render(shaderProgram, this); // Pass renderer for text drawing
-        }        // Render inventory screen if visible
+        // Pause menu is now rendered in Main.java using UIRenderer
+        
+        // Render inventory screen if visible
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             // Make sure we have a clean 2D state for the inventory
