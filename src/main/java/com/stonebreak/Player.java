@@ -16,7 +16,7 @@ public class Player {      // Player settings
     private static final float GRAVITY = 15.0f;
     private static final float WATER_GRAVITY = 4.0f; // Reduced gravity in water
     private static final float RAY_CAST_DISTANCE = 5.0f;
-    private static final float ATTACK_ANIMATION_DURATION = 0.3f; // Duration of the arm swing animation
+    private static final float ATTACK_ANIMATION_DURATION = 0.25f; // Duration of the arm swing animation (Minecraft-style timing)
       // Player state
     private final Vector3f position;
     private final Vector3f velocity;
@@ -420,7 +420,7 @@ public class Player {      // Player settings
         }
         
         Vector3i hitSolidBlockPos = raycast(); // This is the first SOLID block hit by ray. Null if only air.
-        Vector3i placePos = null;
+        Vector3i placePos;
 
         if (hitSolidBlockPos != null) {
             // Player is aiming at a solid block. Try to place on its face.
@@ -453,8 +453,7 @@ public class Player {      // Player settings
                     return; // Collision with player, abort.
                 }
                 // All checks passed, place the block.
-                boolean blockPlacedSuccessfully = world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.getById(selectedBlockTypeId));
-                if (blockPlacedSuccessfully) {
+                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.getById(selectedBlockTypeId))) {
                     inventory.removeItem(selectedBlockTypeId);
                 }
             } else {
@@ -811,8 +810,21 @@ public class Player {      // Player settings
 
     /**
      * Gets the current progress of the attack animation (0.0 to 1.0).
+     * Uses Minecraft-style easing curve for more natural animation.
      */
     public float getAttackAnimationProgress() {
+        if (!isAttacking) {
+            return 0.0f;
+        }
+        float progress = Math.min(attackAnimationTime / ATTACK_ANIMATION_DURATION, 1.0f);
+        // Apply easing curve - fast start, slow end (like Minecraft)
+        return (float) (1.0 - Math.pow(1.0 - progress, 2.0));
+    }
+    
+    /**
+     * Gets the raw attack animation progress without easing (0.0 to 1.0).
+     */
+    public float getRawAttackAnimationProgress() {
         if (!isAttacking) {
             return 0.0f;
         }

@@ -84,10 +84,10 @@ public class InputHandler {
 
             // If the game is paused (either by pause menu or inventory), don't process movement/block selection
             // UNLESS only the inventory is open, in which case some actions might still be allowed (handled by InventoryScreen)
-            if (Game.getInstance().isPaused() && !inventoryScreen.isVisible()) { // If paused by menu, not just inventory
+            if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) { // If paused by menu, not just inventory
                 return;
             }
-            if (Game.getInstance().isPaused() && inventoryScreen.isVisible()){
+            if (Game.getInstance().isPaused() && inventoryScreen != null && inventoryScreen.isVisible()){
                 // Movement is blocked, but other non-movement inputs might be processed by inventory screen
                 // The return above handles if pause menu is open.
                 // If only inventory is open, we skip player movement below but allow inventory interaction.
@@ -212,6 +212,7 @@ public class InputHandler {
                         player.startAttackAnimation();
                         player.breakBlock();
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+                        player.startAttackAnimation(); // Also animate when placing blocks like Minecraft
                         player.placeBlock();
                     }
                 }

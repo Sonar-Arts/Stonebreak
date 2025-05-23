@@ -242,49 +242,50 @@ public class Renderer {
     }
 
     /**
-     * Creates the VAO for rendering the player's arm.
+     * Creates the VAO for rendering the player's arm with Minecraft proportions.
+     * Minecraft Steve arm dimensions: 4x12x4 pixels
+     * Using 1:3 scale ratio (4 pixels = 0.133, 12 pixels = 0.4)
      */
     private void createPlayerArm() {
-        // Define arm dimensions (half-extents) - Made thinner
-        float armHalfWidth = 0.05f;  // Makes full width 0.10
-        float armHalfHeight = 0.25f; // Makes full height 0.5
-        float armHalfDepth = 0.05f; // Makes full depth 0.10
+        // Define arm dimensions (half-extents) - Minecraft 4x12x4 pixel proportions
+        float armHalfWidth = 0.067f;  // 4 pixels width (full width 0.133)
+        float armHalfHeight = 0.2f;   // 12 pixels height (full height 0.4) 
+        float armHalfDepth = 0.067f;  // 4 pixels depth (full depth 0.133)
 
-        // 8 vertices of the cuboid arm, with actual tex coords
-        // We'll map the texture to each face.
-        // For simplicity, let's assume a single texture will be tiled/stretched.
-        // A more complex approach would use different UVs for each face if using a texture atlas for the arm.
+        // 8 vertices of the cuboid arm with Minecraft proportions and UV mapping
+        // Minecraft arms use blocky, pixelated textures with specific UV layout
+        // Each face gets proper UV coordinates for Minecraft-style skin texture mapping
         float[] vertices = {
-            // Front face (z = armHalfDepth) - UVs (0,0) to (1,1)
+            // Front face (z = armHalfDepth) - Main arm front
             -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.0f, 1.0f, // 0: Front-Bottom-Left
-             armHalfWidth, -armHalfHeight,  armHalfDepth, 1.0f, 1.0f, // 1: Front-Bottom-Right
-             armHalfWidth,  armHalfHeight,  armHalfDepth, 1.0f, 0.0f, // 2: Front-Top-Right
+             armHalfWidth, -armHalfHeight,  armHalfDepth, 0.25f, 1.0f, // 1: Front-Bottom-Right
+             armHalfWidth,  armHalfHeight,  armHalfDepth, 0.25f, 0.0f, // 2: Front-Top-Right
             -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.0f, 0.0f, // 3: Front-Top-Left
-            // Back face (z = -armHalfDepth) - UVs (0,0) to (1,1)
-            -armHalfWidth, -armHalfHeight, -armHalfDepth, 1.0f, 1.0f, // 4: Back-Bottom-Left (UVs reversed for back)
-             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.0f, 1.0f, // 5: Back-Bottom-Right
-             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.0f, 0.0f, // 6: Back-Top-Right
-            -armHalfWidth,  armHalfHeight, -armHalfDepth, 1.0f, 0.0f,  // 7: Back-Top-Left
-            // Top face (y = armHalfHeight) - UVs (0,0) to (1,1)
-            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.0f, 1.0f, // 8 (same as 7)
-             armHalfWidth,  armHalfHeight, -armHalfDepth, 1.0f, 1.0f, // 9 (same as 6)
-             armHalfWidth,  armHalfHeight,  armHalfDepth, 1.0f, 0.0f, // 10 (same as 2)
-            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.0f, 0.0f, // 11 (same as 3)
-            // Bottom face (y = -armHalfHeight) - UVs (0,0) to (1,1)
-            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.0f, 0.0f, // 12 (same as 0)
-             armHalfWidth, -armHalfHeight,  armHalfDepth, 1.0f, 0.0f, // 13 (same as 1)
-             armHalfWidth, -armHalfHeight, -armHalfDepth, 1.0f, 1.0f, // 14 (same as 5)
-            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.0f, 1.0f, // 15 (same as 4)
-            // Right face (x = armHalfWidth) - UVs (0,0) to (1,1)
-             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.0f, 1.0f, // 16 (same as 5)
-             armHalfWidth, -armHalfHeight,  armHalfDepth, 1.0f, 1.0f, // 17 (same as 1)
-             armHalfWidth,  armHalfHeight,  armHalfDepth, 1.0f, 0.0f, // 18 (same as 2)
-             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.0f, 0.0f, // 19 (same as 6)
-            // Left face (x = -armHalfWidth) - UVs (0,0) to (1,1)
-            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.0f, 1.0f, // 20 (same as 0)
-            -armHalfWidth, -armHalfHeight, -armHalfDepth, 1.0f, 1.0f, // 21 (same as 4)
-            -armHalfWidth,  armHalfHeight, -armHalfDepth, 1.0f, 0.0f, // 22 (same as 7)
-            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.0f, 0.0f  // 23 (same as 3)
+            // Back face (z = -armHalfDepth) - Arm back
+            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.5f, 1.0f, // 4: Back-Bottom-Left
+             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.25f, 1.0f, // 5: Back-Bottom-Right
+             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.25f, 0.0f, // 6: Back-Top-Right
+            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.5f, 0.0f,  // 7: Back-Top-Left
+            // Top face (y = armHalfHeight) - Arm top (shoulder area)
+            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.25f, 0.75f, // 8
+             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.5f, 0.75f, // 9
+             armHalfWidth,  armHalfHeight,  armHalfDepth, 0.5f, 1.0f, // 10
+            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.25f, 1.0f, // 11
+            // Bottom face (y = -armHalfHeight) - Arm bottom (hand area)
+            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.5f, 0.75f, // 12
+             armHalfWidth, -armHalfHeight,  armHalfDepth, 0.75f, 0.75f, // 13
+             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.75f, 1.0f, // 14
+            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.5f, 1.0f, // 15
+            // Right face (x = armHalfWidth) - Outer arm side
+             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.75f, 1.0f, // 16
+             armHalfWidth, -armHalfHeight,  armHalfDepth, 1.0f, 1.0f, // 17
+             armHalfWidth,  armHalfHeight,  armHalfDepth, 1.0f, 0.0f, // 18
+             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.75f, 0.0f, // 19
+            // Left face (x = -armHalfWidth) - Inner arm side  
+            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.0f, 1.0f, // 20
+            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.25f, 1.0f, // 21
+            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.25f, 0.0f, // 22
+            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.0f, 0.0f  // 23
         };
         // Re-index for separate face UVs
         int[] indices = {
@@ -328,36 +329,54 @@ public class Renderer {
         GL30.glBindVertexArray(0);
     }
 
+    /**
+     * Creates a Minecraft-style arm texture with pixelated skin appearance.
+     */
     private void createArmTexture() {
-        int texWidth = 32;
-        int texHeight = 32;
-        NoiseGenerator noiseGen = new NoiseGenerator(System.currentTimeMillis()); // Use a time-based seed
+        int texWidth = 64;  // Minecraft skin texture width
+        int texHeight = 64; // Minecraft skin texture height
         ByteBuffer buffer = BufferUtils.createByteBuffer(texWidth * texHeight * 4); // RGBA
+
+        // Minecraft Steve default skin colors
+        int skinR = 245; // Light skin tone
+        int skinG = 220;
+        int skinB = 165;
+        
+        int shirtR = 111; // Blue shirt/sleeve color  
+        int shirtG = 124;
+        int shirtB = 172;
 
         for (int y = 0; y < texHeight; y++) {
             for (int x = 0; x < texWidth; x++) {
-                // Generate noise value in range [-1, 1]
-                float noiseVal = noiseGen.noise(x / (float)texWidth * 5.0f, y / (float)texHeight * 5.0f); // Scale input for noise frequency
-                // Map noise to [0, 1]
-                noiseVal = (noiseVal + 1.0f) / 2.0f;
-
-                // Create a brownish skin tone and modulate it slightly with noise
-                // Base skin color (e.g., R=205, G=155, B=100)
-                float baseR = 205 / 255.0f;
-                float baseG = 155 / 255.0f;
-                float baseB = 100 / 255.0f;
-
-                // Modulate brightness with noise (e.g., noise affects intensity)
-                float intensity = 0.8f + noiseVal * 0.2f; // Noise adds subtle variations
-
-                byte r = (byte) (Math.min(Math.max(baseR * intensity, 0), 1) * 255);
-                byte g = (byte) (Math.min(Math.max(baseG * intensity, 0), 1) * 255);
-                byte b = (byte) (Math.min(Math.max(baseB * intensity, 0), 1) * 255);
+                byte r, g, b, a = (byte) 255;
+                
+                // Create Minecraft-style pixelated pattern
+                // Arm area in Minecraft skin layout: roughly x=40-48, y=16-32 for right arm
+                boolean isArmArea = (x >= 40 && x < 48 && y >= 16 && y < 32);
+                boolean isSleeveArea = (x >= 40 && x < 48 && y >= 0 && y < 16); // Sleeve overlay
+                
+                if (isSleeveArea) {
+                    // Blue shirt sleeve
+                    r = (byte) shirtR;
+                    g = (byte) shirtG;
+                    b = (byte) shirtB;
+                } else if (isArmArea) {
+                    // Skin tone with slight variation for pixelated look
+                    int variation = ((x + y) % 3) - 1; // -1, 0, or 1
+                    r = (byte) Math.max(0, Math.min(255, skinR + variation * 5));
+                    g = (byte) Math.max(0, Math.min(255, skinG + variation * 3));
+                    b = (byte) Math.max(0, Math.min(255, skinB + variation * 2));
+                } else {
+                    // Default skin tone for other areas
+                    r = (byte) skinR;
+                    g = (byte) skinG;
+                    b = (byte) skinB;
+                }
 
                 buffer.put(r);
                 buffer.put(g);
                 buffer.put(b);
-                buffer.put((byte) 255); // Alpha
+                buffer.put(a);
             }
         }
         buffer.flip();
@@ -366,8 +385,8 @@ public class Renderer {
         glBindTexture(GL_TEXTURE_2D, armTextureId);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // Keep pixelated look
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Keep pixelated look
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
@@ -494,7 +513,7 @@ public class Renderer {
         // Render UI elements
         renderUI(player);
     }    /**
-     * Renders the player's arm.
+     * Renders the player's arm with Minecraft-style positioning and animation.
      */
     private void renderPlayerArm(Player player) {
         shaderProgram.bind(); // Ensure shader is bound
@@ -508,33 +527,85 @@ public class Renderer {
         
         // Get the selected block type from the Player's Inventory
         int selectedBlockTypeId = 1; // Default to a valid block if inventory is null for some reason
-        if (player != null && player.getInventory() != null) {
+        if (player.getInventory() != null) {
             selectedBlockTypeId = player.getInventory().getSelectedBlockTypeId();
         }
         BlockType selectedBlockType = BlockType.getById(selectedBlockTypeId);
         boolean displayingBlock = (selectedBlockType != null && selectedBlockType != BlockType.AIR &&
                                   selectedBlockType.getAtlasX() >= 0 && selectedBlockType.getAtlasY() >= 0);
-                                  
-        // Position the arm more in front and slightly to the right of the camera
-        armViewModel.translate(0.35f, -0.35f, -0.4f); // X: right, Y: down, Z: towards camera
+        
+        // Get total time for animations
+        float totalTime = Game.getInstance().getTotalTimeElapsed();
+        
+        // Check if player is walking by examining velocity
+        org.joml.Vector3f velocity = player.getVelocity();
+        float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        boolean isWalking = horizontalSpeed > 0.5f; // Higher threshold to avoid false positives
+        
+        // Base arm position - Minecraft-style positioning (right arm only visible)
+        float baseX = 0.56f;  // Right side positioning like Minecraft
+        float baseY = -0.48f; // Slightly lower position for natural look
+        float baseZ = -0.65f; // Closer to camera for better visibility
+        
+        // Add walking animation - arm swaying while walking
+        if (isWalking) {
+            // Walking arm swing - use a consistent faster speed
+            float walkCycleTime = totalTime * 6.0f; // Fixed speed for consistent animation
+            
+            // Primary walking swing motion (up and down)
+            float walkSwayY = (float) Math.sin(walkCycleTime) * 0.02f;
+            
+            // Secondary walking motion (slight forward/back)
+            float walkSwayZ = (float) Math.cos(walkCycleTime) * 0.01f;
+            
+            // Apply walking sway
+            baseY += walkSwayY;
+            baseZ += walkSwayZ;
+        }
+        
+        // Add subtle idle sway only when not walking
+        float swayX = 0.0f;
+        float swayY = 0.0f;
+        if (!isWalking) {
+            // Gentle idle movement when standing still
+            swayX = (float) Math.sin(totalTime * 1.2f) * 0.003f;
+            swayY = (float) Math.cos(totalTime * 1.5f) * 0.002f;
+        }
+        
+        // Add breathing-like movement
+        float breatheY = (float) Math.sin(totalTime * 2.0f) * 0.008f;
+        
+        // Position the arm with Minecraft-style offset
+        armViewModel.translate(baseX + swayX, baseY + swayY + breatheY, baseZ);
+        
+        // Minecraft-style arm rotation - slight inward angle
+        armViewModel.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Slight inward rotation
+        armViewModel.rotate((float) Math.toRadians(5.0f), 1.0f, 0.0f, 0.0f);   // Slight downward tilt
 
         // Adjust the model based on whether we're displaying a block or arm
         if (displayingBlock) {
-            // Position and scale for the block - make it a bit smaller and centered
-            armViewModel.scale(0.25f); // Scale down the block to look reasonable in hand
-            armViewModel.translate(-0.45f, 0.1f, 0.35f); // Adjust position to center the block in view
+            // Position and scale for the block - Minecraft-style item positioning
+            armViewModel.scale(0.4f); // Larger scale for better visibility
+            armViewModel.translate(-0.3f, 0.15f, 0.3f); // Adjust position for item in hand
             
-            // Apply an isometric-style rotation for the block
-            armViewModel.rotate((float) Math.toRadians(30.0f), 1.0f, 0.0f, 0.0f);
-            armViewModel.rotate((float) Math.toRadians(-45.0f), 0.0f, 1.0f, 0.0f);
+            // Apply Minecraft-style item rotation
+            armViewModel.rotate((float) Math.toRadians(20.0f), 1.0f, 0.0f, 0.0f);
+            armViewModel.rotate((float) Math.toRadians(-30.0f), 0.0f, 1.0f, 0.0f);
+            armViewModel.rotate((float) Math.toRadians(10.0f), 0.0f, 0.0f, 1.0f);
         }
 
-        // Swinging animation
-        if (player != null && player.isAttacking()) {
-            float progress = player.getAttackAnimationProgress();
-            float angle = (float) Math.sin(progress * Math.PI) * -45.0f; // Swing down and back up
-            armViewModel.rotate((float) Math.toRadians(angle), 1.0f, 0.0f, 0.0f); // Rotate around X-axis
-            armViewModel.translate(0.0f, progress * 0.2f, progress * -0.2f); // Move arm forward and down slightly
+        // Enhanced swinging animation - Minecraft-style (reversed)
+        if (player.isAttacking()) {
+            float progress = 1.0f - player.getAttackAnimationProgress(); // Reverse the progress
+            
+            // Minecraft uses a curved swing motion
+            float swingAngle = (float) (Math.sin(progress * Math.PI) * 60.0f); // Larger swing arc
+            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.1f); // Lift arm up during swing
+            
+            // Apply swing rotation around multiple axes for more natural movement
+            armViewModel.rotate((float) Math.toRadians(-swingAngle), 1.0f, 0.0f, 0.0f); // Primary swing motion
+            armViewModel.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 1.0f, 0.0f); // Secondary motion
+            armViewModel.translate(progress * 0.15f, swingLift, progress * -0.1f); // Move arm during swing
         }
 
         // Set model-view matrix for the arm (combining arm's transformation with camera's view)
@@ -583,8 +654,8 @@ public class Renderer {
             glBindTexture(GL_TEXTURE_2D, armTextureId);
             shaderProgram.setUniform("texture_sampler", 0);
             
-            // Skin-tone tint for the arm texture
-            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.9f, 0.7f, 0.5f, 1.0f));
+            // Minecraft Steve skin-tone - no tint, use texture colors
+            shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
             
             // Use the arm model as fallback
             GL30.glBindVertexArray(playerArmVao);
