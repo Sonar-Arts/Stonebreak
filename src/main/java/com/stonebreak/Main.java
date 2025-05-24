@@ -104,7 +104,7 @@ public class Main {
         if (!glfwInit()) {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
-          // Configure GLFW
+        // Configure GLFW
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -114,16 +114,16 @@ public class Main {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
-          // Create the window
+        // Create the window
         window = glfwCreateWindow(width, height, title, 0, 0);
         if (window == 0) {
             throw new RuntimeException("Failed to create the GLFW window");
         }
-          // Setup key callback
+        // Setup key callback
         glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
             // Escape key is now handled in InputHandler for toggling pause menu
         });
-          // Setup window resize callback
+        // Setup window resize callback
         glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
             this.width = w;
             this.height = h;
@@ -193,7 +193,7 @@ public class Main {
                 // For now, we just don't center it.
             }
         }
-          // Make the OpenGL context current
+        // Make the OpenGL context current
         glfwMakeContextCurrent(window);
         
         // Disable v-sync since we're implementing our own FPS limiter
@@ -215,7 +215,11 @@ public class Main {
         // Initialize game components
         initializeGameComponents();
     }
-      private void initializeGameComponents() {
+
+    /**
+     * Initializes all core game components such as Renderer, InputHandler, World, Player, and the Game singleton.
+     */
+    private void initializeGameComponents() {
         // Initialize the renderer with window dimensions
         renderer = new Renderer(width, height);
         
@@ -234,15 +238,19 @@ public class Main {
         // Initialize TextureAtlas (used by Renderer and potentially UI)
         textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
 
-          // Initialize the Game singleton
+        // Initialize the Game singleton
         // Pass inputHandler to Game's init method
         Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler);
         Game.getInstance().setWindowDimensions(width, height);
         
         running = true;
     }
-      @SuppressWarnings("BusyWait")
-      private void loop() {
+
+    /**
+     * Main game loop that handles input, updates, rendering, and FPS capping.
+     */
+    @SuppressWarnings("BusyWait")
+    private void loop() {
         // Set the clear color
         glClearColor(0.5f, 0.8f, 1.0f, 0.0f);
         
@@ -307,7 +315,12 @@ public class Main {
             }
         }
     }
-      private void update() {
+
+    /**
+     * Updates the game state for the current frame when the game is in the PLAYING state.
+     * This typically includes updating player logic, world logic, and displaying debug information.
+     */
+    private void update() {
         // Update the player
         player.update();
         
@@ -318,6 +331,10 @@ public class Main {
         Game.displayDebugInfo();
     }
     
+    /**
+     * Renders the current game frame based on the game state.
+     * This can include rendering the main menu or the game world and UI elements.
+     */
     private void render() {
         // Clear the framebuffer
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -338,12 +355,30 @@ public class Main {
             // Render the world
             renderer.renderWorld(world, player, game.getTotalTimeElapsed());
             
-            // Render UI elements
+            // Render UI elements. Note: UIRenderer.beginFrame/endFrame should encapsulate all UIRenderer calls for a frame.
+            // If multiple UI screens use the same UIRenderer, it's best to have one begin/end pair.
+            UIRenderer uiRenderer = game.getUIRenderer();
+            boolean uiWasRendered = false;
+
             InventoryScreen inventoryScreen = game.getInventoryScreen();
+            CraftingTableScreen craftingTableScreen = game.getCraftingTableScreen();
+            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+            PauseMenu pauseMenu = game.getPauseMenu();
+
+            // Check if any UI screen that uses UIRenderer directly is visible
+            boolean isAnyUiScreenVisible = (inventoryScreen != null && inventoryScreen.isVisible()) ||
+                                           (craftingTableScreen != null && craftingTableScreen.isVisible()) ||
+                                           (recipeBookScreen != null && recipeBookScreen.isVisible()) ||
+                                           (pauseMenu != null && pauseMenu.isVisible());
+
+            if (uiRenderer != null && isAnyUiScreenVisible) {
+                uiRenderer.beginFrame(width, height, 1.0f);
+                uiWasRendered = true;
+            }
+
             if (inventoryScreen != null) {
                 if (inventoryScreen.isVisible()) {
-                    // Render full inventory screen when visible
-                    inventoryScreen.render(width, height);
+                    inventoryScreen.render(width, height); // Assumes this now uses the uiRenderer passed to its constructor or a global one
                 } else {
                     // Always render hotbar when inventory is not open
                     inventoryScreen.renderHotbar(width, height);
@@ -363,6 +398,45 @@ public class Main {
         }
     }
       private void cleanup() {
+                    // Hotbar rendering might also use UIRenderer. If so, it needs the beginFrame/endFrame context.
+                    // For now, assuming renderHotbar might be separate or handled differently if it doesn't use UIRenderer.
+                    // If it does use UIRenderer, and no other UI is visible, it needs its own begin/end.
+                    // This part might need further refactoring based on how renderHotbar is implemented.
+                    if (!isAnyUiScreenVisible && uiRenderer != null) { // If ONLY hotbar is to be shown via UIRenderer
+                        uiRenderer.beginFrame(width, height, 1.0f);
+                        inventoryScreen.renderHotbar(width, height);
+                        uiRenderer.endFrame();
+                    } else if (isAnyUiScreenVisible || uiWasRendered) { // If a UI frame is already active or it's part of a group
+                         inventoryScreen.renderHotbar(width, height);
+                    } else { // Fallback for when no UIRenderer context is active and it doesn't need one
+                        inventoryScreen.renderHotbar(width, height);
+                    }
+                }
+            }
+            
+            if (craftingTableScreen != null && craftingTableScreen.isVisible()) {
+                craftingTableScreen.render(width, height);
+            }
+
+            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                recipeBookScreen.render(width, height);
+            }
+            
+            if (pauseMenu != null && pauseMenu.isVisible()) {
+                 pauseMenu.render(width, height);
+            }
+            
+            if (uiWasRendered && uiRenderer != null) {
+                uiRenderer.endFrame();
+            }
+        }
+    }
+
+    /**
+     * Cleans up all resources used by the game.
+     * This includes GLFW callbacks, window, renderer, world, game singleton, and GLFW itself.
+     */
+    private void cleanup() {
         // Free the window callbacks and destroy the window
         glfwFreeCallbacks(window);
         glfwDestroyWindow(window);

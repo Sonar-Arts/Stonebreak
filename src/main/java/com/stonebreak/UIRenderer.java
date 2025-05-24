@@ -39,6 +39,10 @@ public class UIRenderer {
     private int fontBold = -1;
     private int fontMinecraft = -1;
     private int dirtTextureImage = -1;
+
+    public static final String FONT_SANS = "sans";
+    public static final String FONT_SANS_BOLD = "sans-bold";
+    public static final String FONT_MINECRAFT = "minecraft";
     
     private static final int UI_FONT_SIZE = 18;
     private static final int UI_TITLE_SIZE = 48;
@@ -179,11 +183,9 @@ public class UIRenderer {
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
                 
                 switch (i) {
-                    case 0 -> // Top layer - bright white with slight yellow tint (like Minecraft logo)
-                        nvgFillColor(vg, nvgRGBA(255, 255, 240, 255, NVGColor.malloc(stack)));
-                    case 1 -> // Second layer - light gray for depth
-                        nvgFillColor(vg, nvgRGBA(200, 200, 190, 255, NVGColor.malloc(stack)));
-                    default -> { // Shadow layers - progressively darker for depth
+                    case 0 -> nvgFillColor(vg, nvgRGBA(255, 255, 240, 255, NVGColor.malloc(stack)));
+                    case 1 -> nvgFillColor(vg, nvgRGBA(200, 200, 190, 255, NVGColor.malloc(stack)));
+                    default -> {
                         int darkness = Math.max(20, 80 - (i * 15));
                         nvgFillColor(vg, nvgRGBA(darkness, darkness, darkness, 220, NVGColor.malloc(stack)));
                     }
@@ -197,7 +199,7 @@ public class UIRenderer {
         }
     }
     
-    private void drawMinecraftButton(String text, float x, float y, float w, float h, boolean highlighted) {
+    public void drawMinecraftButton(String text, float x, float y, float w, float h, boolean highlighted) {
         try (MemoryStack stack = stackPush()) {
             // Minecraft-style button with authentic colors and beveled edges
             float bevelSize = 3.0f;
@@ -446,7 +448,7 @@ public class UIRenderer {
     public boolean isButtonClicked(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
         return mouseX >= buttonX && mouseX <= buttonX + buttonW && 
                mouseY >= buttonY && mouseY <= buttonY + buttonH;
-    }
+   }
     
     public boolean isPauseResumeClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
         float centerX = windowWidth / 2.0f;
@@ -467,10 +469,41 @@ public class UIRenderer {
         
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
     }
-    
-    public void cleanup() {
-        if (vg != 0) {
-            nvgDelete(vg);
+
+    public void drawString(String text, float x, float y, String fontName, float fontSize,
+                           float r, float g, float b, float a, int textAlign) {
+        try (MemoryStack stack = stackPush()) {
+            NVGColor color = org.lwjgl.nanovg.NanoVG.nvgRGBAf(r, g, b, a, NVGColor.malloc(stack));
+            nvgFontSize(vg, fontSize);
+            nvgFontFace(vg, fontName);
+            nvgTextAlign(vg, textAlign);
+            nvgFillColor(vg, color);
+            nvgText(vg, x, y, text);
+        }
+    }
+
+    public void drawString(String text, float x, float y, String fontName, float fontSize,
+                           int r, int g, int b, int a, int textAlign) {
+        drawString(text, x, y, fontName, fontSize, r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f, textAlign);
+    }
+
+    public void drawString(String text, float x, float y, float fontSize, int r, int g, int b, int a) {
+        drawString(text, x, y, FONT_SANS, fontSize, r, g, b, a, org.lwjgl.nanovg.NanoVG.NVG_ALIGN_LEFT | org.lwjgl.nanovg.NanoVG.NVG_ALIGN_TOP);
+    }
+
+   public void renderQuad(float x, float y, float w, float h, float r, float g, float b, float a) {
+       try (MemoryStack stack = stackPush()) {
+           NVGColor color = org.lwjgl.nanovg.NanoVG.nvgRGBAf(r, g, b, a, NVGColor.malloc(stack));
+           nvgBeginPath(vg);
+           nvgRect(vg, x, y, w, h);
+           nvgFillColor(vg, color);
+           nvgFill(vg);
+       }
+   }
+   
+   public void cleanup() {
+       if (vg != 0) {
+           nvgDelete(vg);
         }
     }
     

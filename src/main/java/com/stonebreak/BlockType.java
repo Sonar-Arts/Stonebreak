@@ -24,7 +24,8 @@ public enum BlockType {
     SANDSTONE(14, "Sandstone", true, true, 5, 1, 5.0f), // Top texture for icon
     RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1, 5.0f), // Top texture for icon
     ROSE(16, "Rose", false, true, 10, 1, 0.1f), // Moved from 7,1
-    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f); // Moved from 8,1
+    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f), // Moved from 8,1
+    CRAFTING_TABLE(18, "Crafting Table", true, true, 0, 2); // Assuming X=0, Y=2 in atlas for top, side, etc. needs specific textures
     
     private final int id;
     private final String name;
@@ -79,6 +80,15 @@ public enum BlockType {
     public float getHardness() {
         return hardness;
     }
+
+    public int getMaxStackSize() {
+        if (this == AIR) {
+            return 0; // Air doesn't stack or exist as a countable item
+        }
+        // Most blocks stack to 64. This can be customized per block type if needed.
+        // For example, tools or special blocks might have a max stack size of 1.
+        return 64;
+    }
     
     /**
      * Get block type by ID.
@@ -109,7 +119,7 @@ public enum BlockType {
             case BEDROCK -> new float[]{4, 0};
             case WOOD -> {
                 if (face == 0) yield new float[]{5, 1}; // Top
-                if (face == 1) yield new float[]{2, 0}; // Bottom - using DIRT texture for now
+                if (face == 1) yield new float[]{5, 1}; // Bottom - using WOOD TOP texture
                 yield new float[]{5, 0}; // Sides
             }
             case LEAVES -> new float[]{7, 0}; // Atlas X changed from 6 to 7
@@ -132,6 +142,15 @@ public enum BlockType {
             }
             case ROSE -> new float[]{10, 1}; // Moved from 7,1
             case DANDELION -> new float[]{11, 1}; // Moved from 8,1
+            case CRAFTING_TABLE -> {
+                // Assuming specific texture atlas coordinates for crafting table faces
+                // These are placeholders and would need to match your texture atlas
+                if (face == 0) yield new float[]{0, 2}; // Top face
+                if (face == 1) yield new float[]{5, 0}; // Bottom face (e.g., same as wood plank side)
+                // Sides: A common side texture, or could differentiate front/sides
+                yield new float[]{1, 2}; // Side face (generic side)
+                // Example for specific front: if (face == 2) yield new float[]{2,2}; // Front
+            }
             default -> new float[]{0, 0};
         };
     }

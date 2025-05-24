@@ -14,6 +14,8 @@ public class Game {
     private Renderer renderer;
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
+    private CraftingTableScreen craftingTableScreen;
+    private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private UIRenderer uiRenderer; // UI renderer for menus
@@ -49,24 +51,26 @@ public class Game {
         }
         return instance;
     }
-      /**     * Initializes game components.
+     /**
+      * Initializes game components.
       */
      public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler) {
         this.world = world;
         this.player = player;
         this.renderer = renderer;
         this.inputHandler = inputHandler; // Store InputHandler
-        this.pauseMenu = new PauseMenu();
+        // this.pauseMenu = new PauseMenu(); // Old initialization
         this.waterEffects = new WaterEffects(); // Initialize water effects
         
         // Initialize UI components
         this.uiRenderer = new UIRenderer();
         this.uiRenderer.init();
         this.mainMenu = new MainMenu(this.uiRenderer);
+        this.pauseMenu = new PauseMenu(this.uiRenderer); // Initialize PauseMenu with UIRenderer
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.inputHandler);
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.inputHandler, RecipeManager.getInstance());
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
             // Trigger initial tooltip for the currently selected item
@@ -79,7 +83,26 @@ public class Game {
             System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, or InputHandler).");
             // Handle error appropriately, maybe throw an exception or set inventoryScreen to a safe non-functional state
         }
-    }/**
+
+        // Initialize CraftingTableScreen - depends on Inventory, Font, Renderer, InputHandler, RecipeManager
+        // RecipeManager would need to be initialized, possibly as a singleton or passed to Game.
+        // For now, assuming RecipeManager can be newed up or fetched.
+        // We'd also need to pass `this` (Game instance) to CraftingTableScreen.
+        if (player != null && player.getInventory() != null && uiRenderer != null && renderer != null && this.inputHandler != null) {
+            RecipeManager recipeManager = RecipeManager.getInstance(); // Or get instance if it's a singleton
+            this.craftingTableScreen = new CraftingTableScreen(player.getInventory(), uiRenderer, renderer, this.inputHandler, recipeManager);
+        } else {
+            System.err.println("Failed to initialize CraftingTableScreen due to null components (Player, Inventory, UIRenderer, Renderer, or InputHandler).");
+        }
+
+        // Initialize RecipeBookScreen
+        if (uiRenderer != null) {
+            this.recipeBookScreen = new RecipeBookScreen(uiRenderer);
+        } else {
+            System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer.");
+        }
+    }
+    /**
      * Updates the game state.
      */
     public void update() {
@@ -101,25 +124,19 @@ public class Game {
             return;
         }
 
-        // If game is paused, don't update game entities
-        if (paused && !inventoryScreen.isVisible()) { // Allow inventory screen updates even if paused for other reasons
-            // If only pause menu is active, inventory screen doesn't need update.
-            // If inventory is visible, it should update its timers.
-             if (inventoryScreen != null && inventoryScreen.isVisible()) {
+        // If game is paused, handle UI updates that must occur even when paused (e.g., timers for inventory screen)
+        // and then skip main game logic updates like player and world.
+        if (paused) {
+            if (inventoryScreen != null && inventoryScreen.isVisible()) {
                 inventoryScreen.update(deltaTime);
             }
-            return;
-        } else if (paused && inventoryScreen.isVisible()) {
-            // Game is paused but inventory is open, still update inventory screen
-             if (inventoryScreen != null) {
-                inventoryScreen.update(deltaTime);
-            }
-            // No game world updates below this
-            return;
+            // Note: If CraftingTableScreen also had animations/timers that needed to run while paused AND visible,
+            // its update method would be called here too. For now, assuming it doesn't.
+            return; // Essential: Prevents player, world, etc. updates when paused.
         }
 
-
-        // Update inventory screen (handles its own visibility check for rendering, but update logic for timers)
+        // If we reach here, game is NOT paused.
+        // Update inventory screen (e.g., for general timers, like hotbar item name tooltip that displays even when main panel is closed)
         if (inventoryScreen != null) {
             inventoryScreen.update(deltaTime);
         }
@@ -227,7 +244,8 @@ public class Game {
      */
     public PauseMenu getPauseMenu() {
         return pauseMenu;
-    }    /**
+    }
+    /**
      * Gets the inventory screen.
      */
     public InventoryScreen getInventoryScreen() {
@@ -252,15 +270,87 @@ public class Game {
         // If inventory is closed, unpause (if pause menu isn't also up) and hide cursor.
         if (inventoryScreen.isVisible()) {
             paused = true;
-            // Show cursor - this should ideally be handled by a central cursor management in InputHandler or Main
-            // For now, we assume Main or InputHandler will react to isPaused() or a new state like isUiVisible()
-            org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+            if (inputHandler != null) {
+                inputHandler.setCursorVisible(true);
+            }
         } else {
             // Only unpause if the pause menu is also not visible
             if (!pauseMenu.isVisible()) {
                 paused = false;
-                // Hide cursor
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+                if (inputHandler != null) {
+                    inputHandler.setCursorVisible(false);
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the crafting table screen.
+     */
+    public CraftingTableScreen getCraftingTableScreen() {
+        return craftingTableScreen;
+    }
+    
+    public RecipeBookScreen getRecipeBookScreen() {
+        return recipeBookScreen;
+    }
+
+    /**
+     * Toggles the crafting table screen visibility.
+     */
+    public void toggleCraftingTableScreen() {
+        if (craftingTableScreen == null) return;
+
+        // If recipe book is open, close it first
+        if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+            recipeBookScreen.hide();
+        }
+
+        craftingTableScreen.toggleVisibility();
+        
+        if (craftingTableScreen.isVisible()) {
+            paused = true;
+            inputHandler.setCursorVisible(true);
+        } else {
+            boolean otherUiVisible = (pauseMenu != null && pauseMenu.isVisible()) ||
+                                     (inventoryScreen != null && inventoryScreen.isVisible());
+            if (!otherUiVisible) {
+                paused = false;
+                inputHandler.setCursorVisible(false);
+            }
+        }
+    }
+
+    /**
+     * Toggles the recipe book screen visibility.
+     */
+    public void toggleRecipeBookScreen() {
+        if (recipeBookScreen == null) return;
+
+        // If crafting table is open, close it first
+        if (craftingTableScreen != null && craftingTableScreen.isVisible()) {
+            // We need a way for CraftingTableScreen to tell Game to close it
+            // For now, assume it will be handled by player closing crafting table first
+            // or simply close it here.
+             craftingTableScreen.setVisible(false); // Force close if open
+        }
+        if (inventoryScreen != null && inventoryScreen.isVisible()){
+            inventoryScreen.setVisible(false); // Force close if open
+        }
+
+
+        recipeBookScreen.toggleVisibility();
+        
+        if (recipeBookScreen.isVisible()) {
+            paused = true;
+            inputHandler.setCursorVisible(true);
+        } else {
+             boolean otherUiVisible = (pauseMenu != null && pauseMenu.isVisible()) ||
+                                     (inventoryScreen != null && inventoryScreen.isVisible()) ||
+                                     (craftingTableScreen != null && craftingTableScreen.isVisible()); // check crafting table too
+            if (!otherUiVisible) {
+                paused = false;
+                inputHandler.setCursorVisible(false);
             }
         }
     }

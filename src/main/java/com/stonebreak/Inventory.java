@@ -1,6 +1,5 @@
 package com.stonebreak;
 
-
 /**
  * Represents the player's inventory of blocks using fixed slots.
  */
@@ -12,8 +11,8 @@ public class Inventory {
     public static final int MAIN_INVENTORY_SIZE = MAIN_INVENTORY_ROWS * MAIN_INVENTORY_COLS; // 27 slots
     public static final int TOTAL_SLOTS = HOTBAR_SIZE + MAIN_INVENTORY_SIZE; // 36 slots
 
-    private ItemStack[] hotbarSlots;
-    private ItemStack[] mainInventorySlots;
+    private final ItemStack[] hotbarSlots;
+    private final ItemStack[] mainInventorySlots;
     private int selectedHotbarSlotIndex; // 0-8
     private InventoryScreen inventoryScreen; // Reference to InventoryScreen for tooltip
 
@@ -21,78 +20,70 @@ public class Inventory {
      * Creates a new inventory with fixed slots.
      */
     public Inventory() {
-        // this.inventoryScreen = inventoryScreen; // Removed: Will be set via setter
         this.hotbarSlots = new ItemStack[HOTBAR_SIZE];
         this.mainInventorySlots = new ItemStack[MAIN_INVENTORY_SIZE];
         for (int i = 0; i < HOTBAR_SIZE; i++) {
-            hotbarSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+            hotbarSlots[i] = ItemStack.empty();
         }
         for (int i = 0; i < MAIN_INVENTORY_SIZE; i++) {
-            mainInventorySlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+            mainInventorySlots[i] = ItemStack.empty();
         }
         this.selectedHotbarSlotIndex = 0;
 
-        // Start with some basic blocks
-        addItem(BlockType.GRASS.getId(), 10);
-        addItem(BlockType.DIRT.getId(), 10);
-        addItem(BlockType.STONE.getId(), 10);
-        addItem(BlockType.WOOD.getId(), 10);
+        initializeDefaultItems();
+    }
 
-        // Initial tooltip will be triggered by Game.init() after setInventoryScreen is called.
+    private void initializeDefaultItems() {
+        // Start with some basic blocks/items
+        // This method calls addItem, which is fine now as it's a private helper.
+        addItem(new ItemStack(BlockType.GRASS, 10));
+        addItem(new ItemStack(BlockType.DIRT, 10));
+        addItem(new ItemStack(BlockType.STONE, 10));
+        addItem(new ItemStack(BlockType.WOOD, 10));
+        addItem(new ItemStack(ItemType.STICK, 5)); // Example Item
     }
 
     /**
-     * Adds a single item of the given block type to the inventory.
+     * Adds an ItemStack to the inventory.
      * Tries to stack with existing items or find an empty slot.
-     * @param blockTypeId The ID of the block type to add.
-     * @return True if the item was successfully added (or partially added), false otherwise.
+     * @param itemStackToAdd The ItemStack to add.
+     * @return True if all items from the stack were successfully added, false if inventory is full or couldn't add all.
      */
-    public boolean addItem(int blockTypeId) {
-        return addItem(blockTypeId, 1);
-    }
-
-    /**
-     * Adds multiple items of the given block type to the inventory.
-     * Tries to stack with existing items or find an empty slot.
-     * @param blockTypeId The ID of the block type to add.
-     * @param count The number of items to add.
-     * @return True if all items were successfully added, false if inventory is full or couldn't add all.
-     */
-    public boolean addItem(int blockTypeId, int count) {
-        if (blockTypeId == BlockType.AIR.getId() || count <= 0) {
-            return true; // Or false, depending on desired behavior for adding air/zero
+    public boolean addItem(ItemStack itemStackToAdd) {
+        if (itemStackToAdd == null || itemStackToAdd.isEmpty() || itemStackToAdd.getCount() <= 0) {
+            return true; // Adding nothing is considered success or no-op
         }
 
-        int remainingCount = count;
+        int remainingCount = itemStackToAdd.getCount();
+        ItemStack actualItemStackToAdd = itemStackToAdd.copy(); // Work with a copy
 
         // First, try to stack with existing items in hotbar
-        for (ItemStack stack : hotbarSlots) {
+        for (ItemStack slotStack : hotbarSlots) {
             if (remainingCount == 0) break;
-            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
+            if (slotStack.equals(actualItemStackToAdd) && slotStack.getCount() < slotStack.getMaxStackSize()) {
+                int canAdd = Math.min(remainingCount, slotStack.getMaxStackSize() - slotStack.getCount());
+                slotStack.incrementCount(canAdd);
                 remainingCount -= canAdd;
             }
         }
 
         // Then, try to stack with existing items in main inventory
-        for (ItemStack stack : mainInventorySlots) {
+        for (ItemStack slotStack : mainInventorySlots) {
             if (remainingCount == 0) break;
-            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
+            if (slotStack.equals(actualItemStackToAdd) && slotStack.getCount() < slotStack.getMaxStackSize()) {
+                int canAdd = Math.min(remainingCount, slotStack.getMaxStackSize() - slotStack.getCount());
+                slotStack.incrementCount(canAdd);
                 remainingCount -= canAdd;
             }
         }
 
         // If still items left, try to fill empty slots in hotbar
         if (remainingCount > 0) {
-            for (ItemStack stack : hotbarSlots) {
+            for (int i = 0; i < HOTBAR_SIZE; i++) {
                 if (remainingCount == 0) break;
-                if (stack.isEmpty()) {
-                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
-                    stack.setBlockTypeId(blockTypeId);
-                    stack.setCount(canAdd);
+                if (hotbarSlots[i].isEmpty()) {
+                    int canAdd = Math.min(remainingCount, actualItemStackToAdd.getMaxStackSize());
+                    hotbarSlots[i] = actualItemStackToAdd.copy(canAdd);
                     remainingCount -= canAdd;
                 }
             }
@@ -100,45 +91,37 @@ public class Inventory {
 
         // Then, try to fill empty slots in main inventory
         if (remainingCount > 0) {
-            for (ItemStack stack : mainInventorySlots) {
+            for (int i = 0; i < MAIN_INVENTORY_SIZE; i++) {
                 if (remainingCount == 0) break;
-                if (stack.isEmpty()) {
-                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
-                    stack.setBlockTypeId(blockTypeId);
-                    stack.setCount(canAdd);
+                if (mainInventorySlots[i].isEmpty()) {
+                    int canAdd = Math.min(remainingCount, actualItemStackToAdd.getMaxStackSize());
+                    mainInventorySlots[i] = actualItemStackToAdd.copy(canAdd);
                     remainingCount -= canAdd;
                 }
             }
         }
+        // Return true if all items were successfully added (remainingCount is 0).
+        // Otherwise, return false. The caller can check the original itemStackToAdd's count
+        // if they need to know how many were not added (assuming it was mutable or they kept a reference).
         return remainingCount == 0;
     }
 
-    /**
-     * Removes a single item of the given block type from the inventory.
-     * Prioritizes removing from the selected hotbar slot, then other hotbar slots, then main inventory.
-     * @param blockTypeId The ID of the block type to remove.
-     * @return True if the item was removed, false if not found.
-     */
-    public boolean removeItem(int blockTypeId) {
-        return removeItem(blockTypeId, 1);
-    }
 
     /**
-     * Removes multiple items of the given block type from the inventory.
-     * @param blockTypeId The ID of the block type to remove.
-     * @param count The number of items to remove.
+     * Removes multiple items of the given ItemStack's type from the inventory.
+     * @param itemStackToRemove The ItemStack specifying the type and count to remove.
      * @return True if all requested items were removed, false otherwise.
      */
-    public boolean removeItem(int blockTypeId, int count) {
-        if (blockTypeId == BlockType.AIR.getId() || count <= 0) {
+    public boolean removeItem(ItemStack itemStackToRemove) {
+        if (itemStackToRemove == null || itemStackToRemove.isEmpty() || itemStackToRemove.getCount() <= 0) {
             return true;
         }
 
-        int remainingToRemove = count;
+        int remainingToRemove = itemStackToRemove.getCount();
 
         // Try removing from selected hotbar slot first if it matches
         ItemStack selectedStack = hotbarSlots[selectedHotbarSlotIndex];
-        if (selectedStack.getBlockTypeId() == blockTypeId && !selectedStack.isEmpty()) {
+        if (selectedStack.equals(itemStackToRemove) && !selectedStack.isEmpty()) {
             int canRemove = Math.min(remainingToRemove, selectedStack.getCount());
             selectedStack.decrementCount(canRemove);
             remainingToRemove -= canRemove;
@@ -149,9 +132,9 @@ public class Inventory {
 
         // Then from other hotbar slots
         for (int i = 0; i < HOTBAR_SIZE && remainingToRemove > 0; i++) {
-            if (i == selectedHotbarSlotIndex) continue; // Skip already processed selected slot
+            if (i == selectedHotbarSlotIndex) continue;
             ItemStack stack = hotbarSlots[i];
-            if (stack.getBlockTypeId() == blockTypeId && !stack.isEmpty()) {
+            if (stack.equals(itemStackToRemove) && !stack.isEmpty()) {
                 int canRemove = Math.min(remainingToRemove, stack.getCount());
                 stack.decrementCount(canRemove);
                 remainingToRemove -= canRemove;
@@ -164,7 +147,7 @@ public class Inventory {
         // Then from main inventory slots
         for (int i = 0; i < MAIN_INVENTORY_SIZE && remainingToRemove > 0; i++) {
             ItemStack stack = mainInventorySlots[i];
-            if (stack.getBlockTypeId() == blockTypeId && !stack.isEmpty()) {
+            if (stack.equals(itemStackToRemove) && !stack.isEmpty()) {
                 int canRemove = Math.min(remainingToRemove, stack.getCount());
                 stack.decrementCount(canRemove);
                 remainingToRemove -= canRemove;
@@ -177,20 +160,20 @@ public class Inventory {
     }
 
     /**
-     * Gets the total count of a specific block type across all inventory slots.
-     * @param blockTypeId The ID of the block type.
+     * Gets the total count of a specific item type across all inventory slots.
+     * @param itemTypeToCount The ItemStack specifying the type to count.
      * @return The total count of the item.
      */
-    public int getItemCount(int blockTypeId) {
-        if (blockTypeId == BlockType.AIR.getId()) return 0; // Or Integer.MAX_VALUE if air is "infinite"
+    public int getItemCount(ItemStack itemTypeToCount) {
+        if (itemTypeToCount == null || itemTypeToCount.isEmpty()) return 0;
         int totalCount = 0;
         for (ItemStack stack : hotbarSlots) {
-            if (stack.getBlockTypeId() == blockTypeId) {
+            if (stack.equals(itemTypeToCount)) {
                 totalCount += stack.getCount();
             }
         }
         for (ItemStack stack : mainInventorySlots) {
-            if (stack.getBlockTypeId() == blockTypeId) {
+            if (stack.equals(itemTypeToCount)) {
                 totalCount += stack.getCount();
             }
         }
@@ -200,8 +183,8 @@ public class Inventory {
     /**
      * Checks if the inventory contains at least one of the specified item.
      */
-    public boolean hasItem(int blockTypeId) {
-        return getItemCount(blockTypeId) > 0;
+    public boolean hasItem(ItemStack itemTypeToFind) {
+        return getItemCount(itemTypeToFind) > 0;
     }
 
     /**
@@ -211,7 +194,7 @@ public class Inventory {
     public ItemStack[] getMainInventorySlots() {
         ItemStack[] copy = new ItemStack[MAIN_INVENTORY_SIZE];
         for(int i=0; i < MAIN_INVENTORY_SIZE; i++) {
-            copy[i] = mainInventorySlots[i].copy(); // Use copy to prevent external modification
+            copy[i] = mainInventorySlots[i].copy(); 
         }
         return copy;
     }
@@ -223,72 +206,76 @@ public class Inventory {
     public ItemStack[] getHotbarSlots() {
         ItemStack[] copy = new ItemStack[HOTBAR_SIZE];
         for(int i=0; i < HOTBAR_SIZE; i++) {
-            copy[i] = hotbarSlots[i].copy(); // Use copy to prevent external modification
+            copy[i] = hotbarSlots[i].copy();
         }
         return copy;
     }
 
     /**
-     * Gets the ItemStack in a specific hotbar slot.
-     * @param index The index of the hotbar slot (0-8).
-     * @return The ItemStack in that slot, or null if index is invalid.
+     * Gets the ItemStack in a specific hotbar slot. (Direct reference for modification)
      */
     public ItemStack getHotbarSlot(int index) {
         if (index >= 0 && index < HOTBAR_SIZE) {
-            return hotbarSlots[index]; // Return direct reference for modification by InventoryScreen drag/drop
+            return hotbarSlots[index];
         }
-        return null;
+        return ItemStack.empty(); // Should not happen if index is valid
     }
 
     /**
-     * Gets the ItemStack in a specific main inventory slot.
-     * @param index The index of the main inventory slot (0 to MAIN_INVENTORY_SIZE-1).
-     * @return The ItemStack in that slot, or null if index is invalid.
+     * Gets the ItemStack in a specific main inventory slot. (Direct reference for modification)
      */
     public ItemStack getMainInventorySlot(int index) {
         if (index >= 0 && index < MAIN_INVENTORY_SIZE) {
-            return mainInventorySlots[index]; // Return direct reference for modification
+            return mainInventorySlots[index];
         }
-        return null;
+        return ItemStack.empty(); // Should not happen
     }
     
     /**
      * Sets the ItemStack in a specific hotbar slot.
-     * Used for drag-and-drop operations.
-     * @param index The index of the hotbar slot.
-     * @param stack The ItemStack to place in the slot.
      */
     public void setHotbarSlot(int index, ItemStack stack) {
         if (index >= 0 && index < HOTBAR_SIZE) {
-            hotbarSlots[index] = (stack == null || stack.isEmpty()) ? new ItemStack(BlockType.AIR.getId(), 0) : stack;
+            hotbarSlots[index] = (stack == null || stack.isEmpty()) ? ItemStack.empty() : stack.copy();
         }
     }
 
     /**
      * Sets the ItemStack in a specific main inventory slot.
-     * Used for drag-and-drop operations.
-     * @param index The index of the main inventory slot.
-     * @param stack The ItemStack to place in the slot.
      */
     public void setMainInventorySlot(int index, ItemStack stack) {
         if (index >= 0 && index < MAIN_INVENTORY_SIZE) {
-            mainInventorySlots[index] = (stack == null || stack.isEmpty()) ? new ItemStack(BlockType.AIR.getId(), 0) : stack;
+            mainInventorySlots[index] = (stack == null || stack.isEmpty()) ? ItemStack.empty() : stack.copy();
         }
     }
 
-
     /**
      * Gets the ID of the block type in the currently selected hotbar slot.
-     * @return The block type ID, or BlockType.AIR.getId() if the slot is empty.
+     * @return The block type ID, or BlockType.AIR.getId() if the slot is empty or item.
      */
     public int getSelectedBlockTypeId() {
         ItemStack selectedStack = hotbarSlots[selectedHotbarSlotIndex];
-        return selectedStack.isEmpty() ? BlockType.AIR.getId() : selectedStack.getBlockTypeId();
+        if (!selectedStack.isEmpty() && selectedStack.isBlock()) {
+            BlockType bt = selectedStack.getBlockType();
+            return bt != null ? bt.getId() : BlockType.AIR.getId();
+        }
+        return BlockType.AIR.getId();
     }
+    
+    /**
+     * Gets the ItemStack in the currently selected hotbar slot.
+     * @return A copy of the ItemStack, or an empty ItemStack if slot is invalid/empty.
+     */
+    public ItemStack getSelectedItemStack() {
+        if (selectedHotbarSlotIndex >= 0 && selectedHotbarSlotIndex < HOTBAR_SIZE) {
+            return hotbarSlots[selectedHotbarSlotIndex].copy();
+        }
+        return ItemStack.empty();
+    }
+
 
     /**
      * Gets the currently selected hotbar slot index.
-     * @return The index (0-8).
      */
     public int getSelectedHotbarSlotIndex() {
         return selectedHotbarSlotIndex;
@@ -296,7 +283,6 @@ public class Inventory {
 
     /**
      * Sets the currently selected hotbar slot index.
-     * @param selectedHotbarSlotIndex The index (0-8).
      */
     public void setSelectedHotbarSlotIndex(int selectedHotbarSlotIndex) {
         if (selectedHotbarSlotIndex >= 0 && selectedHotbarSlotIndex < HOTBAR_SIZE) {
@@ -304,15 +290,23 @@ public class Inventory {
             this.selectedHotbarSlotIndex = selectedHotbarSlotIndex;
             if (changed && inventoryScreen != null) {
                 ItemStack newItem = hotbarSlots[this.selectedHotbarSlotIndex];
-                inventoryScreen.displayHotbarItemTooltip(BlockType.getById(newItem.getBlockTypeId()));
+                if (!newItem.isEmpty()) {
+                    if (newItem.isBlock()) { //Only show tooltip for blocks for now
+                        inventoryScreen.displayHotbarItemTooltip(newItem.getBlockType());
+                    } else { // Is an ItemType (non-block)
+                        // Potentially extend displayHotbarItemTooltip to take ItemType or handle display name.
+                        // For now, hide tooltip for non-block items as per InventoryScreen's current capability.
+                        inventoryScreen.displayHotbarItemTooltip(null);
+                    }
+                } else { // Slot is empty
+                     inventoryScreen.displayHotbarItemTooltip(null); // Hide tooltip if empty
+                }
             }
         }
     }
 
     /**
      * Sets the InventoryScreen reference.
-     * This is called by Game after InventoryScreen is initialized.
-     * @param screen The InventoryScreen instance.
      */
     public void setInventoryScreen(InventoryScreen screen) {
         this.inventoryScreen = screen;

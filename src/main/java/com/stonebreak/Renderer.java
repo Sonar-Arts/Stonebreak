@@ -721,6 +721,15 @@ public class Renderer {
         // Pause menu is now rendered in Main.java using UIRenderer
         
         // Render inventory screen if visible
+        // Render pause menu if game is paused
+        PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
+        if (pauseMenu != null && pauseMenu.isVisible()) {
+            // PauseMenu rendering is now handled in Main.java's render loop if it uses UIRenderer
+            // If PauseMenu still uses direct GL and needs this Renderer instance, it would be called here,
+            // but the goal is to move all UI to UIRenderer and orchestrate in Main.java.
+            // pauseMenu.render(shaderProgram, this); // This line is removed.
+        }
+        // Render inventory screen if visible
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             // Make sure we have a clean 2D state for the inventory

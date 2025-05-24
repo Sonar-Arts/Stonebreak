@@ -1,8 +1,28 @@
 package com.stonebreak;
 
-import static org.lwjgl.glfw.GLFW.*;
-import org.joml.Vector2f;
 import java.util.Arrays;
+
+import org.joml.Vector2f;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_1;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LAST;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
+import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
+import static org.lwjgl.glfw.GLFW.glfwGetKey;
+import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
+import static org.lwjgl.glfw.GLFW.glfwSetScrollCallback;
+import static org.lwjgl.glfw.GLFW.glfwSetWindowShouldClose;
 
 /**
  * Handles player input for movement and interaction.
@@ -13,9 +33,10 @@ public class InputHandler {
     
     // Mouse state
     private boolean firstMouse = true;
-    private float currentMouseX = 0; // Renamed from lastX for clarity
-    private float currentMouseY = 0; // Renamed from lastY for clarity
+    private float currentMouseX = 0; 
+    private float currentMouseY = 0; 
     private float mouseSensitivity = 0.1f;
+    private double scrollYThisFrame = 0.0; // Added for RecipeBookScreen scrolling
 
     // Mouse button states
     private boolean[] mouseButtonDown = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
@@ -23,7 +44,6 @@ public class InputHandler {
     
     // Selected hotbar slot index
     private int currentSelectedHotbarIndex = 0; // Tracks the desired index, 0-8
-    // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
     
     // Key state tracking for toggle actions
     private boolean escapeKeyPressed = false;
@@ -35,17 +55,9 @@ public class InputHandler {
         Arrays.fill(mouseButtonPressedThisFrame, false);
         
         try {
-            // Don't set cursor mode here - let Game.setState handle it based on game state
-            // Note: Main.java handles cursor position callback for both UI and game mouse look
-            
-            // Setup mouse button callback (this will be called by Main)
-            // For now, we assume Main calls a method like `processMouseButton` in this class.
-            // If not, Main.java needs to be modified to call:
-            // Game.getInstance().getInputHandler().processMouseButton(button, action, mods);
-            
-            // Setup scroll callback for block selection
             glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
-                handleScroll(yoffset);
+                this.scrollYThisFrame = yoffset; // Store the raw scroll input
+                handleHotbarScroll(yoffset); // Maintain existing hotbar scroll logic
             });
         } catch (Exception e) {
             System.err.println("Error setting up input handlers: " + e.getMessage());
@@ -58,14 +70,13 @@ public class InputHandler {
     public void prepareForNewFrame() {
         // Clear "pressed this frame" states, as they are single-frame events
         Arrays.fill(mouseButtonPressedThisFrame, false);
+        scrollYThisFrame = 0.0; // Reset scroll each frame
     }
 
     public void handleInput(Player player) {
         if (player == null) {
             return;
         }
-        
-        // prepareForNewFrame() should be called by Game loop before this
         
         try {
             // Handle escape key for pause menu
@@ -77,20 +88,16 @@ public class InputHandler {
             // Handle inventory screen mouse input if visible
             InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
             if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                // Assuming screenWidth and screenHeight are accessible, e.g., via Game.getWindowWidth/Height()
                 inventoryScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
             }
 
-
             // If the game is paused (either by pause menu or inventory), don't process movement/block selection
             // UNLESS only the inventory is open, in which case some actions might still be allowed (handled by InventoryScreen)
-            if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) { // If paused by menu, not just inventory
+            if (Game.getInstance().isPaused() && (inventoryScreen == null || (inventoryScreen == null || !inventoryScreen.isVisible()))) { // If paused by menu, not just inventory
                 return;
             }
-            if (Game.getInstance().isPaused() && inventoryScreen != null && inventoryScreen.isVisible()){
+            if (Game.getInstance().isPaused() && inventoryScreen != null && (inventoryScreen != null && inventoryScreen.isVisible())){
                 // Movement is blocked, but other non-movement inputs might be processed by inventory screen
-                // The return above handles if pause menu is open.
-                // If only inventory is open, we skip player movement below but allow inventory interaction.
             } else {
                  // Process movement inputs only if not paused by menu and inventory is not open
                 boolean moveForward = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
@@ -113,14 +120,14 @@ public class InputHandler {
             // Handle number keys for hotbar slot selection
             for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
                 if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
-                    selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
+                    selectHotbarSlotByKey(i); 
                 }
             }
         } catch (Exception e) {
             System.err.println("Error processing input: " + e.getMessage());
         }
     }
-      /**
+    /**
      * Handle the escape key for toggling the pause menu.
      */
     private void handleEscapeKey() {
@@ -136,7 +143,6 @@ public class InputHandler {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             } else {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                // Reset first mouse to avoid camera jump when returning to game
                 resetMousePosition();
             }
         } else if (!isEscapePressed) {
@@ -150,18 +156,23 @@ public class InputHandler {
         if (isInventoryKeyPressed && !inventoryKeyPressed) {
             inventoryKeyPressed = true;
             Game.getInstance().toggleInventoryScreen();
-            // Cursor state is handled by Game.toggleInventoryScreen()
         } else if (!isInventoryKeyPressed) {
             inventoryKeyPressed = false;
         }
     }
-      private void handleMouseLook(float xOffset, float yOffset) {
-        // Only process mouse movement if the game is not paused
+
+    /**
+     * Processes mouse movement to adjust the player's camera view.
+     * This method is called when mouse movement is detected and the game is not paused.
+     * @param xOffset The horizontal offset of the mouse movement.
+     * @param yOffset The vertical offset of the mouse movement.
+     */
+    private void handleMouseLook(float xOffset, float yOffset) {
+        // Only process mouse movement if the game is not paused by any UI screen
         if (Game.getInstance().isPaused()) {
             return;
         }
         
-        // This will be processed by the player's camera
         Player player = Game.getPlayer();
         if (player != null) {
             player.processMouseLook(xOffset * mouseSensitivity, yOffset * mouseSensitivity);
@@ -176,22 +187,16 @@ public class InputHandler {
         if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST) {
             if (action == GLFW_PRESS) {
                 mouseButtonDown[button] = true;
-                mouseButtonPressedThisFrame[button] = true; // Set pressed for this frame
+                mouseButtonPressedThisFrame[button] = true; 
             } else if (action == GLFW_RELEASE) {
                 mouseButtonDown[button] = false;
-                // mouseButtonPressedThisFrame is already false or will be cleared next frame
             }
         }
 
         // Existing logic for game interactions based on clicks:
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            // Inventory screen handles its own clicks if visible via handleMouseInput
-            // which is called from this class's handleInput method.
-            // We might still want to pass the raw click for its internal logic if not consumed.
-            // For now, handleMouseInput calls inventoryScreen.handleMouseInput which uses isMouseButtonPressed.
-            // This processMouseButton is more for updating the state that isMouseButtonPressed reads.
-            return; // Let inventory screen handle it if it's visible
+            return; 
         }
         
         // If pause menu is active, it might handle clicks
@@ -210,14 +215,16 @@ public class InputHandler {
                         Game.getInstance().setState(GameState.MAIN_MENU);
                         Game.getInstance().getPauseMenu().setVisible(false);
                     }
+                if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight())) {
+                    glfwSetWindowShouldClose(window, true);
                 }
             }
-            return; // Pause menu handled the click (or ignored it)
+            return; 
         }
 
         // If game is not paused by menu and inventory is not open, handle world interaction
         if (!Game.getInstance().isPaused()) {
-            if (action == GLFW_PRESS) { // Only react on initial press for world actions
+            if (action == GLFW_PRESS) { 
                 Player player = Game.getPlayer();
                 if (player != null) {
                     if (button == GLFW_MOUSE_BUTTON_LEFT) {
@@ -232,43 +239,35 @@ public class InputHandler {
         }
     }
     
-    // Renamed from handleMouseClick to avoid confusion, as this is the GLFW callback receiver
-    // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
-
-    private void handleScroll(double yOffset) {
+    private void handleHotbarScroll(double yOffset) { 
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         // Allow scroll for hotbar selection even if inventory screen is open, but not if pause menu is.
         if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) {
-            return; // Paused by menu, not just inventory
+            return; 
         }
         
         int newSelectedIndex = currentSelectedHotbarIndex;
-        if (yOffset > 0) { // Scrolled up (conventionally next item)
+        if (yOffset > 0) { 
             newSelectedIndex = (currentSelectedHotbarIndex + 1) % Inventory.HOTBAR_SIZE;
-        } else if (yOffset < 0) { // Scrolled down (conventionally previous item)
+        } else if (yOffset < 0) { 
             newSelectedIndex = (currentSelectedHotbarIndex - 1 + Inventory.HOTBAR_SIZE) % Inventory.HOTBAR_SIZE;
         }
         
         setSelectedHotbarSlot(newSelectedIndex);
     }
     
-    // Renamed from selectBlockType and updated logic
-    private void selectHotbarSlotByKey(int slotIndex) { // slotIndex is 0-8 (for keys 1-9)
+    private void selectHotbarSlotByKey(int slotIndex) { 
         if (slotIndex >= 0 && slotIndex < Inventory.HOTBAR_SIZE) {
             setSelectedHotbarSlot(slotIndex);
         }
     }
 
-    // Helper method to actually set the hotbar slot and update player
     private void setSelectedHotbarSlot(int index) {
         if (index >= 0 && index < Inventory.HOTBAR_SIZE) {
             currentSelectedHotbarIndex = index;
             Player player = Game.getPlayer();
             if (player != null && player.getInventory() != null) {
                 player.getInventory().setSelectedHotbarSlotIndex(currentSelectedHotbarIndex);
-                
-                // ItemStack selectedStack = player.getInventory().getHotbarSlot(currentSelectedHotbarIndex); // Get the actual stack - Unused
-                // Hotbar slot selection handled silently
             }
         }
     }
@@ -280,16 +279,10 @@ public class InputHandler {
     public int getSelectedBlockTypeIdFromHotbar() {
         Player player = Game.getPlayer();
         if (player != null && player.getInventory() != null) {
-            return player.getInventory().getSelectedBlockTypeId(); // This method in Inventory gets from selected hotbar slot
+            return player.getInventory().getSelectedBlockTypeId(); 
         }
-        return BlockType.AIR.getId(); // Default or error case
+        return BlockType.AIR.getId(); 
     }
-    
-    // New methods for InventoryScreen - MOVED TO CLASS LEVEL
-    // public Vector2f getMousePosition() { ... } // Defined below
-    // public boolean isMouseButtonPressed(int button) { ... } // Defined below
-    // public boolean isMouseButtonDown(int button) { ... } // Defined below
-    // public void consumeMouseButtonPress(int button) { ... } // Defined below
     
     /**
      * Reset the mouse position tracking to avoid camera jumps
@@ -307,11 +300,11 @@ public class InputHandler {
             currentMouseX = xpos;
             currentMouseY = ypos;
             firstMouse = false;
-            return; // Don't process movement on first mouse event
+            return; 
         }
         
         float xOffset = xpos - currentMouseX;
-        float yOffset = currentMouseY - ypos; // Reversed since y-coordinates go from bottom to top
+        float yOffset = currentMouseY - ypos; 
         
         currentMouseX = xpos;
         currentMouseY = ypos;
@@ -328,7 +321,22 @@ public class InputHandler {
         }
     }
 
-    // Mouse helper methods for InventoryScreen - now correctly inside the InputHandler class
+    /**
+     * Sets the visibility of the mouse cursor.
+     * @param visible true to show the cursor, false to hide and disable it.
+     */
+    public void setCursorVisible(boolean visible) {
+        if (window != 0) { 
+            if (visible) {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            } else {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                resetMousePosition(); 
+            }
+        }
+    }
+
+    // Mouse helper methods for InventoryScreen 
     public Vector2f getMousePosition() {
         return new Vector2f(currentMouseX, currentMouseY);
     }
@@ -352,4 +360,13 @@ public class InputHandler {
             mouseButtonPressedThisFrame[button] = false;
         }
     }
-} // This is the final closing brace for the InputHandler class
+
+    // New methods for RecipeBookScreen scrolling
+    public double getScrollY() {
+        return scrollYThisFrame;
+    }
+
+    public void consumeScroll() {
+        scrollYThisFrame = 0.0;
+    }
+}

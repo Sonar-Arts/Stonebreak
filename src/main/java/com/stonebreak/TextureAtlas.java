@@ -117,11 +117,10 @@ public class TextureAtlas {
     }
     
     /**
-     * Gets the UV coordinates for a block texture.
-     * @param x The x coordinate in the atlas (0-based)
-     * @param y The y coordinate in the atlas (0-based)
-     * @param face The face of the block (for multi-textured blocks)
-     * @return An array of UV coordinates [u1, v1, u2, v2] for the texture
+     * Gets the UV coordinates for a texture tile in the atlas.
+     * @param x The x coordinate of the tile in the atlas (0-based).
+     * @param y The y coordinate of the tile in the atlas (0-based).
+     * @return An array of UV coordinates [u1, v1, u2, v2] for the texture tile.
      */
     public float[] getUVCoordinates(int x, int y) { // Reverted parameter names for consistency with original intent, will be tileX, tileY in usage
         float tileSize = 1.0f / textureSize;

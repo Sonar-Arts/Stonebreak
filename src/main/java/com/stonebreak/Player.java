@@ -7,7 +7,8 @@ import org.joml.Vector3i;
 /**
  * Represents the player in the game world.
  */
-public class Player {      // Player settings
+public class Player {
+    // Player settings
     private static final float PLAYER_HEIGHT = 1.8f;
     private static final float PLAYER_WIDTH = 0.6f;
     private static final float MOVE_SPEED = 40.0f; // Increased to better balance with gravity
@@ -53,7 +54,8 @@ public class Player {      // Player settings
         this.position = new Vector3f(0, 100, 0);
         this.velocity = new Vector3f(0, 0, 0);
         this.onGround = false;
-        this.camera = new Camera();        this.inventory = new Inventory();
+        this.camera = new Camera();
+        this.inventory = new Inventory();
         this.isAttacking = false;
         this.headInWater = false;
         this.physicallyInWater = false;
@@ -64,7 +66,7 @@ public class Player {      // Player settings
         this.breakingProgress = 0.0f;
         this.breakingTime = 0.0f;
     }
-      /**
+    /**
      * Updates the player's position and camera.
      */
     public void update() {
@@ -464,8 +466,22 @@ public class Player {      // Player settings
                     inventory.addItem(blockType.getId());
                     resetBlockBreaking();
                 }
+            if (blockType.isBreakable()) {
+                // Remove block
+                world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+                
+                // Add to inventory
+                inventory.addItem(new ItemStack(blockType, 1));
+                
             }
         }
+    }
+    
+    /**
+     * Stops breaking blocks when the player releases the break button.
+     */
+    public void stopBreakingBlock() {
+        resetBlockBreaking();
     }
     
     /**
@@ -488,9 +504,11 @@ public class Player {      // Player settings
         }
 
         // Check if player has this block type in inventory first
-        if (!inventory.hasItem(selectedBlockTypeId)) {
+        BlockType typeToCheck = BlockType.getById(selectedBlockTypeId);
+        if (typeToCheck == null || typeToCheck == BlockType.AIR || !inventory.hasItem(new ItemStack(typeToCheck, 1))) {
             // This might happen if the selected item was depleted by other means
             // or if selection logic is flawed. For now, just return.
+            // System.out.println("DEBUG: Player does not have item to place: " + selectedBlockTypeId);
             return;
         }
         
@@ -776,7 +794,7 @@ public class Player {      // Player settings
         
         return null;
     }
-      /**
+    /**
      * Checks if the player is in water.
      * @return true if the player's head is in water
      */
@@ -869,7 +887,7 @@ public class Player {      // Player settings
     public Inventory getInventory() {
         return inventory;
     }
-      /**
+    /**
      * Gets the view matrix from the camera.
      */
     public Matrix4f getViewMatrix() {
