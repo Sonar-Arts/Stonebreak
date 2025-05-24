@@ -101,6 +101,13 @@ public class InputHandler {
                 
                 // Handle movement
                 player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump);
+                
+                // Handle continuous block breaking
+                if (isMouseButtonDown(GLFW_MOUSE_BUTTON_LEFT)) {
+                    player.startBreakingBlock();
+                } else {
+                    player.stopBreakingBlock();
+                }
             }
             
             // Handle number keys for hotbar slot selection
@@ -215,7 +222,7 @@ public class InputHandler {
                 if (player != null) {
                     if (button == GLFW_MOUSE_BUTTON_LEFT) {
                         player.startAttackAnimation();
-                        player.breakBlock();
+                        // Block breaking is now handled continuously in handleInput
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
                         player.startAttackAnimation(); // Also animate when placing blocks like Minecraft
                         player.placeBlock();

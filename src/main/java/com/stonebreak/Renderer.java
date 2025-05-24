@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.joml.Matrix4f;
+import org.joml.Vector3i;
 import org.joml.Vector4f; // Added import for ByteBuffer
 import org.lwjgl.BufferUtils;
 import static org.lwjgl.opengl.GL11.GL_BLEND;
@@ -87,6 +88,10 @@ public class Renderer {
     private int itemCubeVbo; // Interleaved: posX, posY, posZ, normX, normY, normZ, uvU, uvV
     private int itemCubeIbo;
     private int itemCubeIndexCount;
+    
+    // Block cracking overlay system
+    private int crackTextureId;
+    private int blockOverlayVao;
 
     /**
      * Creates and initializes the renderer.
@@ -130,6 +135,8 @@ public class Renderer {
         createArmTexture(); // Create the Perlin noise texture for the arm
         createUiQuadRenderer(); // Initialize UI quad rendering resources
         createItemCube();       // Initialize 3D item cube mesh
+        createCrackTexture();   // Initialize block cracking texture
+        createBlockOverlayVao(); // Initialize block overlay rendering
     }
     
     /**
@@ -497,6 +504,9 @@ public class Renderer {
 
         // Unbind texture atlas if no longer needed by subsequent world elements (arm, particles)
         // glBindTexture(GL_TEXTURE_2D, 0); // Or rebind as needed
+
+        // Render block crack overlay if breaking a block
+        renderBlockCrackOverlay(player);
 
         // Render player arm (if not in pause menu, etc.)
         // Player arm needs its own shader setup, including texture
@@ -1099,6 +1109,127 @@ public class Renderer {
         GL30.glBindVertexArray(0);
     }
     
+    /**
+     * Creates the crack texture with multiple crack stages.
+     */
+    private void createCrackTexture() {
+        int texWidth = 16;
+        int texHeight = 16 * 10; // 10 crack stages vertically
+        ByteBuffer buffer = BufferUtils.createByteBuffer(texWidth * texHeight * 4); // RGBA
+        
+        for (int stage = 0; stage < 10; stage++) {
+            for (int y = 0; y < 16; y++) {
+                for (int x = 0; x < 16; x++) {
+                    byte r = 0, g = 0, b = 0, a = 0;
+                    
+                    // Create crack pattern based on stage and position
+                    float intensity = (stage + 1) / 10.0f;
+                    boolean isCrack = false;
+                    
+                    // Simple crack pattern - lines and intersections
+                    if (stage >= 1 && (x == 8 || y == 8)) isCrack = true; // Cross pattern
+                    if (stage >= 3 && (x == 4 || x == 12 || y == 4 || y == 12)) isCrack = true; // Extended lines
+                    if (stage >= 5 && ((x + y) % 4 == 0 || (x - y) % 4 == 0)) isCrack = true; // Diagonal cracks
+                    if (stage >= 7 && ((x * 3 + y) % 5 == 0)) isCrack = true; // More random cracks
+                    if (stage >= 9 && ((x * y) % 3 == 0)) isCrack = true; // Heavy cracking
+                    
+                    if (isCrack) {
+                        r = g = b = 0; // Black cracks
+                        a = (byte) (intensity * 200); // More visible as stage increases
+                    }
+                    
+                    buffer.put(r);
+                    buffer.put(g);
+                    buffer.put(b);
+                    buffer.put(a);
+                }
+            }
+        }
+        buffer.flip();
+        
+        crackTextureId = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, crackTextureId);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    
+    /**
+     * Creates VAO for rendering block overlay (crack) on top of blocks.
+     */
+    private void createBlockOverlayVao() {
+        // Create a unit cube for overlaying on blocks
+        float[] vertices = {
+            // Front face
+            0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
+            1.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+            1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+            // Back face
+            1.0f, 0.0f, 0.0f,  0.0f, 0.0f,
+            0.0f, 0.0f, 0.0f,  1.0f, 0.0f,
+            0.0f, 1.0f, 0.0f,  1.0f, 1.0f,
+            1.0f, 1.0f, 0.0f,  0.0f, 1.0f,
+            // Top face
+            0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
+            1.0f, 1.0f, 0.0f,  1.0f, 0.0f,
+            1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+            0.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+            // Bottom face
+            0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
+            1.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+            1.0f, 0.0f, 0.0f,  1.0f, 1.0f,
+            0.0f, 0.0f, 0.0f,  0.0f, 1.0f,
+            // Right face
+            1.0f, 0.0f, 1.0f,  0.0f, 0.0f,
+            1.0f, 0.0f, 0.0f,  1.0f, 0.0f,
+            1.0f, 1.0f, 0.0f,  1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+            // Left face
+            0.0f, 0.0f, 0.0f,  0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+            0.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+            0.0f, 1.0f, 0.0f,  0.0f, 1.0f
+        };
+        
+        int[] indices = {
+            0, 1, 2, 2, 3, 0,       // Front
+            4, 5, 6, 6, 7, 4,       // Back
+            8, 9, 10, 10, 11, 8,    // Top
+            12, 13, 14, 14, 15, 12, // Bottom
+            16, 17, 18, 18, 19, 16, // Right
+            20, 21, 22, 22, 23, 20  // Left
+        };
+        
+        blockOverlayVao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(blockOverlayVao);
+        
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Position attribute (location 0)
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 5 * Float.BYTES, 0);
+        GL20.glEnableVertexAttribArray(0);
+        // Texture coordinate attribute (location 1)
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 5 * Float.BYTES, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+    }
+    
     // These methods are no longer needed as we're using TextureAtlas
     
     /**
@@ -1252,6 +1383,83 @@ public class Renderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         
         // Unbind shader
+        shaderProgram.unbind();
+    }
+    
+    /**
+     * Renders crack overlay on the block being broken.
+     */
+    private void renderBlockCrackOverlay(Player player) {
+        Vector3i breakingBlock = player.getBreakingBlock();
+        if (breakingBlock == null) {
+            return; // No block being broken
+        }
+        
+        float progress = player.getBreakingProgress();
+        if (progress <= 0.0f) {
+            return; // No progress yet
+        }
+        
+        // Calculate crack stage (0-9)
+        int crackStage = Math.min(9, (int) (progress * 10));
+        
+        // Enable blending for crack overlay
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // Disable depth writing but keep depth testing to avoid z-fighting
+        glDepthMask(false);
+        glEnable(GL_DEPTH_TEST);
+        
+        // Use shader program
+        shaderProgram.bind();
+        
+        // Set uniforms for overlay rendering
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("texture_sampler", 0);
+        
+        // Bind crack texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, crackTextureId);
+        
+        // Set up texture coordinates for the specific crack stage
+        float vOffset = crackStage / 10.0f; // V offset for the crack stage
+        float vScale = 1.0f / 10.0f; // V scale for one crack stage
+        
+        // Apply texture coordinate transformation for crack stage
+        shaderProgram.setUniform("u_transformUVsForItem", true);
+        shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(0.0f, vOffset));
+        shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(1.0f, vScale));
+        
+        // Create model matrix to position the overlay at the breaking block
+        Matrix4f modelMatrix = new Matrix4f()
+            .translate(breakingBlock.x, breakingBlock.y, breakingBlock.z)
+            .scale(1.001f); // Slightly larger to avoid z-fighting
+        
+        // Combine view and model matrices
+        Matrix4f modelViewMatrix = new Matrix4f(player.getViewMatrix()).mul(modelMatrix);
+        shaderProgram.setUniform("viewMatrix", modelViewMatrix);
+        
+        // Set color with some transparency
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 0.8f));
+        
+        // Render the block overlay
+        GL30.glBindVertexArray(blockOverlayVao);
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        GL30.glBindVertexArray(0);
+        
+        // Restore state
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        
+        // Reset shader state
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        
         shaderProgram.unbind();
     }
     

@@ -40,6 +40,11 @@ public class Player {      // Player settings
     // Inventory
     private final Inventory inventory;
     
+    // Block breaking system
+    private Vector3i breakingBlock; // The block currently being broken
+    private float breakingProgress; // Progress from 0.0 to 1.0
+    private float breakingTime; // Time spent breaking the current block
+    
     /**
      * Creates a new player in the specified world.
      */
@@ -55,6 +60,9 @@ public class Player {      // Player settings
         this.attackAnimationTime = 0.0f;
         this.breathRemaining = MAX_BREATH;
         this.isDrowning = false;
+        this.breakingBlock = null;
+        this.breakingProgress = 0.0f;
+        this.breakingTime = 0.0f;
     }
       /**
      * Updates the player's position and camera.
@@ -126,6 +134,9 @@ public class Player {      // Player settings
                 attackAnimationTime = 0.0f;
             }
         }
+        
+        // Update block breaking progress
+        updateBlockBreaking();
     }
     
     /**
@@ -375,29 +386,93 @@ public class Player {      // Player settings
     }
     
     /**
-     * Breaks the block the player is looking at.
+     * Updates the block breaking progress.
      */
-    public void breakBlock() {
+    private void updateBlockBreaking() {
+        if (breakingBlock != null) {
+            Vector3i currentTarget = raycast();
+            
+            // Check if player is still looking at the same block
+            if (currentTarget == null || !currentTarget.equals(breakingBlock)) {
+                // Reset breaking progress if looking away
+                resetBlockBreaking();
+                return;
+            }
+            
+            BlockType blockType = world.getBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+            
+            // Check if block still exists and is breakable
+            if (!blockType.isBreakable() || blockType == BlockType.AIR) {
+                resetBlockBreaking();
+                return;
+            }
+            
+            // Update breaking progress
+            float hardness = blockType.getHardness();
+            if (hardness > 0 && hardness != Float.POSITIVE_INFINITY) {
+                breakingTime += Game.getDeltaTime();
+                breakingProgress = Math.min(breakingTime / hardness, 1.0f);
+                
+                // Check if block is fully broken
+                if (breakingProgress >= 1.0f) {
+                    // Break the block
+                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+                    inventory.addItem(blockType.getId());
+                    resetBlockBreaking();
+                }
+            }
+        }
+    }
+    
+    /**
+     * Resets the block breaking progress.
+     */
+    private void resetBlockBreaking() {
+        breakingBlock = null;
+        breakingProgress = 0.0f;
+        breakingTime = 0.0f;
+    }
+    
+    /**
+     * Starts breaking a block or continues breaking the current block.
+     */
+    public void startBreakingBlock() {
         Vector3i blockPos = raycast();
         
         if (blockPos != null) {
-            // Animation is now triggered by InputHandler
-            // isAttacking = true;
-            // attackAnimationTime = 0.0f;
-
             BlockType blockType = world.getBlockAt(blockPos.x, blockPos.y, blockPos.z);
             
             // Check if block is breakable
-            if (blockType.isBreakable()) {
-                // Remove block
-                world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+            if (blockType.isBreakable() && blockType != BlockType.AIR) {
+                // If we're targeting a new block, reset progress
+                if (breakingBlock == null || !breakingBlock.equals(blockPos)) {
+                    breakingBlock = new Vector3i(blockPos);
+                    breakingProgress = 0.0f;
+                    breakingTime = 0.0f;
+                }
                 
-                // Add to inventory
-                inventory.addItem(blockType.getId());
+                // Start attack animation
+                if (!isAttacking) {
+                    isAttacking = true;
+                    attackAnimationTime = 0.0f;
+                }
                 
-
+                // For instant break blocks (hardness 0 or very low), break immediately
+                float hardness = blockType.getHardness();
+                if (hardness <= 0.0f) {
+                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+                    inventory.addItem(blockType.getId());
+                    resetBlockBreaking();
+                }
             }
         }
+    }
+    
+    /**
+     * Stops breaking blocks when the player releases the break button.
+     */
+    public void stopBreakingBlock() {
+        resetBlockBreaking();
     }
     
     /**
@@ -860,5 +935,19 @@ public class Player {      // Player settings
             isAttacking = true;
             attackAnimationTime = 0.0f;
         }
+    }
+    
+    /**
+     * Gets the block currently being broken.
+     */
+    public Vector3i getBreakingBlock() {
+        return breakingBlock;
+    }
+    
+    /**
+     * Gets the breaking progress (0.0 to 1.0).
+     */
+    public float getBreakingProgress() {
+        return breakingProgress;
     }
 }

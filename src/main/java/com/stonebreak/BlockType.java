@@ -7,24 +7,24 @@ public enum BlockType {
     // Added atlasX, atlasY for inventory/hotbar display.
     // These are the primary texture coordinates for the block.
     // For blocks like GRASS with multiple textures, this will be the "icon" texture (e.g., grass top).
-    AIR(0, "Air", false, false, -1, -1), // No texture for air
-    GRASS(1, "Grass", true, true, 0, 0),     // Grass Top
-    DIRT(2, "Dirt", true, true, 2, 0),
-    STONE(3, "Stone", true, true, 3, 0),
-    BEDROCK(4, "Bedrock", true, false, 4, 0),
-    WOOD(5, "Wood", true, true, 5, 0),       // Wood Side (or could be Wood Top: 5,1)
-    LEAVES(6, "Leaves", true, true, 7, 0), // Atlas X changed from 6 to 7
-    SAND(7, "Sand", true, true, 8, 0),       // Atlas X changed from 7 to 8
-    WATER(8, "Water", false, false, 9, 0),    // Atlas X changed from 8 to 9
-    COAL_ORE(9, "Coal Ore", true, true, 0, 1),
-    IRON_ORE(10, "Iron Ore", true, true, 1, 1),
-    RED_SAND(11, "Red Sand", true, true, 2, 1), // Was Obsidian, now red sand at old obsidian atlas coords
-    MAGMA(12, "Magma", true, true, 3, 1),       // Placeholder atlas coords
-    CRYSTAL(13, "Crystal", true, true, 4, 1),   // Placeholder atlas coords
-    SANDSTONE(14, "Sandstone", true, true, 5, 1), // Top texture for icon
-    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1), // Top texture for icon
-    ROSE(16, "Rose", false, true, 10, 1), // Moved from 7,1
-    DANDELION(17, "Dandelion", false, true, 11, 1); // Moved from 8,1
+    AIR(0, "Air", false, false, -1, -1, 0.0f), // No texture for air
+    GRASS(1, "Grass", true, true, 0, 0, 1.0f),     // Grass Top
+    DIRT(2, "Dirt", true, true, 2, 0, 2.0f),
+    STONE(3, "Stone", true, true, 3, 0, 4.0f),
+    BEDROCK(4, "Bedrock", true, false, 4, 0, Float.POSITIVE_INFINITY),
+    WOOD(5, "Wood", true, true, 5, 0, 3.0f),       // Wood Side (or could be Wood Top: 5,1)
+    LEAVES(6, "Leaves", true, true, 7, 0, 0.5f), // Atlas X changed from 6 to 7
+    SAND(7, "Sand", true, true, 8, 0, 1.5f),       // Atlas X changed from 7 to 8
+    WATER(8, "Water", false, false, 9, 0, 0.0f),    // Atlas X changed from 8 to 9
+    COAL_ORE(9, "Coal Ore", true, true, 0, 1, 6.0f),
+    IRON_ORE(10, "Iron Ore", true, true, 1, 1, 8.0f),
+    RED_SAND(11, "Red Sand", true, true, 2, 1, 1.5f), // Was Obsidian, now red sand at old obsidian atlas coords
+    MAGMA(12, "Magma", true, true, 3, 1, 10.0f),       // Placeholder atlas coords
+    CRYSTAL(13, "Crystal", true, true, 4, 1, 12.0f),   // Placeholder atlas coords
+    SANDSTONE(14, "Sandstone", true, true, 5, 1, 5.0f), // Top texture for icon
+    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1, 5.0f), // Top texture for icon
+    ROSE(16, "Rose", false, true, 10, 1, 0.1f), // Moved from 7,1
+    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f); // Moved from 8,1
     
     private final int id;
     private final String name;
@@ -32,14 +32,16 @@ public enum BlockType {
     private final boolean breakable;
     private final int atlasX; // Texture atlas X coordinate for UI
     private final int atlasY; // Texture atlas Y coordinate for UI
+    private final float hardness; // Time in seconds to break with bare hands
     
-    BlockType(int id, String name, boolean solid, boolean breakable, int atlasX, int atlasY) {
+    BlockType(int id, String name, boolean solid, boolean breakable, int atlasX, int atlasY, float hardness) {
         this.id = id;
         this.name = name;
         this.solid = solid;
         this.breakable = breakable;
         this.atlasX = atlasX;
         this.atlasY = atlasY;
+        this.hardness = hardness;
     }
     
     public int getId() {
@@ -72,6 +74,10 @@ public enum BlockType {
 
     public int getAtlasY() {
         return atlasY;
+    }
+    
+    public float getHardness() {
+        return hardness;
     }
     
     /**
