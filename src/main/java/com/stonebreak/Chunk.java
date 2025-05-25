@@ -220,13 +220,53 @@ public class Chunk {
                         
                         // Determine if the face should be rendered
                         boolean renderFace;
-                        // A face of blockType should be rendered if:
-                        // 1. The adjacentBlock is transparent, AND (blockType is not WATER OR adjacentBlock is not WATER)
-                        //    This handles solid vs transparent, transparent vs different transparent, and water vs non-water transparent.
-                        // 2. OR, if blockType itself is transparent AND the adjacentBlock is solid.
-                        //    This handles transparent (like leaves/water) vs solid.
-                        renderFace = (adjacentBlock.isTransparent() && (blockType != BlockType.WATER || adjacentBlock != BlockType.WATER)) ||
-                                     (blockType.isTransparent() && !adjacentBlock.isTransparent());
+                        
+                        if (blockType == BlockType.WATER) {
+                            // For water blocks, always render faces except when adjacent to the same water level
+                            if (adjacentBlock == BlockType.WATER) {
+                                // Check if we should render between water blocks based on water levels
+                                WaterEffects waterEffects = Game.getWaterEffects();
+                                if (waterEffects != null) {
+                                    int currentWaterLevel = waterEffects.getWaterLevel(getWorldX(lx), ly, getWorldZ(lz));
+                                    
+                                    // Get adjacent block's world coordinates for level check
+                                    int adjWorldX = getWorldX(lx);
+                                    int adjWorldY = ly;
+                                    int adjWorldZ = getWorldZ(lz);
+                                    
+                                    switch (face) {
+                                        case 0 -> adjWorldY += 1; // Top
+                                        case 1 -> adjWorldY -= 1; // Bottom
+                                        case 2 -> adjWorldZ += 1; // Front
+                                        case 3 -> adjWorldZ -= 1; // Back
+                                        case 4 -> adjWorldX += 1; // Right
+                                        case 5 -> adjWorldX -= 1; // Left
+                                    }
+                                    
+                                    int adjacentWaterLevel = waterEffects.getWaterLevel(adjWorldX, adjWorldY, adjWorldZ);
+                                    
+                                    // Render face if water levels are different or if one is a source
+                                    renderFace = currentWaterLevel != adjacentWaterLevel || 
+                                                waterEffects.isWaterSource(getWorldX(lx), ly, getWorldZ(lz)) ||
+                                                waterEffects.isWaterSource(adjWorldX, adjWorldY, adjWorldZ);
+                                } else {
+                                    // Fallback: render all water faces if water effects not available
+                                    renderFace = true;
+                                }
+                            } else {
+                                // Water vs non-water: render if adjacent is transparent or air
+                                renderFace = adjacentBlock.isTransparent();
+                            }
+                        } else {
+                            // For non-water blocks, use the original logic
+                            // A face of blockType should be rendered if:
+                            // 1. The adjacentBlock is transparent, AND (blockType is not WATER OR adjacentBlock is not WATER)
+                            //    This handles solid vs transparent, transparent vs different transparent, and water vs non-water transparent.
+                            // 2. OR, if blockType itself is transparent AND the adjacentBlock is solid.
+                            //    This handles transparent (like leaves/water) vs solid.
+                            renderFace = (adjacentBlock.isTransparent() && (blockType != BlockType.WATER || adjacentBlock != BlockType.WATER)) ||
+                                         (blockType.isTransparent() && !adjacentBlock.isTransparent());
+                        }
 
                         if (renderFace) {
                             // Add face vertices, texture coordinates, normals, isWater flags, isAlphaTested flags, and indices
@@ -333,13 +373,23 @@ public class Chunk {
         float worldY = y;
         float worldZ = z + this.z * World.CHUNK_SIZE;
         
+        // Get water level for visual height if this is a water block
+        float waterHeight = 1.0f; // Default full height
+        if (blockType == BlockType.WATER) {
+            WaterEffects waterEffects = Game.getWaterEffects();
+            if (waterEffects != null) {
+                waterHeight = waterEffects.getWaterVisualHeight((int)worldX, (int)worldY, (int)worldZ);
+            }
+        }
+        
         // Define vertices for each face
         switch (face) {
             case 0 -> { // Top face (y+1)
-                vertices.add(worldX);        vertices.add(worldY + 1); vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
-                vertices.add(worldX);        vertices.add(worldY + 1); vertices.add(worldZ + 1);
+                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
+                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ);
+                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
+                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
+                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ + 1);
                 
                 normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
                 normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
@@ -358,9 +408,10 @@ public class Chunk {
                 normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
             }
             case 2 -> { // Front face (z+1)
+                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
                 vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ + 1);
-                vertices.add(worldX);        vertices.add(worldY + 1); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
+                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ + 1);
+                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ + 1);
                 
                 normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
@@ -369,10 +420,11 @@ public class Chunk {
                 normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
             }
             case 3 -> { // Back face (z-1)
+                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
                 vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ);
-                vertices.add(worldX);        vertices.add(worldY + 1); vertices.add(worldZ);
+                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
+                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ);
                 
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
@@ -380,10 +432,11 @@ public class Chunk {
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
             }
             case 4 -> { // Right face (x+1)
+                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(worldY + 1); vertices.add(worldZ);
+                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
+                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
                 
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
@@ -391,9 +444,10 @@ public class Chunk {
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
             }
             case 5 -> { // Left face (x-1)
+                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
                 vertices.add(worldX);    vertices.add(worldY);     vertices.add(worldZ);
-                vertices.add(worldX);    vertices.add(worldY + 1); vertices.add(worldZ);
-                vertices.add(worldX);    vertices.add(worldY + 1); vertices.add(worldZ + 1);
+                vertices.add(worldX);    vertices.add(topY); vertices.add(worldZ);
+                vertices.add(worldX);    vertices.add(topY); vertices.add(worldZ + 1);
                 vertices.add(worldX);    vertices.add(worldY);     vertices.add(worldZ + 1);
                 
                 normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
@@ -409,22 +463,135 @@ public class Chunk {
         float texY = texCoords[1] / 16.0f;
         float texSize = 1.0f / 16.0f;
         
-        float u_topLeft = texX;
-        float v_topLeft = texY;
-        float u_bottomLeft = texX;
-        float v_bottomLeft = texY + texSize;
-        float u_bottomRight = texX + texSize;
-        float v_bottomRight = texY + texSize;
-        float u_topRight = texX + texSize;
-        float v_topRight = texY;
+        float u_topLeft, v_topLeft, u_bottomLeft, v_bottomLeft;
+        float u_bottomRight, v_bottomRight, u_topRight, v_topRight;
+        
+        if (blockType == BlockType.WATER) {
+            // For water blocks, use continuous world-space texture coordinates for completely seamless tiling
+            // This makes the texture flow continuously across all water blocks without any visible boundaries
+            float textureScale = 0.0625f; // Very small scale for large-area seamless appearance
+            
+            // Use absolute world coordinates to ensure perfect continuity across all water blocks
+            // No offsets or per-block adjustments - pure world-space mapping
+            
+            switch (face) {
+                case 0 -> { // Top face - use X,Z world coordinates
+                    u_topLeft = worldX * textureScale;
+                    v_topLeft = worldZ * textureScale;
+                    u_bottomLeft = worldX * textureScale;
+                    v_bottomLeft = (worldZ + 1) * textureScale;
+                    u_bottomRight = (worldX + 1) * textureScale;
+                    v_bottomRight = (worldZ + 1) * textureScale;
+                    u_topRight = (worldX + 1) * textureScale;
+                    v_topRight = worldZ * textureScale;
+                }
+                case 1 -> { // Bottom face - use X,Z world coordinates
+                    u_topLeft = worldX * textureScale;
+                    v_topLeft = worldZ * textureScale;
+                    u_bottomLeft = worldX * textureScale;
+                    v_bottomLeft = (worldZ + 1) * textureScale;
+                    u_bottomRight = (worldX + 1) * textureScale;
+                    v_bottomRight = (worldZ + 1) * textureScale;
+                    u_topRight = (worldX + 1) * textureScale;
+                    v_topRight = worldZ * textureScale;
+                }
+                case 2, 3 -> { // Front/Back faces - use X,Y world coordinates
+                    u_topLeft = worldX * textureScale;
+                    v_topLeft = (worldY + waterHeight) * textureScale;
+                    u_bottomLeft = worldX * textureScale;
+                    v_bottomLeft = worldY * textureScale;
+                    u_bottomRight = (worldX + 1) * textureScale;
+                    v_bottomRight = worldY * textureScale;
+                    u_topRight = (worldX + 1) * textureScale;
+                    v_topRight = (worldY + waterHeight) * textureScale;
+                }
+                case 4, 5 -> { // Left/Right faces - use Z,Y world coordinates  
+                    u_topLeft = worldZ * textureScale;
+                    v_topLeft = (worldY + waterHeight) * textureScale;
+                    u_bottomLeft = worldZ * textureScale;
+                    v_bottomLeft = worldY * textureScale;
+                    u_bottomRight = (worldZ + 1) * textureScale;
+                    v_bottomRight = worldY * textureScale;
+                    u_topRight = (worldZ + 1) * textureScale;
+                    v_topRight = (worldY + waterHeight) * textureScale;
+                }
+                default -> {
+                    // Fallback to regular texture coordinates
+                    u_topLeft = texX;
+                    v_topLeft = texY;
+                    u_bottomLeft = texX;
+                    v_bottomLeft = texY + texSize;
+                    u_bottomRight = texX + texSize;
+                    v_bottomRight = texY + texSize;
+                    u_topRight = texX + texSize;
+                    v_topRight = texY;
+                }
+            }
+            
+            // Add subtle pseudo-random offset to break up any remaining grid patterns
+            // This creates more natural-looking water texture variation
+            float noiseScale = 0.03f;
+            float noiseU = (float)(Math.sin(worldX * 0.1f + worldZ * 0.17f) * noiseScale);
+            float noiseV = (float)(Math.cos(worldX * 0.13f + worldZ * 0.11f) * noiseScale);
+            
+            // Apply noise offset
+            u_topLeft += noiseU;
+            v_topLeft += noiseV;
+            u_bottomLeft += noiseU;
+            v_bottomLeft += noiseV;
+            u_bottomRight += noiseU;
+            v_bottomRight += noiseV;
+            u_topRight += noiseU;
+            v_topRight += noiseV;
+            
+            // Apply fractional part to keep texture coordinates within 0-1 range while maintaining continuity
+            u_topLeft = u_topLeft % 1.0f;
+            v_topLeft = v_topLeft % 1.0f;
+            u_bottomLeft = u_bottomLeft % 1.0f;
+            v_bottomLeft = v_bottomLeft % 1.0f;
+            u_bottomRight = u_bottomRight % 1.0f;
+            v_bottomRight = v_bottomRight % 1.0f;
+            u_topRight = u_topRight % 1.0f;
+            v_topRight = v_topRight % 1.0f;
+            
+            // Handle negative values properly for seamless wrapping
+            if (u_topLeft < 0) u_topLeft += 1.0f;
+            if (v_topLeft < 0) v_topLeft += 1.0f;
+            if (u_bottomLeft < 0) u_bottomLeft += 1.0f;
+            if (v_bottomLeft < 0) v_bottomLeft += 1.0f;
+            if (u_bottomRight < 0) u_bottomRight += 1.0f;
+            if (v_bottomRight < 0) v_bottomRight += 1.0f;
+            if (u_topRight < 0) u_topRight += 1.0f;
+            if (v_topRight < 0) v_topRight += 1.0f;
+            
+            // Scale to fit within the water texture's atlas coordinates
+            u_topLeft = texX + u_topLeft * texSize;
+            v_topLeft = texY + v_topLeft * texSize;
+            u_bottomLeft = texX + u_bottomLeft * texSize;
+            v_bottomLeft = texY + v_bottomLeft * texSize;
+            u_bottomRight = texX + u_bottomRight * texSize;
+            v_bottomRight = texY + v_bottomRight * texSize;
+            u_topRight = texX + u_topRight * texSize;
+            v_topRight = texY + v_topRight * texSize;
+        } else {
+            // For non-water blocks, use regular texture coordinates
+            u_topLeft = texX;
+            v_topLeft = texY;
+            u_bottomLeft = texX;
+            v_bottomLeft = texY + texSize;
+            u_bottomRight = texX + texSize;
+            v_bottomRight = texY + texSize;
+            u_topRight = texX + texSize;
+            v_topRight = texY;
+        }
 
-        // Determine UV mapping based on face to ensure grass is always "up" on sides
+        // Apply UV mapping based on face orientation
         switch (face) {
-            case 0, 1 -> { // Top or Bottom face - current mapping is likely fine
-                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // Original V0 UV
-                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // Original V1 UV
-                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // Original V2 UV
-                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // Original V3 UV
+            case 0, 1 -> { // Top or Bottom face
+                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // V0
+                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // V1
+                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // V2
+                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // V3
             }
             case 2, 5 -> { // Front (+Z) or Left (-X)
                 // Vertices for these faces are ordered: BL, TL, TR, BR

@@ -69,18 +69,11 @@ public class Player {      // Player settings
      */
     public void update() {
         // Check if player is in water
-        boolean oldPhysicallyInWater = this.physicallyInWater;
-        boolean oldHeadInWater = this.headInWater;
 
         headInWater = isInWater(); // Check for breathing
         physicallyInWater = isPartiallyInWater(); // Check for physics
 
-        if (oldPhysicallyInWater != this.physicallyInWater) {
-            System.out.println("DEBUG: Player physicallyInWater changed from " + oldPhysicallyInWater + " to " + this.physicallyInWater + " at position " + position);
-        }
-        if (oldHeadInWater != this.headInWater) {
-            System.out.println("DEBUG: Player headInWater changed from " + oldHeadInWater + " to " + this.headInWater + " at position " + position);
-        }
+        // Water state changed - debug messages removed to prevent spam
 
         // Handle breathing underwater
         if (headInWater) {
@@ -415,6 +408,14 @@ public class Player {      // Player settings
                 
                 // Check if block is fully broken
                 if (breakingProgress >= 1.0f) {
+                    // If breaking a water block, remove it from water simulation
+                    if (blockType == BlockType.WATER) {
+                        WaterEffects waterEffects = Game.getWaterEffects();
+                        if (waterEffects != null) {
+                            waterEffects.removeWaterSource(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+                        }
+                    }
+                    
                     // Break the block
                     world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
                     inventory.addItem(blockType.getId());
@@ -494,12 +495,19 @@ public class Player {      // Player settings
             return;
         }
         
-        Vector3i hitSolidBlockPos = raycast(); // This is the first SOLID block hit by ray. Null if only air.
+        Vector3i hitBlockPos = raycast(); // This is the first non-air block hit by ray. Null if only air.
         Vector3i placePos;
 
-        if (hitSolidBlockPos != null) {
-            // Player is aiming at a solid block. Try to place on its face.
-            placePos = findPlacePosition(hitSolidBlockPos);
+        if (hitBlockPos != null) {
+            BlockType hitBlockType = world.getBlockAt(hitBlockPos.x, hitBlockPos.y, hitBlockPos.z);
+            
+            if (hitBlockType == BlockType.WATER) {
+                // For water blocks, place directly into the water's space (replace the water)
+                placePos = new Vector3i(hitBlockPos);
+            } else {
+                // For solid blocks, try to place on an adjacent face
+                placePos = findPlacePosition(hitBlockPos);
+            }
         } else {
             // Player is aiming at AIR (or beyond reach, but raycast handles distance).
             // Determine the air block cell player is targeting.
@@ -513,23 +521,49 @@ public class Player {      // Player settings
                 (int)Math.floor(targetPointInAir.y),
                 (int)Math.floor(targetPointInAir.z)
             );
-            // Ensure this calculated air position is actually AIR, otherwise invalid.
-            if (world.getBlockAt(placePos.x, placePos.y, placePos.z) != BlockType.AIR) {
-                placePos = null; // Don't place if calculated target isn't air.
+            // Ensure this calculated position is actually AIR or WATER, otherwise invalid.
+            BlockType blockAtTargetPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
+            if (blockAtTargetPos != BlockType.AIR && blockAtTargetPos != BlockType.WATER) {
+                placePos = null; // Don't place if calculated target isn't air or water.
             }
         }
         
         if (placePos != null) {
             // Now we have a candidate placePos, either adjacent to a solid block or directly in an air block.
-            // Final check: the block AT placePos must be AIR and must not intersect player.
-            if (world.getBlockAt(placePos.x, placePos.y, placePos.z) == BlockType.AIR) {
+            // Final check: the block AT placePos must be AIR or WATER and must not intersect player.
+            BlockType blockAtPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
+            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER) {
                 if (intersectsWithPlayer(placePos)) {
                     // System.out.println("DEBUG: Placement at " + placePos + " denied due to intersection with player.");
                     return; // Collision with player, abort.
                 }
+                
+                // Check if the placement position has at least one adjacent solid block
+                // Exception: Allow placement on water blocks (replacing water doesn't require adjacent solid blocks)
+                if (blockAtPos != BlockType.WATER && !hasAdjacentSolidBlock(placePos)) {
+                    return; // Cannot place blocks in mid-air
+                }
+                
+                // If replacing water, remove it from water simulation first
+                if (blockAtPos == BlockType.WATER) {
+                    WaterEffects waterEffects = Game.getWaterEffects();
+                    if (waterEffects != null) {
+                        waterEffects.removeWaterSource(placePos.x, placePos.y, placePos.z);
+                    }
+                }
+                
                 // All checks passed, place the block.
-                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.getById(selectedBlockTypeId))) {
+                BlockType blockType = BlockType.getById(selectedBlockTypeId);
+                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, blockType)) {
                     inventory.removeItem(selectedBlockTypeId);
+                    
+                    // If placing a water block, register it as a water source
+                    if (blockType == BlockType.WATER) {
+                        WaterEffects waterEffects = Game.getWaterEffects();
+                        if (waterEffects != null) {
+                            waterEffects.addWaterSource(placePos.x, placePos.y, placePos.z);
+                        }
+                    }
                 }
             } else {
                 // This case should ideally not be hit if logic above is correct.
@@ -680,9 +714,9 @@ public class Player {      // Player settings
         
         // Check if place position would intersect with player
         if (placePos != null) {
-            // Check if the block at the place position is air
+            // Check if the block at the place position is air or water
             BlockType blockAtPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
-            if (blockAtPos != BlockType.AIR) {
+            if (blockAtPos != BlockType.AIR && blockAtPos != BlockType.WATER) {
                 return null;
             }
             
@@ -693,6 +727,31 @@ public class Player {      // Player settings
         }
         
         return placePos;
+    }
+    
+    /**
+     * Checks if a block position has at least one adjacent solid block.
+     * This prevents placing blocks in mid-air.
+     */
+    private boolean hasAdjacentSolidBlock(Vector3i blockPos) {
+        // Check all 6 adjacent positions (up, down, north, south, east, west)
+        Vector3i[] adjacentPositions = {
+            new Vector3i(blockPos.x, blockPos.y + 1, blockPos.z), // Above
+            new Vector3i(blockPos.x, blockPos.y - 1, blockPos.z), // Below
+            new Vector3i(blockPos.x + 1, blockPos.y, blockPos.z), // East
+            new Vector3i(blockPos.x - 1, blockPos.y, blockPos.z), // West
+            new Vector3i(blockPos.x, blockPos.y, blockPos.z + 1), // North
+            new Vector3i(blockPos.x, blockPos.y, blockPos.z - 1)  // South
+        };
+        
+        for (Vector3i adjacentPos : adjacentPositions) {
+            BlockType adjacentBlock = world.getBlockAt(adjacentPos.x, adjacentPos.y, adjacentPos.z);
+            if (adjacentBlock.isSolid()) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /**
@@ -750,7 +809,7 @@ public class Player {      // Player settings
     /**
      * Performs a raycast from the player's view to find the block they're looking at.
      * Uses a smaller step size for better precision.
-     * @return The position of the hit block, or null if no block was hit.
+     * @return The position of the first non-air block hit by ray, or null if no block was hit.
      */
     private Vector3i raycast() {
         Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);

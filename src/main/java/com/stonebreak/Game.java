@@ -59,6 +59,9 @@ public class Game {
         this.pauseMenu = new PauseMenu();
         this.waterEffects = new WaterEffects(); // Initialize water effects
         
+        // Initialize water simulation with any existing water blocks
+        this.waterEffects.detectExistingWater();
+        
         // Initialize UI components
         this.uiRenderer = new UIRenderer();
         this.uiRenderer.init();

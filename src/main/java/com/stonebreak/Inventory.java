@@ -37,6 +37,7 @@ public class Inventory {
         addItem(BlockType.DIRT.getId(), 10);
         addItem(BlockType.STONE.getId(), 10);
         addItem(BlockType.WOOD.getId(), 10);
+        addItem(BlockType.WATER.getId(), 5); // Add water blocks for testing
 
         // Initial tooltip will be triggered by Game.init() after setInventoryScreen is called.
     }
