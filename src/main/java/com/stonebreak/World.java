@@ -22,18 +22,19 @@ public class World {
     private static final int RENDER_DISTANCE = 8;
     private static final int UNLOAD_DISTANCE = RENDER_DISTANCE + 4; // Keep chunks loaded a bit beyond render distance
       // Seed for terrain generation
-    private long seed;
-    private Random random;
-    private NoiseGenerator terrainNoise;
-    private NoiseGenerator temperatureNoise; // For biome determination
+    private final long seed;
+    private final Random random;
+    private final NoiseGenerator terrainNoise;
+    private final NoiseGenerator temperatureNoise; // For biome determination
+    private final Object randomLock = new Object(); // Lock for synchronizing random access
     
     // Stores all chunks in the world
-    private Map<ChunkPosition, Chunk> chunks;
+    private final Map<ChunkPosition, Chunk> chunks;
     
     // Tracks which chunks need mesh updates
-    private ExecutorService chunkBuildExecutor;
-    private Set<Chunk> chunksToBuildMesh; // Chunks needing their mesh data (re)built
-    private Queue<Chunk> chunksReadyForGLUpload; // Chunks with mesh data ready for GL upload
+    private final ExecutorService chunkBuildExecutor;
+    private final Set<Chunk> chunksToBuildMesh; // Chunks needing their mesh data (re)built
+    private final Queue<Chunk> chunksReadyForGLUpload; // Chunks with mesh data ready for GL upload
     
     // Chunk unloading timer
     private float chunkUnloadCounter = 0;
@@ -391,7 +392,7 @@ public class World {
                     BlockType oreType = null;
 
                     if (currentBlock == BlockType.STONE) {
-                        synchronized (this.random) {
+                        synchronized (randomLock) {
                             if (this.random.nextFloat() < 0.015) { // Increased coal slightly
                                 oreType = BlockType.COAL_ORE;
                             } else if (this.random.nextFloat() < 0.008 && y < 50) { // Increased iron slightly, wider range
@@ -400,7 +401,7 @@ public class World {
                         }
                     } else if (biome == BiomeType.RED_SAND_DESERT && (currentBlock == BlockType.RED_SAND || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
                         // Crystal generation in Volcanic biomes, embedded in Obsidian, Stone or Magma
-                        synchronized (this.random) {
+                        synchronized (randomLock) {
                             if (this.random.nextFloat() < 0.02) { // Chance for Crystal
                                 oreType = BlockType.CRYSTAL;
                             }
@@ -416,7 +417,7 @@ public class World {
                 if (biome == BiomeType.PLAINS) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) { // Ensure tree spawns on grass
                         boolean shouldGenerateTree;
-                        synchronized (this.random) {
+                        synchronized (randomLock) {
                             shouldGenerateTree = (this.random.nextFloat() < 0.01 && surfaceHeight > 64);
                         }
                         if (shouldGenerateTree) {
@@ -430,12 +431,12 @@ public class World {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS && 
                         chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
                         boolean shouldGenerateFlower;
-                        synchronized (this.random) {
+                        synchronized (randomLock) {
                             shouldGenerateFlower = this.random.nextFloat() < 0.08; // 8% chance for flowers
                         }
                         if (shouldGenerateFlower) {
                             BlockType flowerType;
-                            synchronized (this.random) {
+                            synchronized (randomLock) {
                                 flowerType = this.random.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION;
                             }
                             this.setBlockAt(worldX, surfaceHeight, worldZ, flowerType);

@@ -18,6 +18,7 @@ public class Game {
     private InputHandler inputHandler; // Added InputHandler field
     private UIRenderer uiRenderer; // UI renderer for menus
     private MainMenu mainMenu; // Main menu
+    private SoundSystem soundSystem; // Sound system
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
@@ -61,6 +62,33 @@ public class Game {
         
         // Initialize water simulation with any existing water blocks
         this.waterEffects.detectExistingWater();
+        
+        // Initialize sound system
+        this.soundSystem = SoundSystem.getInstance();
+        this.soundSystem.initialize();
+        this.soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
+        this.soundSystem.testBasicFunctionality(); // Test sound system
+        
+        // If sound loading failed, try alternative approaches
+        if (!this.soundSystem.isSoundLoaded("grasswalk")) {
+            System.err.println("First attempt failed, trying alternative loading methods...");
+            
+            // Try different variations
+            String[] pathVariations = {
+                "sounds/GrassWalk.wav",
+                "/GrassWalk.wav", 
+                "GrassWalk.wav"
+            };
+            
+            for (String path : pathVariations) {
+                System.out.println("Trying path: " + path);
+                this.soundSystem.loadSound("grasswalk", path);
+                if (this.soundSystem.isSoundLoaded("grasswalk")) {
+                    System.out.println("Success with path: " + path);
+                    break;
+                }
+            }
+        }
         
         // Initialize UI components
         this.uiRenderer = new UIRenderer();
@@ -310,6 +338,13 @@ public class Game {
     }
     
     /**
+     * Gets the sound system.
+     */
+    public static SoundSystem getSoundSystem() {
+        return getInstance().soundSystem;
+    }
+    
+    /**
      * Cleanup game resources.
      */
     public void cleanup() {
@@ -318,6 +353,9 @@ public class Game {
         }
         if (uiRenderer != null) {
             uiRenderer.cleanup();
+        }
+        if (soundSystem != null) {
+            soundSystem.cleanup();
         }
     }
     

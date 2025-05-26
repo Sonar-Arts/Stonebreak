@@ -74,6 +74,10 @@ OpenJDK-24/
 src/main/java/com/stonebreak/OpenJDK-24/
 target/classes/com/stonebreak/OpenJDK-24/
 claude.MD
+CLAUDE.md
+
+# Documentation folder
+docs/
 
 # Local configuration files
 *.properties
