@@ -10,7 +10,7 @@ import org.joml.Vector3i;
 public class Player {      // Player settings
     private static final float PLAYER_HEIGHT = 1.8f;
     private static final float PLAYER_WIDTH = 0.6f;
-    private static final float MOVE_SPEED = 40.0f; // Increased to better balance with gravity
+    private static final float MOVE_SPEED = 35.0f; // Slightly reduced for better control
     private static final float SWIM_SPEED = 20.0f; // Swimming is slower than walking
     private static final float JUMP_FORCE = 8.0f;
     private static final float GRAVITY = 15.0f;
@@ -47,7 +47,7 @@ public class Player {      // Player settings
     
     // Walking sound system
     private float walkingSoundTimer; // Timer for walking sound intervals
-    private static final float WALKING_SOUND_INTERVAL = 0.5f; // Play sound every 0.5 seconds while walking
+    private static final float WALKING_SOUND_INTERVAL = 0.65f; // Play sound every 0.65 seconds while walking
     
     /**
      * Creates a new player in the specified world.
@@ -1040,11 +1040,13 @@ public class Player {      // Player settings
                 
                 BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
                 
-                // Only play grass walking sound on grass blocks
-                if (groundBlock == BlockType.GRASS) {
-                    SoundSystem soundSystem = Game.getSoundSystem();
-                    if (soundSystem != null) {
+                // Play appropriate walking sound based on block type
+                SoundSystem soundSystem = Game.getSoundSystem();
+                if (soundSystem != null) {
+                    if (groundBlock == BlockType.GRASS) {
                         soundSystem.playSoundWithVolume("grasswalk", 0.3f);
+                    } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
+                        soundSystem.playSoundWithVolume("sandwalk", 0.3f);
                     }
                 }
                 

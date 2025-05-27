@@ -67,6 +67,7 @@ public class Game {
         this.soundSystem = SoundSystem.getInstance();
         this.soundSystem.initialize();
         this.soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
+        this.soundSystem.loadSound("sandwalk", "/sounds/Sandwalk.wav");
         this.soundSystem.testBasicFunctionality(); // Test sound system
         
         // If sound loading failed, try alternative approaches
@@ -85,6 +86,27 @@ public class Game {
                 this.soundSystem.loadSound("grasswalk", path);
                 if (this.soundSystem.isSoundLoaded("grasswalk")) {
                     System.out.println("Success with path: " + path);
+                    break;
+                }
+            }
+        }
+        
+        // If sand walking sound loading failed, try alternative approaches
+        if (!this.soundSystem.isSoundLoaded("sandwalk")) {
+            System.err.println("Sand walk sound first attempt failed, trying alternative loading methods...");
+            
+            // Try different variations
+            String[] pathVariations = {
+                "sounds/Sandwalk.wav",
+                "/Sandwalk.wav", 
+                "Sandwalk.wav"
+            };
+            
+            for (String path : pathVariations) {
+                System.out.println("Trying sand walk path: " + path);
+                this.soundSystem.loadSound("sandwalk", path);
+                if (this.soundSystem.isSoundLoaded("sandwalk")) {
+                    System.out.println("Success with sand walk path: " + path);
                     break;
                 }
             }
