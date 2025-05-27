@@ -11,9 +11,9 @@ public class Inventory {
     public static final int MAIN_INVENTORY_COLS = 9;
     public static final int MAIN_INVENTORY_SIZE = MAIN_INVENTORY_ROWS * MAIN_INVENTORY_COLS; // 27 slots
     public static final int TOTAL_SLOTS = HOTBAR_SIZE + MAIN_INVENTORY_SIZE; // 36 slots
-
-    private ItemStack[] hotbarSlots;
-    private ItemStack[] mainInventorySlots;
+    
+    private final ItemStack[] hotbarSlots;
+    private final ItemStack[] mainInventorySlots;
     private int selectedHotbarSlotIndex; // 0-8
     private InventoryScreen inventoryScreen; // Reference to InventoryScreen for tooltip
 
@@ -24,6 +24,8 @@ public class Inventory {
         // this.inventoryScreen = inventoryScreen; // Removed: Will be set via setter
         this.hotbarSlots = new ItemStack[HOTBAR_SIZE];
         this.mainInventorySlots = new ItemStack[MAIN_INVENTORY_SIZE];
+        
+        // Initialize all slots with empty items
         for (int i = 0; i < HOTBAR_SIZE; i++) {
             hotbarSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
@@ -32,6 +34,14 @@ public class Inventory {
         }
         this.selectedHotbarSlotIndex = 0;
 
+        // Initialize with starting items (extracted to a private method to avoid overridable method calls in constructor)
+        initializeStartingItems();    }
+    
+    /**
+     * Initialize inventory with starting items.
+     * Extracted to a separate method to avoid overridable method calls in constructor.
+     */
+    private void initializeStartingItems() {
         // Start with some basic blocks
         addItem(BlockType.GRASS.getId(), 10);
         addItem(BlockType.DIRT.getId(), 10);
@@ -40,26 +50,22 @@ public class Inventory {
         addItem(BlockType.WATER.getId(), 5); // Add water blocks for testing
 
         // Initial tooltip will be triggered by Game.init() after setInventoryScreen is called.
-    }
-
-    /**
+    }    /**
      * Adds a single item of the given block type to the inventory.
      * Tries to stack with existing items or find an empty slot.
      * @param blockTypeId The ID of the block type to add.
      * @return True if the item was successfully added (or partially added), false otherwise.
      */
-    public boolean addItem(int blockTypeId) {
+    public final boolean addItem(int blockTypeId) {
         return addItem(blockTypeId, 1);
-    }
-
-    /**
+    }    /**
      * Adds multiple items of the given block type to the inventory.
      * Tries to stack with existing items or find an empty slot.
      * @param blockTypeId The ID of the block type to add.
      * @param count The number of items to add.
      * @return True if all items were successfully added, false if inventory is full or couldn't add all.
      */
-    public boolean addItem(int blockTypeId, int count) {
+    public final boolean addItem(int blockTypeId, int count) {
         if (blockTypeId == BlockType.AIR.getId() || count <= 0) {
             return true; // Or false, depending on desired behavior for adding air/zero
         }

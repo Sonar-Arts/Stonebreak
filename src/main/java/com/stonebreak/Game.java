@@ -119,7 +119,7 @@ public class Game {
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.inputHandler);
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler);
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
             // Trigger initial tooltip for the currently selected item

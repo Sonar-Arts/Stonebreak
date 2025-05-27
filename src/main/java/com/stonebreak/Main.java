@@ -341,6 +341,9 @@ public class Main {
             // Render UI elements
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             if (inventoryScreen != null) {
+                UIRenderer uiRenderer = game.getUIRenderer();
+                uiRenderer.beginFrame(width, height, 1.0f);
+                
                 if (inventoryScreen.isVisible()) {
                     // Render full inventory screen when visible
                     inventoryScreen.render(width, height);
@@ -348,6 +351,8 @@ public class Main {
                     // Always render hotbar when inventory is not open
                     inventoryScreen.renderHotbar(width, height);
                 }
+                
+                uiRenderer.endFrame();
             }
             
             // Render pause menu if paused

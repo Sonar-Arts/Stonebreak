@@ -468,6 +468,10 @@ public class UIRenderer {
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
     }
     
+    public long getVG() {
+        return vg;
+    }
+    
     public void cleanup() {
         if (vg != 0) {
             nvgDelete(vg);

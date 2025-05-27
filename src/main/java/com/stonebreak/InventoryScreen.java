@@ -1,12 +1,27 @@
 package com.stonebreak;
 
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
-import static org.lwjgl.opengl.GL13.glActiveTexture;
-import org.joml.Matrix4f;
-
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.nanovg.NVGColor;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_BOTTOM;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_RIGHT;
+import static org.lwjgl.nanovg.NanoVG.nvgBeginPath;
+import static org.lwjgl.nanovg.NanoVG.nvgFill;
+import static org.lwjgl.nanovg.NanoVG.nvgFillColor;
+import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
+import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
+import static org.lwjgl.nanovg.NanoVG.nvgRect;
+import static org.lwjgl.nanovg.NanoVG.nvgRoundedRect;
+import static org.lwjgl.nanovg.NanoVG.nvgStroke;
+import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
+import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
+import static org.lwjgl.nanovg.NanoVG.nvgText;
+import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
+import static org.lwjgl.nanovg.NanoVG.nvgTextBounds;
+import org.lwjgl.system.MemoryStack;
+import static org.lwjgl.system.MemoryStack.stackPush;
 
 
 
@@ -15,11 +30,12 @@ import org.lwjgl.glfw.GLFW;
  */
 public class InventoryScreen {
 
-    private Inventory inventory;
+    private final Inventory inventory;
     private boolean visible;
-    private Font font;
-    private Renderer renderer;
-    private InputHandler inputHandler; // Added for mouse input
+    // Font field removed since it's unused
+    private final Renderer renderer;
+    private final UIRenderer uiRenderer;
+    private final InputHandler inputHandler; // Added for mouse input
 
     // Drag and drop state
     private ItemStack draggedItemStack;
@@ -43,40 +59,15 @@ public class InventoryScreen {
     // NUM_COLS is now Inventory.MAIN_INVENTORY_COLS
     private static final int TITLE_HEIGHT = 30;
     
-    // Colors
-    private static final int BORDER_COLOR_R = 100;
-    private static final int BORDER_COLOR_G = 100;
-    private static final int BORDER_COLOR_B = 100;
-    private static final int BACKGROUND_COLOR_R = 50;
-    private static final int BACKGROUND_COLOR_G = 50;
-    private static final int BACKGROUND_COLOR_B = 50;
-    private static final int SLOT_BACKGROUND_R = 70;
-    private static final int SLOT_BACKGROUND_G = 70;
-    private static final int SLOT_BACKGROUND_B = 70;
-    private static final int TEXT_COLOR_R = 255;
-    private static final int TEXT_COLOR_G = 255;
-    private static final int TEXT_COLOR_B = 255;
-
-    // Tooltip Colors
-    private static final int TOOLTIP_BORDER_R = 20;
-    private static final int TOOLTIP_BORDER_G = 20;
-    private static final int TOOLTIP_BORDER_B = 20;
-    private static final int TOOLTIP_BORDER_A = 230;
-    private static final int TOOLTIP_BACKGROUND_R = 50;
-    private static final int TOOLTIP_BACKGROUND_G = 50;
-    private static final int TOOLTIP_BACKGROUND_B = 50;
-    private static final int TOOLTIP_BACKGROUND_A = 220;
-    private static final int TOOLTIP_TEXT_R = 220;
-    private static final int TOOLTIP_TEXT_G = 220;
-    private static final int TOOLTIP_TEXT_B = 220;
     /**
      * Creates a new inventory screen.
      */
-    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, InputHandler inputHandler) {
+    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, UIRenderer uiRenderer, InputHandler inputHandler) {
         this.inventory = inventory;
         this.visible = false;
-        this.font = font;
+        // font parameter is received but not used
         this.renderer = renderer;
+        this.uiRenderer = uiRenderer;
         this.inputHandler = inputHandler; // Initialize InputHandler
         this.draggedItemStack = null;
         this.draggedItemOriginalSlotIndex = -1;
@@ -142,28 +133,6 @@ public class InventoryScreen {
         // Reset hovered item at the start of each render pass
         hoveredItemStack = null;
 
-        // Save GL state
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        ShaderProgram shaderProgram = renderer.getShaderProgram();
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
-
-        // Setup 2D rendering
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        if (cullFaceEnabled) {
-            glDisable(GL_CULL_FACE);
-        }
-
-        shaderProgram.bind();
-        Matrix4f uiProjection = new Matrix4f().ortho(0, screenWidth, screenHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f();
-        shaderProgram.setUniform("projectionMatrix", uiProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 0);
-
         // Main Inventory Area (now includes hotbar visually as part of the panel)
         int numDisplayCols = Inventory.MAIN_INVENTORY_COLS;
 
@@ -171,38 +140,25 @@ public class InventoryScreen {
         // Height for main inventory slots + one row for hotbar + title
         int inventoryPanelHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT;
 
-
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
 
-        // Draw panel background
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        renderer.drawQuad(panelStartX - 5, panelStartY - 5, inventoryPanelWidth + 10, inventoryPanelHeight + 10,
-                BORDER_COLOR_R, BORDER_COLOR_G, BORDER_COLOR_B, 255);
-        renderer.drawQuad(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight,
-                BACKGROUND_COLOR_R, BACKGROUND_COLOR_G, BACKGROUND_COLOR_B, 200);
+        // Draw panel background using UIRenderer
+        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
-        // Draw title
-        String title = "Inventory";
-        float titleWidth = font.getTextWidth(title);
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", true);
-        font.drawString(panelStartX + (inventoryPanelWidth - titleWidth) / 2,
-                panelStartY + 10, title, TEXT_COLOR_R, TEXT_COLOR_G, TEXT_COLOR_B, shaderProgram);
-        shaderProgram.setUniform("u_isText", false);
+        // Draw title using NanoVG
+        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, panelStartY + 20, "Inventory");
 
         int contentStartY = panelStartY + TITLE_HEIGHT;
 
         // Draw Main Inventory Slots
         ItemStack[] mainSlots = inventory.getMainInventorySlots(); // Gets copies
-        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
-            int row = i / Inventory.MAIN_INVENTORY_COLS;
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {            int row = i / Inventory.MAIN_INVENTORY_COLS;
             int col = i % Inventory.MAIN_INVENTORY_COLS;
             int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
             int slotY = contentStartY + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
-            drawSlot(mainSlots[i], slotX, slotY, shaderProgram, uiProjection, identityView, false, -1);
-            checkHover(mainSlots[i], slotX, slotY, screenWidth, screenHeight);
+            drawInventorySlot(mainSlots[i], slotX, slotY, false, -1);
+            checkHover(mainSlots[i], slotX, slotY);
         }
         
         // Draw Hotbar Slots (as part of the main inventory panel, visually)
@@ -210,13 +166,12 @@ public class InventoryScreen {
         ItemStack[] hotbarSlots = inventory.getHotbarSlots(); // Gets copies
         int hotbarRowYOffset = contentStartY + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING; // Extra padding for separation
 
-        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-            int col = i % Inventory.MAIN_INVENTORY_COLS; // Hotbar is a single row
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {            int col = i % Inventory.MAIN_INVENTORY_COLS; // Hotbar is a single row
             int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
             int slotY = hotbarRowYOffset;
              // Pass true for isHotbarSlot and the actual hotbar index
-            drawSlot(hotbarSlots[i], slotX, slotY, shaderProgram, uiProjection, identityView, true, i);
-            checkHover(hotbarSlots[i], slotX, slotY, screenWidth, screenHeight);
+            drawInventorySlot(hotbarSlots[i], slotX, slotY, true, i);
+            checkHover(hotbarSlots[i], slotX, slotY);
         }
 
 
@@ -229,25 +184,7 @@ public class InventoryScreen {
 
             BlockType type = BlockType.getById(draggedItemStack.getBlockTypeId());
             if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
-                 renderer.draw3DItemInSlot(type, itemRenderX, itemRenderY, SLOT_SIZE - 4, SLOT_SIZE - 4);
-                // Reset to 2D projection after 3D rendering
-                shaderProgram.bind();
-                shaderProgram.setUniform("projectionMatrix", uiProjection);
-                shaderProgram.setUniform("viewMatrix", identityView);
-                glDisable(GL_DEPTH_TEST);
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-                if (draggedItemStack.getCount() > 1) {
-                    String countText = String.valueOf(draggedItemStack.getCount());
-                    float textWidth = font.getTextWidth(countText);
-                    float textHeight = font.getLineHeight();
-                    shaderProgram.setUniform("u_isText", true);
-                    font.drawString(itemRenderX + SLOT_SIZE - 4 - textWidth - 3,
-                                    itemRenderY + SLOT_SIZE - 4 - textHeight - 1,
-                                    countText, 255, 220, 0, shaderProgram);
-                    shaderProgram.setUniform("u_isText", false);
-                }
+                drawDraggedItem(type, itemRenderX, itemRenderY, draggedItemStack.getCount());
             }
         }
 
@@ -255,111 +192,281 @@ public class InventoryScreen {
         if (hoveredItemStack != null && !hoveredItemStack.isEmpty() && draggedItemStack == null) { // Only show tooltip if not dragging
             BlockType type = BlockType.getById(hoveredItemStack.getBlockTypeId());
             if (type != null && type != BlockType.AIR) {
-                String itemName = type.getName();
-                float textWidth = font.getTextWidth(itemName);
-                float textHeight = font.getLineHeight();
-                float tooltipPadding = 7.0f; // Increased padding
-
-                float tooltipWidth = textWidth + 2 * tooltipPadding;
-                float tooltipHeight = textHeight + 2 * tooltipPadding;
-
                 Vector2f mousePos = inputHandler.getMousePosition();
-                float tooltipX = mousePos.x + 15; // Offset from cursor
-                float tooltipY = mousePos.y + 15;
-
-                // Adjust tooltip position to stay within screen bounds
-                if (tooltipX + tooltipWidth > screenWidth) {
-                    tooltipX = screenWidth - tooltipWidth;
-                }
-                if (tooltipY + tooltipHeight > screenHeight) {
-                    tooltipY = screenHeight - tooltipHeight;
-                }
-                if (tooltipX < 0) tooltipX = 0;
-                if (tooltipY < 0) tooltipY = 0;
-
-
-                // Draw tooltip background
-                shaderProgram.setUniform("u_useSolidColor", true);
-                shaderProgram.setUniform("u_isText", false);
-                // Draw outer border
-                renderer.drawQuad((int)tooltipX, (int)tooltipY, (int)tooltipWidth, (int)tooltipHeight,
-                                  TOOLTIP_BORDER_R, TOOLTIP_BORDER_G, TOOLTIP_BORDER_B, TOOLTIP_BORDER_A);
-                // Draw inner background
-                renderer.drawQuad((int)tooltipX + 1, (int)tooltipY + 1, (int)tooltipWidth - 2, (int)tooltipHeight - 2,
-                                  TOOLTIP_BACKGROUND_R, TOOLTIP_BACKGROUND_G, TOOLTIP_BACKGROUND_B, TOOLTIP_BACKGROUND_A);
-
-                // Draw item name
-                shaderProgram.setUniform("u_useSolidColor", false);
-                shaderProgram.setUniform("u_isText", true);
-                float textDrawX = tooltipX + tooltipPadding;
-                float textDrawY = tooltipY + tooltipPadding + (textHeight * 0.75f); // Adjusted for better baseline placement
-                font.drawString(textDrawX,
-                                textDrawY,
-                                itemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, shaderProgram);
-                shaderProgram.setUniform("u_isText", false);
+                drawItemTooltip(type.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
             }
         }
-
-
-        // Restore GL state
-        if (!blendWasEnabled) {
-            glDisable(GL_BLEND);
+    }    // Helper method to draw inventory panel using UIRenderer
+    private void drawInventoryPanel(int x, int y, int width, int height) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            // Removed unused bevelSize variable
+            
+            // Main panel background
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, height);
+            nvgFillColor(vg, nvgRGBA(50, 50, 50, 240, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Panel border
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, height);
+            nvgStrokeWidth(vg, 2.0f);
+            nvgStrokeColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
         }
-        if (depthTestEnabled) {
-            glEnable(GL_DEPTH_TEST);
+    }
+    
+    private void drawInventoryTitle(float centerX, float centerY, String title) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            nvgFontSize(vg, 24);
+            nvgFontFace(vg, "sans");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX, centerY, title);
         }
-        if (cullFaceEnabled) {
-            glEnable(GL_CULL_FACE);
+    }
+    
+    // Helper method to draw a single slot using UIRenderer
+    private void drawInventorySlot(ItemStack itemStack, int slotX, int slotY, boolean isHotbarSlot, int hotbarIndex) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            // Highlight selected hotbar slot
+            if (isHotbarSlot && inventory.getSelectedHotbarSlotIndex() == hotbarIndex) {
+                nvgBeginPath(vg);
+                nvgRect(vg, slotX - 2, slotY - 2, SLOT_SIZE + 4, SLOT_SIZE + 4);
+                nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+            
+            // Slot border
+            nvgBeginPath(vg);
+            nvgRect(vg, slotX, slotY, SLOT_SIZE, SLOT_SIZE);
+            nvgFillColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Slot background
+            nvgBeginPath(vg);
+            nvgRect(vg, slotX + 1, slotY + 1, SLOT_SIZE - 2, SLOT_SIZE - 2);
+            nvgFillColor(vg, nvgRGBA(70, 70, 70, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            if (itemStack != null && !itemStack.isEmpty()) {
+                BlockType type = BlockType.getById(itemStack.getBlockTypeId());
+                int count = itemStack.getCount();
+                
+                if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
+                    // End NanoVG frame temporarily to draw 3D item
+                    uiRenderer.endFrame();
+                    
+                    // Draw 3D item using existing renderer
+                    renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                    
+                    // Restart NanoVG frame
+                    uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
+                    
+                    if (count > 1) {
+                        String countText = String.valueOf(count);
+                        nvgFontSize(vg, 12);
+                        nvgFontFace(vg, "sans");
+                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+                        
+                        // Text shadow
+                        nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
+                        nvgText(vg, slotX + SLOT_SIZE - 2, slotY + SLOT_SIZE - 2, countText);
+                        
+                        // Main text
+                        nvgFillColor(vg, nvgRGBA(255, 220, 0, 255, NVGColor.malloc(stack)));
+                        nvgText(vg, slotX + SLOT_SIZE - 3, slotY + SLOT_SIZE - 3, countText);
+                    }
+                }
+            }
+        }
+    }
+    
+    private void drawDraggedItem(BlockType type, int x, int y, int count) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            // End NanoVG frame temporarily to draw 3D item
+            uiRenderer.endFrame();
+            
+            // Draw 3D item using existing renderer
+            renderer.draw3DItemInSlot(type, x, y, SLOT_SIZE - 4, SLOT_SIZE - 4);
+            
+            // Restart NanoVG frame
+            uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
+            
+            if (count > 1) {
+                String countText = String.valueOf(count);
+                nvgFontSize(vg, 12);
+                nvgFontFace(vg, "sans");
+                nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+                
+                // Text shadow
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
+                nvgText(vg, x + SLOT_SIZE - 2, y + SLOT_SIZE - 2, countText);
+                
+                // Main text
+                nvgFillColor(vg, nvgRGBA(255, 220, 0, 255, NVGColor.malloc(stack)));
+                nvgText(vg, x + SLOT_SIZE - 3, y + SLOT_SIZE - 3, countText);
+            }
+        }
+    }
+    
+    private void drawItemTooltip(String itemName, float x, float y, int screenWidth, int screenHeight) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            float padding = 12.0f;
+            float cornerRadius = 6.0f;
+            
+            // Measure text with better font
+            nvgFontSize(vg, 16);
+            nvgFontFace(vg, "minecraft");
+            float[] bounds = new float[4];
+            nvgTextBounds(vg, 0, 0, itemName, bounds);
+            float textWidth = bounds[2] - bounds[0];
+            float textHeight = bounds[3] - bounds[1];
+            
+            float tooltipWidth = textWidth + 2 * padding;
+            float tooltipHeight = textHeight + 2 * padding;
+            
+            // Adjust position to stay within screen bounds with margin
+            float margin = 10.0f;
+            if (x + tooltipWidth > screenWidth - margin) {
+                x = screenWidth - tooltipWidth - margin;
+            }
+            if (y + tooltipHeight > screenHeight - margin) {
+                y = screenHeight - tooltipHeight - margin;
+            }
+            if (x < margin) x = margin;
+            if (y < margin) y = margin;
+            
+            // Drop shadow for depth
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x + 3, y + 3, tooltipWidth, tooltipHeight, cornerRadius);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 100, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Tooltip background with gradient
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x, y, tooltipWidth, tooltipHeight, cornerRadius);
+            nvgFillColor(vg, nvgRGBA(40, 40, 50, 240, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Inner highlight for 3D effect
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x + 1, y + 1, tooltipWidth - 2, tooltipHeight - 2, cornerRadius - 1);
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStrokeColor(vg, nvgRGBA(80, 80, 100, 120, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Outer border
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x, y, tooltipWidth, tooltipHeight, cornerRadius);
+            nvgStrokeWidth(vg, 2.0f);
+            nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 180, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Text shadow for better readability
+            nvgFontSize(vg, 16);
+            nvgFontFace(vg, "minecraft");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
+            nvgText(vg, x + tooltipWidth / 2 + 1, y + tooltipHeight / 2 + 1, itemName);
+            
+            // Main tooltip text
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, x + tooltipWidth / 2, y + tooltipHeight / 2, itemName);
+        }
+    }
+    
+    private void drawHotbarBackground(int x, int y, int width, int height) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, height);
+            nvgFillColor(vg, nvgRGBA(70, 70, 70, 180, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+    }
+    
+    private void drawHotbarTooltip(String itemName, float centerX, float y, int screenWidth, float alpha) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            float padding = 10.0f;
+            float cornerRadius = 5.0f;
+            
+            // Measure text with better font
+            nvgFontSize(vg, 15);
+            nvgFontFace(vg, "minecraft");
+            float[] bounds = new float[4];
+            nvgTextBounds(vg, 0, 0, itemName, bounds);
+            float textWidth = bounds[2] - bounds[0];
+            float textHeight = bounds[3] - bounds[1];
+            
+            float tooltipWidth = textWidth + 2 * padding;
+            float tooltipHeight = textHeight + 2 * padding;
+            
+            float tooltipX = centerX - tooltipWidth / 2.0f;
+            float tooltipY = y - tooltipHeight - 10.0f; // Add more spacing from hotbar
+            
+            // Adjust position to stay within screen bounds
+            float margin = 5.0f;
+            if (tooltipX < margin) tooltipX = margin;
+            if (tooltipX + tooltipWidth > screenWidth - margin) tooltipX = screenWidth - tooltipWidth - margin;
+            
+            // Calculate alpha-adjusted colors
+            int shadowAlpha = (int)(80 * alpha);
+            int backgroundAlpha = (int)(240 * alpha);
+            int borderAlpha = (int)(180 * alpha);
+            int textAlpha = (int)(255 * alpha);
+            
+            // Drop shadow for depth
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, tooltipX + 2, tooltipY + 2, tooltipWidth, tooltipHeight, cornerRadius);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, shadowAlpha, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Tooltip background with improved color
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, tooltipX, tooltipY, tooltipWidth, tooltipHeight, cornerRadius);
+            nvgFillColor(vg, nvgRGBA(40, 40, 50, backgroundAlpha, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Inner highlight for 3D effect
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, tooltipX + 1, tooltipY + 1, tooltipWidth - 2, tooltipHeight - 2, cornerRadius - 1);
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStrokeColor(vg, nvgRGBA(80, 80, 100, (int)(120 * alpha), NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Outer border
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, tooltipX, tooltipY, tooltipWidth, tooltipHeight, cornerRadius);
+            nvgStrokeWidth(vg, 1.5f);
+            nvgStrokeColor(vg, nvgRGBA(255, 255, 255, borderAlpha, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Tooltip text (only draw if substantially visible)
+            if (alpha > 0.1f) {
+                // Text shadow
+                nvgFontSize(vg, 15);
+                nvgFontFace(vg, "minecraft");
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, (int)(150 * alpha), NVGColor.malloc(stack)));
+                nvgText(vg, tooltipX + tooltipWidth / 2 + 1, tooltipY + tooltipHeight / 2 + 1, itemName);
+                
+                // Main text
+                nvgFillColor(vg, nvgRGBA(255, 255, 255, textAlpha, NVGColor.malloc(stack)));
+                nvgText(vg, tooltipX + tooltipWidth / 2, tooltipY + tooltipHeight / 2, itemName);
+            }
         }
     }
 
-    // Helper method to draw a single slot
-    private void drawSlot(ItemStack itemStack, int slotX, int slotY, ShaderProgram shaderProgram, Matrix4f uiProjection, Matrix4f identityView, boolean isHotbarSlot, int hotbarIndex) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        shaderProgram.setUniform("u_useSolidColor", true); // Make sure this is set before drawing quads
-        shaderProgram.setUniform("u_isText", false);
-
-
-        // Highlight selected hotbar slot
-        if (isHotbarSlot && inventory.getSelectedHotbarSlotIndex() == hotbarIndex) {
-            renderer.drawQuad(slotX - 2, slotY - 2, SLOT_SIZE + 4, SLOT_SIZE + 4,
-                    255, 255, 255, 255); // White highlight
-        } else {
-             renderer.drawQuad(slotX, slotY, SLOT_SIZE, SLOT_SIZE,
-                BORDER_COLOR_R, BORDER_COLOR_G, BORDER_COLOR_B, 255);
-        }
-        renderer.drawQuad(slotX + 1, slotY + 1, SLOT_SIZE - 2, SLOT_SIZE - 2,
-                SLOT_BACKGROUND_R, SLOT_BACKGROUND_G, SLOT_BACKGROUND_B, 255);
-
-        if (itemStack != null && !itemStack.isEmpty()) {
-            BlockType type = BlockType.getById(itemStack.getBlockTypeId());
-            int count = itemStack.getCount();
-
-            if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
-                renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
-                // Reset to 2D projection
-                shaderProgram.bind(); // Rebind shader if draw3DItemInSlot changes it
-                shaderProgram.setUniform("projectionMatrix", uiProjection);
-                shaderProgram.setUniform("viewMatrix", identityView);
-                glDisable(GL_DEPTH_TEST);
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-
-                if (count > 1) {
-                    String countText = String.valueOf(count);
-                    float textWidth = font.getTextWidth(countText);
-                    float textHeight = font.getLineHeight();
-                    shaderProgram.setUniform("u_isText", true); // Set before drawing text
-                    shaderProgram.setUniform("u_useSolidColor", false); // Textures are used for font
-                    font.drawString(slotX + SLOT_SIZE - textWidth - 3,
-                            slotY + SLOT_SIZE - textHeight - 1,
-                            countText, 255, 220, 0, shaderProgram);
-                    shaderProgram.setUniform("u_isText", false); // Reset after drawing text
-                }
-            }
-        }
+    // Helper method to create NVGColor
+    private NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {
+        return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, color);
     }
 
 
@@ -369,120 +476,26 @@ public class InventoryScreen {
     public void renderHotbar(int screenWidth, int screenHeight) {
         if (visible) return; // Don't render separate hotbar if full inventory is open
 
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
-        ShaderProgram shaderProgram = renderer.getShaderProgram();
-
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        if (cullFaceEnabled) {
-            glDisable(GL_CULL_FACE);
-        }
-
-        shaderProgram.bind();
-        Matrix4f uiProjection = new Matrix4f().ortho(0, screenWidth, screenHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f();
-        shaderProgram.setUniform("projectionMatrix", uiProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-
         int hotbarWidth = Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
         int hotbarStartX = (screenWidth - hotbarWidth) / 2;
         int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
 
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        renderer.drawQuad(hotbarStartX, hotbarStartY - SLOT_PADDING, hotbarWidth, SLOT_SIZE + SLOT_PADDING * 2,
-                SLOT_BACKGROUND_R, SLOT_BACKGROUND_G, SLOT_BACKGROUND_B, 180); // Semi-transparent
+        drawHotbarBackground(hotbarStartX, hotbarStartY - SLOT_PADDING, hotbarWidth, SLOT_SIZE + SLOT_PADDING * 2);
 
         ItemStack[] hotbarItems = inventory.getHotbarSlots(); // Get copies
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int slotX = hotbarStartX + SLOT_PADDING + i * (SLOT_SIZE + SLOT_PADDING);
-            drawSlot(hotbarItems[i], slotX, hotbarStartY, shaderProgram, uiProjection, identityView, true, i);
+            drawInventorySlot(hotbarItems[i], slotX, hotbarStartY, true, i);
         }
 
         // Render Hotbar Selection Tooltip
         if (hotbarSelectedItemName != null && hotbarSelectedItemTooltipAlpha > 0.0f && !visible) {
-            float textWidth = font.getTextWidth(hotbarSelectedItemName);
-            float textHeight = font.getLineHeight();
-            float tooltipPadding = 7.0f;
-
-            float tooltipWidth = textWidth + 2 * tooltipPadding;
-            float tooltipHeight = textHeight + 2 * tooltipPadding;
-
             // Position above the *selected* hotbar slot
             int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
             float selectedSlotX = hotbarStartX + SLOT_PADDING + selectedSlotIndex * (SLOT_SIZE + SLOT_PADDING);
             float selectedSlotCenterX = selectedSlotX + SLOT_SIZE / 2.0f;
-
-            float tooltipX = selectedSlotCenterX - tooltipWidth / 2.0f;
-            float tooltipY = hotbarStartY - tooltipHeight - (SLOT_PADDING * 2); // Position above the hotbar with some padding
-
-            // Adjust tooltip position to stay within screen bounds (simple horizontal check)
-            if (tooltipX < 0) tooltipX = 0;
-            if (tooltipX + tooltipWidth > screenWidth) tooltipX = screenWidth - tooltipWidth;
-
-
-            // Calculate alpha-adjusted colors
-            int currentTooltipBorderA = (int)(TOOLTIP_BORDER_A * hotbarSelectedItemTooltipAlpha);
-            int currentTooltipBackgroundA = (int)(TOOLTIP_BACKGROUND_A * hotbarSelectedItemTooltipAlpha);
-            // For text, we'll need to pass alpha to drawString or use a shader that supports vertex alpha for text.
-            // For now, let's assume font.drawString can take an alpha or we modify its color.
-            // The font.drawString method takes R,G,B. We'll need to adjust the shader or font rendering for text alpha.
-            // As a simpler approach for now, we'll just render text with full alpha but the background will fade.
-            // A more robust solution would involve passing alpha to the text rendering.
-
-            shaderProgram.setUniform("u_useSolidColor", true);
-            shaderProgram.setUniform("u_isText", false);
-            renderer.drawQuad((int)tooltipX, (int)tooltipY, (int)tooltipWidth, (int)tooltipHeight,
-                              TOOLTIP_BORDER_R, TOOLTIP_BORDER_G, TOOLTIP_BORDER_B, currentTooltipBorderA);
-            renderer.drawQuad((int)tooltipX + 1, (int)tooltipY + 1, (int)tooltipWidth - 2, (int)tooltipHeight - 2,
-                              TOOLTIP_BACKGROUND_R, TOOLTIP_BACKGROUND_G, TOOLTIP_BACKGROUND_B, currentTooltipBackgroundA);
-
-            shaderProgram.setUniform("u_useSolidColor", false);
-            shaderProgram.setUniform("u_isText", true);
-            // For text alpha, ideally the shader and font.drawString would support it.
-            // If not, the text might not fade perfectly with the background.
-            // We'll use a modified text color for the fading effect if the font renderer doesn't directly support alpha.
-            // Let's assume the text color is also affected by the alpha for now.
-            // The font rendering would need to use this alpha.
-            // For now, we pass the base text color, but the background will fade.
-            // To make text fade, we'd need to modify Font.drawString or the shader.
-            // Let's assume for now the text color's alpha is implicitly handled or we just fade the background.
-            // For a visual fade, the text color's alpha component should also be modulated.
-            // We will pass the alpha to the font drawing method if it's extended, or use a shader uniform.
-            // For now, we'll render text with full opacity and only fade the background.
-            // A proper text fade would require changes to Font.java or its shader.
-            // Let's try to pass alpha to drawString if it were available:
-            // font.drawString(textDrawX, textDrawY, hotbarSelectedItemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, (int)(255 * hotbarSelectedItemTooltipAlpha), shaderProgram);
-            // Since it's not, we'll just draw it. The background fade will give the primary effect.
-
-            float textDrawX = tooltipX + tooltipPadding;
-            float textDrawY = tooltipY + tooltipPadding + (textHeight * 0.75f);
-
-            // To actually make the text fade, the Font.drawString method or the text shader needs to use an alpha value.
-            // We can simulate this by changing the text color if the shader doesn't support per-vertex alpha for text.
-            // For now, we'll render the text with its standard color, and the background will fade.
-            // If Font.drawString could take an alpha:
-            // font.drawString(textDrawX, textDrawY, hotbarSelectedItemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, (int)(255 * hotbarSelectedItemTooltipAlpha), shaderProgram);
-            // Since it doesn't, we draw as is. The background fade is the main visual cue.
-            if (hotbarSelectedItemTooltipAlpha > 0.1f) { // Only draw text if substantially visible
-                 font.drawString(textDrawX,
-                                textDrawY,
-                                hotbarSelectedItemName, TOOLTIP_TEXT_R, TOOLTIP_TEXT_G, TOOLTIP_TEXT_B, shaderProgram);
-            }
-            shaderProgram.setUniform("u_isText", false);
-        }
-
-        if (!blendWasEnabled) {
-            glDisable(GL_BLEND);
-        }
-        if (depthTestEnabled) {
-            glEnable(GL_DEPTH_TEST);
-        }
-        if (cullFaceEnabled) {
-            glEnable(GL_CULL_FACE);
+            
+            drawHotbarTooltip(hotbarSelectedItemName, selectedSlotCenterX, hotbarStartY - 10, screenWidth, hotbarSelectedItemTooltipAlpha);
         }
     }
 
@@ -758,9 +771,7 @@ public class InventoryScreen {
          if (draggedItemStack != null && draggedItemStack.isEmpty()){ // If count became zero after trying to return
             draggedItemStack = null;
         }
-    }
-
-    private void checkHover(ItemStack itemStack, int slotX, int slotY, int screenWidth, int screenHeight) {
+    }    private void checkHover(ItemStack itemStack, int slotX, int slotY) {
         if (itemStack == null || itemStack.isEmpty() || !visible) {
             return;
         }
