@@ -311,31 +311,22 @@ public class World {
                             blockType = BlockType.MAGMA; // More magma deeper in volcanic areas
                         } else {
                             blockType = BlockType.STONE;
-                        }
-                    } else if (y < height - 1) {
+                        }                    } else if (y < height - 1) {
                         // Sub-surface layer
-                        if (biome == BiomeType.RED_SAND_DESERT) {
-                            blockType = BlockType.RED_SANDSTONE; // Changed from RED_SAND to RED_SANDSTONE
-                        } else if (biome == BiomeType.DESERT) {
-                            blockType = BlockType.SANDSTONE; // Changed from DIRT to SANDSTONE
-                        } else {
-                            blockType = BlockType.DIRT;
-                        }
-                    } else if (y < height) {
+                        blockType = (biome != null) ? switch (biome) {
+                            case RED_SAND_DESERT -> BlockType.RED_SANDSTONE;
+                            case DESERT -> BlockType.SANDSTONE;
+                            case PLAINS -> BlockType.DIRT;
+                            default -> BlockType.DIRT;
+                        } : BlockType.DIRT;                    } else if (y < height) {
                         // Top layer
-                        switch (biome) {
-                            case DESERT:
-                                blockType = BlockType.SAND;
-                                break;
-                            case RED_SAND_DESERT:
-                                blockType = BlockType.RED_SAND; // Surface of red sand desert biome
-                                break;
-                            case PLAINS:
-                            default:
-                                blockType = BlockType.GRASS;
-                                break;
-                        }
-                    } else if (y < 64) { // Water level
+                        blockType = (biome != null) ? switch (biome) {
+                            case DESERT -> BlockType.SAND;
+                            case RED_SAND_DESERT -> BlockType.RED_SAND;
+                            case PLAINS -> BlockType.GRASS;
+                            default -> BlockType.DIRT; // Default case to handle any new biome types
+                        } : BlockType.DIRT;
+                    }else if (y < 64) { // Water level
                         // No water in volcanic biomes above a certain height
                         if (biome == BiomeType.RED_SAND_DESERT && height > 64) {
                              blockType = BlockType.AIR;
@@ -558,7 +549,7 @@ public class World {
         } catch (Exception e) {
             // Catch any exception from generateChunk or map operations (e.g., if generateChunk throws)
             System.err.println("Exception during chunk generation or registration at (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
             // Ensure the potentially problematic position is not left in an inconsistent state in 'chunks'
             // if 'put' partially succeeded before an error, though 'put' on CHM is atomic.
             // If an error occurred, the chunk is not considered successfully registered.
@@ -574,8 +565,6 @@ public class World {
         float nx = x / 100.0f;
         float nz = z / 100.0f;
         
-        float heightValue = 0.0f;
-        
         // Base terrain
         float baseHeight = terrainNoise.noise(nx, nz) * 0.5f + 0.5f;
         
@@ -587,7 +576,7 @@ public class World {
         mountainValue = mountainValue * mountainValue * 0.3f;
         
         // Combine noise layers
-        heightValue = baseHeight + hillsValue + mountainValue;
+        float heightValue = baseHeight + hillsValue + mountainValue;
         
         // Scale to world height
         int height = 60 + (int)(heightValue * 40);
@@ -692,7 +681,7 @@ public class World {
                     // This catch is primarily for unexpected errors from the submit call itself,
                     // as buildAndPrepareMeshData now catches its internal exceptions.
                     System.err.println("Outer error during mesh build task for chunk at (" + chunkToProcess.getWorldX(0)/CHUNK_SIZE + ", " + chunkToProcess.getWorldZ(0)/CHUNK_SIZE + "): " + e.getMessage());
-                    e.printStackTrace();
+                    System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
                     buildSuccess = false; // Ensure success is false if an outer exception occurred
                 } finally {
                     // CRITICAL: Always reset the flag for the current chunk.
@@ -775,7 +764,7 @@ public class World {
             for (int z = playerChunkZ - RENDER_DISTANCE - 1; z <= playerChunkZ + RENDER_DISTANCE + 1; z++) {
                 // Only process chunks that are in the border strip (i.e., not in the main render_distance loop above)
                 boolean isInsideRenderDist = (x >= playerChunkX - RENDER_DISTANCE && x <= playerChunkX + RENDER_DISTANCE &&
-                                              z >= playerChunkZ - RENDER_DISTANCE && z <= playerChunkZ - RENDER_DISTANCE);
+                                              z >= playerChunkZ - RENDER_DISTANCE && z <= playerChunkZ + RENDER_DISTANCE);
                 if (isInsideRenderDist) {
                     continue; // Already handled by the first pass
                 }
