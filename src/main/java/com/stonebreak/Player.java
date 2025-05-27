@@ -47,6 +47,7 @@ public class Player {      // Player settings
     
     // Walking sound system
     private float walkingSoundTimer; // Timer for walking sound intervals
+    private boolean wasMovingLastFrame; // Track if player was moving in the previous frame
     private static final float WALKING_SOUND_INTERVAL = 0.65f; // Play sound every 0.65 seconds while walking
     
     /**
@@ -68,6 +69,7 @@ public class Player {      // Player settings
         this.breakingProgress = 0.0f;
         this.breakingTime = 0.0f;
         this.walkingSoundTimer = 0.0f;
+        this.wasMovingLastFrame = false;
     }
       /**
      * Updates the player's position and camera.
@@ -1026,35 +1028,47 @@ public class Player {      // Player settings
         float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
         boolean isMoving = horizontalSpeed > 0.5f && onGround && !physicallyInWater; // Lower threshold for movement
         
-        // Removed debug logging for cleaner output
-        
         if (isMoving) {
-            walkingSoundTimer += Game.getDeltaTime();
-            
-            // Play walking sound at intervals
-            if (walkingSoundTimer >= WALKING_SOUND_INTERVAL) {
-                // Check what block type the player is standing on
-                int blockX = (int) Math.floor(position.x);
-                int blockY = (int) Math.floor(position.y - 0.1f); // Slightly below feet to get ground block
-                int blockZ = (int) Math.floor(position.z);
-                
-                BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
-                
-                // Play appropriate walking sound based on block type
-                SoundSystem soundSystem = Game.getSoundSystem();
-                if (soundSystem != null) {
-                    if (groundBlock == BlockType.GRASS) {
-                        soundSystem.playSoundWithVolume("grasswalk", 0.3f);
-                    } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
-                        soundSystem.playSoundWithVolume("sandwalk", 0.3f);
-                    }
-                }
-                
+            // If player just started moving, play sound immediately
+            if (!wasMovingLastFrame) {
+                playWalkingSound();
                 walkingSoundTimer = 0.0f;
+            } else {
+                walkingSoundTimer += Game.getDeltaTime();
+                
+                // Play walking sound at intervals
+                if (walkingSoundTimer >= WALKING_SOUND_INTERVAL) {
+                    playWalkingSound();
+                    walkingSoundTimer = 0.0f;
+                }
             }
         } else {
             // Reset timer when not moving
             walkingSoundTimer = 0.0f;
+        }
+        
+        wasMovingLastFrame = isMoving;
+    }
+    
+    /**
+     * Plays the appropriate walking sound based on the block type under the player.
+     */
+    private void playWalkingSound() {
+        // Check what block type the player is standing on
+        int blockX = (int) Math.floor(position.x);
+        int blockY = (int) Math.floor(position.y - 0.1f); // Slightly below feet to get ground block
+        int blockZ = (int) Math.floor(position.z);
+        
+        BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
+        
+        // Play appropriate walking sound based on block type
+        SoundSystem soundSystem = Game.getSoundSystem();
+        if (soundSystem != null) {
+            if (groundBlock == BlockType.GRASS) {
+                soundSystem.playSoundWithVolume("grasswalk", 0.3f);
+            } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
+                soundSystem.playSoundWithVolume("sandwalk", 0.3f);
+            }
         }
     }
 }
