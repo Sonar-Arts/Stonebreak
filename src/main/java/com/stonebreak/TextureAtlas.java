@@ -413,6 +413,168 @@ public class TextureAtlas {
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }
+                // Special handling for new snow-themed blocks in row 2 (y=2)
+                else if (tileY == 2) {
+                    if (tileX == 0) { // Snow top texture (0,2)
+                        int pixelX_snow = globalX % texturePixelSize;
+                        int pixelY_snow = globalY % texturePixelSize;
+                        
+                        // White snow with subtle variations
+                        int noiseVal_snow = (pixelX_snow * 13 + pixelY_snow * 29 + tileX * 11 + tileY * 17) % 21;
+                        
+                        if (noiseVal_snow < 7) { // Pure white
+                            r = (byte) 255; g = (byte) 255; b = (byte) 255;
+                        } else if (noiseVal_snow < 14) { // Slightly off-white
+                            r = (byte) 250; g = (byte) 250; b = (byte) 252;
+                        } else { // Very light blue tint
+                            r = (byte) 248; g = (byte) 250; b = (byte) 255;
+                        }
+                        a = (byte) 255;
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    } else if (tileX == 1) { // Snow side texture (1,2) / Snowy leaves texture
+                        int pixelX_snowside = globalX % texturePixelSize;
+                        int pixelY_snowside = globalY % texturePixelSize;
+                        
+                        // For snow side: white top portion, dirt bottom portion
+                        int snowLayerHeight = 3; // Top 3 pixels are snow
+                        
+                        if (pixelY_snowside < snowLayerHeight) { // Snow part (top)
+                            int noiseVal_snowside = (pixelX_snowside * 17 + pixelY_snowside * 23) % 21;
+                            if (noiseVal_snowside < 7) {
+                                r = (byte) 250; g = (byte) 250; b = (byte) 252;
+                            } else if (noiseVal_snowside < 14) {
+                                r = (byte) 245; g = (byte) 248; b = (byte) 250;
+                            } else {
+                                r = (byte) 240; g = (byte) 245; b = (byte) 248;
+                            }
+                        } else { // Dirt part (below snow) - EXACT COPY of case 2 (Dirt block) logic
+                            // 'globalX' and 'globalY' are global atlas pixel coordinates.
+                            float dirtX_snowside = (float) Math.sin(globalX * 0.7 + globalY * 0.3) * 0.5f + 0.5f;
+                            float dirtY_snowside = (float) Math.cos(globalX * 0.4 + globalY * 0.8) * 0.5f + 0.5f;
+                            float dirtNoise_snowside = (dirtX_snowside + dirtY_snowside) * 0.5f;
+                            
+                            r = (byte) (135 + dirtNoise_snowside * 40);
+                            g = (byte) (95 + dirtNoise_snowside * 35);
+                            b = (byte) (70 + dirtNoise_snowside * 25);
+                            
+                            // Add occasional small rocks or roots (exact from case 2)
+                            if ((globalX % 5 == 0 && globalY % 5 == 0) ||
+                                ((globalX+2) % 7 == 0 && (globalY+3) % 6 == 0)) {
+                                r = (byte) (r - 30); // Let byte casting handle underflow, like in original dirt
+                                g = (byte) (g - 25);
+                                b = (byte) (b - 20);
+                            }
+                        }
+                        a = (byte) 255;
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    } else if (tileX == 2) { // Pine wood texture (2,2)
+                        // Darker wood variant
+                        float woodGrain = (float) Math.sin(globalY * 1.5) * 0.5f + 0.5f;
+                        int ringX = (globalX % texturePixelSize);
+                        float ringEffect = (float) Math.sin(ringX * 0.7) * 0.4f + 0.6f;
+                        
+                        // Darker base colors than regular wood
+                        r = (byte) (80 + woodGrain * 40 * ringEffect);
+                        g = (byte) (50 + woodGrain * 25 * ringEffect);
+                        b = (byte) (20 + woodGrain * 15 * ringEffect);
+                        
+                        // Add occasional darker knots
+                        int centerX = texturePixelSize / 2;
+                        int centerY = texturePixelSize / 2;
+                        float distToCenter = (float) Math.sqrt(Math.pow(globalX % texturePixelSize - centerX, 2) +
+                                                              Math.pow(globalY % texturePixelSize - centerY, 2));
+                        
+                        if (distToCenter < 3 && (globalX / texturePixelSize + globalY / texturePixelSize) % 3 == 0) {
+                            r = (byte) (r - 15);
+                            g = (byte) (g - 10);
+                            b = (byte) (b - 5);
+                        }
+                        a = (byte) 255;
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    } else if (tileX == 3) { // Ice texture (3,2)
+                        int pixelX_ice = globalX % texturePixelSize;
+                        int pixelY_ice = globalY % texturePixelSize;
+                        
+                        // Light blue ice with crystalline patterns
+                        float iceNoise = (float) (
+                            Math.sin(pixelX_ice * 0.8 + pixelY_ice * 0.6) * 0.3 +
+                            Math.cos(pixelX_ice * 0.4 + pixelY_ice * 0.9) * 0.3 +
+                            Math.sin((pixelX_ice + pixelY_ice) * 0.7) * 0.4
+                        ) * 0.5f + 0.5f;
+                        
+                        r = (byte) (200 + iceNoise * 30);
+                        g = (byte) (230 + iceNoise * 20);
+                        b = (byte) (255);
+                        
+                        // Add crystal-like reflections
+                        if ((pixelX_ice % 4 == 0 && pixelY_ice % 4 == 0) || 
+                            ((pixelX_ice + 2) % 4 == 0 && (pixelY_ice + 2) % 4 == 0)) {
+                            r = (byte) 255;
+                            g = (byte) 255;
+                            b = (byte) 255;
+                        }
+                        
+                        a = (byte) 200; // Semi-transparent
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    } else if (tileX == 4) { // Snowy leaves texture (4,2)
+                        // Leaves with snow patches
+                        float leafNoise = (float) (
+                            Math.sin(globalX * 0.9 + globalY * 0.6) * 0.25 +
+                            Math.cos(globalX * 0.7 + globalY * 0.9) * 0.25 +
+                            Math.sin((globalX + globalY) * 0.8) * 0.5
+                        ) * 0.5f + 0.5f;
+                        
+                        // Base green color (slightly darker than normal leaves)
+                        r = (byte) (20 + leafNoise * 40);
+                        g = (byte) (80 + leafNoise * 60);
+                        b = (byte) (15 + leafNoise * 30);
+                        
+                        // Add snow patches
+                        int pixelX_snowyleaves = globalX % texturePixelSize;
+                        int pixelY_snowyleaves = globalY % texturePixelSize;
+                        
+                        if ((pixelX_snowyleaves % 3 == 0 && pixelY_snowyleaves % 4 == 0) || 
+                            ((pixelX_snowyleaves + 2) % 5 == 0 && (pixelY_snowyleaves + 1) % 3 == 0)) {
+                            // Snow patches
+                            r = (byte) 250;
+                            g = (byte) 250;
+                            b = (byte) 255;
+                        }
+                        
+                        // Add transparency at edges
+                        int edgeX = globalX % texturePixelSize;
+                        int edgeY = globalY % texturePixelSize;
+                        if (edgeX <= 1 || edgeX >= texturePixelSize-2 ||
+                            edgeY <= 1 || edgeY >= texturePixelSize-2) {
+                            a = (byte) (200 + (leafNoise * 55));
+                        } else {
+                            a = (byte) 255;
+                        }
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    } else if (tileX == 5) { // Pure snow texture (5,2) for layered snow
+                        int pixelX_puresnow = globalX % texturePixelSize;
+                        int pixelY_puresnow = globalY % texturePixelSize;
+                        
+                        // Pure white snow with very subtle variations
+                        int noiseVal_puresnow = (pixelX_puresnow * 13 + pixelY_puresnow * 29 + tileX * 11 + tileY * 17) % 21;
+                        
+                        if (noiseVal_puresnow < 7) { // Pure white
+                            r = (byte) 255; g = (byte) 255; b = (byte) 255;
+                        } else if (noiseVal_puresnow < 14) { // Slightly off-white
+                            r = (byte) 252; g = (byte) 252; b = (byte) 254;
+                        } else { // Very light blue tint
+                            r = (byte) 250; g = (byte) 252; b = (byte) 255;
+                        }
+                        a = (byte) 255;
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    }
+                }
 
                 int tileIndex = tileY * textureSize + tileX;
                   switch (tileIndex % 12) { // Ensure this switch is only hit if not handled above

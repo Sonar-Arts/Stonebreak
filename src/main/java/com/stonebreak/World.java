@@ -40,6 +40,9 @@ public class World {
     private float chunkUnloadCounter = 0;
     private float chunkRenderTickCounter = 0; // Timer for render tick
     private static final float CHUNK_RENDER_TICK_INTERVAL = 0.5f; // Check every 0.5 seconds
+    
+    // Snow layer management
+    private final SnowLayerManager snowLayerManager;
 
     public World() {
         this.seed = System.currentTimeMillis();
@@ -55,6 +58,7 @@ public class World {
         
         this.chunksToBuildMesh = ConcurrentHashMap.newKeySet(); // Changed to concurrent set
         this.chunksReadyForGLUpload = new ConcurrentLinkedQueue<>();
+        this.snowLayerManager = new SnowLayerManager();
         
         System.out.println("Creating world with seed: " + seed + ", using " + numThreads + " mesh builder threads.");
     }    public void update() {
@@ -317,6 +321,7 @@ public class World {
                             case RED_SAND_DESERT -> BlockType.RED_SANDSTONE;
                             case DESERT -> BlockType.SANDSTONE;
                             case PLAINS -> BlockType.DIRT;
+                            case SNOWY_PLAINS -> BlockType.DIRT;
                             default -> BlockType.DIRT;
                         } : BlockType.DIRT;                    } else if (y < height) {
                         // Top layer
@@ -324,6 +329,7 @@ public class World {
                             case DESERT -> BlockType.SAND;
                             case RED_SAND_DESERT -> BlockType.RED_SAND;
                             case PLAINS -> BlockType.GRASS;
+                            case SNOWY_PLAINS -> BlockType.SNOWY_DIRT;
                             default -> BlockType.DIRT; // Default case to handle any new biome types
                         } : BlockType.DIRT;
                     }else if (y < 64) { // Water level
@@ -404,7 +410,7 @@ public class World {
                     }
                 }
                 
-                // Generate Trees (only in PLAINS biome for now)
+                // Generate Trees (in PLAINS and SNOWY_PLAINS biomes)
                 if (biome == BiomeType.PLAINS) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) { // Ensure tree spawns on grass
                         boolean shouldGenerateTree;
@@ -413,6 +419,16 @@ public class World {
                         }
                         if (shouldGenerateTree) {
                             generateTree(chunk, x, surfaceHeight, z);
+                        }
+                    }
+                } else if (biome == BiomeType.SNOWY_PLAINS) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) { // Pine trees spawn on snowy dirt
+                        boolean shouldGeneratePineTree;
+                        synchronized (randomLock) {
+                            shouldGeneratePineTree = (this.random.nextFloat() < 0.015 && surfaceHeight > 64); // Slightly higher chance for pine trees
+                        }
+                        if (shouldGeneratePineTree) {
+                            generatePineTree(chunk, x, surfaceHeight, z);
                         }
                     }
                 }
@@ -431,6 +447,29 @@ public class World {
                                 flowerType = this.random.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION;
                             }
                             this.setBlockAt(worldX, surfaceHeight, worldZ, flowerType);
+                        }
+                    }
+                }
+                
+                // Generate Ice patches and Snow layers in SNOWY_PLAINS biome
+                if (biome == BiomeType.SNOWY_PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT && 
+                        chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+                        float featureChance;
+                        synchronized (randomLock) {
+                            featureChance = this.random.nextFloat();
+                        }
+                        
+                        if (featureChance < 0.03) { // 3% chance for ice patches
+                            this.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.ICE);
+                        } else if (featureChance < 0.08) { // Additional 5% chance for snow layers
+                            this.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
+                            // Set initial snow layer count (1-3 layers randomly)
+                            int layers;
+                            synchronized (randomLock) {
+                                layers = 1 + this.random.nextInt(3); // 1, 2, or 3 layers
+                            }
+                            snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
                         }
                     }
                 }
@@ -491,6 +530,88 @@ public class World {
                     // Removed: Old check for leaf x+dx, z+dz being outside local chunk bounds.
                     // this.setBlockAt handles world coordinates and places blocks in correct chunks.
                     this.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.LEAVES);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Generates a pine tree at the specified position.
+     */
+    private void generatePineTree(Chunk chunk, int x, int y, int z) { // x, z are local to chunk; y is worldYBase
+        // Calculate world coordinates for the base of the trunk
+        int worldXBase = chunk.getWorldX(x);
+        int worldZBase = chunk.getWorldZ(z);
+        int worldYBase = y;
+
+        // Pine trees are taller - check if the top goes out of world bounds
+        // Trunk is 7 blocks, leaves extend to worldYBase+8
+        if (worldYBase + 8 >= WORLD_HEIGHT) {
+            return;
+        }
+
+        // Place pine tree trunk (darker wood)
+        for (int dyTrunk = 0; dyTrunk < 7; dyTrunk++) { // 7 blocks high trunk
+            if (worldYBase + dyTrunk < WORLD_HEIGHT) {
+                this.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.PINE);
+            }
+        }
+
+        // Place snowy leaves in a more conical shape
+        // Bottom layer (offset 3-4): radius 2
+        for (int leafLayerYOffset = 3; leafLayerYOffset <= 4; leafLayerYOffset++) {
+            int currentLeafWorldY = worldYBase + leafLayerYOffset;
+            if (currentLeafWorldY >= WORLD_HEIGHT) continue;
+
+            int leafRadius = 2;
+            for (int dxLeaf = -leafRadius; dxLeaf <= leafRadius; dxLeaf++) {
+                for (int dzLeaf = -leafRadius; dzLeaf <= leafRadius; dzLeaf++) {
+                    // Skip corners for rounder shape
+                    if (Math.abs(dxLeaf) == leafRadius && Math.abs(dzLeaf) == leafRadius) {
+                        continue;
+                    }
+                    // Skip center column for trunk
+                    if (dxLeaf == 0 && dzLeaf == 0) {
+                        continue;
+                    }
+                    this.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.SNOWY_LEAVES);
+                }
+            }
+        }
+
+        // Middle layer (offset 5-6): radius 1
+        for (int leafLayerYOffset = 5; leafLayerYOffset <= 6; leafLayerYOffset++) {
+            int currentLeafWorldY = worldYBase + leafLayerYOffset;
+            if (currentLeafWorldY >= WORLD_HEIGHT) continue;
+
+            int leafRadius = 1;
+            for (int dxLeaf = -leafRadius; dxLeaf <= leafRadius; dxLeaf++) {
+                for (int dzLeaf = -leafRadius; dzLeaf <= leafRadius; dzLeaf++) {
+                    // Skip center column for trunk
+                    if (dxLeaf == 0 && dzLeaf == 0) {
+                        continue;
+                    }
+                    this.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.SNOWY_LEAVES);
+                }
+            }
+        }
+
+        // Top layer (offset 7-8): just around the top
+        for (int leafLayerYOffset = 7; leafLayerYOffset <= 8; leafLayerYOffset++) {
+            int currentLeafWorldY = worldYBase + leafLayerYOffset;
+            if (currentLeafWorldY >= WORLD_HEIGHT) continue;
+
+            // Very small cap
+            for (int dxLeaf = -1; dxLeaf <= 1; dxLeaf++) {
+                for (int dzLeaf = -1; dzLeaf <= 1; dzLeaf++) {
+                    // Only place on the sides for the very top
+                    if (leafLayerYOffset == 8 && (dxLeaf == 0 && dzLeaf == 0)) {
+                        continue; // Skip center for very top
+                    }
+                    if (leafLayerYOffset == 7 && (dxLeaf == 0 && dzLeaf == 0)) {
+                        continue; // Skip center for trunk
+                    }
+                    this.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.SNOWY_LEAVES);
                 }
             }
         }
@@ -610,8 +731,11 @@ public class World {
                 return BiomeType.RED_SAND_DESERT; // Hot and somewhat moist/varied = Red Sand Desert
             }
         } else if (temperature < 0.35f) { // Cold
-            // Could add TUNDRA or SNOWY biomes here later
-            return BiomeType.PLAINS; // Default to PLAINS for cold for now
+            if (moisture > 0.6f) {
+                return BiomeType.SNOWY_PLAINS; // Cold and moist = snowy plains
+            } else {
+                return BiomeType.PLAINS; // Cold but dry = regular plains
+            }
         } else { // Temperate
             if (moisture < 0.3f) {
                 return BiomeType.DESERT; // Temperate but dry = also desert like
@@ -865,6 +989,49 @@ public class World {
      */
     public int getLoadedChunkCount() {
         return chunks.size();
+    }
+    
+    /**
+     * Gets the snow layer manager for this world
+     */
+    public SnowLayerManager getSnowLayerManager() {
+        return snowLayerManager;
+    }
+    
+    /**
+     * Gets the snow layer count at a specific position
+     */
+    public int getSnowLayers(int x, int y, int z) {
+        return snowLayerManager.getSnowLayers(x, y, z);
+    }
+    
+    /**
+     * Gets the visual/collision height of a snow block at a specific position
+     */
+    public float getSnowHeight(int x, int y, int z) {
+        BlockType block = getBlockAt(x, y, z);
+        if (block == BlockType.SNOW) {
+            return snowLayerManager.getSnowHeight(x, y, z);
+        }
+        return block.getVisualHeight();
+    }
+    
+    /**
+     * Triggers a chunk mesh rebuild for the chunk containing the given world coordinates.
+     * Use this when block visual properties change without changing the block type.
+     */
+    public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
+        int chunkX = Math.floorDiv(worldX, CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(worldZ, CHUNK_SIZE);
+        
+        Chunk chunk = chunks.get(new ChunkPosition(chunkX, chunkZ));
+        if (chunk != null) {
+            synchronized (chunk) {
+                chunk.setDataReadyForGL(false);
+                chunk.setMeshDataGenerationScheduledOrInProgress(false);
+            }
+            conditionallyScheduleMeshBuild(chunk);
+        }
     }
     
     /**

@@ -24,7 +24,12 @@ public enum BlockType {
     SANDSTONE(14, "Sandstone", true, true, 5, 1, 5.0f), // Top texture for icon
     RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1, 5.0f), // Top texture for icon
     ROSE(16, "Rose", false, true, 10, 1, 0.1f), // Moved from 7,1
-    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f); // Moved from 8,1
+    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f), // Moved from 8,1
+    SNOWY_DIRT(18, "Snowy Dirt", true, true, 0, 2, 1.0f), // Snow Top (clone of grass)
+    SNOWY_LEAVES(19, "Snowy Leaves", true, true, 4, 2, 0.5f),
+    PINE(20, "Pine", true, true, 2, 2, 3.0f), // Darker wood variant
+    ICE(21, "Ice", true, true, 3, 2, 2.0f),
+    SNOW(22, "Snow", false, true, 5, 2, 0.1f); // Layered snow block
     
     private final int id;
     private final String name;
@@ -65,7 +70,7 @@ public enum BlockType {
      * @return true if the block is transparent (like air or water)
      */
     public boolean isTransparent() {
-        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION;
+        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW;
     }
 
     public int getAtlasX() {
@@ -78,6 +83,51 @@ public enum BlockType {
     
     public float getHardness() {
         return hardness;
+    }
+    
+    /**
+     * Gets the visual height of the block (0.0 to 1.0 where 1.0 is full block height)
+     * For snow blocks, this can be less than 1.0 to represent layers
+     * @param layerCount Number of snow layers (1-8 for snow blocks)
+     */
+    public float getVisualHeight(int layerCount) {
+        if (this == SNOW) {
+            return Math.min(1.0f, Math.max(0.125f, layerCount * 0.125f)); // 1-8 layers
+        }
+        return 1.0f; // Full block height for all other blocks
+    }
+    
+    /**
+     * Gets the visual height of the block with default layer count
+     */
+    public float getVisualHeight() {
+        return getVisualHeight(1);
+    }
+    
+    /**
+     * Gets the collision height of the block (0.0 to 1.0 where 1.0 is full block height)
+     * This determines what portion of the block has collision
+     * @param layerCount Number of snow layers (1-8 for snow blocks)
+     */
+    public float getCollisionHeight(int layerCount) {
+        if (this == SNOW) {
+            return Math.min(1.0f, Math.max(0.125f, layerCount * 0.125f)); // Only the snow portion has collision
+        }
+        return solid ? 1.0f : 0.0f; // Full collision for solid blocks, none for non-solid
+    }
+    
+    /**
+     * Gets the collision height of the block with default layer count
+     */
+    public float getCollisionHeight() {
+        return getCollisionHeight(1);
+    }
+    
+    /**
+     * Determines if this block type can be stacked (like snow layers)
+     */
+    public boolean isStackable() {
+        return this == SNOW;
     }
     
     /**
@@ -132,6 +182,19 @@ public enum BlockType {
             }
             case ROSE -> new float[]{10, 1}; // Moved from 7,1
             case DANDELION -> new float[]{11, 1}; // Moved from 8,1
+            case SNOWY_DIRT -> {
+                if (face == 0) yield new float[]{0, 2}; // Top - snow
+                if (face == 1) yield new float[]{2, 0}; // Bottom - dirt
+                yield new float[]{1, 2}; // Sides - snow side
+            }
+            case SNOW -> new float[]{5, 2}; // Pure snow texture for layers
+            case SNOWY_LEAVES -> new float[]{4, 2};
+            case PINE -> {
+                if (face == 0) yield new float[]{2, 2}; // Top
+                if (face == 1) yield new float[]{2, 0}; // Bottom - dirt
+                yield new float[]{2, 2}; // Sides
+            }
+            case ICE -> new float[]{3, 2};
             default -> new float[]{0, 0};
         };
     }

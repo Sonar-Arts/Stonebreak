@@ -270,7 +270,7 @@ public class Chunk {
 
                         if (renderFace) {
                             // Add face vertices, texture coordinates, normals, isWater flags, isAlphaTested flags, and indices
-                            index = addFace(lx, ly, lz, face, blockType, vertices, textureCoords, normals, isWaterFlags, isAlphaTestedFlags, indices, index);
+                            index = addFace(lx, ly, lz, face, blockType, vertices, textureCoords, normals, isWaterFlags, isAlphaTestedFlags, indices, index, world);
                         }
                     }
                 }
@@ -367,25 +367,30 @@ public class Chunk {
      */
     private int addFace(int x, int y, int z, int face, BlockType blockType,
                        List<Float> vertices, List<Float> textureCoords,
-                       List<Float> normals, List<Float> isWaterFlags, List<Float> isAlphaTestedFlags, List<Integer> indices, int index) {
+                       List<Float> normals, List<Float> isWaterFlags, List<Float> isAlphaTestedFlags, List<Integer> indices, int index, World world) {
         // Convert to world coordinates
         float worldX = x + this.x * World.CHUNK_SIZE;
         float worldY = y;
         float worldZ = z + this.z * World.CHUNK_SIZE;
         
-        // Get water level for visual height if this is a water block
-        float waterHeight = 1.0f; // Default full height
+        // Get visual height for blocks that can have variable heights
+        float blockHeight = 1.0f; // Default full height
         if (blockType == BlockType.WATER) {
             WaterEffects waterEffects = Game.getWaterEffects();
             if (waterEffects != null) {
-                waterHeight = waterEffects.getWaterVisualHeight((int)worldX, (int)worldY, (int)worldZ);
+                blockHeight = waterEffects.getWaterVisualHeight((int)worldX, (int)worldY, (int)worldZ);
+            }
+        } else if (blockType == BlockType.SNOW) {
+            // Get snow layer height from world
+            if (world != null) {
+                blockHeight = world.getSnowHeight((int)worldX, (int)worldY, (int)worldZ);
             }
         }
         
         // Define vertices for each face
         switch (face) {
             case 0 -> { // Top face (y+1)
-                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
+                float topY = worldY + blockHeight;
                 vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
@@ -408,7 +413,7 @@ public class Chunk {
                 normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
             }
             case 2 -> { // Front face (z+1)
-                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
+                float topY = worldY + blockHeight;
                 vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ + 1);
                 vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ + 1);
                 vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
@@ -420,7 +425,7 @@ public class Chunk {
                 normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
             }
             case 3 -> { // Back face (z-1)
-                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
+                float topY = worldY + blockHeight;
                 vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
@@ -432,7 +437,7 @@ public class Chunk {
                 normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
             }
             case 4 -> { // Right face (x+1)
-                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
+                float topY = worldY + blockHeight;
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ + 1);
                 vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
@@ -444,7 +449,7 @@ public class Chunk {
                 normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
             }
             case 5 -> { // Left face (x-1)
-                float topY = worldY + (blockType == BlockType.WATER ? waterHeight : 1.0f);
+                float topY = worldY + blockHeight;
                 vertices.add(worldX);    vertices.add(worldY);     vertices.add(worldZ);
                 vertices.add(worldX);    vertices.add(topY); vertices.add(worldZ);
                 vertices.add(worldX);    vertices.add(topY); vertices.add(worldZ + 1);
@@ -497,23 +502,23 @@ public class Chunk {
                 }
                 case 2, 3 -> { // Front/Back faces - use X,Y world coordinates
                     u_topLeft = worldX * textureScale;
-                    v_topLeft = (worldY + waterHeight) * textureScale;
+                    v_topLeft = (worldY + blockHeight) * textureScale;
                     u_bottomLeft = worldX * textureScale;
                     v_bottomLeft = worldY * textureScale;
                     u_bottomRight = (worldX + 1) * textureScale;
                     v_bottomRight = worldY * textureScale;
                     u_topRight = (worldX + 1) * textureScale;
-                    v_topRight = (worldY + waterHeight) * textureScale;
+                    v_topRight = (worldY + blockHeight) * textureScale;
                 }
                 case 4, 5 -> { // Left/Right faces - use Z,Y world coordinates  
                     u_topLeft = worldZ * textureScale;
-                    v_topLeft = (worldY + waterHeight) * textureScale;
+                    v_topLeft = (worldY + blockHeight) * textureScale;
                     u_bottomLeft = worldZ * textureScale;
                     v_bottomLeft = worldY * textureScale;
                     u_bottomRight = (worldZ + 1) * textureScale;
                     v_bottomRight = worldY * textureScale;
                     u_topRight = (worldZ + 1) * textureScale;
-                    v_topRight = (worldY + waterHeight) * textureScale;
+                    v_topRight = (worldY + blockHeight) * textureScale;
                 }
                 default -> {
                     // Fallback to regular texture coordinates

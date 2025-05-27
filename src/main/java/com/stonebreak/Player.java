@@ -151,6 +151,7 @@ public class Player {      // Player settings
 
         float correctedPositionX = position.x;
         boolean collisionOccurred = false;
+        float stepUpHeight = 0.0f; // Track the highest step-up needed
 
         float playerFootY = position.y;
         float playerHeadY = position.y + PLAYER_HEIGHT;
@@ -164,36 +165,101 @@ public class Player {      // Player settings
                     float playerLeftEdge = position.x - halfWidth; // Tentative left edge
                     int blockToCheckX = (int)Math.floor(playerLeftEdge);
 
-                    if (world.getBlockAt(blockToCheckX, yi, zi).isSolid()) {
-                        // Player needs to be positioned so its left edge is at blockToCheckX + 1
-                        float potentialNewX = (float)(blockToCheckX + 1) + halfWidth;
-                        if (!collisionOccurred || potentialNewX > correctedPositionX) { // Greater means less penetration
-                            correctedPositionX = potentialNewX;
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    if (blockHeight > 0) {
+                        // Check if player's Y position intersects with the block's collision height
+                        float blockTop = yi + blockHeight;
+                        
+                        // Auto step-up for blocks up to 1 block high
+                        // Calculate step-up height needed from player's current position
+                        float stepUpNeeded = blockTop - position.y;
+                        
+                        // Calculate player's elevation above the base of their current position
+                        float playerBaseY = (int)Math.floor(position.y);
+                        float playerElevation = position.y - playerBaseY;
+                        
+                        // Allow step-up if:
+                        // 1. Block is partial height (< 1.0), OR
+                        // 2. Block is full height (= 1.0) AND player is elevated ≥ 0.5 blocks
+                        boolean canStepUp = (blockHeight < 1.0f) || 
+                                          (blockHeight == 1.0f && playerElevation >= 0.5f);
+                        
+                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
+                            yi == (int)Math.floor(playerFootY) && position.y >= yi) {
+                            // Player can automatically step up onto this block
+                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
+                            // Normal collision - player needs to be positioned so its left edge is at blockToCheckX + 1
+                            float potentialNewX = (float)(blockToCheckX + 1) + halfWidth;
+                            if (!collisionOccurred || potentialNewX > correctedPositionX) { // Greater means less penetration
+                                correctedPositionX = potentialNewX;
+                            }
+                            collisionOccurred = true;
                         }
-                        collisionOccurred = true;
                     }
                 } else if (velocity.x > 0) { // Moving right
                     float playerRightEdge = position.x + halfWidth; // Tentative right edge
                     int blockToCheckX = (int)Math.floor(playerRightEdge);
 
-                    if (world.getBlockAt(blockToCheckX, yi, zi).isSolid()) {
-                        // Player needs to be positioned so its right edge is at blockToCheckX
-                        float potentialNewX = (float)blockToCheckX - halfWidth;
-                        if (!collisionOccurred || potentialNewX < correctedPositionX) { // Lesser means less penetration
-                            correctedPositionX = potentialNewX;
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    if (blockHeight > 0) {
+                        // Check if player's Y position intersects with the block's collision height
+                        float blockTop = yi + blockHeight;
+                        
+                        // Auto step-up for blocks up to 1 block high
+                        // Calculate step-up height needed from player's current position
+                        float stepUpNeeded = blockTop - position.y;
+                        
+                        // Calculate player's elevation above the base of their current position
+                        float playerBaseY = (int)Math.floor(position.y);
+                        float playerElevation = position.y - playerBaseY;
+                        
+                        // Allow step-up if:
+                        // 1. Block is partial height (< 1.0), OR
+                        // 2. Block is full height (= 1.0) AND player is elevated ≥ 0.5 blocks
+                        boolean canStepUp = (blockHeight < 1.0f) || 
+                                          (blockHeight == 1.0f && playerElevation >= 0.5f);
+                        
+                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
+                            yi == (int)Math.floor(playerFootY) && position.y >= yi) {
+                            // Player can automatically step up onto this block
+                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
+                            // Normal collision - player needs to be positioned so its right edge is at blockToCheckX
+                            float potentialNewX = (float)blockToCheckX - halfWidth;
+                            if (!collisionOccurred || potentialNewX < correctedPositionX) { // Lesser means less penetration
+                                correctedPositionX = potentialNewX;
+                            }
+                            collisionOccurred = true;
                         }
-                        collisionOccurred = true;
                     }
                 }
             }
         }
 
-        if (collisionOccurred) {
+        // Apply step-up if needed and no regular collision occurred
+        if (stepUpHeight > 0.0f && !collisionOccurred && onGround) {
+            position.y += stepUpHeight + 0.01f; // Small extra height to ensure we're on top
+        } else if (collisionOccurred) {
             position.x = correctedPositionX;
             // Sliding is allowed, so velocity.x is not zeroed here.
         }
     }
 
+    /**
+     * Gets the effective collision height of a block at the given position.
+     * For most blocks this is 1.0 (full block) or 0.0 (no collision).
+     * For snow blocks, this can be a partial height based on snow layers.
+     */
+    private float getBlockCollisionHeight(int x, int y, int z) {
+        BlockType block = world.getBlockAt(x, y, z);
+        if (block == BlockType.SNOW) {
+            return world.getSnowHeight(x, y, z);
+        }
+        return block.getCollisionHeight();
+    }
+    
+    
     /**
      * Handles collision on the Y axis.
      */
@@ -215,19 +281,24 @@ public class Player {      // Player settings
             for (int zi = (int)Math.floor(playerMinZ); zi < (int)Math.ceil(playerMaxZ); zi++) {
                 if (velocity.y < 0) { // Moving down
                     int blockToCheckY = (int)Math.floor(position.y); // Block at player's feet
-                    if (world.getBlockAt(xi, blockToCheckY, zi).isSolid()) {
-                        // Player's base needs to be at blockToCheckY + 1
-                        float potentialNewY = (float)(blockToCheckY + 1);
-                        if (!collisionOccurred || potentialNewY > correctedPositionY) {
-                            correctedPositionY = potentialNewY;
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    if (blockHeight > 0) {
+                        // Player's base needs to be at the top of the block
+                        float blockTop = blockToCheckY + blockHeight;
+                        if (position.y < blockTop) {
+                            float potentialNewY = blockTop;
+                            if (!collisionOccurred || potentialNewY > correctedPositionY) {
+                                correctedPositionY = potentialNewY;
+                            }
+                            collisionOccurred = true;
+                            downwardCollision = true;
                         }
-                        collisionOccurred = true;
-                        downwardCollision = true;
                     }
                 } else if (velocity.y > 0) { // Moving up
                     int blockToCheckY = (int)Math.floor(position.y + PLAYER_HEIGHT); // Block at player's head
-                    if (world.getBlockAt(xi, blockToCheckY, zi).isSolid()) {
-                        // Player's head needs to be at blockToCheckY, so base is blockToCheckY - PLAYER_HEIGHT
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    if (blockHeight > 0) {
+                        // Player's head needs to be at the bottom of the block, so base is blockToCheckY - PLAYER_HEIGHT
                         float potentialNewY = (float)blockToCheckY - PLAYER_HEIGHT;
                         if (!collisionOccurred || potentialNewY < correctedPositionY) {
                             correctedPositionY = potentialNewY;
@@ -261,6 +332,7 @@ public class Player {      // Player settings
 
         float correctedPositionZ = position.z;
         boolean collisionOccurred = false;
+        float stepUpHeight = 0.0f; // Track the highest step-up needed
 
         float playerFootY = position.y;
         float playerHeadY = position.y + PLAYER_HEIGHT;
@@ -274,31 +346,82 @@ public class Player {      // Player settings
                     float playerFrontEdge = position.z - halfWidth; // Tentative front edge
                     int blockToCheckZ = (int)Math.floor(playerFrontEdge);
 
-                    if (world.getBlockAt(xi, yi, blockToCheckZ).isSolid()) {
-                        // Player needs to be positioned so its front edge is at blockToCheckZ + 1
-                        float potentialNewZ = (float)(blockToCheckZ + 1) + halfWidth;
-                        if (!collisionOccurred || potentialNewZ > correctedPositionZ) {
-                            correctedPositionZ = potentialNewZ;
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    if (blockHeight > 0) {
+                        // Check if player's Y position intersects with the block's collision height
+                        float blockTop = yi + blockHeight;
+                        
+                        // Auto step-up for blocks up to 1 block high
+                        // Calculate step-up height needed from player's current position
+                        float stepUpNeeded = blockTop - position.y;
+                        
+                        // Calculate player's elevation above the base of their current position
+                        float playerBaseY = (int)Math.floor(position.y);
+                        float playerElevation = position.y - playerBaseY;
+                        
+                        // Allow step-up if:
+                        // 1. Block is partial height (< 1.0), OR
+                        // 2. Block is full height (= 1.0) AND player is elevated ≥ 0.5 blocks
+                        boolean canStepUp = (blockHeight < 1.0f) || 
+                                          (blockHeight == 1.0f && playerElevation >= 0.5f);
+                        
+                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
+                            yi == (int)Math.floor(playerFootY) && position.y >= yi) {
+                            // Player can automatically step up onto this block
+                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
+                            // Normal collision - player needs to be positioned so its front edge is at blockToCheckZ + 1
+                            float potentialNewZ = (float)(blockToCheckZ + 1) + halfWidth;
+                            if (!collisionOccurred || potentialNewZ > correctedPositionZ) {
+                                correctedPositionZ = potentialNewZ;
+                            }
+                            collisionOccurred = true;
                         }
-                        collisionOccurred = true;
                     }
                 } else if (velocity.z > 0) { // Moving towards +Z (back)
                     float playerBackEdge = position.z + halfWidth; // Tentative back edge
                     int blockToCheckZ = (int)Math.floor(playerBackEdge);
 
-                    if (world.getBlockAt(xi, yi, blockToCheckZ).isSolid()) {
-                        // Player needs to be positioned so its back edge is at blockToCheckZ
-                        float potentialNewZ = (float)blockToCheckZ - halfWidth;
-                        if (!collisionOccurred || potentialNewZ < correctedPositionZ) {
-                            correctedPositionZ = potentialNewZ;
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    if (blockHeight > 0) {
+                        // Check if player's Y position intersects with the block's collision height
+                        float blockTop = yi + blockHeight;
+                        
+                        // Auto step-up for blocks up to 1 block high
+                        // Calculate step-up height needed from player's current position
+                        float stepUpNeeded = blockTop - position.y;
+                        
+                        // Calculate player's elevation above the base of their current position
+                        float playerBaseY = (int)Math.floor(position.y);
+                        float playerElevation = position.y - playerBaseY;
+                        
+                        // Allow step-up if:
+                        // 1. Block is partial height (< 1.0), OR
+                        // 2. Block is full height (= 1.0) AND player is elevated ≥ 0.5 blocks
+                        boolean canStepUp = (blockHeight < 1.0f) || 
+                                          (blockHeight == 1.0f && playerElevation >= 0.5f);
+                        
+                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
+                            yi == (int)Math.floor(playerFootY) && position.y >= yi) {
+                            // Player can automatically step up onto this block
+                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
+                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
+                            // Normal collision - player needs to be positioned so its back edge is at blockToCheckZ
+                            float potentialNewZ = (float)blockToCheckZ - halfWidth;
+                            if (!collisionOccurred || potentialNewZ < correctedPositionZ) {
+                                correctedPositionZ = potentialNewZ;
+                            }
+                            collisionOccurred = true;
                         }
-                        collisionOccurred = true;
                     }
                 }
             }
         }
 
-        if (collisionOccurred) {
+        // Apply step-up if needed and no regular collision occurred
+        if (stepUpHeight > 0.0f && !collisionOccurred && onGround) {
+            position.y += stepUpHeight + 0.01f; // Small extra height to ensure we're on top
+        } else if (collisionOccurred) {
             position.z = correctedPositionZ;
             // Sliding is allowed, so velocity.z is not zeroed here.
         }
@@ -322,9 +445,18 @@ public class Player {      // Player settings
             // Check several points beneath the player to ensure there's ground
             for (float checkX = x1 + 0.1f; checkX <= x2 - 0.1f; checkX += 0.3f) {
                 for (float checkZ = z1 + 0.1f; checkZ <= z2 - 0.1f; checkZ += 0.3f) {
-                    if (world.getBlockAt((int) Math.floor(checkX), (int) Math.floor(y), (int) Math.floor(checkZ)).isSolid()) {
-                        blockBeneath = true;
-                        break;
+                    int blockX = (int) Math.floor(checkX);
+                    int blockY = (int) Math.floor(y);
+                    int blockZ = (int) Math.floor(checkZ);
+                    
+                    float blockHeight = getBlockCollisionHeight(blockX, blockY, blockZ);
+                    if (blockHeight > 0) {
+                        // Check if the block's top surface is close enough to the player's feet
+                        float blockTop = blockY + blockHeight;
+                        if (blockTop >= y) { // Block surface is at or above the check point
+                            blockBeneath = true;
+                            break;
+                        }
                     }
                 }
                 if (blockBeneath) {
@@ -426,9 +558,22 @@ public class Player {      // Player settings
                         }
                     }
                     
+                    // If breaking a snow block, remove snow layer data and give correct number of items
+                    if (blockType == BlockType.SNOW) {
+                        int snowLayers = world.getSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+                        world.getSnowLayerManager().removeSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+                        
+                        // Add multiple snow items based on layer count
+                        for (int i = 0; i < snowLayers; i++) {
+                            inventory.addItem(blockType.getId());
+                        }
+                    } else {
+                        // For non-snow blocks, add one item
+                        inventory.addItem(blockType.getId());
+                    }
+                    
                     // Break the block
                     world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
-                    inventory.addItem(blockType.getId());
                     resetBlockBreaking();
                 }
             }
@@ -471,8 +616,21 @@ public class Player {      // Player settings
                 // For instant break blocks (hardness 0 or very low), break immediately
                 float hardness = blockType.getHardness();
                 if (hardness <= 0.0f) {
+                    // If breaking a snow block, remove snow layer data and give correct number of items
+                    if (blockType == BlockType.SNOW) {
+                        int snowLayers = world.getSnowLayers(blockPos.x, blockPos.y, blockPos.z);
+                        world.getSnowLayerManager().removeSnowLayers(blockPos.x, blockPos.y, blockPos.z);
+                        
+                        // Add multiple snow items based on layer count
+                        for (int i = 0; i < snowLayers; i++) {
+                            inventory.addItem(blockType.getId());
+                        }
+                    } else {
+                        // For non-snow blocks, add one item
+                        inventory.addItem(blockType.getId());
+                    }
+                    
                     world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
-                    inventory.addItem(blockType.getId());
                     resetBlockBreaking();
                 }
             }
@@ -510,8 +668,12 @@ public class Player {      // Player settings
 
         if (hitBlockPos != null) {
             BlockType hitBlockType = world.getBlockAt(hitBlockPos.x, hitBlockPos.y, hitBlockPos.z);
+            BlockType blockTypeToPlace = BlockType.getById(selectedBlockTypeId);
             
-            if (hitBlockType == BlockType.WATER) {
+            if (blockTypeToPlace == BlockType.SNOW && hitBlockType == BlockType.SNOW) {
+                // For snow on snow, place directly into the snow's space (stack layers)
+                placePos = new Vector3i(hitBlockPos);
+            } else if (hitBlockType == BlockType.WATER) {
                 // For water blocks, place directly into the water's space (replace the water)
                 placePos = new Vector3i(hitBlockPos);
             } else {
@@ -542,7 +704,38 @@ public class Player {      // Player settings
             // Now we have a candidate placePos, either adjacent to a solid block or directly in an air block.
             // Final check: the block AT placePos must be AIR or WATER and must not intersect player.
             BlockType blockAtPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
-            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER) {
+            BlockType blockTypeToPlace = BlockType.getById(selectedBlockTypeId);
+            
+            // Special handling for snow block stacking
+            if (blockTypeToPlace == BlockType.SNOW && blockAtPos == BlockType.SNOW) {
+                // Try to add a snow layer instead of placing a new block
+                int currentLayers = world.getSnowLayers(placePos.x, placePos.y, placePos.z);
+                if (currentLayers < 8) {
+                    // Add a layer to existing snow
+                    world.getSnowLayerManager().addSnowLayer(placePos.x, placePos.y, placePos.z);
+                    inventory.removeItem(selectedBlockTypeId);
+                    // Trigger chunk rebuild since snow height changed
+                    world.triggerChunkRebuild(placePos.x, placePos.y, placePos.z);
+                    return;
+                } else {
+                    // Snow is already at max layers (8), try to place a new snow block above
+                    Vector3i abovePos = new Vector3i(placePos.x, placePos.y + 1, placePos.z);
+                    BlockType blockAbove = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
+                    if (blockAbove == BlockType.AIR) {
+                        if (!intersectsWithPlayer(abovePos)) {
+                            // Place new snow block above
+                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
+                                world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
+                                inventory.removeItem(selectedBlockTypeId);
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+            
+            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER || 
+                (blockTypeToPlace == BlockType.SNOW && blockAtPos == BlockType.SNOW)) {
                 if (intersectsWithPlayer(placePos)) {
                     // System.out.println("DEBUG: Placement at " + placePos + " denied due to intersection with player.");
                     return; // Collision with player, abort.
@@ -573,6 +766,11 @@ public class Player {      // Player settings
                         if (waterEffects != null) {
                             waterEffects.addWaterSource(placePos.x, placePos.y, placePos.z);
                         }
+                    }
+                    
+                    // If placing a snow block, initialize it with 1 layer
+                    if (blockType == BlockType.SNOW) {
+                        world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
                     }
                 }
             } else {
@@ -779,11 +977,16 @@ public class Player {      // Player settings
         float pMinZ = position.z - halfPlayerWidth;
         float pMaxZ = position.z + halfPlayerWidth;
         
-        // Block's bounding box
+        // Block's bounding box - consider actual block height
+        float blockHeight = getBlockCollisionHeight(blockPos.x, blockPos.y, blockPos.z);
+        if (blockHeight <= 0) {
+            return false; // Non-solid blocks don't cause collision
+        }
+        
         float bMinX = blockPos.x;
         float bMaxX = blockPos.x + 1.0f;
         float bMinY = blockPos.y;
-        float bMaxY = blockPos.y + 1.0f;
+        float bMaxY = blockPos.y + blockHeight; // Use actual block height
         float bMinZ = blockPos.z;
         float bMaxZ = blockPos.z + 1.0f;
         
