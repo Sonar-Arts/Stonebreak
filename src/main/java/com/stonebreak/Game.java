@@ -67,7 +67,7 @@ public class Game {
         this.soundSystem = SoundSystem.getInstance();
         this.soundSystem.initialize();
         this.soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
-        this.soundSystem.loadSound("sandwalk", "/sounds/Sandwalk.wav");
+        this.soundSystem.loadSound("sandwalk", "/sounds/SandWalk-001.wav");
         this.soundSystem.testBasicFunctionality(); // Test sound system
         
         // If sound loading failed, try alternative approaches
@@ -97,9 +97,9 @@ public class Game {
             
             // Try different variations
             String[] pathVariations = {
-                "sounds/Sandwalk.wav",
-                "/Sandwalk.wav", 
-                "Sandwalk.wav"
+                "sounds/SandWalk-001.wav",
+                "/SandWalk-001.wav", 
+                "SandWalk-001.wav"
             };
             
             for (String path : pathVariations) {

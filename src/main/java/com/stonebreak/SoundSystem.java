@@ -20,11 +20,13 @@ public class SoundSystem {
     private long device;
     private long context;
     private Map<String, Integer> soundBuffers;
-    private Map<String, Integer> sources;
+    private Map<String, Integer[]> sources; // Multiple sources per sound
+    private Map<String, Integer> sourceIndexes; // Track current source index
     
     private SoundSystem() {
         soundBuffers = new HashMap<>();
         sources = new HashMap<>();
+        sourceIndexes = new HashMap<>();
     }
     
     public static SoundSystem getInstance() {
@@ -202,19 +204,28 @@ public class SoundSystem {
                 
                 soundBuffers.put(name, bufferPointer);
                 
-                int sourcePointer = alGenSources();
-                alSourcei(sourcePointer, AL_BUFFER, bufferPointer);
-                alSourcef(sourcePointer, AL_GAIN, 0.5f);
-                alSourcef(sourcePointer, AL_PITCH, 1f);
-                alSource3f(sourcePointer, AL_POSITION, 0, 0, 0);
+                // Create multiple sources for overlapping sounds (e.g., 4 sources per sound)
+                int numSources = 4;
+                Integer[] soundSources = new Integer[numSources];
                 
-                error = alGetError();
-                if (error != AL_NO_ERROR) {
-                    System.err.println("OpenAL error creating source: " + error);
-                    return;
+                for (int i = 0; i < numSources; i++) {
+                    int sourcePointer = alGenSources();
+                    alSourcei(sourcePointer, AL_BUFFER, bufferPointer);
+                    alSourcef(sourcePointer, AL_GAIN, 0.5f);
+                    alSourcef(sourcePointer, AL_PITCH, 1f);
+                    alSource3f(sourcePointer, AL_POSITION, 0, 0, 0);
+                    
+                    error = alGetError();
+                    if (error != AL_NO_ERROR) {
+                        System.err.println("OpenAL error creating source " + i + ": " + error);
+                        return;
+                    }
+                    
+                    soundSources[i] = sourcePointer;
                 }
                 
-                sources.put(name, sourcePointer);
+                sources.put(name, soundSources);
+                sourceIndexes.put(name, 0);
                 
                 System.out.println("Successfully loaded sound: " + name + " (" + channels + " channels, " + sampleRate + " Hz)");
                 
@@ -233,12 +244,17 @@ public class SoundSystem {
     }
     
     public void playSound(String name) {
-        Integer source = sources.get(name);
-        if (source != null) {
-            if (alGetSourcei(source, AL_SOURCE_STATE) == AL_PLAYING) {
-                alSourceStop(source);
-            }
+        Integer[] soundSources = sources.get(name);
+        if (soundSources != null) {
+            // Get the current source index and cycle through sources
+            int currentIndex = sourceIndexes.get(name);
+            int source = soundSources[currentIndex];
+            
+            // Play the sound on the current source
             alSourcePlay(source);
+            
+            // Move to next source for next call (round-robin)
+            sourceIndexes.put(name, (currentIndex + 1) % soundSources.length);
             
             int error = alGetError();
             if (error != AL_NO_ERROR) {
@@ -250,13 +266,18 @@ public class SoundSystem {
     }
     
     public void playSoundWithVolume(String name, float volume) {
-        Integer source = sources.get(name);
-        if (source != null) {
+        Integer[] soundSources = sources.get(name);
+        if (soundSources != null) {
+            // Get the current source index and cycle through sources
+            int currentIndex = sourceIndexes.get(name);
+            int source = soundSources[currentIndex];
+            
+            // Set volume and play the sound on the current source
             alSourcef(source, AL_GAIN, volume);
-            if (alGetSourcei(source, AL_SOURCE_STATE) == AL_PLAYING) {
-                alSourceStop(source);
-            }
             alSourcePlay(source);
+            
+            // Move to next source for next call (round-robin)
+            sourceIndexes.put(name, (currentIndex + 1) % soundSources.length);
             
             int error = alGetError();
             if (error != AL_NO_ERROR) {
@@ -272,7 +293,7 @@ public class SoundSystem {
     }
     
     public boolean isSoundLoaded(String name) {
-        return soundBuffers.containsKey(name) && sources.containsKey(name);
+        return soundBuffers.containsKey(name) && sources.containsKey(name) && sources.get(name) != null;
     }
     
     public void testBasicFunctionality() {
@@ -320,8 +341,12 @@ public class SoundSystem {
     }
     
     public void cleanup() {
-        for (int source : sources.values()) {
-            alDeleteSources(source);
+        for (Integer[] soundSources : sources.values()) {
+            if (soundSources != null) {
+                for (int source : soundSources) {
+                    alDeleteSources(source);
+                }
+            }
         }
         for (int buffer : soundBuffers.values()) {
             alDeleteBuffers(buffer);
