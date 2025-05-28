@@ -28,6 +28,7 @@ public class InputHandler {
     // Key state tracking for toggle actions
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
+    private boolean chatKeyPressed = false; // Added for chat toggle
     
     public InputHandler(long window) {
         this.window = window;
@@ -68,11 +69,24 @@ public class InputHandler {
         // prepareForNewFrame() should be called by Game loop before this
         
         try {
+            // Check if chat is open first - if so, only handle chat-related input
+            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+            boolean isChatOpen = chatSystem != null && chatSystem.isOpen();
+            
+            if (isChatOpen) {
+                // Don't process any other input when chat is open
+                // Chat input is handled via the key callback methods
+                return;
+            }
+            
             // Handle escape key for pause menu
             handleEscapeKey();
             
             // Handle inventory key
             handleInventoryKey();
+            
+            // Handle chat key
+            handleChatKey();
 
             // Handle inventory screen mouse input if visible
             InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
@@ -80,7 +94,6 @@ public class InputHandler {
                 // Assuming screenWidth and screenHeight are accessible, e.g., via Game.getWindowWidth/Height()
                 inventoryScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
             }
-
 
             // If the game is paused (either by pause menu or inventory), don't process movement/block selection
             // UNLESS only the inventory is open, in which case some actions might still be allowed (handled by InventoryScreen)
@@ -129,6 +142,13 @@ public class InputHandler {
         // If key was just pressed (not held)
         if (isEscapePressed && !escapeKeyPressed) {
             escapeKeyPressed = true;
+            
+            // Don't open pause menu if chat is open
+            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+            if (chatSystem != null && chatSystem.isOpen()) {
+                return;
+            }
+            
             Game.getInstance().togglePauseMenu();
             
             // Toggle cursor visibility when pausing/unpausing
@@ -149,15 +169,52 @@ public class InputHandler {
 
         if (isInventoryKeyPressed && !inventoryKeyPressed) {
             inventoryKeyPressed = true;
+            
+            // Don't open inventory if chat is open
+            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+            if (chatSystem != null && chatSystem.isOpen()) {
+                return;
+            }
+            
             Game.getInstance().toggleInventoryScreen();
             // Cursor state is handled by Game.toggleInventoryScreen()
         } else if (!isInventoryKeyPressed) {
             inventoryKeyPressed = false;
         }
     }
+    
+    private void handleChatKey() {
+        boolean isChatKeyPressed = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
+        
+        if (isChatKeyPressed && !chatKeyPressed) {
+            chatKeyPressed = true;
+            
+            // Don't open chat if pause menu is open or if inventory is open
+            if (Game.getInstance().isPaused()) {
+                return;
+            }
+            
+            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
+            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                return;
+            }
+            
+            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+            if (chatSystem != null && !chatSystem.isOpen()) {
+                chatSystem.openChat();
+                // Show cursor when chat opens
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                // Reset mouse position to prevent camera jump
+                resetMousePosition();
+            }
+        } else if (!isChatKeyPressed) {
+            chatKeyPressed = false;
+        }
+    }
       private void handleMouseLook(float xOffset, float yOffset) {
-        // Only process mouse movement if the game is not paused
-        if (Game.getInstance().isPaused()) {
+        // Only process mouse movement if the game is not paused and chat is not open
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (Game.getInstance().isPaused() || (chatSystem != null && chatSystem.isOpen())) {
             return;
         }
         
@@ -181,6 +238,12 @@ public class InputHandler {
                 mouseButtonDown[button] = false;
                 // mouseButtonPressedThisFrame is already false or will be cleared next frame
             }
+        }
+
+        // Check if chat is open - if so, don't process any mouse buttons for game interactions
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            return;
         }
 
         // Existing logic for game interactions based on clicks:
@@ -236,6 +299,12 @@ public class InputHandler {
     // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
 
     private void handleScroll(double yOffset) {
+        // Block scroll input if chat is open
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            return;
+        }
+        
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         // Allow scroll for hotbar selection even if inventory screen is open, but not if pause menu is.
         if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) {
@@ -351,5 +420,56 @@ public class InputHandler {
         if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST) {
             mouseButtonPressedThisFrame[button] = false;
         }
+    }
+    
+    /**
+     * Handle character input for chat
+     */
+    public void handleCharacterInput(char character) {
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            chatSystem.handleCharInput(character);
+        }
+    }
+    
+    /**
+     * Handle keyboard input for chat (backspace, enter, etc.)
+     */
+    public void handleKeyInput(int key, int action) {
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            // When chat is open, only process chat-related keys
+            if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+                switch (key) {
+                    case GLFW_KEY_BACKSPACE:
+                        chatSystem.handleBackspace();
+                        break;
+                    case GLFW_KEY_ENTER:
+                        chatSystem.handleEnter();
+                        // Hide cursor when chat closes
+                        if (!chatSystem.isOpen()) {
+                            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                            // Reset first mouse to avoid camera jump
+                            resetMousePosition();
+                        }
+                        break;
+                    case GLFW_KEY_ESCAPE:
+                        chatSystem.closeChat();
+                        // Hide cursor when chat closes
+                        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                        // Reset first mouse to avoid camera jump
+                        resetMousePosition();
+                        break;
+                    case GLFW_KEY_T:
+                        // T key does nothing when chat is already open
+                        break;
+                }
+            }
+            // Block all other key processing when chat is open
+            return;
+        }
+        
+        // If chat is not open, handle other key inputs (movement, etc.)
+        // This allows the normal input handling to continue
     }
 } // This is the final closing brace for the InputHandler class

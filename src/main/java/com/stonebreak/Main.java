@@ -32,6 +32,7 @@ import static org.lwjgl.glfw.GLFW.glfwSetFramebufferSizeCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.glfwSetKeyCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetMouseButtonCallback;
+import static org.lwjgl.glfw.GLFW.glfwSetCharCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowPos;
 import static org.lwjgl.glfw.GLFW.glfwShowWindow;
 import static org.lwjgl.glfw.GLFW.glfwSwapBuffers;
@@ -121,7 +122,17 @@ public class Main {
         }
           // Setup key callback
         glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
-            // Escape key is now handled in InputHandler for toggling pause menu
+            // Pass key events to InputHandler for chat handling
+            if (inputHandler != null) {
+                inputHandler.handleKeyInput(key, action);
+            }
+        });
+        
+        // Setup character callback for chat text input
+        glfwSetCharCallback(window, (win, codepoint) -> {
+            if (inputHandler != null) {
+                inputHandler.handleCharacterInput((char) codepoint);
+            }
         });
           // Setup window resize callback
         glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
@@ -350,6 +361,12 @@ public class Main {
                 } else {
                     // Always render hotbar when inventory is not open
                     inventoryScreen.renderHotbar(width, height);
+                }
+                
+                // Render chat (always visible when there are messages or chat is open)
+                ChatSystem chatSystem = game.getChatSystem();
+                if (chatSystem != null) {
+                    uiRenderer.renderChat(chatSystem, width, height);
                 }
                 
                 uiRenderer.endFrame();

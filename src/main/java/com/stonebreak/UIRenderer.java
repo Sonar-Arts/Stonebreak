@@ -3,6 +3,7 @@ package com.stonebreak;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_LEFT;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
 import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATX;
 import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATY;
@@ -32,6 +33,7 @@ import static org.lwjgl.nanovg.NanoVGGL3.nvgCreate;
 import static org.lwjgl.nanovg.NanoVGGL3.nvgDelete;
 import org.lwjgl.system.MemoryStack;
 import static org.lwjgl.system.MemoryStack.stackPush;
+import java.util.List;
 
 public class UIRenderer {
     private long vg;
@@ -475,6 +477,97 @@ public class UIRenderer {
     public void cleanup() {
         if (vg != 0) {
             nvgDelete(vg);
+        }
+    }
+    
+    public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {
+        if (chatSystem == null) {
+            return;
+        }
+        
+        List<ChatMessage> visibleMessages = chatSystem.getVisibleMessages();
+        if (visibleMessages.isEmpty() && !chatSystem.isOpen()) {
+            return;
+        }
+        
+        try (MemoryStack stack = stackPush()) {
+            // Chat area settings
+            float chatX = 20; // 20px from left edge
+            float chatY = windowHeight - 40; // Start from bottom
+            float lineHeight = 20;
+            float maxChatWidth = windowWidth * 0.4f; // Max 40% of screen width
+            
+            // Render chat messages from bottom to top
+            for (int i = visibleMessages.size() - 1; i >= 0; i--) {
+                ChatMessage message = visibleMessages.get(i);
+                float alpha = message.getAlpha();
+                
+                if (alpha <= 0.0f) {
+                    continue;
+                }
+                
+                // Message background (semi-transparent black) - only when chat is open
+                if (chatSystem.isOpen()) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, chatX - 5, chatY - lineHeight + 2, maxChatWidth + 10, lineHeight);
+                    nvgFillColor(vg, nvgRGBA(0, 0, 0, (int)(80 * alpha), NVGColor.malloc(stack)));
+                    nvgFill(vg);
+                }
+                
+                // Message text
+                nvgFontSize(vg, 14);
+                nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
+                nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                
+                float[] color = message.getColor();
+                nvgFillColor(vg, nvgRGBA(
+                    (int)(color[0] * 255), 
+                    (int)(color[1] * 255), 
+                    (int)(color[2] * 255), 
+                    (int)(alpha * 255), 
+                    NVGColor.malloc(stack)
+                ));
+                
+                nvgText(vg, chatX, chatY - lineHeight/2, message.getText());
+                chatY -= lineHeight;
+            }
+            
+            // Render chat input box when chat is open
+            if (chatSystem.isOpen()) {
+                renderChatInputBox(chatSystem, chatX, chatY - 10, maxChatWidth, stack);
+            }
+        }
+    }
+    
+    private void renderChatInputBox(ChatSystem chatSystem, float x, float y, float width, MemoryStack stack) {
+        float inputHeight = 25;
+        
+        // Input box background
+        nvgBeginPath(vg);
+        nvgRect(vg, x - 5, y - inputHeight, width + 10, inputHeight);
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Input box border
+        nvgBeginPath(vg);
+        nvgRect(vg, x - 5, y - inputHeight, width + 10, inputHeight);
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 200, NVGColor.malloc(stack)));
+        nvgStroke(vg);
+        
+        // Input text
+        nvgFontSize(vg, 14);
+        nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        
+        String displayText = chatSystem.getDisplayInput();
+        if (displayText.isEmpty()) {
+            // Show prompt when empty
+            nvgFillColor(vg, nvgRGBA(128, 128, 128, 255, NVGColor.malloc(stack)));
+            nvgText(vg, x, y - inputHeight/2, "Type a message...");
+        } else {
+            nvgText(vg, x, y - inputHeight/2, displayText);
         }
     }
     

@@ -19,6 +19,7 @@ public class Game {
     private UIRenderer uiRenderer; // UI renderer for menus
     private MainMenu mainMenu; // Main menu
     private SoundSystem soundSystem; // Sound system
+    private ChatSystem chatSystem; // Chat system
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
@@ -117,6 +118,10 @@ public class Game {
         this.uiRenderer.init();
         this.mainMenu = new MainMenu(this.uiRenderer);
         
+        // Initialize chat system
+        this.chatSystem = new ChatSystem();
+        this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
+        
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler);
@@ -175,6 +180,11 @@ public class Game {
         // Update inventory screen (handles its own visibility check for rendering, but update logic for timers)
         if (inventoryScreen != null) {
             inventoryScreen.update(deltaTime);
+        }
+        
+        // Update chat system
+        if (chatSystem != null) {
+            chatSystem.update(deltaTime);
         }
         
         // Update world (processes chunk loading, mesh building, etc.)
@@ -364,6 +374,13 @@ public class Game {
      */
     public static SoundSystem getSoundSystem() {
         return getInstance().soundSystem;
+    }
+    
+    /**
+     * Gets the chat system.
+     */
+    public ChatSystem getChatSystem() {
+        return chatSystem;
     }
     
     /**
