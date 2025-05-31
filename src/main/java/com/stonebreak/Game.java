@@ -500,10 +500,10 @@ public class Game {
         // Handle cursor visibility based on state transitions
         long windowHandle = Main.getWindowHandle();
         if (windowHandle != 0) {
-            if (state == GameState.PLAYING && (this.previousGameState == GameState.MAIN_MENU || previousState == GameState.SETTINGS)) {
+            if (state == GameState.PLAYING && (this.previousGameState == GameState.MAIN_MENU || this.previousGameState == GameState.SETTINGS)) {
                 // Hide cursor when entering game
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-            } else if ((state == GameState.MAIN_MENU || state == GameState.SETTINGS) && previousState == GameState.PLAYING) {
+            } else if ((state == GameState.MAIN_MENU || state == GameState.SETTINGS) && this.previousGameState == GameState.PLAYING) {
                 // Show cursor when returning to menu or entering settings
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
             } else if (state == GameState.SETTINGS || state == GameState.MAIN_MENU) {

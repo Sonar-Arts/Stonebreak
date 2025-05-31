@@ -584,9 +584,9 @@ public class InventoryScreen {
             }
             }
         } catch (Exception e) {
-            System.err.println("ERROR in drawInventorySlot: " + e.getMessage());
-            e.printStackTrace();
-            
+            System.err.println("ERROR in drawInventorySlot: " + e.getMessage() + ". Problem drawing item: " + (itemStack != null ? BlockType.getById(itemStack.getBlockTypeId()) : "unknown"));
+            // e.printStackTrace(); // Replaced with more specific logging above
+
             // Try to recover UI state
             try {
                 if (uiRenderer != null) {
@@ -1635,10 +1635,12 @@ public class InventoryScreen {
             nvgStroke(vg);
         }
     }
-    }    private void checkHover(ItemStack itemStack, int slotX, int slotY) {
-        if (itemStack == null || itemStack.isEmpty() || !visible) {
-            return;
-        }
+// Brace removed, the comment about its removal is now accurate.
+
+private void checkHover(ItemStack itemStack, int slotX, int slotY) {
+    if (itemStack == null || itemStack.isEmpty() || !visible) {
+        return;
+    }
 
         Vector2f mousePos = inputHandler.getMousePosition();
         float mouseX = mousePos.x;
@@ -1648,9 +1650,9 @@ public class InventoryScreen {
         if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
             mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
             // Only set hovered item if the slot actually contains an item
-            if (itemStack != null && !itemStack.isEmpty()) {
-                hoveredItemStack = itemStack;
-            }
+            // The check (itemStack != null && !itemStack.isEmpty()) was removed as it's redundant
+            // due to the check at the beginning of the method.
+            hoveredItemStack = itemStack;
             // Note: If slot is empty, hoveredItemStack remains null (cleared at start of render)
         }
     }
@@ -1688,36 +1690,6 @@ public class InventoryScreen {
         }
     }
 
-    private void drawRecipeButton(float x, float y, float w, float h, String text) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            NVGColor color = NVGColor.malloc(stack);
-
-            // Button background
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, w, h, 4);
-            boolean isHovering = inputHandler.getMousePosition().x >= x && inputHandler.getMousePosition().x <= x + w &&
-                                 inputHandler.getMousePosition().y >= y && inputHandler.getMousePosition().y <= y + h;
-            if (isHovering) {
-                nvgFillColor(vg, nvgRGBA(100, 120, 140, 255, color)); // Hover color
-            } else {
-                nvgFillColor(vg, nvgRGBA(80, 100, 120, 255, color)); // Normal color
-            }
-            nvgFill(vg);
-
-            // Button border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x + 0.5f, y + 0.5f, w - 1, h - 1, 3.5f);
-            nvgStrokeColor(vg, nvgRGBA(150, 170, 190, 255, color));
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStroke(vg);
-
-            // Button text
-            nvgFontSize(vg, 18); // Use a reasonable font size
-            nvgFontFace(vg, "sans"); // Or "minecraft" if available and preferred
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, color));
-            nvgText(vg, x + w / 2, y + h / 2, text);
-        }
-    }
+// Removing the duplicate drawRecipeButton method. The first one (lines 1658-1689) is kept.
+// The class's closing brace '}' at the original line 1723 will now correctly close the class.
 }

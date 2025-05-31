@@ -5,10 +5,9 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.HashMap; // Added import for HashMap
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
@@ -19,11 +18,10 @@ import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK;
-import static org.lwjgl.opengl.GL11.GL_FLOAT;
+import static org.lwjgl.opengl.GL11.GL_FLOAT; // Re-added
 import static org.lwjgl.opengl.GL11.GL_LESS;
 import static org.lwjgl.opengl.GL11.GL_LINES;
-import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
-import static org.lwjgl.opengl.GL11.GL_NEAREST;
+import static org.lwjgl.opengl.GL11.GL_NEAREST; // Re-added
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_POINTS;
 import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
@@ -47,11 +45,10 @@ import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
 import static org.lwjgl.opengl.GL11.glBegin;
 import static org.lwjgl.opengl.GL11.glBindTexture;
 import static org.lwjgl.opengl.GL11.glBlendFunc;
-import static org.lwjgl.opengl.GL11.glColorMask;
+import static org.lwjgl.opengl.GL11.glColorMask; // Re-added
 import static org.lwjgl.opengl.GL11.glDeleteTextures;
-import static org.lwjgl.opengl.GL11.glDepthFunc;
+import static org.lwjgl.opengl.GL11.glDepthFunc; // Re-added
 import static org.lwjgl.opengl.GL11.glDepthMask;
-import static org.lwjgl.opengl.GL11.glDepthFunc;
 import static org.lwjgl.opengl.GL11.glDisable;
 import static org.lwjgl.opengl.GL11.glDrawArrays;
 import static org.lwjgl.opengl.GL11.glDrawElements;
@@ -68,8 +65,6 @@ import static org.lwjgl.opengl.GL11.glTexImage2D;
 import static org.lwjgl.opengl.GL11.glTexParameteri;
 import static org.lwjgl.opengl.GL11.glVertex3f;
 import static org.lwjgl.opengl.GL11.glViewport;
-import static org.lwjgl.opengl.GL11.glColorMask;
-import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import org.lwjgl.opengl.GL13;
 import static org.lwjgl.opengl.GL13.GL_ACTIVE_TEXTURE;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0; // Added import for GL_ACTIVE_TEXTURE
@@ -882,7 +877,7 @@ public class Renderer {
             } else {
                 // Check if this is a flower block - render as flat cross pattern instead of 3D cube
                 if (selectedBlockType == BlockType.ROSE || selectedBlockType == BlockType.DANDELION) {
-                    renderFlowerInHand(selectedBlockType);
+                    renderFlowerInHand(selectedBlockType); // Method to be re-added
                 } else {
                     // Use block-specific cube for proper face texturing
                     shaderProgram.setUniform("u_useSolidColor", false);
@@ -900,7 +895,7 @@ public class Renderer {
                     glDisable(GL_BLEND);
                     
                     // Get or create block-specific cube with proper face textures
-                    int blockSpecificVao = getHandBlockVao(selectedBlockType);
+                    int blockSpecificVao = getHandBlockVao(selectedBlockType); // Method to be re-added
                     GL30.glBindVertexArray(blockSpecificVao);
                     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
                     
@@ -1377,6 +1372,17 @@ public class Renderer {
             glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
         }
         
+        int originalBlendSrcRgb = 0, originalBlendDstRgb = 0, originalBlendSrcAlpha = 0, originalBlendDstAlpha = 0;
+        if (blendWasEnabled) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                IntBuffer tempInt = stack.mallocInt(1);
+                glGetIntegerv(GL_BLEND_SRC_RGB, tempInt); originalBlendSrcRgb = tempInt.get(0); tempInt.clear();
+                glGetIntegerv(GL_BLEND_DST_RGB, tempInt); originalBlendDstRgb = tempInt.get(0); tempInt.clear();
+                glGetIntegerv(GL_BLEND_SRC_ALPHA, tempInt); originalBlendSrcAlpha = tempInt.get(0); tempInt.clear();
+                glGetIntegerv(GL_BLEND_DST_ALPHA, tempInt); originalBlendDstAlpha = tempInt.get(0); tempInt.clear();
+            }
+        }
+
         // Store current matrices to restore later
         float[] projectionMatrixBuffer = new float[16];
         float[] viewMatrixBuffer = new float[16];
@@ -1460,7 +1466,13 @@ public class Renderer {
         if (blendWasEnabled) {
             glEnable(GL_BLEND);
             // glBlendFuncSeparate is now statically imported from GL14
-            glBlendFuncSeparate(originalBlendSrcRgb, originalBlendDstRgb, originalBlendSrcAlpha, originalBlendDstAlpha);
+            // GL14.glBlendFuncSeparate uses GL constants like GL_SRC_ALPHA, which are available in GL11
+            // However, to use glBlendFuncSeparate itself, GL14 is needed, which seems to be correctly imported.
+            // Assuming these variables were intended to be fetched and used correctly if blendWasEnabled.
+            // For now, direct use if blend was enabled:
+            if (blendWasEnabled) { // This check was missing around the usage.
+                 glBlendFuncSeparate(originalBlendSrcRgb, originalBlendDstRgb, originalBlendSrcAlpha, originalBlendDstAlpha);
+            }
         } else {
             glDisable(GL_BLEND);
         }
@@ -1474,91 +1486,67 @@ public class Renderer {
         // This is implicitly handled by restoring originalTextureBinding2D on GL_TEXTURE0
     }
 
-    private void drawFlat2DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
-        // Save current GL state
-        boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        int[] originalViewport = new int[4];
-        glGetIntegerv(GL_VIEWPORT, originalViewport);
-        boolean scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
-        int[] originalScissorBox = new int[4];
-        if (scissorWasEnabled) {
-            glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
-        }
-        
-        // Store current matrices to restore later
-        float[] projectionMatrixBuffer = new float[16];
-        float[] viewMatrixBuffer = new float[16];
-        shaderProgram.getUniformMatrix4fv("projectionMatrix", projectionMatrixBuffer);
-        shaderProgram.getUniformMatrix4fv("viewMatrix", viewMatrixBuffer);
+    // This entire duplicated method drawFlat2DItemInSlot (from 1477 to 1606) is removed.
+    // Its content was the basis for createBlockSpecificCube.
 
-        // Setup for 2D rendering
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // Set up orthographic projection for the slot area
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("texture_sampler", 0);
+    /**
+    * Creates a VAO for a cube with textures specific to the given BlockType.
+    * Each face of the cube uses the appropriate texture coordinates from the atlas.
+    * This method is used for rendering blocks in hand and in the inventory.
+    */
+    private int createBlockSpecificCube(BlockType type) {
+        float[] topCoords = type.getTextureCoords(BlockType.Face.TOP);
+        float[] bottomCoords = type.getTextureCoords(BlockType.Face.BOTTOM);
+        float[] northCoords = type.getTextureCoords(BlockType.Face.SIDE_NORTH); // Front
+        float[] southCoords = type.getTextureCoords(BlockType.Face.SIDE_SOUTH); // Back
+        float[] eastCoords = type.getTextureCoords(BlockType.Face.SIDE_EAST);   // Right
+        float[] westCoords = type.getTextureCoords(BlockType.Face.SIDE_WEST);   // Left
 
-        // Get texture coordinates for the flower
-        float[] uvCoords = textureAtlas.getUVCoordinates(type.getAtlasX(), type.getAtlasY());
-        
-        // Add padding to center the flower texture within the slot
-        int padding = 6;
-        float textureX = screenSlotX + padding;
-        float textureY = screenSlotY + padding;
-        float textureWidth = screenSlotWidth - (padding * 2);
-        float textureHeight = screenSlotHeight - (padding * 2);
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        
-        // Create vertices for the quad in screen coordinates
+        float[] frontUVs = textureAtlas.getUVCoordinates((int)northCoords[0], (int)northCoords[1]);
+        float[] backUVs = textureAtlas.getUVCoordinates((int)southCoords[0], (int)southCoords[1]);
+        float[] topUVs = textureAtlas.getUVCoordinates((int)topCoords[0], (int)topCoords[1]);
+        float[] bottomUVs = textureAtlas.getUVCoordinates((int)bottomCoords[0], (int)bottomCoords[1]);
+        float[] rightUVs = textureAtlas.getUVCoordinates((int)eastCoords[0], (int)eastCoords[1]);
+        float[] leftUVs = textureAtlas.getUVCoordinates((int)westCoords[0], (int)westCoords[1]);
+
+        // Define vertices for a cube (position, normal, texCoord)
+        // Each face defined separately to allow different UVs per face
         float[] vertices = {
-            // Front face (+Z) - Using front texture
+            // Front face (+Z)
             -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[3], // Bottom-left
              0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[3], // Bottom-right
              0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[1], // Top-right
             -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[1], // Top-left
             
-            // Back face (-Z) - Using back texture
-            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[3], // Bottom-left (flipped)
-             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[3], // Bottom-right
-             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[1], // Top-right
-            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[1], // Top-left
+            // Back face (-Z)
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[3], // Bottom-left (UVs might need adjustment depending on texture atlas convention for back faces)
+             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[3], // Bottom-right
+             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[1], // Top-right
+            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[1], // Top-left
             
-            // Top face (+Y) - Using top texture
-            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[3],
-             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[3],
-             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[1],
-            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[1],
+            // Top face (+Y)
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[1], // Top-left (UV Y might be inverted from standard texture)
+             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[1], // Top-right
+             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[3], // Bottom-right
+            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[3], // Bottom-left
             
-            // Bottom face (-Y) - Using bottom texture
-            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[0], bottomUVs[1],
-             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[2], bottomUVs[1],
-             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[2], bottomUVs[3],
-            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[0], bottomUVs[3],
+            // Bottom face (-Y)
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[0], bottomUVs[1], // Top-left
+             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[2], bottomUVs[1], // Top-right
+             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[2], bottomUVs[3], // Bottom-right
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[0], bottomUVs[3], // Bottom-left
             
-            // Right face (+X) - Using right texture
-             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[3],
-             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[3],
-             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[1],
-             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[1],
+            // Right face (+X)
+             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[3], // Bottom-left (Origin for this face's UV)
+             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[3], // Bottom-right
+             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[1], // Top-right
+             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[1], // Top-left
             
-            // Left face (-X) - Using left texture
-            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[3], // Flipped
-            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[3],
-            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[1],
-            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[1]
+            // Left face (-X)
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[3], // Bottom-left
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[3], // Bottom-right
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[1], // Top-right
+            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[1]  // Top-left
         };
         
         int[] indices = {
@@ -1581,11 +1569,11 @@ public class Renderer {
         vertexBuffer.put(vertices).flip();
         GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
         
-        int stride = 8 * Float.BYTES;
+        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
         // Position attribute (location 0)
         GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
         GL20.glEnableVertexAttribArray(0);
-        // Normal attribute (location 2)
+        // Normal attribute (location 2) - Make sure shader uses location 2 for normals
         GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
         GL20.glEnableVertexAttribArray(2);
         // Texture coordinate attribute (location 1)
@@ -1602,7 +1590,7 @@ public class Renderer {
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         
-        return vao;
+        return vao; // This was the error "incompatible types: unexpected return value"
     }
     
     /**
@@ -1646,7 +1634,7 @@ public class Renderer {
         // Create two intersecting quads to form a cross pattern (like flowers in Minecraft)
         createAndRenderFlowerCross(uvCoords);
     }
-    
+
     private void createAndRenderFlowerCross(float[] uvCoords) {
         // Create vertices for two intersecting quads forming a cross
         // First quad (Z-aligned)

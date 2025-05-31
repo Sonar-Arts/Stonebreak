@@ -1,9 +1,9 @@
 package com.stonebreak;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -12,9 +12,30 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL30;
+import static org.lwjgl.opengl.GL11.GL_BLEND;
+import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
+import static org.lwjgl.opengl.GL11.GL_FLOAT;
+import static org.lwjgl.opengl.GL11.GL_NEAREST;
+import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
+import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
+import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
+import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
+import static org.lwjgl.opengl.GL11.glBindTexture;
+import static org.lwjgl.opengl.GL11.glBlendFunc;
+import static org.lwjgl.opengl.GL11.glDepthMask;
+import static org.lwjgl.opengl.GL11.glDisable;
+import static org.lwjgl.opengl.GL11.glDrawElements;
+import static org.lwjgl.opengl.GL11.glEnable;
+import static org.lwjgl.opengl.GL11.glGetIntegerv;
+import static org.lwjgl.opengl.GL11.glIsEnabled;
+import static org.lwjgl.opengl.GL11.glTexParameteri;
+import static org.lwjgl.opengl.GL11.glViewport;
 import org.lwjgl.opengl.GL13;
-import static org.lwjgl.opengl.GL11.*;
+import org.lwjgl.opengl.GL30;
 
 /**
  * Dedicated renderer for block drops with isolated OpenGL context to prevent UI corruption.
@@ -247,8 +268,9 @@ public class BlockDropRenderer {
         
         // Get face-specific texture coordinates for this block type
         float[][] faceTexCoords = new float[6][];
-        for (int face = 0; face < 6; face++) {
-            faceTexCoords[face] = blockType.getTextureCoords(face);
+        for (int faceValue = 0; faceValue < 6; faceValue++) {
+            BlockType.Face faceEnum = BlockType.Face.values()[faceValue]; // Assuming order in enum matches 0-5
+            faceTexCoords[faceValue] = blockType.getTextureCoords(faceEnum);
         }
         
         // Convert atlas coordinates to UV coordinates

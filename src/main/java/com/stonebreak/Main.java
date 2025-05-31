@@ -312,31 +312,38 @@ public class Main {
             Game.getInstance().update();
               // Handle input based on game state
             Game game = Game.getInstance();
-            if (game.getState() == GameState.MAIN_MENU) {
-                // Handle main menu input
-                if (game.getMainMenu() != null) {
-                    game.getMainMenu().handleInput(window);
-                }
-            } else if (game.getState() == GameState.SETTINGS) {
-                // Handle settings menu input
-                if (game.getSettingsMenu() != null) {
-                    game.getSettingsMenu().handleInput(window);
-                }
-            } else if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.WORKBENCH_UI || game.getState() == GameState.RECIPE_BOOK_UI ) {
-                // Handle in-game input if not a purely modal UI like MainMenu
-                // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
-                if (inputHandler != null) {
-                    // Pass input to screens that might need it, even if game world is paused
-                    if (game.getRecipeBookScreen() != null && game.getRecipeBookScreen().isVisible()) {
-                         game.getRecipeBookScreen().handleInput(inputHandler);
-                    } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
-                         game.getWorkbenchScreen().handleInput(inputHandler);
-                    } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
-                         game.getInventoryScreen().handleMouseInput(width, height); // InventoryScreen has specific mouse handling for drag/drop
+            switch (game.getState()) {
+                case MAIN_MENU -> {
+                    // Handle main menu input
+                    if (game.getMainMenu() != null) {
+                        game.getMainMenu().handleInput(window);
                     }
-                    // General player input handling (movement, interaction) happens if not paused for UI.
-                    // InputHandler's own logic + Game.update() decides if player/world updates proceed.
-                    inputHandler.handleInput(player);
+                }
+                case SETTINGS -> {
+                    // Handle settings menu input
+                    if (game.getSettingsMenu() != null) {
+                        game.getSettingsMenu().handleInput(window);
+                    }
+                }
+                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI -> {
+                    // Handle in-game input if not a purely modal UI like MainMenu
+                    // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
+                    if (inputHandler != null) {
+                        // Pass input to screens that might need it, even if game world is paused
+                        if (game.getRecipeBookScreen() != null && game.getRecipeBookScreen().isVisible()) {
+                             game.getRecipeBookScreen().handleInput(inputHandler);
+                        } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
+                             game.getWorkbenchScreen().handleInput(inputHandler);
+                        } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
+                             game.getInventoryScreen().handleMouseInput(width, height); // InventoryScreen has specific mouse handling for drag/drop
+                        }
+                        // General player input handling (movement, interaction) happens if not paused for UI.
+                        // InputHandler's own logic + Game.update() decides if player/world updates proceed.
+                        inputHandler.handleInput(player);
+                    }
+                }
+                default -> {
+                    // Optional: handle any other states or do nothing
                 }
             }
             // Game.update() itself decides what parts of the game state to update (e.g. only player if playing)
@@ -376,120 +383,111 @@ public class Main {
         Game game = Game.getInstance();
         UIRenderer uiRenderer = game.getUIRenderer(); // Get UIRenderer once
         
-        if (game.getState() == GameState.MAIN_MENU) {
-            if (uiRenderer != null && game.getMainMenu() != null) {
-                uiRenderer.beginFrame(width, height, 1.0f);
-                game.getMainMenu().render(width, height);
-                uiRenderer.endFrame();
-            }
-        } else if (game.getState() == GameState.SETTINGS) {
-            // Render settings menu using NanoVG
-            if (uiRenderer != null) {
-                uiRenderer.beginFrame(width, height, 1.0f);
-                if (game.getSettingsMenu() != null) {
-                    game.getSettingsMenu().render(width, height);
-                }
-                uiRenderer.endFrame();
-            }
-        } else { // For all other states that might show game world (PLAYING, PAUSED, RECIPE_BOOK_UI, WORKBENCH_UI)
-            // Step 1: Render the 3D world first as a background for overlays
-            renderer.renderWorld(world, player, game.getTotalTimeElapsed());
-
-            // Step 2: Render NanoVG UIs on top
-            if (uiRenderer != null) {
-                uiRenderer.beginFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
-
-                // Inventory / Hotbar / Chat (primarily for PLAYING/PAUSED state)
-                if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
-                    InventoryScreen inventoryScreen = game.getInventoryScreen();
-                    if (inventoryScreen != null) {
-                        if (inventoryScreen.isVisible()) {
-                            inventoryScreen.render(width, height);
-                        } else {
-                            inventoryScreen.renderHotbar(width, height);
-                        }
-                    }
-                    ChatSystem chatSystem = game.getChatSystem();
-                    if (chatSystem != null) {
-                        uiRenderer.renderChat(chatSystem, width, height);
-                    }
-                }
-
-                // Pause Menu (if active, and we are not in Main Menu or other full-screen UI states)
-                if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
-                    game.getPauseMenu().render(uiRenderer, width, height); // Assumes PauseMenu draws within this frame
-                }
-                
-                uiRenderer.endFrame(); // End the shared NanoVG frame for standard game overlays
-            }
-            
-            // Separate rendering for full-screen UI states that manage their own NanoVG frames
-            // and should draw AFTER the 3D world.
-            if (game.getState() == GameState.RECIPE_BOOK_UI) {
-                 RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-                 if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                     recipeBookScreen.render(); // This screen now manages its own NanoVG begin/end frame
-                 }
-            } else if (game.getState() == GameState.WORKBENCH_UI) {
-                WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
-                if (workbenchScreen != null && workbenchScreen.isVisible()){
-                    workbenchScreen.render(); // This screen now manages its own NanoVG begin/end frame
-                }
-            }
-            
-            // DEFERRED: Render block drops AFTER all UI is complete 
-            // Block drops render behind both inventory and pause menu with depth curtain protection
-            renderer.renderBlockDropsDeferred(world, player);
-            
-            // Render tooltips AFTER block drops to ensure they appear above 3D block drops
-            InventoryScreen inventoryScreen = game.getInventoryScreen();
-            if (inventoryScreen != null) {
-                uiRenderer.beginFrame(width, height, 1.0f);
-                
-                if (inventoryScreen.isVisible()) {
-                    // Render only tooltips for full inventory screen
-                    inventoryScreen.renderTooltipsOnly(width, height);
-                } else {
-                    // Render only hotbar tooltips when inventory is not open
-                    inventoryScreen.renderHotbarTooltipsOnly(width, height);
-                }
-                
-                uiRenderer.endFrame();
-            }
-            
-            // Render pause menu if paused
-            PauseMenu pauseMenu = game.getPauseMenu();
-            if (pauseMenu != null && pauseMenu.isVisible()) {
-                UIRenderer uiRenderer = game.getUIRenderer();
-                if (uiRenderer != null) {
+        switch (game.getState()) {
+            case MAIN_MENU -> {
+                if (uiRenderer != null && game.getMainMenu() != null) {
                     uiRenderer.beginFrame(width, height, 1.0f);
-                    pauseMenu.render(uiRenderer, width, height);
+                    game.getMainMenu().render(width, height);
                     uiRenderer.endFrame();
                 }
-                
-                // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
-                renderer.renderPauseMenuDepthCurtain();
             }
-            
-            // DEFERRED: Render block drops AFTER all UI is complete 
-            // SOLUTION B ACTIVATED: Use full-screen depth curtain for pause menu
-            // Block drops render behind both inventory and pause menu with depth curtain protection
-            renderer.renderBlockDropsDeferred(world, player);
-            
-            // Render tooltips AFTER block drops to ensure they appear above 3D block drops
-            if (inventoryScreen != null) {
-                UIRenderer uiRenderer = game.getUIRenderer();
-                uiRenderer.beginFrame(width, height, 1.0f);
-                
-                if (inventoryScreen.isVisible()) {
-                    // Render only tooltips for full inventory screen
-                    inventoryScreen.renderTooltipsOnly(width, height);
-                } else {
-                    // Render only hotbar tooltips when inventory is not open
-                    inventoryScreen.renderHotbarTooltipsOnly(width, height);
+            case SETTINGS -> {
+                // Render settings menu using NanoVG
+                if (uiRenderer != null) {
+                    uiRenderer.beginFrame(width, height, 1.0f);
+                    if (game.getSettingsMenu() != null) {
+                        game.getSettingsMenu().render(width, height);
+                    }
+                    uiRenderer.endFrame();
                 }
-                
-                uiRenderer.endFrame();
+            }
+            default -> { // Covers PLAYING, PAUSED, RECIPE_BOOK_UI, WORKBENCH_UI and any other potential states
+                // Step 1: Render the 3D world first as a background for overlays
+                renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+                // Step 2: Render NanoVG UIs on top
+                if (uiRenderer != null) {
+                    uiRenderer.beginFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
+                    // Inventory / Hotbar / Chat (primarily for PLAYING/PAUSED state)
+                    if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
+                        InventoryScreen inventoryScreen = game.getInventoryScreen();
+                        if (inventoryScreen != null) {
+                            if (inventoryScreen.isVisible()) {
+                                inventoryScreen.render(width, height);
+                            } else {
+                                inventoryScreen.renderHotbar(width, height);
+                            }
+                        }
+                        ChatSystem chatSystem = game.getChatSystem();
+                        if (chatSystem != null) {
+                            uiRenderer.renderChat(chatSystem, width, height);
+                        }
+                    }
+                    // Pause Menu (if active, and we are not in Main Menu or other full-screen UI states)
+                    if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
+                        game.getPauseMenu().render(uiRenderer, width, height); // Assumes PauseMenu draws within this frame
+                    }
+                    uiRenderer.endFrame(); // End the shared NanoVG frame for standard game overlays
+                }
+                // Separate rendering for full-screen UI states that manage their own NanoVG frames
+                // and should draw AFTER the 3D world.
+                if (game.getState() == GameState.RECIPE_BOOK_UI) {
+                     RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+                     if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                         recipeBookScreen.render(); // This screen now manages its own NanoVG begin/end frame
+                     }
+                } else if (game.getState() == GameState.WORKBENCH_UI) {
+                    WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+                    if (workbenchScreen != null && workbenchScreen.isVisible()){
+                        workbenchScreen.render(); // This screen now manages its own NanoVG begin/end frame
+                    }
+                }
+                // DEFERRED: Render block drops AFTER all UI is complete
+                // Block drops render behind both inventory and pause menu with depth curtain protection
+                renderer.renderBlockDropsDeferred(world, player);
+                // Render tooltips AFTER block drops to ensure they appear above 3D block drops
+                InventoryScreen inventoryScreen = game.getInventoryScreen();
+                if (inventoryScreen != null && uiRenderer != null) { // Added null check for uiRenderer
+                    uiRenderer.beginFrame(width, height, 1.0f);
+                    if (inventoryScreen.isVisible()) {
+                        // Render only tooltips for full inventory screen
+                        inventoryScreen.renderTooltipsOnly(width, height);
+                    } else {
+                        // Render only hotbar tooltips when inventory is not open
+                        inventoryScreen.renderHotbarTooltipsOnly(width, height);
+                    }
+                    uiRenderer.endFrame();
+                }
+                // Render pause menu if paused
+                PauseMenu pauseMenu = game.getPauseMenu();
+                if (pauseMenu != null && pauseMenu.isVisible()) {
+                    // UIRenderer uiRenderer = game.getUIRenderer(); // Removed duplicate, use uiRenderer from line 377
+                    if (uiRenderer != null) {
+                        uiRenderer.beginFrame(width, height, 1.0f);
+                        pauseMenu.render(uiRenderer, width, height);
+                        uiRenderer.endFrame();
+                    }
+                    // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
+                    renderer.renderPauseMenuDepthCurtain();
+                }
+                // DEFERRED: Render block drops AFTER all UI is complete
+                // SOLUTION B ACTIVATED: Use full-screen depth curtain for pause menu
+                // Block drops render behind both inventory and pause menu with depth curtain protection
+                renderer.renderBlockDropsDeferred(world, player);
+                // Render tooltips AFTER block drops to ensure they appear above 3D block drops
+                if (inventoryScreen != null) {
+                    // UIRenderer uiRenderer = game.getUIRenderer(); // Removed duplicate, use uiRenderer from line 377
+                    if (uiRenderer != null) { // Added null check for safety, though it should be initialized
+                        uiRenderer.beginFrame(width, height, 1.0f);
+                        if (inventoryScreen.isVisible()) {
+                            // Render only tooltips for full inventory screen
+                            inventoryScreen.renderTooltipsOnly(width, height);
+                        } else {
+                            // Render only hotbar tooltips when inventory is not open
+                            inventoryScreen.renderHotbarTooltipsOnly(width, height);
+                        }
+                        uiRenderer.endFrame();
+                    }
+                }
             }
         }
     }

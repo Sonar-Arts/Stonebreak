@@ -1335,11 +1335,8 @@ public class Player {      // Player settings
         int feetBlockY = (int) Math.floor(position.y + 0.1f); // Just above feet
         int feetBlockZ = (int) Math.floor(position.z);
         
-        if (world.getBlockAt(feetBlockX, feetBlockY, feetBlockZ) == BlockType.WATER) {
-            return true;
-        }
-        
-        return false;
+        // The redundant if was removed, directly returning the result of the check.
+        return world.getBlockAt(feetBlockX, feetBlockY, feetBlockZ) == BlockType.WATER;
     }
     
     /**
