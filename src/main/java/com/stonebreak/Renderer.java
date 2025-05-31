@@ -16,6 +16,7 @@ import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
 import static org.lwjgl.opengl.GL11.GL_LINES;
+import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
 import static org.lwjgl.opengl.GL11.GL_NEAREST;
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_POINTS;
@@ -49,6 +50,7 @@ import static org.lwjgl.opengl.GL11.glGenTextures;
 import static org.lwjgl.opengl.GL11.glGetIntegerv;
 import static org.lwjgl.opengl.GL11.glIsEnabled;
 import static org.lwjgl.opengl.GL11.glPointSize;
+import static org.lwjgl.opengl.GL11.glPolygonOffset;
 import static org.lwjgl.opengl.GL11.glScissor;
 import static org.lwjgl.opengl.GL11.glTexImage2D;
 import static org.lwjgl.opengl.GL11.glTexParameteri;
@@ -530,8 +532,9 @@ public class Renderer {
 
         // Use a separate projection for the arm (orthographic, but could be perspective if desired)
         // For simplicity, let's use the main projection but adjust the view.
-        // The arm should be rendered in front of everything else.
-        glDisable(GL_DEPTH_TEST); // Render arm on top
+        // The arm should be rendered with proper depth testing to avoid visual artifacts.
+        glEnable(GL_DEPTH_TEST); // Enable depth testing for proper rendering
+        glDepthMask(true); // Enable depth writing
 
         Matrix4f armViewModel = new Matrix4f();
         
@@ -626,12 +629,6 @@ public class Renderer {
 
         // Check if we have a valid block type to display
         if (displayingBlock) {
-            // Use the texture from the texture atlas for the selected block
-            shaderProgram.setUniform("u_useSolidColor", false);
-            shaderProgram.setUniform("u_isText", false);
-            shaderProgram.setUniform("u_transformUVsForItem", true);
-            
-            // Get UV coordinates for the selected block type
             // Add a redundant check for selectedBlockType to satisfy static analyzers
             if (selectedBlockType == null) {
                 // This path should ideally not be reached if displayingBlock is true due to its definition.
@@ -639,20 +636,38 @@ public class Renderer {
                 System.err.println("Inconsistent state: displayingBlock is true, but selectedBlockType is null in renderPlayerArm.");
                 // Fallback or error handling: perhaps render nothing or a default.
             } else {
-                float[] atlasUVs = textureAtlas.getUVCoordinates(selectedBlockType.getAtlasX(), selectedBlockType.getAtlasY());
-                shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(atlasUVs[0], atlasUVs[1]));
-                shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(atlasUVs[2] - atlasUVs[0], atlasUVs[3] - atlasUVs[1]));
-                
-                GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-                shaderProgram.setUniform("texture_sampler", 0);
-                
-                // No tint for block texture
-                shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-                
-                // Use the 3D cube for blocks
-                GL30.glBindVertexArray(itemCubeVao);
-                glDrawElements(GL_TRIANGLES, itemCubeIndexCount, GL_UNSIGNED_INT, 0);
+                // Check if this is a flower block - render as flat cross pattern instead of 3D cube
+                if (selectedBlockType == BlockType.ROSE || selectedBlockType == BlockType.DANDELION) {
+                    renderFlowerInHand(selectedBlockType, armViewModel);
+                } else {
+                    // Use the texture from the texture atlas for the selected block
+                    shaderProgram.setUniform("u_useSolidColor", false);
+                    shaderProgram.setUniform("u_isText", false);
+                    shaderProgram.setUniform("u_transformUVsForItem", true); // Enable UV transformation for correct atlas mapping
+                    
+                    // Get UV coordinates for the selected block type from texture atlas
+                    float[] atlasUVs = textureAtlas.getUVCoordinates(selectedBlockType.getAtlasX(), selectedBlockType.getAtlasY());
+                    shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(atlasUVs[0], atlasUVs[1]));
+                    shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(atlasUVs[2] - atlasUVs[0], atlasUVs[3] - atlasUVs[1]));
+                    
+                    GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+                    shaderProgram.setUniform("texture_sampler", 0);
+                    
+                    // No tint for block texture
+                    shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+                    
+                    // Disable blending to prevent transparency issues
+                    glDisable(GL_BLEND);
+                    
+                    // Use the 3D cube for blocks
+                    GL30.glBindVertexArray(itemCubeVao);
+                    glDrawElements(GL_TRIANGLES, itemCubeIndexCount, GL_UNSIGNED_INT, 0);
+                    
+                    // Re-enable blending for other elements
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                }
             }
         } else {
             // Fallback to the default arm texture
@@ -677,7 +692,7 @@ public class Renderer {
         // Reset shader state
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
-        glEnable(GL_DEPTH_TEST); // Re-enable depth testing
+        // Depth testing is already enabled, so no need to re-enable
         shaderProgram.unbind(); // Unbind shader if it's not used immediately after
     }
 
@@ -919,6 +934,12 @@ public class Renderer {
             return; // Nothing to draw
         }
 
+        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
+        if (type == BlockType.ROSE || type == BlockType.DANDELION) {
+            drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
+            return;
+        }
+
         // --- Save current GL state ---
         boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
@@ -961,12 +982,7 @@ public class Renderer {
         shaderProgram.bind();
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_transformUVsForItem", true);
-
-        // Set texture coordinates from the texture atlas
-        float[] atlasUVs = textureAtlas.getUVCoordinates(type.getAtlasX(), type.getAtlasY());
-        shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(atlasUVs[0], atlasUVs[1]));
-        shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(atlasUVs[2] - atlasUVs[0], atlasUVs[3] - atlasUVs[1]));
+        shaderProgram.setUniform("u_transformUVsForItem", false); // We'll use direct UV coordinates
 
         // Create projection matrix for the item - use orthographic for consistent appearance
         Matrix4f itemProjectionMatrix = new Matrix4f().ortho(-0.6f, 0.6f, -0.6f, 0.6f, 0.1f, 10.0f);
@@ -980,15 +996,21 @@ public class Renderer {
         itemViewMatrix.rotate((float) Math.toRadians(-45.0f), 0.0f, 1.0f, 0.0f);
         // Adjust scale to fit nicely in the slot
         itemViewMatrix.scale(0.8f);
-        shaderProgram.setUniform("viewMatrix", itemViewMatrix);        // --- Bind texture atlas ---
+        shaderProgram.setUniform("viewMatrix", itemViewMatrix);
+
+        // --- Bind texture atlas ---
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
         shaderProgram.setUniform("texture_sampler", 0);
         
-        // --- Draw the 3D cube ---
-        GL30.glBindVertexArray(itemCubeVao);
-        glDrawElements(GL_TRIANGLES, itemCubeIndexCount, GL_UNSIGNED_INT, 0);
+        // --- Create and draw cube with proper face textures ---
+        int cubeVao = createBlockSpecificCube(type);
+        GL30.glBindVertexArray(cubeVao);
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
         GL30.glBindVertexArray(0);
+        
+        // Clean up the temporary VAO and its associated buffers
+        GL30.glDeleteVertexArrays(cubeVao);
 
         // --- Restore previous GL state ---
         // Reset shader uniforms
@@ -1027,42 +1049,140 @@ public class Renderer {
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
+    private void drawFlat2DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
+        // Save current GL state
+        boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        int[] originalViewport = new int[4];
+        glGetIntegerv(GL_VIEWPORT, originalViewport);
+        boolean scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
+        int[] originalScissorBox = new int[4];
+        if (scissorWasEnabled) {
+            glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
+        }
+        
+        // Store current matrices to restore later
+        float[] projectionMatrixBuffer = new float[16];
+        float[] viewMatrixBuffer = new float[16];
+        shaderProgram.getUniformMatrix4fv("projectionMatrix", projectionMatrixBuffer);
+        shaderProgram.getUniformMatrix4fv("viewMatrix", viewMatrixBuffer);
+
+        // Setup for 2D rendering
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // Set up orthographic projection for the slot area
+        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
+        Matrix4f identityView = new Matrix4f().identity();
+        
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", orthoProjection);
+        shaderProgram.setUniform("viewMatrix", identityView);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("texture_sampler", 0);
+
+        // Get texture coordinates for the flower
+        float[] uvCoords = textureAtlas.getUVCoordinates(type.getAtlasX(), type.getAtlasY());
+        
+        // Add padding to center the flower texture within the slot
+        int padding = 6;
+        float textureX = screenSlotX + padding;
+        float textureY = screenSlotY + padding;
+        float textureWidth = screenSlotWidth - (padding * 2);
+        float textureHeight = screenSlotHeight - (padding * 2);
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        
+        // Create vertices for the quad in screen coordinates
+        float[] vertices = {
+            textureX,              textureY,               0.0f, uvCoords[0], uvCoords[1], // Top-left
+            textureX + textureWidth, textureY,              0.0f, uvCoords[2], uvCoords[1], // Top-right  
+            textureX + textureWidth, textureY + textureHeight, 0.0f, uvCoords[2], uvCoords[3], // Bottom-right
+            textureX,              textureY + textureHeight, 0.0f, uvCoords[0], uvCoords[3]  // Bottom-left
+        };
+
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+
+        GL30.glBindVertexArray(uiQuadVao);
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, uiQuadVbo);
+        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        // Restore GL state
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        
+        // Restore original matrices
+        Matrix4f originalProjection = new Matrix4f();
+        originalProjection.set(projectionMatrixBuffer);
+        Matrix4f originalView = new Matrix4f();
+        originalView.set(viewMatrixBuffer);
+        shaderProgram.setUniform("projectionMatrix", originalProjection);
+        shaderProgram.setUniform("viewMatrix", originalView);
+        
+        // Restore viewport
+        glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
+        
+        // Restore scissor state
+        if (scissorWasEnabled) {
+            glScissor(originalScissorBox[0], originalScissorBox[1], originalScissorBox[2], originalScissorBox[3]);
+        } else {
+            glDisable(GL_SCISSOR_TEST);
+        }
+
+        // Restore depth test and blend state
+        if (depthTestWasEnabled) {
+            glEnable(GL_DEPTH_TEST);
+        }
+        if (!blendWasEnabled) {
+            glDisable(GL_BLEND);
+        }
+    }
+
     private void createItemCube() {
         // A standard unit cube (1x1x1) centered at origin
         // Vertices: Position (3f), Normal (3f), UV (2f) - 8 floats per vertex
         // 6 faces * 4 vertices per face = 24 vertices
         // 6 faces * 2 triangles per face * 3 indices per triangle = 36 indices
+        // UV coordinates will be dynamically set based on block type in draw3DItemInSlot
         float[] vertices = {
-            // Front face (+Z)
-            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f, // Bottom-left
-             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f, // Bottom-right
-             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f, // Top-right
-            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f, // Top-left
-            // Back face (-Z)
-            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f, // Bottom-left (UVs flipped for visual consistency from outside)
-             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f, // Bottom-right
-             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f, // Top-right
-            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f, // Top-left
-            // Top face (+Y)
-            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-            // Bottom face (-Y)
-            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f, // UVs mapped to appear correct from top view of bottom face
-             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
-            // Right face (+X)
-             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-            // Left face (-X)
-            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f, // UVs flipped
-            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f
+            // Front face (+Z) - Side face (face 2)
+            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f, // Bottom-left
+             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f, // Bottom-right
+             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f, // Top-right
+            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f, // Top-left
+            // Back face (-Z) - Side face (face 3)
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f, // Bottom-left
+             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f, // Bottom-right
+             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f, // Top-right
+            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f, // Top-left
+            // Top face (+Y) - Top face (face 0)
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
+             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
+             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
+            // Bottom face (-Y) - Bottom face (face 1)
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
+             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
+            // Right face (+X) - Side face (face 4)
+             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+            // Left face (-X) - Side face (face 5)
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f
         };
 
         int[] indices = {
@@ -1106,6 +1226,206 @@ public class Renderer {
     }
     
     /**
+     * Creates a cube VAO with proper UV coordinates for each face of the specified block type.
+     * This allows blocks like grass to show different textures on different faces.
+     */
+    private int createBlockSpecificCube(BlockType blockType) {
+        // Get texture coordinates for each face
+        float[] topTexCoords = blockType.getTextureCoords(0);    // Top face
+        float[] bottomTexCoords = blockType.getTextureCoords(1); // Bottom face
+        float[] frontTexCoords = blockType.getTextureCoords(2);  // Front side
+        float[] backTexCoords = blockType.getTextureCoords(3);   // Back side
+        float[] rightTexCoords = blockType.getTextureCoords(4);  // Right side
+        float[] leftTexCoords = blockType.getTextureCoords(5);   // Left side
+        
+        // Convert texture atlas coordinates to UV coordinates
+        float[] topUVs = textureAtlas.getUVCoordinates((int)topTexCoords[0], (int)topTexCoords[1]);
+        float[] bottomUVs = textureAtlas.getUVCoordinates((int)bottomTexCoords[0], (int)bottomTexCoords[1]);
+        float[] frontUVs = textureAtlas.getUVCoordinates((int)frontTexCoords[0], (int)frontTexCoords[1]);
+        float[] backUVs = textureAtlas.getUVCoordinates((int)backTexCoords[0], (int)backTexCoords[1]);
+        float[] rightUVs = textureAtlas.getUVCoordinates((int)rightTexCoords[0], (int)rightTexCoords[1]);
+        float[] leftUVs = textureAtlas.getUVCoordinates((int)leftTexCoords[0], (int)leftTexCoords[1]);
+        
+        // Build vertices with correct UV coordinates for each face
+        // Format: Position (3f), Normal (3f), UV (2f) - 8 floats per vertex
+        float[] vertices = {
+            // Front face (+Z) - Using front texture
+            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[3], // Bottom-left
+             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[3], // Bottom-right
+             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[1], // Top-right
+            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[1], // Top-left
+            
+            // Back face (-Z) - Using back texture
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[3], // Bottom-left (flipped)
+             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[3], // Bottom-right
+             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[1], // Top-right
+            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[1], // Top-left
+            
+            // Top face (+Y) - Using top texture
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[3],
+             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[3],
+             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[1],
+            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[1],
+            
+            // Bottom face (-Y) - Using bottom texture
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[0], bottomUVs[1],
+             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[2], bottomUVs[1],
+             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[2], bottomUVs[3],
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  bottomUVs[0], bottomUVs[3],
+            
+            // Right face (+X) - Using right texture
+             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[3],
+             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[3],
+             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[1],
+             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[1],
+            
+            // Left face (-X) - Using left texture
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[3], // Flipped
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[3],
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[1],
+            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[1]
+        };
+        
+        int[] indices = {
+            0,  1,  2,  0,  2,  3,  // Front
+            4,  5,  6,  4,  6,  7,  // Back
+            8,  9, 10,  8, 10, 11,  // Top
+            12, 13, 14, 12, 14, 15, // Bottom
+            16, 17, 18, 16, 18, 19, // Right
+            20, 21, 22, 20, 22, 23  // Left
+        };
+        
+        // Create VAO
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        
+        // Create VBO
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES;
+        // Position attribute (location 0)
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        // Normal attribute (location 2)
+        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+        // Texture coordinate attribute (location 1)
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        // Create IBO
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        
+        return vao;
+    }
+    
+    private void renderFlowerInHand(BlockType flowerType, Matrix4f armViewModel) {
+        // Set up shader for flower rendering
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        
+        // Get UV coordinates for the flower
+        float[] uvCoords = textureAtlas.getUVCoordinates(flowerType.getAtlasX(), flowerType.getAtlasY());
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        shaderProgram.setUniform("texture_sampler", 0);
+        
+        // Enable blending for transparency
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // No tint - use pure white
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Create two intersecting quads to form a cross pattern (like flowers in Minecraft)
+        createAndRenderFlowerCross(uvCoords);
+    }
+    
+    private void createAndRenderFlowerCross(float[] uvCoords) {
+        // Create vertices for two intersecting quads forming a cross
+        // First quad (Z-aligned)
+        float[] vertices1 = {
+            // Quad 1: Front-back cross section
+            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
+            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Second quad (X-aligned, rotated 90 degrees)
+        float[] vertices2 = {
+            // Quad 2: Left-right cross section
+            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
+            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        int[] indices = {
+            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
+        };
+        
+        // Render first quad
+        renderFlowerQuad(vertices1, indices);
+        
+        // Render second quad
+        renderFlowerQuad(vertices2, indices);
+    }
+    
+    private void renderFlowerQuad(float[] vertices, int[] indices) {
+        // Create temporary VAO and buffers for this quad
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES;
+        // Position attribute (location 0)
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        // Normal attribute (location 2)
+        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+        // Texture coordinate attribute (location 1)
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Render the quad
+        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
+        
+        // Clean up temporary buffers
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        GL30.glDeleteVertexArrays(vao);
+        GL20.glDeleteBuffers(vbo);
+        GL20.glDeleteBuffers(ibo);
+    }
+    
+    /**
      * Creates the crack texture with multiple crack stages.
      */
     private void createCrackTexture() {
@@ -1118,16 +1438,12 @@ public class Renderer {
                 for (int x = 0; x < 16; x++) {
                     byte r = 0, g = 0, b = 0, a = 0;
                     
-                    // Create crack pattern based on stage and position
+                    // Create realistic crack pattern based on stage and position
                     float intensity = (stage + 1) / 10.0f;
                     boolean isCrack = false;
                     
-                    // Simple crack pattern - lines and intersections
-                    if (stage >= 1 && (x == 8 || y == 8)) isCrack = true; // Cross pattern
-                    if (stage >= 3 && (x == 4 || x == 12 || y == 4 || y == 12)) isCrack = true; // Extended lines
-                    if (stage >= 5 && ((x + y) % 4 == 0 || (x - y) % 4 == 0)) isCrack = true; // Diagonal cracks
-                    if (stage >= 7 && ((x * 3 + y) % 5 == 0)) isCrack = true; // More random cracks
-                    if (stage >= 9 && ((x * y) % 3 == 0)) isCrack = true; // Heavy cracking
+                    // Create organic-looking cracks using multiple crack paths
+                    isCrack = generateCrackPattern(x, y, stage);
                     
                     if (isCrack) {
                         r = g = b = 0; // Black cracks
@@ -1151,6 +1467,122 @@ public class Renderer {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
         glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    
+    /**
+     * Generates realistic crack patterns for block breaking animation.
+     * Creates organic-looking cracks that branch and spread as breaking progresses.
+     */
+    private boolean generateCrackPattern(int x, int y, int stage) {
+        if (stage == 0) return false;
+        
+        // Define crack centers and paths for organic crack generation
+        int centerX = 8, centerY = 8;
+        
+        // Stage 1-2: Initial small cracks from center
+        if (stage >= 1) {
+            // Main crack lines from center
+            if (isOnCrackLine(x, y, centerX, centerY, centerX + 3, centerY - 2, 1)) return true;
+            if (isOnCrackLine(x, y, centerX, centerY, centerX - 2, centerY + 3, 1)) return true;
+        }
+        
+        // Stage 3-4: Extend cracks and add branches
+        if (stage >= 3) {
+            if (isOnCrackLine(x, y, centerX + 3, centerY - 2, centerX + 6, centerY - 4, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 2, centerY + 3, centerX - 4, centerY + 6, 1)) return true;
+            // Add branching cracks
+            if (isOnCrackLine(x, y, centerX + 1, centerY - 1, centerX + 4, centerY + 2, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 1, centerY + 1, centerX - 3, centerY - 2, 1)) return true;
+        }
+        
+        // Stage 5-6: More extensive cracking
+        if (stage >= 5) {
+            if (isOnCrackLine(x, y, centerX + 6, centerY - 4, centerX + 8, centerY - 6, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 4, centerY + 6, centerX - 6, centerY + 8, 1)) return true;
+            if (isOnCrackLine(x, y, centerX + 4, centerY + 2, centerX + 7, centerY + 5, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 3, centerY - 2, centerX - 6, centerY - 5, 1)) return true;
+            // Add perpendicular branches
+            if (isOnCrackLine(x, y, centerX + 2, centerY, centerX + 2, centerY - 4, 1)) return true;
+            if (isOnCrackLine(x, y, centerX, centerY + 2, centerX - 4, centerY + 2, 1)) return true;
+        }
+        
+        // Stage 7-8: Heavy cracking with web pattern
+        if (stage >= 7) {
+            if (isOnCrackLine(x, y, centerX, centerY - 3, centerX + 5, centerY - 6, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 3, centerY, centerX - 6, centerY + 5, 1)) return true;
+            if (isOnCrackLine(x, y, centerX + 5, centerY, centerX + 8, centerY - 3, 1)) return true;
+            if (isOnCrackLine(x, y, centerX, centerY + 5, centerX - 3, centerY + 8, 1)) return true;
+            // Add connecting cracks between main lines
+            if (isOnCrackLine(x, y, centerX + 3, centerY - 1, centerX + 1, centerY + 3, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 1, centerY - 3, centerX - 3, centerY + 1, 1)) return true;
+        }
+        
+        // Stage 9: Maximum cracking with detailed fractures
+        if (stage >= 9) {
+            // Add fine detail cracks
+            if (isOnCrackLine(x, y, centerX + 1, centerY + 1, centerX + 6, centerY + 3, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 1, centerY - 1, centerX - 6, centerY - 3, 1)) return true;
+            if (isOnCrackLine(x, y, centerX + 4, centerY - 1, centerX + 7, centerY + 2, 1)) return true;
+            if (isOnCrackLine(x, y, centerX - 4, centerY + 1, centerX - 7, centerY - 2, 1)) return true;
+            // Add edge cracks
+            if (x == 0 || x == 15 || y == 0 || y == 15) {
+                if ((x + y) % 3 == 0) return true;
+            }
+            // Add small fracture details with consistent pattern
+            if ((x * 7 + y * 3) % 11 == 0 && distanceFromCenter(x, y, centerX, centerY) < 6) return true;
+            // Add additional consistent detail cracks
+            if ((x * 3 + y * 5) % 13 == 0 && distanceFromCenter(x, y, centerX, centerY) < 5) return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Checks if a point is on a crack line with some thickness for natural appearance.
+     */
+    private boolean isOnCrackLine(int x, int y, int x1, int y1, int x2, int y2, int thickness) {
+        // Calculate distance from point to line segment
+        float A = x - x1;
+        float B = y - y1;
+        float C = x2 - x1;
+        float D = y2 - y1;
+        
+        float dot = A * C + B * D;
+        float lenSq = C * C + D * D;
+        
+        if (lenSq == 0) {
+            // Line has no length, check distance to point
+            return Math.abs(x - x1) <= thickness && Math.abs(y - y1) <= thickness;
+        }
+        
+        float param = dot / lenSq;
+        
+        float xx, yy;
+        if (param < 0) {
+            xx = x1;
+            yy = y1;
+        } else if (param > 1) {
+            xx = x2;
+            yy = y2;
+        } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+        }
+        
+        float dx = x - xx;
+        float dy = y - yy;
+        float distance = (float) Math.sqrt(dx * dx + dy * dy);
+        
+        return distance <= thickness;
+    }
+    
+    /**
+     * Calculates distance from a point to the center.
+     */
+    private float distanceFromCenter(int x, int y, int centerX, int centerY) {
+        float dx = x - centerX;
+        float dy = y - centerY;
+        return (float) Math.sqrt(dx * dx + dy * dy);
     }
     
     /**
@@ -1396,8 +1828,14 @@ public class Renderer {
             return; // No progress yet
         }
         
-        // Calculate crack stage (0-9)
-        int crackStage = Math.min(9, (int) (progress * 10));
+        // Calculate crack stage (0-9) with smoother transitions
+        float exactStage = Math.min(9.0f, progress * 10.0f);
+        int crackStage = (int) exactStage;
+        
+        // Add small offset to prevent flickering between stages
+        if (exactStage > crackStage + 0.1f) {
+            crackStage = Math.min(9, crackStage + 1);
+        }
         
         // Enable blending for crack overlay
         glEnable(GL_BLEND);
@@ -1406,6 +1844,10 @@ public class Renderer {
         // Disable depth writing but keep depth testing to avoid z-fighting
         glDepthMask(false);
         glEnable(GL_DEPTH_TEST);
+        
+        // Enable polygon offset to prevent z-fighting
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
         
         // Use shader program
         shaderProgram.bind();
@@ -1434,7 +1876,7 @@ public class Renderer {
         // Create model matrix to position the overlay at the breaking block
         Matrix4f modelMatrix = new Matrix4f()
             .translate(breakingBlock.x, breakingBlock.y, breakingBlock.z)
-            .scale(1.001f); // Slightly larger to avoid z-fighting
+            .scale(1.002f); // Slightly larger to avoid z-fighting
         
         // Combine view and model matrices
         Matrix4f modelViewMatrix = new Matrix4f(player.getViewMatrix()).mul(modelMatrix);
@@ -1451,6 +1893,7 @@ public class Renderer {
         // Restore state
         glDepthMask(true);
         glDisable(GL_BLEND);
+        glDisable(GL_POLYGON_OFFSET_FILL);
         glBindTexture(GL_TEXTURE_2D, 0);
         
         // Reset shader state

@@ -675,15 +675,15 @@ public class Chunk {
         float u_right = texX + texSize;
         float v_bottom = texY + texSize;
         
+        // Only create 2 cross planes (no duplicates for double-sided)
         // First cross plane (diagonal from NW to SE)
-        // Quad 1: NW to SE
         vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NW
         vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NW
         vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SE
         vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SE
         
-        // Normals for first plane (pointing towards camera when viewing diagonally)
-        float norm1X = 0.707f, norm1Z = -0.707f; // Perpendicular to the NW-SE diagonal
+        // Normals for first plane
+        float norm1X = 0.707f, norm1Z = -0.707f;
         normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
         normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
         normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
@@ -695,16 +695,13 @@ public class Chunk {
         textureCoords.add(u_right); textureCoords.add(v_top);
         textureCoords.add(u_right); textureCoords.add(v_bottom);
         
-        // IsWater flags for first plane
+        // Flags for first plane
         for (int i = 0; i < 4; i++) {
-            isWaterFlags.add(0.0f); // Flowers are not water
-        }
-        // IsAlphaTested flags for first plane
-        for (int i = 0; i < 4; i++) {
-            isAlphaTestedFlags.add(1.0f); // Flowers are alpha-tested
+            isWaterFlags.add(0.0f);
+            isAlphaTestedFlags.add(1.0f);
         }
         
-        // Indices for first plane
+        // Indices for first plane (front-facing)
         indices.add(index);
         indices.add(index + 1);
         indices.add(index + 2);
@@ -712,15 +709,23 @@ public class Chunk {
         indices.add(index + 2);
         indices.add(index + 3);
         
+        // Indices for first plane (back-facing with reversed winding)
+        indices.add(index);
+        indices.add(index + 3);
+        indices.add(index + 2);
+        indices.add(index);
+        indices.add(index + 2);
+        indices.add(index + 1);
+        
         index += 4;
         
-        // Second cross plane (diagonal from NE to SW) - back face
+        // Second cross plane (diagonal from NE to SW)
         vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NE
         vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NE
         vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SW
         vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SW
         
-        // Normals for second plane (opposite direction)
+        // Normals for second plane
         float norm2X = -0.707f, norm2Z = 0.707f;
         normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
         normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
@@ -733,16 +738,13 @@ public class Chunk {
         textureCoords.add(u_right); textureCoords.add(v_top);
         textureCoords.add(u_right); textureCoords.add(v_bottom);
         
-        // IsWater flags for second plane
+        // Flags for second plane
         for (int i = 0; i < 4; i++) {
             isWaterFlags.add(0.0f);
-        }
-        // IsAlphaTested flags for second plane
-        for (int i = 0; i < 4; i++) {
             isAlphaTestedFlags.add(1.0f);
         }
         
-        // Indices for second plane
+        // Indices for second plane (front-facing)
         indices.add(index);
         indices.add(index + 1);
         indices.add(index + 2);
@@ -750,79 +752,13 @@ public class Chunk {
         indices.add(index + 2);
         indices.add(index + 3);
         
-        index += 4;
-        
-        // Third cross plane (same as first but flipped for double-sided rendering)
-        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SE
-        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SE
-        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NW
-        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NW
-        
-        // Normals for third plane (opposite of first)
-        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
-        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
-        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
-        normals.add(-norm1X); normals.add(0.0f); normals.add(-norm1Z);
-        
-        // Texture coordinates for third plane
-        textureCoords.add(u_left); textureCoords.add(v_bottom);
-        textureCoords.add(u_left); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_bottom);
-        
-        // IsWater flags for third plane
-        for (int i = 0; i < 4; i++) {
-            isWaterFlags.add(0.0f);
-        }
-        // IsAlphaTested flags for third plane
-        for (int i = 0; i < 4; i++) {
-            isAlphaTestedFlags.add(1.0f);
-        }
-        
-        // Indices for third plane
+        // Indices for second plane (back-facing with reversed winding)
         indices.add(index);
-        indices.add(index + 1);
-        indices.add(index + 2);
-        indices.add(index);
-        indices.add(index + 2);
         indices.add(index + 3);
-        
-        index += 4;
-        
-        // Fourth cross plane (same as second but flipped for double-sided rendering)
-        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SW
-        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SW
-        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NE
-        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NE
-        
-        // Normals for fourth plane (opposite of second)
-        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
-        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
-        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
-        normals.add(-norm2X); normals.add(0.0f); normals.add(-norm2Z);
-        
-        // Texture coordinates for fourth plane
-        textureCoords.add(u_left); textureCoords.add(v_bottom);
-        textureCoords.add(u_left); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_bottom);
-        
-        // IsWater flags for fourth plane
-        for (int i = 0; i < 4; i++) {
-            isWaterFlags.add(0.0f);
-        }
-        // IsAlphaTested flags for fourth plane
-        for (int i = 0; i < 4; i++) {
-            isAlphaTestedFlags.add(1.0f);
-        }
-        
-        // Indices for fourth plane
+        indices.add(index + 2);
         indices.add(index);
+        indices.add(index + 2);
         indices.add(index + 1);
-        indices.add(index + 2);
-        indices.add(index);
-        indices.add(index + 2);
-        indices.add(index + 3);
         
         return index + 4; // Return the next available index
     }
