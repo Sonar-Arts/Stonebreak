@@ -98,6 +98,12 @@ public class Renderer {
     
     // Cache for block-specific VAOs for hand rendering
     private final Map<BlockType, Integer> handBlockVaoCache = new HashMap<>();
+    
+    // Reusable lists to avoid allocations during rendering
+    private final List<Chunk> reusableSortedChunks = new ArrayList<>();
+    
+    // Reusable matrices to avoid allocations
+    private final Matrix4f reusableArmViewModel = new Matrix4f();
 
     /**
      * Creates and initializes the renderer.
@@ -486,10 +492,11 @@ public class Renderer {
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
  
-        // Sort chunks from back to front for transparent pass
-        List<Chunk> sortedTransparentChunks = new ArrayList<>(visibleChunks.values());
+        // Sort chunks from back to front for transparent pass (reuse list to avoid allocation)
+        reusableSortedChunks.clear();
+        reusableSortedChunks.addAll(visibleChunks.values());
         org.joml.Vector3f playerPos = player.getPosition();
-        Collections.sort(sortedTransparentChunks, (c1, c2) -> {
+        Collections.sort(reusableSortedChunks, (c1, c2) -> {
             // Calculate distance squared from player to center of each chunk
             // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
             // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
@@ -507,7 +514,7 @@ public class Renderer {
             return Float.compare(distSq2, distSq1);
         });
 
-        for (Chunk chunk : sortedTransparentChunks) {
+        for (Chunk chunk : reusableSortedChunks) {
             // Texture atlas is already bound
             chunk.render(); // Chunk.render() will be called, shader will discard non-water fragments
         }
@@ -589,10 +596,11 @@ public class Renderer {
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
  
-        // Sort chunks from back to front for transparent pass
-        List<Chunk> sortedTransparentChunks = new ArrayList<>(visibleChunks.values());
+        // Sort chunks from back to front for transparent pass (reuse list to avoid allocation)
+        reusableSortedChunks.clear();
+        reusableSortedChunks.addAll(visibleChunks.values());
         org.joml.Vector3f playerPos = player.getPosition();
-        Collections.sort(sortedTransparentChunks, (c1, c2) -> {
+        Collections.sort(reusableSortedChunks, (c1, c2) -> {
             // Calculate distance squared from player to center of each chunk
             // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
             // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
@@ -610,7 +618,7 @@ public class Renderer {
             return Float.compare(distSq2, distSq1);
         });
 
-        for (Chunk chunk : sortedTransparentChunks) {
+        for (Chunk chunk : reusableSortedChunks) {
             // Texture atlas is already bound
             chunk.render(); // Chunk.render() will be called, shader will discard non-water fragments
         }
@@ -656,7 +664,8 @@ public class Renderer {
         glEnable(GL_DEPTH_TEST); // Enable depth testing for proper rendering
         glDepthMask(true); // Enable depth writing
 
-        Matrix4f armViewModel = new Matrix4f();
+        // Reuse matrix to avoid allocation
+        reusableArmViewModel.identity();
         
         // Get the selected block type from the Player's Inventory
         int selectedBlockTypeId = 1; // Default to a valid block if inventory is null for some reason
@@ -709,22 +718,22 @@ public class Renderer {
         float breatheY = (float) Math.sin(totalTime * 2.0f) * 0.008f;
         
         // Position the arm with Minecraft-style offset
-        armViewModel.translate(baseX + swayX, baseY + swayY + breatheY, baseZ);
+        reusableArmViewModel.translate(baseX + swayX, baseY + swayY + breatheY, baseZ);
         
         // Minecraft-style arm rotation - slight inward angle
-        armViewModel.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Slight inward rotation
-        armViewModel.rotate((float) Math.toRadians(5.0f), 1.0f, 0.0f, 0.0f);   // Slight downward tilt
+        reusableArmViewModel.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Slight inward rotation
+        reusableArmViewModel.rotate((float) Math.toRadians(5.0f), 1.0f, 0.0f, 0.0f);   // Slight downward tilt
 
         // Adjust the model based on whether we're displaying a block or arm
         if (displayingBlock) {
             // Position and scale for the block - Minecraft-style item positioning
-            armViewModel.scale(0.4f); // Larger scale for better visibility
-            armViewModel.translate(-0.3f, 0.15f, 0.3f); // Adjust position for item in hand
+            reusableArmViewModel.scale(0.4f); // Larger scale for better visibility
+            reusableArmViewModel.translate(-0.3f, 0.15f, 0.3f); // Adjust position for item in hand
             
             // Apply Minecraft-style item rotation
-            armViewModel.rotate((float) Math.toRadians(20.0f), 1.0f, 0.0f, 0.0f);
-            armViewModel.rotate((float) Math.toRadians(-30.0f), 0.0f, 1.0f, 0.0f);
-            armViewModel.rotate((float) Math.toRadians(10.0f), 0.0f, 0.0f, 1.0f);
+            reusableArmViewModel.rotate((float) Math.toRadians(20.0f), 1.0f, 0.0f, 0.0f);
+            reusableArmViewModel.rotate((float) Math.toRadians(-30.0f), 0.0f, 1.0f, 0.0f);
+            reusableArmViewModel.rotate((float) Math.toRadians(10.0f), 0.0f, 0.0f, 1.0f);
         }
 
         // Enhanced swinging animation - Minecraft-style (reversed)
@@ -736,16 +745,16 @@ public class Renderer {
             float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.1f); // Lift arm up during swing
             
             // Apply swing rotation around multiple axes for more natural movement
-            armViewModel.rotate((float) Math.toRadians(-swingAngle), 1.0f, 0.0f, 0.0f); // Primary swing motion
-            armViewModel.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 1.0f, 0.0f); // Secondary motion
-            armViewModel.translate(progress * 0.15f, swingLift, progress * -0.1f); // Move arm during swing
+            reusableArmViewModel.rotate((float) Math.toRadians(-swingAngle), 1.0f, 0.0f, 0.0f); // Primary swing motion
+            reusableArmViewModel.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 1.0f, 0.0f); // Secondary motion
+            reusableArmViewModel.translate(progress * 0.15f, swingLift, progress * -0.1f); // Move arm during swing
         }
 
         // Set model-view matrix for the arm (combining arm's transformation with camera's view)
         // We want the arm to be relative to the camera, not the world.
         // So, we use an identity view matrix for the arm, and apply transformations directly.
         shaderProgram.setUniform("projectionMatrix", projectionMatrix); // Use main projection
-        shaderProgram.setUniform("viewMatrix", armViewModel); // Use the arm's own model-view
+        shaderProgram.setUniform("viewMatrix", reusableArmViewModel); // Use the arm's own model-view
 
         // Check if we have a valid block type to display
         if (displayingBlock) {

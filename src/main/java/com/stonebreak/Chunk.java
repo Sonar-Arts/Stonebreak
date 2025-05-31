@@ -2,8 +2,6 @@ package com.stonebreak;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
@@ -183,16 +181,30 @@ public class Chunk {
             this.dataReadyForGL = false; // Data has been processed (or attempt failed)
         }
     }
-      /**
+      // Reusable arrays for mesh generation to avoid allocations
+    private float[] tempVertices = new float[65536]; // Pre-allocated with reasonable size
+    private float[] tempTextureCoords = new float[43690]; // 2/3 of vertices for texture coords
+    private float[] tempNormals = new float[65536]; // Same as vertices for normals
+    private float[] tempIsWaterFlags = new float[21845]; // 1/3 of vertices for flags
+    private float[] tempIsAlphaTestedFlags = new float[21845]; // 1/3 of vertices for flags
+    private int[] tempIndices = new int[98304]; // 1.5x vertices for indices
+    
+    private int vertexIndex = 0;
+    private int textureIndex = 0;
+    private int normalIndex = 0;
+    private int flagIndex = 0;
+    private int indexIndex = 0;
+
+    /**
      * Generates the mesh data for the chunk.
      */
     private void generateMeshData(World world) {
-        List<Float> vertices = new ArrayList<>();
-        List<Float> textureCoords = new ArrayList<>();
-        List<Float> normals = new ArrayList<>();
-        List<Float> isWaterFlags = new ArrayList<>();
-        List<Float> isAlphaTestedFlags = new ArrayList<>(); // New list for isAlphaTested flags
-        List<Integer> indices = new ArrayList<>();
+        // Reset counters for reusable arrays
+        vertexIndex = 0;
+        textureIndex = 0;
+        normalIndex = 0;
+        flagIndex = 0;
+        indexIndex = 0;
         
         int index = 0;
         
@@ -209,7 +221,7 @@ public class Chunk {
                     
                     // Handle flowers with cross-shaped geometry
                     if (blockType == BlockType.ROSE || blockType == BlockType.DANDELION) {
-                        index = addFlowerCross(lx, ly, lz, blockType, vertices, textureCoords, normals, isWaterFlags, isAlphaTestedFlags, indices, index);
+                        index = addFlowerCross(lx, ly, lz, blockType, index);
                         continue;
                     }
                     
@@ -270,45 +282,44 @@ public class Chunk {
 
                         if (renderFace) {
                             // Add face vertices, texture coordinates, normals, isWater flags, isAlphaTested flags, and indices
-                            index = addFace(lx, ly, lz, face, blockType, vertices, textureCoords, normals, isWaterFlags, isAlphaTestedFlags, indices, index, world);
+                            index = addFace(lx, ly, lz, face, blockType, index, world);
                         }
                     }
                 }
             }
         }
         
-        // Convert lists to arrays
-        vertexData = new float[vertices.size()];
-        for (int i = 0; i < vertices.size(); i++) {
-            vertexData[i] = vertices.get(i);
+        // Copy from pre-allocated arrays to final arrays (only the used portions)
+        if (vertexIndex > 0) {
+            vertexData = new float[vertexIndex];
+            System.arraycopy(tempVertices, 0, vertexData, 0, vertexIndex);
+            
+            textureData = new float[textureIndex];
+            System.arraycopy(tempTextureCoords, 0, textureData, 0, textureIndex);
+            
+            normalData = new float[normalIndex];
+            System.arraycopy(tempNormals, 0, normalData, 0, normalIndex);
+            
+            isWaterData = new float[flagIndex];
+            System.arraycopy(tempIsWaterFlags, 0, isWaterData, 0, flagIndex);
+            
+            isAlphaTestedData = new float[flagIndex];
+            System.arraycopy(tempIsAlphaTestedFlags, 0, isAlphaTestedData, 0, flagIndex);
+            
+            indexData = new int[indexIndex];
+            System.arraycopy(tempIndices, 0, indexData, 0, indexIndex);
+            
+            vertexCount = indexIndex;
+        } else {
+            // No mesh data generated
+            vertexData = new float[0];
+            textureData = new float[0];
+            normalData = new float[0];
+            isWaterData = new float[0];
+            isAlphaTestedData = new float[0];
+            indexData = new int[0];
+            vertexCount = 0;
         }
-        
-        textureData = new float[textureCoords.size()];
-        for (int i = 0; i < textureCoords.size(); i++) {
-            textureData[i] = textureCoords.get(i);
-        }
-        
-        normalData = new float[normals.size()];
-        for (int i = 0; i < normals.size(); i++) {
-            normalData[i] = normals.get(i);
-        }
-        
-        isWaterData = new float[isWaterFlags.size()];
-        for (int i = 0; i < isWaterFlags.size(); i++) {
-            isWaterData[i] = isWaterFlags.get(i);
-        }
-        
-        isAlphaTestedData = new float[isAlphaTestedFlags.size()]; // Convert isAlphaTestedFlags list to array
-        for (int i = 0; i < isAlphaTestedFlags.size(); i++) {
-            isAlphaTestedData[i] = isAlphaTestedFlags.get(i);
-        }
-        
-        indexData = new int[indices.size()];
-        for (int i = 0; i < indices.size(); i++) {
-            indexData[i] = indices.get(i);
-        }
-        
-        vertexCount = indexData.length;
     }    /**
      * Gets the block adjacent to the specified position in the given direction.
      */
@@ -365,9 +376,17 @@ public class Chunk {
     /**
      * Adds a face to the mesh data.
      */
-    private int addFace(int x, int y, int z, int face, BlockType blockType,
-                       List<Float> vertices, List<Float> textureCoords,
-                       List<Float> normals, List<Float> isWaterFlags, List<Float> isAlphaTestedFlags, List<Integer> indices, int index, World world) {
+    private int addFace(int x, int y, int z, int face, BlockType blockType, int index, World world) {
+        // Check if we have enough space in our pre-allocated arrays
+        if (vertexIndex + 12 >= tempVertices.length || 
+            textureIndex + 8 >= tempTextureCoords.length ||
+            normalIndex + 12 >= tempNormals.length ||
+            flagIndex + 4 >= tempIsWaterFlags.length ||
+            indexIndex + 6 >= tempIndices.length) {
+            // Arrays are full, skip this face to avoid overflow
+            System.err.println("Warning: Chunk mesh arrays full, skipping face");
+            return index;
+        }
         // Convert to world coordinates
         float worldX = x + this.x * World.CHUNK_SIZE;
         float worldY = y;
@@ -391,74 +410,86 @@ public class Chunk {
         switch (face) {
             case 0 -> { // Top face (y+1)
                 float topY = worldY + blockHeight;
-                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
-                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ + 1);
+                // Add vertices
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ + 1;
                 
-                normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
-                normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
-                normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
-                normals.add(0.0f); normals.add(1.0f); normals.add(0.0f);
+                // Add normals
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f;
             }
             case 1 -> { // Bottom face (y-1)
-                vertices.add(worldX);        vertices.add(worldY); vertices.add(worldZ);
-                vertices.add(worldX);        vertices.add(worldY); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(worldY); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(worldY); vertices.add(worldZ);
+                // Add vertices
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = worldY; tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = worldY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = worldY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = worldY; tempVertices[vertexIndex++] = worldZ;
                 
-                normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
-                normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
-                normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
-                normals.add(0.0f); normals.add(-1.0f); normals.add(0.0f);
+                // Add normals
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f;
             }
             case 2 -> { // Front face (z+1)
                 float topY = worldY + blockHeight;
-                vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ + 1);
-                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ + 1);
+                // Add vertices
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ + 1;
                 
-                normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
-                normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
-                normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
-                normals.add(0.0f); normals.add(0.0f); normals.add(1.0f);
+                // Add normals
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 1.0f;
             }
             case 3 -> { // Back face (z-1)
                 float topY = worldY + blockHeight;
-                vertices.add(worldX);        vertices.add(worldY);     vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
-                vertices.add(worldX);        vertices.add(topY); vertices.add(worldZ);
+                // Add vertices
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX;        tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ;
                 
-                normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
-                normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
-                normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
-                normals.add(0.0f); normals.add(0.0f); normals.add(-1.0f);
+                // Add normals
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f;
+                tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = -1.0f;
             }
             case 4 -> { // Right face (x+1)
                 float topY = worldY + blockHeight;
-                vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ);
-                vertices.add(worldX + 1);    vertices.add(worldY);     vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ + 1);
-                vertices.add(worldX + 1);    vertices.add(topY); vertices.add(worldZ);
+                // Add vertices
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX + 1;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ;
                 
-                normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
-                normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
-                normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
-                normals.add(1.0f); normals.add(0.0f); normals.add(0.0f);
+                // Add normals
+                tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = 1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
             }
             case 5 -> { // Left face (x-1)
                 float topY = worldY + blockHeight;
-                vertices.add(worldX);    vertices.add(worldY);     vertices.add(worldZ);
-                vertices.add(worldX);    vertices.add(topY); vertices.add(worldZ);
-                vertices.add(worldX);    vertices.add(topY); vertices.add(worldZ + 1);
-                vertices.add(worldX);    vertices.add(worldY);     vertices.add(worldZ + 1);
+                // Add vertices
+                tempVertices[vertexIndex++] = worldX;    tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ;
+                tempVertices[vertexIndex++] = worldX;    tempVertices[vertexIndex++] = topY; tempVertices[vertexIndex++] = worldZ + 1;
+                tempVertices[vertexIndex++] = worldX;    tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = worldZ + 1;
                 
-                normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
-                normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
-                normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
-                normals.add(-1.0f); normals.add(0.0f); normals.add(0.0f);
+                // Add normals
+                tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
+                tempNormals[normalIndex++] = -1.0f; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = 0.0f;
             }
         }
         
@@ -593,57 +624,61 @@ public class Chunk {
         // Apply UV mapping based on face orientation
         switch (face) {
             case 0, 1 -> { // Top or Bottom face
-                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // V0
-                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // V1
-                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // V2
-                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // V3
+                tempTextureCoords[textureIndex++] = u_topLeft; tempTextureCoords[textureIndex++] = v_topLeft;         // V0
+                tempTextureCoords[textureIndex++] = u_bottomLeft; tempTextureCoords[textureIndex++] = v_bottomLeft;   // V1
+                tempTextureCoords[textureIndex++] = u_bottomRight; tempTextureCoords[textureIndex++] = v_bottomRight; // V2
+                tempTextureCoords[textureIndex++] = u_topRight; tempTextureCoords[textureIndex++] = v_topRight;       // V3
             }
             case 2, 5 -> { // Front (+Z) or Left (-X)
                 // Vertices for these faces are ordered: BL, TL, TR, BR
                 // Desired UVs: BottomLeft, TopLeft, TopRight, BottomRight
-                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
-                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V1 (TL of face)
-                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
-                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V3 (BR of face)
+                tempTextureCoords[textureIndex++] = u_bottomLeft; tempTextureCoords[textureIndex++] = v_bottomLeft;   // For V0 (BL of face)
+                tempTextureCoords[textureIndex++] = u_topLeft; tempTextureCoords[textureIndex++] = v_topLeft;         // For V1 (TL of face)
+                tempTextureCoords[textureIndex++] = u_topRight; tempTextureCoords[textureIndex++] = v_topRight;       // For V2 (TR of face)
+                tempTextureCoords[textureIndex++] = u_bottomRight; tempTextureCoords[textureIndex++] = v_bottomRight; // For V3 (BR of face)
             }
             case 3 -> { // Back (-Z)
                 // Vertices for this face are ordered: BR_face, BL_face, TL_face, TR_face
                 // Desired UVs: BottomRight, BottomLeft, TopLeft, TopRight
-                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V0 (BR of face)
-                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V1 (BL of face)
-                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V2 (TL of face)
-                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V3 (TR of face)
+                tempTextureCoords[textureIndex++] = u_bottomRight; tempTextureCoords[textureIndex++] = v_bottomRight; // For V0 (BR of face)
+                tempTextureCoords[textureIndex++] = u_bottomLeft; tempTextureCoords[textureIndex++] = v_bottomLeft;   // For V1 (BL of face)
+                tempTextureCoords[textureIndex++] = u_topLeft; tempTextureCoords[textureIndex++] = v_topLeft;         // For V2 (TL of face)
+                tempTextureCoords[textureIndex++] = u_topRight; tempTextureCoords[textureIndex++] = v_topRight;       // For V3 (TR of face)
             }
             case 4 -> { // Right (+X)
                 // Vertices for this face are ordered: BL_face, BR_face, TR_face, TL_face
                 // Desired UVs: BottomLeft, BottomRight, TopRight, TopLeft
-                textureCoords.add(u_bottomLeft); textureCoords.add(v_bottomLeft);   // For V0 (BL of face)
-                textureCoords.add(u_bottomRight); textureCoords.add(v_bottomRight); // For V1 (BR of face)
-                textureCoords.add(u_topRight); textureCoords.add(v_topRight);       // For V2 (TR of face)
-                textureCoords.add(u_topLeft); textureCoords.add(v_topLeft);         // For V3 (TL of face)
+                tempTextureCoords[textureIndex++] = u_bottomLeft; tempTextureCoords[textureIndex++] = v_bottomLeft;   // For V0 (BL of face)
+                tempTextureCoords[textureIndex++] = u_bottomRight; tempTextureCoords[textureIndex++] = v_bottomRight; // For V1 (BR of face)
+                tempTextureCoords[textureIndex++] = u_topRight; tempTextureCoords[textureIndex++] = v_topRight;       // For V2 (TR of face)
+                tempTextureCoords[textureIndex++] = u_topLeft; tempTextureCoords[textureIndex++] = v_topLeft;         // For V3 (TL of face)
             }
         }
 
         // Add isWater flag for each of the 4 vertices of this face
         float isWaterValue = (blockType == BlockType.WATER) ? 1.0f : 0.0f;
-        for (int i = 0; i < 4; i++) {
-            isWaterFlags.add(isWaterValue);
-        }
+        tempIsWaterFlags[flagIndex] = isWaterValue;
+        tempIsWaterFlags[flagIndex + 1] = isWaterValue;
+        tempIsWaterFlags[flagIndex + 2] = isWaterValue;
+        tempIsWaterFlags[flagIndex + 3] = isWaterValue;
         
         // Add isAlphaTested flag for each of the 4 vertices of this face
         float isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
-        for (int i = 0; i < 4; i++) {
-            isAlphaTestedFlags.add(isAlphaTestedValue);
-        }
+        tempIsAlphaTestedFlags[flagIndex] = isAlphaTestedValue;
+        tempIsAlphaTestedFlags[flagIndex + 1] = isAlphaTestedValue;
+        tempIsAlphaTestedFlags[flagIndex + 2] = isAlphaTestedValue;
+        tempIsAlphaTestedFlags[flagIndex + 3] = isAlphaTestedValue;
+        
+        flagIndex += 4; // Move flag index forward by 4
         
         // Add indices
-        indices.add(index);
-        indices.add(index + 1);
-        indices.add(index + 2);
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 1;
+        tempIndices[indexIndex++] = index + 2;
         
-        indices.add(index);
-        indices.add(index + 2);
-        indices.add(index + 3);
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index + 3;
         
         return index + 4;
     }
@@ -651,9 +686,17 @@ public class Chunk {
     /**
      * Adds cross-shaped geometry for flower blocks.
      */
-    private int addFlowerCross(int x, int y, int z, BlockType blockType,
-                              List<Float> vertices, List<Float> textureCoords,
-                              List<Float> normals, List<Float> isWaterFlags, List<Float> isAlphaTestedFlags, List<Integer> indices, int index) {
+    private int addFlowerCross(int x, int y, int z, BlockType blockType, int index) {
+        // Check if we have enough space in our pre-allocated arrays for flower geometry (16 vertices)
+        if (vertexIndex + 24 >= tempVertices.length || 
+            textureIndex + 16 >= tempTextureCoords.length ||
+            normalIndex + 24 >= tempNormals.length ||
+            flagIndex + 8 >= tempIsWaterFlags.length ||
+            indexIndex + 24 >= tempIndices.length) {
+            // Arrays are full, skip this flower to avoid overflow
+            System.err.println("Warning: Chunk mesh arrays full, skipping flower");
+            return index;
+        }
         // Convert to world coordinates
         float worldX = x + this.x * World.CHUNK_SIZE;
         float worldY = y;
@@ -677,88 +720,98 @@ public class Chunk {
         
         // Only create 2 cross planes (no duplicates for double-sided)
         // First cross plane (diagonal from NW to SE)
-        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NW
-        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NW
-        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SE
-        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SE
+        tempVertices[vertexIndex++] = centerX - crossSize; tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = centerZ - crossSize; // Bottom NW
+        tempVertices[vertexIndex++] = centerX - crossSize; tempVertices[vertexIndex++] = worldY + 1; tempVertices[vertexIndex++] = centerZ - crossSize; // Top NW
+        tempVertices[vertexIndex++] = centerX + crossSize; tempVertices[vertexIndex++] = worldY + 1; tempVertices[vertexIndex++] = centerZ + crossSize; // Top SE
+        tempVertices[vertexIndex++] = centerX + crossSize; tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = centerZ + crossSize; // Bottom SE
         
         // Normals for first plane
         float norm1X = 0.707f, norm1Z = -0.707f;
-        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
-        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
-        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
-        normals.add(norm1X); normals.add(0.0f); normals.add(norm1Z);
+        tempNormals[normalIndex++] = norm1X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm1Z;
+        tempNormals[normalIndex++] = norm1X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm1Z;
+        tempNormals[normalIndex++] = norm1X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm1Z;
+        tempNormals[normalIndex++] = norm1X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm1Z;
         
         // Texture coordinates for first plane
-        textureCoords.add(u_left); textureCoords.add(v_bottom);
-        textureCoords.add(u_left); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_bottom);
+        tempTextureCoords[textureIndex++] = u_left; tempTextureCoords[textureIndex++] = v_bottom;
+        tempTextureCoords[textureIndex++] = u_left; tempTextureCoords[textureIndex++] = v_top;
+        tempTextureCoords[textureIndex++] = u_right; tempTextureCoords[textureIndex++] = v_top;
+        tempTextureCoords[textureIndex++] = u_right; tempTextureCoords[textureIndex++] = v_bottom;
         
         // Flags for first plane
-        for (int i = 0; i < 4; i++) {
-            isWaterFlags.add(0.0f);
-            isAlphaTestedFlags.add(1.0f);
-        }
+        tempIsWaterFlags[flagIndex] = 0.0f;
+        tempIsWaterFlags[flagIndex + 1] = 0.0f;
+        tempIsWaterFlags[flagIndex + 2] = 0.0f;
+        tempIsWaterFlags[flagIndex + 3] = 0.0f;
+        tempIsAlphaTestedFlags[flagIndex] = 1.0f;
+        tempIsAlphaTestedFlags[flagIndex + 1] = 1.0f;
+        tempIsAlphaTestedFlags[flagIndex + 2] = 1.0f;
+        tempIsAlphaTestedFlags[flagIndex + 3] = 1.0f;
+        flagIndex += 4;
         
         // Indices for first plane (front-facing)
-        indices.add(index);
-        indices.add(index + 1);
-        indices.add(index + 2);
-        indices.add(index);
-        indices.add(index + 2);
-        indices.add(index + 3);
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 1;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index + 3;
         
         // Indices for first plane (back-facing with reversed winding)
-        indices.add(index);
-        indices.add(index + 3);
-        indices.add(index + 2);
-        indices.add(index);
-        indices.add(index + 2);
-        indices.add(index + 1);
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 3;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index + 1;
         
         index += 4;
         
         // Second cross plane (diagonal from NE to SW)
-        vertices.add(centerX + crossSize); vertices.add(worldY);     vertices.add(centerZ - crossSize); // Bottom NE
-        vertices.add(centerX + crossSize); vertices.add(worldY + 1); vertices.add(centerZ - crossSize); // Top NE
-        vertices.add(centerX - crossSize); vertices.add(worldY + 1); vertices.add(centerZ + crossSize); // Top SW
-        vertices.add(centerX - crossSize); vertices.add(worldY);     vertices.add(centerZ + crossSize); // Bottom SW
+        tempVertices[vertexIndex++] = centerX + crossSize; tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = centerZ - crossSize; // Bottom NE
+        tempVertices[vertexIndex++] = centerX + crossSize; tempVertices[vertexIndex++] = worldY + 1; tempVertices[vertexIndex++] = centerZ - crossSize; // Top NE
+        tempVertices[vertexIndex++] = centerX - crossSize; tempVertices[vertexIndex++] = worldY + 1; tempVertices[vertexIndex++] = centerZ + crossSize; // Top SW
+        tempVertices[vertexIndex++] = centerX - crossSize; tempVertices[vertexIndex++] = worldY;     tempVertices[vertexIndex++] = centerZ + crossSize; // Bottom SW
         
         // Normals for second plane
         float norm2X = -0.707f, norm2Z = 0.707f;
-        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
-        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
-        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
-        normals.add(norm2X); normals.add(0.0f); normals.add(norm2Z);
+        tempNormals[normalIndex++] = norm2X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm2Z;
+        tempNormals[normalIndex++] = norm2X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm2Z;
+        tempNormals[normalIndex++] = norm2X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm2Z;
+        tempNormals[normalIndex++] = norm2X; tempNormals[normalIndex++] = 0.0f; tempNormals[normalIndex++] = norm2Z;
         
         // Texture coordinates for second plane
-        textureCoords.add(u_left); textureCoords.add(v_bottom);
-        textureCoords.add(u_left); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_top);
-        textureCoords.add(u_right); textureCoords.add(v_bottom);
+        tempTextureCoords[textureIndex++] = u_left; tempTextureCoords[textureIndex++] = v_bottom;
+        tempTextureCoords[textureIndex++] = u_left; tempTextureCoords[textureIndex++] = v_top;
+        tempTextureCoords[textureIndex++] = u_right; tempTextureCoords[textureIndex++] = v_top;
+        tempTextureCoords[textureIndex++] = u_right; tempTextureCoords[textureIndex++] = v_bottom;
         
         // Flags for second plane
-        for (int i = 0; i < 4; i++) {
-            isWaterFlags.add(0.0f);
-            isAlphaTestedFlags.add(1.0f);
-        }
+        tempIsWaterFlags[flagIndex] = 0.0f;
+        tempIsWaterFlags[flagIndex + 1] = 0.0f;
+        tempIsWaterFlags[flagIndex + 2] = 0.0f;
+        tempIsWaterFlags[flagIndex + 3] = 0.0f;
+        tempIsAlphaTestedFlags[flagIndex] = 1.0f;
+        tempIsAlphaTestedFlags[flagIndex + 1] = 1.0f;
+        tempIsAlphaTestedFlags[flagIndex + 2] = 1.0f;
+        tempIsAlphaTestedFlags[flagIndex + 3] = 1.0f;
+        flagIndex += 4;
         
         // Indices for second plane (front-facing)
-        indices.add(index);
-        indices.add(index + 1);
-        indices.add(index + 2);
-        indices.add(index);
-        indices.add(index + 2);
-        indices.add(index + 3);
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 1;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index + 3;
         
         // Indices for second plane (back-facing with reversed winding)
-        indices.add(index);
-        indices.add(index + 3);
-        indices.add(index + 2);
-        indices.add(index);
-        indices.add(index + 2);
-        indices.add(index + 1);
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 3;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index;
+        tempIndices[indexIndex++] = index + 2;
+        tempIndices[indexIndex++] = index + 1;
         
         return index + 4; // Return the next available index
     }
@@ -770,6 +823,14 @@ public class Chunk {
     private float[] isWaterData;
     private float[] isAlphaTestedData; // New array for isAlphaTested flags
     private int[] indexData;
+    
+    // Reusable buffers for OpenGL operations to reduce allocations
+    private FloatBuffer reusableVertexBuffer;
+    private FloatBuffer reusableTextureBuffer;
+    private FloatBuffer reusableNormalBuffer;
+    private FloatBuffer reusableIsWaterBuffer;
+    private FloatBuffer reusableIsAlphaTestedBuffer;
+    private IntBuffer reusableIndexBuffer;
       /**
      * Creates the OpenGL mesh for this chunk.
      */
@@ -782,63 +843,101 @@ public class Chunk {
         vertexVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertexVboId);
         
-        FloatBuffer vertexBuffer = MemoryUtil.memAllocFloat(vertexData.length);
-        vertexBuffer.put(vertexData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexBuffer, GL15.GL_STATIC_DRAW);
+        // Reuse or create vertex buffer
+        if (reusableVertexBuffer == null || reusableVertexBuffer.capacity() < vertexData.length) {
+            if (reusableVertexBuffer != null) {
+                MemoryUtil.memFree(reusableVertexBuffer);
+            }
+            reusableVertexBuffer = MemoryUtil.memAllocFloat(vertexData.length);
+        }
+        reusableVertexBuffer.clear();
+        reusableVertexBuffer.put(vertexData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableVertexBuffer, GL15.GL_STATIC_DRAW);
         GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
         GL20.glEnableVertexAttribArray(0);  // Enable attribute in VAO
-        MemoryUtil.memFree(vertexBuffer);
         
         // Create and bind texture VBO
         textureVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, textureVboId);
         
-        FloatBuffer textureBuffer = MemoryUtil.memAllocFloat(textureData.length);
-        textureBuffer.put(textureData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, textureBuffer, GL15.GL_STATIC_DRAW);
+        // Reuse or create texture buffer
+        if (reusableTextureBuffer == null || reusableTextureBuffer.capacity() < textureData.length) {
+            if (reusableTextureBuffer != null) {
+                MemoryUtil.memFree(reusableTextureBuffer);
+            }
+            reusableTextureBuffer = MemoryUtil.memAllocFloat(textureData.length);
+        }
+        reusableTextureBuffer.clear();
+        reusableTextureBuffer.put(textureData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableTextureBuffer, GL15.GL_STATIC_DRAW);
         GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 0, 0);
         GL20.glEnableVertexAttribArray(1);  // Enable attribute in VAO
-        MemoryUtil.memFree(textureBuffer);
         
         // Create and bind normal VBO
         normalVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, normalVboId);
         
-        FloatBuffer normalBuffer = MemoryUtil.memAllocFloat(normalData.length);
-        normalBuffer.put(normalData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, normalBuffer, GL15.GL_STATIC_DRAW);
+        // Reuse or create normal buffer
+        if (reusableNormalBuffer == null || reusableNormalBuffer.capacity() < normalData.length) {
+            if (reusableNormalBuffer != null) {
+                MemoryUtil.memFree(reusableNormalBuffer);
+            }
+            reusableNormalBuffer = MemoryUtil.memAllocFloat(normalData.length);
+        }
+        reusableNormalBuffer.clear();
+        reusableNormalBuffer.put(normalData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableNormalBuffer, GL15.GL_STATIC_DRAW);
         GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, 0, 0);
         GL20.glEnableVertexAttribArray(2);  // Enable attribute in VAO
-        MemoryUtil.memFree(normalBuffer);
 
         // Create and bind isWater VBO
         isWaterVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isWaterVboId);
-        FloatBuffer isWaterBuffer = MemoryUtil.memAllocFloat(isWaterData.length);
-        isWaterBuffer.put(isWaterData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, isWaterBuffer, GL15.GL_STATIC_DRAW);
+        
+        // Reuse or create isWater buffer
+        if (reusableIsWaterBuffer == null || reusableIsWaterBuffer.capacity() < isWaterData.length) {
+            if (reusableIsWaterBuffer != null) {
+                MemoryUtil.memFree(reusableIsWaterBuffer);
+            }
+            reusableIsWaterBuffer = MemoryUtil.memAllocFloat(isWaterData.length);
+        }
+        reusableIsWaterBuffer.clear();
+        reusableIsWaterBuffer.put(isWaterData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableIsWaterBuffer, GL15.GL_STATIC_DRAW);
         GL20.glVertexAttribPointer(3, 1, GL20.GL_FLOAT, false, 0, 0); // Location 3, 1 float for isWater
         GL20.glEnableVertexAttribArray(3); // Enable attribute in VAO
-        MemoryUtil.memFree(isWaterBuffer);
 
         // Create and bind isAlphaTested VBO
         isAlphaTestedVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isAlphaTestedVboId);
-        FloatBuffer isAlphaTestedBuffer = MemoryUtil.memAllocFloat(isAlphaTestedData.length);
-        isAlphaTestedBuffer.put(isAlphaTestedData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, isAlphaTestedBuffer, GL15.GL_STATIC_DRAW);
+        
+        // Reuse or create isAlphaTested buffer
+        if (reusableIsAlphaTestedBuffer == null || reusableIsAlphaTestedBuffer.capacity() < isAlphaTestedData.length) {
+            if (reusableIsAlphaTestedBuffer != null) {
+                MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
+            }
+            reusableIsAlphaTestedBuffer = MemoryUtil.memAllocFloat(isAlphaTestedData.length);
+        }
+        reusableIsAlphaTestedBuffer.clear();
+        reusableIsAlphaTestedBuffer.put(isAlphaTestedData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableIsAlphaTestedBuffer, GL15.GL_STATIC_DRAW);
         GL20.glVertexAttribPointer(4, 1, GL20.GL_FLOAT, false, 0, 0); // Location 4, 1 float for isAlphaTested
         GL20.glEnableVertexAttribArray(4); // Enable attribute in VAO
-        MemoryUtil.memFree(isAlphaTestedBuffer);
         
         // Create and bind index VBO
         indexVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, indexVboId);
         
-        IntBuffer indexBuffer = MemoryUtil.memAllocInt(indexData.length);
-        indexBuffer.put(indexData).flip();
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL15.GL_STATIC_DRAW);
-        MemoryUtil.memFree(indexBuffer);
+        // Reuse or create index buffer
+        if (reusableIndexBuffer == null || reusableIndexBuffer.capacity() < indexData.length) {
+            if (reusableIndexBuffer != null) {
+                MemoryUtil.memFree(reusableIndexBuffer);
+            }
+            reusableIndexBuffer = MemoryUtil.memAllocInt(indexData.length);
+        }
+        reusableIndexBuffer.clear();
+        reusableIndexBuffer.put(indexData).flip();
+        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, reusableIndexBuffer, GL15.GL_STATIC_DRAW);
         
         // Unbind VAO
         GL30.glBindVertexArray(0);
@@ -948,6 +1047,32 @@ public class Chunk {
         if (meshGenerated) {
             cleanupMesh();
             meshGenerated = false;
+        }
+        
+        // Clean up reusable buffers
+        if (reusableVertexBuffer != null) {
+            MemoryUtil.memFree(reusableVertexBuffer);
+            reusableVertexBuffer = null;
+        }
+        if (reusableTextureBuffer != null) {
+            MemoryUtil.memFree(reusableTextureBuffer);
+            reusableTextureBuffer = null;
+        }
+        if (reusableNormalBuffer != null) {
+            MemoryUtil.memFree(reusableNormalBuffer);
+            reusableNormalBuffer = null;
+        }
+        if (reusableIsWaterBuffer != null) {
+            MemoryUtil.memFree(reusableIsWaterBuffer);
+            reusableIsWaterBuffer = null;
+        }
+        if (reusableIsAlphaTestedBuffer != null) {
+            MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
+            reusableIsAlphaTestedBuffer = null;
+        }
+        if (reusableIndexBuffer != null) {
+            MemoryUtil.memFree(reusableIndexBuffer);
+            reusableIndexBuffer = null;
         }
         
         // Clean up mesh data

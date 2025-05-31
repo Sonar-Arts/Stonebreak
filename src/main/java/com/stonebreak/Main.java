@@ -68,7 +68,7 @@ public class Main {
     private int height;
     private final String title = "Stonebreak";
     private static final int TARGET_FPS = 144;
-    private static final long FRAME_TIME_MILLIS = (long)(1000.0 / TARGET_FPS);
+    private static final long FRAME_TIME_NANOS = (long)(1_000_000_000.0 / TARGET_FPS);
     
     // Game state
     private boolean running = false;
@@ -292,8 +292,8 @@ public class Main {
         // Run the rendering loop until the user has attempted to close
         // the window or has pressed the ESCAPE key.
         while (!glfwWindowShouldClose(window) && running) {
-            // Record the start time of this frame
-            long frameStartTime = System.currentTimeMillis();
+            // Record the start time of this frame (use nanoseconds for better precision)
+            long frameStartTime = System.nanoTime();
 
             // Prepare InputHandler for new frame (e.g., clear single-frame press states)
             if (inputHandler != null) {
@@ -337,14 +337,20 @@ public class Main {
             glfwSwapBuffers(window);
             
             // Calculate how long the frame took to process
-            long frameEndTime = System.currentTimeMillis();
-            long frameTime = frameEndTime - frameStartTime;
+            long frameEndTime = System.nanoTime();
+            long frameTimeNanos = frameEndTime - frameStartTime;
             
             // Sleep if we're running faster than the target FPS
-            if (frameTime < FRAME_TIME_MILLIS) {
+            if (frameTimeNanos < FRAME_TIME_NANOS) {
                 try {
-                    // Sleep to cap FPS
-                    Thread.sleep(FRAME_TIME_MILLIS - frameTime);
+                    // Sleep to cap FPS (convert back to milliseconds for Thread.sleep)
+                    long sleepTimeNanos = FRAME_TIME_NANOS - frameTimeNanos;
+                    long sleepTimeMillis = sleepTimeNanos / 1_000_000;
+                    int sleepTimeNanosRemainder = (int)(sleepTimeNanos % 1_000_000);
+                    
+                    if (sleepTimeMillis > 0) {
+                        Thread.sleep(sleepTimeMillis, sleepTimeNanosRemainder);
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break; // Exit loop if interrupted

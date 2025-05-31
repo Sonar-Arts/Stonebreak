@@ -10,7 +10,7 @@ import org.joml.Vector3i;
 public class Player {      // Player settings
     private static final float PLAYER_HEIGHT = 1.8f;
     private static final float PLAYER_WIDTH = 0.6f;
-    private static final float MOVE_SPEED = 35.0f; // Slightly reduced for better control
+    private static final float MOVE_SPEED = 20.0f; // Slightly reduced for better control
     private static final float SWIM_SPEED = 20.0f; // Swimming is slower than walking
     private static final float JUMP_FORCE = 8.0f;
     private static final float GRAVITY = 15.0f;
@@ -128,23 +128,30 @@ public class Player {      // Player settings
         // Check if player is standing on solid ground
         checkGroundBeneath();
         
-        // Dampen movement - different dampening for flight mode
+        // Dampen movement - frame-rate independent using delta time
+        float deltaTime = Game.getDeltaTime();
         if (isFlying) {
             // More aggressive dampening in flight mode for better control
-            velocity.x *= 0.85f;
-            velocity.y *= 0.85f;
-            velocity.z *= 0.85f;
+            // Convert dampening factor to frame-rate independent form
+            float flyDampening = (float) Math.pow(0.85f, deltaTime * 60.0f); // Equivalent to 0.85f at 60 FPS
+            velocity.x *= flyDampening;
+            velocity.y *= flyDampening;
+            velocity.z *= flyDampening;
         } else {
             // Reduced dampening for better control on ground
-            velocity.x *= 0.95f;
-            velocity.z *= 0.95f;
+            float groundDampening = (float) Math.pow(0.95f, deltaTime * 60.0f); // Equivalent to 0.95f at 60 FPS
+            velocity.x *= groundDampening;
+            velocity.z *= groundDampening;
+            
             // Apply Y dampening when in water for realistic water resistance
             if (physicallyInWater) {
-                velocity.y *= 0.90f; // Reduced water resistance for more responsive movement
+                float waterDampening = (float) Math.pow(0.90f, deltaTime * 60.0f); // Frame-rate independent
+                velocity.y *= waterDampening;
             } else {
                 // Not in water - apply stronger dampening to stop water momentum
                 if (velocity.y > 0) {
-                    velocity.y *= 0.98f; // Slight dampening for upward velocity when not in water
+                    float airDampening = (float) Math.pow(0.98f, deltaTime * 60.0f); // Frame-rate independent
+                    velocity.y *= airDampening;
                 }
             }
         }

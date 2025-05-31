@@ -30,6 +30,12 @@ public class InputHandler {
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
     private boolean chatKeyPressed = false; // Added for chat toggle
     
+    // Cached objects to avoid allocations
+    private final Vector2f cachedMousePosition = new Vector2f();
+    
+    // Track which buttons were pressed to optimize clearing
+    private boolean[] buttonWasPressed = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
+    
     public InputHandler(long window) {
         this.window = window;
         Arrays.fill(mouseButtonDown, false);
@@ -57,8 +63,13 @@ public class InputHandler {
      * Call this at the START of each frame's input processing cycle.
      */
     public void prepareForNewFrame() {
-        // Clear "pressed this frame" states, as they are single-frame events
-        Arrays.fill(mouseButtonPressedThisFrame, false);
+        // Clear "pressed this frame" states efficiently - only clear buttons that were actually pressed
+        for (int i = 0; i < buttonWasPressed.length; i++) {
+            if (buttonWasPressed[i]) {
+                mouseButtonPressedThisFrame[i] = false;
+                buttonWasPressed[i] = false;
+            }
+        }
     }
 
     public void handleInput(Player player) {
@@ -88,19 +99,25 @@ public class InputHandler {
             // Handle chat key
             handleChatKey();
 
+            // Cache expensive calls to avoid repeated method calls
+            Game gameInstance = Game.getInstance();
+            InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();
+            boolean isGamePaused = gameInstance.isPaused();
+            
             // Handle inventory screen mouse input if visible
-            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
             if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                // Assuming screenWidth and screenHeight are accessible, e.g., via Game.getWindowWidth/Height()
-                inventoryScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
+                // Cache window dimensions to avoid repeated calls
+                int windowWidth = Game.getWindowWidth();
+                int windowHeight = Game.getWindowHeight();
+                inventoryScreen.handleMouseInput(windowWidth, windowHeight);
             }
 
             // If the game is paused (either by pause menu or inventory), don't process movement/block selection
             // UNLESS only the inventory is open, in which case some actions might still be allowed (handled by InventoryScreen)
-            if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) { // If paused by menu, not just inventory
+            if (isGamePaused && (inventoryScreen == null || !inventoryScreen.isVisible())) { // If paused by menu, not just inventory
                 return;
             }
-            if (Game.getInstance().isPaused() && inventoryScreen != null && inventoryScreen.isVisible()){
+            if (isGamePaused && inventoryScreen != null && inventoryScreen.isVisible()){
                 // Movement is blocked, but other non-movement inputs might be processed by inventory screen
                 // The return above handles if pause menu is open.
                 // If only inventory is open, we skip player movement below but allow inventory interaction.
@@ -248,6 +265,7 @@ public class InputHandler {
             if (action == GLFW_PRESS) {
                 mouseButtonDown[button] = true;
                 mouseButtonPressedThisFrame[button] = true; // Set pressed for this frame
+                buttonWasPressed[button] = true; // Track for efficient clearing
             } else if (action == GLFW_RELEASE) {
                 mouseButtonDown[button] = false;
                 // mouseButtonPressedThisFrame is already false or will be cleared next frame
@@ -433,7 +451,8 @@ public class InputHandler {
 
     // Mouse helper methods for InventoryScreen - now correctly inside the InputHandler class
     public Vector2f getMousePosition() {
-        return new Vector2f(currentMouseX, currentMouseY);
+        // Reuse cached vector to avoid allocation
+        return cachedMousePosition.set(currentMouseX, currentMouseY);
     }
 
     public boolean isMouseButtonPressed(int button) {

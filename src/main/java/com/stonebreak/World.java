@@ -31,6 +31,9 @@ public class World {
     // Stores all chunks in the world
     private final Map<ChunkPosition, Chunk> chunks;
     
+    // Cache for ChunkPosition objects to reduce allocations
+    private final Map<Long, ChunkPosition> chunkPositionCache = new ConcurrentHashMap<>();
+    
     // Tracks which chunks need mesh updates
     private final ExecutorService chunkBuildExecutor;
     private final Set<Chunk> chunksToBuildMesh; // Chunks needing their mesh data (re)built
@@ -65,6 +68,15 @@ public class World {
         this.blockDropManager = new BlockDropManager(this);
         
         System.out.println("Creating world with seed: " + seed + ", using " + numThreads + " mesh builder threads.");
+    }
+    
+    /**
+     * Gets a cached ChunkPosition object to reduce allocations.
+     */
+    private ChunkPosition getCachedChunkPosition(int x, int z) {
+        // Use a long to combine x and z coordinates as a cache key
+        long key = ((long) x << 32) | (z & 0xFFFFFFFFL);
+        return chunkPositionCache.computeIfAbsent(key, k -> new ChunkPosition(x, z));
     }
     
     public void update() {
@@ -106,7 +118,7 @@ public class World {
 
         for (int cx = playerChunkX - RENDER_DISTANCE; cx <= playerChunkX + RENDER_DISTANCE; cx++) {
             for (int cz = playerChunkZ - RENDER_DISTANCE; cz <= playerChunkZ + RENDER_DISTANCE; cz++) {
-                ChunkPosition position = new ChunkPosition(cx, cz);
+                ChunkPosition position = getCachedChunkPosition(cx, cz);
                 Chunk chunk = chunks.get(position);
 
                 if (chunk == null) {
@@ -143,7 +155,7 @@ public class World {
                     // Also check and schedule direct neighbors if they are not perfect
                     int[][] neighborOffsets = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
                     for (int[] offset : neighborOffsets) {
-                        ChunkPosition neighborPos = new ChunkPosition(cx + offset[0], cz + offset[1]);
+                        ChunkPosition neighborPos = getCachedChunkPosition(cx + offset[0], cz + offset[1]);
                         Chunk neighbor = chunks.get(neighborPos); // Get neighbor, don't auto-create here
                         if (neighbor != null) {
                             // If neighbor exists but isn't populated, it will be handled when its turn comes in the outer loop
@@ -175,7 +187,7 @@ public class World {
      * If the chunk doesn't exist, it will be generated.
      */
     public Chunk getChunkAt(int x, int z) {
-        ChunkPosition position = new ChunkPosition(x, z);
+        ChunkPosition position = getCachedChunkPosition(x, z);
         Chunk chunk = chunks.get(position);
         
         if (chunk == null) {
@@ -190,7 +202,7 @@ public class World {
      * Checks if a chunk exists at the specified position.
      */
     public boolean hasChunkAt(int x, int z) {
-        return chunks.containsKey(new ChunkPosition(x, z));
+        return chunks.containsKey(getCachedChunkPosition(x, z));
     }
     
     /**
@@ -248,7 +260,7 @@ public class World {
         // Also mark neighbors for rebuild if the block was on an edge.
         Chunk neighbor;
         if (localX == 0) {
-            neighbor = chunks.get(new ChunkPosition(chunkX - 1, chunkZ));
+            neighbor = chunks.get(getCachedChunkPosition(chunkX - 1, chunkZ));
             if (neighbor != null) {
                 synchronized (neighbor) {
                     // neighbor.setMeshGenerated(false);
@@ -259,7 +271,7 @@ public class World {
             }
         }
         if (localX == CHUNK_SIZE - 1) {
-            neighbor = chunks.get(new ChunkPosition(chunkX + 1, chunkZ));
+            neighbor = chunks.get(getCachedChunkPosition(chunkX + 1, chunkZ));
             if (neighbor != null) {
                 synchronized (neighbor) {
                     // neighbor.setMeshGenerated(false);
@@ -270,7 +282,7 @@ public class World {
             }
         }
         if (localZ == 0) {
-            neighbor = chunks.get(new ChunkPosition(chunkX, chunkZ - 1));
+            neighbor = chunks.get(getCachedChunkPosition(chunkX, chunkZ - 1));
             if (neighbor != null) {
                 synchronized (neighbor) {
                     // neighbor.setMeshGenerated(false);
@@ -281,7 +293,7 @@ public class World {
             }
         }
         if (localZ == CHUNK_SIZE - 1) {
-            neighbor = chunks.get(new ChunkPosition(chunkX, chunkZ + 1));
+            neighbor = chunks.get(getCachedChunkPosition(chunkX, chunkZ + 1));
             if (neighbor != null) {
                 synchronized (neighbor) {
                     // neighbor.setMeshGenerated(false);
@@ -631,7 +643,7 @@ public class World {
      * Handles exceptions during generation/registration and prevents adding null to collections.
      */
     private Chunk safelyGenerateAndRegisterChunk(int chunkX, int chunkZ) {
-        ChunkPosition position = new ChunkPosition(chunkX, chunkZ);
+        ChunkPosition position = getCachedChunkPosition(chunkX, chunkZ);
         // This check is a safeguard; callers (getChunkAt, getChunksAroundPlayer) 
         // usually check if the chunk exists before calling a generation path.
         if (chunks.containsKey(position)) {
@@ -834,7 +846,7 @@ public class World {
                         };
 
                         for (int[] offset : neighborOffsets) {
-                            Chunk neighbor = chunks.get(new ChunkPosition(offset[0], offset[1]));
+                            Chunk neighbor = chunks.get(getCachedChunkPosition(offset[0], offset[1]));
                             if (neighbor != null) {
                                 synchronized (neighbor) {
                                     neighbor.setDataReadyForGL(false);
@@ -873,7 +885,7 @@ public class World {
         // First pass: Ensure chunks within render distance are loaded and populated
         for (int x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
             for (int z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
-                ChunkPosition position = new ChunkPosition(x, z);
+                ChunkPosition position = getCachedChunkPosition(x, z);
                 Chunk chunk = getChunkAt(x, z); // Gets or creates a bare chunk
 
                 if (chunk != null) {
@@ -1040,7 +1052,7 @@ public class World {
         int chunkX = Math.floorDiv(worldX, CHUNK_SIZE);
         int chunkZ = Math.floorDiv(worldZ, CHUNK_SIZE);
         
-        Chunk chunk = chunks.get(new ChunkPosition(chunkX, chunkZ));
+        Chunk chunk = chunks.get(getCachedChunkPosition(chunkX, chunkZ));
         if (chunk != null) {
             synchronized (chunk) {
                 chunk.setDataReadyForGL(false);
