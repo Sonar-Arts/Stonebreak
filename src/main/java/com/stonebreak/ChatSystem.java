@@ -108,10 +108,82 @@ public class ChatSystem {
         
         String message = currentInput.toString().trim();
         if (!message.isEmpty()) {
-            addMessage("<Player> " + message);
+            if (message.startsWith("/")) {
+                processCommand(message);
+            } else {
+                addMessage("<Player> " + message);
+            }
         }
         
         closeChat();
+    }
+    
+    private void processCommand(String command) {
+        String[] parts = command.split(" ");
+        String commandName = parts[0].toLowerCase();
+        
+        switch (commandName) {
+            case "/cheats":
+                if (parts.length >= 2) {
+                    try {
+                        int value = Integer.parseInt(parts[1]);
+                        if (value == 1) {
+                            Game.getInstance().setCheatsEnabled(true);
+                            addMessage("Cheats enabled!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                        } else if (value == 0) {
+                            Game.getInstance().setCheatsEnabled(false);
+                            addMessage("Cheats disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
+                        } else {
+                            addMessage("Usage: /cheats <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                        }
+                    } catch (NumberFormatException e) {
+                        addMessage("Usage: /cheats <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
+                } else {
+                    // Toggle cheats if no parameter provided
+                    boolean currentState = Game.getInstance().isCheatsEnabled();
+                    Game.getInstance().setCheatsEnabled(!currentState);
+                    if (!currentState) {
+                        addMessage("Cheats enabled!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                    } else {
+                        addMessage("Cheats disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
+                    }
+                }
+                break;
+                
+            case "/enableflight":
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+                
+                if (parts.length >= 2) {
+                    try {
+                        int value = Integer.parseInt(parts[1]);
+                        Player player = Game.getPlayer();
+                        if (player != null) {
+                            if (value == 1) {
+                                player.setFlightEnabled(true);
+                                addMessage("Flight enabled! Double-tap space to fly", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                            } else if (value == 0) {
+                                player.setFlightEnabled(false);
+                                addMessage("Flight disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
+                            } else {
+                                addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                            }
+                        }
+                    } catch (NumberFormatException e) {
+                        addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
+                } else {
+                    addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                }
+                break;
+                
+            default:
+                addMessage("Unknown command: " + commandName, new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                break;
+        }
     }
     
     public String getCurrentInput() {

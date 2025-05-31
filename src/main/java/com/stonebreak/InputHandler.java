@@ -111,9 +111,23 @@ public class InputHandler {
                 boolean moveLeft = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
                 boolean moveRight = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
                 boolean jump = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+                boolean shift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+                               glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+                boolean crouch = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
+                               glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
                 
                 // Handle movement
-                player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump);
+                player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
+                
+                // Handle flight controls (Space for ascent, Ctrl for descent)
+                if (player.isFlying()) {
+                    if (jump) {
+                        player.processFlightAscent();
+                    }
+                    if (crouch) {
+                        player.processFlightDescent();
+                    }
+                }
                 
                 // Handle continuous block breaking
                 if (isMouseButtonDown(GLFW_MOUSE_BUTTON_LEFT)) {

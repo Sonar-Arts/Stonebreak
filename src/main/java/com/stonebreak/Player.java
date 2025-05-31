@@ -50,6 +50,14 @@ public class Player {      // Player settings
     private boolean wasMovingLastFrame; // Track if player was moving in the previous frame
     private static final float WALKING_SOUND_INTERVAL = 0.65f; // Play sound every 0.65 seconds while walking
     
+    // Flight system
+    private boolean flightEnabled = false; // Whether flight is enabled via command
+    private boolean isFlying = false; // Whether player is currently flying
+    private boolean wasJumpPressed = false; // Track previous frame's jump state
+    private float lastSpaceKeyTime = 0.0f; // Time of last space key press for double-tap detection
+    private static final float DOUBLE_TAP_WINDOW = 0.3f; // Time window for double-tap detection (300ms)
+    private static final float FLY_SPEED = 87.5f; // Flight movement speed (250% of walk speed)
+    
     /**
      * Creates a new player in the specified world.
      */
@@ -70,6 +78,10 @@ public class Player {      // Player settings
         this.breakingTime = 0.0f;
         this.walkingSoundTimer = 0.0f;
         this.wasMovingLastFrame = false;
+        this.flightEnabled = false;
+        this.isFlying = false;
+        this.wasJumpPressed = false;
+        this.lastSpaceKeyTime = 0.0f;
     }
       /**
      * Updates the player's position and camera.
@@ -101,8 +113,8 @@ public class Player {      // Player settings
             isDrowning = false;
         }
 
-        // Apply gravity
-        if (!onGround) {
+        // Apply gravity (unless flying)
+        if (!onGround && !isFlying) {
             velocity.y -= (physicallyInWater ? WATER_GRAVITY : GRAVITY) * Game.getDeltaTime();
         }
         
@@ -119,9 +131,17 @@ public class Player {      // Player settings
         // Check if player is standing on solid ground
         checkGroundBeneath();
         
-        // Dampen horizontal movement - reduced dampening for better control
-        velocity.x *= 0.95f;
-        velocity.z *= 0.95f;
+        // Dampen movement - different dampening for flight mode
+        if (isFlying) {
+            // More aggressive dampening in flight mode for better control
+            velocity.x *= 0.85f;
+            velocity.y *= 0.85f;
+            velocity.z *= 0.85f;
+        } else {
+            // Reduced dampening for better control on ground
+            velocity.x *= 0.95f;
+            velocity.z *= 0.95f;
+        }
         
         // Update camera position
         camera.setPosition(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
@@ -477,40 +497,80 @@ public class Player {      // Player settings
     /**
      * Processes player movement based on input.
      */
-    public void processMovement(boolean forward, boolean backward, boolean left, boolean right, boolean jump) {
-        // Calculate movement direction in the XZ plane
-        Vector3f frontDirection = new Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
-        Vector3f rightDirection = new Vector3f(camera.getRight().x, 0, camera.getRight().z).normalize();
+    public void processMovement(boolean forward, boolean backward, boolean left, boolean right, boolean jump, boolean shift) {
+        // Calculate movement direction
+        Vector3f frontDirection, rightDirection;
+        float speed;
         
-        // Reduce speed when in air for better control, but not too much
-        float speed = onGround ? (physicallyInWater ? SWIM_SPEED : MOVE_SPEED) : MOVE_SPEED * 0.85f;
+        if (isFlying) {
+            // In flight mode, use XZ plane only (ignore pitch for forward/backward)
+            frontDirection = new Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
+            rightDirection = new Vector3f(camera.getRight().x, 0, camera.getRight().z).normalize();
+            // Double speed when holding shift (100% faster)
+            speed = shift ? FLY_SPEED * 2.0f : FLY_SPEED;
+        } else {
+            // On ground, use XZ plane only
+            frontDirection = new Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
+            rightDirection = new Vector3f(camera.getRight().x, 0, camera.getRight().z).normalize();
+            speed = onGround ? (physicallyInWater ? SWIM_SPEED : MOVE_SPEED) : MOVE_SPEED * 0.85f;
+        }
         
         // Apply movement forces
         if (forward) {
             velocity.x += frontDirection.x * speed * Game.getDeltaTime();
             velocity.z += frontDirection.z * speed * Game.getDeltaTime();
+            // Y component is not affected by forward/backward in flight mode
         }
         
         if (backward) {
             velocity.x -= frontDirection.x * speed * Game.getDeltaTime();
             velocity.z -= frontDirection.z * speed * Game.getDeltaTime();
+            // Y component is not affected by forward/backward in flight mode
         }
         
         if (right) {
             velocity.x += rightDirection.x * speed * Game.getDeltaTime();
             velocity.z += rightDirection.z * speed * Game.getDeltaTime();
+            // Y component is not affected by strafe in flight mode
         }
         
         if (left) {
             velocity.x -= rightDirection.x * speed * Game.getDeltaTime();
             velocity.z -= rightDirection.z * speed * Game.getDeltaTime();
+            // Y component is not affected by strafe in flight mode
         }
         
-        // Apply jump force
-        if (jump && (onGround || physicallyInWater)) {
-            velocity.y = JUMP_FORCE;
-            onGround = false;
+        // Handle jump/flight activation - only on initial press, not when held
+        boolean jumpPressed = jump && !wasJumpPressed; // True only on the frame jump is first pressed
+        
+        if (jumpPressed) {
+            if (flightEnabled) {
+                // Check for double-tap to toggle flight
+                float currentTime = Game.getInstance().getTotalTimeElapsed();
+                if (currentTime - lastSpaceKeyTime <= DOUBLE_TAP_WINDOW) {
+                    // Double-tap detected, toggle flight
+                    isFlying = !isFlying;
+                    if (isFlying) {
+                        onGround = false;
+                        velocity.y = 0; // Stop falling when entering flight
+                    }
+                    // Reset timer after successful double-tap to prevent accidental triggers
+                    lastSpaceKeyTime = 0.0f;
+                } else {
+                    // First tap or tap outside window, record the time
+                    lastSpaceKeyTime = currentTime;
+                }
+            }
+            
+            // Regular jump (only if not flying)
+            if (!isFlying && (onGround || physicallyInWater)) {
+                velocity.y = JUMP_FORCE;
+                onGround = false;
+            }
         }
+        
+        // Update previous jump state for next frame
+        wasJumpPressed = jump;
     }
     
     /**
@@ -1273,5 +1333,48 @@ public class Player {      // Player settings
                 soundSystem.playSoundWithVolume("sandwalk", 0.3f);
             }
         }
+    }
+    
+    /**
+     * Handles flight ascent (space key while flying).
+     */
+    public void processFlightAscent() {
+        if (isFlying) {
+            velocity.y += FLY_SPEED * Game.getDeltaTime();
+        }
+    }
+    
+    /**
+     * Handles flight descent (ctrl key while flying).
+     */
+    public void processFlightDescent() {
+        if (isFlying) {
+            velocity.y -= FLY_SPEED * Game.getDeltaTime();
+        }
+    }
+    
+    /**
+     * Sets whether flight is enabled for this player.
+     */
+    public void setFlightEnabled(boolean enabled) {
+        this.flightEnabled = enabled;
+        if (!enabled) {
+            // If flight is disabled, stop flying
+            this.isFlying = false;
+        }
+    }
+    
+    /**
+     * Returns whether flight is enabled for this player.
+     */
+    public boolean isFlightEnabled() {
+        return flightEnabled;
+    }
+    
+    /**
+     * Returns whether the player is currently flying.
+     */
+    public boolean isFlying() {
+        return isFlying;
     }
 }

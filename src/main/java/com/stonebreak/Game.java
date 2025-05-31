@@ -27,6 +27,9 @@ public class Game {
     private float deltaTime;
     private float totalTimeElapsed = 0.0f; // Added to track total time for animations
     private boolean paused = false;
+    
+    // Cheat system
+    private boolean cheatsEnabled = false;
 
     // Window dimensions
     private int windowWidth;
@@ -436,5 +439,19 @@ public class Game {
         System.out.println("Player position: " + playerPos);
         System.out.println("FPS: " + Math.round(1.0f / getInstance().deltaTime));
         System.out.println("---------------------");
+    }
+    
+    /**
+     * Sets whether cheats are enabled.
+     */
+    public void setCheatsEnabled(boolean enabled) {
+        this.cheatsEnabled = enabled;
+    }
+    
+    /**
+     * Returns whether cheats are enabled.
+     */
+    public boolean isCheatsEnabled() {
+        return cheatsEnabled;
     }
 }
