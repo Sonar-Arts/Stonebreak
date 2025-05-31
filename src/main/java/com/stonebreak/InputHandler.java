@@ -281,6 +281,16 @@ public class InputHandler {
                     if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
                         Game.getInstance().togglePauseMenu(); // Resume the game
                     }
+                    // Check settings button
+                    else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
+                        // Go to settings menu, remember we came from the game
+                        SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
+                        if (settingsMenu != null) {
+                            settingsMenu.setPreviousState(GameState.PLAYING);
+                        }
+                        Game.getInstance().setState(GameState.SETTINGS);
+                        Game.getInstance().getPauseMenu().setVisible(false);
+                    }
                     // Check quit button
                     else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
                         // Return to main menu

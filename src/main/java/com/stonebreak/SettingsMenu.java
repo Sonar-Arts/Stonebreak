@@ -9,6 +9,7 @@ public class SettingsMenu {
     private boolean isDraggingVolume = false;
     private boolean isResolutionDropdownOpen = false;
     private int selectedResolutionIndex = 0;
+    private GameState previousState = GameState.MAIN_MENU; // Remember where we came from
     
     // UI element positions and sizes
     private static final float BUTTON_WIDTH = 400;
@@ -246,7 +247,39 @@ public class SettingsMenu {
     }
     
     private void goBack() {
-        Game.getInstance().setState(GameState.MAIN_MENU);
+        if (previousState == GameState.PLAYING) {
+            // Return to game and resume properly
+            Game game = Game.getInstance();
+            game.setState(GameState.PLAYING);
+            game.getPauseMenu().setVisible(false);
+            
+            // Unpause the game completely
+            if (game.isPaused()) {
+                game.togglePauseMenu(); // This will set paused = false
+            }
+            
+            // Restore game cursor state (hidden and captured)
+            long windowHandle = Main.getWindowHandle();
+            if (windowHandle != 0) {
+                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+                
+                // Reset mouse position to prevent camera jump
+                InputHandler inputHandler = Main.getInputHandler();
+                if (inputHandler != null) {
+                    inputHandler.resetMousePosition();
+                }
+            }
+        } else {
+            // Return to main menu
+            Game.getInstance().setState(GameState.MAIN_MENU);
+        }
+    }
+    
+    /**
+     * Sets the previous state to return to when going back.
+     */
+    public void setPreviousState(GameState state) {
+        this.previousState = state;
     }
     
     public void render(int windowWidth, int windowHeight) {

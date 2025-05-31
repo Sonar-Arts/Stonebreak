@@ -408,7 +408,7 @@ public class UIRenderer {
         }
     }
     
-    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered) {
+    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered, boolean isSettingsButtonHovered) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
         
@@ -420,9 +420,9 @@ public class UIRenderer {
             nvgFill(vg);
         }
         
-        // Draw main pause panel with enhanced Minecraft styling
+        // Draw main pause panel with enhanced Minecraft styling (made taller for 3 buttons)
         float panelWidth = 520;
-        float panelHeight = 380;
+        float panelHeight = 450;
         float panelX = centerX - panelWidth / 2;
         float panelY = centerY - panelHeight / 2;
         
@@ -431,14 +431,18 @@ public class UIRenderer {
         // Draw pause menu title with better positioning
         drawPauseMenuTitle(centerX, panelY + 70, "GAME PAUSED");
         
-        // Draw resume button
+        // Draw resume button (moved up slightly)
         float buttonWidth = 360;
         float buttonHeight = 50;
-        float resumeY = centerY - 30;
+        float resumeY = centerY - 60;
         drawMinecraftButton("Resume Game", centerX - buttonWidth/2, resumeY, buttonWidth, buttonHeight, false);
         
-        // Draw quit button with better spacing
-        float quitY = centerY + 50;
+        // Draw settings button (new, in middle)
+        float settingsY = centerY + 10;
+        drawMinecraftButton("Settings", centerX - buttonWidth/2, settingsY, buttonWidth, buttonHeight, isSettingsButtonHovered);
+        
+        // Draw quit button (moved down slightly)
+        float quitY = centerY + 80;
         drawMinecraftButton("Quit to Main Menu", centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight, isQuitButtonHovered);
     }
     
@@ -557,9 +561,19 @@ public class UIRenderer {
         float centerY = windowHeight / 2.0f;
         float buttonWidth = 360;
         float buttonHeight = 50;
-        float resumeY = centerY - 30;
+        float resumeY = centerY - 60;
         
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, resumeY, buttonWidth, buttonHeight);
+    }
+    
+    public boolean isPauseSettingsClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        float buttonWidth = 360;
+        float buttonHeight = 50;
+        float settingsY = centerY + 10;
+        
+        return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, settingsY, buttonWidth, buttonHeight);
     }
     
     public boolean isPauseQuitClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
@@ -567,7 +581,7 @@ public class UIRenderer {
         float centerY = windowHeight / 2.0f;
         float buttonWidth = 360;
         float buttonHeight = 50;
-        float quitY = centerY + 50;
+        float quitY = centerY + 80;
         
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
     }

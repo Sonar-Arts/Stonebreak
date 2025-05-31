@@ -83,8 +83,13 @@ public class MainMenu {
         switch (selectedButton) {
             case 0 -> // Play
                 Game.getInstance().setState(GameState.PLAYING);
-            case 1 -> // Settings
+            case 1 -> { // Settings
+                SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
+                if (settingsMenu != null) {
+                    settingsMenu.setPreviousState(GameState.MAIN_MENU);
+                }
                 Game.getInstance().setState(GameState.SETTINGS);
+            }
             case 2 -> // Exit
                 System.exit(0);
         }

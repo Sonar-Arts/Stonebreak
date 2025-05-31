@@ -8,6 +8,7 @@ public class PauseMenu {
     // Menu state
     private boolean visible = false;
     private boolean quitButtonHovered = false;
+    private boolean settingsButtonHovered = false;
     
     /**
      * Creates a new pause menu.
@@ -26,7 +27,7 @@ public class PauseMenu {
             return;
         }
         
-        uiRenderer.renderPauseMenu(windowWidth, windowHeight, quitButtonHovered);
+        uiRenderer.renderPauseMenu(windowWidth, windowHeight, quitButtonHovered, settingsButtonHovered);
     }
     
     /**
@@ -65,15 +66,24 @@ public class PauseMenu {
     }
     
     /**
+     * Checks if the settings button was clicked.
+     */
+    public boolean isSettingsButtonClicked(float mouseX, float mouseY, UIRenderer uiRenderer, int windowWidth, int windowHeight) {
+        return visible && uiRenderer.isPauseSettingsClicked(mouseX, mouseY, windowWidth, windowHeight);
+    }
+    
+    /**
      * Updates hover state for buttons.
      */
     public void updateHover(float mouseX, float mouseY, UIRenderer uiRenderer, int windowWidth, int windowHeight) {
         if (!visible) {
             quitButtonHovered = false;
+            settingsButtonHovered = false;
             return;
         }
         
         quitButtonHovered = uiRenderer.isPauseQuitClicked(mouseX, mouseY, windowWidth, windowHeight);
+        settingsButtonHovered = uiRenderer.isPauseSettingsClicked(mouseX, mouseY, windowWidth, windowHeight);
     }
     
     /**
