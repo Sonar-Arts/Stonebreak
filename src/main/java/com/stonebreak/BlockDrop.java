@@ -32,7 +32,7 @@ public class BlockDrop {
     private World world;
     
     // Visual properties
-    private static final float DROP_SCALE = 0.8f; // Bigger for debugging
+    private static final float DROP_SCALE = 0.25f; // 25% of block size
     
     public BlockDrop(World world, float x, float y, float z, int blockTypeId, int quantity) {
         this.world = world;

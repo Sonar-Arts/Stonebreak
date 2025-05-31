@@ -222,7 +222,7 @@ public class BlockDropRenderer {
             Matrix4f modelMatrix = new Matrix4f();
             modelMatrix.translate(drop.getPosition());
             modelMatrix.rotateY((float) Math.toRadians(drop.getRotationY()));
-            modelMatrix.scale(0.8f); // 80% of full block size
+            modelMatrix.scale(0.25f); // 25% of full block size
             
             // Set model matrix for this drop
             isolatedShaderProgram.setUniform("modelMatrix", modelMatrix);
