@@ -128,13 +128,17 @@ public class BlockDrop {
     
     /**
      * Gets the ground height at the given x,z coordinates.
+     * Searches downward from the drop's current position to find the first solid surface.
      */
     private float getGroundHeight(float x, float z) {
         int blockX = (int)Math.floor(x);
         int blockZ = (int)Math.floor(z);
         
-        // Find the highest solid block at this position
-        for (int y = 255; y >= 0; y--) {
+        // Start searching from the drop's current Y position downward
+        int startY = Math.min(255, (int)Math.floor(position.y));
+        
+        // Find the first solid block below the drop
+        for (int y = startY; y >= 0; y--) {
             BlockType blockType = world.getBlockAt(blockX, y, blockZ);
             if (blockType != BlockType.AIR && blockType != BlockType.WATER) {
                 return y + 1.0f; // Top surface of the block
