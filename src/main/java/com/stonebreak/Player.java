@@ -14,7 +14,9 @@ public class Player {      // Player settings
     private static final float SWIM_SPEED = 20.0f; // Swimming is slower than walking
     private static final float JUMP_FORCE = 8.0f;
     private static final float GRAVITY = 15.0f;
-    private static final float WATER_GRAVITY = 4.0f; // Reduced gravity in water
+    private static final float WATER_GRAVITY = 12.0f; // Faster sinking in water
+    private static final float WATER_BUOYANCY = 25.0f; // Faster swimming up when holding jump
+    private static final float WATER_JUMP_BOOST = 5.0f; // Initial boost when starting to swim
     private static final float RAY_CAST_DISTANCE = 5.0f;
     private static final float ATTACK_ANIMATION_DURATION = 0.25f; // Duration of the arm swing animation (Minecraft-style timing)
       // Player state
@@ -22,14 +24,10 @@ public class Player {      // Player settings
     private final Vector3f velocity;
     private boolean onGround;
     private boolean isAttacking;
-    private boolean headInWater; // True if player's head is in water (for breathing)
     private boolean physicallyInWater; // True if any part of the player is in water (for physics)
+    private boolean wasInWaterLastFrame; // Track water state changes
     private float attackAnimationTime;
     
-    // Breathing mechanics
-    private static final float MAX_BREATH = 10.0f; // 10 seconds of air
-    private float breathRemaining;
-    private boolean isDrowning;
     
     // Camera
     private final Camera camera;
@@ -68,11 +66,9 @@ public class Player {      // Player settings
         this.onGround = false;
         this.camera = new Camera();        this.inventory = new Inventory();
         this.isAttacking = false;
-        this.headInWater = false;
         this.physicallyInWater = false;
+        this.wasInWaterLastFrame = false;
         this.attackAnimationTime = 0.0f;
-        this.breathRemaining = MAX_BREATH;
-        this.isDrowning = false;
         this.breakingBlock = null;
         this.breakingProgress = 0.0f;
         this.breakingTime = 0.0f;
@@ -89,33 +85,34 @@ public class Player {      // Player settings
     public void update() {
         // Check if player is in water
 
-        headInWater = isInWater(); // Check for breathing
         physicallyInWater = isPartiallyInWater(); // Check for physics
 
-        // Water state changed - debug messages removed to prevent spam
-
-        // Handle breathing underwater
-        if (headInWater) {
-            // Reduce breath while underwater
-            breathRemaining -= Game.getDeltaTime();
-            if (breathRemaining <= 0) {
-                breathRemaining = 0;
-                isDrowning = true;
-                // Apply drowning damage (reduced health) here if health system is implemented
-                // For now, just push the player upward to try to reach the surface
-                if (velocity.y < 2.0f) {
-                    velocity.y += 2.0f * Game.getDeltaTime();
-                }
+        // Check for water exit to cap velocity
+        if (wasInWaterLastFrame && !physicallyInWater) {
+            // Player just exited water - cap upward velocity to prevent excessive floating
+            if (velocity.y > JUMP_FORCE) {
+                velocity.y = JUMP_FORCE;
+                System.out.println("Player exited water - velocity capped to " + velocity.y);
             }
-        } else {
-            // Recover breath when not underwater
-            breathRemaining = Math.min(breathRemaining + Game.getDeltaTime() * 2.0f, MAX_BREATH);
-            isDrowning = false;
         }
+        
+        wasInWaterLastFrame = physicallyInWater;
+
 
         // Apply gravity (unless flying)
         if (!onGround && !isFlying) {
-            velocity.y -= (physicallyInWater ? WATER_GRAVITY : GRAVITY) * Game.getDeltaTime();
+            if (physicallyInWater) {
+                // In water: apply moderate gravity (causes slow sinking by default)
+                velocity.y -= WATER_GRAVITY * Game.getDeltaTime();
+            } else {
+                // In air: apply normal gravity
+                velocity.y -= GRAVITY * Game.getDeltaTime();
+                
+                // If player just exited water and has excessive upward velocity, cap it
+                if (velocity.y > JUMP_FORCE * 1.2f) {
+                    velocity.y = JUMP_FORCE * 1.2f;
+                }
+            }
         }
         
         // Update position
@@ -141,6 +138,15 @@ public class Player {      // Player settings
             // Reduced dampening for better control on ground
             velocity.x *= 0.95f;
             velocity.z *= 0.95f;
+            // Apply Y dampening when in water for realistic water resistance
+            if (physicallyInWater) {
+                velocity.y *= 0.90f; // Reduced water resistance for more responsive movement
+            } else {
+                // Not in water - apply stronger dampening to stop water momentum
+                if (velocity.y > 0) {
+                    velocity.y *= 0.98f; // Slight dampening for upward velocity when not in water
+                }
+            }
         }
         
         // Update camera position
@@ -562,11 +568,21 @@ public class Player {      // Player settings
                 }
             }
             
-            // Regular jump (only if not flying)
-            if (!isFlying && (onGround || physicallyInWater)) {
+            // Regular jump (only if not flying and on solid ground, not in water)
+            if (!isFlying && onGround && !physicallyInWater) {
                 velocity.y = JUMP_FORCE;
                 onGround = false;
             }
+            
+            // Water jump: small initial boost when starting to swim
+            if (!isFlying && physicallyInWater) {
+                velocity.y += WATER_JUMP_BOOST;
+            }
+        }
+        
+        // Handle swimming up while jump key is held in water (but not flying)
+        if (jump && !isFlying && physicallyInWater) {
+            velocity.y += WATER_BUOYANCY * Game.getDeltaTime();
         }
         
         // Update previous jump state for next frame
@@ -1238,19 +1254,6 @@ public class Player {      // Player settings
         return Math.min(attackAnimationTime / ATTACK_ANIMATION_DURATION, 1.0f);
     }
 
-    /**
-     * Gets the current breath percentage (0.0 to 1.0).
-     */
-    public float getBreathPercentage() {
-        return breathRemaining / MAX_BREATH;
-    }
-    
-    /**
-     * Checks if the player is drowning.
-     */
-    public boolean isDrowning() {
-        return isDrowning;
-    }
     
     /**
      * Gets the player's velocity vector.

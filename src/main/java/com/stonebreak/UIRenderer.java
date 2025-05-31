@@ -493,11 +493,24 @@ public class UIRenderer {
         try (MemoryStack stack = stackPush()) {
             // Chat area settings
             float chatX = 20; // 20px from left edge
-            float chatY = windowHeight - 40; // Start from bottom
             float lineHeight = 20;
             float maxChatWidth = windowWidth * 0.4f; // Max 40% of screen width
+            float inputBoxHeight = 25;
+            float inputBoxMargin = 10;
             
-            // Render chat messages from bottom to top
+            // Calculate starting position for chat messages
+            // Messages should appear above the input box when chat is open
+            float chatStartY;
+            if (chatSystem.isOpen()) {
+                // When chat is open, start messages above the input box
+                chatStartY = windowHeight - inputBoxHeight - inputBoxMargin - lineHeight;
+            } else {
+                // When chat is closed, start messages from bottom of screen
+                chatStartY = windowHeight - 20 - lineHeight;
+            }
+            
+            // Render chat messages from bottom to top (newest at bottom, oldest at top)
+            float currentY = chatStartY;
             for (int i = visibleMessages.size() - 1; i >= 0; i--) {
                 ChatMessage message = visibleMessages.get(i);
                 float alpha = message.getAlpha();
@@ -509,7 +522,7 @@ public class UIRenderer {
                 // Message background (semi-transparent black) - only when chat is open
                 if (chatSystem.isOpen()) {
                     nvgBeginPath(vg);
-                    nvgRect(vg, chatX - 5, chatY - lineHeight + 2, maxChatWidth + 10, lineHeight);
+                    nvgRect(vg, chatX - 5, currentY - lineHeight + 2, maxChatWidth + 10, lineHeight);
                     nvgFillColor(vg, nvgRGBA(0, 0, 0, (int)(80 * alpha), NVGColor.malloc(stack)));
                     nvgFill(vg);
                 }
@@ -528,13 +541,14 @@ public class UIRenderer {
                     NVGColor.malloc(stack)
                 ));
                 
-                nvgText(vg, chatX, chatY - lineHeight/2, message.getText());
-                chatY -= lineHeight;
+                nvgText(vg, chatX, currentY - lineHeight/2, message.getText());
+                currentY -= lineHeight; // Move up for next message
             }
             
-            // Render chat input box when chat is open
+            // Render chat input box when chat is open (always at the bottom)
             if (chatSystem.isOpen()) {
-                renderChatInputBox(chatSystem, chatX, chatY - 10, maxChatWidth, stack);
+                float inputBoxY = windowHeight - inputBoxHeight - inputBoxMargin;
+                renderChatInputBox(chatSystem, chatX, inputBoxY, maxChatWidth, stack);
             }
         }
     }
@@ -544,13 +558,13 @@ public class UIRenderer {
         
         // Input box background
         nvgBeginPath(vg);
-        nvgRect(vg, x - 5, y - inputHeight, width + 10, inputHeight);
+        nvgRect(vg, x - 5, y, width + 10, inputHeight);
         nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
         nvgFill(vg);
         
         // Input box border
         nvgBeginPath(vg);
-        nvgRect(vg, x - 5, y - inputHeight, width + 10, inputHeight);
+        nvgRect(vg, x - 5, y, width + 10, inputHeight);
         nvgStrokeWidth(vg, 1.0f);
         nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 200, NVGColor.malloc(stack)));
         nvgStroke(vg);
@@ -565,9 +579,9 @@ public class UIRenderer {
         if (displayText.isEmpty()) {
             // Show prompt when empty
             nvgFillColor(vg, nvgRGBA(128, 128, 128, 255, NVGColor.malloc(stack)));
-            nvgText(vg, x, y - inputHeight/2, "Type a message...");
+            nvgText(vg, x, y + inputHeight/2, "Type a message...");
         } else {
-            nvgText(vg, x, y - inputHeight/2, displayText);
+            nvgText(vg, x, y + inputHeight/2, displayText);
         }
     }
     

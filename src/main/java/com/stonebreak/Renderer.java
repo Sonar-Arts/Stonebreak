@@ -714,8 +714,6 @@ public class Renderer {
             // GL30.glBindVertexArray(hotbarVao);
             // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             
-            // Render breath meter if player is underwater
-            renderBreathMeter(player);
         }
         
         // Pause menu is now rendered in Main.java using UIRenderer
@@ -735,8 +733,6 @@ public class Renderer {
             shaderProgram.bind();
         }
         
-        // Render breath meter if player is underwater
-        renderBreathMeter(player);
         
         // Reset shader state after UI
         shaderProgram.setUniform("u_useSolidColor", false);
@@ -1463,47 +1459,6 @@ public class Renderer {
         shaderProgram.unbind();
     }
     
-    /**
-     * Renders the UI breath meter when the player is underwater
-     */
-    private void renderBreathMeter(Player player) {
-        if (!player.isInWater()) {
-            return; // Don't show breath meter when not in water
-        }
-        
-        // Set solid color mode
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        
-        // Get breath percentage
-        float breathPercentage = player.getBreathPercentage();
-        
-        // Calculate dimensions based on screen size
-        int barWidth = (int)(windowWidth * 0.3f); // 30% of screen width
-        int barHeight = 10;
-        int x = (windowWidth - barWidth) / 2; // Center horizontally
-        int y = windowHeight - 60; // Place near the top
-        
-        // Draw background (dark blue)
-        drawQuad(x, y, barWidth, barHeight, 0, 50, 100, 200);
-        
-        // Draw breath bar (light blue, width based on breath remaining)
-        int breathWidth = (int)(barWidth * breathPercentage);
-        
-        // Color changes from blue to red as breath depletes
-        int r = (int)(255 * (1.0f - breathPercentage));
-        int g = (int)(150 * breathPercentage);
-        int b = (int)(255 * breathPercentage);
-        
-        drawQuad(x, y, breathWidth, barHeight, r, g, b, 200);
-        
-        // Show numeric value if player is drowning
-        if (player.isDrowning()) {
-            String breathText = "OUT OF AIR!";
-            float textWidth = font.getTextWidth(breathText);
-            drawText(breathText, (windowWidth - textWidth) / 2, y - 20, new Vector4f(1.0f, 0.2f, 0.2f, 1.0f));
-        }
-    }
     
     /**
      * Cleanup method to release resources.
