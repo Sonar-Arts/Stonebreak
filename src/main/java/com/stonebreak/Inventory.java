@@ -121,6 +121,68 @@ public class Inventory {
     }
 
     /**
+     * Adds multiple items of the given block type to the inventory.
+     * @param blockTypeId The ID of the block type to add.
+     * @param count The number of items to add.
+     * @return The number of items that were actually added to the inventory.
+     */
+    public int addItemsAndReturnCount(int blockTypeId, int count) {
+        if (blockTypeId == BlockType.AIR.getId() || count <= 0) {
+            return 0;
+        }
+
+        int remainingCount = count;
+
+        // First, try to stack with existing items in hotbar
+        for (ItemStack stack : hotbarSlots) {
+            if (remainingCount == 0) break;
+            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
+                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+                stack.incrementCount(canAdd);
+                remainingCount -= canAdd;
+            }
+        }
+
+        // Then, try to stack with existing items in main inventory
+        for (ItemStack stack : mainInventorySlots) {
+            if (remainingCount == 0) break;
+            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
+                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+                stack.incrementCount(canAdd);
+                remainingCount -= canAdd;
+            }
+        }
+
+        // If still items left, try to fill empty slots in hotbar
+        if (remainingCount > 0) {
+            for (ItemStack stack : hotbarSlots) {
+                if (remainingCount == 0) break;
+                if (stack.isEmpty()) {
+                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
+                    stack.setBlockTypeId(blockTypeId);
+                    stack.setCount(canAdd);
+                    remainingCount -= canAdd;
+                }
+            }
+        }
+
+        // Then, try to fill empty slots in main inventory
+        if (remainingCount > 0) {
+            for (ItemStack stack : mainInventorySlots) {
+                if (remainingCount == 0) break;
+                if (stack.isEmpty()) {
+                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
+                    stack.setBlockTypeId(blockTypeId);
+                    stack.setCount(canAdd);
+                    remainingCount -= canAdd;
+                }
+            }
+        }
+        
+        return count - remainingCount; // Return how many items were actually added
+    }
+
+    /**
      * Removes a single item of the given block type from the inventory.
      * Prioritizes removing from the selected hotbar slot, then other hotbar slots, then main inventory.
      * @param blockTypeId The ID of the block type to remove.

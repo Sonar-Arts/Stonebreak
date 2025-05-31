@@ -43,6 +43,9 @@ public class World {
     
     // Snow layer management
     private final SnowLayerManager snowLayerManager;
+    
+    // Block drop management
+    private final BlockDropManager blockDropManager;
 
     public World() {
         this.seed = System.currentTimeMillis();
@@ -59,13 +62,19 @@ public class World {
         this.chunksToBuildMesh = ConcurrentHashMap.newKeySet(); // Changed to concurrent set
         this.chunksReadyForGLUpload = new ConcurrentLinkedQueue<>();
         this.snowLayerManager = new SnowLayerManager();
+        this.blockDropManager = new BlockDropManager(this);
         
         System.out.println("Creating world with seed: " + seed + ", using " + numThreads + " mesh builder threads.");
-    }    public void update() {
+    }
+    
+    public void update() {
         // Process requests to build mesh data (async)
         processChunkMeshBuildRequests();
         // Apply mesh data to GL objects on the main thread
         applyPendingGLUpdates();
+        
+        // Update block drops
+        blockDropManager.update(Game.getDeltaTime());
         
         // Unload distant chunks (only check every few seconds to avoid constant loading/unloading)
         chunkUnloadCounter += Game.getDeltaTime();
@@ -996,6 +1005,13 @@ public class World {
      */
     public SnowLayerManager getSnowLayerManager() {
         return snowLayerManager;
+    }
+    
+    /**
+     * Gets the block drop manager for this world
+     */
+    public BlockDropManager getBlockDropManager() {
+        return blockDropManager;
     }
     
     /**

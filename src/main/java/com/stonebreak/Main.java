@@ -390,8 +390,8 @@ public class Main {
                 uiRenderer.endFrame();
             }
         } else if (game.getState() == GameState.PLAYING) {
-            // Render the world
-            renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+            // Render the world (WITHOUT block drops)
+            renderer.renderWorldWithoutDrops(world, player, game.getTotalTimeElapsed());
             
             // Render UI elements
             InventoryScreen inventoryScreen = game.getInventoryScreen();
@@ -426,6 +426,9 @@ public class Main {
                     uiRenderer.endFrame();
                 }
             }
+            
+            // DEFERRED: Render block drops AFTER all UI is complete
+            renderer.renderBlockDropsDeferred(world, player);
         }
     }
       private void cleanup() {

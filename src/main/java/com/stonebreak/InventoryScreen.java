@@ -230,7 +230,13 @@ public class InventoryScreen {
     
     // Helper method to draw a single slot using UIRenderer
     private void drawInventorySlot(ItemStack itemStack, int slotX, int slotY, boolean isHotbarSlot, int hotbarIndex) {
-        try (MemoryStack stack = stackPush()) {
+        try {
+            try (MemoryStack stack = stackPush()) {
+                // Add validation
+                if (uiRenderer == null) {
+                    System.err.println("ERROR: UIRenderer is null in drawInventorySlot");
+                    return;
+                }
             long vg = uiRenderer.getVG();
             // Highlight selected hotbar slot
             if (isHotbarSlot && inventory.getSelectedHotbarSlotIndex() == hotbarIndex) {
@@ -257,14 +263,24 @@ public class InventoryScreen {
                 int count = itemStack.getCount();
                 
                 if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
-                    // End NanoVG frame temporarily to draw 3D item
-                    uiRenderer.endFrame();
-                    
-                    // Draw 3D item using existing renderer
-                    renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
-                    
-                    // Restart NanoVG frame
-                    uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
+                    try {
+                        // End NanoVG frame temporarily to draw 3D item
+                        uiRenderer.endFrame();
+                        
+                        // Draw 3D item using existing renderer
+                        renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                        
+                        // Restart NanoVG frame
+                        uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
+                    } catch (Exception e) {
+                        System.err.println("Error rendering 3D item in slot: " + e.getMessage());
+                        // Try to recover by ensuring frame is restarted
+                        try {
+                            uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
+                        } catch (Exception e2) {
+                            System.err.println("Failed to recover NanoVG frame: " + e2.getMessage());
+                        }
+                    }
                     
                     if (count > 1) {
                         String countText = String.valueOf(count);
@@ -281,6 +297,19 @@ public class InventoryScreen {
                         nvgText(vg, slotX + SLOT_SIZE - 3, slotY + SLOT_SIZE - 3, countText);
                     }
                 }
+            }
+            }
+        } catch (Exception e) {
+            System.err.println("ERROR in drawInventorySlot: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Try to recover UI state
+            try {
+                if (uiRenderer != null) {
+                    uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
+                }
+            } catch (Exception e2) {
+                System.err.println("Failed to recover UI frame: " + e2.getMessage());
             }
         }
     }
@@ -485,6 +514,9 @@ public class InventoryScreen {
         ItemStack[] hotbarItems = inventory.getHotbarSlots(); // Get copies
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int slotX = hotbarStartX + SLOT_PADDING + i * (SLOT_SIZE + SLOT_PADDING);
+            
+            // Removed debug logging to reduce console spam
+            
             drawInventorySlot(hotbarItems[i], slotX, hotbarStartY, true, i);
         }
 

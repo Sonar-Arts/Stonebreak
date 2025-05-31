@@ -76,6 +76,9 @@ public class Renderer {
     private int windowWidth;
     private int windowHeight;
     
+    // Isolated block drop renderer
+    private final BlockDropRenderer blockDropRenderer;
+    
     // Matrices
     private final Matrix4f projectionMatrix;
     
@@ -85,6 +88,7 @@ public class Renderer {
     private int playerArmVao; // VAO for the player's arm
     private int uiQuadVao;    // VAO for drawing generic UI quads (positions and UVs)
     private int uiQuadVbo;    // VBO for drawing generic UI quads (positions and UVs)
+    
 
     // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
     
@@ -107,6 +111,9 @@ public class Renderer {
         shaderProgram.createFragmentShader(loadResource("/shaders/fragment.glsl"));
         shaderProgram.link();
         
+        // Initialize isolated block drop renderer
+        blockDropRenderer = new BlockDropRenderer();
+        
         // Create projection matrix
         float aspectRatio = (float) width / height;
         projectionMatrix = new Matrix4f().perspective((float) Math.toRadians(70.0f), aspectRatio, 0.1f, 1000.0f);
@@ -114,6 +121,7 @@ public class Renderer {
         // Create uniforms for projection and view matrices
         shaderProgram.createUniform("projectionMatrix");
         shaderProgram.createUniform("viewMatrix");
+        shaderProgram.createUniform("modelMatrix");
         shaderProgram.createUniform("texture_sampler");
         shaderProgram.createUniform("u_color");          // Uniform for solid color / text tint
         shaderProgram.createUniform("u_useSolidColor");  // Uniform to toggle solid color mode
@@ -125,6 +133,9 @@ public class Renderer {
         
         // Load textures
         textureAtlas = new TextureAtlas(16); // 16x16 texture atlas
+        
+        // Initialize isolated block drop renderer with the shader and texture
+        blockDropRenderer.initialize(shaderProgram, textureAtlas);
 
         // Initialize font
         // Ensure Roboto-VariableFont_wdth,wght.ttf is in src/main/resources/fonts/
@@ -442,6 +453,7 @@ public class Renderer {
         // Set common uniforms for world rendering
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
@@ -518,12 +530,121 @@ public class Renderer {
         // Render water particles
         renderWaterParticles(); // This method binds its own shader
 
+        // Render block drops
+        renderBlockDrops(world);
+
         // Unbind main world shader program if other things don't use it
         // shaderProgram.unbind(); // UI pass binds it again.
         
         // Render UI elements
-        renderUI(player);
-    }    /**
+        renderUI();
+    }
+    
+    /**
+     * Renders the world WITHOUT block drops to prevent UI corruption.
+     */
+    public void renderWorldWithoutDrops(World world, Player player, float totalTime) {
+        // Update animated textures
+        textureAtlas.updateAnimatedWater(totalTime);
+
+        // Enable depth testing (globally for the world pass)
+        glEnable(GL_DEPTH_TEST);
+        
+        // Use shader program
+        shaderProgram.bind();
+        
+        // Set common uniforms for world rendering
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
+        shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
+        shaderProgram.setUniform("u_isText", false);        // World objects are not text
+        
+        // Bind texture atlas once before passes
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        // Ensure texture filtering is set (NEAREST for blocky style)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        
+        // Get player chunk position
+        int playerChunkX = (int) Math.floor(player.getPosition().x / World.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(player.getPosition().z / World.CHUNK_SIZE);
+        Map<World.ChunkPosition, Chunk> visibleChunks = world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
+
+        // --- PASS 1: Opaque objects (or non-water parts of chunks) ---
+        shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
+        glDepthMask(true);  // Enable depth writing for opaque objects
+        glDisable(GL_BLEND); // Opaque objects typically don't need blending
+
+        for (Chunk chunk : visibleChunks.values()) {
+            // Texture atlas is already bound
+            chunk.render(); // Chunk.render() will be called, shader will discard water fragments
+        }
+
+        // --- PASS 2: Transparent objects (water parts of chunks) ---
+        shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
+        glDepthMask(false); // Disable depth writing for transparent objects
+        glEnable(GL_BLEND); // Enable blending
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
+ 
+        // Sort chunks from back to front for transparent pass
+        List<Chunk> sortedTransparentChunks = new ArrayList<>(visibleChunks.values());
+        org.joml.Vector3f playerPos = player.getPosition();
+        Collections.sort(sortedTransparentChunks, (c1, c2) -> {
+            // Calculate distance squared from player to center of each chunk
+            // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
+            // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
+            float c1CenterX = c1.getWorldX(World.CHUNK_SIZE / 2);
+            float c1CenterZ = c1.getWorldZ(World.CHUNK_SIZE / 2);
+            float c2CenterX = c2.getWorldX(World.CHUNK_SIZE / 2);
+            float c2CenterZ = c2.getWorldZ(World.CHUNK_SIZE / 2);
+
+            float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
+                            (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
+            float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
+                            (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
+            
+            // Sort in descending order of distance (farthest first)
+            return Float.compare(distSq2, distSq1);
+        });
+
+        for (Chunk chunk : sortedTransparentChunks) {
+            // Texture atlas is already bound
+            chunk.render(); // Chunk.render() will be called, shader will discard non-water fragments
+        }
+        
+        glDepthMask(true);  // Restore depth writing
+        glDisable(GL_BLEND); // Restore blending state (or enable if UI needs it by default) - UI pass will set its own
+
+        // Render block crack overlay if breaking a block
+        renderBlockCrackOverlay(player);
+
+        // Render player arm (if not in pause menu, etc.)
+        // Player arm needs its own shader setup, including texture
+        if (!Game.getInstance().isPaused()) {
+            renderPlayerArm(player); // This method binds its own shader and texture
+        }
+
+        // Render water particles
+        renderWaterParticles(); // This method binds its own shader
+
+        // NOTE: Block drops are NOT rendered here - they are deferred
+        
+        // Render UI elements
+        renderUI();
+    }
+    
+    /**
+     * Renders block drops in a deferred pass after all UI rendering is complete.
+     */
+    public void renderBlockDropsDeferred(World world, Player player) {
+        // This method renders block drops completely isolated from UI rendering
+        renderBlockDrops(world);
+    }
+    
+    /**
      * Renders the player's arm with Minecraft-style positioning and animation.
      */
     private void renderPlayerArm(Player player) {
@@ -637,7 +758,7 @@ public class Renderer {
             } else {
                 // Check if this is a flower block - render as flat cross pattern instead of 3D cube
                 if (selectedBlockType == BlockType.ROSE || selectedBlockType == BlockType.DANDELION) {
-                    renderFlowerInHand(selectedBlockType, armViewModel);
+                    renderFlowerInHand(selectedBlockType);
                 } else {
                     // Use block-specific cube for proper face texturing
                     shaderProgram.setUniform("u_useSolidColor", false);
@@ -694,7 +815,7 @@ public class Renderer {
       /**
      * Renders UI elements on top of the 3D world.
      */
-    private void renderUI(Player player) {
+    private void renderUI() {
         // Clear the depth buffer to ensure UI is drawn on top of everything from the 3D world pass
         glClear(GL_DEPTH_BUFFER_BIT);
 
@@ -708,6 +829,7 @@ public class Renderer {
         Matrix4f orthoProjection = new Matrix4f().ortho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f);
         shaderProgram.setUniform("projectionMatrix", orthoProjection);
         shaderProgram.setUniform("viewMatrix", new Matrix4f());
+        shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for UI
         shaderProgram.setUniform("texture_sampler", 0); // Ensure texture unit 0 for UI textures (like font)
           // Only show crosshair and hotbar when not paused
         if (!Game.getInstance().isPaused()) {
@@ -993,9 +1115,12 @@ public class Renderer {
         itemViewMatrix.scale(0.8f);
         shaderProgram.setUniform("viewMatrix", itemViewMatrix);
 
-        // --- Bind texture atlas ---
+        // --- Bind texture atlas with defensive state reset ---
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        // Force correct texture parameters to prevent corruption from block drops
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         shaderProgram.setUniform("texture_sampler", 0);
         
         // --- Create and draw cube with proper face textures ---
@@ -1263,7 +1388,7 @@ public class Renderer {
         return vao;
     }
     
-    private void renderFlowerInHand(BlockType flowerType, Matrix4f armViewModel) {
+    private void renderFlowerInHand(BlockType flowerType) {
         // Set up shader for flower rendering
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
@@ -1373,10 +1498,9 @@ public class Renderer {
                     
                     // Create realistic crack pattern based on stage and position
                     float intensity = (stage + 1) / 10.0f;
-                    boolean isCrack = false;
                     
                     // Create organic-looking cracks using multiple crack paths
-                    isCrack = generateCrackPattern(x, y, stage);
+                    boolean isCrack = generateCrackPattern(x, y, stage);
                     
                     if (isCrack) {
                         r = g = b = 0; // Black cracks
@@ -1614,11 +1738,12 @@ public class Renderer {
                    out float v_isAlphaTested; // Pass isAlphaTested to fragment shader
                    uniform mat4 projectionMatrix;
                    uniform mat4 viewMatrix;
+                   uniform mat4 modelMatrix;
                    uniform bool u_transformUVsForItem;      // Added
                    uniform vec2 u_atlasUVOffset;        // Added
                    uniform vec2 u_atlasUVScale;         // Added
                    void main() {
-                       gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
+                       gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
                        if (u_transformUVsForItem) {
                            outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;
                        } else {
@@ -1877,10 +2002,43 @@ public class Renderer {
         }
         handBlockVaoCache.clear();
         
+        
         // Cleanup pause menu
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null) {
             pauseMenu.cleanup();
         }
+        
+        // Cleanup isolated block drop renderer
+        if (blockDropRenderer != null) {
+            blockDropRenderer.cleanup();
+        }
     }
+    
+    /**
+     * Renders 3D block drops in the world using isolated rendering context.
+     */
+    private void renderBlockDrops(World world) {
+        BlockDropManager dropManager = world.getBlockDropManager();
+        if (dropManager == null) {
+            return;
+        }
+        
+        List<BlockDrop> drops = dropManager.getDrops();
+        if (drops.isEmpty()) {
+            return;
+        }
+        
+        // Get current view matrix from player
+        Player player = Game.getPlayer();
+        Matrix4f viewMatrix = (player != null) ? player.getViewMatrix() : new Matrix4f();
+        
+        // Update the isolated renderer with current data
+        blockDropRenderer.updateRenderData(drops, projectionMatrix, viewMatrix);
+        
+        // Render using isolated context (completely separated from UI state)
+        blockDropRenderer.renderBlockDrops();
+    }
+    
+    
 }

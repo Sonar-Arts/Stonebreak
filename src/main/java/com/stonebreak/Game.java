@@ -73,6 +73,7 @@ public class Game {
         this.soundSystem.initialize();
         this.soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
         this.soundSystem.loadSound("sandwalk", "/sounds/SandWalk-001.wav");
+        this.soundSystem.loadSound("blockpickup", "/sounds/BlockPickup.wav");
         
         // Apply settings to sound system
         Settings gameSettings = Settings.getInstance();

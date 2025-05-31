@@ -634,18 +634,19 @@ public class Player {      // Player settings
                         }
                     }
                     
-                    // If breaking a snow block, remove snow layer data and give correct number of items
+                    // If breaking a snow block, remove snow layer data and spawn correct number of drops
                     if (blockType == BlockType.SNOW) {
                         int snowLayers = world.getSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                         world.getSnowLayerManager().removeSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                         
-                        // Add multiple snow items based on layer count
-                        for (int i = 0; i < snowLayers; i++) {
-                            inventory.addItem(blockType.getId());
+                        // Spawn snow drops based on layer count
+                        if (snowLayers > 0) {
+                            spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), snowLayers);
                         }
                     } else {
-                        // For non-snow blocks, add one item
-                        inventory.addItem(blockType.getId());
+                        // For non-snow blocks, spawn one drop
+                        // Breaking block for timed breaks
+                        spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), 1);
                     }
                     
                     // Break the block
@@ -692,18 +693,19 @@ public class Player {      // Player settings
                 // For instant break blocks (hardness 0 or very low), break immediately
                 float hardness = blockType.getHardness();
                 if (hardness <= 0.0f) {
-                    // If breaking a snow block, remove snow layer data and give correct number of items
+                    // If breaking a snow block, remove snow layer data and spawn correct number of drops
                     if (blockType == BlockType.SNOW) {
                         int snowLayers = world.getSnowLayers(blockPos.x, blockPos.y, blockPos.z);
                         world.getSnowLayerManager().removeSnowLayers(blockPos.x, blockPos.y, blockPos.z);
                         
-                        // Add multiple snow items based on layer count
-                        for (int i = 0; i < snowLayers; i++) {
-                            inventory.addItem(blockType.getId());
+                        // Spawn snow drops based on layer count
+                        if (snowLayers > 0) {
+                            spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), snowLayers);
                         }
                     } else {
-                        // For non-snow blocks, add one item
-                        inventory.addItem(blockType.getId());
+                        // For non-snow blocks, spawn one drop
+                        // Breaking block for instant breaks
+                        spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), 1);
                     }
                     
                     world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
@@ -718,6 +720,23 @@ public class Player {      // Player settings
      */
     public void stopBreakingBlock() {
         resetBlockBreaking();
+    }
+    
+    /**
+     * Spawns a block drop at the specified location with some random velocity.
+     */
+    private void spawnBlockDrop(int x, int y, int z, int blockTypeId, int quantity) {
+        if (world != null && world.getBlockDropManager() != null) {
+            // Add some offset to spawn drop at center of block
+            float dropX = x + 0.5f;
+            float dropY = y + 0.5f;
+            float dropZ = z + 0.5f;
+            
+            float distanceToPlayer = (float)Math.sqrt((dropX - position.x) * (dropX - position.x) + (dropY - position.y) * (dropY - position.y) + (dropZ - position.z) * (dropZ - position.z));
+            System.out.println("DEBUG: Spawning drop at (" + dropX + ", " + dropY + ", " + dropZ + ") distance from player: " + distanceToPlayer);
+            
+            world.getBlockDropManager().spawnDrop(dropX, dropY, dropZ, blockTypeId, quantity);
+        }
     }
     
     /**
