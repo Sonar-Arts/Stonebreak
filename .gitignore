@@ -83,6 +83,9 @@ docs/
 *.properties
 !src/main/resources/*.properties
 
+# Settings file (user-specific configuration)
+settings.json
+
 # Backup files
 *.bak
 *~

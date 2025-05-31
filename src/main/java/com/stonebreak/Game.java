@@ -18,6 +18,7 @@ public class Game {
     private InputHandler inputHandler; // Added InputHandler field
     private UIRenderer uiRenderer; // UI renderer for menus
     private MainMenu mainMenu; // Main menu
+    private SettingsMenu settingsMenu; // Settings menu
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     
@@ -72,6 +73,11 @@ public class Game {
         this.soundSystem.initialize();
         this.soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
         this.soundSystem.loadSound("sandwalk", "/sounds/SandWalk-001.wav");
+        
+        // Apply settings to sound system
+        Settings gameSettings = Settings.getInstance();
+        this.soundSystem.setMasterVolume(gameSettings.getMasterVolume());
+        
         this.soundSystem.testBasicFunctionality(); // Test sound system
         
         // If sound loading failed, try alternative approaches
@@ -120,6 +126,7 @@ public class Game {
         this.uiRenderer = new UIRenderer();
         this.uiRenderer.init();
         this.mainMenu = new MainMenu(this.uiRenderer);
+        this.settingsMenu = new SettingsMenu(this.uiRenderer);
         
         // Initialize chat system
         this.chatSystem = new ChatSystem();
@@ -348,11 +355,14 @@ public class Game {
         // Handle cursor visibility based on state transitions
         long windowHandle = Main.getWindowHandle();
         if (windowHandle != 0) {
-            if (state == GameState.PLAYING && previousState == GameState.MAIN_MENU) {
+            if (state == GameState.PLAYING && (previousState == GameState.MAIN_MENU || previousState == GameState.SETTINGS)) {
                 // Hide cursor when entering game
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-            } else if (state == GameState.MAIN_MENU && previousState == GameState.PLAYING) {
-                // Show cursor when returning to menu
+            } else if ((state == GameState.MAIN_MENU || state == GameState.SETTINGS) && previousState == GameState.PLAYING) {
+                // Show cursor when returning to menu or entering settings
+                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+            } else if (state == GameState.SETTINGS || state == GameState.MAIN_MENU) {
+                // Ensure cursor is visible for all menu states
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
             }
         }
@@ -363,6 +373,13 @@ public class Game {
      */
     public MainMenu getMainMenu() {
         return mainMenu;
+    }
+    
+    /**
+     * Gets the settings menu.
+     */
+    public SettingsMenu getSettingsMenu() {
+        return settingsMenu;
     }
     
     /**

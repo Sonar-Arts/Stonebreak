@@ -61,9 +61,9 @@ public class Main {
     // Window handle
     private long window;
     
-    // Game settings
-    private int width = 1280;
-    private int height = 720;
+    // Game settings - loaded from Settings at startup
+    private int width;
+    private int height;
     private final String title = "Stonebreak";
     private static final int TARGET_FPS = 144;
     private static final long FRAME_TIME_MILLIS = (long)(1000.0 / TARGET_FPS);
@@ -89,12 +89,22 @@ public class Main {
         instance = this; // Set the instance
         System.out.println("Starting Stonebreak with LWJGL " + Version.getVersion());
         
+        // Load settings early in initialization
+        loadSettings();
+        
         try {
             init();
             loop();
         } finally {
             cleanup();
         }
+    }
+    
+    private void loadSettings() {
+        Settings settings = Settings.getInstance();
+        this.width = settings.getWindowWidth();
+        this.height = settings.getWindowHeight();
+        System.out.println("Settings loaded - Window size: " + width + "x" + height);
     }
     
     private void init() {
@@ -162,6 +172,16 @@ public class Main {
                         }
                     }
                 }
+            } else if (game != null && game.getState() == GameState.SETTINGS) {
+                // Handle settings menu clicks
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getSettingsMenu() != null) {
+                        game.getSettingsMenu().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                    }
+                }
             } else if (inputHandler != null) {
                 inputHandler.processMouseButton(button, action, mods);
             }
@@ -173,6 +193,9 @@ public class Main {
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
                 // Handle main menu mouse hover
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
+            } else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
+                // Handle settings menu mouse hover
+                game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             } else if (game.getState() == GameState.PLAYING && inputHandler != null) {
                 // Handle player mouse look by updating InputHandler's mouse position
                 inputHandler.updateMousePosition((float)xpos, (float)ypos);
@@ -284,6 +307,11 @@ public class Main {
                 if (game.getMainMenu() != null) {
                     game.getMainMenu().handleInput(window);
                 }
+            } else if (game.getState() == GameState.SETTINGS) {
+                // Handle settings menu input
+                if (game.getSettingsMenu() != null) {
+                    game.getSettingsMenu().handleInput(window);
+                }
             } else if (game.getState() == GameState.PLAYING) {
                 // Handle in-game input
                 if (inputHandler != null) {
@@ -342,6 +370,16 @@ public class Main {
                 uiRenderer.beginFrame(width, height, 1.0f);
                 if (game.getMainMenu() != null) {
                     game.getMainMenu().render(width, height);
+                }
+                uiRenderer.endFrame();
+            }
+        } else if (game.getState() == GameState.SETTINGS) {
+            // Render settings menu using NanoVG
+            UIRenderer uiRenderer = game.getUIRenderer();
+            if (uiRenderer != null) {
+                uiRenderer.beginFrame(width, height, 1.0f);
+                if (game.getSettingsMenu() != null) {
+                    game.getSettingsMenu().render(width, height);
                 }
                 uiRenderer.endFrame();
             }

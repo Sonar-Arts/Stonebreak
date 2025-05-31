@@ -22,6 +22,7 @@ public class SoundSystem {
     private Map<String, Integer> soundBuffers;
     private Map<String, Integer[]> sources; // Multiple sources per sound
     private Map<String, Integer> sourceIndexes; // Track current source index
+    private float masterVolume = 1.0f; // Master volume multiplier
     
     private SoundSystem() {
         soundBuffers = new HashMap<>();
@@ -250,7 +251,8 @@ public class SoundSystem {
             int currentIndex = sourceIndexes.get(name);
             int source = soundSources[currentIndex];
             
-            // Play the sound on the current source
+            // Apply master volume and play the sound
+            alSourcef(source, AL_GAIN, 0.5f * masterVolume); // 0.5f is the default volume
             alSourcePlay(source);
             
             // Move to next source for next call (round-robin)
@@ -272,8 +274,8 @@ public class SoundSystem {
             int currentIndex = sourceIndexes.get(name);
             int source = soundSources[currentIndex];
             
-            // Set volume and play the sound on the current source
-            alSourcef(source, AL_GAIN, volume);
+            // Apply master volume multiplied by the specific volume and play the sound
+            alSourcef(source, AL_GAIN, volume * masterVolume);
             alSourcePlay(source);
             
             // Move to next source for next call (round-robin)
@@ -338,6 +340,22 @@ public class SoundSystem {
             }
         }
         System.out.println("========================");
+    }
+    
+    /**
+     * Sets the master volume for all sounds.
+     * @param volume Volume level (0.0 = silent, 1.0 = normal volume)
+     */
+    public void setMasterVolume(float volume) {
+        this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
+    }
+    
+    /**
+     * Gets the current master volume.
+     * @return Current master volume level
+     */
+    public float getMasterVolume() {
+        return masterVolume;
     }
     
     public void cleanup() {

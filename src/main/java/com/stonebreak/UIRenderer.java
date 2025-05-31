@@ -5,6 +5,7 @@ import org.lwjgl.nanovg.NVGPaint;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_LEFT;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
+import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_RIGHT;
 import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATX;
 import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATY;
 import static org.lwjgl.nanovg.NanoVG.nvgBeginFrame;
@@ -306,6 +307,107 @@ public class UIRenderer {
         drawMinecraftButton(text, x, y, w, h, highlighted);
     }
     
+    public void drawDropdownButton(String text, float x, float y, float w, float h, boolean highlighted, boolean isOpen) {
+        // Draw the main button
+        drawMinecraftButton(text, x, y, w, h, highlighted);
+        
+        // Draw dropdown arrow
+        try (MemoryStack stack = stackPush()) {
+            float arrowX = x + w - 25;
+            float arrowY = y + h / 2;
+            float arrowSize = 6;
+            
+            nvgBeginPath(vg);
+            if (isOpen) {
+                // Up arrow when dropdown is open
+                nvgMoveTo(vg, arrowX - arrowSize, arrowY + arrowSize/2);
+                nvgLineTo(vg, arrowX, arrowY - arrowSize/2);
+                nvgLineTo(vg, arrowX + arrowSize, arrowY + arrowSize/2);
+            } else {
+                // Down arrow when dropdown is closed
+                nvgMoveTo(vg, arrowX - arrowSize, arrowY - arrowSize/2);
+                nvgLineTo(vg, arrowX, arrowY + arrowSize/2);
+                nvgLineTo(vg, arrowX + arrowSize, arrowY - arrowSize/2);
+            }
+            nvgClosePath(vg);
+            
+            // Arrow color
+            if (highlighted) {
+                nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+            }
+            nvgFill(vg);
+        }
+    }
+    
+    public void drawDropdownMenu(String[] options, int selectedIndex, float x, float y, float w, float itemHeight) {
+        try (MemoryStack stack = stackPush()) {
+            float totalHeight = options.length * itemHeight;
+            
+            // Draw dropdown shadow for depth (slightly offset)
+            nvgBeginPath(vg);
+            nvgRect(vg, x + 3, y + 3, w, totalHeight);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 100, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Draw dropdown background
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, totalHeight);
+            nvgFillColor(vg, nvgRGBA(130, 130, 130, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Draw dropdown border
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, totalHeight);
+            nvgStrokeWidth(vg, 2.0f);
+            nvgStrokeColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Draw dropdown items
+            for (int i = 0; i < options.length; i++) {
+                float itemY = y + i * itemHeight;
+                boolean isSelected = (i == selectedIndex);
+                
+                // Highlight selected item
+                if (isSelected) {
+                    nvgBeginPath(vg);
+                    nvgRect(vg, x + 2, itemY + 1, w - 4, itemHeight - 2);
+                    nvgFillColor(vg, nvgRGBA(160, 160, 180, 255, NVGColor.malloc(stack)));
+                    nvgFill(vg);
+                }
+                
+                // Draw item separator line
+                if (i > 0) {
+                    nvgBeginPath(vg);
+                    nvgMoveTo(vg, x + 5, itemY);
+                    nvgLineTo(vg, x + w - 5, itemY);
+                    nvgStrokeWidth(vg, 1.0f);
+                    nvgStrokeColor(vg, nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
+                    nvgStroke(vg);
+                }
+                
+                // Draw item text
+                String fontName = (fontMinecraft != -1) ? "minecraft" : "sans";
+                nvgFontSize(vg, 16);
+                nvgFontFace(vg, fontName);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                
+                // Text shadow
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+                nvgText(vg, x + w/2 + 1, itemY + itemHeight/2 + 1, options[i]);
+                
+                // Main text
+                if (isSelected) {
+                    nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+                } else {
+                    nvgFillColor(vg, nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
+                }
+                nvgText(vg, x + w/2, itemY + itemHeight/2, options[i]);
+            }
+        }
+    }
+    
     public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
@@ -582,6 +684,244 @@ public class UIRenderer {
             nvgText(vg, x, y + inputHeight/2, "Type a message...");
         } else {
             nvgText(vg, x, y + inputHeight/2, displayText);
+        }
+    }
+    
+    public void renderSettingsMenu(int windowWidth, int windowHeight) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        
+        // Draw dirt background
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+                
+                // Darker overlay for settings
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 80, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+        
+        // Draw main settings panel
+        float panelWidth = 600;
+        float panelHeight = 400;
+        float panelX = centerX - panelWidth / 2;
+        float panelY = centerY - panelHeight / 2;
+        
+        drawMinecraftPanel(panelX, panelY, panelWidth, panelHeight);
+        
+        // Draw settings title
+        drawSettingsTitle(centerX, panelY + 60, "SETTINGS");
+    }
+    
+    private void drawSettingsTitle(float centerX, float centerY, String title) {
+        try (MemoryStack stack = stackPush()) {
+            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans-bold";
+            
+            for (int i = 4; i >= 0; i--) {
+                nvgFontSize(vg, 36);
+                nvgFontFace(vg, fontName);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                
+                switch (i) {
+                    case 0 -> 
+                        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+                    case 1 -> 
+                        nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+                    default -> {
+                        int darkness = Math.max(30, 80 - (i * 15));
+                        nvgFillColor(vg, nvgRGBA(darkness, darkness, darkness, 200, NVGColor.malloc(stack)));
+                    }
+                }
+                
+                float offsetX = i * 2.0f;
+                float offsetY = i * 2.0f;
+                nvgText(vg, centerX + offsetX, centerY + offsetY, title);
+            }
+        }
+    }
+    
+    public void drawVolumeSlider(String label, float centerX, float centerY, float sliderWidth, float sliderHeight, float value, boolean highlighted) {
+        try (MemoryStack stack = stackPush()) {
+            // Use the same button style as other menu items for consistency
+            float buttonWidth = 400; // Same as BUTTON_WIDTH in SettingsMenu
+            float buttonHeight = 60; // Taller to accommodate slider
+            float buttonX = centerX - buttonWidth / 2;
+            float buttonY = centerY - buttonHeight / 2;
+            
+            // Draw Minecraft-style button background (same as drawMinecraftButton)
+            float bevelSize = 3.0f;
+            
+            // Main button body
+            if (highlighted) {
+                nvgBeginPath(vg);
+                nvgRect(vg, buttonX + bevelSize, buttonY + bevelSize, buttonWidth - 2 * bevelSize, buttonHeight - 2 * bevelSize);
+                nvgFillColor(vg, nvgRGBA(170, 170, 190, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            } else {
+                nvgBeginPath(vg);
+                nvgRect(vg, buttonX + bevelSize, buttonY + bevelSize, buttonWidth - 2 * bevelSize, buttonHeight - 2 * bevelSize);
+                nvgFillColor(vg, nvgRGBA(130, 130, 130, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+            
+            // Add texture pattern to simulate cobblestone (same as buttons)
+            for (int i = 0; i < 12; i++) {
+                float px = buttonX + bevelSize + (i % 6) * (buttonWidth - 2 * bevelSize) / 6;
+                float py = buttonY + bevelSize + (i / 6) * (buttonHeight - 2 * bevelSize) / 2;
+                float size = 6;
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, px, py, size, size);
+                if (highlighted) {
+                    nvgFillColor(vg, nvgRGBA(150, 150, 170, 100, NVGColor.malloc(stack)));
+                } else {
+                    nvgFillColor(vg, nvgRGBA(110, 110, 110, 100, NVGColor.malloc(stack)));
+                }
+                nvgFill(vg);
+            }
+            
+            // Button bevels (same as drawMinecraftButton)
+            // Top bevel
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, buttonX, buttonY);
+            nvgLineTo(vg, buttonX + buttonWidth, buttonY);
+            nvgLineTo(vg, buttonX + buttonWidth - bevelSize, buttonY + bevelSize);
+            nvgLineTo(vg, buttonX + bevelSize, buttonY + bevelSize);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Left bevel
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, buttonX, buttonY);
+            nvgLineTo(vg, buttonX + bevelSize, buttonY + bevelSize);
+            nvgLineTo(vg, buttonX + bevelSize, buttonY + buttonHeight - bevelSize);
+            nvgLineTo(vg, buttonX, buttonY + buttonHeight);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(160, 160, 160, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Bottom bevel
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, buttonX, buttonY + buttonHeight);
+            nvgLineTo(vg, buttonX + bevelSize, buttonY + buttonHeight - bevelSize);
+            nvgLineTo(vg, buttonX + buttonWidth - bevelSize, buttonY + buttonHeight - bevelSize);
+            nvgLineTo(vg, buttonX + buttonWidth, buttonY + buttonHeight);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Right bevel
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, buttonX + buttonWidth, buttonY);
+            nvgLineTo(vg, buttonX + buttonWidth, buttonY + buttonHeight);
+            nvgLineTo(vg, buttonX + buttonWidth - bevelSize, buttonY + buttonHeight - bevelSize);
+            nvgLineTo(vg, buttonX + buttonWidth - bevelSize, buttonY + bevelSize);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Outer border
+            nvgBeginPath(vg);
+            nvgRect(vg, buttonX, buttonY, buttonWidth, buttonHeight);
+            nvgStrokeWidth(vg, 2.5f);
+            nvgStrokeColor(vg, nvgRGBA(20, 20, 20, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Draw label at top of button
+            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans";
+            nvgFontSize(vg, UI_FONT_SIZE);
+            nvgFontFace(vg, fontName);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            
+            // Text shadow
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+            nvgText(vg, centerX + 1, centerY - 15 + 1, label);
+            
+            // Main text
+            if (highlighted) {
+                nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(240, 240, 240, 255, NVGColor.malloc(stack)));
+            }
+            nvgText(vg, centerX, centerY - 15, label);
+            
+            // Slider track (positioned in the middle-bottom of button)
+            float trackX = centerX - sliderWidth / 2;
+            float trackY = centerY + 5; // Slightly below center
+            
+            nvgBeginPath(vg);
+            nvgRect(vg, trackX, trackY, sliderWidth, sliderHeight);
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Slider track border (inset style)
+            nvgBeginPath(vg);
+            nvgRect(vg, trackX, trackY, sliderWidth, sliderHeight);
+            nvgStrokeWidth(vg, 2.0f);
+            nvgStrokeColor(vg, nvgRGBA(20, 20, 20, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Slider fill
+            float fillWidth = sliderWidth * value;
+            if (fillWidth > 0) {
+                nvgBeginPath(vg);
+                nvgRect(vg, trackX + 2, trackY + 2, fillWidth - 4, sliderHeight - 4);
+                if (highlighted) {
+                    nvgFillColor(vg, nvgRGBA(120, 220, 120, 255, NVGColor.malloc(stack)));
+                } else {
+                    nvgFillColor(vg, nvgRGBA(100, 200, 100, 255, NVGColor.malloc(stack)));
+                }
+                nvgFill(vg);
+            }
+            
+            // Slider handle
+            float handleX = trackX + fillWidth - 6;
+            float handleY = trackY - 2;
+            float handleW = 12;
+            float handleH = sliderHeight + 4;
+            
+            nvgBeginPath(vg);
+            nvgRect(vg, handleX, handleY, handleW, handleH);
+            if (highlighted) {
+                nvgFillColor(vg, nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+            }
+            nvgFill(vg);
+            
+            // Handle border
+            nvgBeginPath(vg);
+            nvgRect(vg, handleX, handleY, handleW, handleH);
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStrokeColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Volume percentage text at bottom right of button
+            String volumeText = Math.round(value * 100) + "%";
+            nvgFontSize(vg, 12);
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            
+            // Text shadow
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+            nvgText(vg, buttonX + buttonWidth - 8 + 1, trackY + sliderHeight/2 + 1, volumeText);
+            
+            // Main percentage text
+            if (highlighted) {
+                nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(240, 240, 240, 255, NVGColor.malloc(stack)));
+            }
+            nvgText(vg, buttonX + buttonWidth - 8, trackY + sliderHeight/2, volumeText);
         }
     }
     
