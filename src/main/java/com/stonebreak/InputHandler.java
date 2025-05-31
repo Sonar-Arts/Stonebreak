@@ -288,6 +288,8 @@ public class InputHandler {
                         if (settingsMenu != null) {
                             settingsMenu.setPreviousState(GameState.PLAYING);
                         }
+                        // Clear mouse button states to prevent bleeding into settings menu
+                        clearMouseButtonStates();
                         Game.getInstance().setState(GameState.SETTINGS);
                         Game.getInstance().getPauseMenu().setVisible(false);
                     }
@@ -390,6 +392,14 @@ public class InputHandler {
      */
     public void resetMousePosition() {
         firstMouse = true;
+    }
+    
+    /**
+     * Clear all mouse button states to prevent input bleeding between game states.
+     */
+    public void clearMouseButtonStates() {
+        Arrays.fill(mouseButtonDown, false);
+        Arrays.fill(mouseButtonPressedThisFrame, false);
     }
     
     /**

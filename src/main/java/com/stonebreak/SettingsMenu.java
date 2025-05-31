@@ -10,6 +10,7 @@ public class SettingsMenu {
     private boolean isResolutionDropdownOpen = false;
     private int selectedResolutionIndex = 0;
     private GameState previousState = GameState.MAIN_MENU; // Remember where we came from
+    private boolean escapeKeyPressed = false; // For edge detection
     
     // UI element positions and sizes
     private static final float BUTTON_WIDTH = 400;
@@ -73,9 +74,13 @@ public class SettingsMenu {
             }
         }
         
-        // Handle escape key to go back
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        // Handle escape key to go back (with edge detection)
+        boolean isEscapePressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+        if (isEscapePressed && !escapeKeyPressed) {
+            escapeKeyPressed = true;
             goBack();
+        } else if (!isEscapePressed) {
+            escapeKeyPressed = false;
         }
     }
     
@@ -248,8 +253,19 @@ public class SettingsMenu {
     
     private void goBack() {
         if (previousState == GameState.PLAYING) {
-            // Return to game and resume properly
+            // Check if we should return to pause menu or directly to game
+            // If the user pressed escape in settings, go back to pause menu
+            // If the user clicked back/apply, resume the game directly
             Game game = Game.getInstance();
+            
+            // Always clear mouse button states first
+            InputHandler inputHandler = Main.getInputHandler();
+            if (inputHandler != null) {
+                inputHandler.clearMouseButtonStates();
+            }
+            
+            // For now, always resume the game directly when going back from settings
+            // This provides a cleaner user experience
             game.setState(GameState.PLAYING);
             game.getPauseMenu().setVisible(false);
             
@@ -264,7 +280,6 @@ public class SettingsMenu {
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
                 
                 // Reset mouse position to prevent camera jump
-                InputHandler inputHandler = Main.getInputHandler();
                 if (inputHandler != null) {
                     inputHandler.resetMousePosition();
                 }
