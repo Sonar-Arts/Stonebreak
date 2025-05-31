@@ -86,11 +86,7 @@ public class Renderer {
     private int uiQuadVao;    // VAO for drawing generic UI quads (positions and UVs)
     private int uiQuadVbo;    // VBO for drawing generic UI quads (positions and UVs)
 
-    // 3D Item Cube for Inventory
-    private int itemCubeVao;
-    private int itemCubeVbo; // Interleaved: posX, posY, posZ, normX, normY, normZ, uvU, uvV
-    private int itemCubeIbo;
-    private int itemCubeIndexCount;
+    // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
     
     // Block cracking overlay system
     private int crackTextureId;
@@ -140,7 +136,6 @@ public class Renderer {
         createPlayerArm();
         createArmTexture(); // Create the Perlin noise texture for the arm
         createUiQuadRenderer(); // Initialize UI quad rendering resources
-        createItemCube();       // Initialize 3D item cube mesh
         createCrackTexture();   // Initialize block cracking texture
         createBlockOverlayVao(); // Initialize block overlay rendering
     }
@@ -1146,85 +1141,6 @@ public class Renderer {
         }
     }
 
-    private void createItemCube() {
-        // A standard unit cube (1x1x1) centered at origin
-        // Vertices: Position (3f), Normal (3f), UV (2f) - 8 floats per vertex
-        // 6 faces * 4 vertices per face = 24 vertices
-        // 6 faces * 2 triangles per face * 3 indices per triangle = 36 indices
-        // UV coordinates will be dynamically set based on block type in draw3DItemInSlot
-        float[] vertices = {
-            // Front face (+Z) - Side face (face 2)
-            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f, // Bottom-left
-             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f, // Bottom-right
-             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f, // Top-right
-            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f, // Top-left
-            // Back face (-Z) - Side face (face 3)
-            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f, // Bottom-left
-             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f, // Bottom-right
-             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f, // Top-right
-            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f, // Top-left
-            // Top face (+Y) - Top face (face 0)
-            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
-             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
-            // Bottom face (-Y) - Bottom face (face 1)
-            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-            // Right face (+X) - Side face (face 4)
-             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-            // Left face (-X) - Side face (face 5)
-            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f
-        };
-
-        int[] indices = {
-            0,  1,  2,  0,  2,  3,  // Front
-            4,  5,  6,  4,  6,  7,  // Back
-            8,  9, 10,  8, 10, 11, // Top
-            12, 13, 14, 12, 14, 15, // Bottom
-            16, 17, 18, 16, 18, 19, // Right
-            20, 21, 22, 20, 22, 23  // Left
-        };
-        itemCubeIndexCount = indices.length;
-
-        itemCubeVao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(itemCubeVao);
-
-        itemCubeVbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, itemCubeVbo);
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-
-        int stride = 8 * Float.BYTES;
-        // Position attribute (location 0)
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
-        GL20.glEnableVertexAttribArray(0);
-        // Normal attribute (location 2 - consistent with world shader)
-        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(2);
-        // Texture coordinate attribute (location 1 - consistent with world shader)
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1);
-        
-        itemCubeIbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, itemCubeIbo);
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-    }
-    
     /**
      * Creates a cube VAO with proper UV coordinates for each face of the specified block type.
      * This allows blocks like grass to show different textures on different faces.
@@ -1951,15 +1867,6 @@ public class Renderer {
         }
         if (uiQuadVbo != 0) {
             GL20.glDeleteBuffers(uiQuadVbo);
-        }
-        if (itemCubeVao != 0) {
-            GL30.glDeleteVertexArrays(itemCubeVao);
-        }
-        if (itemCubeVbo != 0) {
-            GL20.glDeleteBuffers(itemCubeVbo);
-        }
-        if (itemCubeIbo != 0) {
-            GL20.glDeleteBuffers(itemCubeIbo);
         }
         
         // Clean up hand block VAO cache
