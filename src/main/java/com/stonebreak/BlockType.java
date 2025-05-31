@@ -29,7 +29,16 @@ public enum BlockType {
     SNOWY_LEAVES(19, "Snowy Leaves", true, true, 4, 2, 0.5f),
     PINE(20, "Pine", true, true, 2, 2, 3.0f), // Darker wood variant
     ICE(21, "Ice", true, true, 3, 2, 2.0f),
-    SNOW(22, "Snow", false, true, 5, 2, 0.1f); // Layered snow block
+    SNOW(22, "Snow", false, true, 5, 2, 0.1f), // Layered snow block
+    WORKBENCH(23, "Workbench", true, true, 6, 2, 3.0f), // Placeholder atlas coords (6,2)
+    WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 2.0f); // Atlas coords (0,3) placeholder
+
+    public enum Face {
+        TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
+        private final int index;
+        Face(int index) { this.index = index; }
+        public int getIndex() { return index; }
+    }
     
     private final int id;
     private final String name;
@@ -147,19 +156,19 @@ public enum BlockType {
      * @param face The face of the block (0=top, 1=bottom, 2-5=sides)
      * @return Array with [x, y] coordinates in the texture atlas
      */
-    public float[] getTextureCoords(int face) {
+    public float[] getTextureCoords(Face face) {
         return switch (this) {
             case GRASS -> {
-                if (face == 0) yield new float[]{0, 0}; // Top - grass
-                if (face == 1) yield new float[]{2, 0}; // Bottom - dirt
+                if (face == Face.TOP) yield new float[]{0, 0}; // Top - grass
+                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
                 yield new float[]{1, 0}; // Sides - grass side
             }
             case DIRT -> new float[]{2, 0};
             case STONE -> new float[]{3, 0};
             case BEDROCK -> new float[]{4, 0};
             case WOOD -> {
-                if (face == 0) yield new float[]{5, 1}; // Top
-                if (face == 1) yield new float[]{2, 0}; // Bottom - using DIRT texture for now
+                if (face == Face.TOP) yield new float[]{5, 1}; // Top
+                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - using DIRT texture for now
                 yield new float[]{5, 0}; // Sides
             }
             case LEAVES -> new float[]{7, 0}; // Atlas X changed from 6 to 7
@@ -171,30 +180,36 @@ public enum BlockType {
             case MAGMA -> new float[]{3, 1}; // Placeholder atlas coords
             case CRYSTAL -> new float[]{4, 1}; // Placeholder atlas coords
             case SANDSTONE -> {
-                if (face == 0) yield new float[]{5, 1}; // Top
-                if (face == 1) yield new float[]{5, 1}; // Bottom (same as top)
+                if (face == Face.TOP) yield new float[]{5, 1}; // Top
+                if (face == Face.BOTTOM) yield new float[]{5, 1}; // Bottom (same as top)
                 yield new float[]{7, 1}; // Sides
             }
             case RED_SANDSTONE -> {
-                if (face == 0) yield new float[]{6, 1}; // Top
-                if (face == 1) yield new float[]{6, 1}; // Bottom (same as top)
+                if (face == Face.TOP) yield new float[]{6, 1}; // Top
+                if (face == Face.BOTTOM) yield new float[]{6, 1}; // Bottom (same as top)
                 yield new float[]{8, 1}; // Sides
             }
             case ROSE -> new float[]{10, 1}; // Moved from 7,1
             case DANDELION -> new float[]{11, 1}; // Moved from 8,1
             case SNOWY_DIRT -> {
-                if (face == 0) yield new float[]{0, 2}; // Top - snow
-                if (face == 1) yield new float[]{2, 0}; // Bottom - dirt
+                if (face == Face.TOP) yield new float[]{0, 2}; // Top - snow
+                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
                 yield new float[]{1, 2}; // Sides - snow side
             }
             case SNOW -> new float[]{5, 2}; // Pure snow texture for layers
             case SNOWY_LEAVES -> new float[]{4, 2};
             case PINE -> {
-                if (face == 0) yield new float[]{2, 2}; // Top
-                if (face == 1) yield new float[]{2, 0}; // Bottom - dirt
+                if (face == Face.TOP) yield new float[]{2, 2}; // Top
+                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
                 yield new float[]{2, 2}; // Sides
             }
             case ICE -> new float[]{3, 2};
+            case WORKBENCH -> {
+                if (face == Face.TOP) yield new float[]{6, 2}; // Top - main texture
+                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - Dirt texture (like wood)
+                yield new float[]{7, 2}; // Sides - placeholder side texture
+            }
+            case WOOD_PLANKS -> new float[]{0, 3}; // All faces use (0,3)
             default -> new float[]{0, 0};
         };
     }

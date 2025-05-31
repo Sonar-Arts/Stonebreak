@@ -1,5 +1,7 @@
 package com.stonebreak;
 
+import java.util.List; // Added import
+
 /**
  * Central class for accessing game state and resources.
  */
@@ -14,6 +16,8 @@ public class Game {
     private Renderer renderer;
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
+    private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
+    private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private UIRenderer uiRenderer; // UI renderer for menus
@@ -21,9 +25,11 @@ public class Game {
     private SettingsMenu settingsMenu; // Settings menu
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
+    private CraftingManager craftingManager; // Crafting manager
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
+    private GameState previousGameState = GameState.MAIN_MENU; // Added previousGameState
     private long lastFrameTime;
     private float deltaTime;
     private float totalTimeElapsed = 0.0f; // Added to track total time for animations
@@ -128,14 +134,58 @@ public class Game {
         this.uiRenderer.init();
         this.mainMenu = new MainMenu(this.uiRenderer);
         this.settingsMenu = new SettingsMenu(this.uiRenderer);
-        
+
+        // Initialize CraftingManager
+        this.craftingManager = new CraftingManager();
+
+        // Remove or comment out the test "WOOD to DIRT" recipe
+        // if (BlockType.WOOD != null && BlockType.DIRT != null) {
+        //     List<List<ItemStack>> woodPattern = new ArrayList<>();
+        //     List<ItemStack> woodRow = new ArrayList<>();
+        //     woodRow.add(new ItemStack(BlockType.WOOD.getId(), 1));
+        //     woodPattern.add(woodRow);
+        //     this.craftingManager.registerRecipe(
+        //         new Recipe("dirt_from_wood", woodPattern, new ItemStack(BlockType.DIRT.getId(), 4))
+        //     );
+        //     System.out.println("Registered test recipe: 1 WOOD -> 4 DIRT");
+        // } else {
+        //     System.err.println("Could not create placeholder recipe: WOOD or DIRT BlockType not found.");
+        // }
+
+        // Recipe 1: Wood Planks
+        // Input: 1 BlockType.WOOD -> Output: 4 BlockType.WOOD_PLANKS
+        List<List<ItemStack>> woodToPlanksPattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD.getId(), 1))
+        );
+        Recipe woodToPlanksRecipe = new Recipe(
+            "wood_to_planks",
+            woodToPlanksPattern,
+            new ItemStack(BlockType.WOOD_PLANKS.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(woodToPlanksRecipe);
+        System.out.println("Registered recipe: WOOD -> WOOD_PLANKS");
+
+        // Recipe 2: Workbench
+        // Input: 4 BlockType.WOOD_PLANKS (2x2) -> Output: 1 BlockType.WORKBENCH
+        List<List<ItemStack>> planksToWorkbenchPattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1))
+        );
+        Recipe planksToWorkbenchRecipe = new Recipe(
+            "planks_to_workbench",
+            planksToWorkbenchPattern,
+            new ItemStack(BlockType.WORKBENCH.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(planksToWorkbenchRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS -> WORKBENCH");
+
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
-        if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler);
+        if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null && this.craftingManager != null) {
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
             // Trigger initial tooltip for the currently selected item
@@ -145,8 +195,22 @@ public class Game {
             }
 
         } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, or InputHandler).");
+            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
             // Handle error appropriately, maybe throw an exception or set inventoryScreen to a safe non-functional state
+        }
+
+        // Initialize WorkbenchScreen
+        if (player != null && player.getInventory() != null && renderer != null && this.uiRenderer != null && this.inputHandler != null && this.craftingManager != null) {
+            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
+        } else {
+            System.err.println("Failed to initialize WorkbenchScreen due to null components.");
+        }
+
+        // Initialize RecipeBookScreen
+        if (this.uiRenderer != null && this.craftingManager != null && getFont() != null) {
+            this.recipeBookScreen = new RecipeBookScreen(this.uiRenderer);
+        } else {
+            System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
     }/**
      * Updates the game state.
@@ -165,32 +229,66 @@ public class Game {
         // Accumulate total time
         totalTimeElapsed += deltaTime;
 
-        // Only update game world if we're in the playing state
-        if (currentState != GameState.PLAYING) {
-            return;
+        // Handle updates based on game state
+        switch (currentState) {
+            case MAIN_MENU -> {
+                // Main menu updates (if any)
+                if (mainMenu != null) {
+                    // mainMenu.update(deltaTime); // If main menu needs updates
+                }
+                return; // Don't update game world
+            }
+            case PLAYING -> {
+                if (paused) { // If game is paused (e.g. by PauseMenu, not by Inventory/Workbench)
+                     // If inventory is visible while game is "playing" but paused by menu, update it
+                    if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                        inventoryScreen.update(deltaTime);
+                    }
+                     // If workbench is visible while game is "playing" but paused by menu, update it
+                    if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                        workbenchScreen.update(deltaTime);
+                    }
+                    return; // Don't update player/world if paused by escape menu
+                }
+                // No 'break;' needed here, execution flows to game world updates
+            }
+            case WORKBENCH_UI, PAUSED -> { // General pause state, might also cover inventory if it sets this
+                // Update relevant UI screens if they are visible
+                if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                    inventoryScreen.update(deltaTime);
+                }
+                if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                    workbenchScreen.update(deltaTime);
+                }
+                if (pauseMenu != null && pauseMenu.isVisible()) {
+                    // pauseMenu.update(deltaTime); // If pause menu has timed elements
+                }
+                 if (recipeBookScreen != null && currentState == GameState.RECIPE_BOOK_UI) { // This specific check seems odd here if RECIPE_BOOK_UI is its own case
+                    recipeBookScreen.update(deltaTime);
+                }
+                // Input handling for these screens is separate.
+                return; // Don't update game world
+            }
+            case RECIPE_BOOK_UI -> {
+                if (recipeBookScreen != null) {
+                    recipeBookScreen.update(deltaTime);
+                }
+                return; // Don't update game world
+            }
+            default -> {
+                return; // Unhandled state
+            }
         }
 
-        // If game is paused, don't update game entities
-        if (paused && !inventoryScreen.isVisible()) { // Allow inventory screen updates even if paused for other reasons
-            // If only pause menu is active, inventory screen doesn't need update.
-            // If inventory is visible, it should update its timers.
-             if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                inventoryScreen.update(deltaTime);
-            }
-            return;
-        } else if (paused && inventoryScreen.isVisible()) {
-            // Game is paused but inventory is open, still update inventory screen
-             if (inventoryScreen != null) {
-                inventoryScreen.update(deltaTime);
-            }
-            // No game world updates below this
-            return;
-        }
+        // --- Game World Updates (only if PLAYING and not paused by menu) ---
 
-
-        // Update inventory screen (handles its own visibility check for rendering, but update logic for timers)
-        if (inventoryScreen != null) {
+        // Update inventory screen (its own update method handles timers etc.)
+        if (inventoryScreen != null) { // Though it might not be visible
             inventoryScreen.update(deltaTime);
+        }
+        // Update workbench screen
+        if (workbenchScreen != null) { // Though it might not be visible
+            workbenchScreen.update(deltaTime);
         }
         
         // Update chat system
@@ -283,10 +381,24 @@ public class Game {
      * Toggles the pause menu visibility.
      */
     public void togglePauseMenu() {
-        paused = !paused;
-        pauseMenu.setVisible(paused);
-        
-        // Cursor visibility is already handled in InputHandler.handleEscapeKey
+        if (pauseMenu == null) return;
+
+        boolean newPauseState = !pauseMenu.isVisible(); // Determine new state based on current visibility
+        pauseMenu.setVisible(newPauseState);
+
+        if (newPauseState) {
+            // If we are opening the pause menu, set state to PAUSED.
+            // setState will handle 'paused' flag and cursor.
+            setState(GameState.PAUSED);
+        } else {
+            // If we are closing the pause menu.
+            // Return to PLAYING state. setState handles 'paused' and cursor.
+            // We assume closing the pause menu means returning to gameplay unless another UI is active.
+            // If another UI was underneath (e.g. inventory), previousGameState logic in setState
+            // or InputHandler's escape hierarchy should manage the transition.
+            // For now, closing pause menu attempts to go to PLAYING.
+            setState(GameState.PLAYING);
+        }
     }
     
     /**
@@ -307,6 +419,13 @@ public class Game {
     public InventoryScreen getInventoryScreen() {
         return inventoryScreen;
     }
+
+    /**
+     * Gets the workbench screen.
+     */
+    public WorkbenchScreen getWorkbenchScreen() {
+        return workbenchScreen;
+    }
     
     /**
      * Gets the input handler.
@@ -322,20 +441,41 @@ public class Game {
         if (inventoryScreen == null) return;
 
         inventoryScreen.toggleVisibility();
-        // If inventory is open, pause the game and show cursor.
-        // If inventory is closed, unpause (if pause menu isn't also up) and hide cursor.
+
         if (inventoryScreen.isVisible()) {
-            paused = true;
-            // Show cursor - this should ideally be handled by a central cursor management in InputHandler or Main
-            // For now, we assume Main or InputHandler will react to isPaused() or a new state like isUiVisible()
-            org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+            // Opening inventory. Game world should pause, cursor visible.
+            // We don't set PLAYING_WITH_INVENTORY_UI as a separate state.
+            // Instead, isPaused() and inventoryScreen.isVisible() conditions are used.
+            // setState might not be strictly necessary if 'paused' and cursor are set here,
+            // but to centralize cursor/pause logic, we can inform setState or just manage directly.
+             this.paused = true; // Game.paused flag
+             org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+             // No specific GameState change, as Inventory is an overlay on PLAYING (or WORKBENCH etc.)
+             // but ensure game logic respects Game.isPaused()
+
         } else {
-            // Only unpause if the pause menu is also not visible
-            if (!pauseMenu.isVisible()) {
-                paused = false;
-                // Hide cursor
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+            // Closing inventory.
+            // The InputHandler.handleEscapeKey now handles closing inventory and determining the next state.
+            // If inventory is closed via 'E' key:
+            // We need to decide what state to return to. If previousGameState was something like RECIPE_BOOK_UI
+            // which might have been open over inventory, we should return there, or to PLAYING if nothing else is layered.
+
+            // If the main PauseMenu is NOT active:
+            if (pauseMenu == null || !pauseMenu.isVisible()) {
+                 // If the current state IS NOT PLAYING, it implies another UI (Workbench, RecipeBook) is active.
+                 // Closing inventory should keep that UI's state (and its paused=true, cursor=visible settings).
+                 // If current state IS PLAYING, then inventory was the primary UI, so unpause.
+                if (this.currentState == GameState.PLAYING) {
+                    this.paused = false;
+                    org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+                    if (this.inputHandler != null) {
+                        this.inputHandler.resetMousePosition();
+                    }
+                }
+                // If currentState is WORKBENCH_UI or RECIPE_BOOK_UI, those states already enforce paused=true and cursor visible.
+                // So, closing inventory under them should not change that.
             }
+            // If pauseMenu *is* active, closing inventory should not affect pauseMenu's paused state or cursor.
         }
     }
     
@@ -350,13 +490,17 @@ public class Game {
      * Sets the current game state.
      */
     public void setState(GameState state) {
-        GameState previousState = this.currentState;
+        // Don't update previousGameState if we are just re-setting the same state
+        // or if the new state is null (should not happen)
+        if (this.currentState != state && state != null) {
+            this.previousGameState = this.currentState;
+        }
         this.currentState = state;
         
         // Handle cursor visibility based on state transitions
         long windowHandle = Main.getWindowHandle();
         if (windowHandle != 0) {
-            if (state == GameState.PLAYING && (previousState == GameState.MAIN_MENU || previousState == GameState.SETTINGS)) {
+            if (state == GameState.PLAYING && (this.previousGameState == GameState.MAIN_MENU || previousState == GameState.SETTINGS)) {
                 // Hide cursor when entering game
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
             } else if ((state == GameState.MAIN_MENU || state == GameState.SETTINGS) && previousState == GameState.PLAYING) {
@@ -365,10 +509,40 @@ public class Game {
             } else if (state == GameState.SETTINGS || state == GameState.MAIN_MENU) {
                 // Ensure cursor is visible for all menu states
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+                paused = true;
+            }
+             else if (state == GameState.PLAYING) { // Covers transitions from WORKBENCH, RECIPE_BOOK, PAUSED to PLAYING
+                 // And also covers inventory being closed (where toggleInventoryScreen itself set paused=false)
+                 // Only hide cursor if no other UI expects it (inventory, workbench etc.)
+                if ((inventoryScreen == null || !inventoryScreen.isVisible()) &&
+                    (workbenchScreen == null || !workbenchScreen.isVisible()) &&
+                    (recipeBookScreen == null || !recipeBookScreen.isVisible()) &&
+                    (pauseMenu == null || !pauseMenu.isVisible())) {
+                    org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+                    paused = false; // Unpause game
+                    if (this.inputHandler != null) { // Reset mouse position to prevent camera jump
+                        this.inputHandler.resetMousePosition();
+                    }
+                }
             }
         }
     }
+
+    /**
+     * Gets the previous game state.
+     * @return The game state before the current one.
+     */
+    public GameState getPreviousGameState() {
+        return this.previousGameState;
+    }
     
+    /**
+     * Gets the recipe book screen.
+     */
+    public RecipeBookScreen getRecipeBookScreen() {
+        return recipeBookScreen;
+    }
+
     /**
      * Gets the main menu.
      */
@@ -402,6 +576,120 @@ public class Game {
      */
     public ChatSystem getChatSystem() {
         return chatSystem;
+    }
+
+    /**
+     * Gets the crafting manager.
+     */
+    public static CraftingManager getCraftingManager() {
+        return getInstance().craftingManager;
+    }
+
+    /**
+     * Gets the game's primary font.
+     * This assumes the font is loaded and available via the Renderer.
+     * @return The Font object, or null if not available.
+     */
+    public Font getFont() {
+        if (this.renderer != null) {
+            return this.renderer.getFont();
+        }
+        return null;
+    }
+
+    /**
+     * Gets the game's texture atlas.
+     * This assumes the texture atlas is loaded and available via the Renderer.
+     * @return The TextureAtlas object, or null if not available.
+     */
+    public TextureAtlas getTextureAtlas() {
+        if (this.renderer != null) {
+            return this.renderer.getTextureAtlas();
+        }
+        return null;
+    }
+
+    /**
+     * Called when the player interacts with a workbench.
+     * This will open the Workbench UI.
+     */
+    public void openWorkbenchScreen() {
+        if (workbenchScreen != null && currentState == GameState.PLAYING && !paused) {
+            setState(GameState.WORKBENCH_UI);
+            workbenchScreen.open();
+            // Cursor visibility and game pause are handled by setState and workbenchScreen.open() logic indirectly
+            // or explicitly in workbenchScreen.handleCloseRequest and setState.
+            System.out.println("Opened Workbench Screen.");
+        } else {
+            System.out.println("Cannot open workbench: Not in PLAYING state, or game paused by menu, or workbenchScreen is null.");
+        }
+    }
+
+    /**
+     * Opens the Recipe Book screen.
+     */
+    public void openRecipeBookScreen() {
+        if (recipeBookScreen == null) {
+            System.out.println("Cannot open RecipeBook: recipeBookScreen is null.");
+            return;
+        }
+
+        boolean allowOpen = false;
+        // Case 1: Workbench UI is active
+        if (currentState == GameState.WORKBENCH_UI) {
+            allowOpen = true;
+        // Case 2: Inventory screen is visible (implies game is PLAYING but effectively paused for this UI)
+        } else if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            allowOpen = true;
+        // Case 3: Actively playing and not paused by the main PauseMenu (Escape key menu)
+        } else if (currentState == GameState.PLAYING && (pauseMenu == null || !pauseMenu.isVisible())) {
+            allowOpen = true;
+        }
+
+        if (allowOpen) {
+            // setState will correctly set this.previousGameState to the current state (e.g., PLAYING, WORKBENCH_UI)
+            // before changing currentState to RECIPE_BOOK_UI.
+            setState(GameState.RECIPE_BOOK_UI);
+            recipeBookScreen.onOpen(); // Initialize/refresh recipe list
+            System.out.println("Opened RecipeBook Screen. Will return to: " + this.previousGameState);
+        } else {
+            String contextDetails = "Current state: " + currentState;
+            if (inventoryScreen != null) {
+                contextDetails += ", InventoryVisible: " + inventoryScreen.isVisible();
+            }
+            if (pauseMenu != null) {
+                contextDetails += ", MainPauseActive: " + pauseMenu.isVisible();
+            }
+            contextDetails += ", Game.paused: " + this.paused;
+            System.out.println("Cannot open RecipeBook: Not in a valid context (" + contextDetails + ").");
+        }
+    }
+
+    /**
+     * Closes the Recipe Book screen and returns to the previous game state.
+     */
+    public void closeRecipeBookScreen() {
+        if (recipeBookScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
+            recipeBookScreen.onClose();
+            setState(previousGameState); // Uses the stored previous state
+            System.out.println("Closed RecipeBook Screen. Returning to: " + previousGameState);
+        }
+    }
+    
+    /**
+     * Closes the workbench screen and returns to the game.
+     */
+    public void closeWorkbenchScreen() {
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            workbenchScreen.close(); // WorkbenchScreen itself will set its visible flag to false
+            // Only transition to PLAYING if no other UI (like pause menu) is forcing a different state.
+            // If pause menu was opened *over* workbench, ESC from workbench should probably reveal pause menu.
+            // For now, assume direct close from workbench returns to PLAYING.
+            if (currentState == GameState.WORKBENCH_UI) {
+                 setState(GameState.PLAYING); // This will handle cursor and unpause
+            }
+            System.out.println("Closed Workbench Screen.");
+        }
     }
     
     /**

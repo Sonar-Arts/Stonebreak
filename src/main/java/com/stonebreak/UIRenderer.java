@@ -1,5 +1,7 @@
 package com.stonebreak;
 
+import java.util.List;
+
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
@@ -34,7 +36,6 @@ import static org.lwjgl.nanovg.NanoVGGL3.nvgCreate;
 import static org.lwjgl.nanovg.NanoVGGL3.nvgDelete;
 import org.lwjgl.system.MemoryStack;
 import static org.lwjgl.system.MemoryStack.stackPush;
-import java.util.List;
 
 public class UIRenderer {
     private long vg;
@@ -942,5 +943,168 @@ public class UIRenderer {
     // Helper method to create NVGColor
     private NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {
         return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, color);
+    }    /**
+     * Calculates the width of a given text string using a specific font and size.
+     * @param text The text to measure.
+     * @param fontSize The size of the font.
+     * @param fontFaceName The name of the font face (e.g., "sans", "minecraft").
+     * @return The width of the text in pixels.
+     */
+    @SuppressWarnings("unused")
+    public float getTextWidth(String text, float fontSize, String fontFaceName) {if (vg == 0 || text == null || text.isEmpty()) {
+            return 0;
+        }
+        try (MemoryStack stack = stackPush()) {
+            nvgFontSize(vg, fontSize);
+            nvgFontFace(vg, fontFaceName); // Use the specified font face
+            // For nvgTextBounds, x and y are 0,0 as we only need the bounds relative to origin
+            float[] bounds = new float[4]; // x, y, width, height of the text bounds
+            org.lwjgl.nanovg.NanoVG.nvgTextBounds(vg, 0, 0, text, bounds);
+            return bounds[2] - bounds[0]; // width is bounds[2] - bounds[0]
+        }
+    }
+ 
+    /**
+     * Renders a simple colored quadrilateral.
+     * @param x X-coordinate
+     * @param y Y-coordinate
+     * @param w Width
+     * @param h Height
+     * @param r Red component (0-1)
+     * @param g Green component (0-1)
+     * @param b Blue component (0-1)
+     * @param a Alpha component (0-1)
+     */
+    public void renderQuad(float x, float y, float w, float h, float r, float g, float b, float a) {
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillColor(vg, nvgRGBA((int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255), NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+    }
+
+    /**
+     * Renders an outline for a rectangle.
+     * @param x X-coordinate
+     * @param y Y-coordinate
+     * @param w Width
+     * @param h Height
+     * @param strokeWidth Width of the outline
+     * @param color Float array for color {r, g, b, a}
+     */
+    public void renderOutline(float x, float y, float w, float h, float strokeWidth, float[] color) {
+        if (color == null || color.length < 4) return;
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgStrokeWidth(vg, strokeWidth);
+            nvgStrokeColor(vg, nvgRGBA((int)(color[0]*255), (int)(color[1]*255), (int)(color[2]*255), (int)(color[3]*255), NVGColor.malloc(stack)));
+            nvgStroke(vg);
+        }
+    }
+
+    /**
+     * Renders an item icon using its block type ID and texture atlas.
+     * @param x X-coordinate
+     * @param y Y-coordinate
+     * @param w Width
+     * @param h Height
+     * @param blockTypeId The ID of the block type for the icon.
+     * @param textureAtlas The texture atlas containing item/block textures.
+     */
+    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
+        if (textureAtlas == null) return;
+
+        BlockType type = BlockType.getById(blockTypeId); // Assumes BlockType.getById() exists
+        if (type == null || type == BlockType.AIR) return;
+
+        // Get texture coordinates for the top face of the block
+        // This example assumes a simple way to get texture coordinates (e.g., type.getTextureCoords("top"))
+        // Adjust based on how TextureAtlas and BlockType actually provide these.
+        // For simplicity, let's assume blockType.getTextureId() gives a direct NanoVG image ID
+        // or that we derive UVs from texture atlas.
+
+        float[] texCoords = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP); // Assuming this method exists in TextureAtlas
+
+        if (texCoords == null) {
+            // Fallback or error, maybe render a placeholder color
+            renderQuad(x, y, w, h, 0.5f, 0.2f, 0.8f, 1f); // Purple placeholder
+            return;
+        }
+
+        // TextureAtlas typically binds its own texture. Here, we need to draw a sub-region of it
+        // using NanoVG's image pattern. We need the atlas's texture ID.
+        int atlasImageId = textureAtlas.getNanoVGImageId(vg); // This method needs to exist in TextureAtlas
+        if (atlasImageId == -1) return;
+
+        try (MemoryStack stack = stackPush()) {
+            NVGPaint paint = NVGPaint.malloc(stack);
+            // sX, sY, sW, sH are the sub-region in the atlas texture.
+            // Angle and alpha are for the pattern itself.
+            // The x,y for imagePattern should be where the top-left of the rendered quad is.
+            // The w,h for imagePattern should be the size of one tile of the texture on screen.
+            // Here, we are scaling the texture snippet to fit the w,h of the icon slot.
+            // So we need to use the UV coordinates to map the sub-image.
+            
+            float uv_x = texCoords[0];
+            float uv_y = texCoords[1];
+            float uv_w = texCoords[4] - texCoords[0]; // Assuming UVs are: x1,y1, x2,y1, x2,y2, x1,y2 ... so texCoords[4] is x2 of the first triangle for a quad.
+            float uv_h = texCoords[5] - texCoords[1]; // Assuming texCoords[5] is y2 of the first triangle for a quad.
+                                                    // This will likely need careful adjustment based on actual texCoord layout.
+            // A simpler TextureAtlas might offer: getSpriteX(blockTypeId), getSpriteY(blockTypeId), getSpriteWidth(), getSpriteHeight() in pixels.
+
+            // If textureAtlas.getTextureWidth() and getHeight() provide dimensions of the atlas texture in pixels:
+            // float atlasTexW = textureAtlas.getTextureWidth(); // Unused
+            // float atlasTexH = textureAtlas.getTextureHeight(); // Unused
+
+            // Top-left of the pattern fill starts at (x,y)
+            // The image sub-region: (uv_x * atlasTexW, uv_y * atlasTexH) of size (uv_w * atlasTexW, uv_h * atlasTexH)
+            // Displayed as an icon of size (w, h)
+            
+            // Setup paint to use only the specific part of the texture atlas
+            // The x, y for nvgImagePattern here are the origin of the pattern IF it were to tile.
+            // Since we want a specific sub-image to be drawn at (x,y) with size (w,h),
+            // we effectively translate the pattern origin.
+            nvgImagePattern(vg,
+                x - uv_x * w / uv_w,  // Adjusted origin X to align the sub-image
+                y - uv_y * h / uv_h,  // Adjusted origin Y to align the sub-image
+                w / uv_w,           // Scaled width of the repeating unit (effective size of full texture if sub-image were 1x1 unit)
+                h / uv_h,           // Scaled height of the repeating unit
+                0,                  // Angle
+                atlasImageId,       // Texture atlas NanoVG image ID
+                1.0f,               // Alpha
+                paint);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillPaint(vg, paint);
+            nvgFill(vg);
+        }
+    }
+
+    /**
+     * Draws text using NanoVG.
+     * @param text The string to draw.
+     * @param x X-coordinate.
+     * @param y Y-coordinate.
+     * @param fontFaceName The NanoVG font face name (e.g., "sans", "minecraft").
+     * @param fontSize The font size.
+     * @param r Red component (0-1).
+     * @param g Green component (0-1).
+     * @param b Blue component (0-1).
+     * @param a Alpha component (0-1).
+     */
+    public void drawText(String text, float x, float y, String fontFaceName, float fontSize, float r, float g, float b, float a) {
+        if (vg == 0 || text == null || text.isEmpty()) {
+            return;
+        }
+        try (MemoryStack stack = stackPush()) {
+            nvgFontSize(vg, fontSize);
+            nvgFontFace(vg, fontFaceName);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE); // Default alignment, adjust if needed per call site
+            nvgFillColor(vg, nvgRGBA((int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255), NVGColor.malloc(stack)));
+            nvgText(vg, x, y, text);
+        }
     }
 }

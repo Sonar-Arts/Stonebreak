@@ -516,7 +516,7 @@ public class Chunk {
         }
         
         // Add texture coordinates
-        float[] texCoords = blockType.getTextureCoords(face);
+        float[] texCoords = blockType.getTextureCoords(BlockType.Face.values()[face]);
         float texX = texCoords[0] / 16.0f;
         float texY = texCoords[1] / 16.0f;
         float texSize = 1.0f / 16.0f;
@@ -731,7 +731,7 @@ public class Chunk {
         float crossSize = 0.45f; // Slightly smaller than full block
         
         // Get texture coordinates for the flower
-        float[] texCoords = blockType.getTextureCoords(0); // Use face 0 texture
+        float[] texCoords = blockType.getTextureCoords(BlockType.Face.TOP); // Use face 0 texture
         float texX = texCoords[0] / 16.0f;
         float texY = texCoords[1] / 16.0f;
         float texSize = 1.0f / 16.0f;

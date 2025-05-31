@@ -5,6 +5,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -13,42 +14,51 @@ import org.joml.Matrix4f;
 import org.joml.Vector3i;
 import org.joml.Vector4f; // Added import for ByteBuffer
 import org.lwjgl.BufferUtils;
-import static org.lwjgl.opengl.GL11.GL_BLEND;
-import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
-import static org.lwjgl.opengl.GL11.GL_LESS;
 import static org.lwjgl.opengl.GL11.GL_ALWAYS;
+import static org.lwjgl.opengl.GL11.GL_BLEND;
+import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
+import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
+import static org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK;
+import static org.lwjgl.opengl.GL11.GL_FLOAT;
+import static org.lwjgl.opengl.GL11.GL_LESS;
 import static org.lwjgl.opengl.GL11.GL_LINES;
 import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
 import static org.lwjgl.opengl.GL11.GL_NEAREST;
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_POINTS;
+import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
 import static org.lwjgl.opengl.GL11.GL_REPEAT;
 import static org.lwjgl.opengl.GL11.GL_RGBA;
 import static org.lwjgl.opengl.GL11.GL_SCISSOR_BOX;
 import static org.lwjgl.opengl.GL11.GL_SCISSOR_TEST;
 import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_BINDING_2D;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_WRAP_S;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_WRAP_T;
 import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
 import static org.lwjgl.opengl.GL11.GL_TRIANGLE_FAN;
+import static org.lwjgl.opengl.GL11.GL_TRUE;
 import static org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE;
 import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
 import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
 import static org.lwjgl.opengl.GL11.glBegin;
 import static org.lwjgl.opengl.GL11.glBindTexture;
 import static org.lwjgl.opengl.GL11.glBlendFunc;
+import static org.lwjgl.opengl.GL11.glColorMask;
 import static org.lwjgl.opengl.GL11.glDeleteTextures;
+import static org.lwjgl.opengl.GL11.glDepthFunc;
 import static org.lwjgl.opengl.GL11.glDepthMask;
 import static org.lwjgl.opengl.GL11.glDepthFunc;
 import static org.lwjgl.opengl.GL11.glDisable;
 import static org.lwjgl.opengl.GL11.glDrawArrays;
 import static org.lwjgl.opengl.GL11.glDrawElements;
-import static org.lwjgl.opengl.GL11.glEnable;
+import static org.lwjgl.opengl.GL11.glEnable; // Added for glGetBooleanv
 import static org.lwjgl.opengl.GL11.glEnd;
 import static org.lwjgl.opengl.GL11.glGenTextures;
+import static org.lwjgl.opengl.GL11.glGetBooleanv;
 import static org.lwjgl.opengl.GL11.glGetIntegerv;
 import static org.lwjgl.opengl.GL11.glIsEnabled;
 import static org.lwjgl.opengl.GL11.glPointSize;
@@ -61,8 +71,20 @@ import static org.lwjgl.opengl.GL11.glViewport;
 import static org.lwjgl.opengl.GL11.glColorMask;
 import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import org.lwjgl.opengl.GL13;
+import static org.lwjgl.opengl.GL13.GL_ACTIVE_TEXTURE;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE0; // Added import for GL_ACTIVE_TEXTURE
+import static org.lwjgl.opengl.GL13.glActiveTexture;
+import static org.lwjgl.opengl.GL14.GL_BLEND_DST_ALPHA;
+import static org.lwjgl.opengl.GL14.GL_BLEND_DST_RGB;
+import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_ALPHA;
+import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_RGB;
+import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
 import org.lwjgl.opengl.GL20;
+import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM; // For originalDepthMask comparison
 import org.lwjgl.opengl.GL30;
+import static org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING;
+import org.lwjgl.system.MemoryStack;
+
 
 /**
  * Handles rendering of the world and UI elements.
@@ -1160,22 +1182,85 @@ public class Renderer {
             return;
         }
 
+        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
+        if (type == BlockType.ROSE || type == BlockType.DANDELION) {
+            drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
+            return;
+        }
+
+        // --- Save current GL state ---
         // --- Save current GL state ---
         boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        int[] originalViewport = new int[4];
-        glGetIntegerv(GL_VIEWPORT, originalViewport);
+        boolean cullFaceWasEnabled = glIsEnabled(GL_CULL_FACE);
         boolean scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
+
+        int originalShaderProgram;
+        int originalVao;
+        int originalActiveTexture;
+        int originalTextureBinding2D;
+        boolean originalDepthMask;
+        int originalBlendSrcRgb, originalBlendDstRgb, originalBlendSrcAlpha, originalBlendDstAlpha;
+
+        int[] originalViewport = new int[4];
         int[] originalScissorBox = new int[4];
-        if (scissorWasEnabled) {
-            glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) { // Use fully qualified MemoryStack here for clarity
+            IntBuffer tempInt = stack.mallocInt(1);
+
+            glGetIntegerv(GL_CURRENT_PROGRAM, tempInt);
+            originalShaderProgram = tempInt.get(0);
+            tempInt.clear();
+
+            glGetIntegerv(GL_VERTEX_ARRAY_BINDING, tempInt);
+            originalVao = tempInt.get(0);
+            tempInt.clear();
+
+            glGetIntegerv(GL_ACTIVE_TEXTURE, tempInt); // GL_ACTIVE_TEXTURE is from GL13, correctly used.
+            originalActiveTexture = tempInt.get(0);
+            tempInt.clear();
+
+            // Assuming operations are on GL_TEXTURE0, save its binding
+            glActiveTexture(GL_TEXTURE0); // glActiveTexture is from GL13
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, tempInt); // GL_TEXTURE_BINDING_2D from GL11
+            originalTextureBinding2D = tempInt.get(0);
+            tempInt.clear();
+            
+            ByteBuffer tempByte = stack.malloc(1); // ByteBuffer from java.nio
+            glGetBooleanv(GL_DEPTH_WRITEMASK, tempByte); // GL_DEPTH_WRITEMASK from GL11
+            originalDepthMask = tempByte.get(0) == GL_TRUE; // GL_TRUE from GL11
+            tempByte.clear();
+
+            glGetIntegerv(GL_VIEWPORT, originalViewport); // GL_VIEWPORT from GL11
+            if (scissorWasEnabled) {
+                glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox); // GL_SCISSOR_BOX from GL11
+            }
+
+            if (blendWasEnabled) {
+                // These constants GL_BLEND_SRC_RGB etc. are now from GL14
+                glGetIntegerv(GL_BLEND_SRC_RGB, tempInt); originalBlendSrcRgb = tempInt.get(0); tempInt.clear();
+                glGetIntegerv(GL_BLEND_DST_RGB, tempInt); originalBlendDstRgb = tempInt.get(0); tempInt.clear();
+                glGetIntegerv(GL_BLEND_SRC_ALPHA, tempInt); originalBlendSrcAlpha = tempInt.get(0); tempInt.clear();
+                glGetIntegerv(GL_BLEND_DST_ALPHA, tempInt); originalBlendDstAlpha = tempInt.get(0); tempInt.clear();
+            } else {
+                // Default values if blend was not enabled, GL_SRC_ALPHA and GL_ONE_MINUS_SRC_ALPHA are from GL11
+                originalBlendSrcRgb = GL_SRC_ALPHA;
+                originalBlendDstRgb = GL_ONE_MINUS_SRC_ALPHA;
+                originalBlendSrcAlpha = GL_SRC_ALPHA;
+                originalBlendDstAlpha = GL_ONE_MINUS_SRC_ALPHA;
+            }
         }
         
-        // Store current matrices to restore later
-        float[] projectionMatrixBuffer = new float[16];
-        float[] viewMatrixBuffer = new float[16];
-        shaderProgram.getUniformMatrix4fv("projectionMatrix", projectionMatrixBuffer);
-        shaderProgram.getUniformMatrix4fv("viewMatrix", viewMatrixBuffer);
+        // Store current shader program's matrices (if bound)
+        // This relies on shaderProgram being the active one, which is usually true before calling this
+        // Matrix4f previousProjectionMatrix = new Matrix4f(); // Unused
+        // Matrix4f previousViewMatrix = new Matrix4f(); // Unused
+        if (originalShaderProgram != 0) { // Only get if a program was bound
+            // It's complex to get arbitrary shader's uniforms if it's not the `shaderProgram` instance.
+            // This method should assume `shaderProgram` is what we're working with if we need to restore its specific uniforms.
+            // The GL state backup for GL_CURRENT_PROGRAM is the general solution.
+            // For now, we'll operate under the assumption this method manipulates `this.shaderProgram` uniforms.
+        }
 
         // --- Setup GL state for 3D item rendering ---
         // Calculate viewport coordinates (convert top-left to bottom-left origin)
@@ -1236,40 +1321,48 @@ public class Renderer {
         GL30.glDeleteVertexArrays(cubeVao);
 
         // --- Restore previous GL state ---
-        // Reset shader uniforms
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        
-        // Restore original matrices (from values we stored earlier)
-        Matrix4f originalProjection = new Matrix4f();
-        originalProjection.set(projectionMatrixBuffer);
-        Matrix4f originalView = new Matrix4f();
-        originalView.set(viewMatrixBuffer);
-        shaderProgram.setUniform("projectionMatrix", originalProjection);
-        shaderProgram.setUniform("viewMatrix", originalView);
-        
-        // Restore viewport
+        // Reset shader specific to this method's item drawing
+        shaderProgram.setUniform("u_transformUVsForItem", false); // This belongs to this.shaderProgram
+
+        // Restore viewport and scissor
         glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
-        
-        // Restore scissor state
         if (scissorWasEnabled) {
             glScissor(originalScissorBox[0], originalScissorBox[1], originalScissorBox[2], originalScissorBox[3]);
         } else {
             glDisable(GL_SCISSOR_TEST);
         }
 
-        // Restore depth test state
-        if (!depthTestWasEnabled) {
-            glDisable(GL_DEPTH_TEST);
+        // Restore GL states
+        GL20.glUseProgram(originalShaderProgram);
+        GL30.glBindVertexArray(originalVao);
+
+        glActiveTexture(GL_TEXTURE0); // glActiveTexture from GL13
+        glBindTexture(GL_TEXTURE_BINDING_2D, originalTextureBinding2D); // glBindTexture from GL11, GL_TEXTURE_BINDING_2D from GL11
+        glActiveTexture(originalActiveTexture); // Restore previously active texture unit
+
+        if (cullFaceWasEnabled) {
+            glEnable(GL_CULL_FACE);
+        } else {
+            glDisable(GL_CULL_FACE);
         }
-        
-        // Restore blend state
+
+        glDepthMask(originalDepthMask);
+
         if (blendWasEnabled) {
             glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            // glBlendFuncSeparate is now statically imported from GL14
+            glBlendFuncSeparate(originalBlendSrcRgb, originalBlendDstRgb, originalBlendSrcAlpha, originalBlendDstAlpha);
+        } else {
+            glDisable(GL_BLEND);
         }
         
-        // Unbind texture
-        glBindTexture(GL_TEXTURE_2D, 0);
+        if (depthTestWasEnabled) {
+             glEnable(GL_DEPTH_TEST); // Ensure depth test is restored if it was on
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+        // Unbind texture used by this specific function to avoid interference if it was on unit 0
+        // This is implicitly handled by restoring originalTextureBinding2D on GL_TEXTURE0
     }
 
     private void drawFlat2DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
@@ -1352,8 +1445,6 @@ public class Renderer {
         
         // Restore viewport
         glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
-        
-        // Restore scissor state
         if (scissorWasEnabled) {
             glScissor(originalScissorBox[0], originalScissorBox[1], originalScissorBox[2], originalScissorBox[3]);
         } else {
@@ -1364,34 +1455,74 @@ public class Renderer {
         if (depthTestWasEnabled) {
             glEnable(GL_DEPTH_TEST);
         }
-        if (!blendWasEnabled) {
+        
+        // Restore blend state
+        if (blendWasEnabled) {
+            glEnable(GL_BLEND);
+            // glBlendFuncSeparate is now statically imported from GL14
+            glBlendFuncSeparate(originalBlendSrcRgb, originalBlendDstRgb, originalBlendSrcAlpha, originalBlendDstAlpha);
+        } else {
             glDisable(GL_BLEND);
         }
+        
+        if (depthTestWasEnabled) {
+             glEnable(GL_DEPTH_TEST); // Ensure depth test is restored if it was on
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+        // Unbind texture used by this specific function to avoid interference if it was on unit 0
+        // This is implicitly handled by restoring originalTextureBinding2D on GL_TEXTURE0
     }
 
-    /**
-     * Creates a cube VAO with proper UV coordinates for each face of the specified block type.
-     * This allows blocks like grass to show different textures on different faces.
-     */
-    private int createBlockSpecificCube(BlockType blockType) {
-        // Get texture coordinates for each face
-        float[] topTexCoords = blockType.getTextureCoords(0);    // Top face
-        float[] bottomTexCoords = blockType.getTextureCoords(1); // Bottom face
-        float[] frontTexCoords = blockType.getTextureCoords(2);  // Front side
-        float[] backTexCoords = blockType.getTextureCoords(3);   // Back side
-        float[] rightTexCoords = blockType.getTextureCoords(4);  // Right side
-        float[] leftTexCoords = blockType.getTextureCoords(5);   // Left side
+    private void drawFlat2DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
+        // Save current GL state
+        boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        int[] originalViewport = new int[4];
+        glGetIntegerv(GL_VIEWPORT, originalViewport);
+        boolean scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
+        int[] originalScissorBox = new int[4];
+        if (scissorWasEnabled) {
+            glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
+        }
         
-        // Convert texture atlas coordinates to UV coordinates
-        float[] topUVs = textureAtlas.getUVCoordinates((int)topTexCoords[0], (int)topTexCoords[1]);
-        float[] bottomUVs = textureAtlas.getUVCoordinates((int)bottomTexCoords[0], (int)bottomTexCoords[1]);
-        float[] frontUVs = textureAtlas.getUVCoordinates((int)frontTexCoords[0], (int)frontTexCoords[1]);
-        float[] backUVs = textureAtlas.getUVCoordinates((int)backTexCoords[0], (int)backTexCoords[1]);
-        float[] rightUVs = textureAtlas.getUVCoordinates((int)rightTexCoords[0], (int)rightTexCoords[1]);
-        float[] leftUVs = textureAtlas.getUVCoordinates((int)leftTexCoords[0], (int)leftTexCoords[1]);
+        // Store current matrices to restore later
+        float[] projectionMatrixBuffer = new float[16];
+        float[] viewMatrixBuffer = new float[16];
+        shaderProgram.getUniformMatrix4fv("projectionMatrix", projectionMatrixBuffer);
+        shaderProgram.getUniformMatrix4fv("viewMatrix", viewMatrixBuffer);
+
+        // Setup for 2D rendering
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        // Build vertices with correct UV coordinates for each face
-        // Format: Position (3f), Normal (3f), UV (2f) - 8 floats per vertex
+        // Set up orthographic projection for the slot area
+        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
+        Matrix4f identityView = new Matrix4f().identity();
+        
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", orthoProjection);
+        shaderProgram.setUniform("viewMatrix", identityView);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("texture_sampler", 0);
+
+        // Get texture coordinates for the flower
+        float[] uvCoords = textureAtlas.getUVCoordinates(type.getAtlasX(), type.getAtlasY());
+        
+        // Add padding to center the flower texture within the slot
+        int padding = 6;
+        float textureX = screenSlotX + padding;
+        float textureY = screenSlotY + padding;
+        float textureWidth = screenSlotWidth - (padding * 2);
+        float textureHeight = screenSlotHeight - (padding * 2);
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        
+        // Create vertices for the quad in screen coordinates
         float[] vertices = {
             // Front face (+Z) - Using front texture
             -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[3], // Bottom-left

@@ -68,6 +68,18 @@ public class ItemStack {
         return 64; 
     }
 
+/**
+     * Checks if this ItemStack can be stacked with another ItemStack.
+     * They can stack if they are of the same block type and this stack is not full.
+     * @param other The other ItemStack to check against.
+     * @return true if they can stack, false otherwise.
+     */
+    public boolean canStackWith(ItemStack other) {
+        if (other == null || other.isEmpty() || this.isEmpty()) {
+            return false;
+        }
+        return this.blockTypeId == other.blockTypeId && this.count < getMaxStackSize();
+    }
     /**
      * Creates a new ItemStack instance if this one is not empty, otherwise returns null.
      * Useful for preventing modification of internal inventory ItemStacks directly.

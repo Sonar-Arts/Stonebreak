@@ -1,8 +1,31 @@
 package com.stonebreak;
 
-import static org.lwjgl.glfw.GLFW.*;
-import org.joml.Vector2f;
 import java.util.Arrays;
+
+import org.joml.Vector2f;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_1;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_T; // Kept for Chat
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LAST;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
+import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
+import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
+import static org.lwjgl.glfw.GLFW.glfwGetKey;
+import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
+import static org.lwjgl.glfw.GLFW.glfwSetScrollCallback;
 
 /**
  * Handles player input for movement and interaction.
@@ -35,6 +58,10 @@ public class InputHandler {
     
     // Track which buttons were pressed to optimize clearing
     private boolean[] buttonWasPressed = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
+    // private boolean recipeBookKeyPressed = false; // Removed for Recipe Book Button
+    private double scrollYOffset = 0.0;
+    private boolean[] keyJustPressed = new boolean[512]; // Assuming a max key code for simplicity
+    private boolean[] keyPressedState = new boolean[512]; // Tracks current GLFW state
     
     public InputHandler(long window) {
         this.window = window;
@@ -70,6 +97,23 @@ public class InputHandler {
                 buttonWasPressed[i] = false;
             }
         }
+        Arrays.fill(keyJustPressed, false); // Clear just pressed state for keys
+
+        // Poll all relevant keys to update keyPressedState and keyJustPressed
+        // This is a simplified polling example. A more robust system might use callbacks for all keys.
+        // For RecipeBookScreen, we care about ESCAPE and BACKSPACE for now.
+        updateSpecificKeyState(GLFW_KEY_ESCAPE);
+        updateSpecificKeyState(GLFW_KEY_BACKSPACE);
+        // Add other keys here if needed for isKeyPressedOnce elsewhere
+
+    }
+
+    private void updateSpecificKeyState(int key) {
+        boolean currentlyPressed = glfwGetKey(window, key) == GLFW_PRESS;
+        if (currentlyPressed && !keyPressedState[key]) {
+            keyJustPressed[key] = true;
+        }
+        keyPressedState[key] = currentlyPressed;
     }
 
     public void handleInput(Player player) {
@@ -89,22 +133,33 @@ public class InputHandler {
                 // Chat input is handled via the key callback methods
                 return;
             }
-            
-            // Handle escape key for pause menu
-            handleEscapeKey();
-            
-            // Handle inventory key
-            handleInventoryKey();
-            
-            // Handle chat key
-            handleChatKey();
+
+            // Handle system-level toggles first, as they might change the active UI
+            handleEscapeKey();      // Toggles pauseMenu and game 'paused' state, sets cursor
+            handleInventoryKey();   // Toggles inventoryScreen, game 'paused' state, sets cursor via Game.toggleInventoryScreen
+            handleChatKey();        // Opens chatSystem, sets cursor
+
+            // Now check which UI, if any, has primary input focus
+            GameState currentGameState = Game.getInstance().getState();
 
             // Cache expensive calls to avoid repeated method calls
             Game gameInstance = Game.getInstance();
             InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();
             boolean isGamePaused = gameInstance.isPaused();
-            
-            // Handle inventory screen mouse input if visible
+                        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+            RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+
+            // UI screens take precedence for input if active
+            if (currentGameState == GameState.RECIPE_BOOK_UI && recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                recipeBookScreen.handleInput(this);
+                return; // Recipe Book UI has full input control
+            }
+            if (currentGameState == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
+                workbenchScreen.handleInput(this);
+                return; // Workbench UI has full input control
+            }
+            // Player inventory screen: if it's visible, it means we are in "PLAYING" state but with UI up.
+            // Game.isPaused() will be true.
             if (inventoryScreen != null && inventoryScreen.isVisible()) {
                 // Cache window dimensions to avoid repeated calls
                 int windowWidth = Game.getWindowWidth();
@@ -168,30 +223,54 @@ public class InputHandler {
      * Handle the escape key for toggling the pause menu.
      */
     private void handleEscapeKey() {
-        boolean isEscapePressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        
-        // If key was just pressed (not held)
-        if (isEscapePressed && !escapeKeyPressed) {
-            escapeKeyPressed = true;
-            
-            // Don't open pause menu if chat is open
-            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        boolean isEscapePressedNow = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+
+        if (isEscapePressedNow && !escapeKeyPressed) {
+            escapeKeyPressed = true; // Mark as pressed to prevent repeated actions per frame
+
+            Game game = Game.getInstance();
+            ChatSystem chatSystem = game.getChatSystem();
+            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+            InventoryScreen inventoryScreen = game.getInventoryScreen();
+            // PauseMenu pauseMenu = game.getPauseMenu(); // Get the PauseMenu instance // Removed as unused
+
+            // Priority:
+            // 1. Close Chat (already handled in its own key input)
             if (chatSystem != null && chatSystem.isOpen()) {
+                // Chat's handleKeyInput calls chatSystem.closeChat() and handles cursor itself
+                // No further action here if chat handles escape.
                 return;
             }
-            
-            Game.getInstance().togglePauseMenu();
-            
-            // Toggle cursor visibility when pausing/unpausing
-            if (Game.getInstance().isPaused()) {
-                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            } else {
-                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                // Reset first mouse to avoid camera jump when returning to game
-                resetMousePosition();
+
+            // 2. Close Recipe Book
+            if (recipeBookScreen != null && recipeBookScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
+                game.closeRecipeBookScreen(); // This should set state and handle cursor via Game.setState
+                return; // Action taken
             }
-        } else if (!isEscapePressed) {
-            escapeKeyPressed = false;
+
+            // 3. Close Workbench
+            if (workbenchScreen != null && workbenchScreen.isVisible() && game.getState() == GameState.WORKBENCH_UI) {
+                workbenchScreen.handleCloseRequest(); // Workbench handles its own close logic which calls game.closeWorkbenchScreen
+                return; // Action taken
+            }
+
+            // 4. Close Inventory
+            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                // This covers case where Inventory is open directly, or under Recipe Book if Recipe Book was closed in a prior step this frame
+                game.toggleInventoryScreen(); // This toggles visibility and handles pause/cursor
+                return; // Action taken
+            }
+            
+            // 5. Toggle Pause Menu (if no other screen was closed by Escape above)
+            // No specific UI screen active, so toggle the main pause menu
+            game.togglePauseMenu(); // This will manage paused state and PauseMenu visibility
+
+            // Cursor and game state for pause menu are handled in togglePauseMenu and/or setState
+            // No need for direct GLFW calls here, rely on game.setState and game.togglePauseMenu
+
+        } else if (!isEscapePressedNow) {
+            escapeKeyPressed = false; // Reset when key is released
         }
     }
 
@@ -242,6 +321,9 @@ public class InputHandler {
             chatKeyPressed = false;
         }
     }
+ 
+    // private void handleRecipeBookKey() { ... } // Method removed
+ 
       private void handleMouseLook(float xOffset, float yOffset) {
         // Only process mouse movement if the game is not paused and chat is not open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
@@ -278,24 +360,36 @@ public class InputHandler {
             return;
         }
 
-        // Existing logic for game interactions based on clicks:
-        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-        if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            // Inventory screen handles its own clicks if visible via handleMouseInput
-            // which is called from this class's handleInput method.
-            // We might still want to pass the raw click for its internal logic if not consumed.
-            // For now, handleMouseInput calls inventoryScreen.handleMouseInput which uses isMouseButtonPressed.
-            // This processMouseButton is more for updating the state that isMouseButtonPressed reads.
-            return; // Let inventory screen handle it if it's visible
+        // If a UI screen is active, it should handle its own mouse clicks.
+        // Prevent game world interactions if a UI is up.
+        // Note: handleInput methods for screens are responsible for their internal click logic using isMouseButtonPressed etc.
+        // This processMouseButton method updates the state for those checks.
+        // The 'return' here stops further processing for THIS mouse event in THIS method (e.g., world interaction).
+
+        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeBookScreen != null && recipeBookScreen.isVisible() && Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
+            // RecipeBookScreen.handleInput should manage its clicks. This prevents world clicks.
+            return;
         }
         
-        // If pause menu is active, it might handle clicks
+        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+        if (workbenchScreen != null && workbenchScreen.isVisible() && Game.getInstance().getState() == GameState.WORKBENCH_UI) {
+            // WorkbenchScreen.handleInput should manage its clicks. This prevents world clicks.
+            return;
+        }
+
+        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
+        if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            // InventoryScreen.handleMouseInput manages its clicks. This prevents world clicks.
+            return;
+        }
+        
+        // If pause menu is active, it handles clicks for its buttons
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
-        if (pauseMenu != null && pauseMenu.isVisible()) {
+        if (pauseMenu != null && pauseMenu.isVisible()) { // Main pause menu (Escape)
             if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
                 UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
                 if (uiRenderer != null) {
-                    // Check resume button
                     if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
                         Game.getInstance().togglePauseMenu(); // Resume the game
                     }
@@ -319,10 +413,10 @@ public class InputHandler {
                     }
                 }
             }
-            return; // Pause menu handled the click (or ignored it)
+            return; // Pause menu handled or ignored the click
         }
 
-        // If game is not paused by menu and inventory is not open, handle world interaction
+        // If game is not paused by any UI or the main pause menu, handle world interaction
         if (!Game.getInstance().isPaused()) {
             if (action == GLFW_PRESS) { // Only react on initial press for world actions
                 Player player = Game.getPlayer();
@@ -331,8 +425,24 @@ public class InputHandler {
                         player.startAttackAnimation();
                         // Block breaking is now handled continuously in handleInput
                     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-                        player.startAttackAnimation(); // Also animate when placing blocks like Minecraft
-                        player.placeBlock();
+                        player.startAttackAnimation(); // Animate for interaction attempts as well
+
+                        // Raycast to see what block is being targeted
+                        org.joml.Vector3i targetedBlockPos = player.raycast();
+                        if (targetedBlockPos != null) {
+                            BlockType targetedBlockType = Game.getWorld().getBlockAt(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z);
+                            if (targetedBlockType == BlockType.WORKBENCH) {
+                                // Interacted with a Workbench
+                                System.out.println("Player right-clicked on a Workbench block."); // Keep for clarity
+                                Game.getInstance().openWorkbenchScreen();
+                            } else {
+                                // Not a workbench, proceed with normal block placement
+                                player.placeBlock();
+                            }
+                        } else {
+                            // Targeting air or out of range, try to place block (normal behavior)
+                            player.placeBlock();
+                        }
                     }
                 }
             }
@@ -363,6 +473,13 @@ public class InputHandler {
         }
         
         setSelectedHotbarSlot(newSelectedIndex);
+        this.scrollYOffset = 0; // Reset scroll after handling
+    }
+
+    public double getAndResetScrollY() {
+        double offset = this.scrollYOffset;
+        this.scrollYOffset = 0.0;
+        return offset;
     }
     
     // Renamed from selectBlockType and updated logic
@@ -494,10 +611,8 @@ public class InputHandler {
             // When chat is open, only process chat-related keys
             if (action == GLFW_PRESS || action == GLFW_REPEAT) {
                 switch (key) {
-                    case GLFW_KEY_BACKSPACE:
-                        chatSystem.handleBackspace();
-                        break;
-                    case GLFW_KEY_ENTER:
+                    case GLFW_KEY_BACKSPACE -> chatSystem.handleBackspace();
+                    case GLFW_KEY_ENTER -> {
                         chatSystem.handleEnter();
                         // Hide cursor when chat closes
                         if (!chatSystem.isOpen()) {
@@ -505,24 +620,49 @@ public class InputHandler {
                             // Reset first mouse to avoid camera jump
                             resetMousePosition();
                         }
-                        break;
-                    case GLFW_KEY_ESCAPE:
+                    }
+                    case GLFW_KEY_ESCAPE -> {
                         chatSystem.closeChat();
                         // Hide cursor when chat closes
                         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                         // Reset first mouse to avoid camera jump
                         resetMousePosition();
-                        break;
-                    case GLFW_KEY_T:
+                    }
+                    case GLFW_KEY_T -> {
                         // T key does nothing when chat is already open
-                        break;
+                    }
                 }
             }
             // Block all other key processing when chat is open
-            return;
+            // Removed unnecessary return statement here
         }
         
         // If chat is not open, handle other key inputs (movement, etc.)
         // This allows the normal input handling to continue
     }
+
+    /**
+     * Checks if a key was just pressed in this frame (edge detection).
+     * Assumes prepareForNewFrame and updateSpecificKeyState (or a general key polling loop) has been called.
+     * @param key The GLFW key code.
+     * @return True if the key was pressed down in this frame, false otherwise.
+     */
+    public boolean isKeyPressedOnce(int key) {
+        if (key >= 0 && key < keyJustPressed.length) {
+            return keyJustPressed[key];
+        }
+        return false;
+    }
+     
+    /**
+     * Checks if a key is currently held down.
+     * @param key The GLFW key code.
+     * @return True if the key is currently pressed, false otherwise.
+     */
+    public boolean isKeyDown(int key) {
+        // For general "is down" state, direct GLFW query is fine,
+        // or use keyPressedState if already polling.
+        return glfwGetKey(window, key) == GLFW_PRESS;
+    }
+
 } // This is the final closing brace for the InputHandler class

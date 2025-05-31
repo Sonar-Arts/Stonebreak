@@ -1252,7 +1252,7 @@ public class Player {      // Player settings
      * Uses a smaller step size for better precision.
      * @return The position of the first non-air block hit by ray, or null if no block was hit.
      */
-    private Vector3i raycast() {
+    public Vector3i raycast() { // Changed to public
         Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
         Vector3f rayDirection = camera.getFront();
         
@@ -1532,5 +1532,56 @@ public class Player {      // Player settings
      */
     public boolean isFlying() {
         return isFlying;
+    }
+
+    /**
+     * Attempts to drop an item as a block in front of the player.
+     * @param itemToDrop The ItemStack to drop.
+     * @return true if the item was successfully dropped, false otherwise.
+     */
+    public boolean attemptDropItemInFront(ItemStack itemToDrop) {
+        if (itemToDrop == null || itemToDrop.isEmpty()) {
+            return false;
+        }
+
+        BlockType blockToPlace = BlockType.getById(itemToDrop.getBlockTypeId());
+        if (blockToPlace == null || blockToPlace == BlockType.AIR) {
+            return false; // Cannot drop non-block items or air
+        }
+
+        // Calculate a position 1 block in front of the player at foot level
+        Vector3f front = camera.getFront();
+        Vector3i dropPos = new Vector3i(
+                (int) Math.floor(position.x + front.x),
+                (int) Math.floor(position.y), // At foot level
+                (int) Math.floor(position.z + front.z)
+        );
+
+        // Check if the target drop position is AIR and doesn't intersect with the player
+        BlockType blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
+        if (blockAtDropPos == BlockType.AIR && !intersectsWithPlayer(dropPos)) {
+            // Also ensure there is a solid block below the drop position to prevent floating items
+            BlockType blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
+            if (!blockBelowDropPos.isSolid()) {
+                // Try one block lower if initial position has no support
+                dropPos.y = dropPos.y -1;
+                blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
+                 if (blockAtDropPos != BlockType.AIR || intersectsWithPlayer(dropPos)) {
+                    return false; // Lower position is also not suitable
+                }
+                 blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
+                 if (!blockBelowDropPos.isSolid()){
+                    return false; // Still no solid ground below
+                 }
+            }
+
+            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
+                if (blockToPlace == BlockType.SNOW) {
+                    world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
+                }
+                System.out.println("Player dropped item " + blockToPlace.getName() + " at " + dropPos.x + ", " + dropPos.y + ", " + dropPos.z);
+                return true;
+            }
+        }        return false;
     }
 }

@@ -26,13 +26,13 @@ import static org.lwjgl.glfw.GLFW.glfwGetWindowSize;
 import static org.lwjgl.glfw.GLFW.glfwInit;
 import static org.lwjgl.glfw.GLFW.glfwMakeContextCurrent;
 import static org.lwjgl.glfw.GLFW.glfwPollEvents;
+import static org.lwjgl.glfw.GLFW.glfwSetCharCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetCursorPosCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetErrorCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetFramebufferSizeCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.glfwSetKeyCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetMouseButtonCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetCharCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowPos;
 import static org.lwjgl.glfw.GLFW.glfwShowWindow;
 import static org.lwjgl.glfw.GLFW.glfwSwapBuffers;
@@ -188,20 +188,25 @@ public class Main {
                 inputHandler.processMouseButton(button, action, mods);
             }
         });
-        
-        // Setup cursor position callback for menu navigation and player mouse look
+          // Setup cursor position callback for menu navigation and player mouse look
         glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
             Game game = Game.getInstance();
+            // Always update InputHandler's mouse position if it exists,
+            // as various UI screens and game states might need it.
+            if (inputHandler != null) {
+                inputHandler.updateMousePosition((float)xpos, (float)ypos);
+            }
+
+            // Specific handling for main menu hover, which might not use InputHandler directly
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
-                // Handle main menu mouse hover
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
-            } else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
-                // Handle settings menu mouse hover
-                game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             } else if (game.getState() == GameState.PLAYING && inputHandler != null) {
                 // Handle player mouse look by updating InputHandler's mouse position
                 inputHandler.updateMousePosition((float)xpos, (float)ypos);
             }
+            // Note: Player mouse look during GameState.PLAYING is handled by
+            // player.processMouseMovement which uses InputHandler's deltaMouse values,
+            // which are correctly updated if updateMousePosition is called.
         });
         
         // Get the thread stack and push a new frame
@@ -305,8 +310,7 @@ public class Main {
             
             // Update Game singleton (for delta time)
             Game.getInstance().update();
-            
-            // Handle input based on game state
+              // Handle input based on game state
             Game game = Game.getInstance();
             if (game.getState() == GameState.MAIN_MENU) {
                 // Handle main menu input
@@ -318,18 +322,26 @@ public class Main {
                 if (game.getSettingsMenu() != null) {
                     game.getSettingsMenu().handleInput(window);
                 }
-            } else if (game.getState() == GameState.PLAYING) {
-                // Handle in-game input
+            } else if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.WORKBENCH_UI || game.getState() == GameState.RECIPE_BOOK_UI ) {
+                // Handle in-game input if not a purely modal UI like MainMenu
+                // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
                 if (inputHandler != null) {
+                    // Pass input to screens that might need it, even if game world is paused
+                    if (game.getRecipeBookScreen() != null && game.getRecipeBookScreen().isVisible()) {
+                         game.getRecipeBookScreen().handleInput(inputHandler);
+                    } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
+                         game.getWorkbenchScreen().handleInput(inputHandler);
+                    } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
+                         game.getInventoryScreen().handleMouseInput(width, height); // InventoryScreen has specific mouse handling for drag/drop
+                    }
+                    // General player input handling (movement, interaction) happens if not paused for UI.
+                    // InputHandler's own logic + Game.update() decides if player/world updates proceed.
                     inputHandler.handleInput(player);
                 }
             }
-            
-            // Update game state (only if playing)
-            if (game.getState() == GameState.PLAYING) {
-                update();
-            }
-            
+            // Game.update() itself decides what parts of the game state to update (e.g. only player if playing)
+            // update(); // Game.getInstance().update() is already called above and handles state-specific updates
+
             // Render frame
             render();
             
@@ -357,37 +369,21 @@ public class Main {
                 }
             }
         }
-    }
-      private void update() {
-        // Update the player
-        player.update();
-        
-        // Update the world
-        world.update();
-        
-        // Display debug information
-        Game.displayDebugInfo();
-    }
-    
-    private void render() {
+    }    private void render() {
         // Clear the framebuffer
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         Game game = Game.getInstance();
+        UIRenderer uiRenderer = game.getUIRenderer(); // Get UIRenderer once
         
         if (game.getState() == GameState.MAIN_MENU) {
-            // Render main menu using NanoVG
-            UIRenderer uiRenderer = game.getUIRenderer();
-            if (uiRenderer != null) {
+            if (uiRenderer != null && game.getMainMenu() != null) {
                 uiRenderer.beginFrame(width, height, 1.0f);
-                if (game.getMainMenu() != null) {
-                    game.getMainMenu().render(width, height);
-                }
+                game.getMainMenu().render(width, height);
                 uiRenderer.endFrame();
             }
         } else if (game.getState() == GameState.SETTINGS) {
             // Render settings menu using NanoVG
-            UIRenderer uiRenderer = game.getUIRenderer();
             if (uiRenderer != null) {
                 uiRenderer.beginFrame(width, height, 1.0f);
                 if (game.getSettingsMenu() != null) {
@@ -395,28 +391,67 @@ public class Main {
                 }
                 uiRenderer.endFrame();
             }
-        } else if (game.getState() == GameState.PLAYING) {
-            // Render the world (WITHOUT block drops) 
-            renderer.renderWorldWithoutDrops(world, player, game.getTotalTimeElapsed());
+        } else { // For all other states that might show game world (PLAYING, PAUSED, RECIPE_BOOK_UI, WORKBENCH_UI)
+            // Step 1: Render the 3D world first as a background for overlays
+            renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+
+            // Step 2: Render NanoVG UIs on top
+            if (uiRenderer != null) {
+                uiRenderer.beginFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
+
+                // Inventory / Hotbar / Chat (primarily for PLAYING/PAUSED state)
+                if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
+                    InventoryScreen inventoryScreen = game.getInventoryScreen();
+                    if (inventoryScreen != null) {
+                        if (inventoryScreen.isVisible()) {
+                            inventoryScreen.render(width, height);
+                        } else {
+                            inventoryScreen.renderHotbar(width, height);
+                        }
+                    }
+                    ChatSystem chatSystem = game.getChatSystem();
+                    if (chatSystem != null) {
+                        uiRenderer.renderChat(chatSystem, width, height);
+                    }
+                }
+
+                // Pause Menu (if active, and we are not in Main Menu or other full-screen UI states)
+                if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
+                    game.getPauseMenu().render(uiRenderer, width, height); // Assumes PauseMenu draws within this frame
+                }
+                
+                uiRenderer.endFrame(); // End the shared NanoVG frame for standard game overlays
+            }
             
-            // Render additional UI elements (without tooltips)
+            // Separate rendering for full-screen UI states that manage their own NanoVG frames
+            // and should draw AFTER the 3D world.
+            if (game.getState() == GameState.RECIPE_BOOK_UI) {
+                 RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+                 if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                     recipeBookScreen.render(); // This screen now manages its own NanoVG begin/end frame
+                 }
+            } else if (game.getState() == GameState.WORKBENCH_UI) {
+                WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+                if (workbenchScreen != null && workbenchScreen.isVisible()){
+                    workbenchScreen.render(); // This screen now manages its own NanoVG begin/end frame
+                }
+            }
+            
+            // DEFERRED: Render block drops AFTER all UI is complete 
+            // Block drops render behind both inventory and pause menu with depth curtain protection
+            renderer.renderBlockDropsDeferred(world, player);
+            
+            // Render tooltips AFTER block drops to ensure they appear above 3D block drops
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             if (inventoryScreen != null) {
-                UIRenderer uiRenderer = game.getUIRenderer();
                 uiRenderer.beginFrame(width, height, 1.0f);
                 
                 if (inventoryScreen.isVisible()) {
-                    // Render full inventory screen when visible (without tooltips)
-                    inventoryScreen.renderWithoutTooltips(width, height);
+                    // Render only tooltips for full inventory screen
+                    inventoryScreen.renderTooltipsOnly(width, height);
                 } else {
-                    // Always render hotbar when inventory is not open (without tooltips)
-                    inventoryScreen.renderHotbarWithoutTooltips(width, height);
-                }
-                
-                // Render chat (always visible when there are messages or chat is open)
-                ChatSystem chatSystem = game.getChatSystem();
-                if (chatSystem != null) {
-                    uiRenderer.renderChat(chatSystem, width, height);
+                    // Render only hotbar tooltips when inventory is not open
+                    inventoryScreen.renderHotbarTooltipsOnly(width, height);
                 }
                 
                 uiRenderer.endFrame();
@@ -425,7 +460,6 @@ public class Main {
             // Render pause menu if paused
             PauseMenu pauseMenu = game.getPauseMenu();
             if (pauseMenu != null && pauseMenu.isVisible()) {
-                // STEP 1: Render visual pause menu UI first
                 UIRenderer uiRenderer = game.getUIRenderer();
                 if (uiRenderer != null) {
                     uiRenderer.beginFrame(width, height, 1.0f);

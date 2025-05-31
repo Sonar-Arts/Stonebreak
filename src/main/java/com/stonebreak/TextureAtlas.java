@@ -18,6 +18,7 @@ public class TextureAtlas {
     private final int textureSize;
     private final int texturePixelSize = 16; // Size of each tile in pixels
     private final ByteBuffer waterTileUpdateBuffer; // Buffer for updating water tile
+    private ByteBuffer atlasPixelBuffer_cached; // Cached buffer for NanoVG
 
     // Atlas coordinates for the water tile (assuming previous fix to BlockType.java)
     private static final int WATER_ATLAS_X = 9;
@@ -44,6 +45,10 @@ public class TextureAtlas {
     private static final int ROSE_ATLAS_Y = 1;
     private static final int DANDELION_ATLAS_X = 11; // Was 8
     private static final int DANDELION_ATLAS_Y = 1;
+
+    // Atlas coordinates for WOOD_PLANKS
+    private static final int WOOD_PLANKS_ATLAS_X = 0;
+    private static final int WOOD_PLANKS_ATLAS_Y = 3;
     
     /**
      * Creates a texture atlas with the specified texture size.
@@ -115,6 +120,22 @@ public class TextureAtlas {
     public int getTextureId() {
         return textureId;
     }
+
+    /**
+     * Gets the width of the entire texture atlas in pixels.
+     * @return The width of the texture atlas.
+     */
+    public int getTextureWidth() {
+        return textureSize * texturePixelSize;
+    }
+
+    /**
+     * Gets the height of the entire texture atlas in pixels.
+     * @return The height of the texture atlas.
+     */
+    public int getTextureHeight() {
+        return textureSize * texturePixelSize;
+    }
     
     /**
      * Gets the UV coordinates for a block texture.
@@ -132,6 +153,157 @@ public class TextureAtlas {
         
         return new float[] { u1, v1, u2, v2 };
     }
+
+    /**
+     * Gets the UV coordinates for a specific face of a block.
+     * This should return actual UVs for use in rendering, typically 8 floats (4 pairs of u,v).
+     * For NanoVG rendering of an icon, simpler UVs might be needed, or direct pixel mapping.
+     * The UIRenderer might need specific logic. This provides raw UVs.
+     * @param blockType The type of block.
+     * @param face The face of the block.
+     * @return Array of 8 floats: [u0,v0, u1,v0, u1,v1, u0,v1] (quad corners) or null if not applicable.
+     */
+    public float[] getBlockFaceUVs(BlockType blockType, BlockType.Face face) {
+        if (blockType == null) return null;
+
+        float[] atlasCoords = blockType.getTextureCoords(face); // Gets [tileX, tileY] from BlockType
+        if (atlasCoords == null) return null;
+
+        float tileX = atlasCoords[0];
+        float tileY = atlasCoords[1];
+
+        float u_step = 1.0f / textureSize;
+        float v_step = 1.0f / textureSize;
+
+        float u0 = tileX * u_step;
+        float v0 = tileY * v_step;
+        float u1 = u0 + u_step;
+        float v1 = v0 + v_step;
+        
+        // Standard UV mapping for a quad: bottom-left, bottom-right, top-right, top-left
+        // Or for GL: top-left, bottom-left, bottom-right, top-right (depending on convention)
+        // For Renderer.java, it expects: x,y,z, u,v for each vertex
+        // Vertices of a face quad: (0,0), (1,0), (1,1), (0,1)
+        // Corresponding UVs based on atlas (OpenGL typical):
+        // (u0,v1) (top-left of tile on image)
+        // (u1,v1) (top-right of tile on image)
+        // (u1,v0) (bottom-right of tile on image)
+        // (u0,v0) (bottom-left of tile on image)
+        // This function will provide UVs for a quad as [u0,v0, u1,v0, u1,v1, u0,v1] (typical UI / 2D mapping)
+        // The UIRenderer will need to interpret this or might use pixel coords for nvgImagePattern directly
+        return new float[]{
+            u0, v0, // Top-left in UV space for many systems (bottom-left on texture image)
+            u1, v0, // Top-right
+            u1, v1, // Bottom-right
+            u0, v1  // Bottom-left
+        };
+    }
+
+
+    // Field to cache NanoVG image ID to avoid recreating it every frame for UI rendering
+    private int nvgImageId = -1;
+    private long lastVgContext = 0; // To detect if NanoVG context changed (e.g., re-init)
+
+    /**
+     * Gets the NanoVG image handle for the entire texture atlas.
+     * Caches the handle for performance.
+     * @param vg The NanoVG context.
+     * @return The NanoVG image ID.
+     */
+    public int getNanoVGImageId(long vg) {
+        if (vg == 0) return -1;
+        // If context changed or not yet created, (re)create the NanoVG image
+        // This assumes the GL texture (this.textureId) is already generated and populated.
+        // NanoVG needs to be told about this existing GL texture.
+        // The nvgCreateImageFromHandleGL3 is what's typically used if you have an existing GL texture ID.
+        // However, if TextureAtlas uses STB to load to a ByteBuffer and then to GL,
+        // that same ByteBuffer (or a copy) could potentially be used with nvgCreateImageRGBA if we kept it.
+        // For simplicity, if we must use the GL textureId with NanoVG:
+        // STB Image library used by LWJGL can load common formats, but NanoVG can also directly
+        // use RGBA byte buffers or reference existing GL textures.
+
+        // Assuming the texture atlas data is already on the GPU with textureId.
+        // To use this with NanoVG, we'd typically create a NanoVG image pointing to it.
+        // If TextureAtlas itself already called nvgCreateImageRGBA when it loaded the texture for NanoVG,
+        // then that's the ID we return. But the current generateTextureAtlas() uses GL directly.
+        
+        // The `UIRenderer`'s `dirtTextureImage` is an example of `nvgCreateImageRGBA`.
+        // We'd need similar for the main atlas if we want UIRenderer to use it directly.
+        // For now, let's simulate this might not be directly supported if the atlas is *only* a GL texture.
+        // A robust way would be for TextureAtlas to generate its nvgImageId during init IF it intends to be
+        // used by NanoVG.
+
+        // For the renderItemIcon method, it would be more efficient if TextureAtlas had an
+        // nvgImageId ready. Let's add a placeholder for it to be created on first request.
+        // IMPORTANT: This part of the logic is complex. Directly using GL texture ID in NanoVG
+        // might require nvgCreateImageFromHandle or similar, if the original data isn't available.
+        // If the texture data IS available (e.g., the `buffer` in `generateTextureAtlas`),
+        // then `nvgCreateImageRGBA` would be the way.
+
+        if (nvgImageId == -1 || lastVgContext != vg) {
+            // This is a simplification. In a real scenario, you'd either:
+            // 1. Keep the ByteBuffer used for glTexImage2D and use nvgCreateImageRGBA.
+            // 2. Use a NanoVG function to wrap an existing GL texture (e.g., if available).
+            // For this exercise, we'll assume TextureAtlas needs to expose its GL textureId
+            // and UIRenderer will handle creating a NanoVG image from it if it must.
+            // OR, better, TextureAtlas does it if it's meant to be a source for NanoVG.
+
+            // Let's assume generateTextureAtlas() also creates nvgImageId.
+            // If not, this will fail. This is more of a placeholder logic.
+            // A proper TextureAtlas would store the ByteBuffer from STBImage
+            // and use it here for nvgCreateImageRGBA.
+            
+            // Fallback: if no direct nvgImageId is pre-cached by TextureAtlas, we cannot create it here easily
+            // without access to the raw pixel data or more complex GL interop.
+            // The UIRenderer creates its own dirtTextureImage; perhaps TextureAtlas should also create one
+            // for the main atlas during its init() if NanoVG use is intended.
+             System.err.println("Warning: TextureAtlas.getNanoVGImageId - nvgImageId not pre-cached. UI rendering of atlas might fail or be inefficient.");
+             // This indicates a design consideration: How does NanoVG get an image handle for the GL-based atlas?
+             // For now, returning -1 or trying to create one (if we had pixel data).
+             // If `dirtTextureImage` in UIRenderer is an example, TextureAtlas needs its own similar setup.
+
+            // Let's try to create it here (requires pixel data of the atlas)
+            // This is not ideal as it duplicates memory or requires re-reading.
+            // Ideally, TextureAtlas keeps the initial buffer from STB image load or procedural generation.
+            // Since generateTextureAtlas creates the buffer on the fly:
+            ByteBuffer atlasBuffer = getAtlasPixelData(); // Needs implementation if we go this route
+            if(atlasBuffer != null && vg != 0) {
+                // Flags for NanoVG image creation.
+                // Might need NVG_IMAGE_FLIPY if GL texture's Y origin differs from NanoVG's.
+                // NVG_IMAGE_PREMULTIPLIED if alpha is premultiplied.
+                int imageFlags = 0; // Default flags
+                this.nvgImageId = org.lwjgl.nanovg.NanoVG.nvgCreateImageRGBA(vg, getTextureWidth(), getTextureHeight(), imageFlags, atlasBuffer);
+                this.lastVgContext = vg;
+                if(this.nvgImageId == -1){
+                     System.err.println("TextureAtlas: Failed to create NanoVG image from pixel data.");
+                }
+            } else {
+                 System.err.println("TextureAtlas: Cannot create NanoVG image, pixel data unavailable or NanoVG context is zero.");
+                 return -1;
+            }
+        }
+        return this.nvgImageId;
+    }
+
+    /**
+     * Helper method to get the raw pixel data of the generated atlas.
+     * Note: This is inefficient if called frequently. Ideally, the buffer is cached during generation.
+     * This is a simplified re-generation for the sake of getNanoVGImageId.
+     */
+    private ByteBuffer getAtlasPixelData() {
+        if (this.atlasPixelBuffer_cached == null) {
+            System.err.println("TextureAtlas: Error in getAtlasPixelData() - atlasPixelBuffer_cached is null. Was generateTextureAtlas() called and did it succeed?");
+            return null;
+        }
+        if (this.atlasPixelBuffer_cached.limit() <= 0) {
+            System.err.println("TextureAtlas: Error in getAtlasPixelData() - atlasPixelBuffer_cached.limit() is " + this.atlasPixelBuffer_cached.limit() + ". Buffer may be empty or textureSize was zero. Capacity: " + this.atlasPixelBuffer_cached.capacity());
+            return null;
+        }
+        // NanoVG needs the buffer positioned at the beginning for reading.
+        this.atlasPixelBuffer_cached.rewind();
+        return this.atlasPixelBuffer_cached;
+    }
+
       /**
      * Generates a texture atlas with different colors for block types.
      */
@@ -155,7 +327,28 @@ public class TextureAtlas {
         // Create a simple placeholder texture
         // int texturePixelSize = 16; // Now a class field
         int totalSize = textureSize * this.texturePixelSize;
-        ByteBuffer buffer = BufferUtils.createByteBuffer(totalSize * totalSize * 4);
+        if (totalSize <= 0) {
+            System.err.println("TextureAtlas: Error in generateTextureAtlas() - totalSize is " + totalSize + " (textureSize: " + textureSize + ", texturePixelSize: " + this.texturePixelSize + "). Atlas will be empty or invalid.");
+            // Ensure atlasPixelBuffer_cached is at least a minimal valid buffer to prevent null pointer issues downstream,
+            // though this atlas will be mostly unusable.
+            if (this.atlasPixelBuffer_cached == null || this.atlasPixelBuffer_cached.capacity() < 4) { // minimal 1x1 RGBA
+                 this.atlasPixelBuffer_cached = BufferUtils.createByteBuffer(4);
+            } else {
+                this.atlasPixelBuffer_cached.clear();
+            }
+            // Put a single magenta pixel and upload that.
+            this.atlasPixelBuffer_cached.put((byte)255).put((byte)0).put((byte)255).put((byte)255).flip(); // Magenta
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, 1, 1, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, this.atlasPixelBuffer_cached);
+            this.atlasPixelBuffer_cached.flip(); // Prepare for NanoVG read if it ever tries.
+            return generatedTextureId; // Atlas is effectively unusable but won't crash immediately due to null buffer.
+        }
+        // Use the cached buffer if it exists, otherwise create it
+        if (this.atlasPixelBuffer_cached == null || this.atlasPixelBuffer_cached.capacity() != totalSize * totalSize * 4) {
+            this.atlasPixelBuffer_cached = BufferUtils.createByteBuffer(totalSize * totalSize * 4);
+        } else {
+            this.atlasPixelBuffer_cached.clear(); // Reuse existing buffer
+        }
+        ByteBuffer buffer = this.atlasPixelBuffer_cached; // Use the (now potentially cleared) cached buffer
         
         // Fill the texture with colors for each block type
         for (int globalY = 0; globalY < totalSize; globalY++) {
@@ -167,7 +360,39 @@ public class TextureAtlas {
                 byte r, g, b, a;
                 
                 // Determine color based on tile position (as if it were a block type)
-                
+
+                // Special handling for WOOD_PLANKS texture
+                if (tileX == WOOD_PLANKS_ATLAS_X && tileY == WOOD_PLANKS_ATLAS_Y) {
+                    int pX_wp = globalX % texturePixelSize;
+                    int pY_wp = globalY % texturePixelSize;
+
+                    // Base color: Light brown, similar to wood but "plank-ified"
+                    int baseR_wp = 160;
+                    int baseG_wp = 120;
+                    int baseB_wp = 80;
+
+                    // Add some noise for wood grain, less pronounced than logs
+                    double noise1_wp = Math.sin(pX_wp * 0.5 + pY_wp * 0.2 + tileY * 0.4); // Use tileY for global tile coordinate
+                    double noise2_wp = Math.cos(pX_wp * 0.3 - pY_wp * 0.6 + tileX * 0.2); // Use tileX for global tile coordinate
+                    float combinedNoise_wp = (float) ((noise1_wp + noise2_wp) / 4.0 + 0.5); // 0.0 to 1.0
+
+                    float variation_wp = (combinedNoise_wp - 0.5f) * 20; // Smaller variation
+
+                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_wp + variation_wp)));
+                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_wp + variation_wp)));
+                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_wp + variation_wp * 0.9f)));
+                    
+                    // Add subtle horizontal lines for plank separation, every 4 pixels for example
+                    if (pY_wp % 4 == 0 && pY_wp > 0) { // Avoid line at the very top edge
+                        r = (byte) Math.max(0, r - 15);
+                        g = (byte) Math.max(0, g - 15);
+                        b = (byte) Math.max(0, b - 10);
+                    }
+
+                    a = (byte) 255;
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
                 // Special handling for RED_SAND texture
                 if (tileX == RED_SAND_ATLAS_X && tileY == RED_SAND_ATLAS_Y) {
                     // Use sand pattern with orangish-red color for RED_SAND
@@ -414,165 +639,175 @@ public class TextureAtlas {
                     continue;
                 }
                 // Special handling for new snow-themed blocks in row 2 (y=2)
-                else if (tileY == 2) {
-                    if (tileX == 0) { // Snow top texture (0,2)
-                        int pixelX_snow = globalX % texturePixelSize;
-                        int pixelY_snow = globalY % texturePixelSize;
-                        
-                        // White snow with subtle variations
-                        int noiseVal_snow = (pixelX_snow * 13 + pixelY_snow * 29 + tileX * 11 + tileY * 17) % 21;
-                        
-                        if (noiseVal_snow < 7) { // Pure white
-                            r = (byte) 255; g = (byte) 255; b = (byte) 255;
-                        } else if (noiseVal_snow < 14) { // Slightly off-white
-                            r = (byte) 250; g = (byte) 250; b = (byte) 252;
-                        } else { // Very light blue tint
-                            r = (byte) 248; g = (byte) 250; b = (byte) 255;
-                        }
-                        a = (byte) 255;
-                        buffer.put(r).put(g).put(b).put(a);
-                        continue;
-                    } else if (tileX == 1) { // Snow side texture (1,2) / Snowy leaves texture
-                        int pixelX_snowside = globalX % texturePixelSize;
-                        int pixelY_snowside = globalY % texturePixelSize;
-                        
-                        // For snow side: white top portion, dirt bottom portion
-                        int snowLayerHeight = 3; // Top 3 pixels are snow
-                        
-                        if (pixelY_snowside < snowLayerHeight) { // Snow part (top)
-                            int noiseVal_snowside = (pixelX_snowside * 17 + pixelY_snowside * 23) % 21;
-                            if (noiseVal_snowside < 7) {
+                else if (tileY == 2) {                    switch (tileX) {
+                        case 0 -> { // Snow top texture (0,2)
+                            int pixelX_snow = globalX % texturePixelSize;
+                            int pixelY_snow = globalY % texturePixelSize;
+                            
+                            // White snow with subtle variations
+                            int noiseVal_snow = (pixelX_snow * 13 + pixelY_snow * 29 + tileX * 11 + tileY * 17) % 21;
+                            
+                            if (noiseVal_snow < 7) { // Pure white
+                                r = (byte) 255; g = (byte) 255; b = (byte) 255;
+                            } else if (noiseVal_snow < 14) { // Slightly off-white
                                 r = (byte) 250; g = (byte) 250; b = (byte) 252;
-                            } else if (noiseVal_snowside < 14) {
-                                r = (byte) 245; g = (byte) 248; b = (byte) 250;
-                            } else {
-                                r = (byte) 240; g = (byte) 245; b = (byte) 248;
+                            } else { // Very light blue tint
+                                r = (byte) 248; g = (byte) 250; b = (byte) 255;
                             }
-                        } else { // Dirt part (below snow) - EXACT COPY of case 2 (Dirt block) logic
-                            // 'globalX' and 'globalY' are global atlas pixel coordinates.
-                            float dirtX_snowside = (float) Math.sin(globalX * 0.7 + globalY * 0.3) * 0.5f + 0.5f;
-                            float dirtY_snowside = (float) Math.cos(globalX * 0.4 + globalY * 0.8) * 0.5f + 0.5f;
-                            float dirtNoise_snowside = (dirtX_snowside + dirtY_snowside) * 0.5f;
-                            
-                            r = (byte) (135 + dirtNoise_snowside * 40);
-                            g = (byte) (95 + dirtNoise_snowside * 35);
-                            b = (byte) (70 + dirtNoise_snowside * 25);
-                            
-                            // Add occasional small rocks or roots (exact from case 2)
-                            if ((globalX % 5 == 0 && globalY % 5 == 0) ||
-                                ((globalX+2) % 7 == 0 && (globalY+3) % 6 == 0)) {
-                                r = (byte) (r - 30); // Let byte casting handle underflow, like in original dirt
-                                g = (byte) (g - 25);
-                                b = (byte) (b - 20);
-                            }
-                        }
-                        a = (byte) 255;
-                        buffer.put(r).put(g).put(b).put(a);
-                        continue;
-                    } else if (tileX == 2) { // Pine wood texture (2,2)
-                        // Darker wood variant
-                        float woodGrain = (float) Math.sin(globalY * 1.5) * 0.5f + 0.5f;
-                        int ringX = (globalX % texturePixelSize);
-                        float ringEffect = (float) Math.sin(ringX * 0.7) * 0.4f + 0.6f;
-                        
-                        // Darker base colors than regular wood
-                        r = (byte) (80 + woodGrain * 40 * ringEffect);
-                        g = (byte) (50 + woodGrain * 25 * ringEffect);
-                        b = (byte) (20 + woodGrain * 15 * ringEffect);
-                        
-                        // Add occasional darker knots
-                        int centerX = texturePixelSize / 2;
-                        int centerY = texturePixelSize / 2;
-                        float distToCenter = (float) Math.sqrt(Math.pow(globalX % texturePixelSize - centerX, 2) +
-                                                              Math.pow(globalY % texturePixelSize - centerY, 2));
-                        
-                        if (distToCenter < 3 && (globalX / texturePixelSize + globalY / texturePixelSize) % 3 == 0) {
-                            r = (byte) (r - 15);
-                            g = (byte) (g - 10);
-                            b = (byte) (b - 5);
-                        }
-                        a = (byte) 255;
-                        buffer.put(r).put(g).put(b).put(a);
-                        continue;
-                    } else if (tileX == 3) { // Ice texture (3,2)
-                        int pixelX_ice = globalX % texturePixelSize;
-                        int pixelY_ice = globalY % texturePixelSize;
-                        
-                        // Light blue ice with crystalline patterns
-                        float iceNoise = (float) (
-                            Math.sin(pixelX_ice * 0.8 + pixelY_ice * 0.6) * 0.3 +
-                            Math.cos(pixelX_ice * 0.4 + pixelY_ice * 0.9) * 0.3 +
-                            Math.sin((pixelX_ice + pixelY_ice) * 0.7) * 0.4
-                        ) * 0.5f + 0.5f;
-                        
-                        r = (byte) (200 + iceNoise * 30);
-                        g = (byte) (230 + iceNoise * 20);
-                        b = (byte) (255);
-                        
-                        // Add crystal-like reflections
-                        if ((pixelX_ice % 4 == 0 && pixelY_ice % 4 == 0) || 
-                            ((pixelX_ice + 2) % 4 == 0 && (pixelY_ice + 2) % 4 == 0)) {
-                            r = (byte) 255;
-                            g = (byte) 255;
-                            b = (byte) 255;
-                        }
-                        
-                        a = (byte) 200; // Semi-transparent
-                        buffer.put(r).put(g).put(b).put(a);
-                        continue;
-                    } else if (tileX == 4) { // Snowy leaves texture (4,2)
-                        // Leaves with snow patches
-                        float leafNoise = (float) (
-                            Math.sin(globalX * 0.9 + globalY * 0.6) * 0.25 +
-                            Math.cos(globalX * 0.7 + globalY * 0.9) * 0.25 +
-                            Math.sin((globalX + globalY) * 0.8) * 0.5
-                        ) * 0.5f + 0.5f;
-                        
-                        // Base green color (slightly darker than normal leaves)
-                        r = (byte) (20 + leafNoise * 40);
-                        g = (byte) (80 + leafNoise * 60);
-                        b = (byte) (15 + leafNoise * 30);
-                        
-                        // Add snow patches
-                        int pixelX_snowyleaves = globalX % texturePixelSize;
-                        int pixelY_snowyleaves = globalY % texturePixelSize;
-                        
-                        if ((pixelX_snowyleaves % 3 == 0 && pixelY_snowyleaves % 4 == 0) || 
-                            ((pixelX_snowyleaves + 2) % 5 == 0 && (pixelY_snowyleaves + 1) % 3 == 0)) {
-                            // Snow patches
-                            r = (byte) 250;
-                            g = (byte) 250;
-                            b = (byte) 255;
-                        }
-                        
-                        // Add transparency at edges
-                        int edgeX = globalX % texturePixelSize;
-                        int edgeY = globalY % texturePixelSize;
-                        if (edgeX <= 1 || edgeX >= texturePixelSize-2 ||
-                            edgeY <= 1 || edgeY >= texturePixelSize-2) {
-                            a = (byte) (200 + (leafNoise * 55));
-                        } else {
                             a = (byte) 255;
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
                         }
-                        buffer.put(r).put(g).put(b).put(a);
-                        continue;
-                    } else if (tileX == 5) { // Pure snow texture (5,2) for layered snow
-                        int pixelX_puresnow = globalX % texturePixelSize;
-                        int pixelY_puresnow = globalY % texturePixelSize;
-                        
-                        // Pure white snow with very subtle variations
-                        int noiseVal_puresnow = (pixelX_puresnow * 13 + pixelY_puresnow * 29 + tileX * 11 + tileY * 17) % 21;
-                        
-                        if (noiseVal_puresnow < 7) { // Pure white
-                            r = (byte) 255; g = (byte) 255; b = (byte) 255;
-                        } else if (noiseVal_puresnow < 14) { // Slightly off-white
-                            r = (byte) 252; g = (byte) 252; b = (byte) 254;
-                        } else { // Very light blue tint
-                            r = (byte) 250; g = (byte) 252; b = (byte) 255;
+                        case 1 -> { // Snow side texture (1,2) / Snowy leaves texture
+                            int pixelX_snowside = globalX % texturePixelSize;
+                            int pixelY_snowside = globalY % texturePixelSize;
+                            
+                            // For snow side: white top portion, dirt bottom portion
+                            int snowLayerHeight = 3; // Top 3 pixels are snow
+                            
+                            if (pixelY_snowside < snowLayerHeight) { // Snow part (top)
+                                int noiseVal_snowside = (pixelX_snowside * 17 + pixelY_snowside * 23) % 21;
+                                if (noiseVal_snowside < 7) {
+                                    r = (byte) 250; g = (byte) 250; b = (byte) 252;
+                                } else if (noiseVal_snowside < 14) {
+                                    r = (byte) 245; g = (byte) 248; b = (byte) 250;
+                                } else {
+                                    r = (byte) 240; g = (byte) 245; b = (byte) 248;
+                                }
+                            } else { // Dirt part (below snow) - EXACT COPY of case 2 (Dirt block) logic
+                                // 'globalX' and 'globalY' are global atlas pixel coordinates.
+                                float dirtX_snowside = (float) Math.sin(globalX * 0.7 + globalY * 0.3) * 0.5f + 0.5f;
+                                float dirtY_snowside = (float) Math.cos(globalX * 0.4 + globalY * 0.8) * 0.5f + 0.5f;
+                                float dirtNoise_snowside = (dirtX_snowside + dirtY_snowside) * 0.5f;
+                                
+                                r = (byte) (135 + dirtNoise_snowside * 40);
+                                g = (byte) (95 + dirtNoise_snowside * 35);
+                                b = (byte) (70 + dirtNoise_snowside * 25);
+                                
+                                // Add occasional small rocks or roots (exact from case 2)
+                                if ((globalX % 5 == 0 && globalY % 5 == 0) ||
+                                    ((globalX+2) % 7 == 0 && (globalY+3) % 6 == 0)) {
+                                    r = (byte) (r - 30); // Let byte casting handle underflow, like in original dirt
+                                    g = (byte) (g - 25);
+                                    b = (byte) (b - 20);
+                                }
+                            }
+                            a = (byte) 255;
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
                         }
-                        a = (byte) 255;
-                        buffer.put(r).put(g).put(b).put(a);
-                        continue;
+                        case 2 -> { // Pine wood texture (2,2)
+                            // Darker wood variant
+                            float woodGrain = (float) Math.sin(globalY * 1.5) * 0.5f + 0.5f;
+                            int ringX = (globalX % texturePixelSize);
+                            float ringEffect = (float) Math.sin(ringX * 0.7) * 0.4f + 0.6f;
+                            
+                            // Darker base colors than regular wood
+                            r = (byte) (80 + woodGrain * 40 * ringEffect);
+                            g = (byte) (50 + woodGrain * 25 * ringEffect);
+                            b = (byte) (20 + woodGrain * 15 * ringEffect);
+                            
+                            // Add occasional darker knots
+                            int centerX = texturePixelSize / 2;
+                            int centerY = texturePixelSize / 2;
+                            float distToCenter = (float) Math.sqrt(Math.pow(globalX % texturePixelSize - centerX, 2) +
+                                                                  Math.pow(globalY % texturePixelSize - centerY, 2));
+                            
+                            if (distToCenter < 3 && (globalX / texturePixelSize + globalY / texturePixelSize) % 3 == 0) {
+                                r = (byte) (r - 15);
+                                g = (byte) (g - 10);
+                                b = (byte) (b - 5);
+                            }
+                            a = (byte) 255;
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
+                        }
+                        case 3 -> { // Ice texture (3,2)
+                            int pixelX_ice = globalX % texturePixelSize;
+                            int pixelY_ice = globalY % texturePixelSize;
+                            
+                            // Light blue ice with crystalline patterns
+                            float iceNoise = (float) (
+                                Math.sin(pixelX_ice * 0.8 + pixelY_ice * 0.6) * 0.3 +
+                                Math.cos(pixelX_ice * 0.4 + pixelY_ice * 0.9) * 0.3 +
+                                Math.sin((pixelX_ice + pixelY_ice) * 0.7) * 0.4
+                            ) * 0.5f + 0.5f;
+                            
+                            r = (byte) (200 + iceNoise * 30);
+                            g = (byte) (230 + iceNoise * 20);
+                            b = (byte) (255);
+                            
+                            // Add crystal-like reflections
+                            if ((pixelX_ice % 4 == 0 && pixelY_ice % 4 == 0) ||
+                                ((pixelX_ice + 2) % 4 == 0 && (pixelY_ice + 2) % 4 == 0)) {
+                                r = (byte) 255;
+                                g = (byte) 255;
+                                b = (byte) 255;
+                            }
+                            
+                            a = (byte) 200; // Semi-transparent
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
+                        }
+                        case 4 -> { // Snowy leaves texture (4,2)
+                            // Leaves with snow patches
+                            float leafNoise = (float) (
+                                Math.sin(globalX * 0.9 + globalY * 0.6) * 0.25 +
+                                Math.cos(globalX * 0.7 + globalY * 0.9) * 0.25 +
+                                Math.sin((globalX + globalY) * 0.8) * 0.5
+                            ) * 0.5f + 0.5f;
+                            
+                            // Base green color (slightly darker than normal leaves)
+                            r = (byte) (20 + leafNoise * 40);
+                            g = (byte) (80 + leafNoise * 60);
+                            b = (byte) (15 + leafNoise * 30);
+                            
+                            // Add snow patches
+                            int pixelX_snowyleaves = globalX % texturePixelSize;
+                            int pixelY_snowyleaves = globalY % texturePixelSize;
+                            
+                            if ((pixelX_snowyleaves % 3 == 0 && pixelY_snowyleaves % 4 == 0) ||
+                                ((pixelX_snowyleaves + 2) % 5 == 0 && (pixelY_snowyleaves + 1) % 3 == 0)) {
+                                // Snow patches
+                                r = (byte) 250;
+                                g = (byte) 250;
+                                b = (byte) 255;
+                            }
+                            
+                            // Add transparency at edges
+                            int edgeX = globalX % texturePixelSize;
+                            int edgeY = globalY % texturePixelSize;
+                            if (edgeX <= 1 || edgeX >= texturePixelSize-2 ||
+                                edgeY <= 1 || edgeY >= texturePixelSize-2) {
+                                a = (byte) (200 + (leafNoise * 55));
+                            } else {
+                                a = (byte) 255;
+                            }
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
+                        }
+                        case 5 -> { // Pure snow texture (5,2) for layered snow
+                            int pixelX_puresnow = globalX % texturePixelSize;
+                            int pixelY_puresnow = globalY % texturePixelSize;
+                            
+                            // Pure white snow with very subtle variations
+                            int noiseVal_puresnow = (pixelX_puresnow * 13 + pixelY_puresnow * 29 + tileX * 11 + tileY * 17) % 21;
+                            
+                            if (noiseVal_puresnow < 7) { // Pure white
+                                r = (byte) 255; g = (byte) 255; b = (byte) 255;
+                            } else if (noiseVal_puresnow < 14) { // Slightly off-white
+                                r = (byte) 252; g = (byte) 252; b = (byte) 254;
+                            } else { // Very light blue tint
+                                r = (byte) 250; g = (byte) 252; b = (byte) 255;
+                            }
+                            a = (byte) 255;
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
+                        }
+                        default -> {
+                            // This block will be hit if tileX is not 0-5 while tileY is 2.
+                            // Fall through to the main switch if no specific snow texture matches.
+                        }
                     }
                 }
 
@@ -853,9 +1088,13 @@ public class TextureAtlas {
         }
         
         buffer.flip();        // Upload texture to GPU
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, totalSize, totalSize, 
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, totalSize, totalSize,
                 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
         
+        // IMPORTANT: After sending to GPU, flip() again (or rewind()) if we intend to use this buffer for NanoVG later from its start.
+        // NanoVG expects the buffer to be ready for reading from the beginning.
+        buffer.flip(); // Prepare for potential future reads by NanoVG (from getNanoVGImageId)
+
         // Set appropriate texture filtering
         // Note: In OpenGL 3.0+, we would use GL30.glGenerateMipmap() here
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);

@@ -119,6 +119,18 @@ public class Inventory {
         }
         return remainingCount == 0;
     }
+/**
+     * Adds an entire ItemStack to the inventory.
+     * Tries to stack with existing items or find an empty slot.
+     * @param itemStack The ItemStack to add.
+     * @return True if the entire itemStack was successfully added, false otherwise.
+     */
+    public boolean addItem(ItemStack itemStack) {
+        if (itemStack == null || itemStack.isEmpty()) {
+            return true; // Adding nothing is success
+        }
+        return addItem(itemStack.getBlockTypeId(), itemStack.getCount());
+    }
 
     /**
      * Adds multiple items of the given block type to the inventory.

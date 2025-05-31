@@ -1,5 +1,8 @@
 package com.stonebreak;
 
+import java.util.ArrayList; // Added import
+import java.util.List;    // Added import
+
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
@@ -12,14 +15,16 @@ import static org.lwjgl.nanovg.NanoVG.nvgFill;
 import static org.lwjgl.nanovg.NanoVG.nvgFillColor;
 import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
 import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
+import static org.lwjgl.nanovg.NanoVG.nvgLineTo;
+import static org.lwjgl.nanovg.NanoVG.nvgMoveTo;
 import static org.lwjgl.nanovg.NanoVG.nvgRect;
 import static org.lwjgl.nanovg.NanoVG.nvgRoundedRect;
 import static org.lwjgl.nanovg.NanoVG.nvgStroke;
 import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
 import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
 import static org.lwjgl.nanovg.NanoVG.nvgText;
-import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
-import static org.lwjgl.nanovg.NanoVG.nvgTextBounds;
+import static org.lwjgl.nanovg.NanoVG.nvgTextAlign; // Added import
+import static org.lwjgl.nanovg.NanoVG.nvgTextBounds; // Added import
 import org.lwjgl.system.MemoryStack;
 import static org.lwjgl.system.MemoryStack.stackPush;
 
@@ -36,12 +41,26 @@ public class InventoryScreen {
     private final Renderer renderer;
     private final UIRenderer uiRenderer;
     private final InputHandler inputHandler; // Added for mouse input
+    private final CraftingManager craftingManager;
 
     // Drag and drop state
     private ItemStack draggedItemStack;
-    private int draggedItemOriginalSlotIndex; // -1 if not dragging, or index in combined (hotbar + main)
-    private boolean isDraggingFromHotbar;
+    private int draggedItemOriginalSlotIndex; // -1 if not dragging, or index in combined (hotbar + main + crafting)
+    private enum DragSource { NONE, HOTBAR, MAIN_INVENTORY, CRAFTING_INPUT }
+    private DragSource dragSource = DragSource.NONE;
+    // private boolean isDraggingFromHotbar; // Replaced by dragSource
+    // private boolean isDraggingFromCraftingInput; // Replaced by dragSource
     private ItemStack hoveredItemStack; // For tooltip (inventory screen)
+
+    // Crafting slots
+    private static final int CRAFTING_GRID_SIZE = 2; // 2x2 grid
+    private static final int CRAFTING_INPUT_SLOTS_COUNT = CRAFTING_GRID_SIZE * CRAFTING_GRID_SIZE;
+    private final ItemStack[] craftingInputSlots;
+    private ItemStack craftingOutputSlot;
+    // Constants for slot indices for easier drag and drop mapping
+    private static final int CRAFTING_INPUT_SLOT_START_INDEX = 1000; // Arbitrary large number to differentiate from inventory
+    private static final int CRAFTING_OUTPUT_SLOT_INDEX = 2000; // Arbitrary large number
+
 
     // Hotbar selection tooltip state
     private String hotbarSelectedItemName;
@@ -49,8 +68,8 @@ public class InventoryScreen {
     private float hotbarSelectedItemTooltipTimer;
     private static final float HOTBAR_TOOLTIP_DISPLAY_DURATION = 1.5f; // seconds
     private static final float HOTBAR_TOOLTIP_FADE_DURATION = 0.5f;   // seconds
-
-
+ 
+ 
     // UI constants
     // HOTBAR_SLOTS is now defined in Inventory.java
     private static final int HOTBAR_Y_OFFSET = 20;
@@ -58,23 +77,35 @@ public class InventoryScreen {
     private static final int SLOT_PADDING = 5;
     // NUM_COLS is now Inventory.MAIN_INVENTORY_COLS
     private static final int TITLE_HEIGHT = 30;
+
+    // Recipe Book Button
+    private static final String RECIPE_BUTTON_TEXT = "Recipes";
+    private float recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight;
     
     /**
      * Creates a new inventory screen.
      */
-    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, UIRenderer uiRenderer, InputHandler inputHandler) {
+    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, UIRenderer uiRenderer, InputHandler inputHandler, CraftingManager craftingManager) {
         this.inventory = inventory;
         this.visible = false;
         // font parameter is received but not used
         this.renderer = renderer;
         this.uiRenderer = uiRenderer;
         this.inputHandler = inputHandler; // Initialize InputHandler
+        this.craftingManager = craftingManager;
         this.draggedItemStack = null;
         this.draggedItemOriginalSlotIndex = -1;
+        this.dragSource = DragSource.NONE;
         this.hoveredItemStack = null;
         this.hotbarSelectedItemName = null;
         this.hotbarSelectedItemTooltipAlpha = 0.0f;
         this.hotbarSelectedItemTooltipTimer = 0.0f;
+
+        this.craftingInputSlots = new ItemStack[CRAFTING_INPUT_SLOTS_COUNT];
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            this.craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0); // Initialize with empty ItemStacks
+        }
+        this.craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0); // Initialize with empty ItemStack
     }
 
     /**
@@ -134,11 +165,38 @@ public class InventoryScreen {
         hoveredItemStack = null;
 
         // Main Inventory Area (now includes hotbar visually as part of the panel)
-        int numDisplayCols = Inventory.MAIN_INVENTORY_COLS;
+        // int numDisplayCols = Inventory.MAIN_INVENTORY_COLS; // Unused
 
-        int inventoryPanelWidth = numDisplayCols * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        // Height for main inventory slots + one row for hotbar + title
-        int inventoryPanelHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT;
+        // Define overall panel dimensions to include crafting area
+        // Crafting area: 2x2 grid, an arrow, and 1 output slot.
+        // Let's say arrow is SLOT_SIZE wide. Grid is 2 * (SLOT_SIZE + SLOT_PADDING).
+        // Total width needed for crafting section: 2 * (SLOT_SIZE + SLOT_PADDING) + SLOT_SIZE (for arrow) + SLOT_SIZE (for output) + paddings
+        // This will be drawn to the side or above the player inventory. For now, let's plan to draw it *above* the main inventory title.
+        
+        int craftingAreaHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING; // For the 2x2 grid
+        // int craftingAreaMinY = SLOT_PADDING + TITLE_HEIGHT; // Unused
+
+        int totalInventoryRows = Inventory.MAIN_INVENTORY_ROWS + 1; // +1 for hotbar
+        int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        // Adjusted panel height calculation:
+        // Let's position crafting grid to the side of player avatar, and inventory below.
+        // Player avatar (not implemented) would be around 2 slots wide, 2 slots high.
+        // Crafting: 2x2 input + arrow + 1 output. Approx 2 * (SLOT_SIZE+PAD) for grid height.
+        // For now, let's adjust the main inventory panel to make space.
+        // We can add the crafting grid *within* the existing panel logic, shifted.
+
+        // int numDisplayCols = Inventory.MAIN_INVENTORY_COLS; // This was a duplicate definition
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        // For now, keep panel width based on main inventory, and fit crafting grid within it visually
+        // This might make the panel wider if we place crafting side-by-side later.
+        // For this iteration, we will place the crafting elements *above* the standard inventory within the same panel.
+
+        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE; // 2 rows for grid, 1 space for arrow/gap.
+
+        int inventoryPanelWidth = baseInventoryPanelWidth; // Keeps current width based on hotbar/main inv.
+        int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2; // Added crafting space
 
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
@@ -146,11 +204,70 @@ public class InventoryScreen {
         // Draw panel background using UIRenderer
         drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
-        // Draw title using NanoVG
-        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, panelStartY + 20, "Inventory");
+        // Draw panel background using UIRenderer
+        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
-        int contentStartY = panelStartY + TITLE_HEIGHT;
+        // Draw "Crafting" title
+        float craftingTitleY = panelStartY + 20;
+        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, craftingTitleY, "Crafting");
 
+        // Crafting slots rendering
+        int craftingGridStartY = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
+        // Center the 2x2 grid, arrow and output slot.
+        // Width of 2x2: 2 * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING
+        // Width of arrow: ~SLOT_SIZE
+        // Width of output: SLOT_SIZE
+        // Total visual width: (2*(SLOT_SIZE+SLOT_PADDING)-SLOT_PADDING) + SLOT_SIZE + SLOT_SIZE + SLOT_PADDING * 2 (approx)
+        int craftInputGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE -1) * SLOT_PADDING;
+        // int craftOutputXOffset = craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING; // Unused
+
+        int craftingElementsTotalWidth = craftInputGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE; // grid + space + arrow + space + output
+        int craftingElementsStartX = panelStartX + (inventoryPanelWidth - craftingElementsTotalWidth) / 2;
+
+
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            int r = i / CRAFTING_GRID_SIZE;
+            int c = i % CRAFTING_GRID_SIZE;
+            int slotX = craftingElementsStartX + c * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = craftingGridStartY + r * (SLOT_SIZE + SLOT_PADDING);
+            drawInventorySlot(craftingInputSlots[i], slotX, slotY, false, -1); // Not a hotbar slot, no specific index for highlight
+            checkHover(craftingInputSlots[i], slotX, slotY);
+        }
+
+        // Draw Arrow (placeholder visual)
+        int arrowX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + (SLOT_SIZE - 20) / 2; // Centered in SLOT_SIZE space
+        int arrowY = craftingGridStartY + (craftingAreaHeight - 20) / 2 - SLOT_PADDING; // Vertically centered in grid area
+        drawCraftingArrow(arrowX, arrowY, 20, 20);
+
+        // Draw Crafting Output Slot
+        int outputSlotX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
+        // Vertically align output slot with the middle of the 2x2 input grid
+        int outputSlotY = craftingGridStartY + (craftingAreaHeight - SLOT_SIZE) / 2 - SLOT_PADDING;
+        drawInventorySlot(craftingOutputSlot, outputSlotX, outputSlotY, false, -1);
+        checkHover(craftingOutputSlot, outputSlotX, outputSlotY);
+
+        // Define Recipe Button position (near crafting output)
+        // Let's place it to the right of the output slot.
+        recipeButtonWidth = uiRenderer.getTextWidth(RECIPE_BUTTON_TEXT, 18f, "sans") + 2 * SLOT_PADDING; // Width based on text
+        recipeButtonHeight = SLOT_SIZE;
+        recipeButtonX = outputSlotX + SLOT_SIZE + SLOT_PADDING * 3;
+        recipeButtonY = outputSlotY; // Align vertically with the output slot
+
+        // Ensure button is within panel bounds, adjust if necessary or make panel wider.
+        // For now, assume it fits or overlaps acceptably.
+        // A more robust solution would adjust panelWidth or button position.
+        // if (recipeButtonX + recipeButtonWidth > panelStartX + inventoryPanelWidth - SLOT_PADDING) {
+        //     recipeButtonX = panelStartX + inventoryPanelWidth - SLOT_PADDING - recipeButtonWidth;
+        // }
+
+        drawRecipeButton(recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, RECIPE_BUTTON_TEXT);
+ 
+        // Draw "Inventory" title below crafting area
+        float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SLOT_SIZE /2; // Reposition inventory title
+        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, inventoryTitleY, "Inventory");
+ 
+        int contentStartY = (int)(inventoryTitleY + TITLE_HEIGHT / 2f + SLOT_PADDING); // Cast to int
+ 
         // Draw Main Inventory Slots
         ItemStack[] mainSlots = inventory.getMainInventorySlots(); // Gets copies
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {            int row = i / Inventory.MAIN_INVENTORY_COLS;
@@ -204,11 +321,38 @@ public class InventoryScreen {
         hoveredItemStack = null;
 
         // Main Inventory Area (now includes hotbar visually as part of the panel)
-        int numDisplayCols = Inventory.MAIN_INVENTORY_COLS;
+        // int numDisplayCols = Inventory.MAIN_INVENTORY_COLS; // Unused
 
-        int inventoryPanelWidth = numDisplayCols * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        // Height for main inventory slots + one row for hotbar + title
-        int inventoryPanelHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT;
+        // Define overall panel dimensions to include crafting area
+        // Crafting area: 2x2 grid, an arrow, and 1 output slot.
+        // Let's say arrow is SLOT_SIZE wide. Grid is 2 * (SLOT_SIZE + SLOT_PADDING).
+        // Total width needed for crafting section: 2 * (SLOT_SIZE + SLOT_PADDING) + SLOT_SIZE (for arrow) + SLOT_SIZE (for output) + paddings
+        // This will be drawn to the side or above the player inventory. For now, let's plan to draw it *above* the main inventory title.
+        
+        int craftingAreaHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING; // For the 2x2 grid
+        // int craftingAreaMinY = SLOT_PADDING + TITLE_HEIGHT; // Unused
+
+        int totalInventoryRows = Inventory.MAIN_INVENTORY_ROWS + 1; // +1 for hotbar
+        int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        // Adjusted panel height calculation:
+        // Let's position crafting grid to the side of player avatar, and inventory below.
+        // Player avatar (not implemented) would be around 2 slots wide, 2 slots high.
+        // Crafting: 2x2 input + arrow + 1 output. Approx 2 * (SLOT_SIZE+PAD) for grid height.
+        // For now, let's adjust the main inventory panel to make space.
+        // We can add the crafting grid *within* the existing panel logic, shifted.
+
+        // int numDisplayCols = Inventory.MAIN_INVENTORY_COLS; // This was a duplicate definition
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        // For now, keep panel width based on main inventory, and fit crafting grid within it visually
+        // This might make the panel wider if we place crafting side-by-side later.
+        // For this iteration, we will place the crafting elements *above* the standard inventory within the same panel.
+
+        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE; // 2 rows for grid, 1 space for arrow/gap.
+
+        int inventoryPanelWidth = baseInventoryPanelWidth; // Keeps current width based on hotbar/main inv.
+        int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2; // Added crafting space
 
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
@@ -216,11 +360,70 @@ public class InventoryScreen {
         // Draw panel background using UIRenderer
         drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
-        // Draw title using NanoVG
-        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, panelStartY + 20, "Inventory");
+        // Draw panel background using UIRenderer
+        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
-        int contentStartY = panelStartY + TITLE_HEIGHT;
+        // Draw "Crafting" title
+        float craftingTitleY = panelStartY + 20;
+        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, craftingTitleY, "Crafting");
 
+        // Crafting slots rendering
+        int craftingGridStartY = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
+        // Center the 2x2 grid, arrow and output slot.
+        // Width of 2x2: 2 * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING
+        // Width of arrow: ~SLOT_SIZE
+        // Width of output: SLOT_SIZE
+        // Total visual width: (2*(SLOT_SIZE+SLOT_PADDING)-SLOT_PADDING) + SLOT_SIZE + SLOT_SIZE + SLOT_PADDING * 2 (approx)
+        int craftInputGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE -1) * SLOT_PADDING;
+        // int craftOutputXOffset = craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING; // Unused
+
+        int craftingElementsTotalWidth = craftInputGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE; // grid + space + arrow + space + output
+        int craftingElementsStartX = panelStartX + (inventoryPanelWidth - craftingElementsTotalWidth) / 2;
+
+
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            int r = i / CRAFTING_GRID_SIZE;
+            int c = i % CRAFTING_GRID_SIZE;
+            int slotX = craftingElementsStartX + c * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = craftingGridStartY + r * (SLOT_SIZE + SLOT_PADDING);
+            drawInventorySlot(craftingInputSlots[i], slotX, slotY, false, -1); // Not a hotbar slot, no specific index for highlight
+            checkHover(craftingInputSlots[i], slotX, slotY);
+        }
+
+        // Draw Arrow (placeholder visual)
+        int arrowX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + (SLOT_SIZE - 20) / 2; // Centered in SLOT_SIZE space
+        int arrowY = craftingGridStartY + (craftingAreaHeight - 20) / 2 - SLOT_PADDING; // Vertically centered in grid area
+        drawCraftingArrow(arrowX, arrowY, 20, 20);
+
+        // Draw Crafting Output Slot
+        int outputSlotX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
+        // Vertically align output slot with the middle of the 2x2 input grid
+        int outputSlotY = craftingGridStartY + (craftingAreaHeight - SLOT_SIZE) / 2 - SLOT_PADDING;
+        drawInventorySlot(craftingOutputSlot, outputSlotX, outputSlotY, false, -1);
+        checkHover(craftingOutputSlot, outputSlotX, outputSlotY);
+
+        // Define Recipe Button position (near crafting output)
+        // Let's place it to the right of the output slot.
+        recipeButtonWidth = uiRenderer.getTextWidth(RECIPE_BUTTON_TEXT, 18f, "sans") + 2 * SLOT_PADDING; // Width based on text
+        recipeButtonHeight = SLOT_SIZE;
+        recipeButtonX = outputSlotX + SLOT_SIZE + SLOT_PADDING * 3;
+        recipeButtonY = outputSlotY; // Align vertically with the output slot
+
+        // Ensure button is within panel bounds, adjust if necessary or make panel wider.
+        // For now, assume it fits or overlaps acceptably.
+        // A more robust solution would adjust panelWidth or button position.
+        // if (recipeButtonX + recipeButtonWidth > panelStartX + inventoryPanelWidth - SLOT_PADDING) {
+        //     recipeButtonX = panelStartX + inventoryPanelWidth - SLOT_PADDING - recipeButtonWidth;
+        // }
+
+        drawRecipeButton(recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, RECIPE_BUTTON_TEXT);
+ 
+        // Draw "Inventory" title below crafting area
+        float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SLOT_SIZE /2; // Reposition inventory title
+        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, inventoryTitleY, "Inventory");
+ 
+        int contentStartY = (int)(inventoryTitleY + TITLE_HEIGHT / 2f + SLOT_PADDING); // Cast to int
+ 
         // Draw Main Inventory Slots
         ItemStack[] mainSlots = inventory.getMainInventorySlots(); // Gets copies
 
@@ -649,85 +852,333 @@ public class InventoryScreen {
 
     // Method to handle mouse clicks for drag and drop
     public void handleMouseInput(int screenWidth, int screenHeight) {
-        if (!visible || !inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-            if (draggedItemStack != null && !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-                 // Mouse button released while dragging - try to place the item
-                placeDraggedItem(screenWidth, screenHeight);
-            } else if (!inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-                // Ensure dragged item is cleared if mouse is released anywhere without a valid drop
-                 if (draggedItemStack != null) {
-                    // Attempt to return to original slot if not placed
-                    tryReturnToOriginalSlot();
-                    draggedItemStack = null;
-                    draggedItemOriginalSlotIndex = -1;
-                 }
-            }
-            return;
-        }
+        if (!visible) return;
+
+        // Consistent panel and slot coordinate calculations
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE;
+        int totalInventoryRows = Inventory.MAIN_INVENTORY_ROWS + 1;
+        int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int inventoryPanelWidth = baseInventoryPanelWidth;
+        int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2;
+        int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
+        int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
+        int craftingGridStartY_calc = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
+        int craftInputGridVisualWidth_calc = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE - 1) * SLOT_PADDING;
+        int craftingElementsTotalWidth_calc = craftInputGridVisualWidth_calc + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE;
+        int craftingElementsStartX_calc = panelStartX + (inventoryPanelWidth - craftingElementsTotalWidth_calc) / 2;
+        int craftingAreaHeight_calc = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        float inventoryTitleY_calc = craftingGridStartY_calc + craftingSectionHeight - SLOT_SIZE / 2f;
+        int mainInvContentStartY_calc = (int) (inventoryTitleY_calc + TITLE_HEIGHT / 2f + SLOT_PADDING);
+        int hotbarRowY_calc = mainInvContentStartY_calc + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int outputSlotX_calc = craftingElementsStartX_calc + craftInputGridVisualWidth_calc + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
+        int outputSlotY_calc = craftingGridStartY_calc + (craftingAreaHeight_calc - SLOT_SIZE) / 2 - SLOT_PADDING;
 
         Vector2f mousePos = inputHandler.getMousePosition();
         float mouseX = mousePos.x;
         float mouseY = mousePos.y;
+        boolean shiftDown = inputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) || inputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
 
-        // Calculate panel dimensions again (could be cached or passed)
-        int numDisplayCols = Inventory.MAIN_INVENTORY_COLS;
-        int inventoryPanelWidth = numDisplayCols * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int inventoryPanelHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT;
-        int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
-        int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
-        int contentStartY = panelStartY + TITLE_HEIGHT;
-        int hotbarRowYOffset = contentStartY + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        boolean leftMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+        boolean rightMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
-
-        if (draggedItemStack == null) { // Not currently dragging, try to pick up an item
-            // Check main inventory slots
-            for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
-                int row = i / Inventory.MAIN_INVENTORY_COLS;
-                int col = i % Inventory.MAIN_INVENTORY_COLS;
-                int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
-                int slotY = contentStartY + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
-
-                if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
-                    mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
-                    ItemStack currentStack = inventory.getMainInventorySlot(i); // Get direct reference
-                    if (currentStack != null && !currentStack.isEmpty()) {
-                        draggedItemStack = currentStack.copy(); // Take the whole stack
-                        inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(),0)); // Clear original slot
-                        draggedItemOriginalSlotIndex = i;
-                        isDraggingFromHotbar = false;
-                        inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                        return;
-                    }
+        if (leftMouseButtonPressed) {
+            if (shiftDown) {
+                // Handle Shift + Left Click for quick transfer
+                boolean transferred = tryHandleShiftClickTransfer(mouseX, mouseY,
+                                                              craftingGridStartY_calc, craftingElementsStartX_calc,
+                                                              outputSlotX_calc, outputSlotY_calc);
+                if (transferred) {
+                    inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                    return;
                 }
+                // If not transferred by shift-click, allow fall-through to normal click behavior *if desired*
+                // For now, if shift was down and we were over a slot, assume action was attempted and consume.
+                // More precise would be if tryHandleShiftClickTransfer itself indicates if it specifically targeted a slot.
+                // For simplicity: if shift was down, any click in a slot area for transfer attempt consumes the click.
+                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT); // Consume to prevent normal pickup
+                 return; // Stop further processing for this click if shift was involved over interactive area.
             }
 
-            // Check hotbar slots (within the inventory panel)
-            for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-                int col = i % Inventory.MAIN_INVENTORY_COLS;
-                int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
-                int slotY = hotbarRowYOffset;
-
-                if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
-                    mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
-                    ItemStack currentStack = inventory.getHotbarSlot(i); // Get direct reference
-                    if (currentStack != null && !currentStack.isEmpty()) {
-                        draggedItemStack = currentStack.copy();
-                        inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(),0));
-                        draggedItemOriginalSlotIndex = i;
-                        isDraggingFromHotbar = true;
-                        inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                        return;
-                    }
+            // Normal Left Click (pickup/place, or button click)
+            if (draggedItemStack == null) {
+                 // Check Recipe Book Button FIRST (as it's not a 'slot' interaction)
+                if (mouseX >= recipeButtonX && mouseX <= recipeButtonX + recipeButtonWidth &&
+                    mouseY >= recipeButtonY && mouseY <= recipeButtonY + recipeButtonHeight) {
+                    Game.getInstance().openRecipeBookScreen();
+                    inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                    return;
                 }
+                // Attempt to PICK UP an item
+                tryPickUpItem(mouseX, mouseY, panelStartX, craftingGridStartY_calc, craftingElementsStartX_calc, outputSlotX_calc, outputSlotY_calc, mainInvContentStartY_calc, hotbarRowY_calc);
             }
-        }
-        // If already dragging, the placeDraggedItem will be called on mouse release.
-        // We consume the press here to prevent other actions while dragging.
-        if (draggedItemStack != null) {
-             inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+             // Consume left click if a drag started or recipe button clicked.
+             // The consume call should be specific to the action.
+             // If tryPickUpItem started a drag, it implies an action was taken.
+             // If recipeButton was clicked, it consumed the click.
+             // If nothing happened, no consumption yet.
+             // This explicit consume will happen IF an action actually occurred (pickup or button).
+             // inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT); // This was moved to be more specific
+ 
+         } else if (rightMouseButtonPressed) {
+             if (draggedItemStack != null && !draggedItemStack.isEmpty()) {
+                 boolean placedOne = tryHandleRightClickDropSingle(mouseX, mouseY, panelStartX,
+                                                               craftingGridStartY_calc, craftingElementsStartX_calc,
+                                                               mainInvContentStartY_calc, hotbarRowY_calc);
+                 if (placedOne) {
+                     inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+                 }
+             }
+             // Consume right click if an action was taken, otherwise not.
+             // This consumption is handled within tryHandleRightClickDropSingle implicitly if it returns true.
+         } else {
+            // Neither left nor right button newly pressed this frame. Check for drag release.
+            if (draggedItemStack != null && !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+                 // Mouse button (specifically left) released while dragging
+                placeDraggedItem(screenWidth, screenHeight); // placeDraggedItem handles clearing drag state if successful
+            } else if (draggedItemStack != null &&
+                       !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT) &&
+                       !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                // Fallback: if somehow still dragging but no buttons are down (e.g., after a failed place)
+                tryReturnToOriginalSlot();
+                clearDraggedItemState();
+            } else if (draggedItemStack == null) {
+                // Ensure drag state is fully reset if nothing is being dragged and no buttons are down.
+                clearDraggedItemState();
+            }
         }
     }
 
+    private void tryPickUpItem(float mouseX, float mouseY, int panelStartX,
+                           int craftingGridStartY_calc, int craftingElementsStartX_calc,
+                           int outputSlotX_calc, int outputSlotY_calc,
+                           int mainInvContentStartY_calc, int hotbarRowY_calc) {
+        // This method encapsulates the pick-up logic previously directly in handleMouseInput
+        // Check main inventory slots
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int row = i / Inventory.MAIN_INVENTORY_COLS;
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = mainInvContentStartY_calc + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
+
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
+                mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                ItemStack currentStack = inventory.getMainInventorySlot(i);
+                if (currentStack != null && !currentStack.isEmpty()) {
+                    draggedItemStack = currentStack.copy();
+                    inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(), 0));
+                    draggedItemOriginalSlotIndex = i;
+                    dragSource = DragSource.MAIN_INVENTORY;
+                    return;
+                }
+            }
+        }
+
+        // Check hotbar slots
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = hotbarRowY_calc;
+
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
+                mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                ItemStack currentStack = inventory.getHotbarSlot(i);
+                if (currentStack != null && !currentStack.isEmpty()) {
+                    draggedItemStack = currentStack.copy();
+                    inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(), 0));
+                    draggedItemOriginalSlotIndex = i;
+                    dragSource = DragSource.HOTBAR;
+                    return;
+                }
+            }
+        }
+
+        // Check crafting input slots
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            int r = i / CRAFTING_GRID_SIZE;
+            int c = i % CRAFTING_GRID_SIZE;
+            int slotX = craftingElementsStartX_calc + c * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = craftingGridStartY_calc + r * (SLOT_SIZE + SLOT_PADDING);
+
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
+                mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                if (craftingInputSlots[i] != null && !craftingInputSlots[i].isEmpty()) {
+                    draggedItemStack = craftingInputSlots[i].copy();
+                    craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+                    draggedItemOriginalSlotIndex = CRAFTING_INPUT_SLOT_START_INDEX + i;
+                    dragSource = DragSource.CRAFTING_INPUT;
+                    updateCraftingOutput();
+                    return;
+                }
+            }
+        }
+        
+        // Check crafting output slot (pickup only)
+        if (mouseX >= outputSlotX_calc && mouseX <= outputSlotX_calc + SLOT_SIZE &&
+            mouseY >= outputSlotY_calc && mouseY <= outputSlotY_calc + SLOT_SIZE) {
+            if (craftingOutputSlot != null && !craftingOutputSlot.isEmpty()) {
+                draggedItemStack = craftingOutputSlot.copy();
+                consumeCraftingIngredients();
+                craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
+                draggedItemOriginalSlotIndex = CRAFTING_OUTPUT_SLOT_INDEX;
+                dragSource = DragSource.NONE; // Source is effectively 'crafting system', not a persistent slot
+                updateCraftingOutput();
+            }
+        }
+    }
+
+    private void clearDraggedItemState() {
+        draggedItemStack = null;
+        draggedItemOriginalSlotIndex = -1;
+        dragSource = DragSource.NONE;
+    }
+
+
+    private boolean tryHandleShiftClickTransfer(float mouseX, float mouseY,
+                                            int craftingGridStartY_calc, int craftingElementsStartX_calc,
+                                            int outputSlotX_calc, int outputSlotY_calc) {
+        // 1. Check Crafting Output Slot
+        if (mouseX >= outputSlotX_calc && mouseX <= outputSlotX_calc + SLOT_SIZE &&
+            mouseY >= outputSlotY_calc && mouseY <= outputSlotY_calc + SLOT_SIZE) {
+            if (craftingOutputSlot != null && !craftingOutputSlot.isEmpty()) {
+                ItemStack itemsInOutput = craftingOutputSlot.copy(); // What's available to take
+                int typeId = itemsInOutput.getBlockTypeId();
+                // int initialCountInOutput = itemsInOutput.getCount(); // Not directly needed with before/after inventory count
+
+                int itemsOfTypeInInventoryBefore = inventory.getItemCount(typeId);
+                
+                inventory.addItem(itemsInOutput); // Attempt to add the full stack from output
+                                                  // Note: inventory.addItem(ItemStack) doesn't modify 'itemsInOutput' itself.
+
+                int itemsOfTypeInInventoryAfter = inventory.getItemCount(typeId);
+
+                if (itemsOfTypeInInventoryAfter > itemsOfTypeInInventoryBefore) {
+                    // At least one item was successfully transferred from the craft output
+                    consumeCraftingIngredients();
+                    craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0); // Clear the output slot as the craft is "taken"
+                    updateCraftingOutput(); // Update for the next potential craft
+                    return true; // Transfer (partial or full) occurred
+                }
+                return false; // No items could be transferred (e.g., inventory completely full for this type)
+            }
+        }
+
+        // 2. Check Crafting Input Slots
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            int r = i / CRAFTING_GRID_SIZE;
+            int c = i % CRAFTING_GRID_SIZE;
+            int slotX = craftingElementsStartX_calc + c * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = craftingGridStartY_calc + r * (SLOT_SIZE + SLOT_PADDING);
+
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
+                mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                if (craftingInputSlots[i] != null && !craftingInputSlots[i].isEmpty()) {
+                    ItemStack itemInInputSlot = craftingInputSlots[i];
+                    int typeId = itemInInputSlot.getBlockTypeId();
+                    int countInInputSlot = itemInInputSlot.getCount();
+
+                    int itemsOfTypeInInventoryBefore = inventory.getItemCount(typeId);
+                    
+                    inventory.addItem(typeId, countInInputSlot); // Use the (ID, count) version
+                    
+                    int itemsOfTypeInInventoryAfter = inventory.getItemCount(typeId);
+                    int numAdded = itemsOfTypeInInventoryAfter - itemsOfTypeInInventoryBefore;
+
+                    if (numAdded > 0) {
+                        itemInInputSlot.decrementCount(numAdded);
+                        if (itemInInputSlot.isEmpty()) {
+                            craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0); // Clear if all taken
+                        }
+                        updateCraftingOutput();
+                        return true; // Successfully transferred some/all
+                    }
+                }
+                 return false; // Click was on a slot but no action (e.g. inventory full for this type) or already empty
+            }
+        }
+        return false; // Click was not on a transferable slot
+    }
+
+    private boolean tryHandleRightClickDropSingle(float mouseX, float mouseY, int panelStartX,
+                                                int craftingGridStartY_calc, int craftingElementsStartX_calc,
+                                                int mainInvContentStartY_calc, int hotbarRowY_calc) {
+        if (draggedItemStack == null || draggedItemStack.isEmpty()) {
+            return false;
+        }
+
+        // Try Main Inventory Slots
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            final int slotIndex = i; // Effectively final for lambda
+            int row = slotIndex / Inventory.MAIN_INVENTORY_COLS;
+            int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = mainInvContentStartY_calc + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE && mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                return attemptDropOneToSlot(inventory.getMainInventorySlot(slotIndex), (stack) -> inventory.setMainInventorySlot(slotIndex, stack), null, -1);
+            }
+        }
+
+        // Try Hotbar Slots
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            final int slotIndex = i; // Effectively final for lambda
+            int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = hotbarRowY_calc;
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE && mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                return attemptDropOneToSlot(inventory.getHotbarSlot(slotIndex), (stack) -> inventory.setHotbarSlot(slotIndex, stack), null, -1);
+            }
+        }
+
+        // Try Crafting Input Slots
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            final int slotIndex = i; // effectively final for lambda
+            int r = i / CRAFTING_GRID_SIZE;
+            int c = i % CRAFTING_GRID_SIZE;
+            int slotX = craftingElementsStartX_calc + c * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = craftingGridStartY_calc + r * (SLOT_SIZE + SLOT_PADDING);
+            if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE && mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                return attemptDropOneToSlot(craftingInputSlots[slotIndex],
+                                           (stack) -> craftingInputSlots[slotIndex] = stack,
+                                           (stack) -> craftingInputSlots[slotIndex] = stack, // Same setter for new/existing stack
+                                           slotIndex); // Pass slotIndex as craftingSlotIndexIfApplicable
+            }
+        }
+        return false;
+    }
+
+    private boolean attemptDropOneToSlot(ItemStack targetSlot, java.util.function.Consumer<ItemStack> directSlotSetter,
+                                     java.util.function.Consumer<ItemStack> newStackSetterForCrafting, int craftingSlotIndexIfApplicable) {
+        // Parameter craftingSlotIndexIfApplicable should actually be the slot index itself if it's a crafting slot, or -1 otherwise.
+        // The method was being called with 'slotIndex' directly which is good.
+        boolean isCraftingSlot = craftingSlotIndexIfApplicable != -1;
+
+        if (targetSlot.isEmpty()) {
+            ItemStack newItem = new ItemStack(draggedItemStack.getBlockTypeId(), 1);
+             // Use newStackSetterForCrafting if provided and it's a crafting slot context, otherwise directSlotSetter.
+            if(isCraftingSlot && newStackSetterForCrafting != null) newStackSetterForCrafting.accept(newItem);
+            else directSlotSetter.accept(newItem);
+            
+            draggedItemStack.decrementCount(1);
+            if (draggedItemStack.isEmpty()) clearDraggedItemState(); // this clears draggedItemStack itself
+            if (isCraftingSlot) updateCraftingOutput();
+            return true;
+        } else if (targetSlot.getBlockTypeId() == draggedItemStack.getBlockTypeId() && targetSlot.getCount() < targetSlot.getMaxStackSize()) {
+            targetSlot.incrementCount(1);
+            // directSlotSetter might not be needed if targetSlot is a direct reference from an array (like craftingInputSlots)
+            // or if playerInventory.get...Slot() returns a modifiable reference.
+            // If inventory.getXSlot() returns a copy, then directSlotSetter.accept(targetSlot) IS needed.
+            // Let's assume for now Inventory.getXSlot() returns a reference for .incrementCount() to work directly.
+            // If this is not the case, directSlotSetter.accept(targetSlot) would be needed after targetSlot.incrementCount(1);
+            
+            draggedItemStack.decrementCount(1);
+            if (draggedItemStack.isEmpty()) clearDraggedItemState(); // this clears draggedItemStack itself
+            if (isCraftingSlot) updateCraftingOutput();
+            return true;
+        }
+        return false;
+    }
+
+ 
     private void placeDraggedItem(int screenWidth, int screenHeight) {
         if (draggedItemStack == null) return;
 
@@ -735,14 +1186,32 @@ public class InventoryScreen {
         float mouseX = mousePos.x;
         float mouseY = mousePos.y;
 
-        // Panel dimensions (repeated, consider refactoring to a common calculation point or member vars updated on resize)
-        int numDisplayCols = Inventory.MAIN_INVENTORY_COLS;
-        int inventoryPanelWidth = numDisplayCols * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int inventoryPanelHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT;
+        // Use already calculated consistent coordinates if available, or recalculate
+        // (This block is duplicated from handleMouseInput for robustness if placeDraggedItem is called independently)
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE; // Grid rows + space/arrow.
+        int totalInventoryRows = Inventory.MAIN_INVENTORY_ROWS + 1; // +1 for hotbar
+        int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        
+        int inventoryPanelWidth = baseInventoryPanelWidth; // Assuming panel width is based on main inventory area
+        int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2; // Matches render() line 199
+
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
-        int contentStartY = panelStartY + TITLE_HEIGHT;
-        int hotbarRowYOffset = contentStartY + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        // Crafting area calculations (consistent with render())
+        int craftingGridStartY_calc = panelStartY + TITLE_HEIGHT + SLOT_PADDING; // As per render line 215
+        int craftInputGridVisualWidth_calc = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE -1) * SLOT_PADDING; // As per render line 221
+        int craftingElementsTotalWidth_calc = craftInputGridVisualWidth_calc + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE; // grid + space + arrow + space + output, as per render line 224
+        int craftingElementsStartX_calc = panelStartX + (inventoryPanelWidth - craftingElementsTotalWidth_calc) / 2; // As per render line 225
+        // int craftingAreaHeight_calc = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING; // As per render line 176 - Not directly needed in this specific block for placeDraggedItem logic further down, but ensures consistency with pickup and render
+
+        // Main inventory area calculations (consistent with render())
+        float inventoryTitleY_calc = craftingGridStartY_calc + craftingSectionHeight - SLOT_SIZE /2f; // Render line 266
+        int mainInvContentStartY_calc = (int)(inventoryTitleY_calc + TITLE_HEIGHT / 2f + SLOT_PADDING); // As per render line 269
+
+        // Hotbar Y calculation (consistent with render())
+        int hotbarRowY_calc = mainInvContentStartY_calc + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING; // As per render line 284
 
         boolean placed = false;
 
@@ -751,7 +1220,7 @@ public class InventoryScreen {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
             int col = i % Inventory.MAIN_INVENTORY_COLS;
             int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
-            int slotY = contentStartY + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = mainInvContentStartY_calc + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
 
             if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
                 mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
@@ -796,11 +1265,22 @@ public class InventoryScreen {
                          inventory.setMainInventorySlot(i, draggedItemStack); // Place current dragged item into the target slot
                          
                          // Place the item originally from the target slot into the original slot of the dragged item
-                         if(isDraggingFromHotbar) {
-                            inventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
-                         } else {
-                            inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
-                         }
+                         switch (dragSource) {
+                           case HOTBAR -> inventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                           case MAIN_INVENTORY -> inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                           case CRAFTING_INPUT -> {
+                               // Allow swapping back to crafting input if it's the source
+                               int trueCraftingIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                               if (trueCraftingIndex >= 0 && trueCraftingIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                   craftingInputSlots[trueCraftingIndex] = itemFromTargetSlot;
+                               }
+                           }
+                           case NONE -> {
+                               // This case should ideally not happen if dragSource was set correctly when picking up.
+                               // If it does, we might drop the item or log an error.
+                               // For now, itemFromTargetSlot is lost if source was NONE.
+                           }
+                        }
                          draggedItemStack = null; // Successfully swapped, clear dragged item
                          placed = true;
                     }
@@ -814,7 +1294,7 @@ public class InventoryScreen {
             for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
                 int col = i % Inventory.MAIN_INVENTORY_COLS;
                 int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
-                int slotY = hotbarRowYOffset;
+                int slotY = hotbarRowY_calc;
 
                 if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
                     mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
@@ -833,22 +1313,166 @@ public class InventoryScreen {
                             draggedItemStack = null; // Fully stacked, clear dragged item
                             placed = true;
                         }
-                    } else { // Swap with hotbar slot
-                        if (targetStack.getBlockTypeId() != draggedItemStack.getBlockTypeId()) {
-                            ItemStack itemFromTargetSlot = targetStack.copy(); // Make a copy before targetStack is overwritten
+                    } else { // Target slot is not empty and not stackable: Perform a full swap.
+                        // This logic mirrors the main inventory swap.
+                        if (targetStack.getBlockTypeId() != draggedItemStack.getBlockTypeId()) { // Ensure different items for a true swap intent
+                            ItemStack itemFromTargetSlot = targetStack.copy();
                             inventory.setHotbarSlot(i, draggedItemStack); // Place current dragged item into the target hotbar slot
 
-                            // Place the item originally from the target hotbar slot into the original slot of the dragged item
-                            if(isDraggingFromHotbar) {
-                                inventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
-                            } else {
-                                inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                            // Place the item originally from the target slot into the original slot of the dragged item
+                            switch (dragSource) {
+                                case HOTBAR -> inventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                                case MAIN_INVENTORY -> inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                                case CRAFTING_INPUT -> {
+                                    int trueCraftingIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                                    if (trueCraftingIndex >= 0 && trueCraftingIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                        craftingInputSlots[trueCraftingIndex] = itemFromTargetSlot;
+                                        // updateCraftingOutput(); // This will be called if crafting grid changed
+                                    }
+                                }
+                                case NONE -> {
+                                    // If original source was NONE (e.g., from crafting output),
+                                    // and we are swapping with a hotbar item,
+                                    // the itemFromTargetSlot would ideally try to go to player inventory if possible,
+                                    // or be dropped. For now, it might be lost if original slot was transient.
+                                    // A safer bet: if dragSource is NONE, this kind of complex swap might not be typical.
+                                    // If dragSource was crafting output, there isn't an "original slot" to put itemFromTargetSlot.
+                                    // This logic primarily handles swaps between persistent slots.
+                                    // If we are here and dragSource is NONE, and we are trying to swap with a hotbar slot,
+                                    // this means the draggedItemStack (from output) is placed in hotbar slot 'i',
+                                    // and itemFromTargetSlot (from hotbar 'i') has nowhere defined to go back to.
+                                    // The most sensible action might be to just place and NOT swap,
+                                    // or to make itemFromTargetSlot the new dragged item.
+                                    // Let's stick to the established "place and become new dragged item" for this edge case.
+                                    if (draggedItemOriginalSlotIndex == CRAFTING_OUTPUT_SLOT_INDEX) {
+                                        // Revert to place-and-pickup-other for output-to-occupied-hotbar
+                                        inventory.setHotbarSlot(i, draggedItemStack); // Place item from output
+                                        // The item from the target slot becomes the new dragged item.
+                                        // The 'itemFromTargetSlot' variable itself is not directly used beyond this point in this path,
+                                        // but its content is now in 'draggedItemStack'.
+                                        draggedItemStack = itemFromTargetSlot; // itemFromTargetSlot used here
+                                        dragSource = DragSource.HOTBAR;           // New source is this hotbar slot
+                                        draggedItemOriginalSlotIndex = i;         // New original index
+                                        // placed = true; // Redundant, set at line 1134 in this execution path
+                                        // Skip further modification of draggedItemStack to null in the outer block
+                                        // as we are still dragging something.
+                                    }
+                                    // else, if dragSource was unexpectedly NONE but not output, default behavior for swap might be okay
+                                    // (itemFromTargetSlot could be lost if no valid original slot).
+                                }
                             }
-                            draggedItemStack = null; // Successfully swapped, clear dragged item
+                            // If not the special DragSource.NONE case above that maintains a dragged item:
+                            if (!(dragSource == DragSource.NONE && draggedItemOriginalSlotIndex == CRAFTING_OUTPUT_SLOT_INDEX && draggedItemStack != null)) {
+                                draggedItemStack = null; // Successfully swapped (or placed from output), clear dragged item
+                            }
+                            placed = true;
+                        } else if (targetStack.getBlockTypeId() == draggedItemStack.getBlockTypeId()) {
+                            // Items are the same type but cannot stack (e.g. different NBT, or already full source/target)
+                            // This is a "failed stack, so swap positions" case. Treat as full swap.
+                            ItemStack itemFromTargetSlot = targetStack.copy();
+                            inventory.setHotbarSlot(i, draggedItemStack);
+
+                            switch (dragSource) {
+                                case HOTBAR -> inventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                                case MAIN_INVENTORY -> inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                                case CRAFTING_INPUT -> {
+                                    int trueCraftingIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                                    if (trueCraftingIndex >= 0 && trueCraftingIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                        craftingInputSlots[trueCraftingIndex] = itemFromTargetSlot;
+                                    }
+                                }
+                                case NONE -> { // As above, itemFromTargetSlot could be lost or become new dragged
+                                     inventory.setHotbarSlot(i, draggedItemStack);
+                                     // The item from the target slot becomes the new dragged item.
+                                     // The 'itemFromTargetSlot' variable itself is not directly used beyond this point in this path,
+                                     // but its content is now in 'draggedItemStack'.
+                                     draggedItemStack = itemFromTargetSlot; // itemFromTargetSlot used here
+                                     dragSource = DragSource.HOTBAR;
+                                     draggedItemOriginalSlotIndex = i;
+                                     // placed = true; // Redundant, set at line 1164 in this execution path
+                                }
+                            }
+                             if (!(dragSource == DragSource.NONE && draggedItemStack != null)) { // If not the special output-to-hotbar new drag
+                                draggedItemStack = null;
+                            }
                             placed = true;
                         }
                     }
-                    break; // Found a slot
+                    break; // Processed this slot.
+                }
+            }
+        }
+
+        // Try to place in crafting input slots
+        if (!placed) {
+            // Use the _calc variables established at the start of placeDraggedItem
+            for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+                int r = i / CRAFTING_GRID_SIZE;
+                int c = i % CRAFTING_GRID_SIZE;
+                int slotX = craftingElementsStartX_calc + c * (SLOT_SIZE + SLOT_PADDING);
+                int slotY = craftingGridStartY_calc + r * (SLOT_SIZE + SLOT_PADDING);
+
+                if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
+                    mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
+                    ItemStack targetStack = craftingInputSlots[i];
+                    if (targetStack.isEmpty()) {
+                        craftingInputSlots[i] = draggedItemStack;
+                        draggedItemStack = null;
+                        placed = true;
+                    } else if (targetStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
+                               targetStack.getCount() < targetStack.getMaxStackSize()) {
+                        int canAdd = targetStack.getMaxStackSize() - targetStack.getCount();
+                        int toAdd = Math.min(canAdd, draggedItemStack.getCount());
+                        targetStack.incrementCount(toAdd);
+                        draggedItemStack.decrementCount(toAdd);
+                        if (draggedItemStack.isEmpty()) {
+                            draggedItemStack = null;
+                            placed = true;
+                        }
+                    } else { // Target slot is not empty and not stackable: Perform a swap.
+                        ItemStack itemFromTargetCraftingSlot = targetStack.copy();
+                        craftingInputSlots[i] = draggedItemStack; // Place current dragged item into the target crafting slot.
+
+                        boolean swappedBackToOriginal = false;
+                        switch (dragSource) {
+                            case HOTBAR -> {
+                                inventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromTargetCraftingSlot);
+                                swappedBackToOriginal = true;
+                            }
+                            case MAIN_INVENTORY -> {
+                                inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromTargetCraftingSlot);
+                                swappedBackToOriginal = true;
+                            }
+                            case CRAFTING_INPUT -> {
+                                // Swapping between two crafting input slots
+                                int originalCraftingSlotTrueIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                                if (originalCraftingSlotTrueIndex >= 0 && originalCraftingSlotTrueIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                    craftingInputSlots[originalCraftingSlotTrueIndex] = itemFromTargetCraftingSlot;
+                                    swappedBackToOriginal = true;
+                                }
+                            }
+                            case NONE -> { // e.g., draggedItemStack was from CRAFTING_OUTPUT_SLOT_INDEX
+                                // If dragging from output and dropping on an occupied crafting input slot,
+                                // the item from the input slot becomes the new dragged item.
+                                draggedItemStack = itemFromTargetCraftingSlot;
+                                // The new drag source is this crafting input slot.
+                                dragSource = DragSource.CRAFTING_INPUT;
+                                draggedItemOriginalSlotIndex = CRAFTING_INPUT_SLOT_START_INDEX + i;
+                                // `placed` is true as the original draggedItem (from output) was placed into craftingInputSlots[i].
+                                // `swappedBackToOriginal` remains false as there was no "original slot" to swap back to for itemFromTargetCraftingSlot.
+                            }
+                        }
+
+                        if (swappedBackToOriginal) {
+                            draggedItemStack = null; // Full swap completed, clear dragged item.
+                        }
+                        // If not swappedBackToOriginal, it implies dragSource was NONE (item from output), and draggedItemStack
+                        // now holds itemFromTargetCraftingSlot. dragSource and original index were already updated.
+
+                        placed = true;
+                    }
+                    if(placed) updateCraftingOutput(); // Update crafting output if any change in crafting grid
+                    break; // Processed this slot.
                 }
             }
         }
@@ -856,71 +1480,163 @@ public class InventoryScreen {
         if (placed && (draggedItemStack == null || draggedItemStack.isEmpty())) {
             draggedItemStack = null;
             draggedItemOriginalSlotIndex = -1;
+            dragSource = DragSource.NONE;
         } else if (!placed && draggedItemStack != null && !draggedItemStack.isEmpty()) {
-            // If not placed and item still exists, return to original slot
             tryReturnToOriginalSlot();
         } else if (placed && draggedItemStack != null && !draggedItemStack.isEmpty()){
-            // This case means a swap happened, and draggedItemStack is now the item from the target slot.
-            // We need to place *this* new draggedItemStack back into the *original* slot of the first item.
-            tryReturnToOriginalSlot(); // This will try to place the *new* dragged item into the *old* original slot
+            // This implies a swap happened, and draggedItemStack is now the item from the target slot.
+            // Try to place this *new* draggedItemStack back into the *original* slot of the *first* item.
+            tryReturnToOriginalSlot(); // This will try to place the *new* dragged item
         }
 
-
-        // If an item was placed (and draggedItemStack is now empty/null) or successfully returned
         if (draggedItemStack == null || draggedItemStack.isEmpty()) {
              draggedItemStack = null;
              draggedItemOriginalSlotIndex = -1;
+             dragSource = DragSource.NONE;
         }
-        // If after all attempts, draggedItemStack still exists (e.g. partial stack, or failed return)
-        // it will continue to be rendered with the mouse. A click outside could clear it or a proper
-        // "drop item on ground" mechanic would be needed. For now, it returns if it can.
+        // If still dragging (e.g. couldn't return to a full original slot after a failed place)
+        // it remains with the mouse.
     }
 
     private void tryReturnToOriginalSlot() {
         if (draggedItemStack == null || draggedItemStack.isEmpty() || draggedItemOriginalSlotIndex == -1) {
             draggedItemStack = null; // Ensure it's cleared if it was emptied by stacking
+            dragSource = DragSource.NONE; // Reset source if item is gone
             return;
-        }
-
-        ItemStack originalSlotItemStack;
-        if (isDraggingFromHotbar) {
-            originalSlotItemStack = inventory.getHotbarSlot(draggedItemOriginalSlotIndex);
-            if (originalSlotItemStack.isEmpty()) {
-                inventory.setHotbarSlot(draggedItemOriginalSlotIndex, draggedItemStack);
-                draggedItemStack = null;
-            } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                       originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
-                // Try to stack back
-                int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
-                int toAdd = Math.min(canAdd, draggedItemStack.getCount());
-                originalSlotItemStack.incrementCount(toAdd);
-                draggedItemStack.decrementCount(toAdd);
-                if (draggedItemStack.isEmpty()) {
+        }        ItemStack originalSlotItemStack;
+        switch (dragSource) {
+            case HOTBAR -> {
+                originalSlotItemStack = inventory.getHotbarSlot(draggedItemOriginalSlotIndex);
+                if (originalSlotItemStack.isEmpty()) {
+                    inventory.setHotbarSlot(draggedItemOriginalSlotIndex, draggedItemStack);
                     draggedItemStack = null;
+                } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
+                           originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
+                    // Try to stack back
+                    int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
+                    int toAdd = Math.min(canAdd, draggedItemStack.getCount());
+                    originalSlotItemStack.incrementCount(toAdd);
+                    draggedItemStack.decrementCount(toAdd);
+                    if (draggedItemStack.isEmpty()) {
+                        draggedItemStack = null;
+                    }
                 }
-            } // Else, cannot return to original slot if it's now occupied by a different item and cannot stack.
-              // Item remains "in hand". A more robust system might drop it or find another empty slot.
-        } else { // Was from main inventory
-            originalSlotItemStack = inventory.getMainInventorySlot(draggedItemOriginalSlotIndex);
-            if (originalSlotItemStack.isEmpty()) {
-                inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, draggedItemStack);
-                draggedItemStack = null;
-            } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                       originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
-                int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
-                int toAdd = Math.min(canAdd, draggedItemStack.getCount());
-                originalSlotItemStack.incrementCount(toAdd);
-                draggedItemStack.decrementCount(toAdd);
-                if (draggedItemStack.isEmpty()) {
+            }
+            case MAIN_INVENTORY -> { // Was from main inventory
+                originalSlotItemStack = inventory.getMainInventorySlot(draggedItemOriginalSlotIndex);
+                if (originalSlotItemStack.isEmpty()) {
+                    inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, draggedItemStack);
                     draggedItemStack = null;
+                } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
+                           originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
+                    int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
+                    int toAdd = Math.min(canAdd, draggedItemStack.getCount());
+                    originalSlotItemStack.incrementCount(toAdd);
+                    draggedItemStack.decrementCount(toAdd);
+                    if (draggedItemStack.isEmpty()) {
+                        draggedItemStack = null;
+                    }
+                }
+            }
+            case CRAFTING_INPUT -> {
+                // Returning to a crafting input slot
+                int craftingSlotTrueIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                if (craftingSlotTrueIndex >=0 && craftingSlotTrueIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                    originalSlotItemStack = craftingInputSlots[craftingSlotTrueIndex];
+                    if (originalSlotItemStack.isEmpty()) {
+                        craftingInputSlots[craftingSlotTrueIndex] = draggedItemStack;
+                        draggedItemStack = null;
+                    } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
+                            originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
+                        int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
+                        int toAdd = Math.min(canAdd, draggedItemStack.getCount());
+                        originalSlotItemStack.incrementCount(toAdd);
+                        draggedItemStack.decrementCount(toAdd);
+                        if (draggedItemStack.isEmpty()) {
+                            draggedItemStack = null;
+                        }
+                    }
+                    if (draggedItemStack == null) updateCraftingOutput(); // Item returned to input grid
+                }
+            }
+            case NONE -> {
+                 // If dragSource was NONE (e.g. picked from crafting output), it can't "return" to an original inventory slot.
+                 // The item just stays dragged if not placed elsewhere. Or, drop it, or add to inventory if space.
+                 // For now, it remains dragged.
+            }
+        }
+        // If item could not be returned, it remains dragged.
+
+         if (draggedItemStack != null && draggedItemStack.isEmpty()){
+            draggedItemStack = null;
+        }
+        if (draggedItemStack == null) { // If successfully returned or emptied
+            draggedItemOriginalSlotIndex = -1;
+            dragSource = DragSource.NONE;
+        }
+    }
+
+    private void updateCraftingOutput() {
+        List<List<ItemStack>> grid = new ArrayList<>();
+        for (int r = 0; r < CRAFTING_GRID_SIZE; r++) {
+            List<ItemStack> row = new ArrayList<>();
+            for (int c = 0; c < CRAFTING_GRID_SIZE; c++) {
+                row.add(craftingInputSlots[r * CRAFTING_GRID_SIZE + c]);
+            }
+            grid.add(row);
+        }
+        ItemStack result = craftingManager.craftItem(grid);
+        if (result != null && !result.isEmpty()) {
+            craftingOutputSlot = result;
+        } else {
+            craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0); // Ensure output is cleared
+        }
+    }
+
+    private void consumeCraftingIngredients() {
+        // This is simplified. A robust solution would involve the recipe telling us what was consumed.
+        // For now, assume 1 of each item in the input grid is consumed if an output was taken.
+        // This needs to be tied to the *actual matched recipe's* requirements if recipes can have varying input counts.
+        // For 2x2 direct crafting, often it's 1 of each unless explicitly stated by a more complex recipe system.
+
+        // To correctly consume, we'd ideally get the matched recipe from craftItem or have CraftingManager provide
+        // a method to get the last matched recipe's input.
+        // Lacking that for now, decrement non-empty slots in craftingInputSlots by 1.
+
+        for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
+            if (craftingInputSlots[i] != null && !craftingInputSlots[i].isEmpty()) {
+                craftingInputSlots[i].decrementCount(1);
+                if (craftingInputSlots[i].isEmpty()) { // If count drops to 0
+                    craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
                 }
             }
         }
-         if (draggedItemStack != null && draggedItemStack.isEmpty()){ // If count became zero after trying to return
-            draggedItemStack = null;
+        // After consuming, the crafting grid *automatically* re-evaluates via updateCraftingOutput()
+        // called after taking item from output slot.
+    }
+
+    private void drawCraftingArrow(float x, float y, float width, float height) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            nvgBeginPath(vg);
+            nvgFillColor(vg, nvgRGBA(200, 200, 200, 220, NVGColor.malloc(stack)));
+            // Simple arrow: ->
+            nvgMoveTo(vg, x, y + height / 2);
+            nvgLineTo(vg, x + width - (width / 3), y + height / 2);
+            nvgStrokeWidth(vg, 2.0f);
+            nvgStrokeColor(vg, nvgRGBA(150,150,150,255,NVGColor.malloc(stack)));
+            nvgStroke(vg);
+
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + width - (width / 3) - (height/4), y + height / 4);
+            nvgLineTo(vg, x + width, y + height / 2);
+            nvgLineTo(vg, x + width - (width / 3) - (height/4), y + height * 3 / 4);
+            // nvgClosePath(vg); // No fill for the point
+            nvgStroke(vg);
         }
+    }
     }    private void checkHover(ItemStack itemStack, int slotX, int slotY) {
-        if (!visible) {
+        if (itemStack == null || itemStack.isEmpty() || !visible) {
             return;
         }
 
@@ -936,6 +1652,72 @@ public class InventoryScreen {
                 hoveredItemStack = itemStack;
             }
             // Note: If slot is empty, hoveredItemStack remains null (cleared at start of render)
+        }
+    }
+
+    private void drawRecipeButton(float x, float y, float w, float h, String text) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            NVGColor color = NVGColor.malloc(stack);
+
+            // Button background
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x, y, w, h, 4);
+            boolean isHovering = inputHandler.getMousePosition().x >= x && inputHandler.getMousePosition().x <= x + w &&
+                                 inputHandler.getMousePosition().y >= y && inputHandler.getMousePosition().y <= y + h;
+            if (isHovering) {
+                nvgFillColor(vg, nvgRGBA(100, 120, 140, 255, color)); // Hover color
+            } else {
+                nvgFillColor(vg, nvgRGBA(80, 100, 120, 255, color)); // Normal color
+            }
+            nvgFill(vg);
+
+            // Button border
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x + 0.5f, y + 0.5f, w - 1, h - 1, 3.5f);
+            nvgStrokeColor(vg, nvgRGBA(150, 170, 190, 255, color));
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStroke(vg);
+
+            // Button text
+            nvgFontSize(vg, 18); // Use a reasonable font size
+            nvgFontFace(vg, "sans"); // Or "minecraft" if available and preferred
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, color));
+            nvgText(vg, x + w / 2, y + h / 2, text);
+        }
+    }
+
+    private void drawRecipeButton(float x, float y, float w, float h, String text) {
+        try (MemoryStack stack = stackPush()) {
+            long vg = uiRenderer.getVG();
+            NVGColor color = NVGColor.malloc(stack);
+
+            // Button background
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x, y, w, h, 4);
+            boolean isHovering = inputHandler.getMousePosition().x >= x && inputHandler.getMousePosition().x <= x + w &&
+                                 inputHandler.getMousePosition().y >= y && inputHandler.getMousePosition().y <= y + h;
+            if (isHovering) {
+                nvgFillColor(vg, nvgRGBA(100, 120, 140, 255, color)); // Hover color
+            } else {
+                nvgFillColor(vg, nvgRGBA(80, 100, 120, 255, color)); // Normal color
+            }
+            nvgFill(vg);
+
+            // Button border
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x + 0.5f, y + 0.5f, w - 1, h - 1, 3.5f);
+            nvgStrokeColor(vg, nvgRGBA(150, 170, 190, 255, color));
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStroke(vg);
+
+            // Button text
+            nvgFontSize(vg, 18); // Use a reasonable font size
+            nvgFontFace(vg, "sans"); // Or "minecraft" if available and preferred
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, color));
+            nvgText(vg, x + w / 2, y + h / 2, text);
         }
     }
 }
