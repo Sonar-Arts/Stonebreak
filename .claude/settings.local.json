@@ -4,7 +4,9 @@
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(/home/chace/.nvm/versions/node/v22.16.0/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg -n -A 50 \"renderWorldWithoutDrops\" \"/mnt/c/Users/Chace/Projects/SB - Project/Stonebreak/src/main/java/com/stonebreak/Renderer.java\")",
+      "Bash(/home/chace/.nvm/versions/node/v22.16.0/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg -n -A 100 \"renderWorldWithoutDrops\" \"/mnt/c/Users/Chace/Projects/SB - Project/Stonebreak/src/main/java/com/stonebreak/Renderer.java\")"
     ],
     "deny": []
   },

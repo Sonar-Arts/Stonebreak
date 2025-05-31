@@ -188,6 +188,87 @@ public class InventoryScreen {
             }
         }
 
+        // Tooltip rendering moved to separate method
+    }
+    
+    /**
+     * Render the full inventory screen without tooltips.
+     * This method is called during the main UI phase, before block drops are rendered.
+     */
+    public void renderWithoutTooltips(int screenWidth, int screenHeight) {
+        if (!visible) {
+            return;
+        }
+
+        // Reset hovered item at the start of each render pass
+        hoveredItemStack = null;
+
+        // Main Inventory Area (now includes hotbar visually as part of the panel)
+        int numDisplayCols = Inventory.MAIN_INVENTORY_COLS;
+
+        int inventoryPanelWidth = numDisplayCols * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        // Height for main inventory slots + one row for hotbar + title
+        int inventoryPanelHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT;
+
+        int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
+        int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
+
+        // Draw panel background using UIRenderer
+        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
+
+        // Draw title using NanoVG
+        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, panelStartY + 20, "Inventory");
+
+        int contentStartY = panelStartY + TITLE_HEIGHT;
+
+        // Draw Main Inventory Slots
+        ItemStack[] mainSlots = inventory.getMainInventorySlots(); // Gets copies
+
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int row = i / Inventory.MAIN_INVENTORY_COLS;
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = contentStartY + SLOT_PADDING + row * (SLOT_SIZE + SLOT_PADDING);
+            drawInventorySlot(mainSlots[i], slotX, slotY, false, -1);
+            checkHover(mainSlots[i], slotX, slotY);
+        }
+        
+        // Draw Hotbar Slots (as part of the main inventory panel, visually)
+        // Positioned below the main inventory slots within the same panel
+        ItemStack[] hotbarSlots = inventory.getHotbarSlots(); // Gets copies
+        int hotbarRowYOffset = contentStartY + SLOT_PADDING + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING; // Extra padding for separation
+
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int col = i % Inventory.MAIN_INVENTORY_COLS; // Hotbar is a single row
+            int slotX = panelStartX + SLOT_PADDING + col * (SLOT_SIZE + SLOT_PADDING);
+            int slotY = hotbarRowYOffset;
+            drawInventorySlot(hotbarSlots[i], slotX, slotY, true, i);
+            checkHover(hotbarSlots[i], slotX, slotY);
+        }
+
+        // Draw dragged item on top of everything else
+        if (draggedItemStack != null && !draggedItemStack.isEmpty()) {
+            Vector2f mousePos = inputHandler.getMousePosition();
+            // Center the item on the mouse cursor
+            int itemRenderX = (int) (mousePos.x - (SLOT_SIZE -4) / 2.0f);
+            int itemRenderY = (int) (mousePos.y - (SLOT_SIZE -4) / 2.0f);
+
+            BlockType type = BlockType.getById(draggedItemStack.getBlockTypeId());
+            if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
+                drawDraggedItem(type, itemRenderX, itemRenderY, draggedItemStack.getCount());
+            }
+        }
+    }
+    
+    /**
+     * Render only tooltips for the full inventory screen.
+     * This method is called after block drops are rendered to ensure tooltips appear above them.
+     */
+    public void renderTooltipsOnly(int screenWidth, int screenHeight) {
+        if (!visible) {
+            return;
+        }
+        
         // Draw Tooltip
         if (hoveredItemStack != null && !hoveredItemStack.isEmpty() && draggedItemStack == null) { // Only show tooltip if not dragging
             BlockType type = BlockType.getById(hoveredItemStack.getBlockTypeId());
@@ -415,7 +496,7 @@ public class InventoryScreen {
             long vg = uiRenderer.getVG();
             nvgBeginPath(vg);
             nvgRect(vg, x, y, width, height);
-            nvgFillColor(vg, nvgRGBA(70, 70, 70, 180, NVGColor.malloc(stack)));
+            nvgFillColor(vg, nvgRGBA(70, 70, 70, 255, NVGColor.malloc(stack)));
             nvgFill(vg);
         }
     }
@@ -520,8 +601,43 @@ public class InventoryScreen {
             drawInventorySlot(hotbarItems[i], slotX, hotbarStartY, true, i);
         }
 
+        // Tooltip rendering moved to separate method
+    }
+    
+    /**
+     * Renders the separate hotbar at the bottom of the screen without tooltips.
+     * This method is called during the main UI phase, before block drops are rendered.
+     */
+    public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
+        if (visible) return; // Don't render separate hotbar if full inventory is open
+
+        int hotbarWidth = Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int hotbarStartX = (screenWidth - hotbarWidth) / 2;
+        int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
+
+        drawHotbarBackground(hotbarStartX, hotbarStartY - SLOT_PADDING, hotbarWidth, SLOT_SIZE + SLOT_PADDING * 2);
+
+        ItemStack[] hotbarItems = inventory.getHotbarSlots(); // Get copies
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int slotX = hotbarStartX + SLOT_PADDING + i * (SLOT_SIZE + SLOT_PADDING);
+            drawInventorySlot(hotbarItems[i], slotX, hotbarStartY, true, i);
+        }
+    }
+    
+    /**
+     * Renders only the hotbar tooltip.
+     * This method is called after block drops are rendered to ensure tooltips appear above them.
+     */
+    public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
+        if (visible) return; // Don't render separate hotbar if full inventory is open
+
         // Render Hotbar Selection Tooltip
         if (hotbarSelectedItemName != null && hotbarSelectedItemTooltipAlpha > 0.0f && !visible) {
+            // Recalculate hotbar positioning to match renderHotbarWithoutTooltips
+            int hotbarWidth = Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+            int hotbarStartX = (screenWidth - hotbarWidth) / 2;
+            int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
+            
             // Position above the *selected* hotbar slot
             int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
             float selectedSlotX = hotbarStartX + SLOT_PADDING + selectedSlotIndex * (SLOT_SIZE + SLOT_PADDING);
@@ -804,7 +920,7 @@ public class InventoryScreen {
             draggedItemStack = null;
         }
     }    private void checkHover(ItemStack itemStack, int slotX, int slotY) {
-        if (itemStack == null || itemStack.isEmpty() || !visible) {
+        if (!visible) {
             return;
         }
 
@@ -812,9 +928,14 @@ public class InventoryScreen {
         float mouseX = mousePos.x;
         float mouseY = mousePos.y;
 
+        // Check if mouse is over this slot
         if (mouseX >= slotX && mouseX <= slotX + SLOT_SIZE &&
             mouseY >= slotY && mouseY <= slotY + SLOT_SIZE) {
-            hoveredItemStack = itemStack;
+            // Only set hovered item if the slot actually contains an item
+            if (itemStack != null && !itemStack.isEmpty()) {
+                hoveredItemStack = itemStack;
+            }
+            // Note: If slot is empty, hoveredItemStack remains null (cleared at start of render)
         }
     }
 }

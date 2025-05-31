@@ -16,6 +16,8 @@ import org.lwjgl.BufferUtils;
 import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
+import static org.lwjgl.opengl.GL11.GL_LESS;
+import static org.lwjgl.opengl.GL11.GL_ALWAYS;
 import static org.lwjgl.opengl.GL11.GL_LINES;
 import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
 import static org.lwjgl.opengl.GL11.GL_NEAREST;
@@ -42,6 +44,7 @@ import static org.lwjgl.opengl.GL11.glBlendFunc;
 import static org.lwjgl.opengl.GL11.glClear;
 import static org.lwjgl.opengl.GL11.glDeleteTextures;
 import static org.lwjgl.opengl.GL11.glDepthMask;
+import static org.lwjgl.opengl.GL11.glDepthFunc;
 import static org.lwjgl.opengl.GL11.glDisable;
 import static org.lwjgl.opengl.GL11.glDrawArrays;
 import static org.lwjgl.opengl.GL11.glDrawElements;
@@ -57,6 +60,8 @@ import static org.lwjgl.opengl.GL11.glTexImage2D;
 import static org.lwjgl.opengl.GL11.glTexParameteri;
 import static org.lwjgl.opengl.GL11.glVertex3f;
 import static org.lwjgl.opengl.GL11.glViewport;
+import static org.lwjgl.opengl.GL11.glColorMask;
+import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -537,9 +542,6 @@ public class Renderer {
         // Render water particles
         renderWaterParticles(); // This method binds its own shader
 
-        // Render block drops
-        renderBlockDrops(world);
-
         // Unbind main world shader program if other things don't use it
         // shaderProgram.unbind(); // UI pass binds it again.
         
@@ -642,6 +644,99 @@ public class Renderer {
         
         // Render UI elements
         renderUI();
+    }
+    
+    /**
+     * Renders ONLY the world geometry (no block drops, no UI) to preserve depth buffer.
+     */
+    public void renderWorldOnly(World world, Player player, float totalTime) {
+        // Update animated textures
+        textureAtlas.updateAnimatedWater(totalTime);
+
+        // Enable depth testing (globally for the world pass)
+        glEnable(GL_DEPTH_TEST);
+        
+        // Use shader program
+        shaderProgram.bind();
+        
+        // Set common uniforms for world rendering
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
+        shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
+        shaderProgram.setUniform("u_isText", false);        // World objects are not text
+        
+        // Bind texture atlas once before passes
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        // Ensure texture filtering is set (NEAREST for blocky style)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        
+        // Get player chunk position
+        int playerChunkX = (int) Math.floor(player.getPosition().x / World.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(player.getPosition().z / World.CHUNK_SIZE);
+        Map<World.ChunkPosition, Chunk> visibleChunks = world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
+
+        // --- PASS 1: Opaque objects (or non-water parts of chunks) ---
+        shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
+        glDepthMask(true);  // Enable depth writing for opaque objects
+        glDisable(GL_BLEND); // Opaque objects typically don't need blending
+
+        for (Chunk chunk : visibleChunks.values()) {
+            // Texture atlas is already bound
+            chunk.render(); // Chunk.render() will be called, shader will discard water fragments
+        }
+
+        // --- PASS 2: Transparent objects (water parts of chunks) ---
+        shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
+        glDepthMask(false); // Disable depth writing for transparent objects
+        glEnable(GL_BLEND); // Enable blending
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
+ 
+        // Sort chunks from back to front for transparent pass (reuse list to avoid allocation)
+        reusableSortedChunks.clear();
+        reusableSortedChunks.addAll(visibleChunks.values());
+        org.joml.Vector3f playerPos = player.getPosition();
+        Collections.sort(reusableSortedChunks, (c1, c2) -> {
+            // Calculate distance squared from player to center of each chunk
+            // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
+            // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
+            float c1CenterX = c1.getWorldX(World.CHUNK_SIZE / 2);
+            float c1CenterZ = c1.getWorldZ(World.CHUNK_SIZE / 2);
+            float c2CenterX = c2.getWorldX(World.CHUNK_SIZE / 2);
+            float c2CenterZ = c2.getWorldZ(World.CHUNK_SIZE / 2);
+
+            float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
+                            (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
+            float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
+                            (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
+            
+            // Sort in descending order of distance (farthest first)
+            return Float.compare(distSq2, distSq1);
+        });
+
+        for (Chunk chunk : reusableSortedChunks) {
+            // Texture atlas is already bound
+            chunk.render(); // Chunk.render() will be called, shader will discard non-water fragments
+        }
+        
+        glDepthMask(true);  // Restore depth writing
+        glDisable(GL_BLEND); // Restore blending state
+
+        // Render block crack overlay if breaking a block
+        renderBlockCrackOverlay(player);
+
+        // Render player arm (if not in pause menu, etc.)
+        if (!Game.getInstance().isPaused()) {
+            renderPlayerArm(player); // This method binds its own shader and texture
+        }
+
+        // Render water particles
+        renderWaterParticles(); // This method binds its own shader
+
+        // NOTE: Block drops and UI are NOT rendered here - depth buffer is preserved
     }
     
     /**
@@ -824,12 +919,14 @@ public class Renderer {
       /**
      * Renders UI elements on top of the 3D world.
      */
-    private void renderUI() {
-        // Clear the depth buffer to ensure UI is drawn on top of everything from the 3D world pass
-        glClear(GL_DEPTH_BUFFER_BIT);
+    public void renderUI() {
+        // Preserve depth buffer but ensure UI renders on top using GL_ALWAYS
+        // glClear(GL_DEPTH_BUFFER_BIT); // Removed to preserve world depth
 
-        // Disable depth testing for UI
-        glDisable(GL_DEPTH_TEST);
+        // Enable depth testing with GL_ALWAYS so UI always passes depth test
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_ALWAYS); // UI always renders regardless of depth
+        glDepthMask(false);     // Don't write to depth buffer
         
         // Use shader program
         shaderProgram.bind();
@@ -857,21 +954,18 @@ public class Renderer {
             
         }
         
-        // Pause menu is now rendered in Main.java using UIRenderer
+        // All complex UI (inventory, pause menu, chat) is now rendered in Main.java using UIRenderer
+        // This renderUI() method only handles simple OpenGL-based UI elements like crosshair
         
-        // Render inventory screen if visible
+        // Render depth curtains for UI elements to prevent block drops from rendering over them
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            // Make sure we have a clean 2D state for the inventory
-            glDisable(GL_DEPTH_TEST);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            
-            // InventoryScreen handles its own 2D orthographic projection setup
-            inventoryScreen.render(windowWidth, windowHeight);
-            
-            // Re-bind shader as inventory might have changed state
-            shaderProgram.bind();
+            // Render invisible depth curtain to occlude block drops behind inventory
+            renderInventoryDepthCurtain();
+        } else {
+            // If inventory is not visible, render hotbar depth curtain 
+            // (hotbar is rendered separately in Main.java via UIRenderer)
+            renderHotbarDepthCurtain();
         }
         
         
@@ -883,8 +977,10 @@ public class Renderer {
         GL30.glBindVertexArray(0);
         shaderProgram.unbind();
         
-        // Re-enable depth testing
+        // Restore normal depth testing state
         glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);   // Restore normal depth testing function
+        glDepthMask(true);      // Restore depth writing
     }
 
     /**
@@ -1097,7 +1193,7 @@ public class Renderer {
         
         // Enable depth testing for 3D rendering
         glEnable(GL_DEPTH_TEST);
-        glClear(GL_DEPTH_BUFFER_BIT); // Clear depth buffer for this slot
+        glDepthFunc(GL_LESS); // Use normal depth testing to write closer values
         
         // Disable blending for opaque block rendering
         if (blendWasEnabled) {
@@ -2047,6 +2143,449 @@ public class Renderer {
         
         // Render using isolated context (completely separated from UI state)
         blockDropRenderer.renderBlockDrops();
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind inventory UI.
+     * This creates proper depth values for block drop occlusion without visual interference.
+     */
+    private void renderInventoryDepthCurtain() {
+        // Save current GL state
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        
+        // Set up depth curtain rendering state
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
+        glDepthMask(true);          // Write to depth buffer (this is key!)
+        glDisable(GL_BLEND);        // No blending needed for invisible quad
+        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
+        
+        // Set up orthographic projection for screen-space rendering
+        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
+        Matrix4f identityView = new Matrix4f().identity();
+        Matrix4f modelMatrix = new Matrix4f().identity();
+        
+        // Bind shader and set uniforms
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", orthoProjection);
+        shaderProgram.setUniform("viewMatrix", identityView);
+        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Calculate inventory panel dimensions (match InventoryScreen calculations)
+        int numDisplayCols = 9; // Inventory.MAIN_INVENTORY_COLS
+        int SLOT_SIZE = 40;
+        int SLOT_PADDING = 5;
+        int TITLE_HEIGHT = 30;
+        int inventoryPanelWidth = numDisplayCols * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int inventoryPanelHeight = (3 + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + TITLE_HEIGHT; // 3 main rows + 1 hotbar row
+        
+        int panelStartX = (windowWidth - inventoryPanelWidth) / 2;
+        int panelStartY = (windowHeight - inventoryPanelHeight) / 2;
+        
+        // Create vertices for the depth curtain quad covering the inventory area
+        // Use exact UI bounds with no padding
+        float left = panelStartX;
+        float right = panelStartX + inventoryPanelWidth;
+        float top = panelStartY;
+        float bottom = panelStartY + inventoryPanelHeight;
+        float nearDepth = 0.0f; // Near plane depth value
+        
+        float[] vertices = {
+            left,  top,    nearDepth,  // Top-left
+            right, top,    nearDepth,  // Top-right
+            right, bottom, nearDepth,  // Bottom-right
+            left,  bottom, nearDepth   // Bottom-left
+        };
+        
+        int[] indices = {
+            0, 1, 2,  // First triangle
+            2, 3, 0   // Second triangle
+        };
+        
+        // Create temporary VAO for the depth curtain
+        int vao = GL30.glGenVertexArrays();
+        int vbo = GL20.glGenBuffers();
+        int ebo = GL20.glGenBuffers();
+        
+        GL30.glBindVertexArray(vao);
+        
+        // Upload vertex data
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Upload index data
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
+        IntBuffer indexBuffer = org.lwjgl.BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Set up vertex attributes (position only)
+        GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+        GL20.glEnableVertexAttribArray(0);
+        
+        // Render the invisible depth curtain
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        
+        // Clean up temporary resources
+        GL30.glBindVertexArray(0);
+        GL20.glDeleteBuffers(vbo);
+        GL20.glDeleteBuffers(ebo);
+        GL30.glDeleteVertexArrays(vao);
+        
+        // Restore GL state
+        glColorMask(true, true, true, true);  // Re-enable color writing
+        glDepthFunc(GL_ALWAYS);               // Keep UI depth function
+        glDepthMask(false);                   // Restore UI depth mask (don't write)
+        
+        if (blendWasEnabled) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+        
+        // Unbind shader
+        shaderProgram.unbind();
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind hotbar UI.
+     * This creates proper depth values for block drop occlusion without visual interference.
+     * Used when only the hotbar is visible (not the full inventory screen).
+     */
+    public void renderHotbarDepthCurtain() {
+        // Save current GL state
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        
+        // Set up depth curtain rendering state
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
+        glDepthMask(true);          // Write to depth buffer (this is key!)
+        glDisable(GL_BLEND);        // No blending needed for invisible quad
+        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
+        
+        // Set up orthographic projection for screen-space rendering
+        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
+        Matrix4f identityView = new Matrix4f().identity();
+        Matrix4f modelMatrix = new Matrix4f().identity();
+        
+        // Bind shader and set uniforms
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", orthoProjection);
+        shaderProgram.setUniform("viewMatrix", identityView);
+        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Calculate hotbar dimensions (match InventoryScreen.renderHotbar calculations)
+        int HOTBAR_SIZE = 9; // Inventory.HOTBAR_SIZE
+        int SLOT_SIZE = 40;
+        int SLOT_PADDING = 5;
+        int HOTBAR_Y_OFFSET = 20;
+        
+        int hotbarWidth = HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int hotbarHeight = SLOT_SIZE + SLOT_PADDING * 2;
+        
+        int hotbarStartX = (windowWidth - hotbarWidth) / 2;
+        int hotbarStartY = windowHeight - SLOT_SIZE - HOTBAR_Y_OFFSET - SLOT_PADDING; // Background starts above slots
+        
+        // Create vertices for the depth curtain quad covering the hotbar area
+        // Use exact UI bounds with no padding
+        float left = hotbarStartX;
+        float right = hotbarStartX + hotbarWidth;
+        float top = hotbarStartY;
+        float bottom = hotbarStartY + hotbarHeight;
+        float nearDepth = 0.0f; // Near plane depth value
+        
+        float[] vertices = {
+            left,  top,    nearDepth,  // Top-left
+            right, top,    nearDepth,  // Top-right
+            right, bottom, nearDepth,  // Bottom-right
+            left,  bottom, nearDepth   // Bottom-left
+        };
+        
+        int[] indices = {
+            0, 1, 2,  // First triangle
+            2, 3, 0   // Second triangle
+        };
+        
+        // Create temporary VAO for the depth curtain
+        int vao = GL30.glGenVertexArrays();
+        int vbo = GL20.glGenBuffers();
+        int ebo = GL20.glGenBuffers();
+        
+        GL30.glBindVertexArray(vao);
+        
+        // Upload vertex data
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Upload index data
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
+        IntBuffer indexBuffer = org.lwjgl.BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Set up vertex attributes (position only)
+        GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+        GL20.glEnableVertexAttribArray(0);
+        
+        // Render the invisible depth curtain
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        
+        // Clean up temporary resources
+        GL30.glBindVertexArray(0);
+        GL20.glDeleteBuffers(vbo);
+        GL20.glDeleteBuffers(ebo);
+        GL30.glDeleteVertexArrays(vao);
+        
+        // Restore GL state
+        glColorMask(true, true, true, true);  // Re-enable color writing
+        glDepthFunc(GL_ALWAYS);               // Keep UI depth function
+        glDepthMask(false);                   // Restore UI depth mask (don't write)
+        
+        if (blendWasEnabled) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+        
+        // Unbind shader
+        shaderProgram.unbind();
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind pause menu UI.
+     * This creates proper depth values for block drop occlusion without visual interference.
+     * Public method for external access from Main.java rendering pipeline.
+     */
+    public void renderPauseMenuDepthCurtain() {
+        // Save current GL state
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        
+        // Set up depth curtain rendering state - CORRECTED for post-NanoVG rendering
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);       // Use normal depth testing (not ALWAYS)
+        glDepthMask(true);          // Write to depth buffer (this is key!)
+        glDisable(GL_BLEND);        // No blending needed for invisible quad
+        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
+        
+        // CRITICAL FIX: Use SAME 3D projection/view as block drops for coordinate alignment
+        Player player = Game.getPlayer();
+        Matrix4f worldProjection = this.projectionMatrix; // Same as block drops
+        Matrix4f worldView = (player != null) ? player.getViewMatrix() : new Matrix4f();
+        
+        // Bind shader and set uniforms - NOW IN WORLD COORDINATES
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", worldProjection);
+        shaderProgram.setUniform("viewMatrix", worldView);
+        shaderProgram.setUniform("modelMatrix", new Matrix4f().identity());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Create MASSIVE 3D wall in front of camera to block all block drops
+        // Position it very close to camera in world space
+        Player currentPlayer = Game.getPlayer();
+        if (currentPlayer == null) return;
+        
+        org.joml.Vector3f forward = new org.joml.Vector3f();
+        currentPlayer.getViewMatrix().positiveZ(forward).negate(); // Get forward direction
+        
+        // DISTANCE-ADAPTIVE SOLUTION: Extract near plane for precision-independent positioning
+        // Get near plane distance from projection matrix for proper depth precision
+        float nearPlane = extractNearPlaneFromProjection(this.projectionMatrix);
+        
+        // Position depth curtain at near plane + tiny epsilon for maximum precision
+        // This ensures it's always closest to camera regardless of world distance
+        float epsilon = nearPlane * 0.001f; // 0.1% of near plane
+        float[] wallDistances = {
+            nearPlane + epsilon,           // Primary layer at near plane
+            nearPlane + epsilon * 2,      // Secondary layers for robustness  
+            nearPlane + epsilon * 3,
+            nearPlane + epsilon * 4
+        };
+        
+        // PANEL-ONLY SOLUTION: Only cover the solid pause menu panel, not the entire screen
+        // This allows blocks to show behind the semi-transparent overlay but hide behind solid panel
+        
+        // Calculate pause menu panel bounds in screen space (from UIRenderer analysis)
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        int panelWidth = 520;  // From pause menu documentation
+        int panelHeight = 450; // From pause menu documentation
+        
+        // Convert panel bounds to normalized device coordinates [-1, +1]
+        float panelLeft = ((centerX - panelWidth/2.0f) / windowWidth) * 2.0f - 1.0f;
+        float panelRight = ((centerX + panelWidth/2.0f) / windowWidth) * 2.0f - 1.0f;
+        float panelTop = (1.0f - (centerY - panelHeight/2.0f) / windowHeight) * 2.0f - 1.0f;
+        float panelBottom = (1.0f - (centerY + panelHeight/2.0f) / windowHeight) * 2.0f - 1.0f;
+        
+        // Define PANEL-ONLY bounds in normalized device coordinates
+        float[] screenCorners = {
+            panelLeft,  panelTop,     // Top-left NDC (panel only)
+            panelRight, panelTop,     // Top-right NDC (panel only)
+            panelRight, panelBottom,  // Bottom-right NDC (panel only)
+            panelLeft,  panelBottom   // Bottom-left NDC (panel only)
+        };
+        
+        // Render multiple depth layers for robust coverage
+        for (float wallDistance : wallDistances) {
+            // Unproject screen corners to world space at this distance
+            org.joml.Vector3f[] worldCorners = new org.joml.Vector3f[4];
+            
+            for (int i = 0; i < 4; i++) {
+                float ndcX = screenCorners[i * 2];
+                float ndcY = screenCorners[i * 2 + 1];
+                
+                // Unproject NDC coordinates to world space
+                worldCorners[i] = unprojectToWorldSpace(ndcX, ndcY, wallDistance, 
+                    this.projectionMatrix, currentPlayer.getViewMatrix());
+            }
+            
+            // Create vertices using unprojected world coordinates
+            float[] vertices = {
+                // Top-left
+                worldCorners[0].x, worldCorners[0].y, worldCorners[0].z,
+                // Top-right  
+                worldCorners[1].x, worldCorners[1].y, worldCorners[1].z,
+                // Bottom-right
+                worldCorners[2].x, worldCorners[2].y, worldCorners[2].z,
+                // Bottom-left
+                worldCorners[3].x, worldCorners[3].y, worldCorners[3].z
+            };
+            
+            int[] indices = {
+                0, 1, 2,  // First triangle
+                2, 3, 0   // Second triangle
+            };
+            
+            // Create temporary VAO for this depth layer
+            int vao = GL30.glGenVertexArrays();
+            int vbo = GL20.glGenBuffers();
+            int ebo = GL20.glGenBuffers();
+            
+            GL30.glBindVertexArray(vao);
+            
+            // Upload vertex data
+            GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+            FloatBuffer vertexBuffer = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
+            vertexBuffer.put(vertices).flip();
+            GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+            
+            // Upload index data
+            GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
+            IntBuffer indexBuffer = org.lwjgl.BufferUtils.createIntBuffer(indices.length);
+            indexBuffer.put(indices).flip();
+            GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+            
+            // Set up vertex attributes (position only)
+            GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+            GL20.glEnableVertexAttribArray(0);
+            
+            // Render this depth layer
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            
+            // Clean up temporary resources for this layer
+            GL30.glBindVertexArray(0);
+            GL20.glDeleteBuffers(vbo);
+            GL20.glDeleteBuffers(ebo);
+            GL30.glDeleteVertexArrays(vao);
+        }
+        
+        // Restore GL state for normal 3D rendering  
+        glColorMask(true, true, true, true);  // Re-enable color writing
+        glDepthFunc(GL_LESS);                 // Restore normal 3D depth function
+        glDepthMask(true);                    // Restore normal depth writing
+        
+        if (blendWasEnabled) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+        
+        // Unbind shader
+        shaderProgram.unbind();
+    }
+    
+    /**
+     * Extracts the near plane distance from a perspective projection matrix.
+     * This is crucial for distance-independent depth curtain positioning.
+     */
+    private float extractNearPlaneFromProjection(Matrix4f projectionMatrix) {
+        // For perspective projection matrix, near plane can be extracted from matrix elements
+        // Standard perspective matrix has near plane info in specific positions
+        try {
+            // Get matrix elements - JOML uses column-major order
+            float m22 = projectionMatrix.m22(); // (2,2) element
+            float m32 = projectionMatrix.m32(); // (3,2) element
+            
+            // For perspective projection: near = -m32 / (m22 + 1)
+            // Handle edge cases and ensure positive result
+            if (Math.abs(m22 + 1) > 0.0001f) {
+                float near = -m32 / (m22 + 1);
+                return Math.max(near, 0.01f); // Ensure minimum reasonable near plane
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to extract near plane from projection matrix: " + e.getMessage());
+        }
+        
+        // Fallback to reasonable default
+        return 0.1f;
+    }
+    
+    /**
+     * Unprojects normalized device coordinates to world space at specified distance from camera.
+     * This ensures the depth curtain exactly covers the screen area.
+     */
+    private org.joml.Vector3f unprojectToWorldSpace(float ndcX, float ndcY, float distance, 
+                                                   Matrix4f projection, Matrix4f view) {
+        try {
+            // Create combined projection-view matrix
+            Matrix4f projViewMatrix = new Matrix4f(projection).mul(view);
+            
+            // Invert the combined matrix to go from NDC back to world space
+            Matrix4f invProjView = projViewMatrix.invert(new Matrix4f());
+            
+            // Create NDC point at specified depth (distance from camera corresponds to specific Z in NDC)
+            // For perspective projection, we need to find the NDC Z that corresponds to our desired distance
+            float ndcZ = calculateNDCZForDistance();
+            
+            // Create 4D homogeneous coordinate in NDC space
+            org.joml.Vector4f ndcPoint = new org.joml.Vector4f(ndcX, ndcY, ndcZ, 1.0f);
+            
+            // Transform back to world space
+            org.joml.Vector4f worldPoint = invProjView.transform(ndcPoint, new org.joml.Vector4f());
+            
+            // Perform perspective divide
+            if (Math.abs(worldPoint.w) > 0.0001f) {
+                worldPoint.div(worldPoint.w);
+            }
+            
+            return new org.joml.Vector3f(worldPoint.x, worldPoint.y, worldPoint.z);
+            
+        } catch (Exception e) {
+            System.err.println("Unprojection failed: " + e.getMessage());
+            // Fallback: simple approximation
+            return new org.joml.Vector3f(ndcX * distance, ndcY * distance, distance);
+        }
+    }
+    
+    /**
+     * Calculates the NDC Z coordinate that corresponds to a specific distance from camera.
+     */
+    private float calculateNDCZForDistance() {
+        try {
+            // For perspective projection: ndcZ = (far + near - 2*near*far/distance) / (far - near)
+            // Simplified for our needs: use a value close to near plane
+            return -0.999f; // Very close to near plane in NDC space
+        } catch (Exception e) {
+            return -0.999f; // Safe fallback
+        }
     }
     
     

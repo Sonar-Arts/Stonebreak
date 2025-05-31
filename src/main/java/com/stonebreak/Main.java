@@ -396,21 +396,21 @@ public class Main {
                 uiRenderer.endFrame();
             }
         } else if (game.getState() == GameState.PLAYING) {
-            // Render the world (WITHOUT block drops)
+            // Render the world (WITHOUT block drops) 
             renderer.renderWorldWithoutDrops(world, player, game.getTotalTimeElapsed());
             
-            // Render UI elements
+            // Render additional UI elements (without tooltips)
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             if (inventoryScreen != null) {
                 UIRenderer uiRenderer = game.getUIRenderer();
                 uiRenderer.beginFrame(width, height, 1.0f);
                 
                 if (inventoryScreen.isVisible()) {
-                    // Render full inventory screen when visible
-                    inventoryScreen.render(width, height);
+                    // Render full inventory screen when visible (without tooltips)
+                    inventoryScreen.renderWithoutTooltips(width, height);
                 } else {
-                    // Always render hotbar when inventory is not open
-                    inventoryScreen.renderHotbar(width, height);
+                    // Always render hotbar when inventory is not open (without tooltips)
+                    inventoryScreen.renderHotbarWithoutTooltips(width, height);
                 }
                 
                 // Render chat (always visible when there are messages or chat is open)
@@ -425,16 +425,38 @@ public class Main {
             // Render pause menu if paused
             PauseMenu pauseMenu = game.getPauseMenu();
             if (pauseMenu != null && pauseMenu.isVisible()) {
+                // STEP 1: Render visual pause menu UI first
                 UIRenderer uiRenderer = game.getUIRenderer();
                 if (uiRenderer != null) {
                     uiRenderer.beginFrame(width, height, 1.0f);
                     pauseMenu.render(uiRenderer, width, height);
                     uiRenderer.endFrame();
                 }
+                
+                // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
+                renderer.renderPauseMenuDepthCurtain();
             }
             
-            // DEFERRED: Render block drops AFTER all UI is complete
+            // DEFERRED: Render block drops AFTER all UI is complete 
+            // SOLUTION B ACTIVATED: Use full-screen depth curtain for pause menu
+            // Block drops render behind both inventory and pause menu with depth curtain protection
             renderer.renderBlockDropsDeferred(world, player);
+            
+            // Render tooltips AFTER block drops to ensure they appear above 3D block drops
+            if (inventoryScreen != null) {
+                UIRenderer uiRenderer = game.getUIRenderer();
+                uiRenderer.beginFrame(width, height, 1.0f);
+                
+                if (inventoryScreen.isVisible()) {
+                    // Render only tooltips for full inventory screen
+                    inventoryScreen.renderTooltipsOnly(width, height);
+                } else {
+                    // Render only hotbar tooltips when inventory is not open
+                    inventoryScreen.renderHotbarTooltipsOnly(width, height);
+                }
+                
+                uiRenderer.endFrame();
+            }
         }
     }
       private void cleanup() {

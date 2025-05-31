@@ -142,9 +142,20 @@ public class BlockDropRenderer {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             
-            // Group drops by block type for batch rendering
+            // Sort drops by distance from camera (back-to-front for proper depth testing)
+            org.joml.Vector3f cameraPos = new org.joml.Vector3f();
+            view.invert(new Matrix4f()).getTranslation(cameraPos);
+            
+            List<BlockDrop> sortedDrops = new ArrayList<>(drops);
+            sortedDrops.sort((a, b) -> {
+                float distA = a.getPosition().distanceSquared(cameraPos);
+                float distB = b.getPosition().distanceSquared(cameraPos);
+                return Float.compare(distB, distA); // Back-to-front (farthest first)
+            });
+            
+            // Group sorted drops by block type for batch rendering
             Map<BlockType, List<BlockDrop>> dropsByType = new HashMap<>();
-            for (BlockDrop drop : drops) {
+            for (BlockDrop drop : sortedDrops) {
                 dropsByType.computeIfAbsent(BlockType.getById(drop.getBlockTypeId()), k -> new ArrayList<>()).add(drop);
             }
             

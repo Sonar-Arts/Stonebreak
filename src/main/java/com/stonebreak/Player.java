@@ -26,6 +26,9 @@ public class Player {      // Player settings
     private boolean isAttacking;
     private boolean physicallyInWater; // True if any part of the player is in water (for physics)
     private boolean wasInWaterLastFrame; // Track water state changes
+    private boolean justExitedWaterThisFrame; // Track immediate water exit for current frame
+    private float waterExitTime = 0.0f; // Time since last water exit
+    private static final float WATER_EXIT_ANTI_FLOAT_DURATION = 0.5f; // Duration to apply anti-floating after water exit (500ms)
     private float attackAnimationTime;
     
     
@@ -52,8 +55,11 @@ public class Player {      // Player settings
     private boolean flightEnabled = false; // Whether flight is enabled via command
     private boolean isFlying = false; // Whether player is currently flying
     private boolean wasJumpPressed = false; // Track previous frame's jump state
+    private boolean isJumpCurrentlyPressed = false; // Track current frame's jump state for dampening
     private float lastSpaceKeyTime = 0.0f; // Time of last space key press for double-tap detection
+    private float lastNormalJumpTime = 0.0f; // Time of last normal jump on land
     private static final float DOUBLE_TAP_WINDOW = 0.3f; // Time window for double-tap detection (300ms)
+    private static final float NORMAL_JUMP_GRACE_PERIOD = 0.2f; // Grace period for normal jumps (200ms)
     private static final float FLY_SPEED = 87.5f; // Flight movement speed (250% of walk speed)
     
     /**
@@ -68,6 +74,7 @@ public class Player {      // Player settings
         this.isAttacking = false;
         this.physicallyInWater = false;
         this.wasInWaterLastFrame = false;
+        this.justExitedWaterThisFrame = false;
         this.attackAnimationTime = 0.0f;
         this.breakingBlock = null;
         this.breakingProgress = 0.0f;
@@ -78,25 +85,80 @@ public class Player {      // Player settings
         this.isFlying = false;
         this.wasJumpPressed = false;
         this.lastSpaceKeyTime = 0.0f;
+        this.lastNormalJumpTime = 0.0f;
     }
       /**
      * Updates the player's position and camera.
      */
     public void update() {
         // Check if player is in water
-
         physicallyInWater = isPartiallyInWater(); // Check for physics
-
-        // Check for water exit to cap velocity
-        if (wasInWaterLastFrame && !physicallyInWater) {
-            // Player just exited water - cap upward velocity to prevent excessive floating
-            if (velocity.y > JUMP_FORCE) {
-                velocity.y = JUMP_FORCE;
-                System.out.println("Player exited water - velocity capped to " + velocity.y);
+        
+        // IMMEDIATE anti-floating enforcement - before any other physics
+        // If player is not in water, not flying, not on ground, and has upward velocity, stop it immediately
+        if (!isFlying && !physicallyInWater && !onGround && velocity.y > 0.2f) {
+            // Check if this is a legitimate normal jump (within grace period)
+            float currentTime = Game.getInstance().getTotalTimeElapsed();
+            boolean withinNormalJumpGrace = (currentTime - lastNormalJumpTime) < NORMAL_JUMP_GRACE_PERIOD;
+            
+            if (!withinNormalJumpGrace) {
+                // Not a legitimate jump - immediately reduce floating velocity
+                velocity.y *= 0.5f; // Immediate 50% reduction
+                
+                // Cap to very low value
+                if (velocity.y > 0.5f) {
+                    velocity.y = 0.5f;
+                }
             }
+        }
+
+        // Store the water exit state before updating wasInWaterLastFrame
+        justExitedWaterThisFrame = wasInWaterLastFrame && !physicallyInWater;
+        
+        // Check for water exit to cap velocity and stop floating
+        if (justExitedWaterThisFrame) {
+            // Player just exited water - IMMEDIATELY stop all floating by setting velocity to zero or negative
+            if (velocity.y > 0) {
+                velocity.y = 0.0f; // Completely stop upward velocity on water exit
+                System.out.println("Player exited water - velocity set to 0 to prevent floating");
+            }
+            // Reset the water exit timer
+            waterExitTime = 0.0f;
+            System.out.println("Started water exit anti-float timer");
         }
         
         wasInWaterLastFrame = physicallyInWater;
+        
+        // Update water exit timer
+        if (!physicallyInWater && waterExitTime < WATER_EXIT_ANTI_FLOAT_DURATION) {
+            waterExitTime += Game.getDeltaTime();
+        } else if (physicallyInWater) {
+            // Reset timer when player enters water
+            waterExitTime = WATER_EXIT_ANTI_FLOAT_DURATION + 1.0f; // Set to expired value
+        }
+        
+        // Universal floating prevention: if player is not in water but has upward velocity, reduce it aggressively
+        // This is a catch-all to prevent ANY floating outside water regardless of how the velocity was gained
+        float currentTime = Game.getInstance().getTotalTimeElapsed();
+        boolean withinNormalJumpGrace = (currentTime - lastNormalJumpTime) < NORMAL_JUMP_GRACE_PERIOD;
+        boolean isInWaterExitAntiFloatPeriod = waterExitTime < WATER_EXIT_ANTI_FLOAT_DURATION; // Within anti-float period after water exit
+        
+        // Apply anti-floating if: not in grace period OR within water exit anti-float period
+        if (!isFlying && !physicallyInWater && !onGround && velocity.y > 0.1f && (!withinNormalJumpGrace || isInWaterExitAntiFloatPeriod)) {
+            // Player should not be floating outside water - apply aggressive velocity reduction
+            if (isInWaterExitAntiFloatPeriod) {
+                // Extra aggressive for recent water exits
+                velocity.y *= 0.6f; // Very aggressive reduction for water exits
+            } else {
+                // Standard aggressive reduction
+                velocity.y *= 0.75f; // More aggressive per-frame reduction to stop floating
+            }
+            
+            // Very low hard cap for floating velocity outside water
+            if (velocity.y > 0.8f) {
+                velocity.y = 0.8f; // Very low hard cap to prevent sustained floating
+            }
+        }
 
 
         // Apply gravity (unless flying)
@@ -105,12 +167,18 @@ public class Player {      // Player settings
                 // In water: apply moderate gravity (causes slow sinking by default)
                 velocity.y -= WATER_GRAVITY * Game.getDeltaTime();
             } else {
-                // In air: apply normal gravity
-                velocity.y -= GRAVITY * Game.getDeltaTime();
+                // In air: apply normal gravity, but more aggressive if recently exited water
+                if (isInWaterExitAntiFloatPeriod) {
+                    // Recently exited water - apply stronger gravity to force immediate falling
+                    velocity.y -= GRAVITY * 2.0f * Game.getDeltaTime(); // Double gravity for water exits
+                } else {
+                    // Normal air gravity
+                    velocity.y -= GRAVITY * Game.getDeltaTime();
+                }
                 
-                // If player just exited water and has excessive upward velocity, cap it
-                if (velocity.y > JUMP_FORCE * 1.2f) {
-                    velocity.y = JUMP_FORCE * 1.2f;
+                // Safety check: if player has any upward velocity outside water during anti-float period, eliminate it
+                if (velocity.y > 0.1f && !physicallyInWater && isInWaterExitAntiFloatPeriod) {
+                    velocity.y = 0.0f; // Force immediate falling only during water exit period
                 }
             }
         }
@@ -150,8 +218,30 @@ public class Player {      // Player settings
             } else {
                 // Not in water - apply stronger dampening to stop water momentum
                 if (velocity.y > 0) {
-                    float airDampening = (float) Math.pow(0.98f, deltaTime * 60.0f); // Frame-rate independent
-                    velocity.y *= airDampening;
+                    // Check if player was recently in water to determine dampening approach
+                    if (wasInWaterLastFrame) {
+                        // Player just exited water - apply special water-exit dampening
+                        float baseDampening = isJumpCurrentlyPressed ? 0.85f : 0.75f; // More aggressive dampening
+                        float airDampening = (float) Math.pow(baseDampening, deltaTime * 60.0f);
+                        velocity.y *= airDampening;
+                        
+                        // Additional velocity reduction for water-to-air transition
+                        velocity.y *= 0.6f; // More aggressive reduction for water-to-air transition
+                        
+                        // Extra dampening when jump is not held and player is floating from water
+                        if (!isJumpCurrentlyPressed && !onGround && velocity.y > 1.5f) {
+                            velocity.y *= 0.85f; // More aggressive dampening for unintended floating from water
+                        }
+                        
+                        // Extra safety: if player has significant upward velocity outside water, reduce it aggressively
+                        if (velocity.y > 3.0f) {
+                            velocity.y *= 0.8f; // Additional reduction for high velocity outside water
+                        }
+                    } else {
+                        // Normal air physics - preserve natural jumping behavior
+                        float normalAirDampening = (float) Math.pow(0.98f, deltaTime * 60.0f); // Very light dampening for normal jumps
+                        velocity.y *= normalAirDampening;
+                    }
                 }
             }
         }
@@ -511,6 +601,8 @@ public class Player {      // Player settings
      * Processes player movement based on input.
      */
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right, boolean jump, boolean shift) {
+        // Track current jump state for use in physics dampening
+        isJumpCurrentlyPressed = jump;
         // Calculate movement direction
         Vector3f frontDirection, rightDirection;
         float speed;
@@ -579,6 +671,7 @@ public class Player {      // Player settings
             if (!isFlying && onGround && !physicallyInWater) {
                 velocity.y = JUMP_FORCE;
                 onGround = false;
+                lastNormalJumpTime = Game.getInstance().getTotalTimeElapsed(); // Record normal jump time
             }
             
             // Water jump: small initial boost when starting to swim
@@ -590,6 +683,42 @@ public class Player {      // Player settings
         // Handle swimming up while jump key is held in water (but not flying)
         if (jump && !isFlying && physicallyInWater) {
             velocity.y += WATER_BUOYANCY * Game.getDeltaTime();
+        }
+        
+        // Universal anti-floating safety check: prevent ANY upward movement when not in water and not on ground
+        // This ensures floating is completely disabled outside of water, regardless of input
+        float currentTime = Game.getInstance().getTotalTimeElapsed();
+        boolean withinNormalJumpGrace = (currentTime - lastNormalJumpTime) < NORMAL_JUMP_GRACE_PERIOD;
+        boolean isInWaterExitAntiFloatPeriod = waterExitTime < WATER_EXIT_ANTI_FLOAT_DURATION; // Check if within anti-float period
+        
+        // Apply anti-floating if: not in grace period OR within water exit anti-float period
+        if (!isFlying && !physicallyInWater && !onGround && velocity.y > 0 && (!withinNormalJumpGrace || isInWaterExitAntiFloatPeriod)) {
+            // Player has upward velocity while outside water - aggressively reduce it to prevent floating
+            if (isInWaterExitAntiFloatPeriod) {
+                // Extra aggressive for water exits
+                velocity.y *= 0.5f; // Very aggressive reduction for water exits
+            } else {
+                // Standard aggressive reduction
+                velocity.y *= 0.75f; // More aggressive reduction per frame to stop floating
+            }
+            
+            // If holding jump key while floating outside water, apply additional penalty
+            if (jump) {
+                velocity.y *= 0.8f; // Stronger penalty for trying to use jump key while floating outside water
+            }
+            
+            // Very low cap for floating velocity outside water
+            if (velocity.y > 1.0f) {
+                velocity.y = 1.0f; // Lower hard cap to prevent excessive floating
+            }
+        }
+        
+        // Handle jump key release - stop floating if jump key is released and player has upward velocity
+        // Only apply this when player is in water or recently exited water to avoid affecting normal jumping
+        boolean jumpReleased = !jump && wasJumpPressed; // True only on the frame jump is released
+        if (jumpReleased && !isFlying && !onGround && velocity.y > 0 && (physicallyInWater || wasInWaterLastFrame)) {
+            // Player released jump while floating upward from water - reduce upward velocity significantly
+            velocity.y *= 0.3f; // Reduce upward velocity to 30% when jump is released
         }
         
         // Update previous jump state for next frame
@@ -738,9 +867,6 @@ public class Player {      // Player settings
             float dropX = x + 0.5f;
             float dropY = y + 0.5f;
             float dropZ = z + 0.5f;
-            
-            float distanceToPlayer = (float)Math.sqrt((dropX - position.x) * (dropX - position.x) + (dropY - position.y) * (dropY - position.y) + (dropZ - position.z) * (dropZ - position.z));
-            System.out.println("DEBUG: Spawning drop at (" + dropX + ", " + dropY + ", " + dropZ + ") distance from player: " + distanceToPlayer);
             
             world.getBlockDropManager().spawnDrop(dropX, dropY, dropZ, blockTypeId, quantity);
         }
@@ -1168,32 +1294,24 @@ public class Player {      // Player settings
      * @return true if any part of the player is in water
      */
     private boolean isPartiallyInWater() {
-        // Check slightly above feet up to player height to ensure full body check
-        // Small epsilon added to checkYStart to avoid issues if position.y is exactly on a block boundary
-        // and ensure the lowest part of the player is checked.
-        float checkYBottom = position.y + 0.01f;
-        float checkYTop = position.y + PLAYER_HEIGHT - 0.01f; // Check just below the very top
+        // More precise water detection with tighter boundary checking
+        float checkYBottom = position.y + 0.05f; // Slightly higher to avoid edge cases
+        float checkYTop = position.y + PLAYER_HEIGHT - 0.05f; // Check just below the very top
 
         float halfWidth = PLAYER_WIDTH / 2.0f;
-        float nearEdgeOffset = 0.01f; // To check just inside the player's boundary
+        float edgeInset = 0.1f; // Larger inset for more conservative boundary detection
 
-        // Define a set of points to check horizontally relative to player's center
-        // Checking center, and points near the edges of the player's bounding box
+        // Define a more conservative set of points to check
         Vector3f[] horizontalCheckOffsets = {
             new Vector3f(0, 0, 0),                                  // Center
-            new Vector3f(0, 0, -halfWidth + nearEdgeOffset),        // Front edge
-            new Vector3f(0, 0, halfWidth - nearEdgeOffset),         // Back edge
-            new Vector3f(-halfWidth + nearEdgeOffset, 0, 0),        // Left edge
-            new Vector3f(halfWidth - nearEdgeOffset, 0, 0),         // Right edge
-            // Optional: corner checks if needed for very specific interactions
-            // new Vector3f(-halfWidth + nearEdgeOffset, 0, -halfWidth + nearEdgeOffset), // Front-Left
-            // new Vector3f( halfWidth - nearEdgeOffset, 0, -halfWidth + nearEdgeOffset), // Front-Right
-            // new Vector3f(-halfWidth + nearEdgeOffset, 0,  halfWidth - nearEdgeOffset), // Back-Left
-            // new Vector3f( halfWidth - nearEdgeOffset, 0,  halfWidth - nearEdgeOffset)  // Back-Right
+            new Vector3f(0, 0, -halfWidth + edgeInset),             // Front edge (more conservative)
+            new Vector3f(0, 0, halfWidth - edgeInset),              // Back edge (more conservative)
+            new Vector3f(-halfWidth + edgeInset, 0, 0),             // Left edge (more conservative)
+            new Vector3f(halfWidth - edgeInset, 0, 0),              // Right edge (more conservative)
         };
 
-        // Iterate vertically through the player's height at a reasonable step
-        for (float yCurrent = checkYBottom; yCurrent <= checkYTop; yCurrent += 0.4f) { // Adjusted step for thoroughness
+        // Use smaller vertical steps for more precise detection
+        for (float yCurrent = checkYBottom; yCurrent <= checkYTop; yCurrent += 0.2f) {
             int blockY = (int) Math.floor(yCurrent);
 
             // Ensure y-check is within world bounds
@@ -1206,12 +1324,21 @@ public class Player {      // Player settings
                 int blockZ = (int) Math.floor(position.z + offset.z);
 
                 if (world.getBlockAt(blockX, blockY, blockZ) == BlockType.WATER) {
-                    // This debug line can be helpful to pinpoint which check triggers water detection
-                    // System.out.println("DEBUG: isPartiallyInWater TRUE at [" + blockX + "," + blockY + "," + blockZ + "] for player Y: " + yCurrent + " offset: " + offset);
                     return true;
                 }
             }
         }
+        
+        // Additional check: ensure the player's feet aren't in water
+        // This helps catch boundary cases where the player is just at the edge
+        int feetBlockX = (int) Math.floor(position.x);
+        int feetBlockY = (int) Math.floor(position.y + 0.1f); // Just above feet
+        int feetBlockZ = (int) Math.floor(position.z);
+        
+        if (world.getBlockAt(feetBlockX, feetBlockY, feetBlockZ) == BlockType.WATER) {
+            return true;
+        }
+        
         return false;
     }
     

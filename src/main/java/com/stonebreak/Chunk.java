@@ -185,8 +185,8 @@ public class Chunk {
     private float[] tempVertices = new float[65536]; // Pre-allocated with reasonable size
     private float[] tempTextureCoords = new float[43690]; // 2/3 of vertices for texture coords
     private float[] tempNormals = new float[65536]; // Same as vertices for normals
-    private float[] tempIsWaterFlags = new float[21845]; // 1/3 of vertices for flags
-    private float[] tempIsAlphaTestedFlags = new float[21845]; // 1/3 of vertices for flags
+    private float[] tempIsWaterFlags = new float[32768]; // Increased size to match vertex capacity / 2
+    private float[] tempIsAlphaTestedFlags = new float[32768]; // Increased size to match vertex capacity / 2
     private int[] tempIndices = new int[98304]; // 1.5x vertices for indices
     
     private int vertexIndex = 0;
@@ -291,6 +291,27 @@ public class Chunk {
         
         // Copy from pre-allocated arrays to final arrays (only the used portions)
         if (vertexIndex > 0) {
+            // Safety checks to prevent array overruns
+            if (vertexIndex > tempVertices.length || textureIndex > tempTextureCoords.length || 
+                normalIndex > tempNormals.length || flagIndex > tempIsWaterFlags.length ||
+                flagIndex > tempIsAlphaTestedFlags.length || indexIndex > tempIndices.length) {
+                System.err.println("CRITICAL: Array indices exceed bounds during mesh data copy for chunk (" + x + ", " + z + ")");
+                System.err.println("Vertex: " + vertexIndex + "/" + tempVertices.length + 
+                                 ", Texture: " + textureIndex + "/" + tempTextureCoords.length +
+                                 ", Normal: " + normalIndex + "/" + tempNormals.length +
+                                 ", Flag: " + flagIndex + "/" + tempIsWaterFlags.length +
+                                 ", Index: " + indexIndex + "/" + tempIndices.length);
+                // Set to empty arrays to prevent crash
+                vertexData = new float[0];
+                textureData = new float[0];
+                normalData = new float[0];
+                isWaterData = new float[0];
+                isAlphaTestedData = new float[0];
+                indexData = new int[0];
+                vertexCount = 0;
+                return;
+            }
+            
             vertexData = new float[vertexIndex];
             System.arraycopy(tempVertices, 0, vertexData, 0, vertexIndex);
             
@@ -378,13 +399,14 @@ public class Chunk {
      */
     private int addFace(int x, int y, int z, int face, BlockType blockType, int index, World world) {
         // Check if we have enough space in our pre-allocated arrays
-        if (vertexIndex + 12 >= tempVertices.length || 
-            textureIndex + 8 >= tempTextureCoords.length ||
-            normalIndex + 12 >= tempNormals.length ||
-            flagIndex + 4 >= tempIsWaterFlags.length ||
-            indexIndex + 6 >= tempIndices.length) {
+        if (vertexIndex + 12 > tempVertices.length || 
+            textureIndex + 8 > tempTextureCoords.length ||
+            normalIndex + 12 > tempNormals.length ||
+            flagIndex + 4 > tempIsWaterFlags.length ||
+            flagIndex + 4 > tempIsAlphaTestedFlags.length ||
+            indexIndex + 6 > tempIndices.length) {
             // Arrays are full, skip this face to avoid overflow
-            System.err.println("Warning: Chunk mesh arrays full, skipping face");
+            System.err.println("Warning: Chunk mesh arrays full, skipping face. Vertex: " + vertexIndex + ", Texture: " + textureIndex + ", Normal: " + normalIndex + ", Flag: " + flagIndex + ", Index: " + indexIndex);
             return index;
         }
         // Convert to world coordinates
@@ -687,14 +709,15 @@ public class Chunk {
      * Adds cross-shaped geometry for flower blocks.
      */
     private int addFlowerCross(int x, int y, int z, BlockType blockType, int index) {
-        // Check if we have enough space in our pre-allocated arrays for flower geometry (16 vertices)
-        if (vertexIndex + 24 >= tempVertices.length || 
-            textureIndex + 16 >= tempTextureCoords.length ||
-            normalIndex + 24 >= tempNormals.length ||
-            flagIndex + 8 >= tempIsWaterFlags.length ||
-            indexIndex + 24 >= tempIndices.length) {
+        // Check if we have enough space in our pre-allocated arrays for flower geometry (8 vertices)
+        if (vertexIndex + 24 > tempVertices.length || 
+            textureIndex + 16 > tempTextureCoords.length ||
+            normalIndex + 24 > tempNormals.length ||
+            flagIndex + 8 > tempIsWaterFlags.length ||
+            flagIndex + 8 > tempIsAlphaTestedFlags.length ||
+            indexIndex + 24 > tempIndices.length) {
             // Arrays are full, skip this flower to avoid overflow
-            System.err.println("Warning: Chunk mesh arrays full, skipping flower");
+            System.err.println("Warning: Chunk mesh arrays full, skipping flower. Vertex: " + vertexIndex + ", Texture: " + textureIndex + ", Normal: " + normalIndex + ", Flag: " + flagIndex + ", Index: " + indexIndex);
             return index;
         }
         // Convert to world coordinates
