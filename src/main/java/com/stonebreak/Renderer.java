@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
@@ -94,6 +95,9 @@ public class Renderer {
     // Block cracking overlay system
     private int crackTextureId;
     private int blockOverlayVao;
+    
+    // Cache for block-specific VAOs for hand rendering
+    private final Map<BlockType, Integer> handBlockVaoCache = new HashMap<>();
 
     /**
      * Creates and initializes the renderer.
@@ -640,15 +644,10 @@ public class Renderer {
                 if (selectedBlockType == BlockType.ROSE || selectedBlockType == BlockType.DANDELION) {
                     renderFlowerInHand(selectedBlockType, armViewModel);
                 } else {
-                    // Use the texture from the texture atlas for the selected block
+                    // Use block-specific cube for proper face texturing
                     shaderProgram.setUniform("u_useSolidColor", false);
                     shaderProgram.setUniform("u_isText", false);
-                    shaderProgram.setUniform("u_transformUVsForItem", true); // Enable UV transformation for correct atlas mapping
-                    
-                    // Get UV coordinates for the selected block type from texture atlas
-                    float[] atlasUVs = textureAtlas.getUVCoordinates(selectedBlockType.getAtlasX(), selectedBlockType.getAtlasY());
-                    shaderProgram.setUniform("u_atlasUVOffset", new org.joml.Vector2f(atlasUVs[0], atlasUVs[1]));
-                    shaderProgram.setUniform("u_atlasUVScale", new org.joml.Vector2f(atlasUVs[2] - atlasUVs[0], atlasUVs[3] - atlasUVs[1]));
+                    shaderProgram.setUniform("u_transformUVsForItem", false); // Disable UV transformation since we're using pre-calculated UVs
                     
                     GL13.glActiveTexture(GL13.GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
@@ -660,9 +659,10 @@ public class Renderer {
                     // Disable blending to prevent transparency issues
                     glDisable(GL_BLEND);
                     
-                    // Use the 3D cube for blocks
-                    GL30.glBindVertexArray(itemCubeVao);
-                    glDrawElements(GL_TRIANGLES, itemCubeIndexCount, GL_UNSIGNED_INT, 0);
+                    // Get or create block-specific cube with proper face textures
+                    int blockSpecificVao = getHandBlockVao(selectedBlockType);
+                    GL30.glBindVertexArray(blockSpecificVao);
+                    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
                     
                     // Re-enable blending for other elements
                     glEnable(GL_BLEND);
@@ -1330,6 +1330,23 @@ public class Renderer {
         return vao;
     }
     
+    /**
+     * Gets or creates a cached VAO for rendering a specific block type in the player's hand.
+     * This ensures proper face texturing for blocks with different textures per face.
+     */
+    private int getHandBlockVao(BlockType blockType) {
+        // Check if VAO is already cached
+        Integer cachedVao = handBlockVaoCache.get(blockType);
+        if (cachedVao != null) {
+            return cachedVao;
+        }
+        
+        // Create new VAO and cache it
+        int vao = createBlockSpecificCube(blockType);
+        handBlockVaoCache.put(blockType, vao);
+        return vao;
+    }
+    
     private void renderFlowerInHand(BlockType flowerType, Matrix4f armViewModel) {
         // Set up shader for flower rendering
         shaderProgram.setUniform("u_useSolidColor", false);
@@ -1944,6 +1961,14 @@ public class Renderer {
         if (itemCubeIbo != 0) {
             GL20.glDeleteBuffers(itemCubeIbo);
         }
+        
+        // Clean up hand block VAO cache
+        for (Integer vao : handBlockVaoCache.values()) {
+            if (vao != null && vao != 0) {
+                GL30.glDeleteVertexArrays(vao);
+            }
+        }
+        handBlockVaoCache.clear();
         
         // Cleanup pause menu
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
