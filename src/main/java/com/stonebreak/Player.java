@@ -10,10 +10,10 @@ import org.joml.Vector3i;
 public class Player {      // Player settings
     private static final float PLAYER_HEIGHT = 1.8f;
     private static final float PLAYER_WIDTH = 0.6f;
-    private static final float MOVE_SPEED = 20.0f; // Slightly reduced for better control
-    private static final float SWIM_SPEED = 20.0f; // Swimming is slower than walking
-    private static final float JUMP_FORCE = 8.0f;
-    private static final float GRAVITY = 15.0f;
+    private static final float MOVE_SPEED = 31.0f; // Blocks per second (15% slower than 36.45, rounded)
+    private static final float SWIM_SPEED = 11.5f; // Swimming is slower than walking (15% slower than 13.5, rounded)
+    private static final float JUMP_FORCE = 8.5f; // Jump velocity
+    private static final float GRAVITY = 40.0f; // Gravity acceleration
     private static final float WATER_GRAVITY = 12.0f; // Faster sinking in water
     private static final float WATER_BUOYANCY = 25.0f; // Faster swimming up when holding jump
     private static final float WATER_JUMP_BOOST = 5.0f; // Initial boost when starting to swim
@@ -60,7 +60,8 @@ public class Player {      // Player settings
     private float lastNormalJumpTime = 0.0f; // Time of last normal jump on land
     private static final float DOUBLE_TAP_WINDOW = 0.3f; // Time window for double-tap detection (300ms)
     private static final float NORMAL_JUMP_GRACE_PERIOD = 0.2f; // Grace period for normal jumps (200ms)
-    private static final float FLY_SPEED = 87.5f; // Flight movement speed (250% of walk speed)
+    private static final float FLY_SPEED = MOVE_SPEED * 2.5f; // Flight movement speed (250% of walking speed)
+    private static final float FLY_VERTICAL_SPEED = 15.0f; // Vertical flight speed (ascent/descent)
     
     /**
      * Creates a new player in the specified world.
@@ -92,39 +93,18 @@ public class Player {      // Player settings
      */
     public void update() {
         // Check if player is in water
-        physicallyInWater = isPartiallyInWater(); // Check for physics
+        physicallyInWater = isPartiallyInWater();
         
-        // IMMEDIATE anti-floating enforcement - before any other physics
-        // If player is not in water, not flying, not on ground, and has upward velocity, stop it immediately
-        if (!isFlying && !physicallyInWater && !onGround && velocity.y > 0.2f) {
-            // Check if this is a legitimate normal jump (within grace period)
-            float currentTime = Game.getInstance().getTotalTimeElapsed();
-            boolean withinNormalJumpGrace = (currentTime - lastNormalJumpTime) < NORMAL_JUMP_GRACE_PERIOD;
-            
-            if (!withinNormalJumpGrace) {
-                // Not a legitimate jump - immediately reduce floating velocity
-                velocity.y *= 0.5f; // Immediate 50% reduction
-                
-                // Cap to very low value
-                if (velocity.y > 0.5f) {
-                    velocity.y = 0.5f;
-                }
-            }
-        }
-
         // Store the water exit state before updating wasInWaterLastFrame
         justExitedWaterThisFrame = wasInWaterLastFrame && !physicallyInWater;
         
         // Check for water exit to cap velocity and stop floating
         if (justExitedWaterThisFrame) {
-            // Player just exited water - IMMEDIATELY stop all floating by setting velocity to zero or negative
+            // Player just exited water - stop upward velocity to prevent floating
             if (velocity.y > 0) {
-                velocity.y = 0.0f; // Completely stop upward velocity on water exit
-                System.out.println("Player exited water - velocity set to 0 to prevent floating");
+                velocity.y = 0.0f;
             }
-            // Reset the water exit timer
             waterExitTime = 0.0f;
-            System.out.println("Started water exit anti-float timer");
         }
         
         wasInWaterLastFrame = physicallyInWater;
@@ -133,52 +113,41 @@ public class Player {      // Player settings
         if (!physicallyInWater && waterExitTime < WATER_EXIT_ANTI_FLOAT_DURATION) {
             waterExitTime += Game.getDeltaTime();
         } else if (physicallyInWater) {
-            // Reset timer when player enters water
-            waterExitTime = WATER_EXIT_ANTI_FLOAT_DURATION + 1.0f; // Set to expired value
+            waterExitTime = WATER_EXIT_ANTI_FLOAT_DURATION + 1.0f;
         }
         
-        // Universal floating prevention: if player is not in water but has upward velocity, reduce it aggressively
-        // This is a catch-all to prevent ANY floating outside water regardless of how the velocity was gained
+        // Anti-floating enforcement
         float currentTime = Game.getInstance().getTotalTimeElapsed();
         boolean withinNormalJumpGrace = (currentTime - lastNormalJumpTime) < NORMAL_JUMP_GRACE_PERIOD;
-        boolean isInWaterExitAntiFloatPeriod = waterExitTime < WATER_EXIT_ANTI_FLOAT_DURATION; // Within anti-float period after water exit
+        boolean isInWaterExitAntiFloatPeriod = waterExitTime < WATER_EXIT_ANTI_FLOAT_DURATION;
         
-        // Apply anti-floating if: not in grace period OR within water exit anti-float period
+        // Apply anti-floating if not in grace period or within water exit period
         if (!isFlying && !physicallyInWater && !onGround && velocity.y > 0.1f && (!withinNormalJumpGrace || isInWaterExitAntiFloatPeriod)) {
-            // Player should not be floating outside water - apply aggressive velocity reduction
             if (isInWaterExitAntiFloatPeriod) {
-                // Extra aggressive for recent water exits
-                velocity.y *= 0.6f; // Very aggressive reduction for water exits
+                velocity.y *= 0.6f; // Aggressive reduction for water exits
             } else {
-                // Standard aggressive reduction
-                velocity.y *= 0.75f; // More aggressive per-frame reduction to stop floating
+                velocity.y *= 0.75f; // Standard aggressive reduction
             }
             
-            // Very low hard cap for floating velocity outside water
             if (velocity.y > 0.8f) {
-                velocity.y = 0.8f; // Very low hard cap to prevent sustained floating
+                velocity.y = 0.8f; // Hard cap for floating velocity
             }
         }
-
 
         // Apply gravity (unless flying)
         if (!onGround && !isFlying) {
             if (physicallyInWater) {
-                // In water: apply moderate gravity (causes slow sinking by default)
                 velocity.y -= WATER_GRAVITY * Game.getDeltaTime();
             } else {
-                // In air: apply normal gravity, but more aggressive if recently exited water
                 if (isInWaterExitAntiFloatPeriod) {
-                    // Recently exited water - apply stronger gravity to force immediate falling
-                    velocity.y -= GRAVITY * 2.0f * Game.getDeltaTime(); // Double gravity for water exits
+                    velocity.y -= GRAVITY * 2.0f * Game.getDeltaTime(); // Double gravity after water exit
                 } else {
-                    // Normal air gravity
                     velocity.y -= GRAVITY * Game.getDeltaTime();
                 }
                 
-                // Safety check: if player has any upward velocity outside water during anti-float period, eliminate it
+                // Safety check for water exit period
                 if (velocity.y > 0.1f && !physicallyInWater && isInWaterExitAntiFloatPeriod) {
-                    velocity.y = 0.0f; // Force immediate falling only during water exit period
+                    velocity.y = 0.0f;
                 }
             }
         }
@@ -196,52 +165,34 @@ public class Player {      // Player settings
         // Check if player is standing on solid ground
         checkGroundBeneath();
         
-        // Dampen movement - frame-rate independent using delta time
+        // Apply frame-rate independent dampening
         float deltaTime = Game.getDeltaTime();
         if (isFlying) {
-            // More aggressive dampening in flight mode for better control
-            // Convert dampening factor to frame-rate independent form
-            float flyDampening = (float) Math.pow(0.85f, deltaTime * 60.0f); // Equivalent to 0.85f at 60 FPS
-            velocity.x *= flyDampening;
-            velocity.y *= flyDampening;
-            velocity.z *= flyDampening;
+            // Flight dampening - exponential decay
+            float damping = 8.0f; // Higher damping for more responsive flight
+            float dampingFactor = (float) Math.exp(-damping * deltaTime);
+            velocity.x *= dampingFactor;
+            velocity.y *= dampingFactor; // Apply dampening to Y-axis to stop floating
+            velocity.z *= dampingFactor;
         } else {
-            // Reduced dampening for better control on ground
-            float groundDampening = (float) Math.pow(0.95f, deltaTime * 60.0f); // Equivalent to 0.95f at 60 FPS
-            velocity.x *= groundDampening;
-            velocity.z *= groundDampening;
+            // Ground friction - exponential decay
+            float friction = 5.0f; // Friction coefficient (reduced for better responsiveness)
+            float frictionFactor = (float) Math.exp(-friction * deltaTime);
+            velocity.x *= frictionFactor;
+            velocity.z *= frictionFactor;
             
-            // Apply Y dampening when in water for realistic water resistance
+            // Apply Y dampening 
             if (physicallyInWater) {
-                float waterDampening = (float) Math.pow(0.90f, deltaTime * 60.0f); // Frame-rate independent
-                velocity.y *= waterDampening;
+                // Water resistance
+                float waterDamping = 2.0f;
+                float waterDampingFactor = (float) Math.exp(-waterDamping * deltaTime);
+                velocity.y *= waterDampingFactor;
             } else {
-                // Not in water - apply stronger dampening to stop water momentum
+                // Very light air resistance for natural jumping
                 if (velocity.y > 0) {
-                    // Check if player was recently in water to determine dampening approach
-                    if (wasInWaterLastFrame) {
-                        // Player just exited water - apply special water-exit dampening
-                        float baseDampening = isJumpCurrentlyPressed ? 0.85f : 0.75f; // More aggressive dampening
-                        float airDampening = (float) Math.pow(baseDampening, deltaTime * 60.0f);
-                        velocity.y *= airDampening;
-                        
-                        // Additional velocity reduction for water-to-air transition
-                        velocity.y *= 0.6f; // More aggressive reduction for water-to-air transition
-                        
-                        // Extra dampening when jump is not held and player is floating from water
-                        if (!isJumpCurrentlyPressed && !onGround && velocity.y > 1.5f) {
-                            velocity.y *= 0.85f; // More aggressive dampening for unintended floating from water
-                        }
-                        
-                        // Extra safety: if player has significant upward velocity outside water, reduce it aggressively
-                        if (velocity.y > 3.0f) {
-                            velocity.y *= 0.8f; // Additional reduction for high velocity outside water
-                        }
-                    } else {
-                        // Normal air physics - preserve natural jumping behavior
-                        float normalAirDampening = (float) Math.pow(0.98f, deltaTime * 60.0f); // Very light dampening for normal jumps
-                        velocity.y *= normalAirDampening;
-                    }
+                    float airDamping = 0.1f;
+                    float airDampingFactor = (float) Math.exp(-airDamping * deltaTime);
+                    velocity.y *= airDampingFactor;
                 }
             }
         }
@@ -1491,18 +1442,20 @@ public class Player {      // Player settings
     /**
      * Handles flight ascent (space key while flying).
      */
-    public void processFlightAscent() {
+    public void processFlightAscent(boolean shift) {
         if (isFlying) {
-            velocity.y += FLY_SPEED * Game.getDeltaTime();
+            float speed = shift ? FLY_VERTICAL_SPEED * 2.0f : FLY_VERTICAL_SPEED;
+            velocity.y = speed; // Set velocity directly, don't accumulate
         }
     }
     
     /**
      * Handles flight descent (ctrl key while flying).
      */
-    public void processFlightDescent() {
+    public void processFlightDescent(boolean shift) {
         if (isFlying) {
-            velocity.y -= FLY_SPEED * Game.getDeltaTime();
+            float speed = shift ? FLY_VERTICAL_SPEED * 2.0f : FLY_VERTICAL_SPEED;
+            velocity.y = -speed; // Set velocity directly, don't accumulate
         }
     }
     

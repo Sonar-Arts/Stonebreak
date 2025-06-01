@@ -950,7 +950,6 @@ public class UIRenderer {
      * @param fontFaceName The name of the font face (e.g., "sans", "minecraft").
      * @return The width of the text in pixels.
      */
-    @SuppressWarnings("unused")
     public float getTextWidth(String text, float fontSize, String fontFaceName) {if (vg == 0 || text == null || text.isEmpty()) {
             return 0;
         }

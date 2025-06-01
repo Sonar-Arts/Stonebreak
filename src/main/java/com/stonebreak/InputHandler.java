@@ -198,10 +198,10 @@ public class InputHandler {
                 // Handle flight controls (Space for ascent, Ctrl for descent)
                 if (player.isFlying()) {
                     if (jump) {
-                        player.processFlightAscent();
+                        player.processFlightAscent(shift);
                     }
                     if (crouch) {
-                        player.processFlightDescent();
+                        player.processFlightDescent(shift);
                     }
                 }
                 
@@ -329,9 +329,13 @@ public class InputHandler {
     // private void handleRecipeBookKey() { ... } // Method removed
  
       private void handleMouseLook(float xOffset, float yOffset) {
-        // Only process mouse movement if the game is not paused and chat is not open
+        // Only process mouse movement if the game is not paused, chat is not open, and workbench is not open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
-        if (Game.getInstance().isPaused() || (chatSystem != null && chatSystem.isOpen())) {
+        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+        
+        if (Game.getInstance().isPaused() || 
+            (chatSystem != null && chatSystem.isOpen()) ||
+            (workbenchScreen != null && workbenchScreen.isVisible())) {
             return;
         }
         
@@ -560,11 +564,15 @@ public class InputHandler {
         
         // Update pause menu hover state if visible
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
+        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+        
         if (pauseMenu != null && pauseMenu.isVisible()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
             if (uiRenderer != null) {
                 pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
             }
+        } else if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            // Don't process mouse look when workbench is open - cursor should be free for UI interaction
         } else {
             handleMouseLook(xOffset, yOffset);
         }

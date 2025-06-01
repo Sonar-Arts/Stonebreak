@@ -239,20 +239,37 @@ public class Game {
                 return; // Don't update game world
             }
             case PLAYING -> {
-                if (paused) { // If game is paused (e.g. by PauseMenu, not by Inventory/Workbench)
-                     // If inventory is visible while game is "playing" but paused by menu, update it
+                if (paused) {
+                    // Check if paused by pause menu vs just inventory/UI
+                    boolean pausedByMenu = pauseMenu != null && pauseMenu.isVisible();
+                    
+                    // Update UI screens that are visible
                     if (inventoryScreen != null && inventoryScreen.isVisible()) {
                         inventoryScreen.update(deltaTime);
                     }
-                     // If workbench is visible while game is "playing" but paused by menu, update it
                     if (workbenchScreen != null && workbenchScreen.isVisible()) {
                         workbenchScreen.update(deltaTime);
                     }
-                    return; // Don't update player/world if paused by escape menu
+                    
+                    // Only pause game world updates if actually paused by the pause menu
+                    // If paused only by inventory/UI, continue to game world updates
+                    if (pausedByMenu) {
+                        return; // Don't update player/world if paused by escape menu
+                    }
                 }
-                // No 'break;' needed here, execution flows to game world updates
+                // Continue to game world updates (either not paused, or paused only by inventory/UI)
             }
-            case WORKBENCH_UI, PAUSED -> { // General pause state, might also cover inventory if it sets this
+            case WORKBENCH_UI -> {
+                // Update workbench UI but keep the game world running
+                if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                    workbenchScreen.update(deltaTime);
+                }
+                if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                    inventoryScreen.update(deltaTime);
+                }
+                // Continue to game world updates - workbench doesn't pause the game
+            }
+            case PAUSED -> { // Only truly pause for the pause menu
                 // Update relevant UI screens if they are visible
                 if (inventoryScreen != null && inventoryScreen.isVisible()) {
                     inventoryScreen.update(deltaTime);
@@ -506,10 +523,14 @@ public class Game {
             } else if ((state == GameState.MAIN_MENU || state == GameState.SETTINGS) && this.previousGameState == GameState.PLAYING) {
                 // Show cursor when returning to menu or entering settings
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
-            } else if (state == GameState.SETTINGS || state == GameState.MAIN_MENU) {
+            } else if (state == GameState.SETTINGS || state == GameState.MAIN_MENU || state == GameState.PAUSED) {
                 // Ensure cursor is visible for all menu states
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
                 paused = true;
+            } else if (state == GameState.WORKBENCH_UI || state == GameState.RECIPE_BOOK_UI) {
+                // Show cursor for UI screens that need mouse interaction
+                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+                // Note: paused is handled separately - workbench doesn't pause the world, recipe book might
             }
              else if (state == GameState.PLAYING) { // Covers transitions from WORKBENCH, RECIPE_BOOK, PAUSED to PLAYING
                  // And also covers inventory being closed (where toggleInventoryScreen itself set paused=false)
