@@ -49,7 +49,7 @@ public class Player {      // Player settings
     // Walking sound system
     private float walkingSoundTimer; // Timer for walking sound intervals
     private boolean wasMovingLastFrame; // Track if player was moving in the previous frame
-    private static final float WALKING_SOUND_INTERVAL = 0.30f; // Play sound every 0.30 seconds while walking
+    private static final float WALKING_SOUND_INTERVAL = 0.3f; // Play sound every 0.3 seconds while walking
     
     // Flight system
     private boolean flightEnabled = false; // Whether flight is enabled via command
@@ -1396,7 +1396,7 @@ public class Player {      // Player settings
     private void updateWalkingSounds() {
         // Calculate horizontal movement speed
         float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        boolean isMoving = horizontalSpeed > 0.5f && onGround && !physicallyInWater; // Lower threshold for movement
+        boolean isMoving = horizontalSpeed > 1.0f && onGround && !physicallyInWater; // Higher threshold to prevent over-triggering
         
         if (isMoving) {
             // If player just started moving, play sound immediately
