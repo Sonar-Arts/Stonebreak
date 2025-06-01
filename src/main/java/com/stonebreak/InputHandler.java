@@ -393,10 +393,10 @@ public class InputHandler {
         World world = Game.getWorld();
         if (world != null && world.getBlockDropManager() != null) {
             world.getBlockDropManager().spawnDropWithVelocity(dropX, dropY, dropZ, 
-                selectedStack.getBlockTypeId(), 1, throwVelocity);
+                selectedStack.getItem().getId(), 1, throwVelocity);
             
             // Remove one item from the inventory
-            inventory.removeItem(selectedStack.getBlockTypeId(), 1);
+            inventory.removeItem(selectedStack.getItem(), 1);
         }
     }
  

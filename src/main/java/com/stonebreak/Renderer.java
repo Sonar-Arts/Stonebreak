@@ -777,14 +777,34 @@ public class Renderer {
         // Reuse matrix to avoid allocation
         reusableArmViewModel.identity();
         
-        // Get the selected block type from the Player's Inventory
-        int selectedBlockTypeId = 1; // Default to a valid block if inventory is null for some reason
+        // Get the selected item from the Player's Inventory
+        ItemStack selectedItem = null;
         if (player.getInventory() != null) {
-            selectedBlockTypeId = player.getInventory().getSelectedBlockTypeId();
+            selectedItem = player.getInventory().getSelectedHotbarSlot();
         }
-        BlockType selectedBlockType = BlockType.getById(selectedBlockTypeId);
-        boolean displayingBlock = (selectedBlockType != null && selectedBlockType != BlockType.AIR &&
-                                  selectedBlockType.getAtlasX() >= 0 && selectedBlockType.getAtlasY() >= 0);
+        
+        // Check if we should display the item (block or tool) in hand
+        boolean displayingItem = false;
+        boolean isDisplayingBlock = false;
+        boolean isDisplayingTool = false;
+        BlockType selectedBlockType = null;
+        ItemType selectedItemType = null;
+        
+        if (selectedItem != null && !selectedItem.isEmpty()) {
+            if (selectedItem.isPlaceable()) {
+                // Item is a placeable block
+                selectedBlockType = selectedItem.asBlockType();
+                isDisplayingBlock = (selectedBlockType != null && selectedBlockType != BlockType.AIR &&
+                                    selectedBlockType.getAtlasX() >= 0 && selectedBlockType.getAtlasY() >= 0);
+                displayingItem = isDisplayingBlock;
+            } else if (selectedItem.isTool() || selectedItem.isMaterial()) {
+                // Item is a tool or material
+                selectedItemType = selectedItem.asItemType();
+                isDisplayingTool = (selectedItemType != null &&
+                                   selectedItemType.getAtlasX() >= 0 && selectedItemType.getAtlasY() >= 0);
+                displayingItem = isDisplayingTool;
+            }
+        }
         
         // Get total time for animations
         float totalTime = Game.getInstance().getTotalTimeElapsed();
@@ -834,8 +854,8 @@ public class Renderer {
         reusableArmViewModel.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Slight inward rotation
         reusableArmViewModel.rotate((float) Math.toRadians(5.0f), 1.0f, 0.0f, 0.0f);   // Slight downward tilt
 
-        // Adjust the model based on whether we're displaying a block or arm
-        if (displayingBlock) {
+        // Adjust the model based on whether we're displaying an item or arm
+        if (displayingItem) {
             // Position and scale for the block - Minecraft-style item positioning
             reusableArmViewModel.scale(0.4f); // Larger scale for better visibility
             reusableArmViewModel.translate(-0.3f, 0.15f, 0.3f); // Adjust position for item in hand
@@ -866,8 +886,9 @@ public class Renderer {
         shaderProgram.setUniform("projectionMatrix", projectionMatrix); // Use main projection
         shaderProgram.setUniform("viewMatrix", reusableArmViewModel); // Use the arm's own model-view
 
-        // Check if we have a valid block type to display
-        if (displayingBlock) {
+        // Check if we have a valid item to display
+        if (displayingItem) {
+            if (isDisplayingBlock) {
             // Add a redundant check for selectedBlockType to satisfy static analyzers
             if (selectedBlockType == null) {
                 // This path should ideally not be reached if displayingBlock is true due to its definition.
@@ -880,12 +901,6 @@ public class Renderer {
                     case ROSE:
                     case DANDELION:
                         renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
-                        break;
-                    case STICK:
-                        renderMinecraftStyleItemInHand(selectedBlockType); // Minecraft-style 3D item
-                        break;
-                    case WOODEN_PICKAXE:
-                        renderPickaxeInHand(selectedBlockType, player); // Minecraft-style diagonal pickaxe
                         break;
                     default:
                         // Use block-specific cube for proper face texturing
@@ -914,6 +929,17 @@ public class Renderer {
                         break;
                 }
             }
+        } else if (isDisplayingTool) {
+            // Handle tool rendering
+            if (selectedItemType == ItemType.STICK) {
+                renderMinecraftStyleItemInHand(selectedItemType);
+            } else if (selectedItemType == ItemType.WOODEN_PICKAXE) {
+                renderPickaxeInHand(selectedItemType, player);
+            } else {
+                // Default tool rendering
+                renderMinecraftStyleItemInHand(selectedItemType);
+            }
+        }
         } else {
             // Fallback to the default arm texture
             shaderProgram.setUniform("u_useSolidColor", false);
@@ -1196,8 +1222,9 @@ public class Renderer {
             return; // Nothing to draw
         }
 
-        // Check if this is a flower block or item - render as flat 2D texture instead of 3D cube
-        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.STICK || type == BlockType.WOODEN_PICKAXE) {
+        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
+        // Note: Items (STICK, WOODEN_PICKAXE) are now in ItemType enum and handled separately
+        if (type == BlockType.ROSE || type == BlockType.DANDELION) {
             drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
             return;
         }
@@ -2947,7 +2974,7 @@ public class Renderer {
      * Renders a 2D item texture as a 3D object using simplified approach.
      * Creates a single flat quad that appears 3D through proper positioning and rotation.
      */
-    private void renderMinecraftStyleItemInHand(BlockType itemType) {
+    private void renderMinecraftStyleItemInHand(ItemType itemType) {
         // Set up shader for item rendering
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
@@ -3000,7 +3027,7 @@ public class Renderer {
      * Renders a pickaxe in the player's hand with Minecraft-style diagonal positioning.
      * Applies additional rotation to make the pickaxe appear held diagonally like in Minecraft.
      */
-    private void renderPickaxeInHand(BlockType itemType, Player player) {
+    private void renderPickaxeInHand(ItemType itemType, Player player) {
         // Create a temporary matrix for pickaxe-specific transformations
         Matrix4f pickaxeMatrix = new Matrix4f(reusableArmViewModel);
         

@@ -230,18 +230,18 @@ public class WorkbenchScreen {
             Vector2f mousePos = inputHandler.getMousePosition();
             int itemRenderX = (int) (mousePos.x - (SLOT_SIZE - 4) / 2.0f);
             int itemRenderY = (int) (mousePos.y - (SLOT_SIZE - 4) / 2.0f);
-            BlockType type = BlockType.getById(draggedItemStack.getBlockTypeId());
-            if (type != null) {
-                drawDraggedItem3D(type, itemRenderX, itemRenderY, draggedItemStack.getCount());
+            Item item = draggedItemStack.getItem();
+            if (item != null) {
+                drawDraggedItem3D(item, itemRenderX, itemRenderY, draggedItemStack.getCount());
             }
         }
 
         // Draw Tooltip
         if (hoveredItemStack != null && !hoveredItemStack.isEmpty() && draggedItemStack == null) {
-            BlockType type = BlockType.getById(hoveredItemStack.getBlockTypeId());
-            if (type != null && type != BlockType.AIR) {
+            Item item = hoveredItemStack.getItem();
+            if (item != null && item != BlockType.AIR) {
                 Vector2f mousePos = inputHandler.getMousePosition();
-                drawItemTooltipUI(type.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
+                drawItemTooltipUI(item.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
             }
         }
         uiRenderer.endFrame(); // End frame at the end of screen rendering
@@ -296,10 +296,10 @@ public class WorkbenchScreen {
             nvgFill(vg);
 
             if (itemStack != null && !itemStack.isEmpty()) {
-                BlockType type = BlockType.getById(itemStack.getBlockTypeId());
+                Item item = itemStack.getItem();
                 int count = itemStack.getCount();
 
-                if (type != null && type != BlockType.AIR) {
+                if (item != null && item != BlockType.AIR) {
                     // Temporarily end frame for 3D rendering within NanoVG pass.
                     // This specific call to uiRenderer.endFrame() and .beginFrame() inside a slot
                     // assumes that draw3DItemInSlot does OpenGL operations that need NanoVG to be paused.
@@ -308,7 +308,13 @@ public class WorkbenchScreen {
                     // The main begin/endFrame for the whole screen is now in this class's render().
 
                     uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
-                    renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                    // Draw 3D item using existing renderer - only works for BlockTypes for now
+                    if (item instanceof BlockType) {
+                        renderer.draw3DItemInSlot((BlockType) item, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                    } else {
+                        // For ItemTypes, render a 2D sprite using UIRenderer
+                        uiRenderer.renderItemIcon(slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
+                    }
                     uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f); // Restart NanoVG frame
 
                     if (count > 1) {
@@ -328,11 +334,17 @@ public class WorkbenchScreen {
         }
     }
     
-    private void drawDraggedItem3D(BlockType type, int x, int y, int count) {
+    private void drawDraggedItem3D(Item item, int x, int y, int count) {
         try (MemoryStack stack = stackPush()){
             long vg = uiRenderer.getVG();
             uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
-            renderer.draw3DItemInSlot(type, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+            // Draw 3D item using existing renderer - only works for BlockTypes for now
+            if (item instanceof BlockType) {
+                renderer.draw3DItemInSlot((BlockType) item, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+            } else {
+                // For ItemTypes, render a 2D sprite using UIRenderer
+                uiRenderer.renderItemIcon(x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
+            }
             uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f); // Restart NanoVG frame
 
             if (count > 1) {
@@ -824,7 +836,7 @@ public class WorkbenchScreen {
         }
 
         if (targetSlotItemStack.isEmpty()) {
-            ItemStack newItem = new ItemStack(draggedItemStack.getBlockTypeId(), 1);
+            ItemStack newItem = new ItemStack(draggedItemStack.getItem(), 1);
             slotStackSetter.accept(newItem);
             draggedItemStack.decrementCount(1);
             if (draggedItemStack.isEmpty()) clearDraggedItemState();
@@ -1282,9 +1294,9 @@ public class WorkbenchScreen {
                                 }
                             } else {
                                 System.err.println("WorkbenchScreen.consumeCraftingIngredients: Mismatch for recipe item " +
-                                                   BlockType.getById(recipeIngredient.getBlockTypeId()).getName() + " (qty " + recipeIngredient.getCount() + ")" +
+                                                   recipeIngredient.getItem().getName() + " (qty " + recipeIngredient.getCount() + ")" +
                                                    " at recipe(" + r_recipe + "," + c_recipe + ") / grid(" + actualGridRow + "," + actualGridCol + "). Found: " +
-                                                   (itemInWorkbenchSlot != null && !itemInWorkbenchSlot.isEmpty() ? BlockType.getById(itemInWorkbenchSlot.getBlockTypeId()).getName() : "empty/null"));
+                                                   (itemInWorkbenchSlot != null && !itemInWorkbenchSlot.isEmpty() ? itemInWorkbenchSlot.getItem().getName() : "empty/null"));
                             }
                         } else {
                              System.err.println("WorkbenchScreen.consumeCraftingIngredients: Recipe item at (" + r_recipe + "," + c_recipe +
@@ -1311,8 +1323,8 @@ public class WorkbenchScreen {
                         if (player != null) {
                             if (!player.attemptDropItemInFront(draggedItemStack.copy())) { // Try to drop a copy
                                 // If dropping failed, log it. Item remains "dragged" for now (will be cleared).
-                                BlockType draggedType = BlockType.getById(draggedItemStack.getBlockTypeId());
-                                String draggedName = (draggedType != null) ? draggedType.getName() : "Unknown Item";
+                                Item draggedItem = draggedItemStack.getItem();
+                                String draggedName = (draggedItem != null) ? draggedItem.getName() : "Unknown Item";
                                 System.out.println("Workbench: Couldn't add to inventory OR drop dragged item " + draggedName + " in world.");
                             }
                         } else {

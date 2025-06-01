@@ -707,10 +707,13 @@ public class Player {      // Player settings
             
             // Apply tool efficiency for pickaxe
             float effectiveHardness = hardness;
-            int heldItemId = inventory.getSelectedBlockTypeId();
-            if (heldItemId == BlockType.WOODEN_PICKAXE.getId()) {
-                if (blockType == BlockType.STONE || blockType == BlockType.SANDSTONE || blockType == BlockType.RED_SANDSTONE) {
-                    effectiveHardness = hardness * 0.25f; // Mine 4x faster (treat as two hardness levels less)
+            ItemStack selectedItem = inventory.getSelectedHotbarSlot();
+            if (selectedItem != null && selectedItem.isTool()) {
+                ItemType itemType = selectedItem.asItemType();
+                if (itemType == ItemType.WOODEN_PICKAXE) {
+                    if (blockType == BlockType.STONE || blockType == BlockType.SANDSTONE || blockType == BlockType.RED_SANDSTONE) {
+                        effectiveHardness = hardness * 0.25f; // Mine 4x faster (treat as two hardness levels less)
+                    }
                 }
             }
             
@@ -835,25 +838,25 @@ public class Player {      // Player settings
      * Blocks can only be placed adjacent to existing blocks.
      */
     public void placeBlock() {
-        int selectedBlockTypeId = inventory.getSelectedBlockTypeId();
+        ItemStack selectedItem = inventory.getSelectedHotbarSlot();
 
-        // Do nothing if no block is selected or if selected block is AIR
-        if (selectedBlockTypeId == BlockType.AIR.getId()) {
+        // Do nothing if no item is selected or if selected item is empty/air
+        if (selectedItem == null || selectedItem.isEmpty()) {
             return;
         }
 
         // Check if this item can be placed as a block
-        BlockType selectedBlockType = BlockType.getById(selectedBlockTypeId);
-        if (!selectedBlockType.isPlaceable()) {
-            return;
+        if (!selectedItem.isPlaceable()) {
+            return; // Cannot place tools or other non-placeable items
         }
 
-        // Check if player has this block type in inventory first
-        if (!inventory.hasItem(selectedBlockTypeId)) {
-            // This might happen if the selected item was depleted by other means
-            // or if selection logic is flawed. For now, just return.
-            return;
+        // Get the BlockType from the placeable item
+        BlockType selectedBlockType = selectedItem.asBlockType();
+        if (selectedBlockType == null) {
+            return; // Safety check - should not happen if isPlaceable() returned true
         }
+        
+        int selectedBlockTypeId = selectedBlockType.getId();
         
         Vector3i hitBlockPos = raycast(); // This is the first non-air block hit by ray. Null if only air.
         Vector3i placePos;
@@ -905,7 +908,7 @@ public class Player {      // Player settings
                 if (currentLayers < 8) {
                     // Add a layer to existing snow
                     world.getSnowLayerManager().addSnowLayer(placePos.x, placePos.y, placePos.z);
-                    inventory.removeItem(selectedBlockTypeId);
+                    inventory.removeItem(selectedItem.getItem(), 1);
                     // Trigger chunk rebuild since snow height changed
                     world.triggerChunkRebuild(placePos.x, placePos.y, placePos.z);
                     return;
@@ -918,7 +921,7 @@ public class Player {      // Player settings
                             // Place new snow block above
                             if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
-                                inventory.removeItem(selectedBlockTypeId);
+                                inventory.removeItem(selectedItem.getItem(), 1);
                             }
                         }
                     }
@@ -948,12 +951,11 @@ public class Player {      // Player settings
                 }
                 
                 // All checks passed, place the block.
-                BlockType blockType = BlockType.getById(selectedBlockTypeId);
-                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, blockType)) {
-                    inventory.removeItem(selectedBlockTypeId);
+                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
+                    inventory.removeItem(selectedItem.getItem(), 1);
                     
                     // If placing a water block, register it as a water source
-                    if (blockType == BlockType.WATER) {
+                    if (selectedBlockType == BlockType.WATER) {
                         WaterEffects waterEffects = Game.getWaterEffects();
                         if (waterEffects != null) {
                             waterEffects.addWaterSource(placePos.x, placePos.y, placePos.z);
@@ -961,7 +963,7 @@ public class Player {      // Player settings
                     }
                     
                     // If placing a snow block, initialize it with 1 layer
-                    if (blockType == BlockType.SNOW) {
+                    if (selectedBlockType == BlockType.SNOW) {
                         world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
                     }
                 }
@@ -1507,9 +1509,14 @@ public class Player {      // Player settings
             return false;
         }
 
-        BlockType blockToPlace = BlockType.getById(itemToDrop.getBlockTypeId());
+        // Check if the item can be placed as a block
+        if (!itemToDrop.isPlaceable()) {
+            return false; // Cannot drop non-placeable items (tools, etc.)
+        }
+        
+        BlockType blockToPlace = itemToDrop.asBlockType();
         if (blockToPlace == null || blockToPlace == BlockType.AIR) {
-            return false; // Cannot drop non-block items or air
+            return false; // Cannot drop air
         }
 
         // Calculate a position 1 block in front of the player at foot level

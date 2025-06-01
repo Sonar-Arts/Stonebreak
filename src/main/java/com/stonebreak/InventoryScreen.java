@@ -299,9 +299,9 @@ public class InventoryScreen {
             int itemRenderX = (int) (mousePos.x - (SLOT_SIZE -4) / 2.0f);
             int itemRenderY = (int) (mousePos.y - (SLOT_SIZE -4) / 2.0f);
 
-            BlockType type = BlockType.getById(draggedItemStack.getBlockTypeId());
-            if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
-                drawDraggedItem(type, itemRenderX, itemRenderY, draggedItemStack.getCount());
+            Item item = draggedItemStack.getItem();
+            if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
+                drawDraggedItem(item, itemRenderX, itemRenderY, draggedItemStack.getCount());
             }
         }
 
@@ -456,9 +456,9 @@ public class InventoryScreen {
             int itemRenderX = (int) (mousePos.x - (SLOT_SIZE -4) / 2.0f);
             int itemRenderY = (int) (mousePos.y - (SLOT_SIZE -4) / 2.0f);
 
-            BlockType type = BlockType.getById(draggedItemStack.getBlockTypeId());
-            if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
-                drawDraggedItem(type, itemRenderX, itemRenderY, draggedItemStack.getCount());
+            Item item = draggedItemStack.getItem();
+            if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
+                drawDraggedItem(item, itemRenderX, itemRenderY, draggedItemStack.getCount());
             }
         }
     }
@@ -474,10 +474,10 @@ public class InventoryScreen {
         
         // Draw Tooltip
         if (hoveredItemStack != null && !hoveredItemStack.isEmpty() && draggedItemStack == null) { // Only show tooltip if not dragging
-            BlockType type = BlockType.getById(hoveredItemStack.getBlockTypeId());
-            if (type != null && type != BlockType.AIR) {
+            Item item = hoveredItemStack.getItem();
+            if (item != null && item != BlockType.AIR) {
                 Vector2f mousePos = inputHandler.getMousePosition();
-                drawItemTooltip(type.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
+                drawItemTooltip(item.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
             }
         }
     }    // Helper method to draw inventory panel using UIRenderer
@@ -543,16 +543,21 @@ public class InventoryScreen {
             nvgFill(vg);
             
             if (itemStack != null && !itemStack.isEmpty()) {
-                BlockType type = BlockType.getById(itemStack.getBlockTypeId());
+                Item item = itemStack.getItem();
                 int count = itemStack.getCount();
                 
-                if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
+                if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
                     try {
                         // End NanoVG frame temporarily to draw 3D item
                         uiRenderer.endFrame();
                         
-                        // Draw 3D item using existing renderer
-                        renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                        // Draw 3D item using existing renderer - only works for BlockTypes for now
+                        if (item instanceof BlockType) {
+                            renderer.draw3DItemInSlot((BlockType) item, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                        } else {
+                            // For ItemTypes, render a 2D sprite using UIRenderer
+                            uiRenderer.renderItemIcon(slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
+                        }
                         
                         // Restart NanoVG frame
                         uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
@@ -584,7 +589,7 @@ public class InventoryScreen {
             }
             }
         } catch (Exception e) {
-            System.err.println("ERROR in drawInventorySlot: " + e.getMessage() + ". Problem drawing item: " + (itemStack != null ? BlockType.getById(itemStack.getBlockTypeId()) : "unknown"));
+            System.err.println("ERROR in drawInventorySlot: " + e.getMessage() + ". Problem drawing item: " + (itemStack != null ? itemStack.getItem().getName() : "unknown"));
             // e.printStackTrace(); // Replaced with more specific logging above
 
             // Try to recover UI state
@@ -598,14 +603,19 @@ public class InventoryScreen {
         }
     }
     
-    private void drawDraggedItem(BlockType type, int x, int y, int count) {
+    private void drawDraggedItem(Item item, int x, int y, int count) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
             // End NanoVG frame temporarily to draw 3D item
             uiRenderer.endFrame();
             
-            // Draw 3D item using existing renderer
-            renderer.draw3DItemInSlot(type, x, y, SLOT_SIZE - 4, SLOT_SIZE - 4);
+            // Draw 3D item using existing renderer - only works for BlockTypes for now
+            if (item instanceof BlockType) {
+                renderer.draw3DItemInSlot((BlockType) item, x, y, SLOT_SIZE - 4, SLOT_SIZE - 4);
+            } else {
+                // For ItemTypes, render a 2D sprite using UIRenderer
+                uiRenderer.renderItemIcon(x, y, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
+            }
             
             // Restart NanoVG frame
             uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
@@ -1153,7 +1163,7 @@ public class InventoryScreen {
         boolean isCraftingSlot = craftingSlotIndexIfApplicable != -1;
 
         if (targetSlot.isEmpty()) {
-            ItemStack newItem = new ItemStack(draggedItemStack.getBlockTypeId(), 1);
+            ItemStack newItem = new ItemStack(draggedItemStack.getItem(), 1);
              // Use newStackSetterForCrafting if provided and it's a crafting slot context, otherwise directSlotSetter.
             if(isCraftingSlot && newStackSetterForCrafting != null) newStackSetterForCrafting.accept(newItem);
             else directSlotSetter.accept(newItem);
@@ -1162,7 +1172,7 @@ public class InventoryScreen {
             if (draggedItemStack.isEmpty()) clearDraggedItemState(); // this clears draggedItemStack itself
             if (isCraftingSlot) updateCraftingOutput();
             return true;
-        } else if (targetSlot.getBlockTypeId() == draggedItemStack.getBlockTypeId() && targetSlot.getCount() < targetSlot.getMaxStackSize()) {
+        } else if (targetSlot.canStackWith(draggedItemStack) && targetSlot.getCount() < targetSlot.getMaxStackSize()) {
             targetSlot.incrementCount(1);
             // directSlotSetter might not be needed if targetSlot is a direct reference from an array (like craftingInputSlots)
             // or if playerInventory.get...Slot() returns a modifiable reference.
@@ -1229,8 +1239,7 @@ public class InventoryScreen {
                     inventory.setMainInventorySlot(i, draggedItemStack);
                     draggedItemStack = null; // Item is placed, no longer dragged
                     placed = true;
-                } else if (targetStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                           targetStack.getCount() < targetStack.getMaxStackSize()) {
+                } else if (targetStack.canStackWith(draggedItemStack)) {
                     // Try to stack
                     int canAdd = targetStack.getMaxStackSize() - targetStack.getCount();
                     int toAdd = Math.min(canAdd, draggedItemStack.getCount());
@@ -1303,8 +1312,7 @@ public class InventoryScreen {
                         inventory.setHotbarSlot(i, draggedItemStack);
                         draggedItemStack = null; // Item is placed, no longer dragged
                         placed = true;
-                    } else if (targetStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                               targetStack.getCount() < targetStack.getMaxStackSize()) {
+                    } else if (targetStack.canStackWith(draggedItemStack)) {
                         int canAdd = targetStack.getMaxStackSize() - targetStack.getCount();
                         int toAdd = Math.min(canAdd, draggedItemStack.getCount());
                         targetStack.incrementCount(toAdd);
@@ -1419,8 +1427,7 @@ public class InventoryScreen {
                         craftingInputSlots[i] = draggedItemStack;
                         draggedItemStack = null;
                         placed = true;
-                    } else if (targetStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                               targetStack.getCount() < targetStack.getMaxStackSize()) {
+                    } else if (targetStack.canStackWith(draggedItemStack)) {
                         int canAdd = targetStack.getMaxStackSize() - targetStack.getCount();
                         int toAdd = Math.min(canAdd, draggedItemStack.getCount());
                         targetStack.incrementCount(toAdd);
@@ -1515,8 +1522,7 @@ public class InventoryScreen {
                 if (originalSlotItemStack.isEmpty()) {
                     inventory.setHotbarSlot(draggedItemOriginalSlotIndex, draggedItemStack);
                     draggedItemStack = null;
-                } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                           originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
+                } else if (originalSlotItemStack.canStackWith(draggedItemStack)) {
                     // Try to stack back
                     int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
                     int toAdd = Math.min(canAdd, draggedItemStack.getCount());
@@ -1532,8 +1538,7 @@ public class InventoryScreen {
                 if (originalSlotItemStack.isEmpty()) {
                     inventory.setMainInventorySlot(draggedItemOriginalSlotIndex, draggedItemStack);
                     draggedItemStack = null;
-                } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                           originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
+                } else if (originalSlotItemStack.canStackWith(draggedItemStack)) {
                     int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
                     int toAdd = Math.min(canAdd, draggedItemStack.getCount());
                     originalSlotItemStack.incrementCount(toAdd);
@@ -1551,8 +1556,7 @@ public class InventoryScreen {
                     if (originalSlotItemStack.isEmpty()) {
                         craftingInputSlots[craftingSlotTrueIndex] = draggedItemStack;
                         draggedItemStack = null;
-                    } else if (originalSlotItemStack.getBlockTypeId() == draggedItemStack.getBlockTypeId() &&
-                            originalSlotItemStack.getCount() < originalSlotItemStack.getMaxStackSize()) {
+                    } else if (originalSlotItemStack.canStackWith(draggedItemStack)) {
                         int canAdd = originalSlotItemStack.getMaxStackSize() - originalSlotItemStack.getCount();
                         int toAdd = Math.min(canAdd, draggedItemStack.getCount());
                         originalSlotItemStack.incrementCount(toAdd);

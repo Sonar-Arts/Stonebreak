@@ -10,6 +10,7 @@ public class CraftingManager {
 
     public CraftingManager() {
         this.recipes = new ArrayList<>();
+        // Recipes are initialized in Game.java to avoid duplication
     }
 
     /**
@@ -154,43 +155,76 @@ public class CraftingManager {
     public List<Recipe> getAllRecipes() {
         return new ArrayList<>(this.recipes); // Return a copy to prevent external modification
     }
+    
+    /**
+     * Gets recipes by category.
+     * @param category The item category to filter by
+     * @return List of recipes that produce items in the given category
+     */
+    public List<Recipe> getRecipesByCategory(ItemCategory category) {
+        return recipes.stream()
+            .filter(recipe -> recipe.getOutput().getCategory() == category)
+            .toList();
+    }
+    
+    /**
+     * Gets recipes that produce a specific item.
+     * @param item The item to search for
+     * @return List of recipes that produce the item
+     */
+    public List<Recipe> getRecipesForItem(Item item) {
+        return recipes.stream()
+            .filter(recipe -> recipe.getOutput().getItem().isSameType(item))
+            .toList();
+    }
 
-    // Placeholder for shapeless recipe matching - not required for this task
-    // private ItemStack checkForShapelessRecipe(List<ItemStack> flatInputItems) { ... }
+    /**
+     * Clears all recipes (useful for testing).
+     */
+    public void clearRecipes() {
+        recipes.clear();
+    }
+    
+    /**
+     * Gets the number of registered recipes.
+     * @return The recipe count
+     */
+    public int getRecipeCount() {
+        return recipes.size();
+    }
 
 
-    // Example of how one might define a utility for creating placeholder ItemStacks
-    // This is not strictly part of CraftingManager but useful for testing/setup
-    public static ItemStack createPlaceholderItemStack(String itemTypeName, int count) {
-        // This is a placeholder. In a real system, you'd look up an ItemType/BlockType ID.
-        // For example, if BlockType had a static method `get(String name)`:
-        // return new ItemStack(BlockType.get(itemTypeName).getId(), count);
-
-        // For now, using a simple hash of the name as a pseudo-ID if BlockType isn't integrated
-        // THIS IS NOT ROBUST FOR A REAL GAME. Just for initial system setup.
-        int pseudoId = itemTypeName.hashCode();
-        // Ensure positive ID if hash is negative, and avoid 0 if BlockType.AIR.getId() is 0.
-        if (pseudoId == BlockType.AIR.getId()) pseudoId = -1; // just an example shift
-
-        // To make this work with existing ItemStack constructor expecting blockTypeId
-        // we'd need a mapping from these string names to actual BlockType.java IDs.
-        // The instructions mention "use string identifiers for item types if full ItemType
-        // integration is complex". ItemStack currently takes int blockTypeId.
-        // A Map<String, Integer> for placeholder IDs would be one way if direct BlockType access is hard.
+    /**
+     * Creates an ItemStack from an item name (for convenience).
+     * @param itemName The name of the item (BlockType or ItemType)
+     * @param count The quantity
+     * @return ItemStack or null if item not found
+     */
+    public static ItemStack createItemStack(String itemName, int count) {
+        // Try BlockType first
+        for (BlockType blockType : BlockType.values()) {
+            if (blockType.getName().equalsIgnoreCase(itemName)) {
+                return new ItemStack(blockType, count);
+            }
+        }
         
-        // For the spirit of "string identifiers" let's assume BlockType can give us an ID from a string.
-        // If not, this example would need to be adapted. For instance, manually assign pseudo IDs.
-        // Example: if (itemTypeName.equals("WOOD_LOG")) pseudoId = 1000; etc.
-
-        // This placeholder ID will cause issues if it collides with real BlockType IDs or if
-        // BlockType.java does not actually use these string names.
-        // The actual ItemStacks for recipes will be created using existing BlockType IDs from BlockType.java
-
-        // For testing Recipe.java & CraftingManager.java, actual recipes would be:
-        // List<List<ItemStack>> pattern = ...
-        // pattern.get(0).add(new ItemStack(BlockType.LOG.getId(), 1)); // example
-        // new Recipe("planks", pattern, new ItemStack(BlockType.PLANKS.getId(), 4));
-        System.err.println("Warning: createPlaceholderItemStack is using pseudo-IDs. Integrate with actual BlockType IDs for proper functionality.");
-        return new ItemStack(pseudoId, count);
+        // Try ItemType
+        ItemType itemType = ItemType.getByName(itemName);
+        if (itemType != null) {
+            return new ItemStack(itemType, count);
+        }
+        
+        System.err.println("Warning: Item not found: " + itemName);
+        return null;
+    }
+    
+    /**
+     * Creates an ItemStack from an Item.
+     * @param item The item (BlockType or ItemType)
+     * @param count The quantity
+     * @return ItemStack
+     */
+    public static ItemStack createItemStack(Item item, int count) {
+        return new ItemStack(item, count);
     }
 }

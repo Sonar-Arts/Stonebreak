@@ -1969,9 +1969,10 @@ public class TextureAtlas {
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, totalSize, totalSize,
                 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
         
-        // IMPORTANT: After sending to GPU, flip() again (or rewind()) if we intend to use this buffer for NanoVG later from its start.
+        // IMPORTANT: After sending to GPU, rewind() to prepare for NanoVG reads.
         // NanoVG expects the buffer to be ready for reading from the beginning.
-        buffer.flip(); // Prepare for potential future reads by NanoVG (from getNanoVGImageId)
+        // Don't use flip() again as it would set limit to current position (making buffer appear empty).
+        buffer.rewind(); // Prepare for potential future reads by NanoVG (from getNanoVGImageId)
 
         // Set appropriate texture filtering
         // Note: In OpenGL 3.0+, we would use GL30.glGenerateMipmap() here

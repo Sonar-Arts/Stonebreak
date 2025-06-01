@@ -152,19 +152,19 @@ public class RecipeBookScreen {
         
         // Draw item tooltip if hovering over an item
         if (hoveredItemStack != null && !hoveredItemStack.isEmpty()) {
-            BlockType type = BlockType.getById(hoveredItemStack.getBlockTypeId());
-            if (type != null && type != BlockType.AIR) {
+            Item item = hoveredItemStack.getItem();
+            if (item != null && item != BlockType.AIR) {
                 Vector2f mousePos = inputHandler.getMousePosition();
-                drawItemTooltip(type.getName(), mousePos.x + 15, mousePos.y + 15);
+                drawItemTooltip(item.getName(), mousePos.x + 15, mousePos.y + 15);
             }
         }
         
         // Draw recipe tooltip if hovering over a recipe
         if (hoveredRecipe != null) {
             Vector2f mousePos = inputHandler.getMousePosition();
-            BlockType outputType = BlockType.getById(hoveredRecipe.getOutput().getBlockTypeId());
-            if (outputType != null) {
-                String recipeName = "Recipe: " + outputType.getName();
+            Item outputItem = hoveredRecipe.getOutput().getItem();
+            if (outputItem != null) {
+                String recipeName = "Recipe: " + outputItem.getName();
                 drawItemTooltip(recipeName, mousePos.x + 15, mousePos.y + 15);
             }
         }
@@ -182,8 +182,8 @@ public class RecipeBookScreen {
         for (Recipe recipe : recipes) {
             // Filter by category first
             if (!selectedCategory.equals("All")) {
-                BlockType outputType = BlockType.getById(recipe.getOutput().getBlockTypeId());
-                String category = getCategoryForBlockType(outputType);
+                Item outputItem = recipe.getOutput().getItem();
+                String category = getCategoryForItem(outputItem);
                 if (!category.equals(selectedCategory)) {
                     continue;
                 }
@@ -194,8 +194,8 @@ public class RecipeBookScreen {
             if (searchText.isEmpty()) {
                 matchesSearch = true;
             } else {
-                BlockType outputType = BlockType.getById(recipe.getOutput().getBlockTypeId());
-                if (outputType != null && outputType.getName().toLowerCase().contains(lowerSearchText)) {
+                Item outputItem = recipe.getOutput().getItem();
+                if (outputItem != null && outputItem.getName().toLowerCase().contains(lowerSearchText)) {
                     matchesSearch = true;
                 } else if (recipe.getId() != null && recipe.getId().toLowerCase().contains(lowerSearchText)) {
                     matchesSearch = true;
@@ -229,11 +229,24 @@ public class RecipeBookScreen {
         return variations;
     }
     
-    private String getCategoryForBlockType(BlockType blockType) {
-        if (blockType == null) return "All";
+    private String getCategoryForItem(Item item) {
+        if (item == null) return "All";
         
-        // Simple categorization - can be expanded
-        String name = blockType.getName().toLowerCase();
+        // Use the item's actual category if available
+        if (item instanceof ItemType || item instanceof BlockType) {
+            ItemCategory category = item.getCategory();
+            switch (category) {
+                case TOOLS -> { return "Tools"; }
+                case FOOD -> { return "Food"; }
+                case DECORATIVE -> { return "Decorative"; }
+                case MATERIALS -> { return "Building"; } // Materials go under Building for now
+                case BLOCKS -> { return "Building"; }
+                default -> { return "Building"; }
+            }
+        }
+        
+        // Fallback to name-based categorization for compatibility
+        String name = item.getName().toLowerCase();
         if (name.contains("tool") || name.contains("pick") || name.contains("axe") || name.contains("shovel")) {
             return "Tools";
         } else if (name.contains("food") || name.contains("bread") || name.contains("apple")) {
@@ -433,8 +446,8 @@ public class RecipeBookScreen {
             // Draw recipe output item as main display
             ItemStack output = recipe.getOutput();
             if (output != null && !output.isEmpty()) {
-                BlockType type = BlockType.getById(output.getBlockTypeId());
-                if (type != null && type != BlockType.AIR) {
+                Item item = output.getItem();
+                if (item != null && item != BlockType.AIR) {
                     // Draw item slot for output
                     int itemSize = Math.min(ITEM_SLOT_SIZE, width - 10);
                     int itemX = x + (width - itemSize) / 2;
@@ -448,7 +461,7 @@ public class RecipeBookScreen {
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
                     nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
                     
-                    String itemName = type.getName();
+                    String itemName = item.getName();
                     if (itemName.length() > 8) {
                         itemName = itemName.substring(0, 8) + "...";
                     }
@@ -482,16 +495,21 @@ public class RecipeBookScreen {
             nvgFill(vg);
             
             if (itemStack != null && !itemStack.isEmpty()) {
-                BlockType type = BlockType.getById(itemStack.getBlockTypeId());
+                Item item = itemStack.getItem();
                 int count = itemStack.getCount();
                 
-                if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
+                if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
                     try {
                         // End NanoVG frame temporarily to draw 3D item
                         uiRenderer.endFrame();
                         
-                        // Draw 3D item using existing renderer
-                        renderer.draw3DItemInSlot(type, slotX + 2, slotY + 2, slotSize - 4, slotSize - 4);
+                        // Draw 3D item using existing renderer - only works for BlockTypes for now
+                        if (item instanceof BlockType) {
+                            renderer.draw3DItemInSlot((BlockType) item, slotX + 2, slotY + 2, slotSize - 4, slotSize - 4);
+                        } else {
+                            // For ItemTypes, render a 2D sprite using UIRenderer
+                            uiRenderer.renderItemIcon(slotX + 2, slotY + 2, slotSize - 4, slotSize - 4, item, renderer.getTextureAtlas());
+                        }
                         
                         // Restart NanoVG frame
                         uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
@@ -956,8 +974,8 @@ public class RecipeBookScreen {
             
             // Draw Minecraft-style title section
             ItemStack output = selectedRecipe.getOutput();
-            BlockType outputType = BlockType.getById(output.getBlockTypeId());
-            String recipeTitle = (outputType != null ? outputType.getName() : "Unknown") + " Recipe";
+            Item outputItem = output.getItem();
+            String recipeTitle = (outputItem != null ? outputItem.getName() : "Unknown") + " Recipe";
             
             // Title background bar
             int titleBarHeight = 40;
@@ -1200,10 +1218,10 @@ public class RecipeBookScreen {
             
             // Draw "Result" label and item info
             if (output != null && !output.isEmpty()) {
-                BlockType type = BlockType.getById(output.getBlockTypeId());
-                if (type != null) {
+                Item item = output.getItem();
+                if (item != null) {
                     String outputLabel = "Result";
-                    String itemInfo = type.getName();
+                    String itemInfo = item.getName();
                     if (output.getCount() > 1) {
                         itemInfo += " x" + output.getCount();
                     }
@@ -1275,16 +1293,21 @@ public class RecipeBookScreen {
                 nvgFill(vg);
             }
             
-            BlockType type = BlockType.getById(itemStack.getBlockTypeId());
+            Item item = itemStack.getItem();
             int count = itemStack.getCount();
             
-            if (type != null && type.getAtlasX() != -1 && type.getAtlasY() != -1) {
+            if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
                 try {
                     // End NanoVG frame temporarily to draw 3D item
                     uiRenderer.endFrame();
                     
-                    // Draw 3D item using existing renderer with more padding for better look
-                    renderer.draw3DItemInSlot(type, slotX + 6, slotY + 6, slotSize - 12, slotSize - 12);
+                    // Draw 3D item using existing renderer with more padding for better look - only works for BlockTypes for now
+                    if (item instanceof BlockType) {
+                        renderer.draw3DItemInSlot((BlockType) item, slotX + 6, slotY + 6, slotSize - 12, slotSize - 12);
+                    } else {
+                        // For ItemTypes, render a 2D sprite using UIRenderer
+                        uiRenderer.renderItemIcon(slotX + 6, slotY + 6, slotSize - 12, slotSize - 12, item, renderer.getTextureAtlas());
+                    }
                     
                     // Restart NanoVG frame
                     uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);

@@ -1004,27 +1004,40 @@ public class UIRenderer {
     }
 
     /**
-     * Renders an item icon using its block type ID and texture atlas.
+     * Renders an item icon using its item and texture atlas.
      * @param x X-coordinate
      * @param y Y-coordinate
      * @param w Width
      * @param h Height
-     * @param blockTypeId The ID of the block type for the icon.
+     * @param item The item to render (BlockType or ItemType)
      * @param textureAtlas The texture atlas containing item/block textures.
      */
-    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
-        if (textureAtlas == null) return;
+    public void renderItemIcon(float x, float y, float w, float h, Item item, TextureAtlas textureAtlas) {
+        if (textureAtlas == null || item == null) return;
 
-        BlockType type = BlockType.getById(blockTypeId); // Assumes BlockType.getById() exists
-        if (type == null || type == BlockType.AIR) return;
+        if (item == BlockType.AIR) return;
 
-        // Get texture coordinates for the top face of the block
-        // This example assumes a simple way to get texture coordinates (e.g., type.getTextureCoords("top"))
-        // Adjust based on how TextureAtlas and BlockType actually provide these.
-        // For simplicity, let's assume blockType.getTextureId() gives a direct NanoVG image ID
-        // or that we derive UVs from texture atlas.
-
-        float[] texCoords = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP); // Assuming this method exists in TextureAtlas
+        // Get texture coordinates using the item's atlas position
+        // For blocks, use the top face; for items, use their designated position
+        float[] texCoords;
+        if (item instanceof BlockType) {
+            BlockType blockType = (BlockType) item;
+            texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
+        } else {
+            // For ItemType, calculate UVs from atlas coordinates
+            float atlasSize = 16.0f; // Assuming 16x16 atlas
+            float uvSize = 1.0f / atlasSize;
+            float texX = item.getAtlasX() / atlasSize;
+            float texY = item.getAtlasY() / atlasSize;
+            
+            // Create UV coordinates array like BlockType would provide
+            texCoords = new float[]{
+                texX, texY,                    // Top-left
+                texX + uvSize, texY,          // Top-right
+                texX + uvSize, texY + uvSize, // Bottom-right
+                texX, texY + uvSize           // Bottom-left
+            };
+        }
 
         if (texCoords == null) {
             // Fallback or error, maybe render a placeholder color
@@ -1080,6 +1093,34 @@ public class UIRenderer {
             nvgFillPaint(vg, paint);
             nvgFill(vg);
         }
+    }
+
+    /**
+     * Renders an item icon using its block type ID and texture atlas (backwards compatibility).
+     * @param x X-coordinate
+     * @param y Y-coordinate
+     * @param w Width
+     * @param h Height
+     * @param blockTypeId The ID of the block type for the icon.
+     * @param textureAtlas The texture atlas containing item/block textures.
+     */
+    public void renderItemIcon(float x, float y, float w, float h, int blockTypeId, TextureAtlas textureAtlas) {
+        // First try to find it as a BlockType
+        BlockType blockType = BlockType.getById(blockTypeId);
+        if (blockType != null) {
+            renderItemIcon(x, y, w, h, blockType, textureAtlas);
+            return;
+        }
+        
+        // Try to find it as an ItemType
+        ItemType itemType = ItemType.getById(blockTypeId);
+        if (itemType != null) {
+            renderItemIcon(x, y, w, h, itemType, textureAtlas);
+            return;
+        }
+        
+        // If not found, render placeholder
+        renderQuad(x, y, w, h, 0.5f, 0.2f, 0.8f, 1f); // Purple placeholder
     }
 
     /**

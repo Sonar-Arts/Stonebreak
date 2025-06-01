@@ -55,7 +55,7 @@ public class BlockDropRenderer {
     // Isolated rendering resources
     private ShaderProgram isolatedShaderProgram;
     private TextureAtlas isolatedTextureAtlas;
-    private final Map<BlockType, Integer> dropCubeVaoCache = new HashMap<>();
+    private final Map<Item, Integer> dropCubeVaoCache = new HashMap<>();
     
     // Synchronization for rendering data
     private final Object renderDataLock = new Object();
@@ -174,14 +174,21 @@ public class BlockDropRenderer {
                 return Float.compare(distB, distA); // Back-to-front (farthest first)
             });
             
-            // Group sorted drops by block type for batch rendering
-            Map<BlockType, List<BlockDrop>> dropsByType = new HashMap<>();
+            // Group sorted drops by item type for batch rendering
+            Map<Item, List<BlockDrop>> dropsByType = new HashMap<>();
             for (BlockDrop drop : sortedDrops) {
-                dropsByType.computeIfAbsent(BlockType.getById(drop.getBlockTypeId()), k -> new ArrayList<>()).add(drop);
+                int itemId = drop.getBlockTypeId();
+                Item item = BlockType.getById(itemId);
+                if (item == null) {
+                    item = ItemType.getById(itemId);
+                }
+                if (item != null) {
+                    dropsByType.computeIfAbsent(item, k -> new ArrayList<>()).add(drop);
+                }
             }
             
             // Batch render drops by type
-            for (Map.Entry<BlockType, List<BlockDrop>> entry : dropsByType.entrySet()) {
+            for (Map.Entry<Item, List<BlockDrop>> entry : dropsByType.entrySet()) {
                 renderDropsBatchIsolated(entry.getKey(), entry.getValue());
             }
             
@@ -228,13 +235,13 @@ public class BlockDropRenderer {
     /**
      * Render a batch of drops of the same type in isolated context.
      */
-    private void renderDropsBatchIsolated(BlockType blockType, List<BlockDrop> drops) {
+    private void renderDropsBatchIsolated(Item item, List<BlockDrop> drops) {
         if (drops.isEmpty()) {
             return;
         }
         
-        // Get or create cached VAO for this block type
-        int vao = dropCubeVaoCache.computeIfAbsent(blockType, this::createDropCubeVaoIsolated);
+        // Get or create cached VAO for this item type
+        int vao = dropCubeVaoCache.computeIfAbsent(item, this::createDropCubeVaoIsolated);
         
         GL30.glBindVertexArray(vao);
         
@@ -256,9 +263,9 @@ public class BlockDropRenderer {
     }
     
     /**
-     * Create a cube VAO for isolated rendering of a specific block type.
+     * Create a cube VAO for isolated rendering of a specific item type.
      */
-    private int createDropCubeVaoIsolated(BlockType blockType) {
+    private int createDropCubeVaoIsolated(Item item) {
         // This would be the same implementation as the original createDropCubeVao
         // but isolated within this renderer context
         // For brevity, I'll reference the existing implementation pattern
@@ -266,11 +273,20 @@ public class BlockDropRenderer {
         // Create cube vertices at origin with standard size
         float halfSize = 0.5f;
         
-        // Get face-specific texture coordinates for this block type
+        // Get texture coordinates for this item type
         float[][] faceTexCoords = new float[6][];
-        for (int faceValue = 0; faceValue < 6; faceValue++) {
-            BlockType.Face faceEnum = BlockType.Face.values()[faceValue]; // Assuming order in enum matches 0-5
-            faceTexCoords[faceValue] = blockType.getTextureCoords(faceEnum);
+        if (item instanceof BlockType blockType) {
+            // For blocks, get face-specific texture coordinates
+            for (int faceValue = 0; faceValue < 6; faceValue++) {
+                BlockType.Face faceEnum = BlockType.Face.values()[faceValue];
+                faceTexCoords[faceValue] = blockType.getTextureCoords(faceEnum);
+            }
+        } else {
+            // For items (like tools), use the same texture for all faces
+            float[] itemTexCoords = {item.getAtlasX(), item.getAtlasY()};
+            for (int faceValue = 0; faceValue < 6; faceValue++) {
+                faceTexCoords[faceValue] = itemTexCoords;
+            }
         }
         
         // Convert atlas coordinates to UV coordinates
@@ -299,7 +315,10 @@ public class BlockDropRenderer {
         }
         
         // Determine isAlphaTested flag
-        float isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+        float isAlphaTestedValue = 0.0f;
+        if (item instanceof BlockType blockType) {
+            isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+        }
         
         // Generate vertex data with proper face-specific UV coordinates at origin
         // Each vertex: position (3), UV (2), normal (3), isWater (1), isAlphaTested (1) = 10 floats

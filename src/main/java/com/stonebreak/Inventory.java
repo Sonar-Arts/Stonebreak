@@ -43,15 +43,38 @@ public class Inventory {
      */
     private void initializeStartingItems() {
         // Start with some basic blocks
-        addItem(BlockType.GRASS.getId(), 10);
-        addItem(BlockType.DIRT.getId(), 10);
-        addItem(BlockType.STONE.getId(), 10);
-        addItem(BlockType.WOOD.getId(), 10);
-        addItem(BlockType.WATER.getId(), 5); // Add water blocks for testing
+        addItem(BlockType.GRASS, 10);
+        addItem(BlockType.DIRT, 10);
+        addItem(BlockType.STONE, 10);
+        addItem(BlockType.WOOD, 10);
+        addItem(BlockType.WATER, 5); // Add water blocks for testing
+        
+        // Add some tools and materials
+        addItem(ItemType.STICK, 5);
+        addItem(ItemType.WOODEN_PICKAXE, 1);
 
         // Initial tooltip will be triggered by Game.init() after setInventoryScreen is called.
     }    /**
-     * Adds a single item of the given block type to the inventory.
+     * Adds a single item to the inventory.
+     * @param item The item to add
+     * @return True if the item was successfully added
+     */
+    public final boolean addItem(Item item) {
+        return addItem(item, 1);
+    }
+    
+    /**
+     * Adds multiple items to the inventory.
+     * @param item The item to add
+     * @param count The number of items to add
+     * @return True if all items were successfully added
+     */
+    public final boolean addItem(Item item, int count) {
+        return addItem(new ItemStack(item, count));
+    }
+    
+    /**
+     * Adds a single item of the given block type to the inventory (backwards compatibility).
      * Tries to stack with existing items or find an empty slot.
      * @param blockTypeId The ID of the block type to add.
      * @return True if the item was successfully added (or partially added), false otherwise.
@@ -195,7 +218,26 @@ public class Inventory {
     }
 
     /**
-     * Removes a single item of the given block type from the inventory.
+     * Removes a single item from the inventory.
+     * @param item The item to remove
+     * @return True if the item was removed
+     */
+    public boolean removeItem(Item item) {
+        return removeItem(item, 1);
+    }
+    
+    /**
+     * Removes multiple items from the inventory.
+     * @param item The item to remove
+     * @param count The number of items to remove
+     * @return True if all items were removed
+     */
+    public boolean removeItem(Item item, int count) {
+        return removeItem(item.getId(), count);
+    }
+    
+    /**
+     * Removes a single item of the given block type from the inventory (backwards compatibility).
      * Prioritizes removing from the selected hotbar slot, then other hotbar slots, then main inventory.
      * @param blockTypeId The ID of the block type to remove.
      * @return True if the item was removed, false if not found.
@@ -258,7 +300,16 @@ public class Inventory {
     }
 
     /**
-     * Gets the total count of a specific block type across all inventory slots.
+     * Gets the total count of a specific item across all inventory slots.
+     * @param item The item to count
+     * @return The total count of the item
+     */
+    public int getItemCount(Item item) {
+        return getItemCount(item.getId());
+    }
+    
+    /**
+     * Gets the total count of a specific block type across all inventory slots (backwards compatibility).
      * @param blockTypeId The ID of the block type.
      * @return The total count of the item.
      */
@@ -280,6 +331,15 @@ public class Inventory {
 
     /**
      * Checks if the inventory contains at least one of the specified item.
+     * @param item The item to check for
+     * @return True if the inventory contains the item
+     */
+    public boolean hasItem(Item item) {
+        return getItemCount(item) > 0;
+    }
+    
+    /**
+     * Checks if the inventory contains at least one of the specified item (backwards compatibility).
      */
     public boolean hasItem(int blockTypeId) {
         return getItemCount(blockTypeId) > 0;
@@ -359,6 +419,14 @@ public class Inventory {
 
 
     /**
+     * Gets the ItemStack in the currently selected hotbar slot.
+     * @return The selected ItemStack, never null (but may be empty)
+     */
+    public ItemStack getSelectedHotbarSlot() {
+        return hotbarSlots[selectedHotbarSlotIndex];
+    }
+    
+    /**
      * Gets the ID of the block type in the currently selected hotbar slot.
      * @return The block type ID, or BlockType.AIR.getId() if the slot is empty.
      */
@@ -385,7 +453,9 @@ public class Inventory {
             this.selectedHotbarSlotIndex = selectedHotbarSlotIndex;
             if (changed && inventoryScreen != null) {
                 ItemStack newItem = hotbarSlots[this.selectedHotbarSlotIndex];
-                inventoryScreen.displayHotbarItemTooltip(BlockType.getById(newItem.getBlockTypeId()));
+                if (newItem.getItem() instanceof BlockType blockType) {
+                    inventoryScreen.displayHotbarItemTooltip(blockType);
+                }
             }
         }
     }

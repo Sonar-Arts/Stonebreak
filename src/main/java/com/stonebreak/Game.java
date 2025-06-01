@@ -207,7 +207,7 @@ public class Game {
         System.out.println("Registered recipe: PINE_WOOD_PLANKS -> WORKBENCH");
 
         // Recipe 5: Sticks
-        // Input: 2 BlockType.WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
+        // Input: 2 BlockType.WOOD_PLANKS (vertical) -> Output: 4 ItemType.STICK
         List<List<ItemStack>> planksToSticksPattern = List.of(
             List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
             List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1))
@@ -215,13 +215,13 @@ public class Game {
         Recipe planksToSticksRecipe = new Recipe(
             "planks_to_sticks",
             planksToSticksPattern,
-            new ItemStack(BlockType.STICK.getId(), 4)
+            new ItemStack(ItemType.STICK, 4)
         );
         this.craftingManager.registerRecipe(planksToSticksRecipe);
         System.out.println("Registered recipe: WOOD_PLANKS -> STICKS");
 
         // Recipe 6: Pine Wood Planks to Sticks
-        // Input: 2 BlockType.PINE_WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
+        // Input: 2 BlockType.PINE_WOOD_PLANKS (vertical) -> Output: 4 ItemType.STICK
         List<List<ItemStack>> pinePlanksToSticksPattern = List.of(
             List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
             List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1))
@@ -229,7 +229,7 @@ public class Game {
         Recipe pinePlanksToSticksRecipe = new Recipe(
             "pine_planks_to_sticks",
             pinePlanksToSticksPattern,
-            new ItemStack(BlockType.STICK.getId(), 4)
+            new ItemStack(ItemType.STICK, 4)
         );
         this.craftingManager.registerRecipe(pinePlanksToSticksRecipe);
         System.out.println("Registered recipe: PINE_WOOD_PLANKS -> STICKS");
@@ -238,13 +238,13 @@ public class Game {
         // Input: 3 Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
         List<List<ItemStack>> woodenPickaxePattern = List.of(
             List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
-            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null),
-            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null)
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null)
         );
         Recipe woodenPickaxeRecipe = new Recipe(
             "wooden_pickaxe",
             woodenPickaxePattern,
-            new ItemStack(BlockType.WOODEN_PICKAXE.getId(), 1)
+            new ItemStack(ItemType.WOODEN_PICKAXE, 1)
         );
         this.craftingManager.registerRecipe(woodenPickaxeRecipe);
         System.out.println("Registered recipe: WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
@@ -253,13 +253,13 @@ public class Game {
         // Input: 3 Pine Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
         List<List<ItemStack>> pineWoodenPickaxePattern = List.of(
             List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
-            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null),
-            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null)
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null)
         );
         Recipe pineWoodenPickaxeRecipe = new Recipe(
             "pine_wooden_pickaxe",
             pineWoodenPickaxePattern,
-            new ItemStack(BlockType.WOODEN_PICKAXE.getId(), 1)
+            new ItemStack(ItemType.WOODEN_PICKAXE, 1)
         );
         this.craftingManager.registerRecipe(pineWoodenPickaxeRecipe);
         System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
@@ -292,7 +292,7 @@ public class Game {
         System.out.println("Registered recipe: ELM_WOOD_PLANKS -> WORKBENCH");
 
         // Recipe 11: Elm Wood Planks to Sticks
-        // Input: 2 BlockType.ELM_WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
+        // Input: 2 BlockType.ELM_WOOD_PLANKS (vertical) -> Output: 4 ItemType.STICK
         List<List<ItemStack>> elmPlanksToSticksPattern = List.of(
             List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
             List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1))
@@ -300,7 +300,7 @@ public class Game {
         Recipe elmPlanksToSticksRecipe = new Recipe(
             "elm_planks_to_sticks",
             elmPlanksToSticksPattern,
-            new ItemStack(BlockType.STICK.getId(), 4)
+            new ItemStack(ItemType.STICK, 4)
         );
         this.craftingManager.registerRecipe(elmPlanksToSticksRecipe);
         System.out.println("Registered recipe: ELM_WOOD_PLANKS -> STICKS");
@@ -309,13 +309,13 @@ public class Game {
         // Input: 3 Elm Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
         List<List<ItemStack>> elmWoodenPickaxePattern = List.of(
             List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
-            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null),
-            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null)
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null)
         );
         Recipe elmWoodenPickaxeRecipe = new Recipe(
             "elm_wooden_pickaxe",
             elmWoodenPickaxePattern,
-            new ItemStack(BlockType.WOODEN_PICKAXE.getId(), 1)
+            new ItemStack(ItemType.WOODEN_PICKAXE, 1)
         );
         this.craftingManager.registerRecipe(elmWoodenPickaxeRecipe);
         System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
@@ -332,7 +332,9 @@ public class Game {
             // Trigger initial tooltip for the currently selected item
             ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
             if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
-                inventoryScreen.displayHotbarItemTooltip(BlockType.getById(initialSelectedItem.getBlockTypeId()));
+                if (initialSelectedItem.getItem() instanceof BlockType blockType) {
+                    inventoryScreen.displayHotbarItemTooltip(blockType);
+                }
             }
 
         } else {

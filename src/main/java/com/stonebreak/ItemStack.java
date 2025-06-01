@@ -1,102 +1,255 @@
 package com.stonebreak;
 
 public class ItemStack {
-    private int blockTypeId;
+    private Item item;
     private int count;
 
-    public ItemStack(int blockTypeId, int count) {
-        if (blockTypeId == BlockType.AIR.getId() && count > 0) {
-            // Air blocks should not have a count or exist as ItemStacks in slots
-            this.blockTypeId = BlockType.AIR.getId();
+    /**
+     * Creates an ItemStack with the given item and count.
+     * @param item The item (BlockType or ItemType)
+     * @param count The quantity
+     */
+    public ItemStack(Item item, int count) {
+        if (item == null || count < 0) {
+            this.item = BlockType.AIR;
             this.count = 0;
         } else {
-            this.blockTypeId = blockTypeId;
+            this.item = item;
             this.count = count;
         }
     }
 
-    public int getBlockTypeId() {
-        return blockTypeId;
-    }
-
-    public void setBlockTypeId(int blockTypeId) {
-        this.blockTypeId = blockTypeId;
-        if (this.blockTypeId == BlockType.AIR.getId()) {
-            this.count = 0; // Air blocks shouldn't have a count
+    /**
+     * Creates an ItemStack from a block type ID (backwards compatibility).
+     * @param blockTypeId The block type ID
+     * @param count The quantity
+     */
+    public ItemStack(int blockTypeId, int count) {
+        // First try to find it as a BlockType
+        BlockType blockType = BlockType.getById(blockTypeId);
+        if (blockType != null) {
+            this.item = blockType;
+        } else {
+            // Try to find it as an ItemType
+            ItemType itemType = ItemType.getById(blockTypeId);
+            if (itemType != null) {
+                this.item = itemType;
+            } else {
+                // Default to AIR if not found
+                this.item = BlockType.AIR;
+            }
+        }
+        
+        if (this.item == BlockType.AIR && count > 0) {
+            this.count = 0;
+        } else {
+            this.count = Math.max(0, count);
         }
     }
 
+    /**
+     * Gets the item in this stack.
+     * @return The item (BlockType or ItemType)
+     */
+    public Item getItem() {
+        return item;
+    }
+
+    /**
+     * Gets the block type ID (backwards compatibility).
+     * @return The item's ID
+     */
+    public int getBlockTypeId() {
+        return item.getId();
+    }
+
+    /**
+     * Sets the block type ID (backwards compatibility).
+     * @param blockTypeId The new block type ID
+     */
+    public void setBlockTypeId(int blockTypeId) {
+        // First try BlockType, then ItemType
+        BlockType blockType = BlockType.getById(blockTypeId);
+        if (blockType != null) {
+            this.item = blockType;
+        } else {
+            ItemType itemType = ItemType.getById(blockTypeId);
+            if (itemType != null) {
+                this.item = itemType;
+            } else {
+                this.item = BlockType.AIR;
+            }
+        }
+        
+        if (this.item == BlockType.AIR) {
+            this.count = 0;
+        }
+    }
+
+    /**
+     * Gets the count of items in this stack.
+     * @return The item count
+     */
     public int getCount() {
         return count;
     }
 
+    /**
+     * Sets the count of items in this stack.
+     * @param count The new count
+     */
     public void setCount(int count) {
-        if (this.blockTypeId == BlockType.AIR.getId() && count > 0) {
+        if (this.item == BlockType.AIR && count > 0) {
             this.count = 0;
         } else {
-            this.count = count;
+            this.count = Math.max(0, count);
         }
     }
 
+    /**
+     * Increments the count by the specified amount.
+     * @param amount The amount to increment
+     */
     public void incrementCount(int amount) {
-        if (this.blockTypeId != BlockType.AIR.getId()) {
+        if (this.item != BlockType.AIR) {
             this.count += amount;
         }
     }
 
+    /**
+     * Decrements the count by the specified amount.
+     * @param amount The amount to decrement
+     */
     public void decrementCount(int amount) {
-        if (this.blockTypeId != BlockType.AIR.getId()) {
+        if (this.item != BlockType.AIR) {
             this.count -= amount;
             if (this.count < 0) {
                 this.count = 0;
             }
         }
-        // If count reaches 0, it effectively becomes an empty slot (or could be set to AIR)
-        if (this.count == 0 && this.blockTypeId != BlockType.AIR.getId()) {
-            // this.blockTypeId = BlockType.AIR.getId(); // Or handle this in Inventory logic
-        }
     }
 
+    /**
+     * Checks if this ItemStack is empty.
+     * @return True if empty or air
+     */
     public boolean isEmpty() {
-        return count <= 0 || blockTypeId == BlockType.AIR.getId();
+        return count <= 0 || item == BlockType.AIR;
     }
 
-    // Placeholder for max stack size, can be made dynamic later
+    /**
+     * Gets the maximum stack size for this item.
+     * @return The maximum stack size
+     */
     public int getMaxStackSize() {
-        // This could depend on BlockType in the future
-        // For most blocks, 64 is common.
-        return 64; 
+        return item.getMaxStackSize();
     }
 
-/**
+    /**
      * Checks if this ItemStack can be stacked with another ItemStack.
-     * They can stack if they are of the same block type and this stack is not full.
-     * @param other The other ItemStack to check against.
-     * @return true if they can stack, false otherwise.
+     * @param other The other ItemStack to check against
+     * @return True if they can stack, false otherwise
      */
     public boolean canStackWith(ItemStack other) {
         if (other == null || other.isEmpty() || this.isEmpty()) {
             return false;
         }
-        return this.blockTypeId == other.blockTypeId && this.count < getMaxStackSize();
+        return this.item.isSameType(other.item) && this.count < getMaxStackSize();
     }
+
     /**
-     * Creates a new ItemStack instance if this one is not empty, otherwise returns null.
-     * Useful for preventing modification of internal inventory ItemStacks directly.
-     * @return A new ItemStack instance or null if this stack is empty.
+     * Creates a copy of this ItemStack.
+     * @return A new ItemStack instance or null if empty
      */
     public ItemStack copy() {
         if (isEmpty()) {
             return null;
         }
-        return new ItemStack(this.blockTypeId, this.count);
+        return new ItemStack(this.item, this.count);
     }
 
     /**
-     * Clears the item stack, effectively making it an empty slot.
+     * Clears the item stack, making it empty.
      */
     public void clear() {
-        this.blockTypeId = BlockType.AIR.getId();
+        this.item = BlockType.AIR;
         this.count = 0;
+    }
+
+    /**
+     * Checks if this item can be placed as a block in the world.
+     * @return True if it's a BlockType and placeable
+     */
+    public boolean isPlaceable() {
+        return item instanceof BlockType && ((BlockType) item).isPlaceable();
+    }
+
+    /**
+     * Gets the item as a BlockType if it is one.
+     * @return BlockType if placeable, null otherwise
+     */
+    public BlockType asBlockType() {
+        return item instanceof BlockType ? (BlockType) item : null;
+    }
+
+    /**
+     * Gets the item as an ItemType if it is one.
+     * @return ItemType if it's an ItemType, null otherwise
+     */
+    public ItemType asItemType() {
+        return item instanceof ItemType ? (ItemType) item : null;
+    }
+
+    /**
+     * Checks if this item is a tool.
+     * @return True if it's an ItemType tool
+     */
+    public boolean isTool() {
+        return item instanceof ItemType && ((ItemType) item).isTool();
+    }
+
+    /**
+     * Checks if this item is a material.
+     * @return True if it's an ItemType material
+     */
+    public boolean isMaterial() {
+        return item instanceof ItemType && ((ItemType) item).isMaterial();
+    }
+
+    /**
+     * Gets the item's category.
+     * @return The item category
+     */
+    public ItemCategory getCategory() {
+        return item.getCategory();
+    }
+
+    /**
+     * Gets the display name of the item.
+     * @return The item's name
+     */
+    public String getName() {
+        return item.getName();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        ItemStack itemStack = (ItemStack) obj;
+        return count == itemStack.count && item.equals(itemStack.item);
+    }
+
+    @Override
+    public int hashCode() {
+        return item.hashCode() * 31 + count;
+    }
+
+    @Override
+    public String toString() {
+        return "ItemStack{" +
+                "item=" + item.getName() +
+                ", count=" + count +
+                '}';
     }
 }
