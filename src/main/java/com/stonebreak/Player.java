@@ -49,7 +49,7 @@ public class Player {      // Player settings
     // Walking sound system
     private float walkingSoundTimer; // Timer for walking sound intervals
     private boolean wasMovingLastFrame; // Track if player was moving in the previous frame
-    private static final float WALKING_SOUND_INTERVAL = 0.65f; // Play sound every 0.65 seconds while walking
+    private static final float WALKING_SOUND_INTERVAL = 0.30f; // Play sound every 0.30 seconds while walking
     
     // Flight system
     private boolean flightEnabled = false; // Whether flight is enabled via command
