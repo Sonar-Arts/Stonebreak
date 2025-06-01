@@ -264,6 +264,62 @@ public class Game {
         this.craftingManager.registerRecipe(pineWoodenPickaxeRecipe);
         System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
 
+        // Recipe 9: Elm Wood Planks
+        // Input: 1 BlockType.ELM_WOOD_LOG -> Output: 4 BlockType.ELM_WOOD_PLANKS
+        List<List<ItemStack>> elmToPlanksPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_LOG.getId(), 1))
+        );
+        Recipe elmToPlanksRecipe = new Recipe(
+            "elm_to_planks",
+            elmToPlanksPattern,
+            new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(elmToPlanksRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_LOG -> ELM_WOOD_PLANKS");
+
+        // Recipe 10: Elm Wood Planks to Workbench
+        // Input: 4 BlockType.ELM_WOOD_PLANKS (2x2) -> Output: 1 BlockType.WORKBENCH
+        List<List<ItemStack>> elmPlanksToWorkbenchPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe elmPlanksToWorkbenchRecipe = new Recipe(
+            "elm_planks_to_workbench",
+            elmPlanksToWorkbenchPattern,
+            new ItemStack(BlockType.WORKBENCH.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(elmPlanksToWorkbenchRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS -> WORKBENCH");
+
+        // Recipe 11: Elm Wood Planks to Sticks
+        // Input: 2 BlockType.ELM_WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
+        List<List<ItemStack>> elmPlanksToSticksPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe elmPlanksToSticksRecipe = new Recipe(
+            "elm_planks_to_sticks",
+            elmPlanksToSticksPattern,
+            new ItemStack(BlockType.STICK.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(elmPlanksToSticksRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS -> STICKS");
+
+        // Recipe 12: Wooden Pickaxe (Elm Wood Planks variant)
+        // Input: 3 Elm Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
+        List<List<ItemStack>> elmWoodenPickaxePattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null)
+        );
+        Recipe elmWoodenPickaxeRecipe = new Recipe(
+            "elm_wooden_pickaxe",
+            elmWoodenPickaxePattern,
+            new ItemStack(BlockType.WOODEN_PICKAXE.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(elmWoodenPickaxeRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
+
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message

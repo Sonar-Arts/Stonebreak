@@ -187,7 +187,7 @@ public class Font {    private final int fontTextureId;
     }
 
     public float getTextWidth(String text) {
-        float width = 0;
+        float width;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer xPos = stack.floats(0.0f); // Start at 0
             FloatBuffer yPos = stack.floats(0.0f); // y doesn't matter for width
@@ -225,7 +225,7 @@ public class Font {    private final int fontTextureId;
             try (SeekableByteChannel fc = Files.newByteChannel(path)) {
                 buffer = MemoryUtil.memAlloc((int) fc.size() + 1);
                 while (fc.read(buffer) != -1) {
-                    ;
+                    // Continue reading until end of file
                 }
             }
         } else {

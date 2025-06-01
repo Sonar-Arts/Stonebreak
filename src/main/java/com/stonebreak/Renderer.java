@@ -74,7 +74,6 @@ import static org.lwjgl.opengl.GL14.GL_BLEND_DST_RGB;
 import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_ALPHA;
 import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_RGB;
 import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
-import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM; // For originalDepthMask comparison
 import org.lwjgl.opengl.GL30;
@@ -877,36 +876,42 @@ public class Renderer {
                 // Fallback or error handling: perhaps render nothing or a default.
             } else {
                 // Check if this is a flower block - render as flat cross pattern instead of 3D cube
-                if (selectedBlockType == BlockType.ROSE || selectedBlockType == BlockType.DANDELION) {
-                    renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
-                } else if (selectedBlockType == BlockType.STICK) {
-                    renderMinecraftStyleItemInHand(selectedBlockType); // Minecraft-style 3D item
-                } else if (selectedBlockType == BlockType.WOODEN_PICKAXE) {
-                    renderPickaxeInHand(selectedBlockType, player); // Minecraft-style diagonal pickaxe
-                } else {
-                    // Use block-specific cube for proper face texturing
-                    shaderProgram.setUniform("u_useSolidColor", false);
-                    shaderProgram.setUniform("u_isText", false);
-                    shaderProgram.setUniform("u_transformUVsForItem", false); // Disable UV transformation since we're using pre-calculated UVs
-                    
-                    GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-                    shaderProgram.setUniform("texture_sampler", 0);
-                    
-                    // No tint for block texture
-                    shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-                    
-                    // Disable blending to prevent transparency issues
-                    glDisable(GL_BLEND);
-                    
-                    // Get or create block-specific cube with proper face textures
-                    int blockSpecificVao = getHandBlockVao(selectedBlockType); // Method to be re-added
-                    GL30.glBindVertexArray(blockSpecificVao);
-                    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
-                    
-                    // Re-enable blending for other elements
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                switch (selectedBlockType) {
+                    case ROSE:
+                    case DANDELION:
+                        renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
+                        break;
+                    case STICK:
+                        renderMinecraftStyleItemInHand(selectedBlockType); // Minecraft-style 3D item
+                        break;
+                    case WOODEN_PICKAXE:
+                        renderPickaxeInHand(selectedBlockType, player); // Minecraft-style diagonal pickaxe
+                        break;
+                    default:
+                        // Use block-specific cube for proper face texturing
+                        shaderProgram.setUniform("u_useSolidColor", false);
+                        shaderProgram.setUniform("u_isText", false);
+                        shaderProgram.setUniform("u_transformUVsForItem", false); // Disable UV transformation since we're using pre-calculated UVs
+                        
+                        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+                        shaderProgram.setUniform("texture_sampler", 0);
+                        
+                        // No tint for block texture
+                        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+                        
+                        // Disable blending to prevent transparency issues
+                        glDisable(GL_BLEND);
+                        
+                        // Get or create block-specific cube with proper face textures
+                        int blockSpecificVao = getHandBlockVao(selectedBlockType); // Method to be re-added
+                        GL30.glBindVertexArray(blockSpecificVao);
+                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
+                        
+                        // Re-enable blending for other elements
+                        glEnable(GL_BLEND);
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                        break;
                 }
             }
         } else {
@@ -984,16 +989,23 @@ public class Renderer {
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             // Render invisible depth curtain to occlude block drops behind inventory
             renderInventoryDepthCurtain();
-        } else if (gameInstance.getState() == GameState.RECIPE_BOOK_UI) {
-            // Render depth curtain for recipe book screen
-            renderRecipeBookDepthCurtain();
-        } else if (gameInstance.getState() == GameState.WORKBENCH_UI) {
-            // Render depth curtain for workbench screen
-            renderWorkbenchDepthCurtain();
         } else {
-            // If no full-screen UI is visible, render hotbar depth curtain 
-            // (hotbar is rendered separately in Main.java via UIRenderer)
-            renderHotbarDepthCurtain();
+            // Handle depth curtain based on current game state
+            switch (gameInstance.getState()) {
+                case RECIPE_BOOK_UI -> {
+                    // Render depth curtain for recipe book screen
+                    renderRecipeBookDepthCurtain();
+                }
+                case WORKBENCH_UI -> {
+                    // Render depth curtain for workbench screen
+                    renderWorkbenchDepthCurtain();
+                }
+                default -> {
+                    // If no full-screen UI is visible, render hotbar depth curtain 
+                    // (hotbar is rendered separately in Main.java via UIRenderer)
+                    renderHotbarDepthCurtain();
+                }
+            }
         }
         
         

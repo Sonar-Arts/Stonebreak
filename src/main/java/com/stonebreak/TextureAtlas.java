@@ -62,6 +62,20 @@ public class TextureAtlas {
     private static final int PINE_WOOD_PLANKS_ATLAS_X = 2;
     private static final int PINE_WOOD_PLANKS_ATLAS_Y = 3;
     
+    // Atlas coordinates for ELM_WOOD_LOG
+    private static final int ELM_WOOD_LOG_TOP_ATLAS_X = 4;
+    private static final int ELM_WOOD_LOG_TOP_ATLAS_Y = 3;
+    private static final int ELM_WOOD_LOG_SIDE_ATLAS_X = 7;
+    private static final int ELM_WOOD_LOG_SIDE_ATLAS_Y = 3;
+    
+    // Atlas coordinates for ELM_WOOD_PLANKS
+    private static final int ELM_WOOD_PLANKS_ATLAS_X = 5;
+    private static final int ELM_WOOD_PLANKS_ATLAS_Y = 3;
+    
+    // Atlas coordinates for ELM_LEAVES
+    private static final int ELM_LEAVES_ATLAS_X = 6;
+    private static final int ELM_LEAVES_ATLAS_Y = 3;
+    
     /**
      * Creates a texture atlas with the specified texture size.
      * The texture size is the number of tiles in the atlas in each dimension.
@@ -736,6 +750,165 @@ public class TextureAtlas {
                         a = (byte) 0;
                     }
                     
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for ELM_WOOD_LOG texture (top/bottom)
+                if (tileX == ELM_WOOD_LOG_TOP_ATLAS_X && tileY == ELM_WOOD_LOG_TOP_ATLAS_Y) {
+                    int pX_elm = globalX % texturePixelSize;
+                    int pY_elm = globalY % texturePixelSize;
+
+                    // Elm wood ring pattern for top view - based on research: light to medium reddish brown
+                    int centerX = texturePixelSize / 2;
+                    int centerY = texturePixelSize / 2;
+                    int dx = pX_elm - centerX;
+                    int dy = pY_elm - centerY;
+                    float distFromCenter = (float) Math.sqrt(dx*dx + dy*dy);
+                    
+                    // Create elm-characteristic ring pattern with reddish-brown base
+                    float ringPattern = (float) Math.sin(distFromCenter * 1.4) * 0.4f + 0.6f;
+                    
+                    // Elm heartwood: light to medium reddish brown (per research)
+                    int baseR_elm = 160; // Reddish brown base
+                    int baseG_elm = 100; 
+                    int baseB_elm = 70;
+                    
+                    // Add characteristic elm zig-zag grain pattern (ulmiform pattern)
+                    float zigzagPattern = (float) Math.sin(pX_elm * 0.9 + pY_elm * 0.7) * 
+                                         (float) Math.cos(pX_elm * 1.2 - pY_elm * 0.8) * 0.3f;
+                    
+                    r = (byte) Math.max(90, Math.min(200, (int)(baseR_elm + ringPattern * 40 + zigzagPattern * 20)));
+                    g = (byte) Math.max(60, Math.min(140, (int)(baseG_elm + ringPattern * 30 + zigzagPattern * 15)));
+                    b = (byte) Math.max(40, Math.min(100, (int)(baseB_elm + ringPattern * 20 + zigzagPattern * 10)));
+                    a = (byte) 255;
+                    
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for ELM_WOOD_LOG texture (sides/bark)
+                if (tileX == ELM_WOOD_LOG_SIDE_ATLAS_X && tileY == ELM_WOOD_LOG_SIDE_ATLAS_Y) {
+                    int pX_elm_side = globalX % texturePixelSize;
+                    int pY_elm_side = globalY % texturePixelSize;
+
+                    // Elm bark texture - using pine texture with elm coloring
+                    float woodGrain = (float) Math.sin(pY_elm_side * 1.5) * 0.5f + 0.5f;
+                    float barkTexture = (float) Math.sin(pX_elm_side * 0.7) * 0.4f + 0.6f;
+                    
+                    // Elm bark: darker reddish-brown with gray-white sapwood influence  
+                    int baseR_bark = 120;
+                    int baseG_bark = 80;
+                    int baseB_bark = 50;
+                    
+                    // Add elm's characteristic interlocked grain pattern
+                    float grainNoise = (float) (Math.sin(pX_elm_side * 0.8 + pY_elm_side * 0.6) * 0.3 +
+                                               Math.cos(pX_elm_side * 0.5 - pY_elm_side * 0.9) * 0.2);
+                    
+                    r = (byte) Math.max(70, Math.min(170, (int)(baseR_bark + woodGrain * 40 * barkTexture + grainNoise * 15)));
+                    g = (byte) Math.max(50, Math.min(120, (int)(baseG_bark + woodGrain * 30 * barkTexture + grainNoise * 12)));
+                    b = (byte) Math.max(30, Math.min(80, (int)(baseB_bark + woodGrain * 20 * barkTexture + grainNoise * 8)));
+                    a = (byte) 255;
+                    
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for ELM_WOOD_PLANKS texture
+                if (tileX == ELM_WOOD_PLANKS_ATLAS_X && tileY == ELM_WOOD_PLANKS_ATLAS_Y) {
+                    int pX_elm_planks = globalX % texturePixelSize;
+                    int pY_elm_planks = globalY % texturePixelSize;
+
+                    // Elm plank base colors - reddish brown planks
+                    int baseR_planks = 140;
+                    int baseG_planks = 95;
+                    int baseB_planks = 65;
+
+                    int finalR = baseR_planks;
+                    int finalG = baseG_planks;
+                    int finalB = baseB_planks;
+                    
+                    // Determine which horizontal plank (every 4 pixels)
+                    int plankY = pY_elm_planks / 4;
+                    
+                    // Add subtle plank-to-plank variation
+                    if (plankY % 2 == 1) {
+                        finalR += 12;
+                        finalG += 8;
+                        finalB += 5;
+                    }
+                    
+                    // Add elm's characteristic wild grain patterns
+                    double grainNoise = Math.sin(pX_elm_planks * 0.9 + plankY * 0.4) * 0.4 + 
+                                       Math.cos(pX_elm_planks * 0.6) * 0.3 +
+                                       Math.sin(pX_elm_planks * 1.2 - pY_elm_planks * 0.3) * 0.2; // Wild elm grain
+                    int grainAdjust = (int)(grainNoise * 18); // More variation for elm's wild grain
+                    
+                    finalR += grainAdjust;
+                    finalG += grainAdjust;
+                    finalB += Math.max(-8, grainAdjust - 5);
+                    
+                    // Add horizontal plank separation lines
+                    if (pY_elm_planks % 4 == 0 && pY_elm_planks > 0) {
+                        finalR -= 22;
+                        finalG -= 18;
+                        finalB -= 12;
+                    }
+                    
+                    // Elm characteristic zig-zag pattern in planks
+                    if ((pX_elm_planks * 3 + pY_elm_planks * 2) % 7 < 2) {
+                        finalR += 8;
+                        finalG += 5;
+                        finalB += 3;
+                    }
+                    
+                    // Ensure colors stay in elm reddish-brown range
+                    r = (byte) Math.max(80, Math.min(200, finalR));
+                    g = (byte) Math.max(60, Math.min(140, finalG));
+                    b = (byte) Math.max(35, Math.min(100, finalB));
+                    a = (byte) 255;
+                    
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for ELM_LEAVES texture
+                if (tileX == ELM_LEAVES_ATLAS_X && tileY == ELM_LEAVES_ATLAS_Y) {
+                    int pX_elm_leaves = globalX % texturePixelSize;
+                    int pY_elm_leaves = globalY % texturePixelSize;
+
+                    // Elm leaves - distinctive from other leaves, slightly yellower green
+                    // Elm trees often have serrated oval leaves that turn yellow in fall
+                    float leafNoise = (float) (
+                        Math.sin(pX_elm_leaves * 1.1 + pY_elm_leaves * 0.8) * 0.3 +
+                        Math.cos(pX_elm_leaves * 0.9 + pY_elm_leaves * 1.2) * 0.2 +
+                        Math.sin((pX_elm_leaves + pY_elm_leaves) * 0.6) * 0.4
+                    ) * 0.5f + 0.5f;
+                    
+                    // Base elm leaf color - yellower green than standard leaves
+                    int baseR_leaves = 45; // Slightly more red for yellowish tint
+                    int baseG_leaves = 120; 
+                    int baseB_leaves = 35; // Less blue for warmer tone
+                    
+                    r = (byte) (baseR_leaves + leafNoise * 50);
+                    g = (byte) (baseG_leaves + leafNoise * 70);
+                    b = (byte) (baseB_leaves + leafNoise * 30);
+                    
+                    // Add some small elm seed clusters (characteristic of elm trees)
+                    if ((pX_elm_leaves % 6 == 0 && pY_elm_leaves % 6 == 0) || 
+                        ((pX_elm_leaves + 3) % 6 == 0 && (pY_elm_leaves + 3) % 6 == 0)) {
+                        r = (byte) 180; // Light brown elm seeds
+                        g = (byte) 160;
+                        b = (byte) 120;
+                    }
+                    
+                    // Add transparency at edges for natural look
+                    int edgeX = pX_elm_leaves;
+                    int edgeY = pY_elm_leaves;
+                    if (edgeX <= 1 || edgeX >= texturePixelSize-2 ||
+                        edgeY <= 1 || edgeY >= texturePixelSize-2) {
+                        a = (byte) (180 + (leafNoise * 65));
+                        buffer.put(r).put(g).put(b).put(a);
+                        continue;
+                    }
+                    
+                    a = (byte) 255;
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }

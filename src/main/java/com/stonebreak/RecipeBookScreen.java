@@ -638,6 +638,8 @@ public class RecipeBookScreen {
                     selectedCategory = CATEGORIES[i];
                     scrollOffset = 0; // Reset scroll when changing category
                     categoryClicked = true;
+                    // Consume the mouse click to prevent multiple triggers
+                    inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                     break;
                 }
             }
@@ -822,6 +824,8 @@ public class RecipeBookScreen {
             selectedRecipe = null;
             currentRecipeVariations.clear();
             currentVariationIndex = 0;
+            // Consume the mouse click to prevent multiple triggers
+            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return true; // Handled the click
         }
         
@@ -836,6 +840,8 @@ public class RecipeBookScreen {
             selectedRecipe = null;
             currentRecipeVariations.clear();
             currentVariationIndex = 0;
+            // Consume the mouse click to prevent multiple triggers
+            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return true; // Handled the click
         }
         
@@ -853,6 +859,8 @@ public class RecipeBookScreen {
                     currentVariationIndex--;
                     selectedRecipe = currentRecipeVariations.get(currentVariationIndex);
                 }
+                // Consume the mouse click to prevent multiple triggers
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return true;
             }
             
@@ -863,6 +871,8 @@ public class RecipeBookScreen {
                     currentVariationIndex++;
                     selectedRecipe = currentRecipeVariations.get(currentVariationIndex);
                 }
+                // Consume the mouse click to prevent multiple triggers
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return true;
             }
         }

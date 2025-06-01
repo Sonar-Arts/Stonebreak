@@ -34,7 +34,10 @@ public enum BlockType {
     WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 2.0f), // Atlas coords (0,3) placeholder
     PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 2.0f), // Atlas coords (2,3)
     STICK(26, "Stick", false, true, 1, 3, 0.1f), // Atlas coords (1,3)
-    WOODEN_PICKAXE(27, "Wooden Pickaxe", false, true, 3, 3, 0.1f); // Atlas coords (3,3)
+    WOODEN_PICKAXE(27, "Wooden Pickaxe", false, true, 3, 3, 0.1f), // Atlas coords (3,3)
+    ELM_WOOD_LOG(28, "Elm Wood Log", true, true, 4, 3, 3.0f), // Atlas coords (4,3)
+    ELM_WOOD_PLANKS(29, "Elm Wood Planks", true, true, 5, 3, 2.0f), // Atlas coords (5,3)
+    ELM_LEAVES(30, "Elm Leaves", true, true, 6, 3, 0.5f); // Atlas coords (6,3)
 
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
@@ -82,7 +85,7 @@ public enum BlockType {
      * @return true if the block is transparent (like air or water)
      */
     public boolean isTransparent() {
-        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == STICK || this == WOODEN_PICKAXE;
+        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == STICK || this == WOODEN_PICKAXE || this == ELM_LEAVES;
     }
 
     public int getAtlasX() {
@@ -224,6 +227,13 @@ public enum BlockType {
             case PINE_WOOD_PLANKS -> new float[]{2, 3}; // All faces use (2,3)
             case STICK -> new float[]{1, 3}; // All faces use (1,3)
             case WOODEN_PICKAXE -> new float[]{3, 3}; // All faces use (3,3)
+            case ELM_WOOD_LOG -> {
+                if (face == Face.TOP) yield new float[]{4, 3}; // Top - elm wood ring pattern
+                if (face == Face.BOTTOM) yield new float[]{4, 3}; // Bottom - same as top
+                yield new float[]{7, 3}; // Sides - elm bark texture
+            }
+            case ELM_WOOD_PLANKS -> new float[]{5, 3}; // All faces use (5,3)
+            case ELM_LEAVES -> new float[]{6, 3}; // All faces use (6,3)
             default -> new float[]{0, 0};
         };
     }

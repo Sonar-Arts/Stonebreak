@@ -182,12 +182,12 @@ public class Chunk {
         }
     }
       // Reusable arrays for mesh generation to avoid allocations
-    private final float[] tempVertices = new float[65536]; // Pre-allocated with reasonable size
-    private final float[] tempTextureCoords = new float[43690]; // 2/3 of vertices for texture coords
-    private final float[] tempNormals = new float[65536]; // Same as vertices for normals
-    private final float[] tempIsWaterFlags = new float[32768]; // Increased size to match vertex capacity / 2
-    private final float[] tempIsAlphaTestedFlags = new float[32768]; // Increased size to match vertex capacity / 2
-    private final int[] tempIndices = new int[98304]; // 1.5x vertices for indices
+    private final float[] tempVertices = new float[131072]; // Doubled size for complex terrain
+    private final float[] tempTextureCoords = new float[87380]; // 2/3 of vertices for texture coords  
+    private final float[] tempNormals = new float[131072]; // Same as vertices for normals
+    private final float[] tempIsWaterFlags = new float[65536]; // Match vertex capacity / 2
+    private final float[] tempIsAlphaTestedFlags = new float[65536]; // Match vertex capacity / 2
+    private final int[] tempIndices = new int[196608]; // 1.5x vertices for indices
     
     private int vertexIndex = 0;
     private int textureIndex = 0;
