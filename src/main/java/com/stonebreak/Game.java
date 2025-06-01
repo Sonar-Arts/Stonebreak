@@ -517,35 +517,60 @@ public class Game {
         // Handle cursor visibility based on state transitions
         long windowHandle = Main.getWindowHandle();
         if (windowHandle != 0) {
-            if (state == GameState.PLAYING && (this.previousGameState == GameState.MAIN_MENU || this.previousGameState == GameState.SETTINGS)) {
-                // Hide cursor when entering game
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-            } else if ((state == GameState.MAIN_MENU || state == GameState.SETTINGS) && this.previousGameState == GameState.PLAYING) {
-                // Show cursor when returning to menu or entering settings
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
-            } else if (state == GameState.SETTINGS || state == GameState.MAIN_MENU || state == GameState.PAUSED) {
-                // Ensure cursor is visible for all menu states
+            // Unified logic for states that require cursor and game pause
+            if (state == GameState.MAIN_MENU ||
+                state == GameState.SETTINGS ||
+                state == GameState.PAUSED ||
+                state == GameState.WORKBENCH_UI ||
+                state == GameState.RECIPE_BOOK_UI) {
+                
                 org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
                 paused = true;
-            } else if (state == GameState.WORKBENCH_UI || state == GameState.RECIPE_BOOK_UI) {
-                // Show cursor for UI screens that need mouse interaction
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
-                // Note: paused is handled separately - workbench doesn't pause the world, recipe book might
-            }
-             else if (state == GameState.PLAYING) { // Covers transitions from WORKBENCH, RECIPE_BOOK, PAUSED to PLAYING
-                 // And also covers inventory being closed (where toggleInventoryScreen itself set paused=false)
-                 // Only hide cursor if no other UI expects it (inventory, workbench etc.)
-                if ((inventoryScreen == null || !inventoryScreen.isVisible()) &&
-                    (workbenchScreen == null || !workbenchScreen.isVisible()) &&
-                    (recipeBookScreen == null || !recipeBookScreen.isVisible()) &&
-                    (pauseMenu == null || !pauseMenu.isVisible())) {
-                    org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-                    paused = false; // Unpause game
-                    if (this.inputHandler != null) { // Reset mouse position to prevent camera jump
+                
+                // Reset mouse position if cursor was previously hidden (e.g., coming from unencumbered PLAYING state)
+                if (this.inputHandler != null && this.previousGameState == GameState.PLAYING) {
+                     // Check if the previous PLAYING state was truly unencumbered (no inventory/chat) to decide on reset.
+                     // This prevents resetting if the cursor was already visible due to an overlay like inventory.
+                    boolean prevPlayingWasUnencumbered = (inventoryScreen == null || !inventoryScreen.isVisible()) &&
+                                                         (chatSystem == null || !chatSystem.isOpen());
+                    if (prevPlayingWasUnencumbered) {
                         this.inputHandler.resetMousePosition();
                     }
                 }
+
+            } else if (state == GameState.PLAYING) {
+                // Transitioning to PLAYING state (e.g., from a menu, or closing workbench/recipe book/pause menu)
+                // Hide cursor and unpause game logic *only if* no overlay UI (inventory, chat) is active.
+                if ((inventoryScreen == null || !inventoryScreen.isVisible()) &&
+                    (chatSystem == null || !chatSystem.isOpen())) {
+                    
+                    org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+                    // Ensure game logic is unpaused only if inventory isn't forcing a pause.
+                    // `Game.paused` is used by InputHandler to control player movement updates.
+                    // `toggleInventoryScreen` sets `Game.paused = true` when inventory opens.
+                    if (inventoryScreen == null || !inventoryScreen.isVisible()) { // Double check inventory before unpausing
+                         paused = false;
+                    }
+                    if (this.inputHandler != null) {
+                        this.inputHandler.resetMousePosition();
+                    }
+                } else {
+                    // If inventory IS visible, it manages 'paused = true' and 'CURSOR_NORMAL'.
+                    // If chat IS open, it manages 'CURSOR_NORMAL'; 'paused' is false (world input blocked by InputHandler).
+                    // If we are trying to set state to PLAYING but an overlay exists:
+                    if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                        // Ensure game world logic remains paused for inventory. Cursor is already NORMAL from toggleInventoryScreen.
+                        paused = true;
+                    }
+                    // If only chat is open, 'paused' should remain false (unless inventory was also open and now closed, then this path isn't hit).
+                    // Cursor is NORMAL (from chat). InputHandler blocks game world actions. This is consistent.
+                }
             }
+            // Other game states (like LOADING, etc.) might not affect cursor/pause, or have their own specific handlers.
+            // Note: Game.toggleInventoryScreen() handles its cursor/pause state changes somewhat independently
+            //       when opening/closing inventory, particularly by not always invoking setState for these specific aspects.
+            //       This setState logic aims to correctly handle transitions *between* major game states
+            //       and ensure consistency for states like PAUSED, WORKBENCH_UI, etc.
         }
     }
 
