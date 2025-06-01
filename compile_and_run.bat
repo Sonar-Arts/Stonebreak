@@ -1,5 +1,9 @@
 @echo off
-REM Compile and run script for Stonebreak using Maven
+REM Compile and run script for Stonebreak using Maven with Java 17
+
+REM Set Java 17 path
+set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot
+set PATH=%JAVA_HOME%\bin;%PATH%
 
 echo Building with Maven...
 

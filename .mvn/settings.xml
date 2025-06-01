@@ -1,0 +1,21 @@
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                      http://maven.apache.org/xsd/settings-1.0.0.xsd">
+  
+  <profiles>
+    <profile>
+      <id>stonebreak-java17</id>
+      <properties>
+        <java.home>C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot</java.home>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+      </properties>
+    </profile>
+  </profiles>
+  
+  <activeProfiles>
+    <activeProfile>stonebreak-java17</activeProfile>
+  </activeProfiles>
+  
+</settings>

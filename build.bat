@@ -1,5 +1,9 @@
 @echo off
-REM Compile and run Stonebreak using Java 8
+REM Compile and run Stonebreak using Java 17
+
+REM Set Java 17 path
+set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot
+set PATH=%JAVA_HOME%\bin;%PATH%
 
 REM Set paths
 set SRC_DIR=src\main\java

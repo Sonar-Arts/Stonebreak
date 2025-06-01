@@ -55,7 +55,6 @@ public class Player {      // Player settings
     private boolean flightEnabled = false; // Whether flight is enabled via command
     private boolean isFlying = false; // Whether player is currently flying
     private boolean wasJumpPressed = false; // Track previous frame's jump state
-    private boolean isJumpCurrentlyPressed = false; // Track current frame's jump state for dampening
     private float lastSpaceKeyTime = 0.0f; // Time of last space key press for double-tap detection
     private float lastNormalJumpTime = 0.0f; // Time of last normal jump on land
     private static final float DOUBLE_TAP_WINDOW = 0.3f; // Time window for double-tap detection (300ms)
@@ -552,8 +551,6 @@ public class Player {      // Player settings
      * Processes player movement based on input.
      */
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right, boolean jump, boolean shift) {
-        // Track current jump state for use in physics dampening
-        isJumpCurrentlyPressed = jump;
         // Calculate movement direction
         Vector3f frontDirection, rightDirection;
         float speed;

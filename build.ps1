@@ -1,4 +1,8 @@
-# Compile and run Stonebreak using Java 8
+# Compile and run Stonebreak using Java 17
+
+# Set Java 17 path
+$Env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot"
+$Env:PATH = "$Env:JAVA_HOME\bin;$Env:PATH"
 
 # Set paths
 $SRC_DIR = "src\main\java"
