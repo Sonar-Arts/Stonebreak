@@ -370,30 +370,48 @@ public class TextureAtlas {
                     int pX_wp = globalX % texturePixelSize;
                     int pY_wp = globalY % texturePixelSize;
 
-                    // Base color: Light brown, similar to wood but "plank-ified"
-                    int baseR_wp = 160;
-                    int baseG_wp = 120;
-                    int baseB_wp = 80;
+                    // Minecraft oak plank base colors - solid brown range
+                    int baseR = 160;
+                    int baseG = 130;
+                    int baseB = 95;
 
-                    // Add some noise for wood grain, less pronounced than logs
-                    double noise1_wp = Math.sin(pX_wp * 0.5 + pY_wp * 0.2 + tileY * 0.4); // Use tileY for global tile coordinate
-                    double noise2_wp = Math.cos(pX_wp * 0.3 - pY_wp * 0.6 + tileX * 0.2); // Use tileX for global tile coordinate
-                    float combinedNoise_wp = (float) ((noise1_wp + noise2_wp) / 4.0 + 0.5); // 0.0 to 1.0
-
-                    float variation_wp = (combinedNoise_wp - 0.5f) * 20; // Smaller variation
-
-                    r = (byte) Math.max(0, Math.min(255, (int)(baseR_wp + variation_wp)));
-                    g = (byte) Math.max(0, Math.min(255, (int)(baseG_wp + variation_wp)));
-                    b = (byte) Math.max(0, Math.min(255, (int)(baseB_wp + variation_wp * 0.9f)));
+                    // Start with base color
+                    int finalR = baseR;
+                    int finalG = baseG;
+                    int finalB = baseB;
                     
-                    // Add subtle horizontal lines for plank separation, every 4 pixels for example
-                    if (pY_wp % 4 == 0 && pY_wp > 0) { // Avoid line at the very top edge
-                        r = (byte) Math.max(0, r - 15);
-                        g = (byte) Math.max(0, g - 15);
-                        b = (byte) Math.max(0, b - 10);
+                    // Determine which horizontal plank (every 4 pixels)
+                    int plankY = pY_wp / 4;
+                    
+                    // Add subtle plank-to-plank variation (stay in brown range)
+                    if (plankY % 2 == 1) {
+                        finalR += 10;
+                        finalG += 8;
+                        finalB += 5;
                     }
-
+                    
+                    // Add wood grain texture (vertical lines)
+                    double grainNoise = Math.sin(pX_wp * 0.7 + plankY * 0.3) * 0.5 + 
+                                       Math.cos(pX_wp * 0.4) * 0.3;
+                    int grainAdjust = (int)(grainNoise * 12);
+                    
+                    finalR += grainAdjust;
+                    finalG += grainAdjust;
+                    finalB += Math.max(-5, grainAdjust - 3); // Keep blue component more stable
+                    
+                    // Add horizontal plank separation lines
+                    if (pY_wp % 4 == 0 && pY_wp > 0) {
+                        finalR -= 20;
+                        finalG -= 18;
+                        finalB -= 12;
+                    }
+                    
+                    // Ensure colors stay in valid brown range
+                    r = (byte) Math.max(80, Math.min(200, finalR));
+                    g = (byte) Math.max(60, Math.min(170, finalG));
+                    b = (byte) Math.max(40, Math.min(130, finalB));
                     a = (byte) 255;
+                    
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }
@@ -865,8 +883,367 @@ public class TextureAtlas {
                             buffer.put(r).put(g).put(b).put(a);
                             continue;
                         }
+                        case 6 -> { // Traditional Craftsman Workbench TOP - Premium hardwood surface
+                            int pixelX_wbtop = globalX % texturePixelSize;
+                            int pixelY_wbtop = globalY % texturePixelSize;
+                            
+                            // Premium hardwood base (cherry/walnut tones)
+                            int baseR_wbtop = 180;
+                            int baseG_wbtop = 140;
+                            int baseB_wbtop = 100;
+                            
+                            // Rich multi-layer wood grain for premium hardwood
+                            double primaryGrain = Math.sin(pixelX_wbtop * 0.8 + pixelY_wbtop * 0.3) * 0.4;
+                            double secondaryGrain = Math.cos(pixelX_wbtop * 0.5 + pixelY_wbtop * 0.8) * 0.3;
+                            double figureGrain = Math.sin((pixelX_wbtop + pixelY_wbtop) * 0.6) * 0.25;
+                            int grainAdjust = (int)((primaryGrain + secondaryGrain + figureGrain) * 15);
+                            
+                            int finalR = baseR_wbtop + grainAdjust;
+                            int finalG = baseG_wbtop + grainAdjust;
+                            int finalB = baseB_wbtop + grainAdjust;
+                            
+                            // Traditional 3x3 crafting grid with craftsman details
+                            boolean isSpecialElement = false;
+                            
+                            // Main grid lines (traditional joinery)
+                            if (pixelX_wbtop == 5 || pixelX_wbtop == 10 || 
+                                pixelY_wbtop == 5 || pixelY_wbtop == 10) {
+                                // Traditional mortise and tenon joint lines
+                                finalR -= 22;
+                                finalG -= 18;
+                                finalB -= 14;
+                                isSpecialElement = true;
+                            }
+                            
+                            // Dovetail corner reinforcements (traditional joinery)
+                            if ((pixelX_wbtop <= 2 && pixelY_wbtop <= 2) ||
+                                (pixelX_wbtop >= 13 && pixelY_wbtop <= 2) ||
+                                (pixelX_wbtop <= 2 && pixelY_wbtop >= 13) ||
+                                (pixelX_wbtop >= 13 && pixelY_wbtop >= 13)) {
+                                if ((pixelX_wbtop + pixelY_wbtop) % 2 == 0) {
+                                    // Dovetail pattern
+                                    finalR -= 15;
+                                    finalG -= 12;
+                                    finalB -= 9;
+                                    isSpecialElement = true;
+                                }
+                            }
+                            
+                            // Traditional vise screw holes (functional elements)
+                            if ((pixelX_wbtop == 2 && pixelY_wbtop == 7) ||
+                                (pixelX_wbtop == 13 && pixelY_wbtop == 7)) {
+                                // Vise screw holes
+                                finalR -= 30;
+                                finalG -= 25;
+                                finalB -= 20;
+                                isSpecialElement = true;
+                            }
+                            
+                            // Premium wear patterns (natural aging from quality craftsmanship)
+                            if (!isSpecialElement) {
+                                // Center work area shows quality use
+                                if (pixelX_wbtop >= 6 && pixelX_wbtop <= 9 && 
+                                    pixelY_wbtop >= 6 && pixelY_wbtop <= 9) {
+                                    finalR += 12; // Worn lighter from use
+                                    finalG += 10;
+                                    finalB += 7;
+                                }
+                                
+                                // Subtle tool marks (authentic craftsmanship signs)
+                                if ((pixelX_wbtop * 3 + pixelY_wbtop * 7) % 13 < 2) {
+                                    finalR += 6;
+                                    finalG += 5;
+                                    finalB += 3;
+                                }
+                            }
+                            
+                            // Ensure premium hardwood color range
+                            r = (byte) Math.max(90, Math.min(220, finalR));
+                            g = (byte) Math.max(75, Math.min(185, finalG));
+                            b = (byte) Math.max(55, Math.min(145, finalB));
+                            a = (byte) 255;
+                            
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
+                        }
+                        case 7 -> { // Detailed Craftsman Workbench SIDES - Master's workshop faces
+                            int pixelX_wbside = globalX % texturePixelSize;
+                            int pixelY_wbside = globalY % texturePixelSize;
+                            
+                            // Determine face type based on global position (4 unique detailed designs)
+                            int faceType = (tileX + tileY) % 4;
+                            
+                            // Base premium hardwood (rich oak with warm tones)
+                            int baseR_wbside = 172;
+                            int baseG_wbside = 138;
+                            int baseB_wbside = 102;
+                            
+                            // Rich hardwood grain
+                            double primaryGrain = Math.sin(pixelX_wbside * 0.8 + pixelY_wbside * 0.3) * 0.4;
+                            double secondaryGrain = Math.cos(pixelX_wbside * 0.4 + pixelY_wbside * 0.7) * 0.3;
+                            int grainAdjust = (int)((primaryGrain + secondaryGrain) * 12);
+                            
+                            int finalR = baseR_wbside + grainAdjust;
+                            int finalG = baseG_wbside + grainAdjust;
+                            int finalB = baseB_wbside + grainAdjust;
+                            
+                            // Laminated plank construction
+                            if (pixelY_wbside % 4 == 0 && pixelY_wbside > 0) {
+                                finalR -= 18;
+                                finalG -= 15;
+                                finalB -= 12;
+                            } else if (pixelY_wbside % 4 == 1) {
+                                finalR += 6;
+                                finalG += 5;
+                                finalB += 3;
+                            }
+                            
+                            // Face-specific detailed features
+                            boolean isSpecialElement = false;
+                            
+                            switch (faceType) {
+                                case 0: // Master's Tool Collection Face - Hanging implements
+                                    // Tool rack horizontal rail
+                                    if (pixelY_wbside == 3 && pixelX_wbside >= 1 && pixelX_wbside <= 14) {
+                                        finalR -= 25; finalG -= 20; finalB -= 15;
+                                        isSpecialElement = true;
+                                    }
+                                    
+                                    // Hanging hammer (left side)
+                                    if (pixelX_wbside >= 2 && pixelX_wbside <= 5 && pixelY_wbside >= 4 && pixelY_wbside <= 9) {
+                                        if (pixelY_wbside >= 4 && pixelY_wbside <= 6 && pixelX_wbside >= 3 && pixelX_wbside <= 4) {
+                                            // Hammer head (dark metal)
+                                            finalR = 65; finalG = 65; finalB = 70;
+                                            isSpecialElement = true;
+                                        } else if (pixelX_wbside == 3 && pixelY_wbside >= 6 && pixelY_wbside <= 9) {
+                                            // Handle (wood)
+                                            finalR = 130; finalG = 95; finalB = 60;
+                                            isSpecialElement = true;
+                                        } else if (pixelX_wbside == 3 && pixelY_wbside == 3) {
+                                            // Hanging hook
+                                            finalR = 85; finalG = 80; finalB = 75;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    
+                                    // Hanging saw (center)
+                                    if (pixelX_wbside >= 7 && pixelX_wbside <= 9 && pixelY_wbside >= 4 && pixelY_wbside <= 11) {
+                                        if (pixelY_wbside >= 4 && pixelY_wbside <= 5) {
+                                            // Saw blade (silver with teeth)
+                                            finalR = 190; finalG = 190; finalB = 195;
+                                            if (pixelX_wbside % 2 == 0) {
+                                                finalR -= 40; finalG -= 40; finalB -= 40; // Teeth
+                                            }
+                                            isSpecialElement = true;
+                                        } else if (pixelX_wbside == 8 && pixelY_wbside >= 6 && pixelY_wbside <= 11) {
+                                            // Handle
+                                            finalR = 110; finalG = 80; finalB = 50;
+                                            isSpecialElement = true;
+                                        } else if (pixelX_wbside == 8 && pixelY_wbside == 3) {
+                                            // Hook
+                                            finalR = 85; finalG = 80; finalB = 75;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    
+                                    // Hanging chisel set (right side)
+                                    if (pixelX_wbside >= 12 && pixelX_wbside <= 14 && pixelY_wbside >= 4 && pixelY_wbside <= 10) {
+                                        if (pixelY_wbside >= 4 && pixelY_wbside <= 6) {
+                                            // Chisel blades
+                                            finalR = 210; finalG = 210; finalB = 220;
+                                            isSpecialElement = true;
+                                        } else if (pixelY_wbside >= 7 && pixelY_wbside <= 10) {
+                                            // Handles
+                                            finalR = 150; finalG = 110; finalB = 70;
+                                            isSpecialElement = true;
+                                        } else if (pixelY_wbside == 3) {
+                                            // Hooks
+                                            finalR = 85; finalG = 80; finalB = 75;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    break;
+                                    
+                                case 1: // Storage Drawers and Compartments Face
+                                    // Upper drawer
+                                    if (pixelY_wbside >= 2 && pixelY_wbside <= 6) {
+                                        // Drawer face
+                                        finalR += 8; finalG += 6; finalB += 4;
+                                        
+                                        // Drawer edges
+                                        if (pixelY_wbside == 2 || pixelY_wbside == 6 || 
+                                            pixelX_wbside == 2 || pixelX_wbside == 13) {
+                                            finalR -= 20; finalG -= 16; finalB -= 12;
+                                            isSpecialElement = true;
+                                        }
+                                        
+                                        // Drawer handle
+                                        if (pixelX_wbside >= 7 && pixelX_wbside <= 8 && pixelY_wbside == 4) {
+                                            finalR = 95; finalG = 85; finalB = 70;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    
+                                    // Lower drawer
+                                    if (pixelY_wbside >= 9 && pixelY_wbside <= 13) {
+                                        // Drawer face
+                                        finalR += 5; finalG += 4; finalB += 2;
+                                        
+                                        // Drawer edges
+                                        if (pixelY_wbside == 9 || pixelY_wbside == 13 || 
+                                            pixelX_wbside == 2 || pixelX_wbside == 13) {
+                                            finalR -= 20; finalG -= 16; finalB -= 12;
+                                            isSpecialElement = true;
+                                        }
+                                        
+                                        // Drawer handle
+                                        if (pixelX_wbside >= 7 && pixelX_wbside <= 8 && pixelY_wbside == 11) {
+                                            finalR = 95; finalG = 85; finalB = 70;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    
+                                    // Side compartments
+                                    if ((pixelX_wbside <= 1 || pixelX_wbside >= 14) && 
+                                        pixelY_wbside >= 2 && pixelY_wbside <= 13) {
+                                        finalR -= 12; finalG -= 10; finalB -= 8;
+                                        isSpecialElement = true;
+                                    }
+                                    break;
+                                    
+                                case 2: // Hand Plane Rest and Chisel Rack Face
+                                    // Angled plane rest (center-left)
+                                    if (pixelX_wbside >= 3 && pixelX_wbside <= 8 && 
+                                        pixelY_wbside >= 6 && pixelY_wbside <= 12) {
+                                        // Create angled rest surface
+                                        int planeRestDepth = (pixelX_wbside - 3) + (pixelY_wbside - 6);
+                                        if (planeRestDepth % 3 == 0) {
+                                            finalR -= 15; finalG -= 12; finalB -= 9;
+                                            isSpecialElement = true;
+                                        } else if (planeRestDepth % 3 == 1) {
+                                            finalR += 8; finalG += 6; finalB += 4;
+                                        }
+                                        
+                                        // Support brackets
+                                        if ((pixelX_wbside == 3 || pixelX_wbside == 8) && 
+                                            (pixelY_wbside == 6 || pixelY_wbside == 12)) {
+                                            finalR = 90; finalG = 80; finalB = 65;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    
+                                    // Vertical chisel rack (right side)
+                                    if (pixelX_wbside >= 11 && pixelX_wbside <= 14 && 
+                                        pixelY_wbside >= 3 && pixelY_wbside <= 13) {
+                                        // Rack frame
+                                        if (pixelX_wbside == 11 || pixelX_wbside == 14 || 
+                                            pixelY_wbside == 3 || pixelY_wbside == 13) {
+                                            finalR -= 18; finalG -= 15; finalB -= 12;
+                                            isSpecialElement = true;
+                                        } else {
+                                            // Interior slots
+                                            finalR -= 8; finalG -= 6; finalB -= 4;
+                                        }
+                                        
+                                        // Individual chisel slots
+                                        if (pixelX_wbside == 12 && (pixelY_wbside == 5 || pixelY_wbside == 7 || 
+                                            pixelY_wbside == 9 || pixelY_wbside == 11)) {
+                                            finalR -= 25; finalG -= 20; finalB -= 15;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    
+                                    // Small tool holders (top)
+                                    if (pixelY_wbside >= 1 && pixelY_wbside <= 3 && 
+                                        pixelX_wbside >= 4 && pixelX_wbside <= 10) {
+                                        if (pixelY_wbside == 1 || pixelY_wbside == 3) {
+                                            finalR -= 15; finalG -= 12; finalB -= 9;
+                                            isSpecialElement = true;
+                                        }
+                                        if ((pixelX_wbside == 5 || pixelX_wbside == 7 || pixelX_wbside == 9) && 
+                                            pixelY_wbside == 2) {
+                                            finalR -= 20; finalG -= 16; finalB -= 12;
+                                            isSpecialElement = true;
+                                        }
+                                    }
+                                    break;
+                                    
+                                case 3: // Hardware and Metal Reinforcements Face
+                                    // Corner metal brackets
+                                    if ((pixelX_wbside <= 2 && pixelY_wbside <= 2) ||
+                                        (pixelX_wbside >= 13 && pixelY_wbside <= 2) ||
+                                        (pixelX_wbside <= 2 && pixelY_wbside >= 13) ||
+                                        (pixelX_wbside >= 13 && pixelY_wbside >= 13)) {
+                                        // Metal corner pieces
+                                        finalR = 85; finalG = 80; finalB = 75;
+                                        
+                                        // Rivets
+                                        if ((pixelX_wbside + pixelY_wbside) % 2 == 0) {
+                                            finalR = 70; finalG = 65; finalB = 60;
+                                        }
+                                        isSpecialElement = true;
+                                    }
+                                    
+                                    // Central metal reinforcement plate
+                                    if (pixelX_wbside >= 6 && pixelX_wbside <= 9 && 
+                                        pixelY_wbside >= 6 && pixelY_wbside <= 9) {
+                                        // Metal plate
+                                        finalR = 95; finalG = 90; finalB = 85;
+                                        
+                                        // Plate texture
+                                        double metalTexture = Math.sin(pixelX_wbside * 1.2) * Math.cos(pixelY_wbside * 1.1);
+                                        int metalAdjust = (int)(metalTexture * 8);
+                                        finalR += metalAdjust;
+                                        finalG += metalAdjust;
+                                        finalB += metalAdjust;
+                                        
+                                        // Center screw
+                                        if (pixelX_wbside == 7 && pixelY_wbside == 7) {
+                                            finalR = 60; finalG = 55; finalB = 50;
+                                        }
+                                        isSpecialElement = true;
+                                    }
+                                    
+                                    // Metal edge strips
+                                    if (pixelX_wbside == 0 || pixelX_wbside == 15) {
+                                        finalR = 100; finalG = 95; finalB = 90;
+                                        // Add vertical metal texture
+                                        if (pixelY_wbside % 3 == 0) {
+                                            finalR -= 10; finalG -= 8; finalB -= 6;
+                                        }
+                                        isSpecialElement = true;
+                                    }
+                                    
+                                    // Decorative studs
+                                    if ((pixelX_wbside == 4 || pixelX_wbside == 11) && 
+                                        (pixelY_wbside == 4 || pixelY_wbside == 11)) {
+                                        finalR = 110; finalG = 105; finalB = 100;
+                                        isSpecialElement = true;
+                                    }
+                                    break;
+                            }
+                            
+                            // Authentic aging and wear patterns
+                            if (!isSpecialElement) {
+                                // Natural wear from use
+                                if ((pixelX_wbside * 5 + pixelY_wbside * 7 + faceType * 3) % 19 < 2) {
+                                    finalR += 8; finalG += 6; finalB += 4;
+                                } else if ((pixelX_wbside * 3 + pixelY_wbside * 11 + faceType * 7) % 17 < 1) {
+                                    finalR -= 10; finalG -= 8; finalB -= 6;
+                                }
+                            }
+                            
+                            // Ensure premium hardwood color ranges
+                            r = (byte) Math.max(40, Math.min(230, finalR));
+                            g = (byte) Math.max(35, Math.min(200, finalG));
+                            b = (byte) Math.max(25, Math.min(160, finalB));
+                            a = (byte) 255;
+                            
+                            buffer.put(r).put(g).put(b).put(a);
+                            continue;
+                        }
                         default -> {
-                            // This block will be hit if tileX is not 0-5 while tileY is 2.
+                            // This block will be hit if tileX is not 0-7 while tileY is 2.
                             // Fall through to the main switch if no specific snow texture matches.
                         }
                     }
