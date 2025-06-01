@@ -234,6 +234,36 @@ public class Game {
         this.craftingManager.registerRecipe(pinePlanksToSticksRecipe);
         System.out.println("Registered recipe: PINE_WOOD_PLANKS -> STICKS");
 
+        // Recipe 7: Wooden Pickaxe
+        // Input: 3 Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
+        List<List<ItemStack>> woodenPickaxePattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null)
+        );
+        Recipe woodenPickaxeRecipe = new Recipe(
+            "wooden_pickaxe",
+            woodenPickaxePattern,
+            new ItemStack(BlockType.WOODEN_PICKAXE.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(woodenPickaxeRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
+
+        // Recipe 8: Wooden Pickaxe (Pine Wood Planks variant)
+        // Input: 3 Pine Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
+        List<List<ItemStack>> pineWoodenPickaxePattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.STICK.getId(), 1), null)
+        );
+        Recipe pineWoodenPickaxeRecipe = new Recipe(
+            "pine_wooden_pickaxe",
+            pineWoodenPickaxePattern,
+            new ItemStack(BlockType.WOODEN_PICKAXE.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(pineWoodenPickaxeRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
+
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message

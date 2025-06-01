@@ -1206,6 +1206,7 @@ public class WorkbenchScreen {
             }
             grid.add(row);
         }
+        
         ItemStack result = craftingManager.craftItem(grid);
         if (result != null && !result.isEmpty()) {
             craftingOutputSlot = result;

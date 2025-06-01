@@ -33,7 +33,8 @@ public enum BlockType {
     WORKBENCH(23, "Workbench", true, true, 6, 2, 3.0f), // Placeholder atlas coords (6,2)
     WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 2.0f), // Atlas coords (0,3) placeholder
     PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 2.0f), // Atlas coords (2,3)
-    STICK(26, "Stick", false, true, 1, 3, 0.1f); // Atlas coords (1,3)
+    STICK(26, "Stick", false, true, 1, 3, 0.1f), // Atlas coords (1,3)
+    WOODEN_PICKAXE(27, "Wooden Pickaxe", false, true, 3, 3, 0.1f); // Atlas coords (3,3)
 
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
@@ -81,7 +82,7 @@ public enum BlockType {
      * @return true if the block is transparent (like air or water)
      */
     public boolean isTransparent() {
-        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == STICK;
+        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == STICK || this == WOODEN_PICKAXE;
     }
 
     public int getAtlasX() {
@@ -146,7 +147,7 @@ public enum BlockType {
      * Items like sticks and tools should not be placeable
      */
     public boolean isPlaceable() {
-        return this != STICK;
+        return this != STICK && this != WOODEN_PICKAXE;
     }
     
     /**
@@ -222,6 +223,7 @@ public enum BlockType {
             case WOOD_PLANKS -> new float[]{0, 3}; // All faces use (0,3)
             case PINE_WOOD_PLANKS -> new float[]{2, 3}; // All faces use (2,3)
             case STICK -> new float[]{1, 3}; // All faces use (1,3)
+            case WOODEN_PICKAXE -> new float[]{3, 3}; // All faces use (3,3)
             default -> new float[]{0, 0};
         };
     }

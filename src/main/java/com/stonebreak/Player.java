@@ -704,9 +704,19 @@ public class Player {      // Player settings
             
             // Update breaking progress
             float hardness = blockType.getHardness();
-            if (hardness > 0 && hardness != Float.POSITIVE_INFINITY) {
+            
+            // Apply tool efficiency for pickaxe
+            float effectiveHardness = hardness;
+            int heldItemId = inventory.getSelectedBlockTypeId();
+            if (heldItemId == BlockType.WOODEN_PICKAXE.getId()) {
+                if (blockType == BlockType.STONE || blockType == BlockType.SANDSTONE || blockType == BlockType.RED_SANDSTONE) {
+                    effectiveHardness = hardness * 0.25f; // Mine 4x faster (treat as two hardness levels less)
+                }
+            }
+            
+            if (effectiveHardness > 0 && effectiveHardness != Float.POSITIVE_INFINITY) {
                 breakingTime += Game.getDeltaTime();
-                breakingProgress = Math.min(breakingTime / hardness, 1.0f);
+                breakingProgress = Math.min(breakingTime / effectiveHardness, 1.0f);
                 
                 // Check if block is fully broken
                 if (breakingProgress >= 1.0f) {

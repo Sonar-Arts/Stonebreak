@@ -117,6 +117,7 @@ public class Recipe {
             return false;
         }
 
+
         for (int r = 0; r < recipeHeight; r++) {
             List<ItemStack> recipeRow = inputPattern.get(r);
             List<ItemStack> gridRow = inputGrid.get(startRow + r);
@@ -137,16 +138,16 @@ public class Recipe {
                 if (recipeItem == null && gridItem == null) {
                     continue; // Both empty, slot matches
                 }
-                if (recipeItem == null && gridItem != null) {
+                if (recipeItem == null && (gridItem != null && !gridItem.isEmpty())) {
                      // Recipe expects empty, but grid has an item in this part of the recipe's bounds
                     // However, for shapeless, this might be fine. For shaped, it must be empty.
                     // For now, for shaped recipes, if recipe expects empty, grid must be empty.
                     return false;
                 }
-                if (recipeItem != null && gridItem == null) {
+                if (recipeItem != null && (gridItem == null || gridItem.isEmpty())) {
                     return false; // Recipe expects an item, but grid slot is empty
                 }
-                if (recipeItem != null && gridItem != null) {
+                if (recipeItem != null && gridItem != null && !gridItem.isEmpty()) {
                     // Basic check: item types must match.
                     // A more robust check would involve ItemType.equals() or similar.
                     // For now, if we're using string identifiers in ItemStack (as placeholder), this will work.

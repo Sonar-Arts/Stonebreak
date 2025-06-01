@@ -74,6 +74,7 @@ import static org.lwjgl.opengl.GL14.GL_BLEND_DST_RGB;
 import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_ALPHA;
 import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_RGB;
 import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
+import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM; // For originalDepthMask comparison
 import org.lwjgl.opengl.GL30;
@@ -880,6 +881,8 @@ public class Renderer {
                     renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
                 } else if (selectedBlockType == BlockType.STICK) {
                     renderMinecraftStyleItemInHand(selectedBlockType); // Minecraft-style 3D item
+                } else if (selectedBlockType == BlockType.WOODEN_PICKAXE) {
+                    renderPickaxeInHand(selectedBlockType, player); // Minecraft-style diagonal pickaxe
                 } else {
                     // Use block-specific cube for proper face texturing
                     shaderProgram.setUniform("u_useSolidColor", false);
@@ -1182,13 +1185,7 @@ public class Renderer {
         }
 
         // Check if this is a flower block or item - render as flat 2D texture instead of 3D cube
-        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.STICK) {
-            drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
-            return;
-        }
-
-        // Check if this is a flower block or item - render as flat 2D texture instead of 3D cube
-        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.STICK) {
+        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.STICK || type == BlockType.WOODEN_PICKAXE) {
             drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
             return;
         }
@@ -2985,6 +2982,124 @@ public class Renderer {
         
         // Render the flat item quad using the same method as flowers
         renderFlowerQuad(vertices, indices);
+    }
+    
+    /**
+     * Renders a pickaxe in the player's hand with Minecraft-style diagonal positioning.
+     * Applies additional rotation to make the pickaxe appear held diagonally like in Minecraft.
+     */
+    private void renderPickaxeInHand(BlockType itemType, Player player) {
+        // Create a temporary matrix for pickaxe-specific transformations
+        Matrix4f pickaxeMatrix = new Matrix4f(reusableArmViewModel);
+        
+        // Scale the pickaxe (slightly smaller than before)
+        pickaxeMatrix.scale(1.5f, 1.5f, 1.5f);
+        
+        // Position the pickaxe in the hand (lower grip position)
+        pickaxeMatrix.translate(0.0f, 0.25f, 0.0f);
+        
+        // Apply Minecraft-style diagonal pickaxe rotation
+        // These rotations make the pickaxe point diagonally to the right and down
+        pickaxeMatrix.rotate((float) Math.toRadians(15.0f), 0.0f, 0.0f, 1.0f);  // Roll: rotate around Z-axis for diagonal angle
+        pickaxeMatrix.rotate((float) Math.toRadians(-25.0f), 0.0f, 1.0f, 0.0f); // Yaw: turn more to the right
+        pickaxeMatrix.rotate((float) Math.toRadians(10.0f), 1.0f, 0.0f, 0.0f);  // Pitch: tilt downward slightly
+        
+        // Apply pickaxe-specific attack animation that works with diagonal orientation
+        if (player.isAttacking()) {
+            float progress = 1.0f - player.getAttackAnimationProgress();
+            
+            // Diagonal pickaxe swing motion - follows the diagonal orientation
+            float diagonalSwingAngle = (float) (Math.sin(progress * Math.PI) * 45.0f);
+            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.15f);
+            
+            // Apply diagonal swing that follows the pickaxe's natural orientation
+            pickaxeMatrix.rotate((float) Math.toRadians(-diagonalSwingAngle * 0.8f), 1.0f, 0.0f, 0.0f); // Primary diagonal swing
+            pickaxeMatrix.rotate((float) Math.toRadians(diagonalSwingAngle * 0.4f), 0.0f, 0.0f, 1.0f);  // Secondary roll motion
+            pickaxeMatrix.rotate((float) Math.toRadians(-diagonalSwingAngle * 0.2f), 0.0f, 1.0f, 0.0f); // Slight yaw adjustment
+            
+            // Move pickaxe during swing to simulate the striking motion
+            pickaxeMatrix.translate(progress * 0.08f, swingLift, progress * -0.12f);
+        }
+        
+        // Fine-tune position after rotation and animation
+        pickaxeMatrix.translate(0.1f, -0.1f, 0.0f);
+        
+        // Set the modified matrix for rendering
+        shaderProgram.setUniform("viewMatrix", pickaxeMatrix);
+        
+        // Set up shader for item rendering
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        
+        // Get UV coordinates for the item
+        float[] uvCoords = textureAtlas.getUVCoordinates(itemType.getAtlasX(), itemType.getAtlasY());
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        shaderProgram.setUniform("texture_sampler", 0);
+        
+        // Enable blending for transparency
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // No tint - use pure white
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Create layered 3D pickaxe with depth
+        createAndRenderLayered3DPickaxe(uvCoords);
+        
+        // Restore the original matrix for subsequent rendering
+        shaderProgram.setUniform("viewMatrix", reusableArmViewModel);
+    }
+    
+    /**
+     * Creates and renders a layered 3D pickaxe using multiple depth layers.
+     * Uses the existing rendering system but creates depth by rendering multiple parallel quads.
+     */
+    private void createAndRenderLayered3DPickaxe(float[] uvCoords) {
+        int numLayers = 5; // Number of layers to create depth
+        float totalDepth = 0.12f; // Total depth of the 3D effect
+        float layerSpacing = totalDepth / (numLayers - 1);
+        
+        // Create the pickaxe shape vertices (same as before but simpler)
+        float[] baseVertices = {
+            // Diagonal quad oriented like Minecraft pickaxe
+            -0.25f, -0.2f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Handle bottom
+             0.25f,  0.1f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Handle top  
+             0.4f,   0.9f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Pickaxe head
+            -0.1f,   0.6f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Pickaxe mid
+        };
+        
+        int[] indices = {
+            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
+        };
+        
+        // Render multiple layers at different Z depths to create 3D volume
+        for (int layer = 0; layer < numLayers; layer++) {
+            // Calculate Z offset for this layer
+            float zOffset = -totalDepth / 2 + (layer * layerSpacing);
+            
+            // Create vertices for this layer by copying base vertices and adjusting Z
+            float[] layerVertices = new float[baseVertices.length];
+            for (int i = 0; i < baseVertices.length; i += 8) {
+                // Copy all vertex data
+                System.arraycopy(baseVertices, i, layerVertices, i, 8);
+                // Adjust Z coordinate
+                layerVertices[i + 2] = zOffset;
+                
+                // Slightly darken back layers for depth effect
+                float darkenFactor = 1.0f - (layer * 0.1f);
+                if (darkenFactor < 0.7f) darkenFactor = 0.7f;
+                
+                // Apply darkening by modifying the normal (shader will handle this)
+                layerVertices[i + 5] = darkenFactor; // Use Z normal for darkening
+            }
+            
+            // Render this layer using the existing flower quad system
+            renderFlowerQuad(layerVertices, indices);
+        }
     }
     
     

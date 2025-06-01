@@ -31,6 +31,10 @@ public class TextureAtlas {
     // Atlas coordinates for STICK item
     private static final int STICK_ATLAS_X = 1;
     private static final int STICK_ATLAS_Y = 3;
+    
+    // Atlas coordinates for WOODEN_PICKAXE item
+    private static final int WOODEN_PICKAXE_ATLAS_X = 3;
+    private static final int WOODEN_PICKAXE_ATLAS_Y = 3;
 
     // Atlas coordinates for SANDSTONE textures
     private static final int SANDSTONE_TOP_ATLAS_X = 5;
@@ -517,6 +521,215 @@ public class TextureAtlas {
                         a = (byte) 255;
                     } else {
                         // Transparent background for non-stick pixels
+                        r = (byte) 0;
+                        g = (byte) 0;
+                        b = (byte) 0;
+                        a = (byte) 0;
+                    }
+                    
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for WOODEN_PICKAXE texture - Authentic Minecraft Design
+                if (tileX == WOODEN_PICKAXE_ATLAS_X && tileY == WOODEN_PICKAXE_ATLAS_Y) {
+                    int pX_pickaxe = globalX % texturePixelSize;
+                    int pY_pickaxe = globalY % texturePixelSize;
+
+                    // Authentic Minecraft wooden pickaxe design - vertical orientation matching reference
+                    // Pickaxe head at top, handle extending down
+                    
+                    // Minecraft-style wood color palette
+                    int headR = 125;      // Wood planks color
+                    int headG = 85;
+                    int headB = 55;
+                    
+                    int headHighlightR = 145;  // Wood highlights
+                    int headHighlightG = 105;
+                    int headHighlightB = 75;
+                    
+                    int headShadowR = 100;     // Wood shadows  
+                    int headShadowG = 65;
+                    int headShadowB = 40;
+                    
+                    int handleR = 139;         // Stick color (saddle brown)
+                    int handleG = 69;
+                    int handleB = 19;
+                    
+                    int handleHighlightR = 160; // Handle highlights
+                    int handleHighlightG = 85;
+                    int handleHighlightB = 35;
+                    
+                    boolean isPickaxePixel = false;
+                    boolean isBorderPixel = false;
+                    boolean isHandle = false;
+                    
+                    // Define pickaxe head in bow-like curved shape - connected to handle
+                    if (pY_pickaxe >= 1 && pY_pickaxe <= 5) {
+                        // Center connection (where handle connects directly)
+                        if (pY_pickaxe >= 1 && pY_pickaxe <= 2 && pX_pickaxe >= 6 && pX_pickaxe <= 9) {
+                            isPickaxePixel = true;
+                        }
+                        
+                        // Left curved pick point (downward)
+                        if (pY_pickaxe == 2 && (pX_pickaxe >= 3 && pX_pickaxe <= 5)) {
+                            isPickaxePixel = true;
+                        }
+                        if (pY_pickaxe == 3 && (pX_pickaxe >= 2 && pX_pickaxe <= 6)) {
+                            isPickaxePixel = true;
+                        }
+                        if (pY_pickaxe == 4 && (pX_pickaxe >= 1 && pX_pickaxe <= 3)) {
+                            isPickaxePixel = true;
+                        }
+                        if (pY_pickaxe == 5 && pX_pickaxe == 2) {
+                            isPickaxePixel = true;
+                        }
+                        
+                        // Right curved pick point (downward)
+                        if (pY_pickaxe == 2 && (pX_pickaxe >= 10 && pX_pickaxe <= 12)) {
+                            isPickaxePixel = true;
+                        }
+                        if (pY_pickaxe == 3 && (pX_pickaxe >= 9 && pX_pickaxe <= 13)) {
+                            isPickaxePixel = true;
+                        }
+                        if (pY_pickaxe == 4 && (pX_pickaxe >= 12 && pX_pickaxe <= 14)) {
+                            isPickaxePixel = true;
+                        }
+                        if (pY_pickaxe == 5 && pX_pickaxe == 13) {
+                            isPickaxePixel = true;
+                        }
+                        
+                        // Rounded borders around pickaxe head - smooth curves
+                        
+                        // Top center border (head top)
+                        if (pY_pickaxe == 0 && pX_pickaxe >= 6 && pX_pickaxe <= 9) {
+                            isBorderPixel = true;
+                        }
+                        
+                        // Left side rounded borders (smooth curves, no sharp corners)
+                        if (pY_pickaxe == 1 && pX_pickaxe == 5) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 2 && (pX_pickaxe == 2 || pX_pickaxe == 6)) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 3 && pX_pickaxe == 1) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 4 && pX_pickaxe == 0) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 5 && pX_pickaxe == 1) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 6 && pX_pickaxe == 2) {
+                            isBorderPixel = true;
+                        }
+                        
+                        // Right side rounded borders (smooth curves, no sharp corners)
+                        if (pY_pickaxe == 1 && pX_pickaxe == 10) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 2 && (pX_pickaxe == 9 || pX_pickaxe == 13)) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 3 && pX_pickaxe == 14) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 4 && pX_pickaxe == 15) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 5 && pX_pickaxe == 14) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 6 && pX_pickaxe == 13) {
+                            isBorderPixel = true;
+                        }
+                        
+                        // Center connection borders (connecting head to handle)
+                        if (pY_pickaxe == 3 && (pX_pickaxe == 5 || pX_pickaxe == 10)) {
+                            isBorderPixel = true;
+                        }
+                        if (pY_pickaxe == 1 && (pX_pickaxe == 5 || pX_pickaxe == 10)) {
+                            isBorderPixel = true;
+                        }
+                    }
+                    
+                    // Define handle shape (thinner vertical stick connected to head)
+                    if (pY_pickaxe >= 2 && pY_pickaxe <= 15) {
+                        // Thinner handle - only 1 pixel wide in center
+                        if (pX_pickaxe == 7 || pX_pickaxe == 8) {
+                            isPickaxePixel = true;
+                            isHandle = true;
+                        }
+                        // Handle borders - closer together for thinner stick
+                        if ((pX_pickaxe == 6 || pX_pickaxe == 9) && pY_pickaxe >= 2 && pY_pickaxe <= 15) {
+                            isBorderPixel = true;
+                        }
+                    }
+                    
+                    // Apply colors based on pixel type
+                    if (isBorderPixel) {
+                        // Dark brown/black border
+                        r = (byte) 25;
+                        g = (byte) 15;
+                        b = (byte) 5;
+                        a = (byte) 255;
+                    } else if (isPickaxePixel) {
+                        if (isHandle) {
+                            // Handle with wood grain
+                            double grain = Math.sin(pY_pickaxe * 1.2) * 0.2 + Math.cos(pX_pickaxe * 0.8) * 0.15;
+                            
+                            if (grain > 0.1) {
+                                // Highlight areas
+                                r = (byte) Math.max(0, Math.min(255, (int)(handleHighlightR + grain * 20)));
+                                g = (byte) Math.max(0, Math.min(255, (int)(handleHighlightG + grain * 15)));
+                                b = (byte) Math.max(0, Math.min(255, (int)(handleHighlightB + grain * 10)));
+                            } else {
+                                // Base handle color
+                                r = (byte) Math.max(0, Math.min(255, (int)(handleR + grain * 25)));
+                                g = (byte) Math.max(0, Math.min(255, (int)(handleG + grain * 20)));
+                                b = (byte) Math.max(0, Math.min(255, (int)(handleB + grain * 15)));
+                            }
+                        } else {
+                            // Head with wood plank texture
+                            double grainX = Math.sin(pX_pickaxe * 0.7) * 0.25;
+                            double grainY = Math.cos(pY_pickaxe * 0.9) * 0.2;
+                            double totalGrain = grainX + grainY;
+                            
+                            // Add plank line separations
+                            boolean isPlankLine = (pX_pickaxe % 4 == 0) || (pX_pickaxe % 4 == 3);
+                            if (isPlankLine) {
+                                totalGrain -= 0.3; // Darker plank lines
+                            }
+                            
+                            // Lighting effect - top edge lighter
+                            if (pY_pickaxe == 2) {
+                                totalGrain += 0.25; // Top highlight
+                            }
+                            if (pY_pickaxe == 5) {
+                                totalGrain -= 0.15; // Bottom shadow
+                            }
+                            
+                            if (totalGrain > 0.15) {
+                                // Highlight areas
+                                r = (byte) Math.max(0, Math.min(255, (int)(headHighlightR + totalGrain * 15)));
+                                g = (byte) Math.max(0, Math.min(255, (int)(headHighlightG + totalGrain * 12)));
+                                b = (byte) Math.max(0, Math.min(255, (int)(headHighlightB + totalGrain * 10)));
+                            } else if (totalGrain < -0.15) {
+                                // Shadow areas and plank lines
+                                r = (byte) Math.max(0, Math.min(255, (int)(headShadowR + totalGrain * 10)));
+                                g = (byte) Math.max(0, Math.min(255, (int)(headShadowG + totalGrain * 8)));
+                                b = (byte) Math.max(0, Math.min(255, (int)(headShadowB + totalGrain * 6)));
+                            } else {
+                                // Base head color
+                                r = (byte) Math.max(0, Math.min(255, (int)(headR + totalGrain * 20)));
+                                g = (byte) Math.max(0, Math.min(255, (int)(headG + totalGrain * 15)));
+                                b = (byte) Math.max(0, Math.min(255, (int)(headB + totalGrain * 12)));
+                            }
+                        }
+                        a = (byte) 255;
+                    } else {
+                        // Transparent background
                         r = (byte) 0;
                         g = (byte) 0;
                         b = (byte) 0;
