@@ -28,6 +28,10 @@ public class TextureAtlas {
     private static final int RED_SAND_ATLAS_X = 2;
     private static final int RED_SAND_ATLAS_Y = 1;
 
+    // Atlas coordinates for STICK item
+    private static final int STICK_ATLAS_X = 1;
+    private static final int STICK_ATLAS_Y = 3;
+
     // Atlas coordinates for SANDSTONE textures
     private static final int SANDSTONE_TOP_ATLAS_X = 5;
     private static final int SANDSTONE_TOP_ATLAS_Y = 1;
@@ -390,6 +394,63 @@ public class TextureAtlas {
                     }
 
                     a = (byte) 255;
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for STICK texture
+                if (tileX == STICK_ATLAS_X && tileY == STICK_ATLAS_Y) {
+                    int pX_stick = globalX % texturePixelSize;
+                    int pY_stick = globalY % texturePixelSize;
+
+                    // Create a 2D stick appearance - diagonal brown wooden stick
+                    // Stick should be diagonal and thin like Minecraft stick
+                    
+                    // Base brown wood color
+                    int baseR_stick = 139;
+                    int baseG_stick = 69;
+                    int baseB_stick = 19;
+                    
+                    // Check if pixel is part of the stick shape (diagonal from top-left to bottom-right)
+                    // Make the stick about 3-4 pixels wide and diagonal
+                    int stickWidth = 3;
+                    boolean isStickPixel = false;
+                    boolean isBorderPixel = false;
+                    
+                    // Create diagonal line from top-left to bottom-right
+                    // For a 16x16 texture, create a diagonal stick from (2,2) to (13,13)
+                    int expectedY = pX_stick; // 1:1 diagonal ratio
+                    int distanceFromLine = Math.abs(pY_stick - expectedY);
+                    
+                    if (pX_stick >= 2 && pX_stick <= 13 && pY_stick >= 2 && pY_stick <= 13) {
+                        if (distanceFromLine <= stickWidth / 2) {
+                            isStickPixel = true;
+                        } else if (distanceFromLine <= stickWidth / 2 + 1) {
+                            isBorderPixel = true;
+                        }
+                    }
+                    
+                    if (isBorderPixel) {
+                        // Black border around the stick
+                        r = (byte) 0;
+                        g = (byte) 0;
+                        b = (byte) 0;
+                        a = (byte) 255;
+                    } else if (isStickPixel) {
+                        // Add subtle wood grain variation
+                        double grain = Math.sin(pX_stick * 0.8 + pY_stick * 0.6) * 0.15;
+                        
+                        r = (byte) Math.max(0, Math.min(255, (int)(baseR_stick + grain * 30)));
+                        g = (byte) Math.max(0, Math.min(255, (int)(baseG_stick + grain * 20)));
+                        b = (byte) Math.max(0, Math.min(255, (int)(baseB_stick + grain * 15)));
+                        a = (byte) 255;
+                    } else {
+                        // Transparent background for non-stick pixels
+                        r = (byte) 0;
+                        g = (byte) 0;
+                        b = (byte) 0;
+                        a = (byte) 0;
+                    }
+                    
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }

@@ -1482,7 +1482,12 @@ public class InventoryScreen {
             draggedItemOriginalSlotIndex = -1;
             dragSource = DragSource.NONE;
         } else if (!placed && draggedItemStack != null && !draggedItemStack.isEmpty()) {
-            tryReturnToOriginalSlot();
+            // Check if the mouse is outside the inventory bounds - if so, drop the entire stack into the world
+            if (isMouseOutsideInventoryBounds(mouseX, mouseY, panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight)) {
+                dropEntireStackIntoWorld();
+            } else {
+                tryReturnToOriginalSlot();
+            }
         } else if (placed && draggedItemStack != null && !draggedItemStack.isEmpty()){
             // This implies a swap happened, and draggedItemStack is now the item from the target slot.
             // Try to place this *new* draggedItemStack back into the *original* slot of the *first* item.
@@ -1590,6 +1595,51 @@ public class InventoryScreen {
             craftingOutputSlot = result;
         } else {
             craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0); // Ensure output is cleared
+        }
+    }
+    
+    private boolean isMouseOutsideInventoryBounds(float mouseX, float mouseY, int panelStartX, int panelStartY, int panelWidth, int panelHeight) {
+        return mouseX < panelStartX || mouseX > panelStartX + panelWidth ||
+               mouseY < panelStartY || mouseY > panelStartY + panelHeight;
+    }
+    
+    private void dropEntireStackIntoWorld() {
+        if (draggedItemStack == null || draggedItemStack.isEmpty()) {
+            return;
+        }
+        
+        Player player = Game.getPlayer();
+        if (player == null) {
+            clearDraggedItemState();
+            return;
+        }
+        
+        // Get player position and camera direction for throwing
+        org.joml.Vector3f playerPos = player.getPosition();
+        org.joml.Vector3f cameraForward = player.getCamera().getFront();
+        
+        // Spawn the drop at player position (eye level)
+        float dropX = playerPos.x;
+        float dropY = playerPos.y + 1.5f; // Eye level
+        float dropZ = playerPos.z;
+        
+        // Calculate throwing velocity - forward direction with upward arc
+        // Slightly stronger throw for drag-to-drop since it's a more deliberate action
+        float throwSpeed = 10.0f; // Stronger throwing speed for full stacks
+        org.joml.Vector3f throwVelocity = new org.joml.Vector3f(
+            cameraForward.x * throwSpeed,
+            Math.max(3.0f, cameraForward.y * throwSpeed + 4.0f), // Higher arc for full stacks
+            cameraForward.z * throwSpeed
+        );
+        
+        // Use the new velocity-based spawning method for the entire stack
+        World world = Game.getWorld();
+        if (world != null && world.getBlockDropManager() != null) {
+            world.getBlockDropManager().spawnDropWithVelocity(dropX, dropY, dropZ, 
+                draggedItemStack.getBlockTypeId(), draggedItemStack.getCount(), throwVelocity);
+            
+            // Clear the dragged item state
+            clearDraggedItemState();
         }
     }
 

@@ -179,6 +179,20 @@ public class Game {
         this.craftingManager.registerRecipe(planksToWorkbenchRecipe);
         System.out.println("Registered recipe: WOOD_PLANKS -> WORKBENCH");
 
+        // Recipe 3: Sticks
+        // Input: 2 BlockType.WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
+        List<List<ItemStack>> planksToSticksPattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1))
+        );
+        Recipe planksToSticksRecipe = new Recipe(
+            "planks_to_sticks",
+            planksToSticksPattern,
+            new ItemStack(BlockType.STICK.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(planksToSticksRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS -> STICKS");
+
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message

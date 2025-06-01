@@ -3,6 +3,7 @@ package com.stonebreak;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import org.joml.Vector3f;
 
 /**
  * Manages all block drops in the world - updating physics, handling pickups,
@@ -35,6 +36,16 @@ public class BlockDropManager {
         
         // Create new drop if no merge possible
         BlockDrop newDrop = new BlockDrop(world, x, y, z, blockTypeId, quantity);
+        drops.add(newDrop);
+    }
+    
+    /**
+     * Creates a new block drop at the specified location with custom velocity (for throwing).
+     */
+    public void spawnDropWithVelocity(float x, float y, float z, int blockTypeId, int quantity, Vector3f velocity) {
+        // Don't merge drops with custom velocity as they are likely thrown items
+        // that should maintain their individual trajectory
+        BlockDrop newDrop = new BlockDrop(world, x, y, z, blockTypeId, quantity, velocity);
         drops.add(newDrop);
     }
     

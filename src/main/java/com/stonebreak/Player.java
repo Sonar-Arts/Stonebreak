@@ -832,6 +832,12 @@ public class Player {      // Player settings
             return;
         }
 
+        // Check if this item can be placed as a block
+        BlockType selectedBlockType = BlockType.getById(selectedBlockTypeId);
+        if (!selectedBlockType.isPlaceable()) {
+            return;
+        }
+
         // Check if player has this block type in inventory first
         if (!inventory.hasItem(selectedBlockTypeId)) {
             // This might happen if the selected item was depleted by other means

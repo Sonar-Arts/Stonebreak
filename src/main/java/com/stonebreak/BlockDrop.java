@@ -49,6 +49,17 @@ public class BlockDrop {
         this.onGround = false;
     }
     
+    public BlockDrop(World world, float x, float y, float z, int blockTypeId, int quantity, Vector3f initialVelocity) {
+        this.world = world;
+        this.position = new Vector3f(x, y, z);
+        this.velocity = new Vector3f(initialVelocity); // Use provided velocity
+        this.rotationY = (float)(Math.random() * 360.0); // Random initial rotation
+        this.blockTypeId = blockTypeId;
+        this.quantity = quantity;
+        this.age = 0.0f;
+        this.onGround = false;
+    }
+    
     /**
      * Updates the drop's physics, animation, and lifetime.
      */

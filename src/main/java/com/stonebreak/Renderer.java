@@ -877,7 +877,9 @@ public class Renderer {
             } else {
                 // Check if this is a flower block - render as flat cross pattern instead of 3D cube
                 if (selectedBlockType == BlockType.ROSE || selectedBlockType == BlockType.DANDELION) {
-                    renderFlowerInHand(selectedBlockType); // Method to be re-added
+                    renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
+                } else if (selectedBlockType == BlockType.STICK) {
+                    renderMinecraftStyleItemInHand(selectedBlockType); // Minecraft-style 3D item
                 } else {
                     // Use block-specific cube for proper face texturing
                     shaderProgram.setUniform("u_useSolidColor", false);
@@ -1179,14 +1181,14 @@ public class Renderer {
             return; // Nothing to draw
         }
 
-        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
-        if (type == BlockType.ROSE || type == BlockType.DANDELION) {
+        // Check if this is a flower block or item - render as flat 2D texture instead of 3D cube
+        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.STICK) {
             drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
             return;
         }
 
-        // Check if this is a flower block - render as flat 2D texture instead of 3D cube
-        if (type == BlockType.ROSE || type == BlockType.DANDELION) {
+        // Check if this is a flower block or item - render as flat 2D texture instead of 3D cube
+        if (type == BlockType.ROSE || type == BlockType.DANDELION || type == BlockType.STICK) {
             drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
             return;
         }
@@ -2930,6 +2932,59 @@ public class Renderer {
         } catch (Exception e) {
             return -0.999f; // Safe fallback
         }
+    }
+    
+    /**
+     * Renders a 2D item texture as a 3D object using simplified approach.
+     * Creates a single flat quad that appears 3D through proper positioning and rotation.
+     */
+    private void renderMinecraftStyleItemInHand(BlockType itemType) {
+        // Set up shader for item rendering
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        
+        // Get UV coordinates for the item
+        float[] uvCoords = textureAtlas.getUVCoordinates(itemType.getAtlasX(), itemType.getAtlasY());
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        shaderProgram.setUniform("texture_sampler", 0);
+        
+        // Enable blending for transparency
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // No tint - use pure white
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Create simple flat item quad (like flower but single quad)
+        createAndRenderFlatItem(uvCoords);
+    }
+    
+    /**
+     * Creates and renders a flat item quad similar to flowers but optimized for 2D items like sticks.
+     * Uses the same scale as flowers for consistency.
+     */
+    private void createAndRenderFlatItem(float[] uvCoords) {
+        // Use the same scale as flowers but narrower width for stick-like items
+        // Create a single flat quad, slightly angled to give 3D appearance
+        float[] vertices = {
+            // Single flat quad, slightly angled and narrower than flowers
+            // Raised by 0.3f so grip point (around Y=-0.2f to 0.0f) is at center
+            -0.2f, -0.2f, 0.1f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left (raised)
+             0.2f, -0.2f, -0.1f, 0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right (raised)
+             0.2f,  0.8f, -0.1f, 0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right (raised)
+            -0.2f,  0.8f, 0.1f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left (raised)
+        };
+        
+        int[] indices = {
+            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
+        };
+        
+        // Render the flat item quad using the same method as flowers
+        renderFlowerQuad(vertices, indices);
     }
     
     

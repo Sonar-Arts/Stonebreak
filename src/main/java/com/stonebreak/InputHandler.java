@@ -13,6 +13,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL; // Kept for Chat
@@ -56,6 +57,7 @@ public class InputHandler {
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
     private boolean chatKeyPressed = false; // Added for chat toggle
+    private boolean qKeyPressed = false; // Added for item dropping
     
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
@@ -140,6 +142,7 @@ public class InputHandler {
             handleEscapeKey();      // Toggles pauseMenu and game 'paused' state, sets cursor
             handleInventoryKey();   // Toggles inventoryScreen, game 'paused' state, sets cursor via Game.toggleInventoryScreen
             handleChatKey();        // Opens chatSystem, sets cursor
+            handleDropKey();        // Drops selected item when Q is pressed
 
             // Now check which UI, if any, has primary input focus
             GameState currentGameState = Game.getInstance().getState();
@@ -321,6 +324,79 @@ public class InputHandler {
             }
         } else if (!isChatKeyPressed) {
             chatKeyPressed = false;
+        }
+    }
+    
+    private void handleDropKey() {
+        boolean isQKeyPressed = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
+        
+        if (isQKeyPressed && !qKeyPressed) {
+            qKeyPressed = true;
+            
+            // Don't drop items if any UI is open
+            if (Game.getInstance().isPaused()) {
+                return;
+            }
+            
+            ChatSystem chatSystem = Game.getInstance().getChatSystem();
+            if (chatSystem != null && chatSystem.isOpen()) {
+                return;
+            }
+            
+            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
+            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                return;
+            }
+            
+            // Drop the currently selected item
+            Player player = Game.getPlayer();
+            if (player != null) {
+                dropSelectedItem(player);
+            }
+        } else if (!isQKeyPressed) {
+            qKeyPressed = false;
+        }
+    }
+    
+    private void dropSelectedItem(Player player) {
+        Inventory inventory = player.getInventory();
+        if (inventory == null) {
+            return;
+        }
+        
+        // Get the currently selected hotbar slot
+        int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
+        ItemStack selectedStack = inventory.getHotbarSlot(selectedSlotIndex);
+        
+        if (selectedStack.isEmpty()) {
+            return; // Nothing to drop
+        }
+        
+        // Get player position and camera direction for throwing
+        org.joml.Vector3f playerPos = player.getPosition();
+        org.joml.Vector3f cameraForward = player.getCamera().getFront();
+        
+        // Spawn the drop at player position (eye level)
+        float dropX = playerPos.x;
+        float dropY = playerPos.y + 1.5f; // Eye level
+        float dropZ = playerPos.z;
+        
+        // Calculate throwing velocity - forward direction with upward arc
+        float throwSpeed = 8.0f; // Throwing speed
+        org.joml.Vector3f throwVelocity = new org.joml.Vector3f(
+            cameraForward.x * throwSpeed,
+            Math.max(2.0f, cameraForward.y * throwSpeed + 3.0f), // Minimum upward velocity for arc
+            cameraForward.z * throwSpeed
+        );
+        
+        // Use the new velocity-based spawning method
+        World world = Game.getWorld();
+        if (world != null && world.getBlockDropManager() != null) {
+            world.getBlockDropManager().spawnDropWithVelocity(dropX, dropY, dropZ, 
+                selectedStack.getBlockTypeId(), 1, throwVelocity);
+            
+            // Remove one item from the inventory
+            inventory.removeItem(selectedStack.getBlockTypeId(), 1);
         }
     }
  
