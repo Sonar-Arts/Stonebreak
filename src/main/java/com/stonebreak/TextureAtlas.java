@@ -54,6 +54,10 @@ public class TextureAtlas {
     private static final int WOOD_PLANKS_ATLAS_X = 0;
     private static final int WOOD_PLANKS_ATLAS_Y = 3;
     
+    // Atlas coordinates for PINE_WOOD_PLANKS
+    private static final int PINE_WOOD_PLANKS_ATLAS_X = 2;
+    private static final int PINE_WOOD_PLANKS_ATLAS_Y = 3;
+    
     /**
      * Creates a texture atlas with the specified texture size.
      * The texture size is the number of tiles in the atlas in each dimension.
@@ -410,6 +414,56 @@ public class TextureAtlas {
                     r = (byte) Math.max(80, Math.min(200, finalR));
                     g = (byte) Math.max(60, Math.min(170, finalG));
                     b = (byte) Math.max(40, Math.min(130, finalB));
+                    a = (byte) 255;
+                    
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                // Special handling for PINE_WOOD_PLANKS texture
+                if (tileX == PINE_WOOD_PLANKS_ATLAS_X && tileY == PINE_WOOD_PLANKS_ATLAS_Y) {
+                    int pX_wp = globalX % texturePixelSize;
+                    int pY_wp = globalY % texturePixelSize;
+
+                    // Pine wood plank base colors - darker than oak (using pine wood colors)
+                    int baseR = 80;
+                    int baseG = 50;
+                    int baseB = 20;
+
+                    // Start with base color
+                    int finalR = baseR;
+                    int finalG = baseG;
+                    int finalB = baseB;
+                    
+                    // Determine which horizontal plank (every 4 pixels)
+                    int plankY = pY_wp / 4;
+                    
+                    // Add subtle plank-to-plank variation (stay in dark brown range)
+                    if (plankY % 2 == 1) {
+                        finalR += 15;
+                        finalG += 10;
+                        finalB += 5;
+                    }
+                    
+                    // Add wood grain texture (vertical lines) - more pronounced for pine
+                    double grainNoise = Math.sin(pX_wp * 0.7 + plankY * 0.3) * 0.5 + 
+                                       Math.cos(pX_wp * 0.4) * 0.3;
+                    int grainAdjust = (int)(grainNoise * 15); // Slightly more grain variation
+                    
+                    finalR += grainAdjust;
+                    finalG += grainAdjust;
+                    finalB += Math.max(-3, grainAdjust - 2); // Keep blue component more stable
+                    
+                    // Add horizontal plank separation lines
+                    if (pY_wp % 4 == 0 && pY_wp > 0) {
+                        finalR -= 25;
+                        finalG -= 20;
+                        finalB -= 10;
+                    }
+                    
+                    // Ensure colors stay in valid dark brown range (pine colors)
+                    r = (byte) Math.max(40, Math.min(150, finalR));
+                    g = (byte) Math.max(25, Math.min(100, finalG));
+                    b = (byte) Math.max(10, Math.min(60, finalB));
                     a = (byte) 255;
                     
                     buffer.put(r).put(g).put(b).put(a);

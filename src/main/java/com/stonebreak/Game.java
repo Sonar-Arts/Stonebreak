@@ -165,7 +165,20 @@ public class Game {
         this.craftingManager.registerRecipe(woodToPlanksRecipe);
         System.out.println("Registered recipe: WOOD -> WOOD_PLANKS");
 
-        // Recipe 2: Workbench
+        // Recipe 2: Pine Wood Planks
+        // Input: 1 BlockType.PINE -> Output: 4 BlockType.PINE_WOOD_PLANKS
+        List<List<ItemStack>> pineToPlanksPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE.getId(), 1))
+        );
+        Recipe pineToPlanksRecipe = new Recipe(
+            "pine_to_planks",
+            pineToPlanksPattern,
+            new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(pineToPlanksRecipe);
+        System.out.println("Registered recipe: PINE -> PINE_WOOD_PLANKS");
+
+        // Recipe 3: Workbench
         // Input: 4 BlockType.WOOD_PLANKS (2x2) -> Output: 1 BlockType.WORKBENCH
         List<List<ItemStack>> planksToWorkbenchPattern = List.of(
             List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
@@ -179,7 +192,21 @@ public class Game {
         this.craftingManager.registerRecipe(planksToWorkbenchRecipe);
         System.out.println("Registered recipe: WOOD_PLANKS -> WORKBENCH");
 
-        // Recipe 3: Sticks
+        // Recipe 4: Pine Wood Planks to Workbench
+        // Input: 4 BlockType.PINE_WOOD_PLANKS (2x2) -> Output: 1 BlockType.WORKBENCH
+        List<List<ItemStack>> pinePlanksToWorkbenchPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe pinePlanksToWorkbenchRecipe = new Recipe(
+            "pine_planks_to_workbench",
+            pinePlanksToWorkbenchPattern,
+            new ItemStack(BlockType.WORKBENCH.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(pinePlanksToWorkbenchRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS -> WORKBENCH");
+
+        // Recipe 5: Sticks
         // Input: 2 BlockType.WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
         List<List<ItemStack>> planksToSticksPattern = List.of(
             List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
@@ -192,6 +219,20 @@ public class Game {
         );
         this.craftingManager.registerRecipe(planksToSticksRecipe);
         System.out.println("Registered recipe: WOOD_PLANKS -> STICKS");
+
+        // Recipe 6: Pine Wood Planks to Sticks
+        // Input: 2 BlockType.PINE_WOOD_PLANKS (vertical) -> Output: 4 BlockType.STICK
+        List<List<ItemStack>> pinePlanksToSticksPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe pinePlanksToSticksRecipe = new Recipe(
+            "pine_planks_to_sticks",
+            pinePlanksToSticksPattern,
+            new ItemStack(BlockType.STICK.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(pinePlanksToSticksRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS -> STICKS");
 
         // Initialize chat system
         this.chatSystem = new ChatSystem();

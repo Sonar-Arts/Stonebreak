@@ -32,7 +32,8 @@ public enum BlockType {
     SNOW(22, "Snow", false, true, 5, 2, 0.1f), // Layered snow block
     WORKBENCH(23, "Workbench", true, true, 6, 2, 3.0f), // Placeholder atlas coords (6,2)
     WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 2.0f), // Atlas coords (0,3) placeholder
-    STICK(25, "Stick", false, true, 1, 3, 0.1f); // Atlas coords (1,3)
+    PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 2.0f), // Atlas coords (2,3)
+    STICK(26, "Stick", false, true, 1, 3, 0.1f); // Atlas coords (1,3)
 
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
@@ -219,6 +220,7 @@ public enum BlockType {
                 yield new float[]{7, 2}; // Sides - placeholder side texture
             }
             case WOOD_PLANKS -> new float[]{0, 3}; // All faces use (0,3)
+            case PINE_WOOD_PLANKS -> new float[]{2, 3}; // All faces use (2,3)
             case STICK -> new float[]{1, 3}; // All faces use (1,3)
             default -> new float[]{0, 0};
         };

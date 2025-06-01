@@ -2,6 +2,8 @@ package com.stonebreak;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
@@ -40,6 +42,10 @@ public class RecipeBookScreen {
     private boolean showingRecipePopup = false;
     private Recipe selectedRecipe = null;
     private boolean popupJustOpened = false; // Prevent immediate closure
+    
+    // Recipe pagination state
+    private List<Recipe> currentRecipeVariations = new ArrayList<>();
+    private int currentVariationIndex = 0;
     
     // Search state
     private boolean isTyping = false;
@@ -170,6 +176,9 @@ public class RecipeBookScreen {
         List<Recipe> filtered = new ArrayList<>();
         String lowerSearchText = searchText.toLowerCase();
         
+        // Group recipes by output block type to show only one recipe per output type
+        Map<Integer, Recipe> uniqueOutputRecipes = new HashMap<>();
+        
         for (Recipe recipe : recipes) {
             // Filter by category first
             if (!selectedCategory.equals("All")) {
@@ -181,18 +190,43 @@ public class RecipeBookScreen {
             }
             
             // Then filter by search text
+            boolean matchesSearch = false;
             if (searchText.isEmpty()) {
-                filtered.add(recipe);
+                matchesSearch = true;
             } else {
                 BlockType outputType = BlockType.getById(recipe.getOutput().getBlockTypeId());
                 if (outputType != null && outputType.getName().toLowerCase().contains(lowerSearchText)) {
-                    filtered.add(recipe);
+                    matchesSearch = true;
                 } else if (recipe.getId() != null && recipe.getId().toLowerCase().contains(lowerSearchText)) {
+                    matchesSearch = true;
+                }
+            }
+            
+            if (matchesSearch) {
+                int outputBlockTypeId = recipe.getOutput().getBlockTypeId();
+                // Only add one recipe per output type to the main grid
+                if (!uniqueOutputRecipes.containsKey(outputBlockTypeId)) {
+                    uniqueOutputRecipes.put(outputBlockTypeId, recipe);
                     filtered.add(recipe);
                 }
             }
         }
         return filtered;
+    }
+    
+    /**
+     * Gets all recipe variations that produce the same output as the given recipe
+     */
+    private List<Recipe> getRecipeVariations(Recipe baseRecipe) {
+        List<Recipe> variations = new ArrayList<>();
+        int targetOutputBlockId = baseRecipe.getOutput().getBlockTypeId();
+        
+        for (Recipe recipe : recipes) {
+            if (recipe.getOutput().getBlockTypeId() == targetOutputBlockId) {
+                variations.add(recipe);
+            }
+        }
+        return variations;
     }
     
     private String getCategoryForBlockType(BlockType blockType) {
@@ -624,6 +658,15 @@ public class RecipeBookScreen {
                     Recipe clickedRecipe = getRecipeAtPosition(mousePos, panelX, panelY, panelWidth, panelHeight);
                     if (clickedRecipe != null) {
                         selectedRecipe = clickedRecipe;
+                        currentRecipeVariations = getRecipeVariations(clickedRecipe);
+                        currentVariationIndex = 0;
+                        // Find the index of the clicked recipe in variations
+                        for (int i = 0; i < currentRecipeVariations.size(); i++) {
+                            if (currentRecipeVariations.get(i).equals(clickedRecipe)) {
+                                currentVariationIndex = i;
+                                break;
+                            }
+                        }
                         showingRecipePopup = true;
                         popupJustOpened = true; // Prevent immediate closure
                     } else {
@@ -638,6 +681,8 @@ public class RecipeBookScreen {
             if (showingRecipePopup) {
                 showingRecipePopup = false;
                 selectedRecipe = null;
+                currentRecipeVariations.clear();
+                currentVariationIndex = 0;
             }
         }
         
@@ -658,6 +703,8 @@ public class RecipeBookScreen {
         selectedRecipe = null;
         popupJustOpened = false;
         isTyping = false;
+        currentRecipeVariations.clear();
+        currentVariationIndex = 0;
         // scrollOffset = 0; // Optionally reset scroll on close
     }
     
@@ -763,8 +810,8 @@ public class RecipeBookScreen {
     // Handle popup click interactions
     private boolean handlePopupClick(Vector2f mousePos, int screenWidth, int screenHeight) {
         // Calculate popup dimensions
-        int popupWidth = Math.min(500, screenWidth - 100);
-        int popupHeight = Math.min(400, screenHeight - 100);
+        int popupWidth = Math.min(600, screenWidth - 80);
+        int popupHeight = Math.min(480, screenHeight - 80);
         int popupX = (screenWidth - popupWidth) / 2;
         int popupY = (screenHeight - popupHeight) / 2;
         
@@ -773,6 +820,8 @@ public class RecipeBookScreen {
             mousePos.y < popupY || mousePos.y > popupY + popupHeight) {
             showingRecipePopup = false;
             selectedRecipe = null;
+            currentRecipeVariations.clear();
+            currentVariationIndex = 0;
             return true; // Handled the click
         }
         
@@ -785,7 +834,37 @@ public class RecipeBookScreen {
             mousePos.y >= closeButtonY && mousePos.y <= closeButtonY + closeButtonSize) {
             showingRecipePopup = false;
             selectedRecipe = null;
+            currentRecipeVariations.clear();
+            currentVariationIndex = 0;
             return true; // Handled the click
+        }
+        
+        // Check pagination buttons if there are multiple variations
+        if (currentRecipeVariations.size() > 1) {
+            int buttonSize = 30;
+            int buttonY = popupY + 60; // Below title bar
+            int prevButtonX = popupX + 20;
+            int nextButtonX = popupX + popupWidth - buttonSize - 20;
+            
+            // Previous button
+            if (mousePos.x >= prevButtonX && mousePos.x <= prevButtonX + buttonSize &&
+                mousePos.y >= buttonY && mousePos.y <= buttonY + buttonSize) {
+                if (currentVariationIndex > 0) {
+                    currentVariationIndex--;
+                    selectedRecipe = currentRecipeVariations.get(currentVariationIndex);
+                }
+                return true;
+            }
+            
+            // Next button
+            if (mousePos.x >= nextButtonX && mousePos.x <= nextButtonX + buttonSize &&
+                mousePos.y >= buttonY && mousePos.y <= buttonY + buttonSize) {
+                if (currentVariationIndex < currentRecipeVariations.size() - 1) {
+                    currentVariationIndex++;
+                    selectedRecipe = currentRecipeVariations.get(currentVariationIndex);
+                }
+                return true;
+            }
         }
         
         return true; // Click was within popup area, don't close
@@ -893,11 +972,110 @@ public class RecipeBookScreen {
             nvgFillColor(vg, nvgRGBA(255, 255, 85, 255, NVGColor.malloc(stack)));
             nvgText(vg, popupX + popupWidth / 2.0f, popupY + 36, recipeTitle);
             
-            // Draw recipe content with better positioning for new title
-            drawDetailedRecipe(selectedRecipe, popupX + 20, popupY + 80, popupWidth - 40, popupHeight - 120);
+            // Draw pagination controls if there are multiple variations
+            int paginationY = popupY + 60;
+            int recipeContentStartY = popupY + 80;
+            if (currentRecipeVariations.size() > 1) {
+                drawPaginationControls(vg, popupX, paginationY, popupWidth, stack);
+                recipeContentStartY = popupY + 100; // Move recipe content down to make room for pagination
+            }
+            
+            // Draw recipe content with adjusted positioning
+            drawDetailedRecipe(selectedRecipe, popupX + 20, recipeContentStartY, popupWidth - 40, popupHeight - (recipeContentStartY - popupY) - 20);
         }
         
         uiRenderer.endFrame();
+    }
+    
+    /**
+     * Draws pagination controls for recipe variations
+     */
+    private void drawPaginationControls(long vg, int popupX, int paginationY, int popupWidth, MemoryStack stack) {
+        int buttonSize = 30;
+        int prevButtonX = popupX + 20;
+        int nextButtonX = popupX + popupWidth - buttonSize - 20;
+        
+        Vector2f mousePos = inputHandler.getMousePosition();
+        
+        // Previous button
+        boolean prevEnabled = currentVariationIndex > 0;
+        boolean prevHovered = mousePos.x >= prevButtonX && mousePos.x <= prevButtonX + buttonSize &&
+                             mousePos.y >= paginationY && mousePos.y <= paginationY + buttonSize;
+        
+        drawPaginationButton(vg, prevButtonX, paginationY, buttonSize, "‹", prevEnabled, prevHovered, stack);
+        
+        // Next button  
+        boolean nextEnabled = currentVariationIndex < currentRecipeVariations.size() - 1;
+        boolean nextHovered = mousePos.x >= nextButtonX && mousePos.x <= nextButtonX + buttonSize &&
+                             mousePos.y >= paginationY && mousePos.y <= paginationY + buttonSize;
+        
+        drawPaginationButton(vg, nextButtonX, paginationY, buttonSize, "›", nextEnabled, nextHovered, stack);
+        
+        // Page indicator in center
+        String pageText = (currentVariationIndex + 1) + " / " + currentRecipeVariations.size();
+        nvgFontSize(vg, 16);
+        nvgFontFace(vg, "sans");
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        
+        // Text shadow
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
+        nvgText(vg, popupX + popupWidth / 2.0f + 1, paginationY + buttonSize / 2.0f + 1, pageText);
+        
+        // Main text
+        nvgFillColor(vg, nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
+        nvgText(vg, popupX + popupWidth / 2.0f, paginationY + buttonSize / 2.0f, pageText);
+        
+        // Recipe variation indicator below page number
+        String variationText = "Recipe Variation";
+        nvgFontSize(vg, 12);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        
+        // Variation text shadow
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+        nvgText(vg, popupX + popupWidth / 2.0f + 1, paginationY + buttonSize + 2 + 1, variationText);
+        
+        // Main variation text
+        nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+        nvgText(vg, popupX + popupWidth / 2.0f, paginationY + buttonSize + 2, variationText);
+    }
+    
+    /**
+     * Draws a single pagination button
+     */
+    private void drawPaginationButton(long vg, int x, int y, int size, String symbol, boolean enabled, boolean hovered, MemoryStack stack) {
+        // Button background
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, size, size);
+        
+        if (!enabled) {
+            nvgFillColor(vg, nvgRGBA(60, 40, 20, 255, NVGColor.malloc(stack))); // Disabled dark wood
+        } else if (hovered) {
+            nvgFillColor(vg, nvgRGBA(160, 106, 53, 255, NVGColor.malloc(stack))); // Bright wood (hovered)
+        } else {
+            nvgFillColor(vg, nvgRGBA(139, 92, 46, 255, NVGColor.malloc(stack))); // Medium wood
+        }
+        nvgFill(vg);
+        
+        // Beveled border for 3D effect
+        drawMinecraftBeveledBorder(vg, x, y, size, size, stack, enabled);
+        
+        // Button symbol
+        nvgFontSize(vg, 20);
+        nvgFontFace(vg, "sans");
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        
+        if (!enabled) {
+            // Disabled text (darker)
+            nvgFillColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
+        } else {
+            // Text shadow
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
+            nvgText(vg, x + size / 2.0f + 1, y + size / 2.0f + 1, symbol);
+            
+            // Main text (white for good contrast)
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        }
+        nvgText(vg, x + size / 2.0f, y + size / 2.0f, symbol);
     }
     
     // Draw detailed recipe with ingredients and output - Minecraft style
