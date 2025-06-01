@@ -331,7 +331,7 @@ public class Main {
                     if (inputHandler != null) {
                         // Pass input to screens that might need it, even if game world is paused
                         if (game.getRecipeBookScreen() != null && game.getRecipeBookScreen().isVisible()) {
-                             game.getRecipeBookScreen().handleInput(inputHandler);
+                             game.getRecipeBookScreen().handleInput();
                         } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
                              game.getWorkbenchScreen().handleInput(inputHandler);
                         } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()){
@@ -446,16 +446,24 @@ public class Main {
                 renderer.renderBlockDropsDeferred(world, player);
                 // Render tooltips AFTER block drops to ensure they appear above 3D block drops
                 InventoryScreen inventoryScreen = game.getInventoryScreen();
-                if (inventoryScreen != null && uiRenderer != null) { // Added null check for uiRenderer
-                    uiRenderer.beginFrame(width, height, 1.0f);
-                    if (inventoryScreen.isVisible()) {
-                        // Render only tooltips for full inventory screen
-                        inventoryScreen.renderTooltipsOnly(width, height);
-                    } else {
-                        // Render only hotbar tooltips when inventory is not open
-                        inventoryScreen.renderHotbarTooltipsOnly(width, height);
+                RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+                if (uiRenderer != null) { // Added null check for uiRenderer
+                    // Render inventory tooltips
+                    if (inventoryScreen != null) {
+                        uiRenderer.beginFrame(width, height, 1.0f);
+                        if (inventoryScreen.isVisible()) {
+                            // Render only tooltips for full inventory screen
+                            inventoryScreen.renderTooltipsOnly(width, height);
+                        } else {
+                            // Render only hotbar tooltips when inventory is not open
+                            inventoryScreen.renderHotbarTooltipsOnly(width, height);
+                        }
+                        uiRenderer.endFrame();
                     }
-                    uiRenderer.endFrame();
+                    // Render recipe book tooltips
+                    if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                        recipeBookScreen.renderTooltipsOnly();
+                    }
                 }
                 // Render pause menu if paused
                 PauseMenu pauseMenu = game.getPauseMenu();
@@ -468,25 +476,6 @@ public class Main {
                     }
                     // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
                     renderer.renderPauseMenuDepthCurtain();
-                }
-                // DEFERRED: Render block drops AFTER all UI is complete
-                // SOLUTION B ACTIVATED: Use full-screen depth curtain for pause menu
-                // Block drops render behind both inventory and pause menu with depth curtain protection
-                renderer.renderBlockDropsDeferred(world, player);
-                // Render tooltips AFTER block drops to ensure they appear above 3D block drops
-                if (inventoryScreen != null) {
-                    // UIRenderer uiRenderer = game.getUIRenderer(); // Removed duplicate, use uiRenderer from line 377
-                    if (uiRenderer != null) { // Added null check for safety, though it should be initialized
-                        uiRenderer.beginFrame(width, height, 1.0f);
-                        if (inventoryScreen.isVisible()) {
-                            // Render only tooltips for full inventory screen
-                            inventoryScreen.renderTooltipsOnly(width, height);
-                        } else {
-                            // Render only hotbar tooltips when inventory is not open
-                            inventoryScreen.renderHotbarTooltipsOnly(width, height);
-                        }
-                        uiRenderer.endFrame();
-                    }
                 }
             }
         }

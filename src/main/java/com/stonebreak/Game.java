@@ -208,7 +208,7 @@ public class Game {
 
         // Initialize RecipeBookScreen
         if (this.uiRenderer != null && this.craftingManager != null && getFont() != null) {
-            this.recipeBookScreen = new RecipeBookScreen(this.uiRenderer);
+            this.recipeBookScreen = new RecipeBookScreen(this.uiRenderer, this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }

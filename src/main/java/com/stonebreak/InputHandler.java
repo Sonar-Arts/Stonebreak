@@ -103,12 +103,10 @@ public class InputHandler {
         }
         Arrays.fill(keyJustPressed, false); // Clear just pressed state for keys
 
-        // Poll all relevant keys to update keyPressedState and keyJustPressed
-        // This is a simplified polling example. A more robust system might use callbacks for all keys.
-        // For RecipeBookScreen, we care about ESCAPE and BACKSPACE for now.
+        // Poll specific keys needed for game functionality
+        // Note: RecipeBookScreen input is now handled via callbacks to prevent double input
         updateSpecificKeyState(GLFW_KEY_ESCAPE);
         updateSpecificKeyState(GLFW_KEY_BACKSPACE);
-        // Add other keys here if needed for isKeyPressedOnce elsewhere
 
     }
 
@@ -155,7 +153,7 @@ public class InputHandler {
 
             // UI screens take precedence for input if active
             if (currentGameState == GameState.RECIPE_BOOK_UI && recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                recipeBookScreen.handleInput(this);
+                recipeBookScreen.handleInput();
                 return; // Recipe Book UI has full input control
             }
             if (currentGameState == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
@@ -461,10 +459,19 @@ public class InputHandler {
     // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
 
     private void handleScroll(double yOffset) {
+        // Store scroll offset for UI screens that need it (like RecipeBookScreen)
+        this.scrollYOffset = yOffset;
+        
         // Block scroll input if chat is open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             return;
+        }
+        
+        // If recipe book is open, let it handle scrolling and don't process hotbar scroll
+        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+            return; // RecipeBookScreen will use getAndResetScrollY()
         }
         
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
@@ -481,7 +488,7 @@ public class InputHandler {
         }
         
         setSelectedHotbarSlot(newSelectedIndex);
-        this.scrollYOffset = 0; // Reset scroll after handling
+        this.scrollYOffset = 0; // Reset scroll after handling hotbar selection
     }
 
     public double getAndResetScrollY() {
@@ -605,17 +612,25 @@ public class InputHandler {
     }
     
     /**
-     * Handle character input for chat
+     * Handle character input for chat and recipe book search
      */
     public void handleCharacterInput(char character) {
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatSystem.handleCharInput(character);
+            return;
+        }
+        
+        // Handle recipe book search input
+        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
+            Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
+            recipeBookScreen.handleCharacterInput(character);
         }
     }
     
     /**
-     * Handle keyboard input for chat (backspace, enter, etc.)
+     * Handle keyboard input for chat and recipe book (backspace, enter, etc.)
      */
     public void handleKeyInput(int key, int action) {
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
@@ -645,12 +660,20 @@ public class InputHandler {
                     }
                 }
             }
-            // Block all other key processing when chat is open
-            // Removed unnecessary return statement here
+            return; // Block all other key processing when chat is open
         }
         
-        // If chat is not open, handle other key inputs (movement, etc.)
-        // This allows the normal input handling to continue
+        // Handle recipe book search input
+        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
+            Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
+            if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+                recipeBookScreen.handleKeyInput(key, action);
+            }
+            return; // Block other key processing when recipe book is handling input
+        }
+        
+        // If chat and recipe book are not handling input, allow normal input handling to continue
     }
 
     /**
