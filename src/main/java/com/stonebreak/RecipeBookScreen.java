@@ -1116,6 +1116,12 @@ public class RecipeBookScreen {
             int recipeHeight = recipe.getRecipeHeight();
             int recipeWidth = recipe.getRecipeWidth();
             
+            // Force workbench recipes to display as 3x3 grid
+            if (requiresWorkbench(recipe)) {
+                recipeHeight = 3;
+                recipeWidth = 3;
+            }
+            
             // Calculate layout with larger Minecraft-style slots
             int slotSize = 52; // Larger slots for better visibility
             int slotSpacing = 12; // More spacing for better separation
@@ -1403,6 +1409,20 @@ public class RecipeBookScreen {
         drawMinecraftBeveledBorder(vg, slotX, slotY, slotSize, slotSize, stack, false);
     }
     
+    /**
+     * Determines if a recipe requires a workbench (3x3 crafting grid).
+     * @param recipe The recipe to check
+     * @return true if this recipe should always display as 3x3 grid
+     */
+    private boolean requiresWorkbench(Recipe recipe) {
+        String recipeId = recipe.getId();
+        return recipeId.equals("wooden_pickaxe") ||
+               recipeId.equals("pine_wooden_pickaxe") ||
+               recipeId.equals("elm_wooden_pickaxe") ||
+               recipeId.equals("wooden_axe") ||
+               recipeId.equals("pine_wooden_axe") ||
+               recipeId.equals("elm_wooden_axe");
+    }
     
     // Utility method for creating NanoVG colors
     private static NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {

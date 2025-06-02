@@ -35,6 +35,10 @@ public class TextureAtlas {
     // Atlas coordinates for WOODEN_PICKAXE item
     private static final int WOODEN_PICKAXE_ATLAS_X = 3;
     private static final int WOODEN_PICKAXE_ATLAS_Y = 3;
+    
+    // Atlas coordinates for WOODEN_AXE item
+    private static final int WOODEN_AXE_ATLAS_X = 8;
+    private static final int WOODEN_AXE_ATLAS_Y = 3;
 
     // Atlas coordinates for SANDSTONE textures
     private static final int SANDSTONE_TOP_ATLAS_X = 5;
@@ -383,7 +387,7 @@ public class TextureAtlas {
                 int tileY = globalY / texturePixelSize;
                 
                 // Color based on tile position
-                byte r, g, b, a;
+                byte r = 0, g = 0, b = 0, a = 0;
                 
                 // Determine color based on tile position (as if it were a block type)
 
@@ -753,6 +757,196 @@ public class TextureAtlas {
                     buffer.put(r).put(g).put(b).put(a);
                     continue;
                 }
+                
+                // Special handling for WOODEN_AXE texture - Authentic Minecraft Design
+                if (tileX == WOODEN_AXE_ATLAS_X && tileY == WOODEN_AXE_ATLAS_Y) {
+                    int pX_axe = globalX % texturePixelSize;
+                    int pY_axe = globalY % texturePixelSize;
+                    
+                    // Minecraft wooden axe color palette
+                    // Very dark brown (outlines/borders)
+                    int outlineR = 60;
+                    int outlineG = 35;
+                    int outlineB = 15;
+                    
+                    // Dark brown (handle main color)
+                    int handleR = 101;
+                    int handleG = 57;
+                    int handleB = 25;
+                    
+                    // Medium brown (axe head base)
+                    int headR = 139;
+                    int headG = 96;
+                    int headB = 67;
+                    
+                    // Light brown (highlights)
+                    int highlightR = 171;
+                    int highlightG = 128;
+                    int highlightB = 97;
+                    
+                    // Lighter brown (bright highlights)
+                    int brightR = 190;
+                    int brightG = 145;
+                    int brightB = 115;
+                    
+                    // MINECRAFT WOODEN AXE PIXEL-PERFECT DESIGN (FLIPPED ACROSS Y-AXIS)
+                    // The axe has a diagonal handle from bottom-left to top-right
+                    // and an L-shaped axe head in the top-right corner
+                    
+                    boolean isPixelSet = false;
+                    
+                    // Row 0: Axe head tip
+                    if (pY_axe == 0) {
+                        if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 1: Axe head cutting edge
+                    else if (pY_axe == 1) {
+                        if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 11) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 2: Axe head tapering
+                    else if (pY_axe == 2) {
+                        if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 5) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 11) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 12) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 13) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 3: Axe head main body (widest)
+                    else if (pY_axe == 3) {
+                        if (pX_axe == 3) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 4) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 5) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 11) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 12) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 13) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 14) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 4: Axe head main body (widest)
+                    else if (pY_axe == 4) {
+                        if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 5) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 11) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 12) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 13) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 5: Axe head expands
+                    else if (pY_axe == 5) {
+                        if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 11) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 12) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 6: Handle continues and axe head starts
+                    else if (pY_axe == 6) {
+                        if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 11) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 7: Handle continues
+                    else if (pY_axe == 7) {
+                        if (pX_axe == 7) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 10) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 8: Handle continues
+                    else if (pY_axe == 8) {
+                        if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 9) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 9: Handle continues
+                    else if (pY_axe == 9) {
+                        if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 8) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 10: Handle continues
+                    else if (pY_axe == 10) {
+                        if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 5) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 7) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 11: Handle continues
+                    else if (pY_axe == 11) {
+                        if (pX_axe == 3) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 4) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 5) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 12: Handle continues
+                    else if (pY_axe == 12) {
+                        if (pX_axe == 2) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 3) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 4) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 13: Handle continues
+                    else if (pY_axe == 13) {
+                        if (pX_axe == 1) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 2) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 3) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 14: Handle diagonal continues
+                    else if (pY_axe == 14) {
+                        if (pX_axe == 0) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 1) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 2) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 3) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    // Row 15: Handle end (bottom-left)
+                    else if (pY_axe == 15) {
+                        if (pX_axe == 1) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                        else if (pX_axe == 2) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    }
+                    
+                    if (!isPixelSet) {
+                        // Transparent background
+                        r = (byte) 0;
+                        g = (byte) 0;
+                        b = (byte) 0;
+                        a = (byte) 0;
+                    }
+                    
+                    buffer.put(r).put(g).put(b).put(a);
+                    continue;
+                }
+                
                 // Special handling for ELM_WOOD_LOG texture (top/bottom)
                 if (tileX == ELM_WOOD_LOG_TOP_ATLAS_X && tileY == ELM_WOOD_LOG_TOP_ATLAS_Y) {
                     int pX_elm = globalX % texturePixelSize;

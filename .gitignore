@@ -78,6 +78,7 @@ CLAUDE.md
 
 # Documentation folder
 docs/
+wiki/
 
 # Local configuration files
 *.properties

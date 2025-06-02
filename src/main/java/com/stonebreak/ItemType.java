@@ -9,7 +9,8 @@ public enum ItemType implements Item {
     STICK(1001, "Stick", 1, 3, ItemCategory.MATERIALS, 64),
     
     // Tools
-    WOODEN_PICKAXE(1002, "Wooden Pickaxe", 3, 3, ItemCategory.TOOLS, 1);
+    WOODEN_PICKAXE(1002, "Wooden Pickaxe", 3, 3, ItemCategory.TOOLS, 1),
+    WOODEN_AXE(1003, "Wooden Axe", 8, 3, ItemCategory.TOOLS, 1);
     
     private final int id;
     private final String name;

@@ -320,6 +320,51 @@ public class Game {
         this.craftingManager.registerRecipe(elmWoodenPickaxeRecipe);
         System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
 
+        // Recipe 13: Wooden Axe (Regular Wood Planks)
+        // Input: 3 Wood Planks (2 top row, 1 middle left), 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Axe
+        List<List<ItemStack>> woodenAxePattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1))
+        );
+        Recipe woodenAxeRecipe = new Recipe(
+            "wooden_axe",
+            woodenAxePattern,
+            new ItemStack(ItemType.WOODEN_AXE, 1)
+        );
+        this.craftingManager.registerRecipe(woodenAxeRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS + STICKS -> WOODEN_AXE");
+
+        // Recipe 14: Wooden Axe (Pine Wood Planks variant)
+        // Input: 3 Pine Wood Planks (2 top row, 1 middle left), 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Axe
+        List<List<ItemStack>> pineWoodenAxePattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1))
+        );
+        Recipe pineWoodenAxeRecipe = new Recipe(
+            "pine_wooden_axe",
+            pineWoodenAxePattern,
+            new ItemStack(ItemType.WOODEN_AXE, 1)
+        );
+        this.craftingManager.registerRecipe(pineWoodenAxeRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_AXE");
+
+        // Recipe 15: Wooden Axe (Elm Wood Planks variant)
+        // Input: 3 Elm Wood Planks (2 top row, 1 middle left), 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Axe
+        List<List<ItemStack>> elmWoodenAxePattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1))
+        );
+        Recipe elmWoodenAxeRecipe = new Recipe(
+            "elm_wooden_axe",
+            elmWoodenAxePattern,
+            new ItemStack(ItemType.WOODEN_AXE, 1)
+        );
+        this.craftingManager.registerRecipe(elmWoodenAxeRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_AXE");
+
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message

@@ -133,6 +133,7 @@ public class Recipe {
                 ItemStack recipeItem = recipeRow.get(c);
                 ItemStack gridItem = (gridRow != null && c < gridRow.size()) ? gridRow.get(c) : null;
 
+
                 // Using a simplified comparison for now.
                 // In a full system, this would compare item types and potentially amounts/metadata.
                 if (recipeItem == null && gridItem == null) {
@@ -163,6 +164,7 @@ public class Recipe {
                 }
             }
         }
+        
         // After checking the recipe pattern, ensure no other items are in the crafting grid
         // within the bounds defined by the recipe dimensions, effectively creating a "tight fit".
         // However, the instruction "checking if a recipe fits within the provided grid and

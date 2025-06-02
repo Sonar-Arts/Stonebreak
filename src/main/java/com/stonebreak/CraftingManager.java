@@ -59,10 +59,13 @@ public class CraftingManager {
             return null;
         }
 
-        // Create the compact input grid based on the content
-        List<List<ItemStack>> compactGrid = new ArrayList<>();
+        // Calculate effective dimensions
         int effectiveHeight = maxRow - minRow + 1;
         int effectiveWidth = maxCol - minCol + 1;
+        
+
+        // Create the compact input grid based on the content
+        List<List<ItemStack>> compactGrid = new ArrayList<>();
 
         for (int r = 0; r < effectiveHeight; r++) {
             List<ItemStack> newRow = new ArrayList<>();

@@ -32,10 +32,10 @@ public enum BlockType implements Item {
     ICE(21, "Ice", true, true, 3, 2, 2.0f),
     SNOW(22, "Snow", false, true, 5, 2, 0.1f), // Layered snow block
     WORKBENCH(23, "Workbench", true, true, 6, 2, 3.0f), // Placeholder atlas coords (6,2)
-    WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 2.0f), // Atlas coords (0,3) placeholder
-    PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 2.0f), // Atlas coords (2,3)
+    WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 3.0f), // Atlas coords (0,3) placeholder
+    PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 3.0f), // Atlas coords (2,3)
     ELM_WOOD_LOG(26, "Elm Wood Log", true, true, 4, 3, 3.0f), // Atlas coords (4,3) - ID updated from 28 to 26
-    ELM_WOOD_PLANKS(27, "Elm Wood Planks", true, true, 5, 3, 2.0f), // Atlas coords (5,3) - ID updated from 29 to 27
+    ELM_WOOD_PLANKS(27, "Elm Wood Planks", true, true, 5, 3, 3.0f), // Atlas coords (5,3) - ID updated from 29 to 27
     ELM_LEAVES(28, "Elm Leaves", true, true, 6, 3, 0.5f); // Atlas coords (6,3) - ID updated from 30 to 28
 
     public enum Face {
@@ -63,10 +63,12 @@ public enum BlockType implements Item {
         this.hardness = hardness;
     }
     
+    @Override
     public int getId() {
         return id;
     }
     
+    @Override
     public String getName() {
         return name;
     }
@@ -87,10 +89,12 @@ public enum BlockType implements Item {
         return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == ELM_LEAVES;
     }
 
+    @Override
     public int getAtlasX() {
         return atlasX;
     }
 
+    @Override
     public int getAtlasY() {
         return atlasY;
     }

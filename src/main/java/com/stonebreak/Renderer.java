@@ -866,18 +866,22 @@ public class Renderer {
             reusableArmViewModel.rotate((float) Math.toRadians(10.0f), 0.0f, 0.0f, 1.0f);
         }
 
-        // Enhanced swinging animation - Minecraft-style (reversed)
+        // Enhanced swinging animation - Diagonal swing towards center
         if (player.isAttacking()) {
             float progress = 1.0f - player.getAttackAnimationProgress(); // Reverse the progress
             
-            // Minecraft uses a curved swing motion
-            float swingAngle = (float) (Math.sin(progress * Math.PI) * 60.0f); // Larger swing arc
-            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.1f); // Lift arm up during swing
+            // Diagonal swing motion towards center of screen
+            float swingAngle = (float) (Math.sin(progress * Math.PI) * 45.0f); // Reduced arc for diagonal motion
+            float diagonalAngle = (float) (Math.sin(progress * Math.PI) * 30.0f); // Diagonal component
+            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.08f); // Slight lift during swing
             
-            // Apply swing rotation around multiple axes for more natural movement
-            reusableArmViewModel.rotate((float) Math.toRadians(-swingAngle), 1.0f, 0.0f, 0.0f); // Primary swing motion
-            reusableArmViewModel.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 1.0f, 0.0f); // Secondary motion
-            reusableArmViewModel.translate(progress * 0.15f, swingLift, progress * -0.1f); // Move arm during swing
+            // Apply diagonal swing rotation - combination of X and Y axis rotation
+            reusableArmViewModel.rotate((float) Math.toRadians(-swingAngle * 0.7f), 1.0f, 0.0f, 0.0f); // Reduced downward motion
+            reusableArmViewModel.rotate((float) Math.toRadians(-diagonalAngle), 0.0f, 1.0f, 0.0f); // Swing towards center (negative for inward)
+            reusableArmViewModel.rotate((float) Math.toRadians(swingAngle * 0.2f), 0.0f, 0.0f, 1.0f); // Slight roll for natural motion
+            
+            // Translate towards center of screen during swing
+            reusableArmViewModel.translate(progress * -0.1f, swingLift, progress * -0.05f); // Move inward and slightly forward
         }
 
         // Set model-view matrix for the arm (combining arm's transformation with camera's view)
@@ -935,6 +939,8 @@ public class Renderer {
                 renderMinecraftStyleItemInHand(selectedItemType);
             } else if (selectedItemType == ItemType.WOODEN_PICKAXE) {
                 renderPickaxeInHand(selectedItemType, player);
+            } else if (selectedItemType == ItemType.WOODEN_AXE) {
+                renderAxeInHand(selectedItemType, player);
             } else {
                 // Default tool rendering
                 renderMinecraftStyleItemInHand(selectedItemType);
@@ -3098,7 +3104,7 @@ public class Renderer {
      * Uses the existing rendering system but creates depth by rendering multiple parallel quads.
      */
     private void createAndRenderLayered3DPickaxe(float[] uvCoords) {
-        int numLayers = 5; // Number of layers to create depth
+        int numLayers = 3; // Number of layers to create depth
         float totalDepth = 0.12f; // Total depth of the 3D effect
         float layerSpacing = totalDepth / (numLayers - 1);
         
@@ -3129,11 +3135,129 @@ public class Renderer {
                 layerVertices[i + 2] = zOffset;
                 
                 // Slightly darken back layers for depth effect
-                float darkenFactor = 1.0f - (layer * 0.1f);
+                float darkenFactor = 1.0f - (layer * 0.15f);
                 if (darkenFactor < 0.7f) darkenFactor = 0.7f;
                 
                 // Apply darkening by modifying the normal (shader will handle this)
                 layerVertices[i + 5] = darkenFactor; // Use Z normal for darkening
+            }
+            
+            // Render this layer using the existing flower quad system
+            renderFlowerQuad(layerVertices, indices);
+        }
+    }
+    
+    /**
+     * Renders an axe in the player's hand with Minecraft-style diagonal positioning.
+     * Similar to pickaxe but with slightly different orientation for axe-specific feel.
+     */
+    private void renderAxeInHand(ItemType itemType, Player player) {
+        // Create a temporary matrix for axe-specific transformations
+        Matrix4f axeMatrix = new Matrix4f(reusableArmViewModel);
+        
+        // Scale the axe (slightly larger than pickaxe for more imposing feel)
+        axeMatrix.scale(1.6f, 1.6f, 1.6f);
+        
+        // Position the axe in the hand (similar to pickaxe but slightly adjusted)
+        axeMatrix.translate(0.0f, 0.2f, 0.0f);
+        
+        // Apply Minecraft-style axe rotation optimized for face visibility
+        // Adjusted to show the trapezoid axe head face more clearly
+        axeMatrix.rotate((float) Math.toRadians(45.0f), 0.0f, 0.0f, 1.0f);  // Roll: increased to show face better
+        axeMatrix.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Yaw: reduced to face more forward
+        axeMatrix.rotate((float) Math.toRadians(-5.0f), 1.0f, 0.0f, 0.0f);   // Pitch: tilted up slightly for better view
+        
+        // Apply axe-specific attack animation that works with diagonal orientation
+        if (player.isAttacking()) {
+            float progress = 1.0f - player.getAttackAnimationProgress();
+            
+            // Axe swing motion - more powerful chopping motion than pickaxe
+            float swingAngle = (float) (Math.sin(progress * Math.PI) * 50.0f); // Larger swing than pickaxe
+            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.2f); // More lift than pickaxe
+            
+            // Apply powerful chopping swing that emphasizes the axe's weight
+            axeMatrix.rotate((float) Math.toRadians(-swingAngle * 0.9f), 1.0f, 0.0f, 0.0f); // Primary chopping motion
+            axeMatrix.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 0.0f, 1.0f);  // Roll motion for weight
+            axeMatrix.rotate((float) Math.toRadians(-swingAngle * 0.15f), 0.0f, 1.0f, 0.0f); // Slight yaw
+            
+            // Move axe during swing with more dramatic motion than pickaxe
+            axeMatrix.translate(progress * 0.1f, swingLift, progress * -0.15f);
+        }
+        
+        // Fine-tune position after rotation and animation
+        axeMatrix.translate(0.08f, -0.08f, 0.0f);
+        
+        // Set the modified matrix for rendering
+        shaderProgram.setUniform("viewMatrix", axeMatrix);
+        
+        // Set up shader for item rendering
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        
+        // Get UV coordinates for the item
+        float[] uvCoords = textureAtlas.getUVCoordinates(itemType.getAtlasX(), itemType.getAtlasY());
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        shaderProgram.setUniform("texture_sampler", 0);
+        
+        // Enable blending for transparency
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // No tint - use pure white
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        
+        // Create layered 3D axe with depth
+        createAndRenderLayered3DAxe(uvCoords);
+        
+        // Restore the original matrix for subsequent rendering
+        shaderProgram.setUniform("viewMatrix", reusableArmViewModel);
+    }
+    
+    /**
+     * Creates and renders a layered 3D axe using multiple depth layers.
+     * Similar to pickaxe but with axe-specific proportions.
+     */
+    private void createAndRenderLayered3DAxe(float[] uvCoords) {
+        int numLayers = 8; // More layers for thicker, more solid appearance
+        float totalDepth = 0.22f; // Significantly thicker for better handle visibility
+        float layerSpacing = totalDepth / (numLayers - 1);
+        
+        // Create the axe shape vertices - broader head and thicker handle
+        float[] baseVertices = {
+            // Axe shape with thicker handle and broader head
+            -0.25f, -0.3f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Handle bottom (wider)
+             0.25f,  0.0f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Handle top (wider)
+             0.5f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Axe head (broader)
+            -0.1f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Axe mid
+        };
+        
+        int[] indices = {
+            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
+        };
+        
+        // Render multiple layers at different Z depths to create 3D volume
+        for (int layer = 0; layer < numLayers; layer++) {
+            // Calculate Z offset for this layer
+            float zOffset = -totalDepth / 2 + (layer * layerSpacing);
+            
+            // Create vertices for this layer by copying base vertices and adjusting Z
+            float[] layerVertices = new float[baseVertices.length];
+            for (int i = 0; i < baseVertices.length; i += 8) {
+                // Copy all vertex data
+                System.arraycopy(baseVertices, i, layerVertices, i, 8);
+                // Adjust Z coordinate
+                layerVertices[i + 2] = zOffset;
+                
+                // Slightly darken back layers for depth effect
+                float darkenFactor = 1.0f - (layer * 0.08f); // Less darkening than pickaxe
+                if (darkenFactor < 0.75f) darkenFactor = 0.75f;
+                
+                // Apply darkening by modifying the normal
+                layerVertices[i + 5] = darkenFactor;
             }
             
             // Render this layer using the existing flower quad system

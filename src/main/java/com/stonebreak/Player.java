@@ -705,7 +705,7 @@ public class Player {      // Player settings
             // Update breaking progress
             float hardness = blockType.getHardness();
             
-            // Apply tool efficiency for pickaxe
+            // Apply tool efficiency for pickaxe and axe
             float effectiveHardness = hardness;
             ItemStack selectedItem = inventory.getSelectedHotbarSlot();
             if (selectedItem != null && selectedItem.isTool()) {
@@ -713,6 +713,11 @@ public class Player {      // Player settings
                 if (itemType == ItemType.WOODEN_PICKAXE) {
                     if (blockType == BlockType.STONE || blockType == BlockType.SANDSTONE || blockType == BlockType.RED_SANDSTONE) {
                         effectiveHardness = hardness * 0.25f; // Mine 4x faster (treat as two hardness levels less)
+                    }
+                } else if (itemType == ItemType.WOODEN_AXE) {
+                    // Check if this is a wooden block type
+                    if (isWoodenBlock(blockType)) {
+                        effectiveHardness = Math.max(0.1f, hardness - 2.0f); // Reduce hardness by 2.0, minimum 0.1f
                     }
                 }
             }
@@ -1241,6 +1246,21 @@ public class Player {      // Player settings
         }
         
         return null;
+    }
+    
+    /**
+     * Checks if the given block type is a wooden block that should be affected by axe efficiency.
+     * @param blockType The block type to check
+     * @return true if this is a wooden block
+     */
+    private boolean isWoodenBlock(BlockType blockType) {
+        return blockType == BlockType.WOOD ||
+               blockType == BlockType.WORKBENCH ||
+               blockType == BlockType.PINE ||
+               blockType == BlockType.ELM_WOOD_LOG ||
+               blockType == BlockType.WOOD_PLANKS ||
+               blockType == BlockType.PINE_WOOD_PLANKS ||
+               blockType == BlockType.ELM_WOOD_PLANKS;
     }
       /**
      * Checks if the player is in water.
