@@ -261,31 +261,43 @@ public class Main {
         initializeGameComponents();
     }
       private void initializeGameComponents() {
-        // Initialize the renderer with window dimensions
-        renderer = new Renderer(width, height);
-        
-        // Initialize the input handler
-        inputHandler = new InputHandler(window);
-        
-        // Initialize the world
-        world = new World();
-        
-        // Initialize the player
-        player = new Player(world);
-        
-        // Set initial camera position
-        player.setPosition(0, 100, 0);
-
-        // Initialize TextureAtlas (used by Renderer and potentially UI)
-        textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
-
-          // Initialize the Game singleton
-        // Pass inputHandler to Game's init method
-        Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler);
-        Game.getInstance().setWindowDimensions(width, height);
-        
-        running = true;
-    }
+          MemoryProfiler profiler = MemoryProfiler.getInstance();
+          profiler.takeSnapshot("before_initialization");
+          
+          // Initialize the renderer with window dimensions
+          renderer = new Renderer(width, height);
+          profiler.takeSnapshot("after_renderer_init");
+          
+          // Initialize the input handler
+          inputHandler = new InputHandler(window);
+          
+          // Initialize the world
+          world = new World();
+          profiler.takeSnapshot("after_world_init");
+          
+          // Initialize the player
+          player = new Player(world);
+          
+          // Set initial camera position
+          player.setPosition(0, 100, 0);
+  
+          // Initialize TextureAtlas (used by Renderer and potentially UI)
+          textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
+  
+            // Initialize the Game singleton
+          // Pass inputHandler to Game's init method
+          Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler);
+          Game.getInstance().setWindowDimensions(width, height);
+          profiler.takeSnapshot("after_game_init");
+          
+          running = true;
+          
+          // Log memory usage after initialization
+          Game.logDetailedMemoryInfo("Game components initialized");
+          
+          // Compare memory usage
+          profiler.compareSnapshots("before_initialization", "after_game_init");
+      }
       @SuppressWarnings("BusyWait")
       private void loop() {
         // Set the clear color
@@ -310,6 +322,9 @@ public class Main {
             
             // Update Game singleton (for delta time)
             Game.getInstance().update();
+            
+            // Display debug info periodically (includes memory usage)
+            Game.displayDebugInfo();
               // Handle input based on game state
             Game game = Game.getInstance();
             switch (game.getState()) {
@@ -481,30 +496,39 @@ public class Main {
         }
     }
       private void cleanup() {
-        // Free the window callbacks and destroy the window
-        glfwFreeCallbacks(window);
-        glfwDestroyWindow(window);
-        
-        // Clean up renderer resources
-        if (renderer != null) {
-            renderer.cleanup();
-        }
-        
-        // Clean up world resources
-        if (world != null) {
-            world.cleanup();
-        }
-        
-        // Clean up game resources
-        Game.getInstance().cleanup();
-        
-        // Terminate GLFW and free the error callback
-        glfwTerminate();
-        GLFWErrorCallback prevCallback = glfwSetErrorCallback(null);
-        if (prevCallback != null) {
-            prevCallback.free();
-        }
-    }
+          Game.logDetailedMemoryInfo("Before cleanup");
+          
+          // Free the window callbacks and destroy the window
+          glfwFreeCallbacks(window);
+          glfwDestroyWindow(window);
+          Game.logDetailedMemoryInfo("After GLFW cleanup");
+          
+          // Clean up renderer resources
+          if (renderer != null) {
+              renderer.cleanup();
+              Game.logDetailedMemoryInfo("After renderer cleanup");
+          }
+          
+          // Clean up world resources
+          if (world != null) {
+              world.cleanup();
+              Game.logDetailedMemoryInfo("After world cleanup");
+          }
+          
+          // Clean up game resources
+          Game.getInstance().cleanup();
+          Game.logDetailedMemoryInfo("After game cleanup");
+          
+          // Force garbage collection and report
+          Game.forceGCAndReport("Final cleanup");
+          
+          // Terminate GLFW and free the error callback
+          glfwTerminate();
+          GLFWErrorCallback prevCallback = glfwSetErrorCallback(null);
+          if (prevCallback != null) {
+              prevCallback.free();
+          }
+      }
     
     /**
      * Return the window handle.

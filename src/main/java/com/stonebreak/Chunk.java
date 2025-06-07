@@ -145,6 +145,10 @@ public class Chunk {
                                        " for chunk (" + x + ", " + z + ") after mesh creation. Old mesh not explicitly deleted to protect new mesh.");
                 }
             }
+            
+            // CRITICAL FIX: Free mesh data arrays after successful GL upload
+            // The data is now safely stored in GPU buffers and no longer needed in RAM
+            freeMeshDataArrays();
         } catch (Exception e) {
             System.err.println("CRITICAL: Error during createMesh for chunk (" + x + ", " + z + "): " + e.getMessage());
             // e.printStackTrace();
@@ -181,13 +185,15 @@ public class Chunk {
             this.dataReadyForGL = false; // Data has been processed (or attempt failed)
         }
     }
-      // Reusable arrays for mesh generation to avoid allocations
-    private final float[] tempVertices = new float[131072]; // Doubled size for complex terrain
-    private final float[] tempTextureCoords = new float[87380]; // 2/3 of vertices for texture coords  
-    private final float[] tempNormals = new float[131072]; // Same as vertices for normals
-    private final float[] tempIsWaterFlags = new float[65536]; // Match vertex capacity / 2
-    private final float[] tempIsAlphaTestedFlags = new float[65536]; // Match vertex capacity / 2
-    private final int[] tempIndices = new int[196608]; // 1.5x vertices for indices
+      // Static reusable arrays for mesh generation shared across all chunks
+    // This dramatically reduces memory usage from ~5MB per chunk to shared arrays
+    private static final Object tempArraysLock = new Object();
+    private static final float[] tempVertices = new float[262144]; // Doubled size for complex terrain
+    private static final float[] tempTextureCoords = new float[174768]; // 2/3 of vertices for texture coords
+    private static final float[] tempNormals = new float[262144]; // Same as vertices for normals
+    private static final float[] tempIsWaterFlags = new float[131072]; // Match vertex capacity / 2
+    private static final float[] tempIsAlphaTestedFlags = new float[131072]; // Match vertex capacity / 2
+    private static final int[] tempIndices = new int[393216]; // 1.5x vertices for indices
     
     private int vertexIndex = 0;
     private int textureIndex = 0;
@@ -199,19 +205,21 @@ public class Chunk {
      * Generates the mesh data for the chunk.
      */
     private void generateMeshData(World world) {
-        // Reset counters for reusable arrays
-        vertexIndex = 0;
-        textureIndex = 0;
-        normalIndex = 0;
-        flagIndex = 0;
-        indexIndex = 0;
-        
-        int index = 0;
-        
-        // Iterate through all blocks in the chunk
-        for (int lx = 0; lx < World.CHUNK_SIZE; lx++) {
-            for (int ly = 0; ly < World.WORLD_HEIGHT; ly++) {
-                for (int lz = 0; lz < World.CHUNK_SIZE; lz++) {
+        // Synchronize access to shared temporary arrays
+        synchronized (tempArraysLock) {
+            // Reset counters for reusable arrays
+            vertexIndex = 0;
+            textureIndex = 0;
+            normalIndex = 0;
+            flagIndex = 0;
+            indexIndex = 0;
+            
+            int index = 0;
+            
+            // Iterate through all blocks in the chunk
+            for (int lx = 0; lx < World.CHUNK_SIZE; lx++) {
+                for (int ly = 0; ly < World.WORLD_HEIGHT; ly++) {
+                    for (int lz = 0; lz < World.CHUNK_SIZE; lz++) {
                     BlockType blockType = blocks[lx][ly][lz];
                     
                     // Skip air blocks
@@ -292,16 +300,17 @@ public class Chunk {
         // Copy from pre-allocated arrays to final arrays (only the used portions)
         if (vertexIndex > 0) {
             // Safety checks to prevent array overruns
-            if (vertexIndex > tempVertices.length || textureIndex > tempTextureCoords.length || 
+            if (vertexIndex > tempVertices.length || textureIndex > tempTextureCoords.length ||
                 normalIndex > tempNormals.length || flagIndex > tempIsWaterFlags.length ||
                 flagIndex > tempIsAlphaTestedFlags.length || indexIndex > tempIndices.length) {
                 System.err.println("CRITICAL: Array indices exceed bounds during mesh data copy for chunk (" + x + ", " + z + ")");
-                System.err.println("Vertex: " + vertexIndex + "/" + tempVertices.length + 
+                System.err.println("Vertex: " + vertexIndex + "/" + tempVertices.length +
                                  ", Texture: " + textureIndex + "/" + tempTextureCoords.length +
                                  ", Normal: " + normalIndex + "/" + tempNormals.length +
                                  ", Flag: " + flagIndex + "/" + tempIsWaterFlags.length +
                                  ", Index: " + indexIndex + "/" + tempIndices.length);
                 // Set to empty arrays to prevent crash
+                freeMeshDataArrays(); // Clean up old arrays first
                 vertexData = new float[0];
                 textureData = new float[0];
                 normalData = new float[0];
@@ -311,6 +320,9 @@ public class Chunk {
                 vertexCount = 0;
                 return;
             }
+            
+            // Free old mesh data arrays before allocating new ones
+            freeMeshDataArrays();
             
             vertexData = new float[vertexIndex];
             System.arraycopy(tempVertices, 0, vertexData, 0, vertexIndex);
@@ -332,7 +344,8 @@ public class Chunk {
             
             vertexCount = indexIndex;
         } else {
-            // No mesh data generated
+            // No mesh data generated - free old arrays
+            freeMeshDataArrays();
             vertexData = new float[0];
             textureData = new float[0];
             normalData = new float[0];
@@ -341,6 +354,7 @@ public class Chunk {
             indexData = new int[0];
             vertexCount = 0;
         }
+        } // End synchronized block
     }    /**
      * Gets the block adjacent to the specified position in the given direction.
      */
@@ -424,7 +438,7 @@ public class Chunk {
         } else if (blockType == BlockType.SNOW) {
             // Get snow layer height from world
             if (world != null) {
-                blockHeight = world.getSnowHeight((int)worldX, (int)worldY, (int)worldZ);
+                blockHeight = world.getSnowLayerManager().getSnowHeight((int)worldX, (int)worldY, (int)worldZ);
             }
         }
         
@@ -855,116 +869,164 @@ public class Chunk {
     private FloatBuffer reusableIsAlphaTestedBuffer;
     private IntBuffer reusableIndexBuffer;
       /**
-     * Creates the OpenGL mesh for this chunk.
-     */
-    private void createMesh() {
-        // Create and bind VAO
-        vaoId = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(vaoId);
-        
-        // Create and bind vertex VBO
-        vertexVboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertexVboId);
-        
-        // Reuse or create vertex buffer
-        if (reusableVertexBuffer == null || reusableVertexBuffer.capacity() < vertexData.length) {
-            if (reusableVertexBuffer != null) {
-                MemoryUtil.memFree(reusableVertexBuffer);
-            }
-            reusableVertexBuffer = MemoryUtil.memAllocFloat(vertexData.length);
-        }
-        reusableVertexBuffer.clear();
-        reusableVertexBuffer.put(vertexData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableVertexBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
-        GL20.glEnableVertexAttribArray(0);  // Enable attribute in VAO
-        
-        // Create and bind texture VBO
-        textureVboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, textureVboId);
-        
-        // Reuse or create texture buffer
-        if (reusableTextureBuffer == null || reusableTextureBuffer.capacity() < textureData.length) {
-            if (reusableTextureBuffer != null) {
-                MemoryUtil.memFree(reusableTextureBuffer);
-            }
-            reusableTextureBuffer = MemoryUtil.memAllocFloat(textureData.length);
-        }
-        reusableTextureBuffer.clear();
-        reusableTextureBuffer.put(textureData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableTextureBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 0, 0);
-        GL20.glEnableVertexAttribArray(1);  // Enable attribute in VAO
-        
-        // Create and bind normal VBO
-        normalVboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, normalVboId);
-        
-        // Reuse or create normal buffer
-        if (reusableNormalBuffer == null || reusableNormalBuffer.capacity() < normalData.length) {
-            if (reusableNormalBuffer != null) {
-                MemoryUtil.memFree(reusableNormalBuffer);
-            }
-            reusableNormalBuffer = MemoryUtil.memAllocFloat(normalData.length);
-        }
-        reusableNormalBuffer.clear();
-        reusableNormalBuffer.put(normalData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableNormalBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, 0, 0);
-        GL20.glEnableVertexAttribArray(2);  // Enable attribute in VAO
-
-        // Create and bind isWater VBO
-        isWaterVboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isWaterVboId);
-        
-        // Reuse or create isWater buffer
-        if (reusableIsWaterBuffer == null || reusableIsWaterBuffer.capacity() < isWaterData.length) {
-            if (reusableIsWaterBuffer != null) {
-                MemoryUtil.memFree(reusableIsWaterBuffer);
-            }
-            reusableIsWaterBuffer = MemoryUtil.memAllocFloat(isWaterData.length);
-        }
-        reusableIsWaterBuffer.clear();
-        reusableIsWaterBuffer.put(isWaterData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableIsWaterBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(3, 1, GL20.GL_FLOAT, false, 0, 0); // Location 3, 1 float for isWater
-        GL20.glEnableVertexAttribArray(3); // Enable attribute in VAO
-
-        // Create and bind isAlphaTested VBO
-        isAlphaTestedVboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isAlphaTestedVboId);
-        
-        // Reuse or create isAlphaTested buffer
-        if (reusableIsAlphaTestedBuffer == null || reusableIsAlphaTestedBuffer.capacity() < isAlphaTestedData.length) {
-            if (reusableIsAlphaTestedBuffer != null) {
-                MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
-            }
-            reusableIsAlphaTestedBuffer = MemoryUtil.memAllocFloat(isAlphaTestedData.length);
-        }
-        reusableIsAlphaTestedBuffer.clear();
-        reusableIsAlphaTestedBuffer.put(isAlphaTestedData).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableIsAlphaTestedBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(4, 1, GL20.GL_FLOAT, false, 0, 0); // Location 4, 1 float for isAlphaTested
-        GL20.glEnableVertexAttribArray(4); // Enable attribute in VAO
-        
-        // Create and bind index VBO
-        indexVboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, indexVboId);
-        
-        // Reuse or create index buffer
-        if (reusableIndexBuffer == null || reusableIndexBuffer.capacity() < indexData.length) {
-            if (reusableIndexBuffer != null) {
-                MemoryUtil.memFree(reusableIndexBuffer);
-            }
-            reusableIndexBuffer = MemoryUtil.memAllocInt(indexData.length);
-        }
-        reusableIndexBuffer.clear();
-        reusableIndexBuffer.put(indexData).flip();
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, reusableIndexBuffer, GL15.GL_STATIC_DRAW);
-        
-        // Unbind VAO
-        GL30.glBindVertexArray(0);
-    }
+       * Creates the OpenGL mesh for this chunk.
+       */
+      private void createMesh() {
+          try {
+              // Create and bind VAO
+              vaoId = GL30.glGenVertexArrays();
+              GL30.glBindVertexArray(vaoId);
+              
+              // Create and bind vertex VBO
+              vertexVboId = GL15.glGenBuffers();
+              GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertexVboId);
+              
+              // Reuse or create vertex buffer
+              if (reusableVertexBuffer == null || reusableVertexBuffer.capacity() < vertexData.length) {
+                  if (reusableVertexBuffer != null) {
+                      MemoryUtil.memFree(reusableVertexBuffer);
+                      reusableVertexBuffer = null;
+                  }
+                  reusableVertexBuffer = MemoryUtil.memAllocFloat(vertexData.length);
+              }
+              reusableVertexBuffer.clear();
+              reusableVertexBuffer.put(vertexData).flip();
+              GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableVertexBuffer, GL15.GL_STATIC_DRAW);
+              GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
+              GL20.glEnableVertexAttribArray(0);  // Enable attribute in VAO
+              
+              // Create and bind texture VBO
+              textureVboId = GL15.glGenBuffers();
+              GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, textureVboId);
+              
+              // Reuse or create texture buffer
+              if (reusableTextureBuffer == null || reusableTextureBuffer.capacity() < textureData.length) {
+                  if (reusableTextureBuffer != null) {
+                      MemoryUtil.memFree(reusableTextureBuffer);
+                      reusableTextureBuffer = null;
+                  }
+                  reusableTextureBuffer = MemoryUtil.memAllocFloat(textureData.length);
+              }
+              reusableTextureBuffer.clear();
+              reusableTextureBuffer.put(textureData).flip();
+              GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableTextureBuffer, GL15.GL_STATIC_DRAW);
+              GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 0, 0);
+              GL20.glEnableVertexAttribArray(1);  // Enable attribute in VAO
+              
+              // Create and bind normal VBO
+              normalVboId = GL15.glGenBuffers();
+              GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, normalVboId);
+              
+              // Reuse or create normal buffer
+              if (reusableNormalBuffer == null || reusableNormalBuffer.capacity() < normalData.length) {
+                  if (reusableNormalBuffer != null) {
+                      MemoryUtil.memFree(reusableNormalBuffer);
+                      reusableNormalBuffer = null;
+                  }
+                  reusableNormalBuffer = MemoryUtil.memAllocFloat(normalData.length);
+              }
+              reusableNormalBuffer.clear();
+              reusableNormalBuffer.put(normalData).flip();
+              GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableNormalBuffer, GL15.GL_STATIC_DRAW);
+              GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, 0, 0);
+              GL20.glEnableVertexAttribArray(2);  // Enable attribute in VAO
+  
+              // Create and bind isWater VBO
+              isWaterVboId = GL15.glGenBuffers();
+              GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isWaterVboId);
+              
+              // Reuse or create isWater buffer
+              if (reusableIsWaterBuffer == null || reusableIsWaterBuffer.capacity() < isWaterData.length) {
+                  if (reusableIsWaterBuffer != null) {
+                      MemoryUtil.memFree(reusableIsWaterBuffer);
+                      reusableIsWaterBuffer = null;
+                  }
+                  reusableIsWaterBuffer = MemoryUtil.memAllocFloat(isWaterData.length);
+              }
+              reusableIsWaterBuffer.clear();
+              reusableIsWaterBuffer.put(isWaterData).flip();
+              GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableIsWaterBuffer, GL15.GL_STATIC_DRAW);
+              GL20.glVertexAttribPointer(3, 1, GL20.GL_FLOAT, false, 0, 0); // Location 3, 1 float for isWater
+              GL20.glEnableVertexAttribArray(3); // Enable attribute in VAO
+  
+              // Create and bind isAlphaTested VBO
+              isAlphaTestedVboId = GL15.glGenBuffers();
+              GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isAlphaTestedVboId);
+              
+              // Reuse or create isAlphaTested buffer
+              if (reusableIsAlphaTestedBuffer == null || reusableIsAlphaTestedBuffer.capacity() < isAlphaTestedData.length) {
+                  if (reusableIsAlphaTestedBuffer != null) {
+                      MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
+                      reusableIsAlphaTestedBuffer = null;
+                  }
+                  reusableIsAlphaTestedBuffer = MemoryUtil.memAllocFloat(isAlphaTestedData.length);
+              }
+              reusableIsAlphaTestedBuffer.clear();
+              reusableIsAlphaTestedBuffer.put(isAlphaTestedData).flip();
+              GL15.glBufferData(GL15.GL_ARRAY_BUFFER, reusableIsAlphaTestedBuffer, GL15.GL_STATIC_DRAW);
+              GL20.glVertexAttribPointer(4, 1, GL20.GL_FLOAT, false, 0, 0); // Location 4, 1 float for isAlphaTested
+              GL20.glEnableVertexAttribArray(4); // Enable attribute in VAO
+              
+              // Create and bind index VBO
+              indexVboId = GL15.glGenBuffers();
+              GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, indexVboId);
+              
+              // Reuse or create index buffer
+              if (reusableIndexBuffer == null || reusableIndexBuffer.capacity() < indexData.length) {
+                  if (reusableIndexBuffer != null) {
+                      MemoryUtil.memFree(reusableIndexBuffer);
+                      reusableIndexBuffer = null;
+                  }
+                  reusableIndexBuffer = MemoryUtil.memAllocInt(indexData.length);
+              }
+              reusableIndexBuffer.clear();
+              reusableIndexBuffer.put(indexData).flip();
+              GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, reusableIndexBuffer, GL15.GL_STATIC_DRAW);
+              
+              // Unbind VAO
+              GL30.glBindVertexArray(0);
+              
+          } catch (Exception e) {
+              System.err.println("Error creating mesh for chunk (" + x + ", " + z + "): " + e.getMessage());
+              // Clean up any partially created buffers on failure
+              safeCleanupBuffersOnFailure();
+              throw e; // Re-throw to let caller handle
+          }
+      }
+      
+      /**
+       * Safely cleans up reusable buffers if mesh creation fails.
+       */
+      private void safeCleanupBuffersOnFailure() {
+          try {
+              if (reusableVertexBuffer != null) {
+                  MemoryUtil.memFree(reusableVertexBuffer);
+                  reusableVertexBuffer = null;
+              }
+              if (reusableTextureBuffer != null) {
+                  MemoryUtil.memFree(reusableTextureBuffer);
+                  reusableTextureBuffer = null;
+              }
+              if (reusableNormalBuffer != null) {
+                  MemoryUtil.memFree(reusableNormalBuffer);
+                  reusableNormalBuffer = null;
+              }
+              if (reusableIsWaterBuffer != null) {
+                  MemoryUtil.memFree(reusableIsWaterBuffer);
+                  reusableIsWaterBuffer = null;
+              }
+              if (reusableIsAlphaTestedBuffer != null) {
+                  MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
+                  reusableIsAlphaTestedBuffer = null;
+              }
+              if (reusableIndexBuffer != null) {
+                  MemoryUtil.memFree(reusableIndexBuffer);
+                  reusableIndexBuffer = null;
+              }
+          } catch (Exception cleanupEx) {
+              System.err.println("Error during buffer cleanup: " + cleanupEx.getMessage());
+          }
+      }
       /**
      * Cleans up the mesh data.
      */
@@ -1063,49 +1125,62 @@ public class Chunk {
     void setMeshDataGenerationScheduledOrInProgress(boolean status) {
         this.meshDataGenerationScheduledOrInProgress = status;
     }
-      /**
-     * Cleans up resources when the chunk is unloaded.
+     /**
+      * Cleans up CPU-side resources. Safe to call from any thread.
+      */
+     public void cleanupCpuResources() {
+         freeMeshDataArrays();
+         vertexCount = 0;
+         dataReadyForGL = false;
+         // Reusable buffers are not cleaned here as they are tied to the GL context thread.
+     }
+ 
+     /**
+      * Cleans up GPU resources. MUST be called from the main OpenGL thread.
+      */
+     public void cleanupGpuResources() {
+         if (meshGenerated) {
+             cleanupMesh();
+             meshGenerated = false;
+         }
+ 
+         // Clean up reusable buffers, as they are direct NIO buffers
+         if (reusableVertexBuffer != null) {
+             MemoryUtil.memFree(reusableVertexBuffer);
+             reusableVertexBuffer = null;
+         }
+         if (reusableTextureBuffer != null) {
+             MemoryUtil.memFree(reusableTextureBuffer);
+             reusableTextureBuffer = null;
+         }
+         if (reusableNormalBuffer != null) {
+             MemoryUtil.memFree(reusableNormalBuffer);
+             reusableNormalBuffer = null;
+         }
+         if (reusableIsWaterBuffer != null) {
+             MemoryUtil.memFree(reusableIsWaterBuffer);
+             reusableIsWaterBuffer = null;
+         }
+         if (reusableIsAlphaTestedBuffer != null) {
+             MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
+             reusableIsAlphaTestedBuffer = null;
+         }
+         if (reusableIndexBuffer != null) {
+             MemoryUtil.memFree(reusableIndexBuffer);
+             reusableIndexBuffer = null;
+         }
+     }
+    
+    /**
+     * Frees mesh data arrays to reduce memory usage.
+     * This is critical for preventing memory leaks when mesh data is regenerated.
      */
-    public void cleanup() {
-        if (meshGenerated) {
-            cleanupMesh();
-            meshGenerated = false;
-        }
-        
-        // Clean up reusable buffers
-        if (reusableVertexBuffer != null) {
-            MemoryUtil.memFree(reusableVertexBuffer);
-            reusableVertexBuffer = null;
-        }
-        if (reusableTextureBuffer != null) {
-            MemoryUtil.memFree(reusableTextureBuffer);
-            reusableTextureBuffer = null;
-        }
-        if (reusableNormalBuffer != null) {
-            MemoryUtil.memFree(reusableNormalBuffer);
-            reusableNormalBuffer = null;
-        }
-        if (reusableIsWaterBuffer != null) {
-            MemoryUtil.memFree(reusableIsWaterBuffer);
-            reusableIsWaterBuffer = null;
-        }
-        if (reusableIsAlphaTestedBuffer != null) {
-            MemoryUtil.memFree(reusableIsAlphaTestedBuffer);
-            reusableIsAlphaTestedBuffer = null;
-        }
-        if (reusableIndexBuffer != null) {
-            MemoryUtil.memFree(reusableIndexBuffer);
-            reusableIndexBuffer = null;
-        }
-        
-        // Clean up mesh data
+    private void freeMeshDataArrays() {
         vertexData = null;
         textureData = null;
         normalData = null;
         isWaterData = null;
-        isAlphaTestedData = null; // Nullify isAlphaTestedData
+        isAlphaTestedData = null;
         indexData = null;
-        vertexCount = 0;
-        dataReadyForGL = false;
     }
 }

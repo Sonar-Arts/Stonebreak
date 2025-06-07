@@ -17,7 +17,7 @@ if not exist %TARGET_DIR%\com\stonebreak\Main.class (
 
 REM Run the game
 echo Starting Stonebreak...
-java -cp %TARGET_DIR% com.stonebreak.Main
+java -Xmx2g -cp %TARGET_DIR% com.stonebreak.Main
 
 :end
 pause

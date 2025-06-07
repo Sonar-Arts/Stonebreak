@@ -1,6 +1,8 @@
 package com.stonebreak;
 
-import java.util.List; // Added import
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Central class for accessing game state and resources.
@@ -26,6 +28,8 @@ public class Game {
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
+    private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
+    private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
@@ -400,7 +404,14 @@ public class Game {
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
-    }/**
+        
+        // Initialize memory leak detector
+        this.memoryLeakDetector = MemoryLeakDetector.getInstance();
+        this.memoryLeakDetector.startMonitoring();
+        System.out.println("Memory leak detection started.");
+    }
+    
+    /**
      * Updates the game state.
      */
     public void update() {
@@ -503,8 +514,9 @@ public class Game {
         
         // Update world (processes chunk loading, mesh building, etc.)
         if (world != null) {
-            world.update();
-        }
+            worldUpdateExecutor.submit(() -> world.update());
+                        world.updateMainThread();
+                    }
         
         // Update player
         if (player != null) {
@@ -930,6 +942,9 @@ public class Game {
      * Cleanup game resources.
      */
     public void cleanup() {
+        if (world != null) {
+            world.cleanup();
+        }
         if (pauseMenu != null) {
             pauseMenu.cleanup();
         }
@@ -939,6 +954,10 @@ public class Game {
         if (soundSystem != null) {
             soundSystem.cleanup();
         }
+        if (memoryLeakDetector != null) {
+            memoryLeakDetector.stopMonitoring();
+                    }
+                    worldUpdateExecutor.shutdownNow();
     }
     
     /**
@@ -953,16 +972,26 @@ public class Game {
         }
         lastDebugTime = currentTime;
         
+        // Use MemoryProfiler for more detailed memory monitoring
+        MemoryProfiler profiler = MemoryProfiler.getInstance();
+        profiler.checkMemoryPressure();
+        
         // Get memory information
         Runtime runtime = Runtime.getRuntime();
+        long maxMemory = runtime.maxMemory() / (1024 * 1024);
         long totalMemory = runtime.totalMemory() / (1024 * 1024);
         long freeMemory = runtime.freeMemory() / (1024 * 1024);
         long usedMemory = totalMemory - freeMemory;
+        double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
         
         // Get world information
         int chunkCount = 0;
+        int meshPendingCount = 0;
+        int glUploadPendingCount = 0;
         if (getInstance().world != null) {
             chunkCount = getInstance().world.getLoadedChunkCount();
+            meshPendingCount = getInstance().world.getPendingMeshBuildCount();
+            glUploadPendingCount = getInstance().world.getPendingGLUploadCount();
         }
         
         // Get player position
@@ -973,12 +1002,80 @@ public class Game {
         }
         
         // Display information
-        System.out.println("----- DEBUG INFO -----");
-        System.out.println("Memory: " + usedMemory + "MB / " + totalMemory + "MB");
-        System.out.println("Chunks loaded: " + chunkCount);
-        System.out.println("Player position: " + playerPos);
-        System.out.println("FPS: " + Math.round(1.0f / getInstance().deltaTime));
-        System.out.println("---------------------");
+        System.out.println("========== MEMORY & PERFORMANCE DEBUG ==========");
+        System.out.printf("Memory Usage: %d/%d MB (%.1f%% of max %d MB)%n",
+                         usedMemory, totalMemory, memoryUsagePercent, maxMemory);
+        System.out.printf("Free Memory: %d MB%n", freeMemory);
+        System.out.printf("Chunks: %d loaded, %d pending mesh, %d pending GL%n",
+                         chunkCount, meshPendingCount, glUploadPendingCount);
+        System.out.printf("Player Position: %s%n", playerPos);
+        System.out.printf("FPS: %d%n", Math.round(1.0f / getInstance().deltaTime));
+        System.out.printf("Delta Time: %.3f ms%n", getInstance().deltaTime * 1000);
+        
+        // Memory pressure warning
+        if (memoryUsagePercent > 80) {
+            System.out.println("⚠️  WARNING: High memory usage detected!");
+            profiler.takeSnapshot("high_memory_usage_" + currentTime);
+        }
+        if (memoryUsagePercent > 95) {
+            System.out.println("🚨 CRITICAL: Memory usage critical - consider garbage collection!");
+            profiler.takeSnapshot("critical_memory_before_gc_" + currentTime);
+            System.gc(); // Suggest garbage collection
+            profiler.takeSnapshot("critical_memory_after_gc_" + currentTime);
+        }
+        
+        System.out.println("===============================================");
+    }
+    
+    /**
+     * Logs detailed memory information for debugging memory leaks.
+     */
+    public static void logDetailedMemoryInfo(String context) {
+        Runtime runtime = Runtime.getRuntime();
+        long maxMemory = runtime.maxMemory() / (1024 * 1024);
+        long totalMemory = runtime.totalMemory() / (1024 * 1024);
+        long freeMemory = runtime.freeMemory() / (1024 * 1024);
+        long usedMemory = totalMemory - freeMemory;
+        
+        System.out.printf("[MEMORY] %s - Used: %dMB, Total: %dMB, Max: %dMB, Free: %dMB%n",
+                         context, usedMemory, totalMemory, maxMemory, freeMemory);
+    }
+    
+    /**
+     * Forces garbage collection and reports memory usage before/after.
+     */
+    public static void forceGCAndReport(String context) {
+        Runtime runtime = Runtime.getRuntime();
+        long beforeGC = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
+        
+        System.out.printf("[GC] %s - Memory before GC: %dMB%n", context, beforeGC);
+        System.gc();
+        
+        // Wait a moment for GC to complete
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
+        long afterGC = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
+        long freed = beforeGC - afterGC;
+        
+        System.out.printf("[GC] %s - Memory after GC: %dMB (freed %dMB)%n", context, afterGC, freed);
+    }
+    
+    /**
+     * Reports allocation statistics using the memory profiler.
+     */
+    public static void reportAllocations() {
+        MemoryProfiler.getInstance().reportAllocations();
+    }
+    
+    /**
+     * Prints detailed memory profiler information.
+     */
+    public static void printDetailedMemoryProfile() {
+        MemoryProfiler.getInstance().printDetailedMemoryInfo();
     }
     
     /**
@@ -993,5 +1090,23 @@ public class Game {
      */
     public boolean isCheatsEnabled() {
         return cheatsEnabled;
+    }
+    
+    /**
+     * Gets the memory leak detector.
+     */
+    public static MemoryLeakDetector getMemoryLeakDetector() {
+        return getInstance().memoryLeakDetector;
+    }
+    
+    /**
+     * Triggers manual memory leak analysis.
+     */
+    public static void triggerMemoryLeakAnalysis() {
+        if (getInstance().memoryLeakDetector != null) {
+            getInstance().memoryLeakDetector.triggerLeakAnalysis();
+        } else {
+            System.err.println("Memory leak detector not initialized!");
+        }
     }
 }

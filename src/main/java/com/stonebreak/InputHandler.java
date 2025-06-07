@@ -13,9 +13,9 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL; // Kept for Chat
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
@@ -58,6 +58,9 @@ public class InputHandler {
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
     private boolean chatKeyPressed = false; // Added for chat toggle
     private boolean qKeyPressed = false; // Added for item dropping
+    private boolean f3KeyPressed = false; // Added for debug info
+    private boolean f4KeyPressed = false; // Added for memory leak analysis
+    private boolean f5KeyPressed = false; // Added for detailed memory profiling
     
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
@@ -143,6 +146,7 @@ public class InputHandler {
             handleInventoryKey();   // Toggles inventoryScreen, game 'paused' state, sets cursor via Game.toggleInventoryScreen
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
+            handleDebugKeys();      // Handle debug and memory profiling keys
 
             // Now check which UI, if any, has primary input focus
             GameState currentGameState = Game.getInstance().getState();
@@ -401,8 +405,42 @@ public class InputHandler {
     }
  
     // private void handleRecipeBookKey() { ... } // Method removed
+    
+    private void handleDebugKeys() {
+        // F3 - Toggle debug info display
+        boolean isF3Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F3) == GLFW_PRESS;
+        if (isF3Pressed && !f3KeyPressed) {
+            f3KeyPressed = true;
+            Game.displayDebugInfo();
+        } else if (!isF3Pressed) {
+            f3KeyPressed = false;
+        }
+        
+        // F4 - Trigger memory leak analysis
+        boolean isF4Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F4) == GLFW_PRESS;
+        if (isF4Pressed && !f4KeyPressed) {
+            f4KeyPressed = true;
+            System.out.println("[DEBUG] Manual memory leak analysis triggered by F4 key...");
+            Game.triggerMemoryLeakAnalysis();
+        } else if (!isF4Pressed) {
+            f4KeyPressed = false;
+        }
+        
+        // F5 - Detailed memory profiling
+        boolean isF5Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F5) == GLFW_PRESS;
+        if (isF5Pressed && !f5KeyPressed) {
+            f5KeyPressed = true;
+            System.out.println("[DEBUG] Detailed memory profiling triggered by F5 key...");
+            MemoryProfiler profiler = MemoryProfiler.getInstance();
+            profiler.takeSnapshot("manual_f5_" + System.currentTimeMillis());
+            profiler.reportDetailedMemoryStats();
+            Game.forceGCAndReport("F5 Manual GC");
+        } else if (!isF5Pressed) {
+            f5KeyPressed = false;
+        }
+    }
  
-      private void handleMouseLook(float xOffset, float yOffset) {
+    private void handleMouseLook(float xOffset, float yOffset) {
         // Only process mouse movement if the game is not paused, chat is not open, and workbench is not open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
@@ -746,7 +784,6 @@ public class InputHandler {
             if (action == GLFW_PRESS || action == GLFW_REPEAT) {
                 recipeBookScreen.handleKeyInput(key, action);
             }
-            return; // Block other key processing when recipe book is handling input
         }
         
         // If chat and recipe book are not handling input, allow normal input handling to continue
