@@ -1204,6 +1204,9 @@ public class Game {
                 }
                 
                 // Generate chunks in expanding rings
+                long lastProgressUpdate = System.currentTimeMillis();
+                int chunksGenerated = 0;
+                
                 for (int ring = 0; ring <= renderDistance; ring++) {
                     for (int x = playerChunkX - ring; x <= playerChunkX + ring; x++) {
                         for (int z = playerChunkZ - ring; z <= playerChunkZ + ring; z++) {
@@ -1212,13 +1215,21 @@ public class Game {
                                 z == playerChunkZ - ring || z == playerChunkZ + ring) {
                                 
                                 world.getChunkAt(x, z); // This generates the chunk
+                                chunksGenerated++;
                                 
-                                // Add small delay to show progress and prevent excessive CPU usage
-                                try {
-                                    Thread.sleep(50);
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    throw e; // Re-throw to exit the generation loop
+                                // Rate limiting: pause every few chunks to prevent excessive CPU usage
+                                if (chunksGenerated % 3 == 0) {
+                                    long currentTime = System.currentTimeMillis();
+                                    if (currentTime - lastProgressUpdate < 50) {
+                                        // Only sleep if we're generating too fast
+                                        try {
+                                            Thread.sleep(50 - (currentTime - lastProgressUpdate));
+                                        } catch (InterruptedException e) {
+                                            Thread.currentThread().interrupt();
+                                            throw e;
+                                        }
+                                    }
+                                    lastProgressUpdate = System.currentTimeMillis();
                                 }
                             }
                         }
