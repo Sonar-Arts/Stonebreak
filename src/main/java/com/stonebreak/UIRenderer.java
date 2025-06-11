@@ -941,7 +941,7 @@ public class UIRenderer {
     }
     
     // Helper method to create NVGColor
-    private NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {
+    public NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {
         return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, color);
     }    /**
      * Calculates the width of a given text string using a specific font and size.

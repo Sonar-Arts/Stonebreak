@@ -1014,6 +1014,12 @@ public class Renderer {
         // All complex UI (inventory, pause menu, chat) is now rendered in Main.java using UIRenderer
         // This renderUI() method only handles simple OpenGL-based UI elements like crosshair
         
+        // Render debug overlay if enabled (MOVED to Main.java render loop)
+        // DebugOverlay debugOverlay = Game.getDebugOverlay();
+        // if (debugOverlay != null && debugOverlay.isVisible()) {
+        //     debugOverlay.render(this, Game.getPlayer(), Game.getWorld());
+        // }
+        
         // Render depth curtains for UI elements to prevent block drops from rendering over them
         Game gameInstance = Game.getInstance();
         InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();

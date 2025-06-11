@@ -80,6 +80,12 @@ public class Chunk {
     public void buildAndPrepareMeshData(World world) {
         // meshDataGenerationScheduledOrInProgress is true, set by World.
         try {
+            // Update loading progress
+            Game game = Game.getInstance();
+            if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
+                game.getLoadingScreen().updateProgress("Meshing Chunk");
+            }
+            
             generateMeshData(world);
             this.dataReadyForGL = true; // Mark data as ready for GL upload ONLY on success
         } catch (Exception e) {

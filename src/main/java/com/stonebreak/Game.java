@@ -4,6 +4,11 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED;
+import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
+import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
+
 /**
  * Central class for accessing game state and resources.
  */
@@ -29,6 +34,8 @@ public class Game {
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
+    private DebugOverlay debugOverlay; // Debug overlay (F3)
+    private LoadingScreen loadingScreen; // Loading screen for world generation
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     
     // Game state
@@ -138,6 +145,7 @@ public class Game {
         this.uiRenderer.init();
         this.mainMenu = new MainMenu(this.uiRenderer);
         this.settingsMenu = new SettingsMenu(this.uiRenderer);
+        this.loadingScreen = new LoadingScreen(this.uiRenderer);
 
         // Initialize CraftingManager
         this.craftingManager = new CraftingManager();
@@ -409,6 +417,10 @@ public class Game {
         this.memoryLeakDetector = MemoryLeakDetector.getInstance();
         this.memoryLeakDetector.startMonitoring();
         System.out.println("Memory leak detection started.");
+        
+        // Initialize debug overlay
+        this.debugOverlay = new DebugOverlay();
+        System.out.println("Debug overlay initialized (F3 to toggle).");
     }
     
     /**
@@ -436,6 +448,11 @@ public class Game {
                     // mainMenu.update(deltaTime); // If main menu needs updates
                 }
                 return; // Don't update game world
+            }
+            case LOADING -> {
+                // Loading screen updates (if any)
+                // World generation progress is handled elsewhere
+                return; // Don't update game world during loading
             }
             case PLAYING -> {
                 if (paused) {
@@ -719,12 +736,13 @@ public class Game {
         if (windowHandle != 0) {
             // Unified logic for states that require cursor and game pause
             if (state == GameState.MAIN_MENU ||
+                state == GameState.LOADING ||
                 state == GameState.SETTINGS ||
                 state == GameState.PAUSED ||
                 state == GameState.WORKBENCH_UI ||
                 state == GameState.RECIPE_BOOK_UI) {
                 
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+                glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
                 paused = true;
                 
                 // Reset mouse position if cursor was previously hidden (e.g., coming from unencumbered PLAYING state)
@@ -740,19 +758,28 @@ public class Game {
 
             } else if (state == GameState.PLAYING) {
                 // Transitioning to PLAYING state (e.g., from a menu, or closing workbench/recipe book/pause menu)
-                // Hide cursor and unpause game logic *only if* no overlay UI (inventory, chat) is active.
+                // Always unpause when entering PLAYING state from non-PLAYING states like LOADING
+                // Only keep paused if inventory is explicitly visible
+                boolean shouldUnpause = (inventoryScreen == null || !inventoryScreen.isVisible());
+                
+                if (shouldUnpause) {
+                    paused = false;
+                }
+                
+                // Hide cursor and set up input only if no overlay UI (inventory, chat) is active
                 if ((inventoryScreen == null || !inventoryScreen.isVisible()) &&
                     (chatSystem == null || !chatSystem.isOpen())) {
                     
-                    org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-                    // Ensure game logic is unpaused only if inventory isn't forcing a pause.
-                    // `Game.paused` is used by InputHandler to control player movement updates.
-                    // `toggleInventoryScreen` sets `Game.paused = true` when inventory opens.
-                    if (inventoryScreen == null || !inventoryScreen.isVisible()) { // Double check inventory before unpausing
-                         paused = false;
-                    }
+                    glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                    
                     if (this.inputHandler != null) {
-                        this.inputHandler.resetMousePosition();
+                        // Don't reset mouse position when transitioning from LOADING to PLAYING
+                        // as this sets firstMouse=true and causes the next movement to be ignored
+                        if (this.previousGameState != GameState.LOADING) {
+                            this.inputHandler.resetMousePosition();
+                        }
+                        // Clear any mouse button states that might interfere with the transition
+                        this.inputHandler.clearMouseButtonStates();
                     }
                 } else {
                     // If inventory IS visible, it manages 'paused = true' and 'CURSOR_NORMAL'.
@@ -1107,6 +1134,133 @@ public class Game {
             getInstance().memoryLeakDetector.triggerLeakAnalysis();
         } else {
             System.err.println("Memory leak detector not initialized!");
+        }
+    }
+    
+    /**
+     * Gets the debug overlay.
+     */
+    public static DebugOverlay getDebugOverlay() {
+        return getInstance().debugOverlay;
+    }
+    
+    /**
+     * Toggles the debug overlay visibility.
+     */
+    public static void toggleDebugOverlay() {
+        if (getInstance().debugOverlay != null) {
+            getInstance().debugOverlay.toggleVisibility();
+            System.out.println("Debug overlay " + (getInstance().debugOverlay.isVisible() ? "enabled" : "disabled"));
+        }
+    }
+    
+    /**
+     * Gets the loading screen.
+     */
+    public LoadingScreen getLoadingScreen() {
+        return loadingScreen;
+    }
+    
+    /**
+     * Starts world generation with loading screen.
+     * This method should be called when transitioning from main menu to game.
+     */
+    public void startWorldGeneration() {
+        if (loadingScreen != null) {
+            loadingScreen.show(); // This sets state to LOADING
+            System.out.println("Started world generation with loading screen");
+            
+            // Trigger initial world generation in a separate thread
+            new Thread(this::performInitialWorldGeneration).start();
+        }
+    }
+    
+    /**
+     * Performs initial world generation with progress updates.
+     * This runs in a background thread while the loading screen is displayed.
+     */
+    private void performInitialWorldGeneration() {
+        try {
+            // Update progress through the loading screen
+            if (loadingScreen != null) {
+                loadingScreen.updateProgress("Initializing Noise System");
+            }
+            
+            // Give a brief moment for the loading screen to render
+            Thread.sleep(100);
+            
+            // Generate initial chunks around spawn point (0, 0)
+            if (world != null && player != null) {
+                // Set player position first
+                player.setPosition(0, 100, 0);
+                
+                // Generate chunks around spawn
+                int playerChunkX = 0;
+                int playerChunkZ = 0;
+                int renderDistance = 4; // Smaller initial area
+                
+                if (loadingScreen != null) {
+                    loadingScreen.updateProgress("Generating Base Terrain Shape");
+                }
+                
+                // Generate chunks in expanding rings
+                for (int ring = 0; ring <= renderDistance; ring++) {
+                    for (int x = playerChunkX - ring; x <= playerChunkX + ring; x++) {
+                        for (int z = playerChunkZ - ring; z <= playerChunkZ + ring; z++) {
+                            // Only generate chunks on the edge of the current ring
+                            if (ring == 0 || x == playerChunkX - ring || x == playerChunkX + ring ||
+                                z == playerChunkZ - ring || z == playerChunkZ + ring) {
+                                
+                                world.getChunkAt(x, z); // This generates the chunk
+                                
+                                // Add small delay to show progress and prevent excessive CPU usage
+                                try {
+                                    Thread.sleep(50);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    throw e; // Re-throw to exit the generation loop
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Update progress based on ring completion
+                    if (loadingScreen != null) {
+                        switch (ring) {
+                            case 1 -> loadingScreen.updateProgress("Determining Biomes");
+                            case 2 -> loadingScreen.updateProgress("Applying Biome Materials");
+                            case 3 -> loadingScreen.updateProgress("Adding Surface Decorations & Details");
+                            case 4 -> loadingScreen.updateProgress("Meshing Chunk");
+                        }
+                    }
+                }
+                
+                // Give time for all chunks to finish processing
+                Thread.sleep(500);
+                
+                // Complete world generation
+                completeWorldGeneration();
+                
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("World generation interrupted: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Error during world generation: " + e.getMessage());
+            System.err.println("World generation error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            // Still complete the generation to avoid being stuck
+            completeWorldGeneration();
+        }
+    }
+    
+    /**
+     * Completes world generation and transitions to playing.
+     * This method should be called when initial world generation is complete.
+     */
+    public void completeWorldGeneration() {
+        if (loadingScreen != null) {
+            loadingScreen.hide(); // This sets state to PLAYING
+            System.out.println("Completed world generation, transitioning to playing");
         }
     }
 }

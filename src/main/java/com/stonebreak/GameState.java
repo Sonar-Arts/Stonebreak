@@ -2,6 +2,7 @@ package com.stonebreak;
 
 public enum GameState {
     MAIN_MENU,
+    LOADING,         // State for world generation loading screen
     PLAYING,
     PAUSED,
     SETTINGS,

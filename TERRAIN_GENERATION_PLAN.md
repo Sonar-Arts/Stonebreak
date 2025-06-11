@@ -23,11 +23,13 @@ The following modifications will be made to `src/main/java/com/stonebreak/World.
 
 -   The `continentalnessNoise` generator will be initialized with a new seed (`seed + 2`).
 -   The `terrainSpline` will be instantiated and populated with the following control points:
-    -   `(-1.0, 20)` - Deep ocean floor
+    -   `(-1.0, 70)` - Islands (raised from 20 to simulate islands above sea level)
+    -   `(-0.8, 20)` - Deep ocean floor (new point for preserved deep ocean areas)
     -   `(-0.4, 60)` - Approaching coast
     -   `(-0.2, 70)` - "Just above sea level"
     -   `(0.1, 75)` - Lowlands
     -   `(0.3, 120)` - Mountain foothills
+    -   `(0.7, 140)` - Common foothills (new point for enhanced foothill generation)
     -   `(1.0, 200)` - High peaks
 
 ### Update `generateTerrainHeight(int x, int z)`:

@@ -407,11 +407,11 @@ public class InputHandler {
     // private void handleRecipeBookKey() { ... } // Method removed
     
     private void handleDebugKeys() {
-        // F3 - Toggle debug info display
+        // F3 - Toggle debug overlay
         boolean isF3Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F3) == GLFW_PRESS;
         if (isF3Pressed && !f3KeyPressed) {
             f3KeyPressed = true;
-            Game.displayDebugInfo();
+            Game.toggleDebugOverlay();
         } else if (!isF3Pressed) {
             f3KeyPressed = false;
         }
@@ -444,10 +444,12 @@ public class InputHandler {
         // Only process mouse movement if the game is not paused, chat is not open, and workbench is not open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
         
-        if (Game.getInstance().isPaused() || 
+        if (Game.getInstance().isPaused() ||
             (chatSystem != null && chatSystem.isOpen()) ||
-            (workbenchScreen != null && workbenchScreen.isVisible())) {
+            (workbenchScreen != null && workbenchScreen.isVisible()) ||
+            (inventoryScreen != null && inventoryScreen.isVisible())) {
             return;
         }
         
@@ -695,6 +697,7 @@ public class InputHandler {
         } else if (workbenchScreen != null && workbenchScreen.isVisible()) {
             // Don't process mouse look when workbench is open - cursor should be free for UI interaction
         } else {
+            // Always try to handle mouse look - let handleMouseLook decide if it should process
             handleMouseLook(xOffset, yOffset);
         }
     }

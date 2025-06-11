@@ -65,12 +65,14 @@ public class World {
         this.chunkManager = new ChunkManager(this, RENDER_DISTANCE);
 
         this.terrainSpline = new SplineInterpolator();
-        terrainSpline.addPoint(-1.0, 20);
-        terrainSpline.addPoint(-0.4, 60);
-        terrainSpline.addPoint(-0.2, 70);
-        terrainSpline.addPoint(0.1, 75);
-        terrainSpline.addPoint(0.3, 120);
-        terrainSpline.addPoint(1.0, 200);
+        terrainSpline.addPoint(-1.0, 70);  // Islands (changed from 20 to simulate islands above sea level)
+        terrainSpline.addPoint(-0.8, 20);  // Deep ocean (new point for preserved deep ocean areas)
+        terrainSpline.addPoint(-0.4, 60);  // Approaching coast
+        terrainSpline.addPoint(-0.2, 70);  // Just above sea level
+        terrainSpline.addPoint(0.1, 75);   // Lowlands
+        terrainSpline.addPoint(0.3, 120);  // Mountain foothills
+        terrainSpline.addPoint(0.7, 140);  // Common foothills (new point for enhanced foothill generation)
+        terrainSpline.addPoint(1.0, 200);  // High peaks
         
         // Initialize thread pool for chunk mesh building
         // Use half available processors, minimum 1
@@ -84,6 +86,16 @@ public class World {
         this.blockDropManager = new BlockDropManager(this);
         
         System.out.println("Creating world with seed: " + seed + ", using " + numThreads + " mesh builder threads.");
+    }
+    
+    /**
+     * Updates loading progress during world generation.
+     */
+    private void updateLoadingProgress(String stageName) {
+        Game game = Game.getInstance();
+        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
+            game.getLoadingScreen().updateProgress(stageName);
+        }
     }
     
     /**
@@ -326,6 +338,7 @@ public class World {
      * Uses chunk.setBlock() for local block placement.
      */
     private Chunk generateBareChunk(int chunkX, int chunkZ) {
+        updateLoadingProgress("Generating Base Terrain Shape");
         Chunk chunk = new Chunk(chunkX, chunkZ);
         
         // Generate terrain
@@ -337,9 +350,17 @@ public class World {
                 
                 // Generate height map using noise
                 int height = generateTerrainHeight(worldX, worldZ);
+                
+                // Update progress for biome determination
+                if (x == 0 && z == 0) {
+                    updateLoadingProgress("Determining Biomes");
+                }
                 BiomeType biome = getBiomeType(worldX, worldZ);
                 
                 // Generate blocks based on height and biome
+                if (x == 8 && z == 8) { // Update progress mid-chunk
+                    updateLoadingProgress("Applying Biome Materials");
+                }
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     BlockType blockType;
                     
@@ -396,6 +417,8 @@ public class World {
             return; // Already populated or null chunk
         }
 
+        updateLoadingProgress("Adding Surface Decorations & Details");
+        
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
@@ -905,6 +928,14 @@ public class World {
                 return BiomeType.PLAINS;
             }
         }
+    }
+    
+    /**
+     * Gets the continentalness value at the specified world position.
+     * This is the same value used for terrain height generation.
+     */
+    public float getContinentalnessAt(int x, int z) {
+        return continentalnessNoise.noise(x / 800.0f, z / 800.0f);
     }
     
     /**

@@ -189,25 +189,20 @@ public class Main {
             }
         });
           // Setup cursor position callback for menu navigation and player mouse look
-        glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
-            Game game = Game.getInstance();
-            // Always update InputHandler's mouse position if it exists,
-            // as various UI screens and game states might need it.
-            if (inputHandler != null) {
-                inputHandler.updateMousePosition((float)xpos, (float)ypos);
-            }
-
-            // Specific handling for main menu hover, which might not use InputHandler directly
-            if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
-                game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
-            } else if (game.getState() == GameState.PLAYING && inputHandler != null) {
-                // Handle player mouse look by updating InputHandler's mouse position
-                inputHandler.updateMousePosition((float)xpos, (float)ypos);
-            }
-            // Note: Player mouse look during GameState.PLAYING is handled by
-            // player.processMouseMovement which uses InputHandler's deltaMouse values,
-            // which are correctly updated if updateMousePosition is called.
-        });
+          glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
+              Game game = Game.getInstance();
+              
+              // Always update InputHandler's mouse position if it exists,
+              // as various UI screens and game states might need it.
+              if (inputHandler != null) {
+                  inputHandler.updateMousePosition((float)xpos, (float)ypos);
+              }
+  
+              // Specific handling for main menu hover, which might not use InputHandler directly
+              if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
+                  game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
+              }
+          });
         
         // Get the thread stack and push a new frame
         try (MemoryStack stack = stackPush()) {
@@ -334,6 +329,10 @@ public class Main {
                         game.getMainMenu().handleInput(window);
                     }
                 }
+                case LOADING -> {
+                    // Loading screen - no input handling needed
+                    // User should wait for world generation to complete
+                }
                 case SETTINGS -> {
                     // Handle settings menu input
                     if (game.getSettingsMenu() != null) {
@@ -403,6 +402,14 @@ public class Main {
                 if (uiRenderer != null && game.getMainMenu() != null) {
                     uiRenderer.beginFrame(width, height, 1.0f);
                     game.getMainMenu().render(width, height);
+                    uiRenderer.endFrame();
+                }
+            }
+            case LOADING -> {
+                // Render loading screen using NanoVG
+                if (uiRenderer != null && game.getLoadingScreen() != null) {
+                    uiRenderer.beginFrame(width, height, 1.0f);
+                    game.getLoadingScreen().render(width, height);
                     uiRenderer.endFrame();
                 }
             }
@@ -492,6 +499,16 @@ public class Main {
                     // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
                     renderer.renderPauseMenuDepthCurtain();
                 }
+            }
+        }
+        
+        // Render debug overlay last, so it's on top of everything
+        DebugOverlay debugOverlay = Game.getDebugOverlay();
+        if (debugOverlay != null && debugOverlay.isVisible()) {
+            if (uiRenderer != null) {
+                uiRenderer.beginFrame(width, height, 1.0f);
+                debugOverlay.render(uiRenderer);
+                uiRenderer.endFrame();
             }
         }
     }
