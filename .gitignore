@@ -69,6 +69,10 @@ nbdist/
 ehthumbs.db
 Thumbs.db
 
+# Script files
+*.bat
+*.ps1
+
 # Project specific
 OpenJDK-24/
 src/main/java/com/stonebreak/OpenJDK-24/
