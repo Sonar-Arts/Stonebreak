@@ -60,15 +60,55 @@ public class UIRenderer {
     }
     
     private void loadFonts() {
-        fontRegular = nvgCreateFont(vg, "sans", "src/main/resources/fonts/Roboto-VariableFont_wdth,wght.ttf");
-        fontBold = nvgCreateFont(vg, "sans-bold", "src/main/resources/fonts/Roboto-VariableFont_wdth,wght.ttf");
-        fontMinecraft = nvgCreateFont(vg, "minecraft", "src/main/resources/fonts/Minecraft.ttf");
+        // Try multiple paths for font loading to handle different working directories
+        String[] fontPaths = {
+            "src/main/resources/fonts/Roboto-VariableFont_wdth,wght.ttf",
+            "Stonebreak/src/main/resources/fonts/Roboto-VariableFont_wdth,wght.ttf",
+            "./src/main/resources/fonts/Roboto-VariableFont_wdth,wght.ttf",
+            "resources/fonts/Roboto-VariableFont_wdth,wght.ttf"
+        };
+        
+        String[] minecraftPaths = {
+            "src/main/resources/fonts/Minecraft.ttf",
+            "Stonebreak/src/main/resources/fonts/Minecraft.ttf", 
+            "./src/main/resources/fonts/Minecraft.ttf",
+            "resources/fonts/Minecraft.ttf"
+        };
+        
+        // Try loading regular font
+        for (String path : fontPaths) {
+            fontRegular = nvgCreateFont(vg, "sans", path);
+            if (fontRegular != -1) {
+                System.out.println("Successfully loaded regular font from: " + path);
+                break;
+            }
+        }
+        
+        // Try loading bold font (same as regular for now)
+        for (String path : fontPaths) {
+            fontBold = nvgCreateFont(vg, "sans-bold", path);
+            if (fontBold != -1) {
+                System.out.println("Successfully loaded bold font from: " + path);
+                break;
+            }
+        }
+        
+        // Try loading Minecraft font
+        for (String path : minecraftPaths) {
+            fontMinecraft = nvgCreateFont(vg, "minecraft", path);
+            if (fontMinecraft != -1) {
+                System.out.println("Successfully loaded Minecraft font from: " + path);
+                break;
+            }
+        }
         
         if (fontRegular == -1 || fontBold == -1) {
             System.err.println("Warning: Could not load regular fonts, using default");
+            System.err.println("Current working directory: " + System.getProperty("user.dir"));
         }
         if (fontMinecraft == -1) {
             System.err.println("Warning: Could not load Minecraft font, using regular font for title");
+            System.err.println("Current working directory: " + System.getProperty("user.dir"));
         }
     }
     
@@ -173,8 +213,18 @@ public class UIRenderer {
     
     private void drawMinecraftTitle(float centerX, float centerY, String title) {
         try (MemoryStack stack = stackPush()) {
-            // Use Minecraft font if available, otherwise fall back to bold
-            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans-bold";
+            // Use Minecraft font if available, otherwise fall back to bold, then regular
+            String fontName;
+            if (fontMinecraft != -1) {
+                fontName = "minecraft";
+            } else if (fontBold != -1) {
+                fontName = "sans-bold";
+            } else if (fontRegular != -1) {
+                fontName = "sans";
+            } else {
+                // Ultimate fallback to system default
+                fontName = "default";
+            }
             
             // Draw enhanced 3D shadow effect for blocky appearance
             for (int i = 6; i >= 0; i--) {
@@ -284,8 +334,18 @@ public class UIRenderer {
             nvgStrokeColor(vg, nvgRGBA(20, 20, 20, 255, NVGColor.malloc(stack)));
             nvgStroke(vg);
             
-            // Button text with Minecraft font if available
-            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans";
+            // Button text with proper font fallback
+            String fontName;
+            if (fontMinecraft != -1) {
+                fontName = "minecraft";
+            } else if (fontRegular != -1) {
+                fontName = "sans";
+            } else if (fontBold != -1) {
+                fontName = "sans-bold";
+            } else {
+                // Ultimate fallback to system default
+                fontName = "default";
+            }
             nvgFontSize(vg, UI_FONT_SIZE);
             nvgFontFace(vg, fontName);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
@@ -388,8 +448,17 @@ public class UIRenderer {
                     nvgStroke(vg);
                 }
                 
-                // Draw item text
-                String fontName = (fontMinecraft != -1) ? "minecraft" : "sans";
+                // Draw item text with proper font fallback
+                String fontName;
+                if (fontMinecraft != -1) {
+                    fontName = "minecraft";
+                } else if (fontRegular != -1) {
+                    fontName = "sans";
+                } else if (fontBold != -1) {
+                    fontName = "sans-bold";
+                } else {
+                    fontName = "default";
+                }
                 nvgFontSize(vg, 16);
                 nvgFontFace(vg, fontName);
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
@@ -449,8 +518,17 @@ public class UIRenderer {
     
     private void drawPauseMenuTitle(float centerX, float centerY, String title) {
         try (MemoryStack stack = stackPush()) {
-            // Use Minecraft font if available, otherwise fall back to bold
-            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans-bold";
+            // Use Minecraft font if available, otherwise fall back to bold, then regular
+            String fontName;
+            if (fontMinecraft != -1) {
+                fontName = "minecraft";
+            } else if (fontBold != -1) {
+                fontName = "sans-bold";
+            } else if (fontRegular != -1) {
+                fontName = "sans";
+            } else {
+                fontName = "default";
+            }
             
             // Draw enhanced 3D shadow effect optimized for pause menu
             for (int i = 4; i >= 0; i--) {
@@ -739,7 +817,16 @@ public class UIRenderer {
     
     private void drawSettingsTitle(float centerX, float centerY, String title) {
         try (MemoryStack stack = stackPush()) {
-            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans-bold";
+            String fontName;
+            if (fontMinecraft != -1) {
+                fontName = "minecraft";
+            } else if (fontBold != -1) {
+                fontName = "sans-bold";
+            } else if (fontRegular != -1) {
+                fontName = "sans";
+            } else {
+                fontName = "default";
+            }
             
             for (int i = 4; i >= 0; i--) {
                 nvgFontSize(vg, 36);
@@ -852,8 +939,17 @@ public class UIRenderer {
             nvgStrokeColor(vg, nvgRGBA(20, 20, 20, 255, NVGColor.malloc(stack)));
             nvgStroke(vg);
             
-            // Draw label at top of button
-            String fontName = (fontMinecraft != -1) ? "minecraft" : "sans";
+            // Draw label at top of button with proper font fallback
+            String fontName;
+            if (fontMinecraft != -1) {
+                fontName = "minecraft";
+            } else if (fontRegular != -1) {
+                fontName = "sans";
+            } else if (fontBold != -1) {
+                fontName = "sans-bold";
+            } else {
+                fontName = "default";
+            }
             nvgFontSize(vg, UI_FONT_SIZE);
             nvgFontFace(vg, fontName);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
