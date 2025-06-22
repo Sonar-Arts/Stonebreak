@@ -713,6 +713,12 @@ public class RecipeBookScreen {
     public void onOpen() {
         this.visible = true;
         init(); // Load recipes, reset search, scroll
+        
+        // Update mouse capture state when recipe book opens
+        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.updateCaptureState();
+        }
     }
 
     public void onClose() {
@@ -726,6 +732,12 @@ public class RecipeBookScreen {
         currentRecipeVariations.clear();
         currentVariationIndex = 0;
         // scrollOffset = 0; // Optionally reset scroll on close
+        
+        // Update mouse capture state when recipe book closes
+        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.updateCaptureState();
+        }
     }
     
     /**

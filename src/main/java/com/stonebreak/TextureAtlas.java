@@ -80,6 +80,7 @@ public class TextureAtlas {
     private static final int ELM_LEAVES_ATLAS_X = 6;
     private static final int ELM_LEAVES_ATLAS_Y = 3;
     
+    
     /**
      * Creates a texture atlas with the specified texture size.
      * The texture size is the number of tiles in the atlas in each dimension.
@@ -1882,6 +1883,7 @@ public class TextureAtlas {
                         }
                     }
                 }
+
 
                 int tileIndex = tileY * textureSize + tileX;
                   switch (tileIndex % 12) { // Ensure this switch is only hit if not handled above

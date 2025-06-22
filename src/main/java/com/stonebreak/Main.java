@@ -6,8 +6,6 @@ import org.lwjgl.Version;
 import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.GLFW_CONTEXT_VERSION_MAJOR;
 import static org.lwjgl.glfw.GLFW.GLFW_CONTEXT_VERSION_MINOR;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
 import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
 import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_COMPAT_PROFILE;
@@ -30,9 +28,9 @@ import static org.lwjgl.glfw.GLFW.glfwSetCharCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetCursorPosCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetErrorCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetFramebufferSizeCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.glfwSetKeyCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetMouseButtonCallback;
+import static org.lwjgl.glfw.GLFW.glfwSetWindowFocusCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowPos;
 import static org.lwjgl.glfw.GLFW.glfwShowWindow;
 import static org.lwjgl.glfw.GLFW.glfwSwapBuffers;
@@ -188,21 +186,39 @@ public class Main {
                 inputHandler.processMouseButton(button, action, mods);
             }
         });
-          // Setup cursor position callback for menu navigation and player mouse look
-          glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
-              Game game = Game.getInstance();
-              
-              // Always update InputHandler's mouse position if it exists,
-              // as various UI screens and game states might need it.
-              if (inputHandler != null) {
-                  inputHandler.updateMousePosition((float)xpos, (float)ypos);
-              }
-  
-              // Specific handling for main menu hover, which might not use InputHandler directly
-              if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
-                  game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
-              }
-          });
+          // Setup cursor position callback
+        glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
+            Game game = Game.getInstance();
+            
+            // Process mouse movement for camera look (if mouse is captured)
+            MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
+            if (mouseCaptureManager != null) {
+                mouseCaptureManager.processMouseMovement(xpos, ypos);
+            }
+            
+            // Update InputHandler for UI interactions (always needed for UI)
+            if (inputHandler != null) {
+                inputHandler.updateMousePosition((float)xpos, (float)ypos);
+            }
+            
+            // Handle main menu hover events
+            if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
+                game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
+            }
+        });
+        
+        // Setup window focus callback to handle mouse capture on focus changes
+        glfwSetWindowFocusCallback(window, (win, focused) -> {
+            Game game = Game.getInstance();
+            MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
+            if (mouseCaptureManager != null) {
+                if (focused) {
+                    mouseCaptureManager.updateCaptureState();
+                } else {
+                    mouseCaptureManager.temporaryRelease();
+                }
+            }
+        });
         
         // Get the thread stack and push a new frame
         try (MemoryStack stack = stackPush()) {
@@ -235,8 +251,6 @@ public class Main {
         // Disable v-sync since we're implementing our own FPS limiter
         glfwSwapInterval(0);
         
-        // Start with cursor visible for main menu
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         
         // Make the window visible
         glfwShowWindow(window);
@@ -281,7 +295,7 @@ public class Main {
   
             // Initialize the Game singleton
           // Pass inputHandler to Game's init method
-          Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler);
+          Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler, window);
           Game.getInstance().setWindowDimensions(width, height);
           profiler.takeSnapshot("after_game_init");
           
@@ -314,6 +328,7 @@ public class Main {
             
             // Poll for window events
             glfwPollEvents();
+            
             
             // Update Game singleton (for delta time)
             Game.getInstance().update();
@@ -553,6 +568,7 @@ public class Main {
     public static long getWindowHandle() {
         return instance != null ? instance.window : 0;
     }
+    
     
     /**
      * Return the input handler.

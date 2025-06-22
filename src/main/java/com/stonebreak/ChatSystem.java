@@ -50,12 +50,24 @@ public class ChatSystem {
             currentInput.setLength(0);
             blinkTimer = 0.0f;
             showCursor = true;
+            
+            // Update mouse capture state when chat opens - force immediate update
+            MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+            if (mouseCaptureManager != null) {
+                mouseCaptureManager.forceUpdate();
+            }
         }
     }
     
     public void closeChat() {
         isOpen = false;
         currentInput.setLength(0);
+        
+        // Update mouse capture state when chat closes - force immediate update
+        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.forceUpdate();
+        }
     }
     
     public boolean isOpen() {

@@ -56,19 +56,10 @@ public class LoadingScreen {
 
     public void hide() {
         this.visible = false;
-        // Potentially transition to PLAYING state or other appropriate state
-        // This will likely be called after world generation completes.
+        
+        // Transition to PLAYING state
         Game gameInstance = Game.getInstance();
         gameInstance.setState(GameState.PLAYING);
-        
-        // Critical fix: Force the input handler to reset firstMouse AFTER the state transition
-        // This ensures the next mouse movement will be processed properly
-        InputHandler inputHandler = gameInstance.getInputHandler();
-        if (inputHandler != null) {
-            inputHandler.clearMouseButtonStates();
-            // Don't call resetMousePosition here as it sets firstMouse=true
-            // Instead, we need to ensure mouse position tracking continues properly
-        }
     }
 
     public void updateProgress(String stageName) {
@@ -89,7 +80,6 @@ public class LoadingScreen {
                   // If truly unknown, we might decide not to advance the progress bar visually
                   // based on index, but the text will still update.
                   // For now, let's not change currentStageIndex for unknown stages not matched.
-                  System.out.println("LoadingScreen: Unknown stage name: " + stageName);
               }
           }
         }

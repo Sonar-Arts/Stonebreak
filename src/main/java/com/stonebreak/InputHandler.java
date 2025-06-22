@@ -3,9 +3,6 @@ package com.stonebreak;
 import java.util.Arrays;
 
 import org.joml.Vector2f;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_1;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;
@@ -29,7 +26,6 @@ import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
 import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
 import static org.lwjgl.glfw.GLFW.glfwGetKey;
-import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.glfwSetScrollCallback;
 
 /**
@@ -39,11 +35,9 @@ public class InputHandler {
     
     private long window;
     
-    // Mouse state
-    private boolean firstMouse = true;
-    private float currentMouseX = 0; // Renamed from lastX for clarity
-    private float currentMouseY = 0; // Renamed from lastY for clarity
-    private float mouseSensitivity = 0.1f;
+    // Mouse state for UI interactions only
+    private float currentMouseX = 0;
+    private float currentMouseY = 0;
 
     // Mouse button states
     private boolean[] mouseButtonDown = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
@@ -53,6 +47,7 @@ public class InputHandler {
     private int currentSelectedHotbarIndex = 0; // Tracks the desired index, 0-8
     // private int selectedBlock = 1; // Old field, replaced by currentSelectedHotbarIndex logic for selection
     
+    
     // Key state tracking for toggle actions
     private boolean escapeKeyPressed = false;
     private boolean inventoryKeyPressed = false; // Added for inventory toggle
@@ -61,6 +56,7 @@ public class InputHandler {
     private boolean f3KeyPressed = false; // Added for debug info
     private boolean f4KeyPressed = false; // Added for memory leak analysis
     private boolean f5KeyPressed = false; // Added for detailed memory profiling
+    private boolean f6KeyPressed = false; // Added for test cow spawning
     
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
@@ -321,10 +317,7 @@ public class InputHandler {
             ChatSystem chatSystem = Game.getInstance().getChatSystem();
             if (chatSystem != null && !chatSystem.isOpen()) {
                 chatSystem.openChat();
-                // Show cursor when chat opens
-                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                // Reset mouse position to prevent camera jump
-                resetMousePosition();
+                
             }
         } else if (!isChatKeyPressed) {
             chatKeyPressed = false;
@@ -438,26 +431,48 @@ public class InputHandler {
         } else if (!isF5Pressed) {
             f5KeyPressed = false;
         }
+        
+        // F6 - Spawn test cow
+        boolean isF6Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F6) == GLFW_PRESS;
+        if (isF6Pressed && !f6KeyPressed) {
+            f6KeyPressed = true;
+            Player player = Game.getPlayer();
+            com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+            if (player != null && entityManager != null) {
+                // Spawn cow 5 blocks in front of the player
+                org.joml.Vector3f playerPos = player.getPosition();
+                org.joml.Vector3f playerDir = player.getCamera().getFront();
+                org.joml.Vector3f spawnPos = new org.joml.Vector3f(
+                    playerPos.x + playerDir.x * 5.0f,
+                    playerPos.y,
+                    playerPos.z + playerDir.z * 5.0f
+                );
+                
+                // Find ground level at spawn position
+                int groundY = (int)playerPos.y;
+                for (int y = (int)playerPos.y + 10; y >= (int)playerPos.y - 10; y--) {
+                    BlockType block = Game.getWorld().getBlockAt((int)spawnPos.x, y, (int)spawnPos.z);
+                    if (block != null && block != BlockType.AIR) {
+                        groundY = y + 1;
+                        break;
+                    }
+                }
+                spawnPos.y = groundY;
+                
+                com.stonebreak.mobs.entities.Entity cow = entityManager.spawnEntity(com.stonebreak.mobs.entities.EntityType.COW, spawnPos);
+                if (cow != null) {
+                    System.out.println("[DEBUG] Spawned test cow at " + spawnPos);
+                } else {
+                    System.out.println("[DEBUG] Failed to spawn test cow");
+                }
+            }
+        } else if (!isF6Pressed) {
+            f6KeyPressed = false;
+        }
     }
  
     private void handleMouseLook(float xOffset, float yOffset) {
-        // Only process mouse movement if the game is not paused, chat is not open, and workbench is not open
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
-        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-        
-        if (Game.getInstance().isPaused() ||
-            (chatSystem != null && chatSystem.isOpen()) ||
-            (workbenchScreen != null && workbenchScreen.isVisible()) ||
-            (inventoryScreen != null && inventoryScreen.isVisible())) {
-            return;
-        }
-        
-        // This will be processed by the player's camera
-        Player player = Game.getPlayer();
-        if (player != null) {
-            player.processMouseLook(xOffset * mouseSensitivity, yOffset * mouseSensitivity);
-        }
+        // Mouse look handling removed - will be reimplemented from scratch
     }
 
     /**
@@ -522,8 +537,7 @@ public class InputHandler {
                         if (settingsMenu != null) {
                             settingsMenu.setPreviousState(GameState.PLAYING);
                         }
-                        // Clear mouse button states to prevent bleeding into settings menu
-                        clearMouseButtonStates();
+                        // Mouse button states will be managed by the new state
                         Game.getInstance().setState(GameState.SETTINGS);
                         Game.getInstance().getPauseMenu().setVisible(false);
                     }
@@ -652,53 +666,21 @@ public class InputHandler {
     // public boolean isMouseButtonDown(int button) { ... } // Defined below
     // public void consumeMouseButtonPress(int button) { ... } // Defined below
     
-    /**
-     * Reset the mouse position tracking to avoid camera jumps
-     * when regaining cursor control
-     */
-    public void resetMousePosition() {
-        firstMouse = true;
-    }
     
     /**
-     * Clear all mouse button states to prevent input bleeding between game states.
-     */
-    public void clearMouseButtonStates() {
-        Arrays.fill(mouseButtonDown, false);
-        Arrays.fill(mouseButtonPressedThisFrame, false);
-    }
-    
-    /**
-     * Update mouse position and handle mouse look (called from Main.java cursor callback)
+     * Update mouse position for UI interactions (called from Main.java cursor callback)
      */
     public void updateMousePosition(float xpos, float ypos) {
-        if (firstMouse) {
-            currentMouseX = xpos;
-            currentMouseY = ypos;
-            firstMouse = false;
-            return; // Don't process movement on first mouse event
-        }
-        
-        float xOffset = xpos - currentMouseX;
-        float yOffset = currentMouseY - ypos; // Reversed since y-coordinates go from bottom to top
-        
         currentMouseX = xpos;
         currentMouseY = ypos;
         
-        // Update pause menu hover state if visible
+        // Update UI hover states
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
-        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-        
         if (pauseMenu != null && pauseMenu.isVisible()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
             if (uiRenderer != null) {
                 pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
             }
-        } else if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            // Don't process mouse look when workbench is open - cursor should be free for UI interaction
-        } else {
-            // Always try to handle mouse look - let handleMouseLook decide if it should process
-            handleMouseLook(xOffset, yOffset);
         }
     }
 
@@ -758,19 +740,9 @@ public class InputHandler {
                     case GLFW_KEY_BACKSPACE -> chatSystem.handleBackspace();
                     case GLFW_KEY_ENTER -> {
                         chatSystem.handleEnter();
-                        // Hide cursor when chat closes
-                        if (!chatSystem.isOpen()) {
-                            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                            // Reset first mouse to avoid camera jump
-                            resetMousePosition();
-                        }
                     }
                     case GLFW_KEY_ESCAPE -> {
                         chatSystem.closeChat();
-                        // Hide cursor when chat closes
-                        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                        // Reset first mouse to avoid camera jump
-                        resetMousePosition();
                     }
                     case GLFW_KEY_T -> {
                         // T key does nothing when chat is already open

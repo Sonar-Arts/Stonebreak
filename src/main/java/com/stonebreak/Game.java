@@ -4,10 +4,6 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED;
-import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
-import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 
 /**
  * Central class for accessing game state and resources.
@@ -21,12 +17,15 @@ public class Game {
     private World world;
     private Player player;
     private Renderer renderer;
+    private TextureAtlas textureAtlas;
+    private MobTextureAtlas mobTextureAtlas; // Separate texture atlas for mobs
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
+    private MouseCaptureManager mouseCaptureManager; // Mouse capture system
     private UIRenderer uiRenderer; // UI renderer for menus
     private MainMenu mainMenu; // Main menu
     private SettingsMenu settingsMenu; // Settings menu
@@ -38,6 +37,10 @@ public class Game {
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     
+    // Entity system components
+    private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
+    private com.stonebreak.mobs.entities.EntityRenderer entityRenderer; // Entity rendering system
+    
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
     private GameState previousGameState = GameState.MAIN_MENU; // Added previousGameState
@@ -45,6 +48,8 @@ public class Game {
     private float deltaTime;
     private float totalTimeElapsed = 0.0f; // Added to track total time for animations
     private boolean paused = false;
+    private boolean hasInitializedMouseCaptureAfterLoading = false; // Track initial mouse capture setup
+    
     
     // Cheat system
     private boolean cheatsEnabled = false;
@@ -74,11 +79,17 @@ public class Game {
     }
       /**     * Initializes game components.
       */
-     public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler) {
+     public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
         this.world = world;
         this.player = player;
         this.renderer = renderer;
+        this.textureAtlas = textureAtlas; // Store TextureAtlas
         this.inputHandler = inputHandler; // Store InputHandler
+        
+        // Initialize mouse capture system
+        this.mouseCaptureManager = new MouseCaptureManager(window);
+        this.mouseCaptureManager.setCamera(player.getCamera());
+        
         this.pauseMenu = new PauseMenu();
         this.waterEffects = new WaterEffects(); // Initialize water effects
         
@@ -421,6 +432,17 @@ public class Game {
         // Initialize debug overlay
         this.debugOverlay = new DebugOverlay();
         System.out.println("Debug overlay initialized (F3 to toggle).");
+        
+        // Initialize mob texture atlas
+        this.mobTextureAtlas = new MobTextureAtlas(16); // 16x16 texture atlas for mobs
+        this.mobTextureAtlas.printAtlasLayout(); // Debug output
+        System.out.println("Mob texture atlas initialized");
+        
+        // Initialize entity system
+        this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        this.entityRenderer = new com.stonebreak.mobs.entities.EntityRenderer();
+        this.entityRenderer.initialize();
+        System.out.println("Entity system initialized - cows can now spawn!");
     }
     
     /**
@@ -455,6 +477,12 @@ public class Game {
                 return; // Don't update game world during loading
             }
             case PLAYING -> {
+                // Ensure mouse capture is properly initialized after loading (one-time check)
+                if (!hasInitializedMouseCaptureAfterLoading && mouseCaptureManager != null) {
+                    mouseCaptureManager.forceUpdate();
+                    hasInitializedMouseCaptureAfterLoading = true;
+                }
+                
                 if (paused) {
                     // Check if paused by pause menu vs just inventory/UI
                     boolean pausedByMenu = pauseMenu != null && pauseMenu.isVisible();
@@ -544,6 +572,11 @@ public class Game {
         if (waterEffects != null && player != null) {
             waterEffects.update(player, deltaTime);
         }
+        
+        // Update entity system
+        if (entityManager != null) {
+            entityManager.update(deltaTime);
+        }
     }
     
     /**
@@ -612,6 +645,20 @@ public class Game {
     }
     
     /**
+     * Gets the entity manager.
+     */
+    public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
+        return getInstance().entityManager;
+    }
+    
+    /**
+     * Gets the entity renderer.
+     */
+    public static com.stonebreak.mobs.entities.EntityRenderer getEntityRenderer() {
+        return getInstance().entityRenderer;
+    }
+    
+    /**
      * Toggles the pause menu visibility.
      */
     public void togglePauseMenu() {
@@ -669,6 +716,13 @@ public class Game {
    }
 
    /**
+     * Gets the mouse capture manager.
+     */
+    public MouseCaptureManager getMouseCaptureManager() {
+        return this.mouseCaptureManager;
+    }
+
+   /**
      * Toggles the inventory screen visibility.
      */
     public void toggleInventoryScreen() {
@@ -677,39 +731,22 @@ public class Game {
         inventoryScreen.toggleVisibility();
 
         if (inventoryScreen.isVisible()) {
-            // Opening inventory. Game world should pause, cursor visible.
-            // We don't set PLAYING_WITH_INVENTORY_UI as a separate state.
-            // Instead, isPaused() and inventoryScreen.isVisible() conditions are used.
-            // setState might not be strictly necessary if 'paused' and cursor are set here,
-            // but to centralize cursor/pause logic, we can inform setState or just manage directly.
-             this.paused = true; // Game.paused flag
-             org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
-             // No specific GameState change, as Inventory is an overlay on PLAYING (or WORKBENCH etc.)
-             // but ensure game logic respects Game.isPaused()
-
+            // Opening inventory - pause the game
+            this.paused = true;
         } else {
-            // Closing inventory.
-            // The InputHandler.handleEscapeKey now handles closing inventory and determining the next state.
-            // If inventory is closed via 'E' key:
-            // We need to decide what state to return to. If previousGameState was something like RECIPE_BOOK_UI
-            // which might have been open over inventory, we should return there, or to PLAYING if nothing else is layered.
-
-            // If the main PauseMenu is NOT active:
+            // Closing inventory - check if we should unpause
             if (pauseMenu == null || !pauseMenu.isVisible()) {
-                 // If the current state IS NOT PLAYING, it implies another UI (Workbench, RecipeBook) is active.
-                 // Closing inventory should keep that UI's state (and its paused=true, cursor=visible settings).
-                 // If current state IS PLAYING, then inventory was the primary UI, so unpause.
+                // Only unpause if we're in PLAYING state and no pause menu is visible
                 if (this.currentState == GameState.PLAYING) {
                     this.paused = false;
-                    org.lwjgl.glfw.GLFW.glfwSetInputMode(Main.getWindowHandle(), org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-                    if (this.inputHandler != null) {
-                        this.inputHandler.resetMousePosition();
-                    }
                 }
-                // If currentState is WORKBENCH_UI or RECIPE_BOOK_UI, those states already enforce paused=true and cursor visible.
-                // So, closing inventory under them should not change that.
+                // Other states (WORKBENCH_UI, RECIPE_BOOK_UI) remain paused
             }
-            // If pauseMenu *is* active, closing inventory should not affect pauseMenu's paused state or cursor.
+        }
+        
+        // Update mouse capture state when inventory visibility changes
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.updateCaptureState();
         }
     }
     
@@ -725,79 +762,41 @@ public class Game {
      */
     public void setState(GameState state) {
         // Don't update previousGameState if we are just re-setting the same state
-        // or if the new state is null (should not happen)
         if (this.currentState != state && state != null) {
             this.previousGameState = this.currentState;
         }
         this.currentState = state;
         
-        // Handle cursor visibility based on state transitions
-        long windowHandle = Main.getWindowHandle();
-        if (windowHandle != 0) {
-            // Unified logic for states that require cursor and game pause
-            if (state == GameState.MAIN_MENU ||
-                state == GameState.LOADING ||
-                state == GameState.SETTINGS ||
-                state == GameState.PAUSED ||
-                state == GameState.WORKBENCH_UI ||
-                state == GameState.RECIPE_BOOK_UI) {
-                
-                glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        // Update pause state based on game state
+        updatePauseState(state);
+        
+        // Update mouse capture state based on new game state
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.updateCaptureState();
+        }
+    }
+    
+    /**
+     * Updates the pause state based on the game state.
+     */
+    private void updatePauseState(GameState state) {
+        switch (state) {
+            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
                 paused = true;
-                
-                // Reset mouse position if cursor was previously hidden (e.g., coming from unencumbered PLAYING state)
-                if (this.inputHandler != null && this.previousGameState == GameState.PLAYING) {
-                     // Check if the previous PLAYING state was truly unencumbered (no inventory/chat) to decide on reset.
-                     // This prevents resetting if the cursor was already visible due to an overlay like inventory.
-                    boolean prevPlayingWasUnencumbered = (inventoryScreen == null || !inventoryScreen.isVisible()) &&
-                                                         (chatSystem == null || !chatSystem.isOpen());
-                    if (prevPlayingWasUnencumbered) {
-                        this.inputHandler.resetMousePosition();
-                    }
-                }
-
-            } else if (state == GameState.PLAYING) {
-                // Transitioning to PLAYING state (e.g., from a menu, or closing workbench/recipe book/pause menu)
-                // Always unpause when entering PLAYING state from non-PLAYING states like LOADING
-                // Only keep paused if inventory is explicitly visible
-                boolean shouldUnpause = (inventoryScreen == null || !inventoryScreen.isVisible());
-                
-                if (shouldUnpause) {
+            }
+            case PLAYING -> {
+                // Special case: Always unpause when coming from LOADING state
+                if (this.previousGameState == GameState.LOADING) {
                     paused = false;
-                }
-                
-                // Hide cursor and set up input only if no overlay UI (inventory, chat) is active
-                if ((inventoryScreen == null || !inventoryScreen.isVisible()) &&
-                    (chatSystem == null || !chatSystem.isOpen())) {
-                    
-                    glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                    
-                    if (this.inputHandler != null) {
-                        // Don't reset mouse position when transitioning from LOADING to PLAYING
-                        // as this sets firstMouse=true and causes the next movement to be ignored
-                        if (this.previousGameState != GameState.LOADING) {
-                            this.inputHandler.resetMousePosition();
-                        }
-                        // Clear any mouse button states that might interfere with the transition
-                        this.inputHandler.clearMouseButtonStates();
-                    }
                 } else {
-                    // If inventory IS visible, it manages 'paused = true' and 'CURSOR_NORMAL'.
-                    // If chat IS open, it manages 'CURSOR_NORMAL'; 'paused' is false (world input blocked by InputHandler).
-                    // If we are trying to set state to PLAYING but an overlay exists:
-                    if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                        // Ensure game world logic remains paused for inventory. Cursor is already NORMAL from toggleInventoryScreen.
-                        paused = true;
+                    // For other transitions, only keep paused if inventory is explicitly visible
+                    boolean shouldUnpause = (inventoryScreen == null || !inventoryScreen.isVisible());
+                    
+                    if (shouldUnpause) {
+                        paused = false;
                     }
-                    // If only chat is open, 'paused' should remain false (unless inventory was also open and now closed, then this path isn't hit).
-                    // Cursor is NORMAL (from chat). InputHandler blocks game world actions. This is consistent.
                 }
             }
-            // Other game states (like LOADING, etc.) might not affect cursor/pause, or have their own specific handlers.
-            // Note: Game.toggleInventoryScreen() handles its cursor/pause state changes somewhat independently
-            //       when opening/closing inventory, particularly by not always invoking setState for these specific aspects.
-            //       This setState logic aims to correctly handle transitions *between* major game states
-            //       and ensure consistency for states like PAUSED, WORKBENCH_UI, etc.
         }
     }
 
@@ -876,10 +875,7 @@ public class Game {
      * @return The TextureAtlas object, or null if not available.
      */
     public TextureAtlas getTextureAtlas() {
-        if (this.renderer != null) {
-            return this.renderer.getTextureAtlas();
-        }
-        return null;
+        return this.textureAtlas;
     }
 
     /**
@@ -981,10 +977,19 @@ public class Game {
         if (soundSystem != null) {
             soundSystem.cleanup();
         }
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.cleanup();
+        }
         if (memoryLeakDetector != null) {
             memoryLeakDetector.stopMonitoring();
-                    }
-                    worldUpdateExecutor.shutdownNow();
+        }
+        if (entityRenderer != null) {
+            entityRenderer.cleanup();
+        }
+        if (entityManager != null) {
+            entityManager.cleanup();
+        }
+        worldUpdateExecutor.shutdownNow();
     }
     
     /**
@@ -1271,7 +1276,11 @@ public class Game {
     public void completeWorldGeneration() {
         if (loadingScreen != null) {
             loadingScreen.hide(); // This sets state to PLAYING
-            System.out.println("Completed world generation, transitioning to playing");
+            
+            // Force mouse capture update after loading screen completion
+            if (mouseCaptureManager != null) {
+                mouseCaptureManager.forceUpdate();
+            }
         }
     }
 }

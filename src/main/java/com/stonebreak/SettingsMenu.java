@@ -258,11 +258,6 @@ public class SettingsMenu {
             // If the user clicked back/apply, resume the game directly
             Game game = Game.getInstance();
             
-            // Always clear mouse button states first
-            InputHandler inputHandler = Main.getInputHandler();
-            if (inputHandler != null) {
-                inputHandler.clearMouseButtonStates();
-            }
             
             // For now, always resume the game directly when going back from settings
             // This provides a cleaner user experience
@@ -274,16 +269,6 @@ public class SettingsMenu {
                 game.togglePauseMenu(); // This will set paused = false
             }
             
-            // Restore game cursor state (hidden and captured)
-            long windowHandle = Main.getWindowHandle();
-            if (windowHandle != 0) {
-                org.lwjgl.glfw.GLFW.glfwSetInputMode(windowHandle, org.lwjgl.glfw.GLFW.GLFW_CURSOR, org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-                
-                // Reset mouse position to prevent camera jump
-                if (inputHandler != null) {
-                    inputHandler.resetMousePosition();
-                }
-            }
         } else {
             // Return to main menu
             Game.getInstance().setState(GameState.MAIN_MENU);

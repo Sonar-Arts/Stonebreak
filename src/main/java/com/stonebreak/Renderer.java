@@ -207,6 +207,10 @@ public class Renderer {
         return textureAtlas;
     }
     
+    public Matrix4f getProjectionMatrix() {
+        return projectionMatrix;
+    }
+    
     /**
      * Creates the crosshair UI element.
      */
@@ -556,6 +560,9 @@ public class Renderer {
 
         // Render water particles
         renderWaterParticles(); // This method binds its own shader
+
+        // Render entities (cows, etc.)
+        renderEntities(player);
 
         // Unbind main world shader program if other things don't use it
         // shaderProgram.unbind(); // UI pass binds it again.
@@ -3268,6 +3275,23 @@ public class Renderer {
             
             // Render this layer using the existing flower quad system
             renderFlowerQuad(layerVertices, indices);
+        }
+    }
+    
+    /**
+     * Renders all entities (cows, etc.) in the world using the entity renderer.
+     */
+    private void renderEntities(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        com.stonebreak.mobs.entities.EntityRenderer entityRenderer = Game.getEntityRenderer();
+        
+        if (entityManager != null && entityRenderer != null) {
+            // Get all entities and render them
+            for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
+                if (entity.isAlive()) {
+                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
+                }
+            }
         }
     }
     

@@ -99,12 +99,24 @@ public class WorkbenchScreen {
         this.visible = true;
         // Clear crafting grid when opening, or ensure it's persistent? For now, let's keep it persistent.
         updateCraftingOutput(); // Ensure output is correct if grid had items
+        
+        // Update mouse capture state when workbench opens
+        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.updateCaptureState();
+        }
     }
 
     public void close() {
         this.visible = false;
         // Potentially drop items from crafting grid if desired, or leave them
         // For now, leave items in grid when closing.
+        
+        // Update mouse capture state when workbench closes
+        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
+        if (mouseCaptureManager != null) {
+            mouseCaptureManager.updateCaptureState();
+        }
     }
 
     public boolean isVisible() {
