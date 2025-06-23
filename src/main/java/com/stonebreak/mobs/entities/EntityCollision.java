@@ -20,13 +20,21 @@ public class EntityCollision {
     
     /**
      * Checks if an entity would collide with the world at a new position.
+     * For living entities, collision starts from the bottom of their legs.
      */
     public boolean checkWorldCollision(Entity entity, Vector3f newPosition) {
         
-        // Create bounding box for the new position
+        // Determine the bottom Y position (legs for living entities, entity base for others)
+        float bottomY = newPosition.y;
+        if (entity instanceof LivingEntity) {
+            LivingEntity livingEntity = (LivingEntity) entity;
+            bottomY = newPosition.y - livingEntity.getLegHeight();
+        }
+        
+        // Create bounding box for the new position starting from leg bottom
         Entity.BoundingBox newBounds = new Entity.BoundingBox(
             newPosition.x - entity.getWidth() / 2.0f,
-            newPosition.y,
+            bottomY, // Start from bottom of legs for living entities
             newPosition.z - entity.getLength() / 2.0f,
             newPosition.x + entity.getWidth() / 2.0f,
             newPosition.y + entity.getHeight(),
@@ -147,6 +155,40 @@ public class EntityCollision {
     
     /**
      * Gets the ground height at a specific position.
+     * For living entities, this returns the height where their legs should touch.
+     */
+    public float getGroundHeight(float x, float z, Entity entity) {
+        int blockX = (int) Math.floor(x);
+        int blockZ = (int) Math.floor(z);
+        
+        // Search downward from a reasonable height to find ground
+        for (int y = 255; y >= 0; y--) {
+            BlockType blockType = world.getBlockAt(blockX, y, blockZ);
+            if (blockType != null && blockType != BlockType.AIR && blockType != BlockType.WATER) {
+                float groundSurface = y + 1.0f; // Top surface of the block
+                
+                // For living entities, position body so feet touch ground exactly
+                if (entity instanceof LivingEntity) {
+                    LivingEntity livingEntity = (LivingEntity) entity;
+                    // Body position = ground surface + leg height (based on actual model leg length)
+                    return groundSurface + livingEntity.getLegHeight();
+                }
+                
+                return groundSurface; // Regular entities sit directly on ground
+            }
+        }
+        
+        // Bedrock level - also adjust for living entities
+        if (entity instanceof LivingEntity) {
+            LivingEntity livingEntity = (LivingEntity) entity;
+            return livingEntity.getLegHeight();
+        }
+        
+        return 0.0f; // Bedrock level for regular entities
+    }
+    
+    /**
+     * Gets the ground height at a specific position (legacy method for non-entity calls).
      */
     public float getGroundHeight(float x, float z) {
         int blockX = (int) Math.floor(x);
@@ -169,9 +211,16 @@ public class EntityCollision {
     public boolean isInWater(Entity entity) {
         Vector3f position = entity.getPosition();
         
-        // Check if the entity's center is in water
+        // For living entities, check water at their leg level
+        float checkY = position.y + entity.getHeight() / 2.0f;
+        if (entity instanceof LivingEntity) {
+            LivingEntity livingEntity = (LivingEntity) entity;
+            // Check water at the middle of the entity's legs
+            checkY = position.y - livingEntity.getLegHeight() / 2.0f;
+        }
+        
         int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(position.y + entity.getHeight() / 2.0f);
+        int blockY = (int) Math.floor(checkY);
         int blockZ = (int) Math.floor(position.z);
         
         BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
@@ -211,10 +260,13 @@ public class EntityCollision {
             entity.setPosition(newPosition);
         }
         
-        // Ground detection
-        float groundHeight = getGroundHeight(position.x, position.z);
-        if (position.y <= groundHeight && velocity.y <= 0) {
-            Vector3f groundPos = new Vector3f(position.x, groundHeight, position.z);
+        // Update position reference after potential movement
+        Vector3f currentPosition = entity.getPosition();
+        
+        // Ground detection - use entity-aware ground height
+        float groundHeight = getGroundHeight(currentPosition.x, currentPosition.z, entity);
+        if (currentPosition.y <= groundHeight && velocity.y <= 0) {
+            Vector3f groundPos = new Vector3f(currentPosition.x, groundHeight, currentPosition.z);
             entity.setPosition(groundPos);
             entity.setOnGround(true);
             velocity.y = 0;

@@ -161,8 +161,8 @@ public class CowAI {
                 cowPos.z + (float)Math.sin(angle) * distance
             );
             
-            // Check if the target position is valid (no collision with blocks)
-            if (cow.canMoveTo(targetPos)) {
+            // Check if the target position is valid (no collision with blocks and avoids flowers)
+            if (cow.canMoveToAvoidingFlowers(targetPos)) {
                 wanderTarget.set(targetPos);
                 hasWanderTarget = true;
                 return;

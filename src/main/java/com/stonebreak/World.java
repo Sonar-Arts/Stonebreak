@@ -910,16 +910,7 @@ public class World {
         BlockType spawnBlock = chunk.getBlock(localX, y, localZ);
         BlockType aboveBlock = chunk.getBlock(localX, y + 1, localZ);
         
-        if (spawnBlock != BlockType.AIR || aboveBlock != BlockType.AIR) {
-            return false;
-        }
-        
-        // Check not in water (basic check)
-        if (spawnBlock == BlockType.WATER || aboveBlock == BlockType.WATER) {
-            return false;
-        }
-        
-        return true;
+        return spawnBlock == BlockType.AIR && aboveBlock == BlockType.AIR;
     }
     
 /**

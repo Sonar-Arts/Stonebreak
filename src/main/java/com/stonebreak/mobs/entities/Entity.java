@@ -74,12 +74,21 @@ public abstract class Entity {
     
     /**
      * Gets the entity's bounding box for collision detection.
-     * The entity position represents the bottom center (feet level).
+     * For living entities, the position represents body bottom and collision starts from leg bottom.
+     * For other entities, the position represents the bottom center.
      */
     public BoundingBox getBoundingBox() {
+        float bottomY = position.y;
+        
+        // For living entities, start collision from bottom of legs
+        if (this instanceof LivingEntity) {
+            LivingEntity livingEntity = (LivingEntity) this;
+            bottomY = position.y - livingEntity.getLegHeight();
+        }
+        
         return new BoundingBox(
             position.x - width / 2.0f,
-            position.y,
+            bottomY, // Start from leg bottom for living entities
             position.z - length / 2.0f,
             position.x + width / 2.0f,
             position.y + height,

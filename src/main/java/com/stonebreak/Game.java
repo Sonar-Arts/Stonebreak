@@ -435,7 +435,7 @@ public class Game {
         
         // Initialize mob texture atlas
         this.mobTextureAtlas = new MobTextureAtlas(16); // 16x16 texture atlas for mobs
-        this.mobTextureAtlas.printAtlasLayout(); // Debug output
+        this.mobTextureAtlas.printDebugInfo(); // Debug output
         System.out.println("Mob texture atlas initialized");
         
         // Initialize entity system

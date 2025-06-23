@@ -21,6 +21,9 @@ public abstract class LivingEntity extends Entity {
     protected Vector3f targetDirection;
     protected boolean isMoving;
     
+    // Physical properties
+    protected float legHeight; // Distance from ground to bottom of body
+    
     // Interaction system
     protected float interactionRange;
     protected long lastInteractionTime;
@@ -43,6 +46,7 @@ public abstract class LivingEntity extends Entity {
         this.width = type.getWidth();
         this.height = type.getHeight();
         this.length = type.getLength();
+        this.legHeight = type.getLegHeight();
         
         // Initialize state
         this.invulnerable = false;
@@ -183,15 +187,18 @@ public abstract class LivingEntity extends Entity {
     
     /**
      * Checks if the entity can move to a specific position.
+     * This method performs collision detection starting from the very bottom of the entity's legs.
      */
     public boolean canMoveTo(Vector3f targetPosition) {
-        // Basic collision check - override in subclasses for more complex logic
+        // Create bounding box starting from the bottom of the legs
+        // targetPosition.y represents the bottom of the body, so subtract legHeight to get leg bottom
+        float legBottomY = targetPosition.y - legHeight;
         BoundingBox targetBounds = new BoundingBox(
             targetPosition.x - width / 2.0f,
-            targetPosition.y,
+            legBottomY, // Start from bottom of legs
             targetPosition.z - length / 2.0f,
             targetPosition.x + width / 2.0f,
-            targetPosition.y + height,
+            targetPosition.y + height, // Extend to full height
             targetPosition.z + length / 2.0f
         );
         
@@ -215,6 +222,47 @@ public abstract class LivingEntity extends Entity {
         }
         
         return true;
+    }
+    
+    /**
+     * Checks if the entity can move to a specific position while avoiding flowers.
+     * This method is specifically for cows and other passive mobs that should avoid trampling flowers.
+     */
+    public boolean canMoveToAvoidingFlowers(Vector3f targetPosition) {
+        // First do basic collision check
+        if (!canMoveTo(targetPosition)) {
+            return false;
+        }
+        
+        // Check for flowers at ground level to avoid trampling them
+        // Use bottom of legs position for ground checking
+        float legBottomY = targetPosition.y - legHeight;
+        int groundX = (int) Math.floor(targetPosition.x);
+        int groundY = (int) Math.floor(legBottomY);
+        int groundZ = (int) Math.floor(targetPosition.z);
+        
+        // Check current ground block and surrounding area
+        for (int x = groundX - 1; x <= groundX + 1; x++) {
+            for (int z = groundZ - 1; z <= groundZ + 1; z++) {
+                // Check at ground level and one block up (where flowers typically are)
+                for (int y = groundY; y <= groundY + 1; y++) {
+                    var blockType = world.getBlockAt(x, y, z);
+                    if (blockType != null && isFlower(blockType)) {
+                        return false; // Avoid trampling flowers
+                    }
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Helper method to identify flower blocks.
+     */
+    private boolean isFlower(com.stonebreak.BlockType blockType) {
+        return blockType == com.stonebreak.BlockType.ROSE || 
+               blockType == com.stonebreak.BlockType.DANDELION;
     }
     
     // Abstract methods that must be implemented by subclasses
@@ -247,6 +295,7 @@ public abstract class LivingEntity extends Entity {
     public boolean isMoving() { return isMoving; }
     public float getInteractionRange() { return interactionRange; }
     public Vector3f getTargetDirection() { return new Vector3f(targetDirection); }
+    public float getLegHeight() { return legHeight; }
     
     // Setters
     public void setMoveSpeed(float moveSpeed) { this.moveSpeed = moveSpeed; }

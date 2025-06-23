@@ -471,9 +471,6 @@ public class InputHandler {
         }
     }
  
-    private void handleMouseLook(float xOffset, float yOffset) {
-        // Mouse look handling removed - will be reimplemented from scratch
-    }
 
     /**
      * Called by GLFW's mouse button callback (likely from Main.java).

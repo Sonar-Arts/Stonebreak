@@ -198,7 +198,6 @@ public class Cow extends LivingEntity {
      * Plays a cow moo sound (placeholder implementation).
      */
     private void playMooSound() {
-        // TODO: Implement actual sound playing when sound system is ready
         // System.out.println("Cow moos at " + getPosition());
     }
     
@@ -226,7 +225,6 @@ public class Cow extends LivingEntity {
         if (!isAlive()) return;
         
         // Basic interaction - petting the cow
-        // TODO: Add visual feedback or particles for cow petting
         
         // Play happy cow sound
         playMooSound();
@@ -239,7 +237,6 @@ public class Cow extends LivingEntity {
     public void onDamage(float damage, DamageSource source) {
         if (!isAlive()) return;
         
-        // TODO: Play hurt sound when sound system is ready
         // Add visual damage indicators or particles here
     }
     
@@ -248,7 +245,6 @@ public class Cow extends LivingEntity {
      */
     @Override
     protected void onDeath() {
-        // TODO: Add death animation, particles, or sounds
         // Cleanup any AI state or references
     }
     
@@ -300,8 +296,6 @@ public class Cow extends LivingEntity {
         if (canBeMilked()) {
             canBeMilked = false;
             milkRegenTimer = 0.0f;
-            // TODO: Add milk collection to player inventory
-            // TODO: Play milking sound/animation
         }
     }
     

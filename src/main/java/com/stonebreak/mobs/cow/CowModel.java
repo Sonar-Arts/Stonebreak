@@ -1,7 +1,6 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import org.joml.Vector2f;
 import com.stonebreak.MobTextureAtlas;
 
 /**
@@ -51,65 +50,67 @@ public class CowModel {
         // Main body - largest part of the cow (larger, more realistic proportions)
         this.body = new ModelPart(
             new Vector3f(0, 0.0f, 0),         // position (center of cow)
-            new Vector3f(1.2f, 0.8f, 1.0f),  // size (wider, taller, deeper - less squished)
-            new Vector2f(MobTextureAtlas.COW_BODY_ATLAS_X, MobTextureAtlas.COW_BODY_ATLAS_Y) // COW_BODY texture
+            new Vector3f(1.1f, 0.8f, 1.3f),  // size (slightly slimmer width: 1.2 -> 1.1)
+            "cow_body" // COW_BODY texture
         );
         
-        // Head - positioned in front of body (larger, more proportional)
+        // Head - positioned close to body front
         this.head = new ModelPart(
-            new Vector3f(0, 0.3f, -0.8f),    // position (front of cow, adjusted for larger body)
-            new Vector3f(0.7f, 0.6f, 0.6f),  // size (larger head to match bigger body)
-            new Vector2f(MobTextureAtlas.COW_HEAD_ATLAS_X, MobTextureAtlas.COW_HEAD_ATLAS_Y) // COW_HEAD texture
+            new Vector3f(0, 0.2f, -0.4f),    // position: moved up vertically by 0.1
+            new Vector3f(0.7f, 0.6f, 0.6f),  // size
+            "cow_head" // COW_HEAD texture
         );
         
-        // Two horns - positioned on top of head (scaled up for larger head)
+        // Two horns - positioned symmetrically on head
         this.horns = new ModelPart[2];
         this.horns[0] = new ModelPart( // Left horn
-            new Vector3f(-0.2f, 0.7f, -0.8f), // adjusted position for larger head
-            new Vector3f(0.1f, 0.3f, 0.1f),   // larger horns to match bigger head
-            new Vector2f(MobTextureAtlas.COW_HORNS_ATLAS_X, MobTextureAtlas.COW_HORNS_ATLAS_Y) // COW_HORNS texture
+            new Vector3f(-0.2f, 0.35f, -0.4f), // position: moved to -0.2
+            new Vector3f(0.1f, 0.3f, 0.1f),   
+            "cow_horns" // COW_HORNS texture
         );
         this.horns[1] = new ModelPart( // Right horn
-            new Vector3f(0.2f, 0.7f, -0.8f),  // adjusted position for larger head
-            new Vector3f(0.1f, 0.3f, 0.1f),   // larger horns to match bigger head
-            new Vector2f(MobTextureAtlas.COW_HORNS_ATLAS_X, MobTextureAtlas.COW_HORNS_ATLAS_Y) // COW_HORNS texture
+            new Vector3f(0.2f, 0.35f, -0.4f),  // position: moved down by 0.15 (0.5 - 0.15 = 0.35)
+            new Vector3f(0.1f, 0.3f, 0.1f),   
+            "cow_horns" // COW_HORNS texture
         );
         
-        // Four legs - positioned at corners of body (thicker, more proportional)
+        // Four legs - positioned so feet touch ground when entity body is at Y=0
+        // Legs should extend from body bottom (Y=0) down to feet (Y=-0.62)
+        // So leg center should be at Y = -0.31 (middle of 0 to -0.62)
         this.legs = new ModelPart[4];
         this.legs[0] = new ModelPart( // Front left
-            new Vector3f(-0.4f, -0.8f, -0.3f), // adjusted position for larger body
-            new Vector3f(0.2f, 0.8f, 0.2f),   // thicker legs
-            new Vector2f(MobTextureAtlas.COW_LEGS_ATLAS_X, MobTextureAtlas.COW_LEGS_ATLAS_Y) // COW_LEGS texture
+            new Vector3f(-0.3f, -0.31f, -0.3f), // center at Y=-0.31f (extends from 0 to -0.62)
+            new Vector3f(0.2f, 0.62f, 0.2f),   // height 0.62f
+            "cow_legs" // COW_LEGS texture
         );
         this.legs[1] = new ModelPart( // Front right
-            new Vector3f(0.4f, -0.8f, -0.3f), 
-            new Vector3f(0.2f, 0.8f, 0.2f),   // thicker legs
-            new Vector2f(MobTextureAtlas.COW_LEGS_ATLAS_X, MobTextureAtlas.COW_LEGS_ATLAS_Y) // COW_LEGS texture
+            new Vector3f(0.3f, -0.31f, -0.3f),  
+            new Vector3f(0.2f, 0.62f, 0.2f),   
+            "cow_legs" // COW_LEGS texture
         );
         this.legs[2] = new ModelPart( // Back left
-            new Vector3f(-0.4f, -0.8f, 0.3f), 
-            new Vector3f(0.2f, 0.8f, 0.2f),   // thicker legs
-            new Vector2f(MobTextureAtlas.COW_LEGS_ATLAS_X, MobTextureAtlas.COW_LEGS_ATLAS_Y) // COW_LEGS texture
+            new Vector3f(-0.3f, -0.31f, 0.3f),  
+            new Vector3f(0.2f, 0.62f, 0.2f),   
+            "cow_legs" // COW_LEGS texture
         );
         this.legs[3] = new ModelPart( // Back right
-            new Vector3f(0.4f, -0.8f, 0.3f), 
-            new Vector3f(0.2f, 0.8f, 0.2f),   // thicker legs
-            new Vector2f(MobTextureAtlas.COW_LEGS_ATLAS_X, MobTextureAtlas.COW_LEGS_ATLAS_Y) // COW_LEGS texture
+            new Vector3f(0.3f, -0.31f, 0.3f),   
+            new Vector3f(0.2f, 0.62f, 0.2f),   
+            "cow_legs" // COW_LEGS texture
         );
         
-        // Udder - under the body (scaled up for larger body)
+        // Udder - positioned shifted up 0.15 total towards body
         this.udder = new ModelPart(
-            new Vector3f(0, -0.5f, 0.2f),     // position (under larger body, adjusted)
-            new Vector3f(0.4f, 0.3f, 0.6f),   // larger udder to match bigger body
-            new Vector2f(MobTextureAtlas.COW_UDDER_ATLAS_X, MobTextureAtlas.COW_UDDER_ATLAS_Y) // COW_UDDER texture
+            new Vector3f(0, -0.25f, 0.2f),     // position: shifted up additional 0.05 from -0.3 to -0.25
+            new Vector3f(0.4f, 0.3f, 0.6f),   
+            "cow_udder" // COW_UDDER texture
         );
         
-        // Tail - at the back of the body (scaled up for larger body)
+        // Tail - positioned very close to body back
         this.tail = new ModelPart(
-            new Vector3f(0, 0.1f, 0.7f),      // position (back of larger cow)
-            new Vector3f(0.15f, 0.6f, 0.15f), // slightly larger tail
-            new Vector2f(MobTextureAtlas.COW_TAIL_ATLAS_X, MobTextureAtlas.COW_TAIL_ATLAS_Y) // COW_TAIL texture
+            new Vector3f(0, 0.05f, 0.37f),      // position: moved out by 0.02 (0.35 + 0.02 = 0.37)
+            new Vector3f(0.15f, 0.6f, 0.15f), 
+            "cow_tail" // COW_TAIL texture
         );
     }
     
@@ -248,14 +249,14 @@ public class CowModel {
     public static class ModelPart {
         private Vector3f position;
         private Vector3f size;
-        private Vector2f textureUV;
+        private String textureName;
         private Vector3f rotation;
         private Vector3f scale;
         
-        public ModelPart(Vector3f position, Vector3f size, Vector2f textureUV) {
+        public ModelPart(Vector3f position, Vector3f size, String textureName) {
             this.position = new Vector3f(position);
             this.size = new Vector3f(size);
-            this.textureUV = new Vector2f(textureUV);
+            this.textureName = textureName;
             this.rotation = new Vector3f(0, 0, 0);
             this.scale = new Vector3f(1, 1, 1);
         }
@@ -263,14 +264,14 @@ public class CowModel {
         // Getters
         public Vector3f getPosition() { return new Vector3f(position); }
         public Vector3f getSize() { return new Vector3f(size); }
-        public Vector2f getTextureUV() { return new Vector2f(textureUV); }
+        public String getTextureName() { return textureName; }
         public Vector3f getRotation() { return new Vector3f(rotation); }
         public Vector3f getScale() { return new Vector3f(scale); }
         
         // Setters
         public void setPosition(Vector3f position) { this.position.set(position); }
         public void setSize(Vector3f size) { this.size.set(size); }
-        public void setTextureUV(Vector2f textureUV) { this.textureUV.set(textureUV); }
+        public void setTextureName(String textureName) { this.textureName = textureName; }
         public void setRotation(Vector3f rotation) { this.rotation.set(rotation); }
         public void setScale(Vector3f scale) { this.scale.set(scale); }
         
@@ -345,59 +346,34 @@ public class CowModel {
         }
         
         /**
-         * Gets texture coordinates for this model part with proper cube face mapping.
+         * Gets texture coordinates for this model part using the texture atlas.
          * Returns 48 texture coordinates (2 per vertex, 4 vertices per face, 6 faces).
-         * Each face samples the full texture tile for proper appearance.
+         * Uses different textures for different faces to ensure proper appearance.
          */
-        public float[] getTextureCoords() {
-            // Calculate UV coordinates based on texture atlas position
-            float tileSize = 1.0f / 16.0f;  // Size of one tile in UV space (16x16 atlas)
-            float u = textureUV.x * tileSize; // Base U coordinate
-            float v = textureUV.y * tileSize; // Base V coordinate
+        public float[] getTextureCoords(MobTextureAtlas atlas) {
+            // Get face-specific texture coordinates
+            float[][] faceCoords = atlas.getFaceTextureCoords(MobTextureAtlas.MobType.COW, textureName);
             
-            // Each face uses the full texture tile for proper cow texture appearance
-            float u1 = u;                    // Left edge of tile
-            float u2 = u + tileSize;         // Right edge of tile  
-            float v1 = v;                    // Top edge of tile
-            float v2 = v + tileSize;         // Bottom edge of tile
+            // Build the final texture coordinate array (48 values total)
+            float[] result = new float[48];
+            int index = 0;
             
-            return new float[] {
-                // Front face - full tile mapping
-                u1, v2,  // bottom-left
-                u2, v2,  // bottom-right  
-                u2, v1,  // top-right
-                u1, v1,  // top-left
+            // Process each face (front, back, left, right, top, bottom)
+            for (int face = 0; face < 6; face++) {
+                float[] coords = faceCoords[face];
+                if (coords == null) {
+                    // Fallback to default coordinates if texture not found (corrected orientation)
+                    coords = new float[]{0, 1, 1, 1, 1, 0, 0, 0};
+                }
                 
-                // Back face - full tile mapping
-                u1, v2,  // bottom-left
-                u2, v2,  // bottom-right
-                u2, v1,  // top-right  
-                u1, v1,  // top-left
-                
-                // Left face - full tile mapping
-                u1, v2,  // bottom-left
-                u2, v2,  // bottom-right
-                u2, v1,  // top-right
-                u1, v1,  // top-left
-                
-                // Right face - full tile mapping
-                u1, v2,  // bottom-left  
-                u2, v2,  // bottom-right
-                u2, v1,  // top-right
-                u1, v1,  // top-left
-                
-                // Top face - full tile mapping
-                u1, v2,  // bottom-left
-                u2, v2,  // bottom-right
-                u2, v1,  // top-right
-                u1, v1,  // top-left
-                
-                // Bottom face - full tile mapping
-                u1, v2,  // bottom-left
-                u2, v2,  // bottom-right
-                u2, v1,  // top-right
-                u1, v1   // top-left
-            };
+                // Add UV coordinates for this face (4 vertices × 2 coordinates = 8 values)
+                result[index++] = coords[0]; result[index++] = coords[1]; // bottom-left
+                result[index++] = coords[2]; result[index++] = coords[3]; // bottom-right
+                result[index++] = coords[4]; result[index++] = coords[5]; // top-right
+                result[index++] = coords[6]; result[index++] = coords[7]; // top-left
+            }
+            
+            return result;
         }
     }
 }

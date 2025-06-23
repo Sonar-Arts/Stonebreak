@@ -6,7 +6,10 @@ package com.stonebreak.mobs.entities;
  */
 public enum EntityType {
     // Living creatures (adjusted to match new model proportions)
-    COW("Cow", 10.0f, 1.2f, 1.125f, 0.75f, 0.625f, true),
+    // Parameters: name, maxHealth, moveSpeed, height, width, length, legHeight, isLiving
+    // Width reduced by 0.1 (0.05 per side) to move legs inward toward body
+    // legHeight set to 0.62f to match visual model feet bottom (leg center -0.31f + leg half-height 0.31f = 0.62f from body to feet)
+    COW("Cow", 10.0f, 1.2f, 1.125f, 0.65f, 0.625f, 0.62f, true),
     
     // Future entities can be added here
     // SHEEP("Sheep", 8.0f, 1.5f, 1.3f, 0.9f, 1.3f, true),
@@ -20,19 +23,21 @@ public enum EntityType {
     private final float height;
     private final float width;
     private final float length;
+    private final float legHeight; // Height from ground to bottom of body (leg length)
     private final boolean isLiving;
     
     /**
      * Creates a new entity type with the specified properties.
      */
     EntityType(String displayName, float maxHealth, float moveSpeed, 
-               float height, float width, float length, boolean isLiving) {
+               float height, float width, float length, float legHeight, boolean isLiving) {
         this.displayName = displayName;
         this.maxHealth = maxHealth;
         this.moveSpeed = moveSpeed;
         this.height = height;
         this.width = width;
         this.length = length;
+        this.legHeight = legHeight;
         this.isLiving = isLiving;
     }
     
@@ -76,6 +81,13 @@ public enum EntityType {
      */
     public float getLength() {
         return length;
+    }
+    
+    /**
+     * Gets the leg height (distance from ground to bottom of body) for this entity type.
+     */
+    public float getLegHeight() {
+        return legHeight;
     }
     
     /**
