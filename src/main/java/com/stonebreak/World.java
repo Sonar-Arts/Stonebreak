@@ -141,9 +141,24 @@ public class World {
         // Use the new chunk loader to manage loading/unloading
         chunkManager.update(Game.getPlayer());
 
-        // CRITICAL: Aggressive memory management for emergency situations
-        if (getLoadedChunkCount() > 400) { // Emergency unloading threshold
-            forceUnloadDistantChunks();
+        // CRITICAL: Proactive memory management with multiple thresholds
+        int loadedChunks = getLoadedChunkCount();
+        if (loadedChunks > 800) { // Critical emergency - extreme chunk overload
+            System.out.println("CRITICAL EMERGENCY: " + loadedChunks + " chunks loaded, triggering massive unloading");
+            forceUnloadDistantChunks(400); // Unload up to 400 chunks
+        } else if (loadedChunks > 500) { // Emergency threshold - well above normal 361 chunk max
+            System.out.println("EMERGENCY: " + loadedChunks + " chunks loaded, triggering emergency unloading");
+            forceUnloadDistantChunks(200); // Unload up to 200 chunks
+        } else if (loadedChunks > 400) { // Warning threshold - above expected maximum
+            // Clean up position cache proactively
+            if (chunkPositionCache.size() > loadedChunks * 2) {
+                cleanupChunkPositionCache();
+                System.out.println("WARNING: " + loadedChunks + " chunks loaded, cleaned position cache");
+            }
+            // Force GC on high chunk count (less frequent logging)
+            if (loadedChunks % 50 == 0) {
+                Game.forceGCAndReport("Proactive GC at " + loadedChunks + " chunks");
+            }
         }
 
         // Process requests to build mesh data (async)
@@ -1231,6 +1246,9 @@ public class World {
             chunk.cleanupCpuResources();
             chunksPendingGpuCleanup.offer(chunk);
             
+            // Remove entities within this chunk
+            Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
+            
             long key = ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
             chunkPositionCache.remove(key);
             
@@ -1357,17 +1375,16 @@ public class World {
         }
     }
     
-    /**
-     * Emergency chunk unloading when memory usage is critical.
-     * Unloads chunks beyond render distance + 2 to free memory immediately.
-     */
-    private void forceUnloadDistantChunks() {
+    
+    private void forceUnloadDistantChunks(int maxUnloadCount) {
         Player player = Game.getPlayer();
         if (player == null) return;
         
         int playerChunkX = (int) Math.floor(player.getPosition().x / CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / CHUNK_SIZE);
-        int emergencyDistance = RENDER_DISTANCE + 2; // Keep only essential chunks
+        
+        // More aggressive emergency distance based on severity
+        int emergencyDistance = maxUnloadCount > 200 ? RENDER_DISTANCE + 3 : RENDER_DISTANCE + 1;
         
         Set<ChunkPosition> chunksToUnload = new HashSet<>();
         
@@ -1379,26 +1396,48 @@ public class World {
             }
         }
         
-        // Unload distant chunks
+        // Sort chunks by distance (unload furthest first for maximum memory recovery)
+        java.util.List<ChunkPosition> sortedUnloads = new java.util.ArrayList<>(chunksToUnload);
+        sortedUnloads.sort((a, b) -> {
+            int distA = Math.max(Math.abs(a.getX() - playerChunkX), Math.abs(a.getZ() - playerChunkZ));
+            int distB = Math.max(Math.abs(b.getX() - playerChunkX), Math.abs(b.getZ() - playerChunkZ));
+            return Integer.compare(distB, distA); // Furthest first
+        });
+        
+        // Unload distant chunks more aggressively
         int unloadedCount = 0;
-        for (ChunkPosition pos : chunksToUnload) {
+        for (ChunkPosition pos : sortedUnloads) {
             unloadChunk(pos.getX(), pos.getZ());
             unloadedCount++;
             
-            // Limit unloading per frame to prevent stuttering
-            if (unloadedCount >= 50) break;
+            // Don't process GPU cleanup here - it must be done on main thread
+            
+            // Dynamic unloading limit based on severity
+            if (unloadedCount >= maxUnloadCount) break;
         }
         
         if (unloadedCount > 0) {
+            // Clear position cache aggressively during emergency
+            if (chunkPositionCache.size() > 100) {
+                chunkPositionCache.clear();
+            }
+            
             System.out.println("Emergency unloaded " + unloadedCount + " distant chunks. Total remaining: " + getLoadedChunkCount());
             Game.forceGCAndReport("After emergency chunk unloading");
         }
     }
     
-    private void processGpuCleanupQueue() {
+    public void processGpuCleanupQueue() {
         Chunk chunk;
+        int cleaned = 0;
         while ((chunk = chunksPendingGpuCleanup.poll()) != null) {
             chunk.cleanupGpuResources();
+            cleaned++;
+        }
+        
+        // Log when significant GPU cleanup occurs
+        if (cleaned > 10) {
+            System.out.println("Cleaned up GPU resources for " + cleaned + " chunks");
         }
     }
     

@@ -560,8 +560,10 @@ public class Game {
         // Update world (processes chunk loading, mesh building, etc.)
         if (world != null) {
             worldUpdateExecutor.submit(() -> world.update());
-                        world.updateMainThread();
-                    }
+            world.updateMainThread();
+            // Process GPU cleanup on main thread after world update
+            world.processGpuCleanupQueue();
+        }
         
         // Update player
         if (player != null) {
@@ -1075,15 +1077,26 @@ public class Game {
     
     /**
      * Forces garbage collection and reports memory usage before/after.
+     * Enhanced with multiple GC cycles for better cleanup.
      */
     public static void forceGCAndReport(String context) {
         Runtime runtime = Runtime.getRuntime();
         long beforeGC = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         
         System.out.printf("[GC] %s - Memory before GC: %dMB%n", context, beforeGC);
-        System.gc();
         
-        // Wait a moment for GC to complete
+        // Multiple GC cycles for better cleanup (especially for OpenGL resources)
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            try {
+                Thread.sleep(50); // Shorter wait between cycles
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        
+        // Final wait for cleanup completion
         try {
             Thread.sleep(100);
         } catch (InterruptedException e) {
@@ -1093,7 +1106,7 @@ public class Game {
         long afterGC = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         long freed = beforeGC - afterGC;
         
-        System.out.printf("[GC] %s - Memory after GC: %dMB (freed %dMB)%n", context, afterGC, freed);
+        System.out.printf("[GC] %s - Memory after GC: %dMB (freed %+dMB)%n", context, afterGC, freed);
     }
     
     /**

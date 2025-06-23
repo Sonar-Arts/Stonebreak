@@ -303,6 +303,36 @@ public class EntityManager {
     }
     
     /**
+     * Removes all entities within a specific chunk when the chunk is unloaded.
+     */
+    public void removeEntitiesInChunk(int chunkX, int chunkZ) {
+        int chunkMinX = chunkX * 16;
+        int chunkMaxX = chunkMinX + 16;
+        int chunkMinZ = chunkZ * 16; 
+        int chunkMaxZ = chunkMinZ + 16;
+        
+        int removedCount = 0;
+        
+        synchronized (entitiesToRemove) {
+            for (Entity entity : entities) {
+                if (entity.isAlive()) {
+                    Vector3f pos = entity.getPosition();
+                    // Check if entity is within the chunk bounds
+                    if (pos.x >= chunkMinX && pos.x < chunkMaxX && 
+                        pos.z >= chunkMinZ && pos.z < chunkMaxZ) {
+                        entitiesToRemove.add(entity);
+                        removedCount++;
+                    }
+                }
+            }
+        }
+        
+        if (removedCount > 0) {
+            System.out.println("Unloaded " + removedCount + " entities from chunk (" + chunkX + ", " + chunkZ + ")");
+        }
+    }
+
+    /**
      * Gets debug information about the entity manager.
      */
     public String getDebugInfo() {

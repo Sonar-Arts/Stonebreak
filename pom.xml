@@ -137,6 +137,35 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.stonebreak.Main</mainClass>
+                    <options>
+                        <!-- Use G1GC for better multi-threaded performance -->
+                        <option>-XX:+UseG1GC</option>
+                        <!-- Reduce GC pause times for smoother gameplay -->
+                        <option>-XX:MaxGCPauseMillis=50</option>
+                        <!-- Increase heap size for better performance -->
+                        <option>-Xms2g</option>
+                        <option>-Xmx4g</option>
+                        <!-- Enable parallel GC threads -->
+                        <option>-XX:ParallelGCThreads=4</option>
+                        <!-- Tune G1 for concurrent processing -->
+                        <option>-XX:ConcGCThreads=2</option>
+                        <!-- Reduce allocation rate impact -->
+                        <option>-XX:G1NewSizePercent=20</option>
+                        <option>-XX:G1MaxNewSizePercent=40</option>
+                        <!-- Optimize for throughput -->
+                        <option>-XX:+UnlockExperimentalVMOptions</option>
+                        <option>-XX:+UseStringDeduplication</option>
+                        <!-- Reduce GC overhead -->
+                        <option>-XX:G1HeapRegionSize=16m</option>
+                    </options>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
