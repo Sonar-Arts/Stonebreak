@@ -14,7 +14,7 @@ public class ChatSystem {
     
     private final List<ChatMessage> messages;
     private boolean isOpen;
-    private StringBuilder currentInput;
+    private final StringBuilder currentInput;
     private float blinkTimer;
     private boolean showCursor;
     
@@ -139,18 +139,20 @@ public class ChatSystem {
         String commandName = parts[0].toLowerCase();
         
         switch (commandName) {
-            case "/cheats":
+            case "/cheats" -> {
                 if (parts.length >= 2) {
                     try {
                         int value = Integer.parseInt(parts[1]);
-                        if (value == 1) {
-                            Game.getInstance().setCheatsEnabled(true);
-                            addMessage("Cheats enabled!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
-                        } else if (value == 0) {
-                            Game.getInstance().setCheatsEnabled(false);
-                            addMessage("Cheats disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
-                        } else {
-                            addMessage("Usage: /cheats <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                        switch (value) {
+                            case 1 -> {
+                                Game.getInstance().setCheatsEnabled(true);
+                                addMessage("Cheats enabled!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                            }
+                            case 0 -> {
+                                Game.getInstance().setCheatsEnabled(false);
+                                addMessage("Cheats disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
+                            }
+                            default -> addMessage("Usage: /cheats <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                         }
                     } catch (NumberFormatException e) {
                         addMessage("Usage: /cheats <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
@@ -165,9 +167,8 @@ public class ChatSystem {
                         addMessage("Cheats disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
                     }
                 }
-                break;
-                
-            case "/enableflight":
+            }
+            case "/enableflight" -> {
                 if (!Game.getInstance().isCheatsEnabled()) {
                     addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                     return;
@@ -182,14 +183,16 @@ public class ChatSystem {
                 if (parts.length >= 2) {
                     try {
                         int value = Integer.parseInt(parts[1]);
-                        if (value == 1) {
-                            player.setFlightEnabled(true);
-                            addMessage("Flight enabled! Double-tap space to fly", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
-                        } else if (value == 0) {
-                            player.setFlightEnabled(false);
-                            addMessage("Flight disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
-                        } else {
-                            addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                        switch (value) {
+                            case 1 -> {
+                                player.setFlightEnabled(true);
+                                addMessage("Flight enabled! Double-tap space to fly", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                            }
+                            case 0 -> {
+                                player.setFlightEnabled(false);
+                                addMessage("Flight disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
+                            }
+                            default -> addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                         }
                     } catch (NumberFormatException e) {
                         addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
@@ -204,11 +207,8 @@ public class ChatSystem {
                         addMessage("Flight disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
                     }
                 }
-                break;
-                
-            default:
-                addMessage("Unknown command: " + commandName, new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                break;
+            }
+            default -> addMessage("Unknown command: " + commandName, new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
         }
     }
     
@@ -290,6 +290,6 @@ public class ChatSystem {
             lines.add(currentLine.toString());
         }
         
-        return lines.toArray(new String[0]);
+        return lines.toArray(String[]::new);
     }
 }

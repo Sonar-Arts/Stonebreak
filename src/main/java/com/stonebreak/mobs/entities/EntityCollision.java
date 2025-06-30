@@ -9,7 +9,7 @@ import com.stonebreak.blocks.BlockType;
  * Provides methods for world collision, entity-entity collision, and physics application.
  */
 public class EntityCollision {
-    private World world;
+    private final World world;
     
     /**
      * Creates a new collision handler for the specified world.
@@ -23,11 +23,13 @@ public class EntityCollision {
      * For living entities, collision starts from the bottom of their legs.
      */
     public boolean checkWorldCollision(Entity entity, Vector3f newPosition) {
+        if (entity == null || newPosition == null) {
+            return false;
+        }
         
         // Determine the bottom Y position (legs for living entities, entity base for others)
         float bottomY = newPosition.y;
-        if (entity instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) entity;
+        if (entity instanceof LivingEntity livingEntity) {
             bottomY = newPosition.y - livingEntity.getLegHeight();
         }
         
@@ -168,8 +170,7 @@ public class EntityCollision {
                 float groundSurface = y + 1.0f; // Top surface of the block
                 
                 // For living entities, position body so feet touch ground exactly
-                if (entity instanceof LivingEntity) {
-                    LivingEntity livingEntity = (LivingEntity) entity;
+                if (entity instanceof LivingEntity livingEntity) {
                     // Body position = ground surface + leg height (based on actual model leg length)
                     return groundSurface + livingEntity.getLegHeight();
                 }
@@ -179,8 +180,7 @@ public class EntityCollision {
         }
         
         // Bedrock level - also adjust for living entities
-        if (entity instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) entity;
+        if (entity instanceof LivingEntity livingEntity) {
             return livingEntity.getLegHeight();
         }
         
@@ -213,8 +213,7 @@ public class EntityCollision {
         
         // For living entities, check water at their leg level
         float checkY = position.y + entity.getHeight() / 2.0f;
-        if (entity instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) entity;
+        if (entity instanceof LivingEntity livingEntity) {
             // Check water at the middle of the entity's legs
             checkY = position.y - livingEntity.getLegHeight() / 2.0f;
         }

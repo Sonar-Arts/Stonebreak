@@ -97,24 +97,135 @@ public class TextureAtlas {
 
     /**
      * Generates pixel data for a single animated water tile.
+     * Enhanced to match WaterEffects wave system with multiple octaves.
      * @param time Current animation time.
      * @param buffer The ByteBuffer to fill with RGBA data.
      */
     private void generateWaterTileData(float time, ByteBuffer buffer) {
         buffer.clear(); // Prepare buffer for writing
+        
+        // Constants matching WaterEffects system
+        final float WAVE_SPEED = 1.5f;
+        final float WAVE_AMPLITUDE = 0.15f;
+        
+        // Use frequencies that are exact multiples of 2π to ensure seamless tiling
+        final float PI2 = (float)(Math.PI * 2.0);
+        final float seamlessFreq1 = PI2 * 2.0f; // 2 full cycles per texture
+        final float seamlessFreq2 = PI2 * 4.0f; // 4 full cycles per texture  
+        final float seamlessFreq3 = PI2 * 8.0f; // 8 full cycles per texture
+        
         for (int y = 0; y < texturePixelSize; y++) { // y within the tile
             for (int x = 0; x < texturePixelSize; x++) { // x within the tile
-                // Animated water effect using time
-                // Adjust time multipliers for different animation speeds/styles
-                float waterDepth = (float) Math.sin((x * 0.2f + y * 0.3f) * 0.5f + time * 1.5f) * 0.3f + 0.7f;
-                float waveFactor = (float) Math.sin(x * 0.3f + y * 0.15f + time * 1.0f) * 0.2f + 0.8f;
+                // Normalize coordinates for texture space (0 to 1)
+                float nx = x / (float)texturePixelSize;
+                float ny = y / (float)texturePixelSize;
+                
+                // Primary wave - ensure seamless tiling by using normalized coordinates
+                float primaryWave = (float)(Math.sin(nx * seamlessFreq1 + time * WAVE_SPEED) * 
+                                           Math.cos(ny * seamlessFreq1 * 0.8f + time * WAVE_SPEED * 0.9f));
+                
+                // Secondary wave - different frequency for detail, still seamless
+                float secondaryWave = (float)(Math.sin(nx * seamlessFreq2 + ny * seamlessFreq1 * 1.5f + time * WAVE_SPEED * 2.0f) * 0.3f);
+                
+                // Tertiary wave - high frequency detail, seamless tiling
+                float tertiaryWave = (float)(Math.sin(nx * seamlessFreq3 + time * 3.0f) * 
+                                           Math.cos(ny * seamlessFreq3 * 0.75f + time * 2.5f) * 0.1f);
+                
+                // Combined wave effect
+                float waveHeight = (primaryWave + secondaryWave + tertiaryWave) * WAVE_AMPLITUDE;
+                
+                // Foam intensity on wave peaks
+                float foamIntensity = Math.max(0, waveHeight * 2.0f);
+                
+                // Calculate water color with wave-based variations
+                float brightness = 0.8f + waveHeight * 0.5f; // Brighter at wave peaks
+                float waterDepth = 0.7f + waveHeight * 0.3f;
+                
+                // Add caustic-like shimmer with seamless frequencies
+                float causticPattern = (float)(Math.sin(nx * seamlessFreq3 * 1.5f + time * 2.0f) * 
+                                             Math.cos(ny * seamlessFreq3 * 1.2f + time * 1.8f) * 0.15f);
+                
+                // Color calculations with wave influence
+                byte r_val = (byte)(40 + foamIntensity * 60 + causticPattern * 10);
+                byte g_val = (byte)(110 + waterDepth * 40 + brightness * 20 + causticPattern * 15);
+                byte b_val = (byte)(200 + waterDepth * 30 + brightness * 15);
+                
+                // Alpha varies with wave height - more transparent in troughs
+                byte a_val = (byte)(150 + waveHeight * 40 + foamIntensity * 30);
 
-                byte r_val = (byte) (30 + waveFactor * 20);
-                byte g_val = (byte) (100 + waterDepth * 50 + Math.sin(time * 2.0f + x * 0.1f) * 15); // Add some shimmer
-                byte b_val = (byte) (200 + waterDepth * 25 + Math.cos(time * 1.8f + y * 0.1f) * 20);
-                byte a_val = (byte) (140 + waveFactor * 30 + Math.sin(time + (x+y)*0.05f) * 20); // Vary alpha slightly
+                buffer.put(r_val);
+                buffer.put(g_val);
+                buffer.put(b_val);
+                buffer.put(a_val);
+            }
+        }
+        buffer.flip(); // Prepare buffer for reading (by OpenGL)
+    }
+    
+    /**
+     * Generates advanced water tile texture data using WaterEffects system.
+     * @param time Current animation time.
+     * @param buffer The ByteBuffer to fill with RGBA data.
+     * @param waterEffects WaterEffects instance for wave data
+     * @param playerX Player X position 
+     * @param playerZ Player Z position
+     */
+    private void generateAdvancedWaterTileData(float time, ByteBuffer buffer, WaterEffects waterEffects, float playerX, float playerZ) {
+        buffer.clear(); // Prepare buffer for writing
+        
+        // Sample wave heights at multiple points to create texture
+        final int samplePoints = 4; // Sample 4x4 grid within each pixel
+        
+        for (int y = 0; y < texturePixelSize; y++) {
+            for (int x = 0; x < texturePixelSize; x++) {
+                // Normalize coordinates and offset by player position for local detail
+                float nx = x / (float)texturePixelSize;
+                float ny = y / (float)texturePixelSize;
+                
+                // World space coordinates for this texture pixel
+                float worldX = playerX + (nx - 0.5f) * 16.0f; // 16 blocks around player
+                float worldZ = playerZ + (ny - 0.5f) * 16.0f;
+                
+                // Sample wave height from WaterEffects
+                float waveHeight = 0.0f;
+                float foamIntensity = 0.0f;
+                float causticIntensity = 0.0f;
+                
+                // Multi-sample for smoother results
+                for (int sx = 0; sx < samplePoints; sx++) {
+                    for (int sz = 0; sz < samplePoints; sz++) {
+                        float sampleX = worldX + (sx / (float)samplePoints - 0.5f);
+                        float sampleZ = worldZ + (sz / (float)samplePoints - 0.5f);
+                        
+                        waveHeight += waterEffects.getWaterSurfaceHeight(sampleX, sampleZ) - 0.875f; // Subtract base height
+                        foamIntensity += waterEffects.getFoamIntensity(sampleX, 0.875f, sampleZ);
+                        causticIntensity += waterEffects.getCausticIntensity(sampleX, sampleZ);
+                    }
+                }
+                
+                waveHeight /= (samplePoints * samplePoints);
+                foamIntensity /= (samplePoints * samplePoints);
+                causticIntensity /= (samplePoints * samplePoints);
+                
+                // Add local texture detail
+                float detail = (float)(Math.sin(nx * 20.0f + time * 2.0f) * 
+                                     Math.cos(ny * 18.0f + time * 1.8f) * 0.05f);
+                
+                // Calculate colors based on wave properties
+                float brightness = 0.8f + waveHeight * 3.0f + causticIntensity * 0.3f + detail;
+                float waterDepth = 0.7f + waveHeight * 2.0f + detail * 0.5f;
+                
+                // Foam adds whiteness
+                float foamWhiteness = Math.min(1.0f, foamIntensity * 2.0f);
+                
+                // Color calculations with detail texture
+                byte r_val = (byte)(40 * (1.0f - foamWhiteness) + 220 * foamWhiteness + causticIntensity * 20 + detail * 10);
+                byte g_val = (byte)(110 * (1.0f - foamWhiteness) + 230 * foamWhiteness + waterDepth * 40 + brightness * 20);
+                byte b_val = (byte)(200 * (1.0f - foamWhiteness) + 240 * foamWhiteness + waterDepth * 30 + detail * 8);
+                
+                // Alpha varies with wave height and foam
+                byte a_val = (byte)(150 + waveHeight * 60 + foamIntensity * 40);
 
-                // Clamp values to ensure they are within byte range if necessary, though current logic should be fine.
                 buffer.put(r_val);
                 buffer.put(g_val);
                 buffer.put(b_val);
@@ -129,21 +240,52 @@ public class TextureAtlas {
      * @param time Current animation time.
      */
     public void updateAnimatedWater(float time) {
+        updateAnimatedWater(time, null, 0.0f, 0.0f);
+    }
+    
+    /**
+     * Updates the animated water texture tile on the GPU with wave parameters.
+     * @param time Current animation time.
+     * @param waterEffects Optional WaterEffects instance for advanced wave data
+     * @param playerX Player X position for location-based effects
+     * @param playerZ Player Z position for location-based effects
+     */
+    public void updateAnimatedWater(float time, WaterEffects waterEffects, float playerX, float playerZ) {
         if (textureId == 0) return; // Atlas not initialized
 
-        generateWaterTileData(time, waterTileUpdateBuffer);
+        try {
+            if (waterEffects != null) {
+                generateAdvancedWaterTileData(time, waterTileUpdateBuffer, waterEffects, playerX, playerZ);
+            } else {
+                generateWaterTileData(time, waterTileUpdateBuffer);
+            }
 
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+            // Check if our texture atlas is currently bound
+            int[] currentTexture = new int[1];
+            GL11.glGetIntegerv(GL11.GL_TEXTURE_BINDING_2D, currentTexture);
+            
+            if (currentTexture[0] != textureId) {
+                System.err.println("WARNING: updateAnimatedWater called but atlas not bound (bound: " + currentTexture[0] + ", expected: " + textureId + ")");
+                return; // Don't update if wrong texture is bound
+            }
+            
+            // Check if texture is valid
+            if (!GL11.glIsTexture(textureId)) {
+                System.err.println("WARNING: Invalid texture ID " + textureId + " in updateAnimatedWater");
+                return;
+            }
 
-        int offsetX = WATER_ATLAS_X * texturePixelSize;
-        int offsetY = WATER_ATLAS_Y * texturePixelSize;
+            int offsetX = WATER_ATLAS_X * texturePixelSize;
+            int offsetY = WATER_ATLAS_Y * texturePixelSize;
 
-        // Update the specific region of the texture atlas corresponding to the water tile
-        GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, offsetX, offsetY,
-                             texturePixelSize, texturePixelSize,
-                             GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, waterTileUpdateBuffer);
-
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0); // Unbind
+            // Update the specific region of the texture atlas corresponding to the water tile
+            GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, offsetX, offsetY,
+                                 texturePixelSize, texturePixelSize,
+                                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, waterTileUpdateBuffer);
+        } catch (Exception e) {
+            System.err.println("ERROR in updateAnimatedWater: " + e.getMessage());
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+        }
     }
     
     /**
@@ -797,144 +939,162 @@ public class TextureAtlas {
                     
                     boolean isPixelSet = false;
                     
-                    // Row 0: Axe head tip
-                    if (pY_axe == 0) {
-                        if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 1: Axe head cutting edge
-                    else if (pY_axe == 1) {
-                        if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 11) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 2: Axe head tapering
-                    else if (pY_axe == 2) {
-                        if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 5) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 11) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 12) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 13) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 3: Axe head main body (widest)
-                    else if (pY_axe == 3) {
-                        if (pX_axe == 3) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 4) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 5) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 11) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 12) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 13) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 14) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 4: Axe head main body (widest)
-                    else if (pY_axe == 4) {
-                        if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 5) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 11) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 12) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 13) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 5: Axe head expands
-                    else if (pY_axe == 5) {
-                        if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 11) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 12) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 6: Handle continues and axe head starts
-                    else if (pY_axe == 6) {
-                        if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 11) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 7: Handle continues
-                    else if (pY_axe == 7) {
-                        if (pX_axe == 7) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 10) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 8: Handle continues
-                    else if (pY_axe == 8) {
-                        if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 9) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 9: Handle continues
-                    else if (pY_axe == 9) {
-                        if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 8) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 10: Handle continues
-                    else if (pY_axe == 10) {
-                        if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 5) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 7) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 11: Handle continues
-                    else if (pY_axe == 11) {
-                        if (pX_axe == 3) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 4) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 5) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 6) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 12: Handle continues
-                    else if (pY_axe == 12) {
-                        if (pX_axe == 2) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 3) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 4) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 5) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 13: Handle continues
-                    else if (pY_axe == 13) {
-                        if (pX_axe == 1) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 2) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 3) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 4) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 14: Handle diagonal continues
-                    else if (pY_axe == 14) {
-                        if (pX_axe == 0) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 1) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 2) { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 3) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
-                    }
-                    // Row 15: Handle end (bottom-left)
-                    else if (pY_axe == 15) {
-                        if (pX_axe == 1) { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
-                        else if (pX_axe == 2) { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                    switch (pY_axe) {
+                        case 0 -> { // Row 0: Axe head tip
+                            switch (pX_axe) {
+                                case 6 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 1 -> { // Row 1: Axe head cutting edge
+                            switch (pX_axe) {
+                                case 5 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 11 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 2 -> { // Row 2: Axe head tapering
+                            switch (pX_axe) {
+                                case 4 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 5 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 11 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 12 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 13 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 3 -> { // Row 3: Axe head main body (widest)
+                            switch (pX_axe) {
+                                case 3 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 4 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 5 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 11 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 12 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 13 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 14 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 4 -> { // Row 4: Axe head main body (widest)
+                            switch (pX_axe) {
+                                case 4 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 5 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)brightR; g = (byte)brightG; b = (byte)brightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 11 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 12 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 13 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 5 -> { // Row 5: Axe head expands
+                            switch (pX_axe) {
+                                case 5 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 11 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 12 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 6 -> { // Row 6: Handle continues and axe head starts
+                            switch (pX_axe) {
+                                case 6 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)headR; g = (byte)headG; b = (byte)headB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 11 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 7 -> { // Row 7: Handle continues
+                            switch (pX_axe) {
+                                case 7 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 10 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 8 -> { // Row 8: Handle continues
+                            switch (pX_axe) {
+                                case 6 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 9 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 9 -> { // Row 9: Handle continues
+                            switch (pX_axe) {
+                                case 5 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 8 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 10 -> { // Row 10: Handle continues
+                            switch (pX_axe) {
+                                case 4 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 5 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 7 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 11 -> { // Row 11: Handle continues
+                            switch (pX_axe) {
+                                case 3 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 4 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 5 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 6 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 12 -> { // Row 12: Handle continues
+                            switch (pX_axe) {
+                                case 2 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 3 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 4 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 5 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 13 -> { // Row 13: Handle continues
+                            switch (pX_axe) {
+                                case 1 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 2 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 3 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 4 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 14 -> { // Row 14: Handle diagonal continues
+                            switch (pX_axe) {
+                                case 0 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                                case 1 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 2 -> { r = (byte)highlightR; g = (byte)highlightG; b = (byte)highlightB; a = (byte)255; isPixelSet = true; }
+                                case 3 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
+                        case 15 -> { // Row 15: Handle end (bottom-left)
+                            switch (pX_axe) {
+                                case 1 -> { r = (byte)handleR; g = (byte)handleG; b = (byte)handleB; a = (byte)255; isPixelSet = true; }
+                                case 2 -> { r = (byte)outlineR; g = (byte)outlineG; b = (byte)outlineB; a = (byte)255; isPixelSet = true; }
+                            }
+                        }
                     }
                     
                     if (!isPixelSet) {
@@ -1638,7 +1798,7 @@ public class TextureAtlas {
                             boolean isSpecialElement = false;
                             
                             switch (faceType) {
-                                case 0: // Master's Tool Collection Face - Hanging implements
+                                case 0 -> { // Master's Tool Collection Face - Hanging implements
                                     // Tool rack horizontal rail
                                     if (pixelY_wbside == 3 && pixelX_wbside >= 1 && pixelX_wbside <= 14) {
                                         finalR -= 25; finalG -= 20; finalB -= 15;
@@ -1698,9 +1858,8 @@ public class TextureAtlas {
                                             isSpecialElement = true;
                                         }
                                     }
-                                    break;
-                                    
-                                case 1: // Storage Drawers and Compartments Face
+                                }
+                                case 1 -> { // Storage Drawers and Compartments Face
                                     // Upper drawer
                                     if (pixelY_wbside >= 2 && pixelY_wbside <= 6) {
                                         // Drawer face
@@ -1745,9 +1904,8 @@ public class TextureAtlas {
                                         finalR -= 12; finalG -= 10; finalB -= 8;
                                         isSpecialElement = true;
                                     }
-                                    break;
-                                    
-                                case 2: // Hand Plane Rest and Chisel Rack Face
+                                }
+                                case 2 -> { // Hand Plane Rest and Chisel Rack Face
                                     // Angled plane rest (center-left)
                                     if (pixelX_wbside >= 3 && pixelX_wbside <= 8 && 
                                         pixelY_wbside >= 6 && pixelY_wbside <= 12) {
@@ -1802,9 +1960,8 @@ public class TextureAtlas {
                                             isSpecialElement = true;
                                         }
                                     }
-                                    break;
-                                    
-                                case 3: // Hardware and Metal Reinforcements Face
+                                }
+                                case 3 -> { // Hardware and Metal Reinforcements Face
                                     // Corner metal brackets
                                     if ((pixelX_wbside <= 2 && pixelY_wbside <= 2) ||
                                         (pixelX_wbside >= 13 && pixelY_wbside <= 2) ||
@@ -1856,7 +2013,7 @@ public class TextureAtlas {
                                         finalR = 110; finalG = 105; finalB = 100;
                                         isSpecialElement = true;
                                     }
-                                    break;
+                                }
                             }
                             
                             // Authentic aging and wear patterns

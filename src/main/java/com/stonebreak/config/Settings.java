@@ -3,8 +3,6 @@ package com.stonebreak.config;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
 
 public class Settings {
     private static Settings instance;
@@ -27,7 +25,7 @@ public class Settings {
     };
     
     private Settings() {
-        loadSettings();
+        loadSettingsInternal();
     }
     
     public static Settings getInstance() {
@@ -39,11 +37,6 @@ public class Settings {
     
     public void saveSettings() {
         try {
-            Map<String, Object> settingsMap = new HashMap<>();
-            settingsMap.put("windowWidth", windowWidth);
-            settingsMap.put("windowHeight", windowHeight);
-            settingsMap.put("masterVolume", masterVolume);
-            
             StringBuilder json = new StringBuilder();
             json.append("{\n");
             json.append("  \"windowWidth\": ").append(windowWidth).append(",\n");
@@ -59,6 +52,10 @@ public class Settings {
     }
     
     public void loadSettings() {
+        loadSettingsInternal();
+    }
+    
+    private void loadSettingsInternal() {
         try {
             if (!Files.exists(Paths.get(SETTINGS_FILE))) {
                 System.out.println("Settings file not found, using defaults");

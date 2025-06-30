@@ -1,46 +1,17 @@
 package com.stonebreak.blocks;
 
-import com.stonebreak.rendering.ShaderProgram;
-import com.stonebreak.rendering.TextureAtlas;
-import com.stonebreak.items.Item;
-import com.stonebreak.items.ItemType;
+import com.stonebreak.items.*;
+import com.stonebreak.rendering.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.*;
 
-import org.joml.Matrix4f;
-import org.lwjgl.BufferUtils;
-import static org.lwjgl.opengl.GL11.GL_BLEND;
-import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
-import static org.lwjgl.opengl.GL11.GL_FLOAT;
-import static org.lwjgl.opengl.GL11.GL_NEAREST;
-import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
-import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
-import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
-import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
-import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
-import static org.lwjgl.opengl.GL11.glBindTexture;
-import static org.lwjgl.opengl.GL11.glBlendFunc;
-import static org.lwjgl.opengl.GL11.glDepthMask;
-import static org.lwjgl.opengl.GL11.glDisable;
-import static org.lwjgl.opengl.GL11.glDrawElements;
-import static org.lwjgl.opengl.GL11.glEnable;
-import static org.lwjgl.opengl.GL11.glGetIntegerv;
-import static org.lwjgl.opengl.GL11.glIsEnabled;
-import static org.lwjgl.opengl.GL11.glTexParameteri;
-import static org.lwjgl.opengl.GL11.glViewport;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL30;
+import org.joml.*;
+import org.lwjgl.*;
+import org.lwjgl.opengl.*;
+import static org.lwjgl.opengl.GL11.*;
 
 /**
  * Dedicated renderer for block drops with isolated OpenGL context to prevent UI corruption.
@@ -254,7 +225,7 @@ public class BlockDropRenderer {
             // Create model matrix for this drop
             Matrix4f modelMatrix = new Matrix4f();
             modelMatrix.translate(drop.getPosition());
-            modelMatrix.rotateY((float) Math.toRadians(drop.getRotationY()));
+            modelMatrix.rotateY((float) java.lang.Math.toRadians(drop.getRotationY()));
             modelMatrix.scale(0.25f); // 25% of full block size
             
             // Set model matrix for this drop
@@ -286,11 +257,17 @@ public class BlockDropRenderer {
                 BlockType.Face faceEnum = BlockType.Face.values()[faceValue];
                 faceTexCoords[faceValue] = blockType.getTextureCoords(faceEnum);
             }
-        } else {
+        } else if (item != null) {
             // For items (like tools), use the same texture for all faces
             float[] itemTexCoords = {item.getAtlasX(), item.getAtlasY()};
             for (int faceValue = 0; faceValue < 6; faceValue++) {
                 faceTexCoords[faceValue] = itemTexCoords;
+            }
+        } else {
+            // Default texture coordinates if item is null
+            float[] defaultTexCoords = {0.0f, 0.0f};
+            for (int faceValue = 0; faceValue < 6; faceValue++) {
+                faceTexCoords[faceValue] = defaultTexCoords;
             }
         }
         

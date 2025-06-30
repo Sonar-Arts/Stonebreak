@@ -139,22 +139,40 @@ public class CowModel {
     }
     
     /**
+     * Gets copies of all model parts for animation (doesn't modify originals).
+     */
+    private ModelPart[] getAnimationCopies() {
+        ModelPart[] copies = new ModelPart[10];
+        copies[0] = new ModelPart(body.getPosition(), body.getSize(), body.getTextureName());
+        copies[1] = new ModelPart(head.getPosition(), head.getSize(), head.getTextureName());
+        
+        // Copy legs
+        for (int i = 0; i < 4; i++) {
+            copies[2 + i] = new ModelPart(legs[i].getPosition(), legs[i].getSize(), legs[i].getTextureName());
+        }
+        
+        // Copy horns
+        for (int i = 0; i < 2; i++) {
+            copies[6 + i] = new ModelPart(horns[i].getPosition(), horns[i].getSize(), horns[i].getTextureName());
+        }
+        
+        copies[8] = new ModelPart(udder.getPosition(), udder.getSize(), udder.getTextureName());
+        copies[9] = new ModelPart(tail.getPosition(), tail.getSize(), tail.getTextureName());
+        
+        return copies;
+    }
+    
+    /**
      * Gets the model parts with animation applied.
      */
     public ModelPart[] getAnimatedParts(CowAnimation animation, float animationTime) {
-        ModelPart[] parts = getAllParts();
+        ModelPart[] parts = getAnimationCopies();
         
         // Apply animations based on type
         switch (animation) {
-            case WALKING:
-                applyWalkingAnimation(parts, animationTime);
-                break;
-            case GRAZING:
-                applyGrazingAnimation(parts, animationTime);
-                break;
-            case IDLE:
-                applyIdleAnimation(parts, animationTime);
-                break;
+            case WALKING -> applyWalkingAnimation(parts, animationTime);
+            case GRAZING -> applyGrazingAnimation(parts, animationTime);
+            case IDLE -> applyIdleAnimation(parts, animationTime);
         }
         
         return parts;
@@ -247,11 +265,11 @@ public class CowModel {
      * Represents a single part of the cow model (cuboid).
      */
     public static class ModelPart {
-        private Vector3f position;
-        private Vector3f size;
+        private final Vector3f position;
+        private final Vector3f size;
         private String textureName;
-        private Vector3f rotation;
-        private Vector3f scale;
+        private final Vector3f rotation;
+        private final Vector3f scale;
         
         public ModelPart(Vector3f position, Vector3f size, String textureName) {
             this.position = new Vector3f(position);

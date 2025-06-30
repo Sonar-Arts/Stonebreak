@@ -1,40 +1,35 @@
 package com.stonebreak.rendering;
 
+// Standard Library Imports
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap; // Added import for HashMap
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+// JOML Math Library
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
-import org.joml.Vector4f; // Added import for ByteBuffer
+import org.joml.Vector4f;
+
+// LWJGL Core
 import org.lwjgl.BufferUtils;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemType;
-import com.stonebreak.blocks.BlockDrop;
-import com.stonebreak.blocks.BlockDropManager;
-import com.stonebreak.blocks.BlockDropRenderer;
-import com.stonebreak.world.World;
-import com.stonebreak.player.Player;
-import com.stonebreak.world.Chunk;
-import com.stonebreak.core.Game;
-import com.stonebreak.ui.Font;
-import com.stonebreak.ui.InventoryScreen;
-import com.stonebreak.ui.PauseMenu;
+import org.lwjgl.system.MemoryStack;
+
+// LWJGL OpenGL Classes
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
+
+// LWJGL OpenGL Static Imports (GL11)
 import static org.lwjgl.opengl.GL11.GL_ALWAYS;
 import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK;
-import static org.lwjgl.opengl.GL11.GL_FLOAT; // Re-added
+import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import static org.lwjgl.opengl.GL11.GL_LESS;
 import static org.lwjgl.opengl.GL11.GL_LINES;
-import static org.lwjgl.opengl.GL11.GL_NEAREST; // Re-added
+import static org.lwjgl.opengl.GL11.GL_NEAREST;
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_POINTS;
 import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
@@ -58,40 +53,64 @@ import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
 import static org.lwjgl.opengl.GL11.glBegin;
 import static org.lwjgl.opengl.GL11.glBindTexture;
 import static org.lwjgl.opengl.GL11.glBlendFunc;
-import static org.lwjgl.opengl.GL11.glColorMask; // Re-added
+import static org.lwjgl.opengl.GL11.glColorMask;
 import static org.lwjgl.opengl.GL11.glDeleteTextures;
-import static org.lwjgl.opengl.GL11.glDepthFunc; // Re-added
+import static org.lwjgl.opengl.GL11.glDepthFunc;
 import static org.lwjgl.opengl.GL11.glDepthMask;
 import static org.lwjgl.opengl.GL11.glDisable;
 import static org.lwjgl.opengl.GL11.glDrawArrays;
 import static org.lwjgl.opengl.GL11.glDrawElements;
-import static org.lwjgl.opengl.GL11.glEnable; // Added for glGetBooleanv
+import static org.lwjgl.opengl.GL11.glEnable;
 import static org.lwjgl.opengl.GL11.glEnd;
 import static org.lwjgl.opengl.GL11.glGenTextures;
 import static org.lwjgl.opengl.GL11.glGetBooleanv;
 import static org.lwjgl.opengl.GL11.glGetIntegerv;
 import static org.lwjgl.opengl.GL11.glIsEnabled;
 import static org.lwjgl.opengl.GL11.glPointSize;
+import static org.lwjgl.opengl.GL11.glGetError;
+import static org.lwjgl.opengl.GL11.GL_NO_ERROR;
 import static org.lwjgl.opengl.GL11.glPolygonOffset;
 import static org.lwjgl.opengl.GL11.glScissor;
 import static org.lwjgl.opengl.GL11.glTexImage2D;
 import static org.lwjgl.opengl.GL11.glTexParameteri;
 import static org.lwjgl.opengl.GL11.glVertex3f;
 import static org.lwjgl.opengl.GL11.glViewport;
-import org.lwjgl.opengl.GL13;
+
+// LWJGL OpenGL Static Imports (GL13)
 import static org.lwjgl.opengl.GL13.GL_ACTIVE_TEXTURE;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE0; // Added import for GL_ACTIVE_TEXTURE
+import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
+
+// LWJGL OpenGL Static Imports (GL14)
 import static org.lwjgl.opengl.GL14.GL_BLEND_DST_ALPHA;
 import static org.lwjgl.opengl.GL14.GL_BLEND_DST_RGB;
 import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_ALPHA;
 import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_RGB;
 import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
-import org.lwjgl.opengl.GL20;
-import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM; // For originalDepthMask comparison
-import org.lwjgl.opengl.GL30;
+
+// LWJGL OpenGL Static Imports (GL20 & GL30)
+import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM;
 import static org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING;
-import org.lwjgl.system.MemoryStack;
+
+// Project Imports (Blocks)
+import com.stonebreak.blocks.*;
+
+// Project Imports (Core)
+import com.stonebreak.core.Game;
+
+// Project Imports (Items)
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
+
+// Project Imports (Player)
+import com.stonebreak.player.Player;
+
+// Project Imports (UI)
+import com.stonebreak.ui.*;
+
+// Project Imports (World)
+import com.stonebreak.world.Chunk;
+import com.stonebreak.world.World;
 
 
 /**
@@ -484,14 +503,28 @@ public class Renderer {
      * Renders the world and UI elements.
      */
     public void renderWorld(World world, Player player, float totalTime) { // Added totalTime parameter
-        // Update animated textures
-        textureAtlas.updateAnimatedWater(totalTime);
-
-        // Enable depth testing (globally for the world pass)
-        glEnable(GL_DEPTH_TEST);
+        // Clear any pending OpenGL errors from previous operations
+        int pendingError;
+        while ((pendingError = glGetError()) != GL_NO_ERROR) {
+            String errorString = switch (pendingError) {
+                case 0x0500 -> "GL_INVALID_ENUM";
+                case 0x0501 -> "GL_INVALID_VALUE";
+                case 0x0502 -> "GL_INVALID_OPERATION";
+                case 0x0503 -> "GL_STACK_OVERFLOW";
+                case 0x0504 -> "GL_STACK_UNDERFLOW";
+                case 0x0505 -> "GL_OUT_OF_MEMORY";
+                case 0x0506 -> "GL_INVALID_FRAMEBUFFER_OPERATION";
+                default -> "UNKNOWN_ERROR_" + Integer.toHexString(pendingError);
+            };
+            System.err.println("PENDING OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(pendingError) + ") from previous operation");
+        }
+        
+        // Now check for errors from our operations
+        checkGLError("After clearing pending errors");
         
         // Use shader program
         shaderProgram.bind();
+        checkGLError("After shader bind");
         
         // Set common uniforms for world rendering
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
@@ -500,6 +533,7 @@ public class Renderer {
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
+        checkGLError("After setting uniforms");
         
         // Bind texture atlas once before passes
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -507,6 +541,12 @@ public class Renderer {
         // Ensure texture filtering is set (NEAREST for blocky style)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        checkGLError("After texture binding");
+        
+        // Update animated textures now that atlas is properly bound
+        WaterEffects waterEffects = Game.getWaterEffects();
+        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
+        checkGLError("After updateAnimatedWater");
         
         // Get player chunk position
         int playerChunkX = (int) Math.floor(player.getPosition().x / World.CHUNK_SIZE);
@@ -589,7 +629,8 @@ public class Renderer {
      */
     public void renderWorldWithoutDrops(World world, Player player, float totalTime) {
         // Update animated textures
-        textureAtlas.updateAnimatedWater(totalTime);
+        WaterEffects waterEffects = Game.getWaterEffects();
+        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
 
         // Enable depth testing (globally for the world pass)
         glEnable(GL_DEPTH_TEST);
@@ -686,7 +727,8 @@ public class Renderer {
      */
     public void renderWorldOnly(World world, Player player, float totalTime) {
         // Update animated textures
-        textureAtlas.updateAnimatedWater(totalTime);
+        WaterEffects waterEffects = Game.getWaterEffects();
+        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
 
         // Enable depth testing (globally for the world pass)
         glEnable(GL_DEPTH_TEST);
@@ -922,11 +964,8 @@ public class Renderer {
             } else {
                 // Check if this is a flower block - render as flat cross pattern instead of 3D cube
                 switch (selectedBlockType) {
-                    case ROSE:
-                    case DANDELION:
-                        renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
-                        break;
-                    default:
+                    case ROSE, DANDELION -> renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
+                    default -> {
                         // Use block-specific cube for proper face texturing
                         shaderProgram.setUniform("u_useSolidColor", false);
                         shaderProgram.setUniform("u_isText", false);
@@ -950,20 +989,16 @@ public class Renderer {
                         // Re-enable blending for other elements
                         glEnable(GL_BLEND);
                         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                        break;
+                    }
                 }
             }
-        } else if (isDisplayingTool) {
+        } else if (isDisplayingTool && selectedItemType != null) {
             // Handle tool rendering
-            if (selectedItemType == ItemType.STICK) {
-                renderMinecraftStyleItemInHand(selectedItemType);
-            } else if (selectedItemType == ItemType.WOODEN_PICKAXE) {
-                renderPickaxeInHand(selectedItemType, player);
-            } else if (selectedItemType == ItemType.WOODEN_AXE) {
-                renderAxeInHand(selectedItemType, player);
-            } else {
-                // Default tool rendering
-                renderMinecraftStyleItemInHand(selectedItemType);
+            switch (selectedItemType) {
+                case STICK -> renderMinecraftStyleItemInHand(selectedItemType);
+                case WOODEN_PICKAXE -> renderPickaxeInHand(selectedItemType, player);
+                case WOODEN_AXE -> renderAxeInHand(selectedItemType, player);
+                default -> renderMinecraftStyleItemInHand(selectedItemType);
             }
         }
         } else {
@@ -3304,6 +3339,67 @@ public class Renderer {
                 if (entity.isAlive()) {
                     entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
                 }
+            }
+        }
+    }
+    
+    /**
+     * Checks for OpenGL errors and logs them with context information.
+     */
+    private void checkGLError(String context) {
+        int error = glGetError();
+        if (error != GL_NO_ERROR) {
+            String errorString = switch (error) {
+                case 0x0500 -> "GL_INVALID_ENUM";
+                case 0x0501 -> "GL_INVALID_VALUE";
+                case 0x0502 -> "GL_INVALID_OPERATION";
+                case 0x0503 -> "GL_STACK_OVERFLOW";
+                case 0x0504 -> "GL_STACK_UNDERFLOW";
+                case 0x0505 -> "GL_OUT_OF_MEMORY";
+                case 0x0506 -> "GL_INVALID_FRAMEBUFFER_OPERATION";
+                default -> "UNKNOWN_ERROR_" + Integer.toHexString(error);
+            };
+            
+            // Get additional OpenGL state for debugging
+            try {
+                int[] currentProgram = new int[1];
+                glGetIntegerv(GL_CURRENT_PROGRAM, currentProgram);
+                int[] activeTexture = new int[1];
+                glGetIntegerv(GL_ACTIVE_TEXTURE, activeTexture);
+                int[] boundTexture = new int[1];
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, boundTexture);
+                int[] viewport = new int[4];
+                glGetIntegerv(GL_VIEWPORT, viewport);
+                
+                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
+                System.err.println("Time: " + java.time.LocalDateTime.now());
+                System.err.println("Thread: " + Thread.currentThread().getName());
+                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                System.err.println("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0]);
+                System.err.println("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3]);
+                
+                // Log to file as well
+                try {
+                    java.io.FileWriter fw = new java.io.FileWriter("opengl_errors.txt", true);
+                    fw.write("=== OpenGL ERROR " + java.time.LocalDateTime.now() + " ===\n");
+                    fw.write("Error: " + errorString + " (0x" + Integer.toHexString(error) + ")\n");
+                    fw.write("Context: " + context + "\n");
+                    fw.write("Thread: " + Thread.currentThread().getName() + "\n");
+                    fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
+                    fw.write("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0] + "\n");
+                    fw.write("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3] + "\n\n");
+                    fw.close();
+                } catch (Exception logEx) {
+                    System.err.println("Failed to write OpenGL error log: " + logEx.getMessage());
+                }
+            } catch (Exception stateEx) {
+                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
+                System.err.println("Failed to get additional GL state: " + stateEx.getMessage());
+            }
+            
+            // For critical errors, throw exception to force crash with stack trace
+            if (error == 0x0505) { // GL_OUT_OF_MEMORY
+                throw new RuntimeException("OpenGL OUT OF MEMORY error at: " + context);
             }
         }
     }

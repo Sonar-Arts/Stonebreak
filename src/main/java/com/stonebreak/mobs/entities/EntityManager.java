@@ -60,8 +60,8 @@ public class EntityManager {
                 entity.update(deltaTime);
                 
                 // Apply physics and collision
-                if (entity instanceof LivingEntity) {
-                    collision.applyLivingEntityPhysics((LivingEntity) entity, deltaTime);
+                if (entity instanceof LivingEntity livingEntity) {
+                    collision.applyLivingEntityPhysics(livingEntity, deltaTime);
                 } else {
                     collision.applyEntityPhysics(entity, deltaTime);
                 }
@@ -114,14 +114,13 @@ public class EntityManager {
      * This method will be expanded in future phases as new entity types are added.
      */
     private Entity createEntity(EntityType type, Vector3f position) {
-        switch (type) {
-            case COW:
-                return new com.stonebreak.mobs.cow.Cow(world, position);
-                
-            default:
+        return switch (type) {
+            case COW -> new com.stonebreak.mobs.cow.Cow(world, position);
+            default -> {
                 System.err.println("Unknown entity type: " + type);
-                return null;
-        }
+                yield null;
+            }
+        };
     }
     
     /**
@@ -207,8 +206,7 @@ public class EntityManager {
      */
     public void handlePlayerInteractions(Player player) {
         for (Entity entity : entities) {
-            if (entity instanceof LivingEntity) {
-                LivingEntity livingEntity = (LivingEntity) entity;
+            if (entity instanceof LivingEntity livingEntity) {
                 if (livingEntity.canInteractWith(player)) {
                     // Player is close enough to interact
                     // Actual interaction will be triggered by player input
@@ -227,8 +225,7 @@ public class EntityManager {
         float nearestDistance = Float.MAX_VALUE;
         
         for (Entity entity : entities) {
-            if (entity instanceof LivingEntity) {
-                LivingEntity livingEntity = (LivingEntity) entity;
+            if (entity instanceof LivingEntity livingEntity) {
                 if (livingEntity.canInteractWith(player)) {
                     float distance = entity.getPosition().distance(playerPos);
                     if (distance < nearestDistance) {

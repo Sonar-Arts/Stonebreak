@@ -11,7 +11,7 @@ import com.stonebreak.core.Game;
  */
 public class CowAI {
     // Reference to the cow this AI controls
-    private Cow cow;
+    private final Cow cow;
     
     // Behavior states
     private CowBehaviorState currentState;
@@ -29,7 +29,7 @@ public class CowAI {
     private static final float WANDER_CHANCE = 0.4f;
     
     // Movement target for wandering
-    private Vector3f wanderTarget;
+    private final Vector3f wanderTarget;
     private boolean hasWanderTarget;
     
     /**
@@ -70,15 +70,9 @@ public class CowAI {
         
         // Update current behavior
         switch (currentState) {
-            case IDLE:
-                handleIdleBehavior(deltaTime);
-                break;
-            case WANDERING:
-                handleWanderBehavior(deltaTime);
-                break;
-            case GRAZING:
-                handleGrazeBehavior(deltaTime);
-                break;
+            case IDLE -> handleIdleBehavior();
+            case WANDERING -> handleWanderBehavior(deltaTime);
+            case GRAZING -> handleGrazeBehavior();
         }
         
         // Check for player interaction (future implementation)
@@ -88,7 +82,7 @@ public class CowAI {
     /**
      * Handles idle behavior - cow stands still.
      */
-    private void handleIdleBehavior(float deltaTime) {
+    private void handleIdleBehavior() {
         // Stop movement
         Vector3f velocity = cow.getVelocity();
         velocity.x = 0;
@@ -131,7 +125,7 @@ public class CowAI {
     /**
      * Handles grazing behavior - cow pretends to eat grass.
      */
-    private void handleGrazeBehavior(float deltaTime) {
+    private void handleGrazeBehavior() {
         // Stop movement
         Vector3f velocity = cow.getVelocity();
         velocity.x = 0;

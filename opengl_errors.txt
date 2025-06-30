@@ -1,0 +1,60 @@
+=== OpenGL ERROR 2025-06-30T01:18:25.612550900 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: After updateAnimatedWater
+Thread: main
+Memory: 178MB
+
+=== OpenGL ERROR 2025-06-30T01:18:25.623081200 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: After updateAnimatedWater
+Thread: main
+Memory: 185MB
+
+=== OpenGL ERROR 2025-06-30T01:18:25.635589200 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: After updateAnimatedWater
+Thread: main
+Memory: 192MB
+
+=== OpenGL ERROR 2025-06-30T01:20:21.478706900 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: After enabling depth test
+Thread: main
+Memory: 192MB
+
+=== OpenGL ERROR 2025-06-30T01:20:21.496828600 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: After enabling depth test
+Thread: main
+Memory: 203MB
+
+=== OpenGL ERROR 2025-06-30T01:20:21.507339200 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: After enabling depth test
+Thread: main
+Memory: 208MB
+
+=== OpenGL ERROR 2025-06-30T01:22:24.958757900 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: Initial state check
+Thread: main
+Memory: 164MB
+
+=== OpenGL ERROR 2025-06-30T01:22:24.968265900 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: Initial state check
+Thread: main
+Memory: 166MB
+
+=== OpenGL ERROR 2025-06-30T01:22:24.979772300 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: Initial state check
+Thread: main
+Memory: 169MB
+
+=== OpenGL ERROR 2025-06-30T01:22:24.985122600 ===
+Error: GL_INVALID_OPERATION (0x502)
+Context: Initial state check
+Thread: main
+Memory: 169MB
+

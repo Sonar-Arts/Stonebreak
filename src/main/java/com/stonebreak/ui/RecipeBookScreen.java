@@ -1,27 +1,29 @@
 package com.stonebreak.ui;
 
-import com.stonebreak.rendering.Renderer;
+import static org.lwjgl.nanovg.NanoVG.*;
+import static org.lwjgl.system.MemoryStack.stackPush;
+
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
+import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
-import static org.lwjgl.nanovg.NanoVG.*;
 import org.lwjgl.system.MemoryStack;
-import static org.lwjgl.system.MemoryStack.stackPush;
-import org.joml.Vector2f;
+
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.Item;
-import com.stonebreak.items.ItemType;
-import com.stonebreak.items.ItemCategory;
+import com.stonebreak.core.Game;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.crafting.Recipe;
-import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.items.Item;
+import com.stonebreak.items.ItemCategory;
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
+import com.stonebreak.rendering.Renderer;
 
 public class RecipeBookScreen {
     private final UIRenderer uiRenderer;
@@ -464,7 +466,7 @@ public class RecipeBookScreen {
                     int itemX = x + (width - itemSize) / 2;
                     int itemY = y + 5;
                     
-                    drawRecipeSlot(output, itemX, itemY, itemSize, false);
+                    drawRecipeSlot(output, itemX, itemY, itemSize);
                     
                     // Draw item name
                     nvgFontSize(vg, 12);
@@ -482,7 +484,7 @@ public class RecipeBookScreen {
         }
     }
     
-    private void drawRecipeSlot(ItemStack itemStack, int slotX, int slotY, int slotSize, boolean isInput) {
+    private void drawRecipeSlot(ItemStack itemStack, int slotX, int slotY, int slotSize) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
             Vector2f mousePos = inputHandler.getMousePosition();
@@ -515,8 +517,8 @@ public class RecipeBookScreen {
                         uiRenderer.endFrame();
                         
                         // Draw 3D item using existing renderer - only works for BlockTypes for now
-                        if (item instanceof BlockType) {
-                            renderer.draw3DItemInSlot((BlockType) item, slotX + 2, slotY + 2, slotSize - 4, slotSize - 4);
+                        if (item instanceof BlockType blockType) {
+                            renderer.draw3DItemInSlot(blockType, slotX + 2, slotY + 2, slotSize - 4, slotSize - 4);
                         } else {
                             // For ItemTypes, render a 2D sprite using UIRenderer
                             uiRenderer.renderItemIcon(slotX + 2, slotY + 2, slotSize - 4, slotSize - 4, item, renderer.getTextureAtlas());
@@ -1032,7 +1034,7 @@ public class RecipeBookScreen {
             }
             
             // Draw recipe content with adjusted positioning
-            drawDetailedRecipe(selectedRecipe, popupX + 20, recipeContentStartY, popupWidth - 40, popupHeight - (recipeContentStartY - popupY) - 20);
+            drawDetailedRecipe(selectedRecipe, popupX + 20, recipeContentStartY, popupWidth - 40);
         }
         
         uiRenderer.endFrame();
@@ -1130,7 +1132,7 @@ public class RecipeBookScreen {
     }
     
     // Draw detailed recipe with ingredients and output - Minecraft style
-    private void drawDetailedRecipe(Recipe recipe, int x, int y, int width, int height) {
+    private void drawDetailedRecipe(Recipe recipe, int x, int y, int width) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
             
@@ -1331,8 +1333,8 @@ public class RecipeBookScreen {
                     uiRenderer.endFrame();
                     
                     // Draw 3D item using existing renderer with more padding for better look - only works for BlockTypes for now
-                    if (item instanceof BlockType) {
-                        renderer.draw3DItemInSlot((BlockType) item, slotX + 6, slotY + 6, slotSize - 12, slotSize - 12);
+                    if (item instanceof BlockType blockType) {
+                        renderer.draw3DItemInSlot(blockType, slotX + 6, slotY + 6, slotSize - 12, slotSize - 12);
                     } else {
                         // For ItemTypes, render a 2D sprite using UIRenderer
                         uiRenderer.renderItemIcon(slotX + 6, slotY + 6, slotSize - 12, slotSize - 12, item, renderer.getTextureAtlas());

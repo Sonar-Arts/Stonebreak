@@ -1,37 +1,20 @@
 package com.stonebreak.core;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
-import com.stonebreak.config.Settings;
-import com.stonebreak.util.MemoryLeakDetector;
-import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.audio.SoundSystem;
-import com.stonebreak.chat.ChatSystem;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemType;
-import com.stonebreak.crafting.CraftingManager;
-import com.stonebreak.world.World;
-import com.stonebreak.player.Player;
-import com.stonebreak.crafting.Recipe;
-import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.TextureAtlas;
-import com.stonebreak.rendering.MobTextureAtlas;
-import com.stonebreak.rendering.WaterEffects;
-import com.stonebreak.ui.UIRenderer;
-import com.stonebreak.ui.MainMenu;
-import com.stonebreak.ui.SettingsMenu;
-import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.InventoryScreen;
-import com.stonebreak.ui.WorkbenchScreen;
-import com.stonebreak.ui.RecipeBookScreen;
-import com.stonebreak.ui.DebugOverlay;
-import com.stonebreak.ui.LoadingScreen;
-import com.stonebreak.ui.Font;
-import com.stonebreak.input.InputHandler;
-import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.audio.*;
+import com.stonebreak.blocks.*;
+import com.stonebreak.chat.*;
+import com.stonebreak.config.*;
+import com.stonebreak.crafting.*;
+import com.stonebreak.input.*;
+import com.stonebreak.items.*;
+import com.stonebreak.player.*;
+import com.stonebreak.rendering.*;
+import com.stonebreak.ui.*;
+import com.stonebreak.util.*;
+import com.stonebreak.world.*;
 
 /**
  * Central class for accessing game state and resources.
@@ -421,7 +404,7 @@ public class Game {
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
-        if (player != null && player.getInventory() != null && renderer != null && renderer.getFont() != null && textureAtlas != null && this.inputHandler != null && this.craftingManager != null) {
+        if (renderer.getFont() != null && textureAtlas != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
@@ -439,7 +422,7 @@ public class Game {
         }
 
         // Initialize WorkbenchScreen
-        if (player != null && player.getInventory() != null && renderer != null && this.uiRenderer != null && this.inputHandler != null && this.craftingManager != null) {
+        if (this.uiRenderer != null) {
             this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
         } else {
             System.err.println("Failed to initialize WorkbenchScreen due to null components.");
@@ -1116,12 +1099,6 @@ public class Game {
         // Multiple GC cycles for better cleanup (especially for OpenGL resources)
         for (int i = 0; i < 3; i++) {
             System.gc();
-            try {
-                Thread.sleep(50); // Shorter wait between cycles
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
         }
         
         // Final wait for cleanup completion
@@ -1266,14 +1243,9 @@ public class Game {
                                 // Rate limiting: pause every few chunks to prevent excessive CPU usage
                                 if (chunksGenerated % 3 == 0) {
                                     long currentTime = System.currentTimeMillis();
+                                    // Rate limit progress updates to 50ms intervals
                                     if (currentTime - lastProgressUpdate < 50) {
-                                        // Only sleep if we're generating too fast
-                                        try {
-                                            Thread.sleep(50 - (currentTime - lastProgressUpdate));
-                                        } catch (InterruptedException e) {
-                                            Thread.currentThread().interrupt();
-                                            throw e;
-                                        }
+                                        continue;
                                     }
                                     lastProgressUpdate = System.currentTimeMillis();
                                 }

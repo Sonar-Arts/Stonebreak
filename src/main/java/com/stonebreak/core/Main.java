@@ -1,73 +1,27 @@
 package com.stonebreak.core;
 
-import java.nio.IntBuffer;
+import java.nio.*;
 
-import org.lwjgl.Version;
-import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
-import static org.lwjgl.glfw.GLFW.GLFW_CONTEXT_VERSION_MAJOR;
-import static org.lwjgl.glfw.GLFW.GLFW_CONTEXT_VERSION_MINOR;
-import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
-import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
-import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_COMPAT_PROFILE;
-import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_PROFILE;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.GLFW_RESIZABLE;
-import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
-import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
-import static org.lwjgl.glfw.GLFW.glfwCreateWindow;
-import static org.lwjgl.glfw.GLFW.glfwDefaultWindowHints;
-import static org.lwjgl.glfw.GLFW.glfwDestroyWindow;
-import static org.lwjgl.glfw.GLFW.glfwGetCursorPos;
-import static org.lwjgl.glfw.GLFW.glfwGetPrimaryMonitor;
-import static org.lwjgl.glfw.GLFW.glfwGetVideoMode;
-import static org.lwjgl.glfw.GLFW.glfwGetWindowSize;
-import static org.lwjgl.glfw.GLFW.glfwInit;
-import static org.lwjgl.glfw.GLFW.glfwMakeContextCurrent;
-import static org.lwjgl.glfw.GLFW.glfwPollEvents;
-import static org.lwjgl.glfw.GLFW.glfwSetCharCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetCursorPosCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetErrorCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetFramebufferSizeCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetKeyCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetMouseButtonCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetWindowFocusCallback;
-import static org.lwjgl.glfw.GLFW.glfwSetWindowPos;
-import static org.lwjgl.glfw.GLFW.glfwShowWindow;
-import static org.lwjgl.glfw.GLFW.glfwSwapBuffers;
-import static org.lwjgl.glfw.GLFW.glfwSwapInterval;
-import static org.lwjgl.glfw.GLFW.glfwTerminate;
-import static org.lwjgl.glfw.GLFW.glfwWindowHint;
-import static org.lwjgl.glfw.GLFW.glfwWindowShouldClose;
-import org.lwjgl.glfw.GLFWErrorCallback;
-import org.lwjgl.glfw.GLFWVidMode;
-import org.lwjgl.opengl.GL;
-import static org.lwjgl.opengl.GL11.GL_COLOR_BUFFER_BIT;
-import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
-import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
-import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
-import static org.lwjgl.opengl.GL11.glClear;
-import static org.lwjgl.opengl.GL11.glClearColor;
-import static org.lwjgl.opengl.GL11.glDisable;
-import static org.lwjgl.opengl.GL11.glEnable;
-import static org.lwjgl.opengl.GL11.glViewport;
-import org.lwjgl.system.MemoryStack;
-import static org.lwjgl.system.MemoryStack.stackPush;
+import org.lwjgl.*;
+import org.lwjgl.glfw.*;
+import static org.lwjgl.glfw.Callbacks.*;
+import static org.lwjgl.glfw.GLFW.*;
+import org.lwjgl.opengl.*;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
+import static org.lwjgl.opengl.GL20.*;
+import static org.lwjgl.opengl.GL30.*;
+import org.lwjgl.system.*;
+import static org.lwjgl.system.MemoryStack.*;
 
-import com.stonebreak.chat.ChatSystem;
-import com.stonebreak.config.Settings;
-import com.stonebreak.input.InputHandler;
-import com.stonebreak.input.MouseCaptureManager;
-import com.stonebreak.player.Player;
-import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.TextureAtlas;
-import com.stonebreak.ui.DebugOverlay;
-import com.stonebreak.ui.InventoryScreen;
-import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.RecipeBookScreen;
-import com.stonebreak.ui.UIRenderer;
-import com.stonebreak.ui.WorkbenchScreen;
-import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.world.World;
+import com.stonebreak.chat.*;
+import com.stonebreak.config.*;
+import com.stonebreak.input.*;
+import com.stonebreak.player.*;
+import com.stonebreak.rendering.*;
+import com.stonebreak.ui.*;
+import com.stonebreak.util.*;
+import com.stonebreak.world.*;
 
 /**
  * Main class for the Stonebreak game - a voxel-based sandbox.
@@ -86,6 +40,7 @@ public class Main {
     
     // Game state
     private boolean running = false;
+    private boolean firstRender = true;
     
     // Game components
     private World world;
@@ -455,8 +410,84 @@ public class Main {
                 }
             }
             default -> { // Covers PLAYING, PAUSED, RECIPE_BOOK_UI, WORKBENCH_UI and any other potential states
-                // Step 1: Render the 3D world first as a background for overlays
-                renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+                // Debug: Log state transition
+                if (firstRender) {
+                    System.out.println("First 3D render after loading - State: " + game.getState());
+                    firstRender = false;
+                }
+                
+                // Step 1: Completely reset OpenGL state for 3D rendering
+                try {
+                    // Verify OpenGL context
+                    long currentContext = glfwGetCurrentContext();
+                    if (currentContext != window) {
+                        System.err.println("CRITICAL: Wrong OpenGL context - resetting");
+                        glfwMakeContextCurrent(window);
+                        GL.createCapabilities(); // Recreate capabilities
+                    }
+                    
+                    if (firstRender) {
+                        String version = glGetString(GL_VERSION);
+                        System.out.println("OpenGL Version: " + version);
+                    }
+                    
+                    // Aggressive state reset - disable everything first, then re-enable what we need
+                    glUseProgram(0);              // Unbind any shader program
+                    glBindTexture(GL_TEXTURE_2D, 0); // Unbind textures
+                    glBindVertexArray(0);         // Unbind VAO
+                    glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind VBO
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // Unbind EBO
+                    
+                    // Reset all OpenGL state
+                    glDisable(GL_BLEND);
+                    glDisable(GL_SCISSOR_TEST);
+                    glDisable(GL_STENCIL_TEST);
+                    glDisable(GL_CULL_FACE);
+                    
+                    // Clear error queue completely
+                    while (glGetError() != GL_NO_ERROR) { /* clear */ }
+                    
+                    // Now enable depth test
+                    glEnable(GL_DEPTH_TEST);
+                    glDepthFunc(GL_LESS);
+                    glDepthMask(true);
+                    
+                    // Check for any errors after state reset
+                    int finalError = glGetError();
+                    if (finalError != GL_NO_ERROR && firstRender) {
+                        System.err.println("Error after complete state reset: 0x" + Integer.toHexString(finalError));
+                    }
+                } catch (Exception e) {
+                    System.err.println("Exception during OpenGL state reset: " + e.getMessage());
+                    System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+                    return; // Skip this frame
+                }
+                
+                // Step 2: Render the 3D world first as a background for overlays
+                try {
+                    renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+                } catch (Exception e) {
+                    System.err.println("CRITICAL CRASH: Exception in renderWorld() - State: " + game.getState());
+                    System.err.println("Time: " + java.time.LocalDateTime.now());
+                    System.err.println("Player pos: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null"));
+                    System.err.println("World chunks loaded: " + (world != null ? world.getLoadedChunkCount() : "null"));
+                    System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                    System.err.println("Exception: " + e.getMessage());
+                    System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+                    // Try to save crash log to file
+                    try (java.io.FileWriter fw = new java.io.FileWriter("crash_log.txt", true)) {
+                        fw.write("=== CRASH LOG " + java.time.LocalDateTime.now() + " ===\n");
+                        fw.write("State: " + game.getState() + "\n");
+                        fw.write("Player: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null") + "\n");
+                        fw.write("Chunks: " + (world != null ? world.getLoadedChunkCount() : "null") + "\n");
+                        fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
+                        fw.write("Exception: " + e.getMessage() + "\n");
+                        fw.write("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()) + "\n\n");
+                    } catch (java.io.IOException logEx) {
+                        System.err.println("Failed to write crash log: " + logEx.getMessage());
+                    }
+                    throw new RuntimeException("Render crash - see crash_log.txt", e);
+                }
                 // Step 2: Render NanoVG UIs on top
                 if (uiRenderer != null) {
                     uiRenderer.beginFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states

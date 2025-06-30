@@ -397,63 +397,63 @@ public class MobTextureAtlas {
         
         // ULTRA-DETAILED HEAD TEXTURES
         generateUltraCowFace(0, 0, cowBrown, cowWhite, cowBlack, cowPink, cowDarkPink);     // Ultra-detailed front face
-        generateUltraCowHeadBack(1, 0, cowBrown, cowWhite, cowDarkBrown);                   // Detailed back of head
-        generateUltraCowHeadSide(2, 0, cowBrown, cowWhite, cowDarkBrown, true);             // Ultra left side
-        generateUltraCowHeadSide(3, 0, cowBrown, cowWhite, cowDarkBrown, false);            // Ultra right side
-        generateUltraCowHeadTop(0, 1, cowBrown, cowWhite, cowDarkBrown, cowGray);           // Detailed top with horn attachments
-        generateUltraCowHeadBottom(1, 1, cowLightBrown, cowBeige);                          // Detailed bottom
+        generateUltraCowHeadBack(1, 0, cowBrown, cowWhite);                   // Detailed back of head
+        generateUltraCowHeadSide(2, 0, cowBrown, cowWhite, true);             // Ultra left side
+        generateUltraCowHeadSide(3, 0, cowBrown, cowWhite, false);            // Ultra right side
+        generateUltraCowHeadTop(0, 1, cowBrown, cowWhite, cowGray);           // Detailed top with horn attachments
+        generateUltraCowHeadBottom(1, 1, cowBeige);                          // Detailed bottom
         
         // Additional head textures for better coverage
-        generateUltraCowBodyTop(4, 1, cowBrown, cowWhite, cowDarkBrown);                   // Ultra top (back)
+        generateUltraCowBodyTop(4, 1, cowBrown, cowWhite);                   // Ultra top (back)
         generateUltraCowBodyBottom(5, 1, cowBeige, cowWhite);                              // Ultra bottom (belly)
-        generateUltraCowLegTop(8, 1, cowDarkBrown, cowBrown);                              // Ultra leg top
-        generateUltraHoof(9, 1, cowBlack, cowGray);                                        // Ultra detailed hoof
+        generateUltraCowLegTop(8, 1, cowDarkBrown);                              // Ultra leg top
+        generateUltraHoof(9, 1, cowBlack);                                        // Ultra detailed hoof
         
         // PREMIUM BODY TEXTURES
-        generateUltraCowBodyFront(4, 0, cowLightBrown, cowWhite, cowDarkBrown);            // Ultra front
-        generateUltraCowBodyBack(5, 0, cowBrown, cowWhite, cowDarkBrown);                  // Ultra back
-        generateUltraCowBodySide(6, 0, cowLightBrown, cowWhite, cowDarkBrown, true);       // Ultra left side
-        generateUltraCowBodySide(7, 0, cowLightBrown, cowWhite, cowDarkBrown, false);      // Ultra right side
-        generateUltraCowBodyTop(4, 1, cowBrown, cowWhite, cowDarkBrown);                   // Ultra top (back)
+        generateUltraCowBodyFront(4, 0, cowLightBrown, cowWhite);            // Ultra front
+        generateUltraCowBodyBack(5, 0, cowBrown, cowWhite);                  // Ultra back
+        generateUltraCowBodySide(6, 0, cowLightBrown, cowWhite, true);       // Ultra left side
+        generateUltraCowBodySide(7, 0, cowLightBrown, cowWhite, false);      // Ultra right side
+        generateUltraCowBodyTop(4, 1, cowBrown, cowWhite);                   // Ultra top (back)
         generateUltraCowBodyBottom(5, 1, cowBeige, cowWhite);                              // Ultra bottom (belly)
         
         // ULTRA-DETAILED LEG TEXTURES
-        generateUltraCowLegFront(8, 0, cowDarkBrown, cowBrown, cowBlack);                  // Ultra front
-        generateUltraCowLegBack(9, 0, cowDarkBrown, cowBrown, cowBlack);                   // Ultra back
-        generateUltraCowLegSide(10, 0, cowDarkBrown, cowBrown, cowBlack, true);            // Ultra left
-        generateUltraCowLegSide(11, 0, cowDarkBrown, cowBrown, cowBlack, false);           // Ultra right
-        generateUltraCowLegTop(8, 1, cowDarkBrown, cowBrown);                              // Ultra top
-        generateUltraHoof(9, 1, cowBlack, cowGray);                                        // Ultra detailed hoof
+        generateUltraCowLegFront(8, 0, cowDarkBrown, cowBlack);                  // Ultra front
+        generateUltraCowLegBack(9, 0, cowDarkBrown, cowBlack);                   // Ultra back
+        generateUltraCowLegSide(10, 0, cowDarkBrown, cowBlack, true);            // Ultra left
+        generateUltraCowLegSide(11, 0, cowDarkBrown, cowBlack, false);           // Ultra right
+        generateUltraCowLegTop(8, 1, cowDarkBrown);                              // Ultra top
+        generateUltraHoof(9, 1, cowBlack);                                        // Ultra detailed hoof
         
-        // ULTRA-PREMIUM SPECIAL PARTS
-        generateUltraCowTail(12, 0, cowDarkBrown, cowBlack, cowBrown);                      // Ultra tail with tuft
+        // Special parts
+        generateUltraCowTail(12, 0, cowDarkBrown, cowBlack);                      // Ultra tail with tuft
         generateUltraCowUdder(13, 0, cowPink, cowDarkPink, cowBeige);                       // Ultra realistic udder
-        generateUltraCowHorns(14, 0, new Color(245, 245, 220), cowGray, cowBlack);         // Ultra detailed horns
-        generateUltraCowEars(15, 0, cowBrown, cowPink, cowDarkBrown);                       // Ultra detailed ears
+        generateUltraCowHorns(14, 0, new Color(245, 245, 220));         // Ultra detailed horns
+        generateUltraCowEars(15, 0, cowBrown, cowPink);                       // Ultra detailed ears
         
-        // BILLIONAIRE BUDGET ULTRA-PREMIUM HORN FACE TEXTURES (Row 5)
-        generateUltraHornFace(0, 5, new Color(245, 245, 220), cowGray, cowBlack, "front"); // Horn front face
-        generateUltraHornFace(1, 5, new Color(245, 245, 220), cowGray, cowBlack, "back");  // Horn back face
-        generateUltraHornFace(2, 5, new Color(245, 245, 220), cowGray, cowBlack, "left");  // Horn left face
-        generateUltraHornFace(3, 5, new Color(245, 245, 220), cowGray, cowBlack, "right"); // Horn right face
-        generateUltraHornTip(4, 5, new Color(245, 245, 220), cowGray, cowBlack);           // Horn top (pointed tip)
-        generateUltraHornBase(5, 5, cowBrown, cowGray, cowBlack);                          // Horn bottom (base)
+        // Horn face textures (Row 5)
+        generateUltraHornFace(0, 5, new Color(245, 245, 220), "front"); // Horn front face
+        generateUltraHornFace(1, 5, new Color(245, 245, 220), "back");  // Horn back face
+        generateUltraHornFace(2, 5, new Color(245, 245, 220), "left");  // Horn left face
+        generateUltraHornFace(3, 5, new Color(245, 245, 220), "right"); // Horn right face
+        generateUltraHornTip(4, 5, new Color(245, 245, 220));           // Horn top (pointed tip)
+        generateUltraHornBase(5, 5, cowBrown);                          // Horn bottom (base)
         
-        // BILLIONAIRE BUDGET ULTRA-PREMIUM TAIL FACE TEXTURES (Row 5 continued)
-        generateUltraTailFace(6, 5, cowDarkBrown, cowBlack, cowBrown, "front");            // Tail front face
-        generateUltraTailFace(7, 5, cowDarkBrown, cowBlack, cowBrown, "back");             // Tail back face
-        generateUltraTailFace(8, 5, cowDarkBrown, cowBlack, cowBrown, "left");             // Tail left face
-        generateUltraTailFace(9, 5, cowDarkBrown, cowBlack, cowBrown, "right");            // Tail right face
-        generateUltraTailAttachment(10, 5, cowBrown, cowDarkBrown, cowBlack);              // Tail top (attachment)
+        // Tail face textures (Row 5 continued)
+        generateUltraTailFace(6, 5, cowDarkBrown, "front");            // Tail front face
+        generateUltraTailFace(7, 5, cowDarkBrown, "back");             // Tail back face
+        generateUltraTailFace(8, 5, cowDarkBrown, "left");             // Tail left face
+        generateUltraTailFace(9, 5, cowDarkBrown, "right");            // Tail right face
+        generateUltraTailAttachment(10, 5, cowBrown, cowDarkBrown);              // Tail top (attachment)
         generateUltraTailTuft(11, 5, cowBlack, cowDarkBrown, cowBrown);                    // Tail bottom (tuft)
         
-        // BILLIONAIRE BUDGET ULTRA-PREMIUM UDDER FACE TEXTURES (Row 5 final + Row 9)
-        generateUltraUdderFace(12, 5, cowPink, cowDarkPink, cowBeige, "front");           // Udder front face
-        generateUltraUdderFace(13, 5, cowPink, cowDarkPink, cowBeige, "back");            // Udder back face
-        generateUltraUdderFace(14, 5, cowPink, cowDarkPink, cowBeige, "left");            // Udder left face
-        generateUltraUdderFace(15, 5, cowPink, cowDarkPink, cowBeige, "right");           // Udder right face
-        generateUltraUdderAttachment(0, 9, cowBeige, cowPink, cowDarkPink);               // Udder top (attachment)
-        generateUltraUdderTeats(1, 9, cowPink, cowDarkPink, cowBeige);                    // Udder bottom (teats)
+        // Udder face textures (Row 5 final + Row 9)
+        generateUltraUdderFace(12, 5, "front");           // Udder front face
+        generateUltraUdderFace(13, 5, "back");            // Udder back face
+        generateUltraUdderFace(14, 5, "left");            // Udder left face
+        generateUltraUdderFace(15, 5, "right");           // Udder right face
+        generateUltraUdderAttachment(0, 9);               // Udder top (attachment)
+        generateUltraUdderTeats(1, 9);                    // Udder bottom (teats)
     }
     
     /**
@@ -482,49 +482,48 @@ public class MobTextureAtlas {
         Color jerseyBlack = new Color(25, 20, 15);          // Eyes/hooves
         Color jerseyPink = new Color(255, 182, 193);        // Nose/udder
         Color jerseyDarkPink = new Color(200, 120, 140);    // Darker pink
-        Color jerseyGray = new Color(120, 115, 110);        // Hooves/horns
         
         // Generate Jersey textures in row 2 (y = 2)
         generateUltraCowFace(0, 2, jerseyTan, jerseyCream, jerseyBlack, jerseyPink, jerseyDarkPink);
-        generateUltraCowHeadBack(1, 2, jerseyTan, jerseyCream, jerseyDarkTan);
-        generateUltraCowHeadSide(2, 2, jerseyTan, jerseyCream, jerseyDarkTan, true);
-        generateUltraCowHeadSide(3, 2, jerseyTan, jerseyCream, jerseyDarkTan, false);
-        generateUltraCowBodyFront(4, 2, jerseyTan, jerseyCream, jerseyDarkTan);
-        generateUltraCowBodyBack(5, 2, jerseyBrown, jerseyCream, jerseyDarkTan);
-        generateUltraCowBodySide(6, 2, jerseyTan, jerseyCream, jerseyDarkTan, true);
-        generateUltraCowBodySide(7, 2, jerseyTan, jerseyCream, jerseyDarkTan, false);
-        generateUltraCowLegFront(8, 2, jerseyDarkTan, jerseyTan, jerseyBlack);
-        generateUltraCowLegBack(9, 2, jerseyDarkTan, jerseyTan, jerseyBlack);
-        generateUltraCowLegSide(10, 2, jerseyDarkTan, jerseyTan, jerseyBlack, true);
-        generateUltraCowLegSide(11, 2, jerseyDarkTan, jerseyTan, jerseyBlack, false);
-        generateUltraCowTail(12, 2, jerseyDarkTan, jerseyBlack, jerseyTan);
+        generateUltraCowHeadBack(1, 2, jerseyTan, jerseyCream);
+        generateUltraCowHeadSide(2, 2, jerseyTan, jerseyCream, true);
+        generateUltraCowHeadSide(3, 2, jerseyTan, jerseyCream, false);
+        generateUltraCowBodyFront(4, 2, jerseyTan, jerseyCream);
+        generateUltraCowBodyBack(5, 2, jerseyBrown, jerseyCream);
+        generateUltraCowBodySide(6, 2, jerseyTan, jerseyCream, true);
+        generateUltraCowBodySide(7, 2, jerseyTan, jerseyCream, false);
+        generateUltraCowLegFront(8, 2, jerseyDarkTan, jerseyBlack);
+        generateUltraCowLegBack(9, 2, jerseyDarkTan, jerseyBlack);
+        generateUltraCowLegSide(10, 2, jerseyDarkTan, jerseyBlack, true);
+        generateUltraCowLegSide(11, 2, jerseyDarkTan, jerseyBlack, false);
+        generateUltraCowTail(12, 2, jerseyDarkTan, jerseyBlack);
         generateUltraCowUdder(13, 2, jerseyPink, jerseyDarkPink, jerseyCream);
-        generateUltraCowHorns(14, 2, new Color(245, 245, 220), jerseyGray, jerseyBlack);
-        generateUltraCowEars(15, 2, jerseyTan, jerseyPink, jerseyDarkTan);
+        generateUltraCowHorns(14, 2, new Color(245, 245, 220));
+        generateUltraCowEars(15, 2, jerseyTan, jerseyPink);
         
-        // BILLIONAIRE BUDGET JERSEY HORN FACE TEXTURES (Row 6)
-        generateUltraHornFace(0, 6, new Color(245, 245, 220), jerseyGray, jerseyBlack, "front");
-        generateUltraHornFace(1, 6, new Color(245, 245, 220), jerseyGray, jerseyBlack, "back");
-        generateUltraHornFace(2, 6, new Color(245, 245, 220), jerseyGray, jerseyBlack, "left");
-        generateUltraHornFace(3, 6, new Color(245, 245, 220), jerseyGray, jerseyBlack, "right");
-        generateUltraHornTip(4, 6, new Color(245, 245, 220), jerseyGray, jerseyBlack);
-        generateUltraHornBase(5, 6, jerseyTan, jerseyGray, jerseyBlack);
+        // Jersey horn face textures (Row 6)
+        generateUltraHornFace(0, 6, new Color(245, 245, 220), "front");
+        generateUltraHornFace(1, 6, new Color(245, 245, 220), "back");
+        generateUltraHornFace(2, 6, new Color(245, 245, 220), "left");
+        generateUltraHornFace(3, 6, new Color(245, 245, 220), "right");
+        generateUltraHornTip(4, 6, new Color(245, 245, 220));
+        generateUltraHornBase(5, 6, jerseyTan);
         
-        // BILLIONAIRE BUDGET JERSEY TAIL FACE TEXTURES (Row 6 continued)
-        generateUltraTailFace(6, 6, jerseyDarkTan, jerseyBlack, jerseyTan, "front");
-        generateUltraTailFace(7, 6, jerseyDarkTan, jerseyBlack, jerseyTan, "back");
-        generateUltraTailFace(8, 6, jerseyDarkTan, jerseyBlack, jerseyTan, "left");
-        generateUltraTailFace(9, 6, jerseyDarkTan, jerseyBlack, jerseyTan, "right");
-        generateUltraTailAttachment(10, 6, jerseyTan, jerseyDarkTan, jerseyBlack);
+        // Jersey tail face textures (Row 6 continued)
+        generateUltraTailFace(6, 6, jerseyDarkTan, "front");
+        generateUltraTailFace(7, 6, jerseyDarkTan, "back");
+        generateUltraTailFace(8, 6, jerseyDarkTan, "left");
+        generateUltraTailFace(9, 6, jerseyDarkTan, "right");
+        generateUltraTailAttachment(10, 6, jerseyTan, jerseyDarkTan);
         generateUltraTailTuft(11, 6, jerseyBlack, jerseyDarkTan, jerseyTan);
         
-        // BILLIONAIRE BUDGET JERSEY UDDER FACE TEXTURES (Row 6 final + Row 10)
-        generateUltraUdderFace(12, 6, jerseyPink, jerseyDarkPink, jerseyCream, "front");    // Udder front face
-        generateUltraUdderFace(13, 6, jerseyPink, jerseyDarkPink, jerseyCream, "back");     // Udder back face
-        generateUltraUdderFace(14, 6, jerseyPink, jerseyDarkPink, jerseyCream, "left");     // Udder left face
-        generateUltraUdderFace(15, 6, jerseyPink, jerseyDarkPink, jerseyCream, "right");    // Udder right face
-        generateUltraUdderAttachment(0, 10, jerseyCream, jerseyPink, jerseyDarkPink);       // Udder top (attachment)
-        generateUltraUdderTeats(1, 10, jerseyPink, jerseyDarkPink, jerseyCream);            // Udder bottom (teats)
+        // Jersey udder face textures (Row 6 final + Row 10)
+        generateUltraUdderFace(12, 6, "front");    // Udder front face
+        generateUltraUdderFace(13, 6, "back");     // Udder back face
+        generateUltraUdderFace(14, 6, "left");     // Udder left face
+        generateUltraUdderFace(15, 6, "right");    // Udder right face
+        generateUltraUdderAttachment(0, 10);       // Udder top (attachment)
+        generateUltraUdderTeats(1, 10);            // Udder bottom (teats)
     }
     
     /**
@@ -543,45 +542,45 @@ public class MobTextureAtlas {
         
         // Generate Angus textures in row 3 (y = 3)
         generateUltraCowFace(0, 3, angusBlack, angusGray, angusBlackPure, angusPink, angusDarkPink);
-        generateUltraCowHeadBack(1, 3, angusBlack, angusGray, angusDarkBlack);
-        generateUltraCowHeadSide(2, 3, angusBlack, angusGray, angusDarkBlack, true);
-        generateUltraCowHeadSide(3, 3, angusBlack, angusGray, angusDarkBlack, false);
-        generateUltraCowBodyFront(4, 3, angusBlack, angusLightGray, angusDarkBlack);
-        generateUltraCowBodyBack(5, 3, angusDarkBlack, angusGray, angusBlack);
-        generateUltraCowBodySide(6, 3, angusBlack, angusGray, angusDarkBlack, true);
-        generateUltraCowBodySide(7, 3, angusBlack, angusGray, angusDarkBlack, false);
-        generateUltraCowLegFront(8, 3, angusDarkBlack, angusBlack, angusBlackPure);
-        generateUltraCowLegBack(9, 3, angusDarkBlack, angusBlack, angusBlackPure);
-        generateUltraCowLegSide(10, 3, angusDarkBlack, angusBlack, angusBlackPure, true);
-        generateUltraCowLegSide(11, 3, angusDarkBlack, angusBlack, angusBlackPure, false);
-        generateUltraCowTail(12, 3, angusDarkBlack, angusBlackPure, angusBlack);
+        generateUltraCowHeadBack(1, 3, angusBlack, angusGray);
+        generateUltraCowHeadSide(2, 3, angusBlack, angusGray, true);
+        generateUltraCowHeadSide(3, 3, angusBlack, angusGray, false);
+        generateUltraCowBodyFront(4, 3, angusBlack, angusLightGray);
+        generateUltraCowBodyBack(5, 3, angusDarkBlack, angusGray);
+        generateUltraCowBodySide(6, 3, angusBlack, angusGray, true);
+        generateUltraCowBodySide(7, 3, angusBlack, angusGray, false);
+        generateUltraCowLegFront(8, 3, angusDarkBlack, angusBlackPure);
+        generateUltraCowLegBack(9, 3, angusDarkBlack, angusBlackPure);
+        generateUltraCowLegSide(10, 3, angusDarkBlack, angusBlackPure, true);
+        generateUltraCowLegSide(11, 3, angusDarkBlack, angusBlackPure, false);
+        generateUltraCowTail(12, 3, angusDarkBlack, angusBlackPure);
         generateUltraCowUdder(13, 3, angusPink, angusDarkPink, angusLightGray);
-        generateUltraCowHorns(14, 3, angusHornGray, angusDarkBlack, angusBlackPure);
-        generateUltraCowEars(15, 3, angusBlack, angusPink, angusDarkBlack);
+        generateUltraCowHorns(14, 3, angusHornGray);
+        generateUltraCowEars(15, 3, angusBlack, angusPink);
         
-        // BILLIONAIRE BUDGET ANGUS HORN FACE TEXTURES (Row 7)
-        generateUltraHornFace(0, 7, angusHornGray, angusDarkBlack, angusBlackPure, "front");
-        generateUltraHornFace(1, 7, angusHornGray, angusDarkBlack, angusBlackPure, "back");
-        generateUltraHornFace(2, 7, angusHornGray, angusDarkBlack, angusBlackPure, "left");
-        generateUltraHornFace(3, 7, angusHornGray, angusDarkBlack, angusBlackPure, "right");
-        generateUltraHornTip(4, 7, angusHornGray, angusDarkBlack, angusBlackPure);
-        generateUltraHornBase(5, 7, angusBlack, angusDarkBlack, angusBlackPure);
+        // Angus horn face textures (Row 7)
+        generateUltraHornFace(0, 7, angusHornGray, "front");
+        generateUltraHornFace(1, 7, angusHornGray, "back");
+        generateUltraHornFace(2, 7, angusHornGray, "left");
+        generateUltraHornFace(3, 7, angusHornGray, "right");
+        generateUltraHornTip(4, 7, angusHornGray);
+        generateUltraHornBase(5, 7, angusBlack);
         
-        // BILLIONAIRE BUDGET ANGUS TAIL FACE TEXTURES (Row 7 continued)
-        generateUltraTailFace(6, 7, angusDarkBlack, angusBlackPure, angusBlack, "front");
-        generateUltraTailFace(7, 7, angusDarkBlack, angusBlackPure, angusBlack, "back");
-        generateUltraTailFace(8, 7, angusDarkBlack, angusBlackPure, angusBlack, "left");
-        generateUltraTailFace(9, 7, angusDarkBlack, angusBlackPure, angusBlack, "right");
-        generateUltraTailAttachment(10, 7, angusBlack, angusDarkBlack, angusBlackPure);
+        // Angus tail face textures (Row 7 continued)
+        generateUltraTailFace(6, 7, angusDarkBlack, "front");
+        generateUltraTailFace(7, 7, angusDarkBlack, "back");
+        generateUltraTailFace(8, 7, angusDarkBlack, "left");
+        generateUltraTailFace(9, 7, angusDarkBlack, "right");
+        generateUltraTailAttachment(10, 7, angusBlack, angusDarkBlack);
         generateUltraTailTuft(11, 7, angusBlackPure, angusDarkBlack, angusBlack);
         
-        // BILLIONAIRE BUDGET ANGUS UDDER FACE TEXTURES (Row 7 final + Row 11)
-        generateUltraUdderFace(12, 7, angusPink, angusDarkPink, angusLightGray, "front");   // Udder front face
-        generateUltraUdderFace(13, 7, angusPink, angusDarkPink, angusLightGray, "back");    // Udder back face
-        generateUltraUdderFace(14, 7, angusPink, angusDarkPink, angusLightGray, "left");    // Udder left face
-        generateUltraUdderFace(15, 7, angusPink, angusDarkPink, angusLightGray, "right");   // Udder right face
-        generateUltraUdderAttachment(0, 11, angusLightGray, angusPink, angusDarkPink);      // Udder top (attachment)
-        generateUltraUdderTeats(1, 11, angusPink, angusDarkPink, angusLightGray);           // Udder bottom (teats)
+        // Angus udder face textures (Row 7 final + Row 11)
+        generateUltraUdderFace(12, 7, "front");   // Udder front face
+        generateUltraUdderFace(13, 7, "back");    // Udder back face
+        generateUltraUdderFace(14, 7, "left");    // Udder left face
+        generateUltraUdderFace(15, 7, "right");   // Udder right face
+        generateUltraUdderAttachment(0, 11);      // Udder top (attachment)
+        generateUltraUdderTeats(1, 11);           // Udder bottom (teats)
     }
     
     /**
@@ -596,49 +595,48 @@ public class MobTextureAtlas {
         Color highlandBlack = new Color(25, 20, 15);        // Eyes/hooves
         Color highlandPink = new Color(255, 182, 193);      // Nose/udder
         Color highlandDarkPink = new Color(200, 120, 140);  // Darker pink
-        Color highlandGray = new Color(120, 115, 110);      // Horns
         
         // Generate Highland textures in row 4 (y = 4)
         generateUltraCowFace(0, 4, highlandRed, highlandLightRed, highlandBlack, highlandPink, highlandDarkPink);
-        generateUltraCowHeadBack(1, 4, highlandRed, highlandGinger, highlandDarkRed);
-        generateUltraCowHeadSide(2, 4, highlandRed, highlandGinger, highlandDarkRed, true);
-        generateUltraCowHeadSide(3, 4, highlandRed, highlandGinger, highlandDarkRed, false);
-        generateUltraCowBodyFront(4, 4, highlandGinger, highlandLightRed, highlandDarkRed);
-        generateUltraCowBodyBack(5, 4, highlandDarkRed, highlandLightRed, highlandRed);
-        generateUltraCowBodySide(6, 4, highlandGinger, highlandLightRed, highlandDarkRed, true);
-        generateUltraCowBodySide(7, 4, highlandGinger, highlandLightRed, highlandDarkRed, false);
-        generateUltraCowLegFront(8, 4, highlandDarkRed, highlandRed, highlandBlack);
-        generateUltraCowLegBack(9, 4, highlandDarkRed, highlandRed, highlandBlack);
-        generateUltraCowLegSide(10, 4, highlandDarkRed, highlandRed, highlandBlack, true);
-        generateUltraCowLegSide(11, 4, highlandDarkRed, highlandRed, highlandBlack, false);
-        generateUltraCowTail(12, 4, highlandDarkRed, highlandBlack, highlandRed);
+        generateUltraCowHeadBack(1, 4, highlandRed, highlandGinger);
+        generateUltraCowHeadSide(2, 4, highlandRed, highlandGinger, true);
+        generateUltraCowHeadSide(3, 4, highlandRed, highlandGinger, false);
+        generateUltraCowBodyFront(4, 4, highlandGinger, highlandLightRed);
+        generateUltraCowBodyBack(5, 4, highlandDarkRed, highlandLightRed);
+        generateUltraCowBodySide(6, 4, highlandGinger, highlandLightRed, true);
+        generateUltraCowBodySide(7, 4, highlandGinger, highlandLightRed, false);
+        generateUltraCowLegFront(8, 4, highlandDarkRed, highlandBlack);
+        generateUltraCowLegBack(9, 4, highlandDarkRed, highlandBlack);
+        generateUltraCowLegSide(10, 4, highlandDarkRed, highlandBlack, true);
+        generateUltraCowLegSide(11, 4, highlandDarkRed, highlandBlack, false);
+        generateUltraCowTail(12, 4, highlandDarkRed, highlandBlack);
         generateUltraCowUdder(13, 4, highlandPink, highlandDarkPink, highlandLightRed);
-        generateUltraCowHorns(14, 4, new Color(245, 245, 220), highlandGray, highlandBlack);
-        generateUltraCowEars(15, 4, highlandRed, highlandPink, highlandDarkRed);
+        generateUltraCowHorns(14, 4, new Color(245, 245, 220));
+        generateUltraCowEars(15, 4, highlandRed, highlandPink);
         
-        // BILLIONAIRE BUDGET HIGHLAND HORN FACE TEXTURES (Row 8)
-        generateUltraHornFace(0, 8, new Color(245, 245, 220), highlandGray, highlandBlack, "front");
-        generateUltraHornFace(1, 8, new Color(245, 245, 220), highlandGray, highlandBlack, "back");
-        generateUltraHornFace(2, 8, new Color(245, 245, 220), highlandGray, highlandBlack, "left");
-        generateUltraHornFace(3, 8, new Color(245, 245, 220), highlandGray, highlandBlack, "right");
-        generateUltraHornTip(4, 8, new Color(245, 245, 220), highlandGray, highlandBlack);
-        generateUltraHornBase(5, 8, highlandRed, highlandGray, highlandBlack);
+        // Highland horn face textures (Row 8)
+        generateUltraHornFace(0, 8, new Color(245, 245, 220), "front");
+        generateUltraHornFace(1, 8, new Color(245, 245, 220), "back");
+        generateUltraHornFace(2, 8, new Color(245, 245, 220), "left");
+        generateUltraHornFace(3, 8, new Color(245, 245, 220), "right");
+        generateUltraHornTip(4, 8, new Color(245, 245, 220));
+        generateUltraHornBase(5, 8, highlandRed);
         
-        // BILLIONAIRE BUDGET HIGHLAND TAIL FACE TEXTURES (Row 8 continued)
-        generateUltraTailFace(6, 8, highlandDarkRed, highlandBlack, highlandRed, "front");
-        generateUltraTailFace(7, 8, highlandDarkRed, highlandBlack, highlandRed, "back");
-        generateUltraTailFace(8, 8, highlandDarkRed, highlandBlack, highlandRed, "left");
-        generateUltraTailFace(9, 8, highlandDarkRed, highlandBlack, highlandRed, "right");
-        generateUltraTailAttachment(10, 8, highlandRed, highlandDarkRed, highlandBlack);
+        // Highland tail face textures (Row 8 continued)
+        generateUltraTailFace(6, 8, highlandDarkRed, "front");
+        generateUltraTailFace(7, 8, highlandDarkRed, "back");
+        generateUltraTailFace(8, 8, highlandDarkRed, "left");
+        generateUltraTailFace(9, 8, highlandDarkRed, "right");
+        generateUltraTailAttachment(10, 8, highlandRed, highlandDarkRed);
         generateUltraTailTuft(11, 8, highlandBlack, highlandDarkRed, highlandRed);
         
-        // BILLIONAIRE BUDGET HIGHLAND UDDER FACE TEXTURES (Row 8 final + Row 12)
-        generateUltraUdderFace(12, 8, highlandPink, highlandDarkPink, highlandLightRed, "front");  // Udder front face
-        generateUltraUdderFace(13, 8, highlandPink, highlandDarkPink, highlandLightRed, "back");   // Udder back face
-        generateUltraUdderFace(14, 8, highlandPink, highlandDarkPink, highlandLightRed, "left");   // Udder left face
-        generateUltraUdderFace(15, 8, highlandPink, highlandDarkPink, highlandLightRed, "right");  // Udder right face
-        generateUltraUdderAttachment(0, 12, highlandLightRed, highlandPink, highlandDarkPink);     // Udder top (attachment)
-        generateUltraUdderTeats(1, 12, highlandPink, highlandDarkPink, highlandLightRed);          // Udder bottom (teats)
+        // Highland udder face textures (Row 8 final + Row 12)
+        generateUltraUdderFace(12, 8, "front");  // Udder front face
+        generateUltraUdderFace(13, 8, "back");   // Udder back face
+        generateUltraUdderFace(14, 8, "left");   // Udder left face
+        generateUltraUdderFace(15, 8, "right");  // Udder right face
+        generateUltraUdderAttachment(0, 12);     // Udder top (attachment)
+        generateUltraUdderTeats(1, 12);          // Udder bottom (teats)
     }
     
     
@@ -699,10 +697,8 @@ public class MobTextureAtlas {
         
         for (int y = 0; y < TILE_SIZE; y++) {
             for (int x = 0; x < TILE_SIZE; x++) {
-                Color pixelColor = baseColor;
-                
                 // Darker bottom of head
-                pixelColor = new Color(
+                Color pixelColor = new Color(
                     (int)(baseColor.r * 0.8),
                     (int)(baseColor.g * 0.8),
                     (int)(baseColor.b * 0.8)
@@ -876,7 +872,8 @@ public class MobTextureAtlas {
     public float[][] getFaceTextureCoords(MobType mobType, String bodyPartName) {
         float[][] faceCoords = new float[6][];
         
-        if (bodyPartName.equals("cow_head")) {
+        switch (bodyPartName) {
+            case "cow_head" -> {
             // Head: detailed face textures for each side with proper orientations
             // Face indices: 0=front, 1=back, 2=left, 3=right, 4=top, 5=bottom
             faceCoords[0] = getUVCoordinates(mobType, BodyPart.HEAD_BACK);                        // Front face (no face features)
@@ -885,7 +882,8 @@ public class MobTextureAtlas {
             faceCoords[3] = rotateUVCoords90CW(getUVCoordinates(mobType, BodyPart.HEAD_RIGHT));   // Right face - rotated 90° CW
             faceCoords[4] = getUVCoordinates(mobType, BodyPart.HEAD_TOP);                         // Top face - no rotation needed
             faceCoords[5] = rotateUVCoords180(getUVCoordinates(mobType, BodyPart.HEAD_BOTTOM));   // Bottom face - rotated 180°
-        } else if (bodyPartName.equals("cow_body")) {
+            }
+            case "cow_body" -> {
             // Body: different textures for each face with proper orientations
             faceCoords[0] = getUVCoordinates(mobType, BodyPart.BODY_FRONT);                         // Front face
             faceCoords[1] = rotateUVCoords180(getUVCoordinates(mobType, BodyPart.BODY_BACK));       // Back face - rotated 180°
@@ -893,7 +891,8 @@ public class MobTextureAtlas {
             faceCoords[3] = rotateUVCoords90CW(getUVCoordinates(mobType, BodyPart.BODY_RIGHT));     // Right face - rotated 90° CW
             faceCoords[4] = getUVCoordinates(mobType, BodyPart.BODY_TOP);                           // Top face
             faceCoords[5] = rotateUVCoords180(getUVCoordinates(mobType, BodyPart.BODY_BOTTOM));     // Bottom face - rotated 180°
-        } else if (bodyPartName.equals("cow_legs")) {
+            }
+            case "cow_legs" -> {
             // Legs: different textures for each face including hooves with proper orientations
             faceCoords[0] = getUVCoordinates(mobType, BodyPart.LEG_FRONT);                          // Front face
             faceCoords[1] = rotateUVCoords180(getUVCoordinates(mobType, BodyPart.LEG_BACK));        // Back face - rotated 180°
@@ -901,36 +900,41 @@ public class MobTextureAtlas {
             faceCoords[3] = rotateUVCoords90CW(getUVCoordinates(mobType, BodyPart.LEG_RIGHT));      // Right face - rotated 90° CW
             faceCoords[4] = getUVCoordinates(mobType, BodyPart.LEG_TOP);                            // Top face
             faceCoords[5] = rotateUVCoords180(getUVCoordinates(mobType, BodyPart.LEG_BOTTOM));      // Bottom face (hoof) - rotated 180°
-        } else if (bodyPartName.equals("cow_horns")) {
-            // BILLIONAIRE BUDGET HORNS: Ultra-detailed face-specific textures
+            }
+            case "cow_horns" -> {
+            // Horns: Detailed face-specific textures
             faceCoords[0] = getUVCoordinates(mobType, BodyPart.HORNS_FRONT);                      // Front face - custom front horn texture
             faceCoords[1] = getUVCoordinates(mobType, BodyPart.HORNS_BACK);                       // Back face - custom back horn texture
             faceCoords[2] = getUVCoordinates(mobType, BodyPart.HORNS_LEFT);                       // Left face - custom left horn texture
             faceCoords[3] = getUVCoordinates(mobType, BodyPart.HORNS_RIGHT);                      // Right face - custom right horn texture
             faceCoords[4] = getUVCoordinates(mobType, BodyPart.HORNS_TOP);                        // Top face - custom horn tip texture
             faceCoords[5] = getUVCoordinates(mobType, BodyPart.HORNS_BOTTOM);                     // Bottom face - custom horn base texture
-        } else if (bodyPartName.equals("cow_tail")) {
-            // BILLIONAIRE BUDGET TAIL: Ultra-detailed face-specific textures
+            }
+            case "cow_tail" -> {
+            // Tail: Detailed face-specific textures
             faceCoords[0] = getUVCoordinates(mobType, BodyPart.TAIL_FRONT);                       // Front face - custom front tail texture
             faceCoords[1] = getUVCoordinates(mobType, BodyPart.TAIL_BACK);                        // Back face - custom back tail texture
             faceCoords[2] = getUVCoordinates(mobType, BodyPart.TAIL_LEFT);                        // Left face - custom left tail texture
             faceCoords[3] = getUVCoordinates(mobType, BodyPart.TAIL_RIGHT);                       // Right face - custom right tail texture
             faceCoords[4] = getUVCoordinates(mobType, BodyPart.TAIL_TOP);                         // Top face - custom tail attachment texture
             faceCoords[5] = getUVCoordinates(mobType, BodyPart.TAIL_BOTTOM);                      // Bottom face - custom tail tuft texture
-        } else if (bodyPartName.equals("cow_udder")) {
-            // BILLIONAIRE BUDGET UDDER: Ultra-detailed face-specific textures
+            }
+            case "cow_udder" -> {
+            // Udder: Detailed face-specific textures
             faceCoords[0] = getUVCoordinates(mobType, BodyPart.UDDER_FRONT);                      // Front face - custom front udder texture
             faceCoords[1] = getUVCoordinates(mobType, BodyPart.UDDER_BACK);                       // Back face - custom back udder texture
             faceCoords[2] = getUVCoordinates(mobType, BodyPart.UDDER_LEFT);                       // Left face - custom left udder texture
             faceCoords[3] = getUVCoordinates(mobType, BodyPart.UDDER_RIGHT);                      // Right face - custom right udder texture
             faceCoords[4] = getUVCoordinates(mobType, BodyPart.UDDER_TOP);                        // Top face - custom udder attachment texture
             faceCoords[5] = getUVCoordinates(mobType, BodyPart.UDDER_BOTTOM);                     // Bottom face - custom udder teats texture
-        } else {
-            // Default: same texture for all faces (ears, etc.)
-            BodyPart bodyPart = parseBodyPart(bodyPartName.replace("cow_", ""));
-            float[] defaultCoords = getUVCoordinates(mobType, bodyPart);
-            for (int i = 0; i < 6; i++) {
-                faceCoords[i] = defaultCoords;
+            }
+            default -> {
+                // Default: same texture for all faces (ears, etc.)
+                BodyPart bodyPart = parseBodyPart(bodyPartName.replace("cow_", ""));
+                float[] defaultCoords = getUVCoordinates(mobType, bodyPart);
+                for (int i = 0; i < 6; i++) {
+                    faceCoords[i] = defaultCoords;
+                }
             }
         }
         
@@ -1047,23 +1051,23 @@ public class MobTextureAtlas {
      * Parse body part name from string.
      */
     private BodyPart parseBodyPart(String partName) {
-        switch (partName.toLowerCase()) {
-            case "head": return BodyPart.HEAD_FRONT;
-            case "head_top": return BodyPart.HEAD_TOP;
-            case "head_bottom": return BodyPart.HEAD_BOTTOM;
-            case "body": return BodyPart.BODY_FRONT;
-            case "body_top": return BodyPart.BODY_TOP;
-            case "body_bottom": return BodyPart.BODY_BOTTOM;
-            case "body_side": return BodyPart.BODY_LEFT;
-            case "legs": case "leg": return BodyPart.LEG_FRONT;
-            case "tail": return BodyPart.TAIL;
-            case "udder": return BodyPart.UDDER;
-            case "horns": return BodyPart.HORNS;
-            case "ears": return BodyPart.EARS;
-            case "snout": return BodyPart.SNOUT;
-            case "wool": return BodyPart.WOOL;
-            default: return null;
-        }
+        return switch (partName.toLowerCase()) {
+            case "head" -> BodyPart.HEAD_FRONT;
+            case "head_top" -> BodyPart.HEAD_TOP;
+            case "head_bottom" -> BodyPart.HEAD_BOTTOM;
+            case "body" -> BodyPart.BODY_FRONT;
+            case "body_top" -> BodyPart.BODY_TOP;
+            case "body_bottom" -> BodyPart.BODY_BOTTOM;
+            case "body_side" -> BodyPart.BODY_LEFT;
+            case "legs", "leg" -> BodyPart.LEG_FRONT;
+            case "tail" -> BodyPart.TAIL;
+            case "udder" -> BodyPart.UDDER;
+            case "horns" -> BodyPart.HORNS;
+            case "ears" -> BodyPart.EARS;
+            case "snout" -> BodyPart.SNOUT;
+            case "wool" -> BodyPart.WOOL;
+            default -> null;
+        };
     }
     
     /**
@@ -1355,7 +1359,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowHeadBack(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor) {
+    private void generateUltraCowHeadBack(int tileX, int tileY, Color baseColor, Color spotColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1434,7 +1438,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowHeadSide(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor, boolean isLeft) {
+    private void generateUltraCowHeadSide(int tileX, int tileY, Color baseColor, Color spotColor, boolean isLeft) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1559,7 +1563,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowHeadTop(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor, Color hornColor) {
+    private void generateUltraCowHeadTop(int tileX, int tileY, Color baseColor, Color spotColor, Color hornColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1690,7 +1694,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowHeadBottom(int tileX, int tileY, Color baseColor, Color lightColor) {
+    private void generateUltraCowHeadBottom(int tileX, int tileY, Color lightColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1793,7 +1797,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowBodyFront(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor) {
+    private void generateUltraCowBodyFront(int tileX, int tileY, Color baseColor, Color spotColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1847,7 +1851,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowBodyBack(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor) {
+    private void generateUltraCowBodyBack(int tileX, int tileY, Color baseColor, Color spotColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1893,7 +1897,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowBodySide(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor, boolean isLeft) {
+    private void generateUltraCowBodySide(int tileX, int tileY, Color baseColor, Color spotColor, boolean isLeft) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -1941,7 +1945,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowBodyTop(int tileX, int tileY, Color baseColor, Color spotColor, Color darkColor) {
+    private void generateUltraCowBodyTop(int tileX, int tileY, Color baseColor, Color spotColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2017,7 +2021,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowLegFront(int tileX, int tileY, Color legColor, Color lightColor, Color hoofColor) {
+    private void generateUltraCowLegFront(int tileX, int tileY, Color legColor, Color hoofColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2081,7 +2085,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowLegBack(int tileX, int tileY, Color legColor, Color lightColor, Color hoofColor) {
+    private void generateUltraCowLegBack(int tileX, int tileY, Color legColor, Color hoofColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2127,7 +2131,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowLegSide(int tileX, int tileY, Color legColor, Color lightColor, Color hoofColor, boolean isLeft) {
+    private void generateUltraCowLegSide(int tileX, int tileY, Color legColor, Color hoofColor, boolean isLeft) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2182,7 +2186,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowLegTop(int tileX, int tileY, Color legColor, Color lightColor) {
+    private void generateUltraCowLegTop(int tileX, int tileY, Color legColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2228,19 +2232,18 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraHoof(int tileX, int tileY, Color hoofColor, Color grayColor) {
+    private void generateUltraHoof(int tileX, int tileY, Color hoofColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
         for (int y = 0; y < TILE_SIZE; y++) {
             for (int x = 0; x < TILE_SIZE; x++) {
-                Color pixelColor = hoofColor;
-                
                 // ULTRA-REALISTIC HOOF STRUCTURE
                 // Cloven hoof (split in two)
                 boolean isLeftCleft = x >= 2 && x <= 6;
                 boolean isRightCleft = x >= 9 && x <= 13;
                 
+                Color pixelColor;
                 if (isLeftCleft || isRightCleft) {
                     // Main hoof wall
                     if (y <= 10) {
@@ -2270,7 +2273,7 @@ public class MobTextureAtlas {
                     
                     // Coronet band (top edge)
                     if (y <= 2) {
-                        pixelColor = grayColor;
+                        pixelColor = new Color(120, 120, 120); // Gray coronet band
                     }
                 } else {
                     // Central cleft (split between hooves)
@@ -2286,7 +2289,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowTail(int tileX, int tileY, Color tailColor, Color tuftColor, Color lightColor) {
+    private void generateUltraCowTail(int tileX, int tileY, Color tailColor, Color tuftColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2472,7 +2475,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowHorns(int tileX, int tileY, Color hornColor, Color grayColor, Color blackColor) {
+    private void generateUltraCowHorns(int tileX, int tileY, Color hornColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2493,7 +2496,11 @@ public class MobTextureAtlas {
                         
                         // Horn base (darker)
                         if (y >= 12) {
-                            pixelColor = grayColor;
+                            pixelColor = new Color(
+                                Math.max(0, hornColor.r - 20),
+                                Math.max(0, hornColor.g - 20),
+                                Math.max(0, hornColor.b - 20)
+                            );
                         }
                         // Horn tip (pointed)
                         else if (y <= 3) {
@@ -2525,7 +2532,11 @@ public class MobTextureAtlas {
                         pixelColor = hornColor;
                         
                         if (y >= 12) {
-                            pixelColor = grayColor;
+                            pixelColor = new Color(
+                                Math.max(0, hornColor.r - 20),
+                                Math.max(0, hornColor.g - 20),
+                                Math.max(0, hornColor.b - 20)
+                            );
                         }
                         else if (y <= 3) {
                             pixelColor = new Color(
@@ -2570,7 +2581,7 @@ public class MobTextureAtlas {
         }
     }
     
-    private void generateUltraCowEars(int tileX, int tileY, Color earColor, Color innerEarColor, Color darkColor) {
+    private void generateUltraCowEars(int tileX, int tileY, Color earColor, Color innerEarColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2674,108 +2685,93 @@ public class MobTextureAtlas {
         }
     }
     
+    private Color generateFrontHornPixel(int x, int y, int centerX, Color hornColor) {
+        int hornWidth = Math.max(4, 8 - (y / 2));
+        if (Math.abs(x - centerX) <= hornWidth / 2) {
+            float lightingGradient = 1.0f - (float)y / TILE_SIZE;
+            return new Color(
+                Math.min(255, (int)(hornColor.r * (0.9f + lightingGradient * 0.3f))),
+                Math.min(255, (int)(hornColor.g * (0.9f + lightingGradient * 0.3f))),
+                Math.min(255, (int)(hornColor.b * (0.9f + lightingGradient * 0.3f)))
+            );
+        } else {
+            return new Color(
+                Math.max(0, hornColor.r - 20),
+                Math.max(0, hornColor.g - 15),
+                Math.max(0, hornColor.b - 10)
+            );
+        }
+    }
+    
+    private Color generateBackHornPixel(int x, int y, int centerX, Color hornColor) {
+        int backHornWidth = Math.max(4, 8 - (y / 2));
+        if (Math.abs(x - centerX) <= backHornWidth / 2) {
+            float shadowGradient = (float)y / TILE_SIZE;
+            return new Color(
+                Math.max(0, (int)(hornColor.r * (0.6f + shadowGradient * 0.2f))),
+                Math.max(0, (int)(hornColor.g * (0.6f + shadowGradient * 0.2f))),
+                Math.max(0, (int)(hornColor.b * (0.6f + shadowGradient * 0.2f)))
+            );
+        } else {
+            return new Color(
+                Math.max(0, hornColor.r - 40),
+                Math.max(0, hornColor.g - 30),
+                Math.max(0, hornColor.b - 25)
+            );
+        }
+    }
+    
+    private Color generateLeftHornPixel(int x, int y, Color hornColor) {
+        float distanceFromEdge = Math.min(x, TILE_SIZE - 1 - x) / 8.0f;
+        float heightFactor = 1.0f - (float)y / TILE_SIZE;
+        float curveLight = (float)Math.sin(distanceFromEdge * Math.PI) * 0.4f;
+        return new Color(
+            Math.min(255, (int)(hornColor.r * (0.7f + curveLight + heightFactor * 0.2f))),
+            Math.min(255, (int)(hornColor.g * (0.7f + curveLight + heightFactor * 0.2f))),
+            Math.min(255, (int)(hornColor.b * (0.7f + curveLight + heightFactor * 0.2f)))
+        );
+    }
+    
+    private Color generateRightHornPixel(int x, int y, Color hornColor) {
+        float distanceFromEdge = Math.min(x, TILE_SIZE - 1 - x) / 8.0f;
+        float heightFactor = 1.0f - (float)y / TILE_SIZE;
+        float shadowCurve = (float)Math.sin(distanceFromEdge * Math.PI) * 0.3f;
+        return new Color(
+            Math.max(0, (int)(hornColor.r * (0.6f + shadowCurve + heightFactor * 0.15f))),
+            Math.max(0, (int)(hornColor.g * (0.6f + shadowCurve + heightFactor * 0.15f))),
+            Math.max(0, (int)(hornColor.b * (0.6f + shadowCurve + heightFactor * 0.15f)))
+        );
+    }
+    
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM HORN FACE TEXTURE GENERATOR
-     * Creates face-specific horn textures with unparalleled detail and realism.
+     * Generates face-specific horn textures with detailed shading and structure.
      */
-    private void generateUltraHornFace(int tileX, int tileY, Color hornColor, Color grayColor, Color blackColor, String face) {
+    private void generateUltraHornFace(int tileX, int tileY, Color hornColor, String face) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
         for (int y = 0; y < TILE_SIZE; y++) {
             for (int x = 0; x < TILE_SIZE; x++) {
-                Color pixelColor = hornColor; // Start with base horn color (solid texture)
-                
                 // Horn structure based on face
-                float hornIntensity = 0.0f;
+                int centerX = TILE_SIZE / 2;
                 
-                switch (face) {
-                    case "front":
-                        // Front face - full texture with horn pattern and dramatic lighting
-                        hornIntensity = 1.0f;
-                        
-                        // Create horn shape overlay on full texture
-                        int centerX = TILE_SIZE / 2;
-                        int hornWidth = Math.max(4, 8 - (y / 2)); // Tapers from 8 to 4 pixels
-                        if (Math.abs(x - centerX) <= hornWidth / 2) {
-                            // Main horn area - brighter
-                            float lightingGradient = 1.0f - (float)y / TILE_SIZE;
-                            pixelColor = new Color(
-                                Math.min(255, (int)(hornColor.r * (0.9f + lightingGradient * 0.3f))),
-                                Math.min(255, (int)(hornColor.g * (0.9f + lightingGradient * 0.3f))),
-                                Math.min(255, (int)(hornColor.b * (0.9f + lightingGradient * 0.3f)))
-                            );
-                        } else {
-                            // Edge areas - use base horn color but slightly darker
-                            pixelColor = new Color(
-                                Math.max(0, hornColor.r - 20),
-                                Math.max(0, hornColor.g - 15),
-                                Math.max(0, hornColor.b - 10)
-                            );
-                        }
-                        break;
-                        
-                    case "back":
-                        // Back face - full texture with shadowed horn pattern
-                        hornIntensity = 0.7f;
-                        
-                        // Create shadowed horn shape on full texture
-                        centerX = TILE_SIZE / 2;
-                        int backHornWidth = Math.max(4, 8 - (y / 2));
-                        if (Math.abs(x - centerX) <= backHornWidth / 2) {
-                            // Main horn area - darker with shadow gradient
-                            float shadowGradient = (float)y / TILE_SIZE;
-                            pixelColor = new Color(
-                                Math.max(0, (int)(hornColor.r * (0.6f + shadowGradient * 0.2f))),
-                                Math.max(0, (int)(hornColor.g * (0.6f + shadowGradient * 0.2f))),
-                                Math.max(0, (int)(hornColor.b * (0.6f + shadowGradient * 0.2f)))
-                            );
-                        } else {
-                            // Edge areas - even darker
-                            pixelColor = new Color(
-                                Math.max(0, hornColor.r - 40),
-                                Math.max(0, hornColor.g - 30),
-                                Math.max(0, hornColor.b - 25)
-                            );
-                        }
-                        break;
-                        
-                    case "left":
-                        // Left face - full texture with side profile curved highlighting
-                        hornIntensity = 0.8f;
-                        
-                        // Create curved side profile on full texture
-                        float distanceFromEdge = Math.min(x, TILE_SIZE - 1 - x) / 8.0f;
-                        float heightFactor = 1.0f - (float)y / TILE_SIZE;
-                        
-                        // Curved side lighting across entire texture
-                        float curveLight = (float)Math.sin(distanceFromEdge * Math.PI) * 0.4f;
-                        pixelColor = new Color(
-                            Math.min(255, (int)(hornColor.r * (0.7f + curveLight + heightFactor * 0.2f))),
-                            Math.min(255, (int)(hornColor.g * (0.7f + curveLight + heightFactor * 0.2f))),
-                            Math.min(255, (int)(hornColor.b * (0.7f + curveLight + heightFactor * 0.2f)))
-                        );
-                        break;
-                        
-                    case "right":
-                        // Right face - full texture with opposite side profile shading
-                        hornIntensity = 0.75f;
-                        
-                        // Create opposite side shadow profile on full texture
-                        distanceFromEdge = Math.min(x, TILE_SIZE - 1 - x) / 8.0f;
-                        heightFactor = 1.0f - (float)y / TILE_SIZE;
-                        
-                        // Right side shadow curve across entire texture
-                        float shadowCurve = (float)Math.sin(distanceFromEdge * Math.PI) * 0.3f;
-                        pixelColor = new Color(
-                            Math.max(0, (int)(hornColor.r * (0.6f + shadowCurve + heightFactor * 0.15f))),
-                            Math.max(0, (int)(hornColor.g * (0.6f + shadowCurve + heightFactor * 0.15f))),
-                            Math.max(0, (int)(hornColor.b * (0.6f + shadowCurve + heightFactor * 0.15f)))
-                        );
-                        break;
-                }
+                float hornIntensity = (face != null) ? switch (face) {
+                    case "front" -> 1.0f;
+                    case "back" -> 0.7f;
+                    case "left" -> 0.8f;
+                    case "right" -> 0.75f;
+                    default -> 0.0f;
+                } : 0.0f;
                 
-                // ULTRA-PREMIUM HORN DETAILS (applied to all faces - since all are now solid)
+                Color pixelColor = (face != null) ? switch (face) {
+                    case "front" -> generateFrontHornPixel(x, y, centerX, hornColor);
+                    case "back" -> generateBackHornPixel(x, y, centerX, hornColor);
+                    case "left" -> generateLeftHornPixel(x, y, hornColor);
+                    case "right" -> generateRightHornPixel(x, y, hornColor);
+                    default -> hornColor;
+                } : hornColor;
+                
+                // Horn details (applied to all faces)
                 // Growth rings (natural horn texture)
                 int ringPattern = (y + 1) / 3;
                 if (ringPattern % 2 == 0) {
@@ -2820,15 +2816,15 @@ public class MobTextureAtlas {
     }
     
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM HORN TIP TEXTURE GENERATOR
+     * Generates horn tip texture.
      */
-    private void generateUltraHornTip(int tileX, int tileY, Color hornColor, Color grayColor, Color blackColor) {
+    private void generateUltraHornTip(int tileX, int tileY, Color hornColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
         for (int y = 0; y < TILE_SIZE; y++) {
             for (int x = 0; x < TILE_SIZE; x++) {
-                Color pixelColor = hornColor; // Start with solid horn color
+                Color pixelColor;
                 
                 // ULTRA-REALISTIC HORN TIP (pointed end) - full texture
                 float centerX = TILE_SIZE / 2.0f;
@@ -2869,9 +2865,9 @@ public class MobTextureAtlas {
     }
     
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM HORN BASE TEXTURE GENERATOR
+     * Generates horn base texture.
      */
-    private void generateUltraHornBase(int tileX, int tileY, Color baseColor, Color grayColor, Color blackColor) {
+    private void generateUltraHornBase(int tileX, int tileY, Color baseColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -2916,131 +2912,117 @@ public class MobTextureAtlas {
         }
     }
     
+    private Color generateFrontTailPixel(int x, Color tailColor) {
+        float centerX = TILE_SIZE / 2.0f;
+        float distance = Math.abs(x - centerX);
+        
+        if (distance <= 6) {
+            float cylinderShade = (float)Math.cos(distance / 6.0f * Math.PI / 2) * 0.4f;
+            return new Color(
+                Math.min(255, (int)(tailColor.r * (0.8f + cylinderShade))),
+                Math.min(255, (int)(tailColor.g * (0.8f + cylinderShade))),
+                Math.min(255, (int)(tailColor.b * (0.8f + cylinderShade)))
+            );
+        } else {
+            return new Color(
+                Math.max(0, tailColor.r - 20),
+                Math.max(0, tailColor.g - 15),
+                Math.max(0, tailColor.b - 10)
+            );
+        }
+    }
+    
+    private Color generateBackTailPixel(int x, Color tailColor) {
+        float centerX = TILE_SIZE / 2.0f;
+        float distance = Math.abs(x - centerX);
+        
+        if (distance <= 6) {
+            float backShade = (float)Math.cos(distance / 6.0f * Math.PI / 2) * 0.3f;
+            return new Color(
+                Math.max(0, (int)(tailColor.r * (0.6f + backShade * 0.2f))),
+                Math.max(0, (int)(tailColor.g * (0.6f + backShade * 0.2f))),
+                Math.max(0, (int)(tailColor.b * (0.6f + backShade * 0.2f)))
+            );
+        } else {
+            return new Color(
+                Math.max(0, tailColor.r - 35),
+                Math.max(0, tailColor.g - 25),
+                Math.max(0, tailColor.b - 20)
+            );
+        }
+    }
+    
+    private Color generateLeftTailPixel(int x, int y, Color tailColor) {
+        float hairFlow = (float)Math.sin((y + x * 0.5f) * 0.4f) * 3 + x;
+        
+        if ((y + (int)hairFlow) % 3 == 0) {
+            return new Color(
+                Math.max(0, tailColor.r - 15),
+                Math.max(0, tailColor.g - 12),
+                Math.max(0, tailColor.b - 8)
+            );
+        } else {
+            float flowVariation = (float)Math.sin(hairFlow * 0.2f) * 0.1f;
+            return new Color(
+                Math.min(255, (int)(tailColor.r * (0.9f + flowVariation))),
+                Math.min(255, (int)(tailColor.g * (0.9f + flowVariation))),
+                Math.min(255, (int)(tailColor.b * (0.9f + flowVariation)))
+            );
+        }
+    }
+    
+    private Color generateRightTailPixel(int x, int y, Color tailColor) {
+        float hairFlow = (float)Math.sin((y - x * 0.5f) * 0.4f) * 3 + (16 - x);
+        
+        Color baseColor = new Color(
+            Math.max(0, tailColor.r - 10),
+            Math.max(0, tailColor.g - 8),
+            Math.max(0, tailColor.b - 5)
+        );
+        
+        if ((y - (int)hairFlow) % 3 == 0) {
+            return new Color(
+                Math.max(0, baseColor.r - 12),
+                Math.max(0, baseColor.g - 10),
+                Math.max(0, baseColor.b - 6)
+            );
+        } else {
+            float flowVariation = (float)Math.sin(hairFlow * 0.15f) * 0.08f;
+            return new Color(
+                Math.min(255, (int)(baseColor.r * (0.95f + flowVariation))),
+                Math.min(255, (int)(baseColor.g * (0.95f + flowVariation))),
+                Math.min(255, (int)(baseColor.b * (0.95f + flowVariation)))
+            );
+        }
+    }
+    
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM TAIL FACE TEXTURE GENERATOR
-     * Creates face-specific tail textures with incredible hair detail and movement.
+     * Generates face-specific tail textures.
      */
-    private void generateUltraTailFace(int tileX, int tileY, Color tailColor, Color tuftColor, Color lightColor, String face) {
+    private void generateUltraTailFace(int tileX, int tileY, Color tailColor, String face) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
         for (int y = 0; y < TILE_SIZE; y++) {
             for (int x = 0; x < TILE_SIZE; x++) {
-                Color pixelColor = tailColor; // Start with solid tail color
-                
                 // Tail structure based on face
-                float tailIntensity = 0.0f;
+                float tailIntensity = (face != null) ? switch (face) {
+                    case "front" -> 1.0f;
+                    case "back" -> 0.8f;
+                    case "left" -> 0.9f;
+                    case "right" -> 0.85f;
+                    default -> 0.0f;
+                } : 0.0f;
                 
-                switch (face) {
-                    case "front":
-                        // Front face - full texture with cylindrical tail cross-section pattern
-                        tailIntensity = 1.0f;
-                        
-                        float centerX = TILE_SIZE / 2.0f;
-                        float distance = Math.abs(x - centerX);
-                        
-                        // Cylindrical shading across full texture
-                        if (distance <= 6) { // Central cylindrical area
-                            float cylinderShade = (float)Math.cos(distance / 6.0f * Math.PI / 2) * 0.4f;
-                            pixelColor = new Color(
-                                Math.min(255, (int)(tailColor.r * (0.8f + cylinderShade))),
-                                Math.min(255, (int)(tailColor.g * (0.8f + cylinderShade))),
-                                Math.min(255, (int)(tailColor.b * (0.8f + cylinderShade)))
-                            );
-                        } else {
-                            // Edge areas - darker base tail color
-                            pixelColor = new Color(
-                                Math.max(0, tailColor.r - 20),
-                                Math.max(0, tailColor.g - 15),
-                                Math.max(0, tailColor.b - 10)
-                            );
-                        }
-                        break;
-                        
-                    case "back":
-                        // Back face - full texture with opposite side shadowing
-                        tailIntensity = 0.8f;
-                        
-                        centerX = TILE_SIZE / 2.0f;
-                        distance = Math.abs(x - centerX);
-                        
-                        // Back shadow across full texture
-                        if (distance <= 6) { // Central area
-                            float backShade = (float)Math.cos(distance / 6.0f * Math.PI / 2) * 0.3f;
-                            pixelColor = new Color(
-                                Math.max(0, (int)(tailColor.r * (0.6f + backShade * 0.2f))),
-                                Math.max(0, (int)(tailColor.g * (0.6f + backShade * 0.2f))),
-                                Math.max(0, (int)(tailColor.b * (0.6f + backShade * 0.2f)))
-                            );
-                        } else {
-                            // Edge areas - even darker
-                            pixelColor = new Color(
-                                Math.max(0, tailColor.r - 35),
-                                Math.max(0, tailColor.g - 25),
-                                Math.max(0, tailColor.b - 20)
-                            );
-                        }
-                        break;
-                        
-                    case "left":
-                        // Left side - full texture with flowing hair pattern
-                        tailIntensity = 0.9f;
-                        
-                        // Flowing hair texture across entire face
-                        float hairFlow = (float)Math.sin((y + x * 0.5f) * 0.4f) * 3 + x;
-                        
-                        // Hair direction lines across full texture
-                        if ((y + (int)hairFlow) % 3 == 0) {
-                            pixelColor = new Color(
-                                Math.max(0, tailColor.r - 15),
-                                Math.max(0, tailColor.g - 12),
-                                Math.max(0, tailColor.b - 8)
-                            );
-                        } else {
-                            // Base hair color with flow variation
-                            float flowVariation = (float)Math.sin(hairFlow * 0.2f) * 0.1f;
-                            pixelColor = new Color(
-                                Math.min(255, (int)(tailColor.r * (0.9f + flowVariation))),
-                                Math.min(255, (int)(tailColor.g * (0.9f + flowVariation))),
-                                Math.min(255, (int)(tailColor.b * (0.9f + flowVariation)))
-                            );
-                        }
-                        break;
-                        
-                    case "right":
-                        // Right side - full texture with opposite hair flow
-                        tailIntensity = 0.85f;
-                        
-                        // Opposite hair flow across entire face
-                        hairFlow = (float)Math.sin((y - x * 0.5f) * 0.4f) * 3 + (16 - x);
-                        
-                        // Base color with slight darkening for right side
-                        pixelColor = new Color(
-                            Math.max(0, tailColor.r - 10),
-                            Math.max(0, tailColor.g - 8),
-                            Math.max(0, tailColor.b - 5)
-                        );
-                        
-                        // Opposite hair direction lines
-                        if ((y - (int)hairFlow) % 3 == 0) {
-                            pixelColor = new Color(
-                                Math.max(0, pixelColor.r - 12),
-                                Math.max(0, pixelColor.g - 10),
-                                Math.max(0, pixelColor.b - 6)
-                            );
-                        } else {
-                            // Base hair color with opposite flow variation
-                            float flowVariation = (float)Math.sin(hairFlow * 0.15f) * 0.08f;
-                            pixelColor = new Color(
-                                Math.min(255, (int)(pixelColor.r * (0.95f + flowVariation))),
-                                Math.min(255, (int)(pixelColor.g * (0.95f + flowVariation))),
-                                Math.min(255, (int)(pixelColor.b * (0.95f + flowVariation)))
-                            );
-                        }
-                        break;
-                }
+                Color pixelColor = (face != null) ? switch (face) {
+                    case "front" -> generateFrontTailPixel(x, tailColor);
+                    case "back" -> generateBackTailPixel(x, tailColor);
+                    case "left" -> generateLeftTailPixel(x, y, tailColor);
+                    case "right" -> generateRightTailPixel(x, y, tailColor);
+                    default -> tailColor;
+                } : tailColor;
                 
-                // ULTRA-PREMIUM TAIL HAIR DETAILS (applied to all faces - since all are now solid)
+                // Tail hair details (applied to all faces)
                 // Natural hair texture with incredible detail
                 int hairPattern = (x * 3 + y * 7) % 11;
                 if (hairPattern == 0) {
@@ -3081,9 +3063,9 @@ public class MobTextureAtlas {
     }
     
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM TAIL ATTACHMENT TEXTURE GENERATOR
+     * Generates tail attachment texture.
      */
-    private void generateUltraTailAttachment(int tileX, int tileY, Color bodyColor, Color darkColor, Color blackColor) {
+    private void generateUltraTailAttachment(int tileX, int tileY, Color bodyColor, Color darkColor) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -3127,7 +3109,7 @@ public class MobTextureAtlas {
     }
     
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM TAIL TUFT TEXTURE GENERATOR
+     * Generates tail tuft texture.
      */
     private void generateUltraTailTuft(int tileX, int tileY, Color tuftColor, Color darkColor, Color lightColor) {
         int startX = tileX * TILE_SIZE;
@@ -3189,11 +3171,70 @@ public class MobTextureAtlas {
         }
     }
     
+    private Color generateFrontUdderPixel(int x, int y, float centerX, float distance, Color basePink, Color darkPink, Color lightPink) {
+        Color pixelColor = basePink;
+        
+        if (y >= TILE_SIZE * 0.7f) {
+            if ((x >= TILE_SIZE * 0.2f && x <= TILE_SIZE * 0.35f) || (x >= TILE_SIZE * 0.65f && x <= TILE_SIZE * 0.8f)) {
+                pixelColor = darkPink;
+            }
+        }
+        if (x >= centerX - 1 && x <= centerX + 1) {
+            pixelColor = lightPink;
+        }
+        if (distance >= TILE_SIZE * 0.3f && distance <= TILE_SIZE * 0.35f) {
+            pixelColor = new Color(
+                Math.max(0, basePink.r - 10),
+                Math.max(0, basePink.g - 8),
+                Math.max(0, basePink.b - 5)
+            );
+        }
+        return pixelColor;
+    }
+    
+    private Color generateBackUdderPixel(int x, int y, Color basePink, Color darkPink, Color lightPink) {
+        Color pixelColor = basePink;
+        
+        if (y <= TILE_SIZE * 0.3f) {
+            pixelColor = lightPink;
+        }
+        if (y >= TILE_SIZE * 0.25f && y <= TILE_SIZE * 0.4f && x % 3 == 0) {
+            pixelColor = darkPink;
+        }
+        if ((x + y) % 5 == 0) {
+            pixelColor = new Color(
+                Math.max(0, pixelColor.r - 5),
+                Math.max(0, pixelColor.g - 3),
+                Math.max(0, pixelColor.b - 2)
+            );
+        }
+        return pixelColor;
+    }
+    
+    private Color generateSideUdderPixel(int x, int y, float centerX, String face, Color basePink, Color darkPink, Color lightPink) {
+        Color pixelColor = basePink;
+        
+        float sideOffset = face.equals("left") ? -2.0f : 2.0f;
+        if (Math.abs(x - centerX + sideOffset) <= 3) {
+            pixelColor = lightPink;
+        }
+        if ((x + y) % 4 == 0) {
+            pixelColor = new Color(
+                Math.max(0, basePink.r - 8),
+                Math.max(0, basePink.g - 5),
+                Math.max(0, basePink.b - 3)
+            );
+        }
+        if (x <= TILE_SIZE * 0.2f || x >= TILE_SIZE * 0.8f) {
+            pixelColor = darkPink;
+        }
+        return pixelColor;
+    }
+    
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM UDDER FACE TEXTURE GENERATOR
-     * Creates face-specific udder textures with incredible anatomical detail.
+     * Generates face-specific udder textures.
      */
-    private void generateUltraUdderFace(int tileX, int tileY, Color udderColor, Color darkPinkColor, Color lightColor, String face) {
+    private void generateUltraUdderFace(int tileX, int tileY, String face) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -3204,80 +3245,18 @@ public class MobTextureAtlas {
         
         for (int y = 0; y < TILE_SIZE; y++) {
             for (int x = 0; x < TILE_SIZE; x++) {
-                // Fill entire face with base pink color
-                Color pixelColor = basePink;
-                
                 // ULTRA-REALISTIC UDDER STRUCTURE
                 float centerX = TILE_SIZE * 0.5f;
                 float centerY = TILE_SIZE * 0.5f; // Center the main udder area
                 float distance = (float)Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
                     
                 // Face-specific details with enhanced pink detailing covering full face
-                switch (face) {
-                    case "front":
-                        // Front face shows the main udder curve with teat attachment shadows
-                        if (y >= TILE_SIZE * 0.7f) {
-                            // Bottom area - darker pink for teat attachment zones
-                            if ((x >= TILE_SIZE * 0.2f && x <= TILE_SIZE * 0.35f) || (x >= TILE_SIZE * 0.65f && x <= TILE_SIZE * 0.8f)) {
-                                pixelColor = darkPink;
-                            }
-                        }
-                        // Add vertical midline detail
-                        if (x >= centerX - 1 && x <= centerX + 1) {
-                            pixelColor = lightPink;
-                        }
-                        // Add curved udder outline
-                        if (distance >= TILE_SIZE * 0.3f && distance <= TILE_SIZE * 0.35f) {
-                            pixelColor = new Color(
-                                Math.max(0, basePink.r - 10),
-                                Math.max(0, basePink.g - 8),
-                                Math.max(0, basePink.b - 5)
-                            );
-                        }
-                        break;
-                        
-                    case "back":
-                        // Back face shows attachment to belly with pink gradation
-                        if (y <= TILE_SIZE * 0.3f) {
-                            // Upper attachment area - lighter pink blending to belly
-                            pixelColor = lightPink;
-                        }
-                        // Add horizontal attachment lines across full width
-                        if (y >= TILE_SIZE * 0.25f && y <= TILE_SIZE * 0.4f && x % 3 == 0) {
-                            pixelColor = darkPink;
-                        }
-                        // Add full-face texture pattern
-                        if ((x + y) % 5 == 0) {
-                            pixelColor = new Color(
-                                Math.max(0, pixelColor.r - 5),
-                                Math.max(0, pixelColor.g - 3),
-                                Math.max(0, pixelColor.b - 2)
-                            );
-                        }
-                        break;
-                        
-                    case "left":
-                    case "right":
-                        // Side faces show udder profile with enhanced pink curvature
-                        float sideOffset = face.equals("left") ? -2.0f : 2.0f;
-                        if (Math.abs(x - centerX + sideOffset) <= 3) {
-                            // Side curvature emphasis with brighter pink
-                            pixelColor = lightPink;
-                        }
-                        // Add full-face texture lines
-                        if ((x + y) % 4 == 0) {
-                            pixelColor = new Color(
-                                Math.max(0, basePink.r - 8),
-                                Math.max(0, basePink.g - 5),
-                                Math.max(0, basePink.b - 3)
-                            );
-                        }
-                        // Add side profile curves
-                        if (x <= TILE_SIZE * 0.2f || x >= TILE_SIZE * 0.8f) {
-                            pixelColor = darkPink;
-                        }
-                        break;
-                }
+                Color pixelColor = (face != null) ? switch (face) {
+                    case "front" -> generateFrontUdderPixel(x, y, centerX, distance, basePink, darkPink, lightPink);
+                    case "back" -> generateBackUdderPixel(x, y, basePink, darkPink, lightPink);
+                    case "left", "right" -> generateSideUdderPixel(x, y, centerX, face, basePink, darkPink, lightPink);
+                    default -> basePink;
+                } : basePink;
                     
                 // REALISTIC PINK SHADING AND FORM across full face
                 // Top highlight (light source from above) - brighter pink
@@ -3313,10 +3292,9 @@ public class MobTextureAtlas {
     }
     
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM UDDER ATTACHMENT TEXTURE GENERATOR
-     * Creates the top attachment point where udder connects to belly.
+     * Generates udder attachment texture.
      */
-    private void generateUltraUdderAttachment(int tileX, int tileY, Color lightColor, Color udderColor, Color darkPinkColor) {
+    private void generateUltraUdderAttachment(int tileX, int tileY) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         
@@ -3369,10 +3347,9 @@ public class MobTextureAtlas {
     }
     
     /**
-     * BILLIONAIRE BUDGET ULTRA-PREMIUM UDDER TEATS TEXTURE GENERATOR
-     * Creates the bottom texture showing realistic teat positioning.
+     * Generates udder teats texture.
      */
-    private void generateUltraUdderTeats(int tileX, int tileY, Color udderColor, Color darkPinkColor, Color lightColor) {
+    private void generateUltraUdderTeats(int tileX, int tileY) {
         int startX = tileX * TILE_SIZE;
         int startY = tileY * TILE_SIZE;
         

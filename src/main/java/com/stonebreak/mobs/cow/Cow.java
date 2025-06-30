@@ -34,13 +34,13 @@ public class Cow extends LivingEntity {
     private static final float MILK_REGEN_TIME = 300.0f; // 5 minutes
     
     // AI system
-    private CowAI cowAI;
+    private final CowAI cowAI;
     
     // Animation system
     private CowModel.CowAnimation currentAnimation;
     private float animationTransitionTime;
     private static final float ANIMATION_TRANSITION_DURATION = 0.5f;
-    private AnimationController animationController;
+    private final AnimationController animationController;
     
     /**
      * Creates a new cow at the specified position.
@@ -235,8 +235,6 @@ public class Cow extends LivingEntity {
      */
     @Override
     public void onDamage(float damage, DamageSource source) {
-        if (!isAlive()) return;
-        
         // Add visual damage indicators or particles here
     }
     

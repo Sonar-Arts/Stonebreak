@@ -1,46 +1,27 @@
 package com.stonebreak.ui;
 
+import static org.lwjgl.nanovg.NanoVG.*;
+import static org.lwjgl.system.MemoryStack.stackPush;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import org.joml.Vector2f;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.Inventory;
-import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.Item;
-import com.stonebreak.crafting.CraftingManager;
-import com.stonebreak.crafting.Recipe;
-import com.stonebreak.player.Player;
-import com.stonebreak.rendering.Renderer;
-import com.stonebreak.core.Game;
-import com.stonebreak.input.InputHandler;
-import com.stonebreak.input.MouseCaptureManager;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_BOTTOM;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_LEFT;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_RIGHT;
-import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_TOP;
-import static org.lwjgl.nanovg.NanoVG.nvgBeginPath;
-import static org.lwjgl.nanovg.NanoVG.nvgClosePath;
-import static org.lwjgl.nanovg.NanoVG.nvgFill;
-import static org.lwjgl.nanovg.NanoVG.nvgFillColor;
-import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
-import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
-import static org.lwjgl.nanovg.NanoVG.nvgLineTo;
-import static org.lwjgl.nanovg.NanoVG.nvgMoveTo;
-import static org.lwjgl.nanovg.NanoVG.nvgRect;
-import static org.lwjgl.nanovg.NanoVG.nvgRoundedRect;
-import static org.lwjgl.nanovg.NanoVG.nvgStroke;
-import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
-import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
-import static org.lwjgl.nanovg.NanoVG.nvgText;
-import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
-import static org.lwjgl.nanovg.NanoVG.nvgTextBounds;
 import org.lwjgl.system.MemoryStack;
-import static org.lwjgl.system.MemoryStack.stackPush;
+
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.core.Game;
+import com.stonebreak.crafting.CraftingManager;
+import com.stonebreak.crafting.Recipe;
+import com.stonebreak.input.InputHandler;
+import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.items.Inventory;
+import com.stonebreak.items.Item;
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.player.Player;
+import com.stonebreak.rendering.Renderer;
 
 /**
  * A 2D UI for displaying the workbench, including a 3x3 crafting grid.
@@ -332,8 +313,8 @@ public class WorkbenchScreen {
 
                     uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
                     // Draw 3D item using existing renderer - only works for BlockTypes for now
-                    if (item instanceof BlockType) {
-                        renderer.draw3DItemInSlot((BlockType) item, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                    if (item instanceof BlockType blockType) {
+                        renderer.draw3DItemInSlot(blockType, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
                     } else {
                         // For ItemTypes, render a 2D sprite using UIRenderer
                         uiRenderer.renderItemIcon(slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
@@ -362,8 +343,8 @@ public class WorkbenchScreen {
             long vg = uiRenderer.getVG();
             uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
             // Draw 3D item using existing renderer - only works for BlockTypes for now
-            if (item instanceof BlockType) {
-                renderer.draw3DItemInSlot((BlockType) item, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+            if (item instanceof BlockType blockType) {
+                renderer.draw3DItemInSlot(blockType, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
             } else {
                 // For ItemTypes, render a 2D sprite using UIRenderer
                 uiRenderer.renderItemIcon(x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());

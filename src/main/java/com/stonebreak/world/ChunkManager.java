@@ -83,7 +83,26 @@ public class ChunkManager {
         if (!chunksToLoad.isEmpty()) {
             for (World.ChunkPosition pos : chunksToLoad) {
                 if (activeChunkPositions.add(pos)) {
-                    chunkExecutor.submit(() -> world.getChunkAt(pos.getX(), pos.getZ()));
+                    chunkExecutor.submit(() -> {
+                        try {
+                            long startTime = System.currentTimeMillis();
+                            world.getChunkAt(pos.getX(), pos.getZ());
+                            long endTime = System.currentTimeMillis();
+                            
+                            // Log slow chunk loading
+                            if (endTime - startTime > 500) { // More than 500ms
+                                System.err.println("SLOW CHUNK LOAD: Chunk (" + pos.getX() + ", " + pos.getZ() + ") took " + (endTime - startTime) + "ms");
+                                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                            }
+                        } catch (Exception e) {
+                            System.err.println("CRITICAL: Exception loading chunk (" + pos.getX() + ", " + pos.getZ() + ")");
+                            System.err.println("Time: " + java.time.LocalDateTime.now());
+                            System.err.println("Thread: " + Thread.currentThread().getName());
+                            System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                            System.err.println("Exception: " + e.getMessage());
+                            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+                        }
+                    });
                 }
             }
         }

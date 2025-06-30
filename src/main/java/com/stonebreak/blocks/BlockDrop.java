@@ -25,14 +25,14 @@ public class BlockDrop {
     private static final float AIR_RESISTANCE = 0.98f;
     
     // Drop properties
-    private Vector3f position;
-    private Vector3f velocity;
+    private final Vector3f position;
+    private final Vector3f velocity;
     private float rotationY; // Y-axis rotation in degrees
-    private int blockTypeId;
+    private final int blockTypeId;
     private int quantity;
     private float age; // How long this drop has existed
     private boolean onGround;
-    private World world;
+    private final World world;
     
     // Visual properties
     private static final float DROP_SCALE = 0.25f; // 25% of block size

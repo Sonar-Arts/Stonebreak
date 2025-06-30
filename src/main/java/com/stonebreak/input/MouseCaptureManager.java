@@ -81,11 +81,7 @@ public class MouseCaptureManager {
                 
                 // Check if any UI screens that should block camera movement are open
                 InventoryScreen inventoryScreen = game.getInventoryScreen();
-                if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                    return false;
-                }
-                
-                return true; // Paused by something that still allows camera movement
+                return inventoryScreen == null || !inventoryScreen.isVisible();
             }
             case WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, PAUSED -> {
                 return false;

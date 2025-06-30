@@ -81,8 +81,7 @@ public abstract class Entity {
         float bottomY = position.y;
         
         // For living entities, start collision from bottom of legs
-        if (this instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) this;
+        if (this instanceof LivingEntity livingEntity) {
             bottomY = position.y - livingEntity.getLegHeight();
         }
         

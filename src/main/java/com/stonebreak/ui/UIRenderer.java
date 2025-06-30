@@ -1,13 +1,6 @@
 package com.stonebreak.ui;
 
 import java.util.List;
-import com.stonebreak.chat.ChatSystem;
-import com.stonebreak.chat.ChatMessage;
-import com.stonebreak.items.Item;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.TextureAtlas;
-import com.stonebreak.core.Game;
 
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
@@ -43,6 +36,14 @@ import static org.lwjgl.nanovg.NanoVGGL3.nvgCreate;
 import static org.lwjgl.nanovg.NanoVGGL3.nvgDelete;
 import org.lwjgl.system.MemoryStack;
 import static org.lwjgl.system.MemoryStack.stackPush;
+
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.chat.ChatMessage;
+import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.core.Game;
+import com.stonebreak.items.Item;
+import com.stonebreak.items.ItemType;
+import com.stonebreak.rendering.TextureAtlas;
 
 public class UIRenderer {
     private long vg;
@@ -174,11 +175,15 @@ public class UIRenderer {
     }
     
     public void beginFrame(int width, int height, float pixelRatio) {
-        nvgBeginFrame(vg, width, height, pixelRatio);
+        if (vg != 0) {
+            nvgBeginFrame(vg, width, height, pixelRatio);
+        }
     }
     
     public void endFrame() {
-        nvgEndFrame(vg);
+        if (vg != 0) {
+            nvgEndFrame(vg);
+        }
     }
     
     public void renderMainMenu(int windowWidth, int windowHeight) {
@@ -678,7 +683,13 @@ public class UIRenderer {
     
     public void cleanup() {
         if (vg != 0) {
-            nvgDelete(vg);
+            try {
+                nvgDelete(vg);
+            } catch (Exception e) {
+                System.err.println("Warning: Error during UIRenderer cleanup: " + e.getMessage());
+            } finally {
+                vg = 0; // Ensure vg is reset to prevent further use
+            }
         }
     }
     
@@ -1053,17 +1064,16 @@ public class UIRenderer {
      * @param fontFaceName The name of the font face (e.g., "sans", "minecraft").
      * @return The width of the text in pixels.
      */
-    public float getTextWidth(String text, float fontSize, String fontFaceName) {if (vg == 0 || text == null || text.isEmpty()) {
+    public float getTextWidth(String text, float fontSize, String fontFaceName) {
+        if (vg == 0 || text == null || text.isEmpty()) {
             return 0;
         }
-        try (MemoryStack stack = stackPush()) {
-            nvgFontSize(vg, fontSize);
-            nvgFontFace(vg, fontFaceName); // Use the specified font face
-            // For nvgTextBounds, x and y are 0,0 as we only need the bounds relative to origin
-            float[] bounds = new float[4]; // x, y, width, height of the text bounds
-            org.lwjgl.nanovg.NanoVG.nvgTextBounds(vg, 0, 0, text, bounds);
-            return bounds[2] - bounds[0]; // width is bounds[2] - bounds[0]
-        }
+        nvgFontSize(vg, fontSize);
+        nvgFontFace(vg, fontFaceName); // Use the specified font face
+        // For nvgTextBounds, x and y are 0,0 as we only need the bounds relative to origin
+        float[] bounds = new float[4]; // x, y, width, height of the text bounds
+        org.lwjgl.nanovg.NanoVG.nvgTextBounds(vg, 0, 0, text, bounds);
+        return bounds[2] - bounds[0]; // width is bounds[2] - bounds[0]
     }
  
     /**
@@ -1078,6 +1088,7 @@ public class UIRenderer {
      * @param a Alpha component (0-1)
      */
     public void renderQuad(float x, float y, float w, float h, float r, float g, float b, float a) {
+        if (vg == 0) return;
         try (MemoryStack stack = stackPush()) {
             nvgBeginPath(vg);
             nvgRect(vg, x, y, w, h);
@@ -1096,7 +1107,7 @@ public class UIRenderer {
      * @param color Float array for color {r, g, b, a}
      */
     public void renderOutline(float x, float y, float w, float h, float strokeWidth, float[] color) {
-        if (color == null || color.length < 4) return;
+        if (vg == 0 || color == null || color.length < 4) return;
         try (MemoryStack stack = stackPush()) {
             nvgBeginPath(vg);
             nvgRect(vg, x, y, w, h);
@@ -1116,15 +1127,14 @@ public class UIRenderer {
      * @param textureAtlas The texture atlas containing item/block textures.
      */
     public void renderItemIcon(float x, float y, float w, float h, Item item, TextureAtlas textureAtlas) {
-        if (textureAtlas == null || item == null) return;
+        if (vg == 0 || textureAtlas == null || item == null) return;
 
         if (item == BlockType.AIR) return;
 
         // Get texture coordinates using the item's atlas position
         // For blocks, use the top face; for items, use their designated position
         float[] texCoords;
-        if (item instanceof BlockType) {
-            BlockType blockType = (BlockType) item;
+        if (item instanceof BlockType blockType) {
             texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
         } else {
             // For ItemType, calculate UVs from atlas coordinates
@@ -1150,7 +1160,13 @@ public class UIRenderer {
 
         // TextureAtlas typically binds its own texture. Here, we need to draw a sub-region of it
         // using NanoVG's image pattern. We need the atlas's texture ID.
-        int atlasImageId = textureAtlas.getNanoVGImageId(vg); // This method needs to exist in TextureAtlas
+        int atlasImageId;
+        try {
+            atlasImageId = textureAtlas.getNanoVGImageId(vg); // This method needs to exist in TextureAtlas
+        } catch (Exception e) {
+            System.err.println("Warning: Failed to get NanoVG image ID from texture atlas: " + e.getMessage());
+            return;
+        }
         if (atlasImageId == -1) return;
 
         try (MemoryStack stack = stackPush()) {

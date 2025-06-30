@@ -1,27 +1,24 @@
 package com.stonebreak.audio;
 
+import org.lwjgl.*;
 import org.lwjgl.openal.*;
-import org.lwjgl.BufferUtils;
-
-import javax.sound.sampled.*;
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
-
 import static org.lwjgl.openal.AL10.*;
 import static org.lwjgl.openal.ALC10.*;
+
+import javax.sound.sampled.*;
+import java.io.*;
+import java.net.*;
+import java.nio.*;
+import java.util.*;
 
 public class SoundSystem {
     private static SoundSystem instance;
     
     private long device;
     private long context;
-    private Map<String, Integer> soundBuffers;
-    private Map<String, Integer[]> sources; // Multiple sources per sound
-    private Map<String, Integer> sourceIndexes; // Track current source index
+    private final Map<String, Integer> soundBuffers;
+    private final Map<String, Integer[]> sources; // Multiple sources per sound
+    private final Map<String, Integer> sourceIndexes; // Track current source index
     private float masterVolume = 1.0f; // Master volume multiplier
     
     private SoundSystem() {
@@ -72,7 +69,7 @@ public class SoundSystem {
             System.out.println("OpenAL initialized successfully");
         } catch (Exception e) {
             System.err.println("Failed to initialize OpenAL: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Stack trace: " + e.toString());
         }
     }
     
@@ -97,7 +94,7 @@ public class SoundSystem {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (URISyntaxException | SecurityException e) {
             System.err.println("Error listing resources: " + e.getMessage());
         }
         
@@ -144,7 +141,7 @@ public class SoundSystem {
             
         } catch (IOException e) {
             System.err.println("IOException loading sound " + resourcePath + ": " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Stack trace: " + e.toString());
         }
         System.out.println("=====================");
     }
@@ -154,8 +151,8 @@ public class SoundSystem {
             System.out.println("Loading sound: " + name + " from " + path);
             
             // Use Java Sound API to load WAV files
-            try (BufferedInputStream bis = new BufferedInputStream(is)) {
-                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis);
+            try (BufferedInputStream bis = new BufferedInputStream(is);
+                 AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis)) {
                 AudioFormat format = audioInputStream.getFormat();
                 
                 System.out.println("Original format: " + format);
@@ -171,7 +168,7 @@ public class SoundSystem {
                     false
                 );
                 
-                AudioInputStream pcmStream = AudioSystem.getAudioInputStream(targetFormat, audioInputStream);
+                try (AudioInputStream pcmStream = AudioSystem.getAudioInputStream(targetFormat, audioInputStream)) {
                 
                 byte[] audioData = pcmStream.readAllBytes();
                 ByteBuffer audioBuffer = BufferUtils.createByteBuffer(audioData.length);
@@ -183,13 +180,16 @@ public class SoundSystem {
                 
                 System.out.println("Converted format: " + channels + " channels, " + sampleRate + " Hz, " + audioData.length + " bytes");
                 
-                int alFormat;
-                if (channels == 1) {
-                    alFormat = AL_FORMAT_MONO16;
-                } else if (channels == 2) {
-                    alFormat = AL_FORMAT_STEREO16;
-                } else {
-                    System.err.println("Unsupported channel count: " + channels);
+                int alFormat = switch (channels) {
+                    case 1 -> AL_FORMAT_MONO16;
+                    case 2 -> AL_FORMAT_STEREO16;
+                    default -> {
+                        System.err.println("Unsupported channel count: " + channels);
+                        yield -1;
+                    }
+                };
+                
+                if (alFormat == -1) {
                     return;
                 }
                 
@@ -229,18 +229,16 @@ public class SoundSystem {
                 sourceIndexes.put(name, 0);
                 
                 System.out.println("Successfully loaded sound: " + name + " (" + channels + " channels, " + sampleRate + " Hz)");
-                
-                pcmStream.close();
-                audioInputStream.close();
+                }
                 
             } catch (UnsupportedAudioFileException e) {
                 System.err.println("Unsupported audio file format: " + path);
-                e.printStackTrace();
+                System.err.println("Stack trace: " + e.toString());
             }
             
         } catch (IOException e) {
             System.err.println("Error loading sound " + path + ": " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Stack trace: " + e.toString());
         }
     }
     

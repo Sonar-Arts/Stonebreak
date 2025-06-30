@@ -29,11 +29,11 @@ public class EntityRenderer {
     private boolean initialized = false;
     
     // VAO and VBO storage for model parts - organized by entity type
-    private Map<EntityType, Map<String, Integer>> vaoMaps = new HashMap<>();
-    private Map<EntityType, Map<String, Integer>> vboMaps = new HashMap<>();
-    private Map<EntityType, Map<String, Integer>> eboMaps = new HashMap<>();
-    private Map<EntityType, Map<String, Integer>> texCoordVboMaps = new HashMap<>();
-    private Map<EntityType, Map<String, Integer>> vertexCountMaps = new HashMap<>();
+    private final Map<EntityType, Map<String, Integer>> vaoMaps = new HashMap<>();
+    private final Map<EntityType, Map<String, Integer>> vboMaps = new HashMap<>();
+    private final Map<EntityType, Map<String, Integer>> eboMaps = new HashMap<>();
+    private final Map<EntityType, Map<String, Integer>> texCoordVboMaps = new HashMap<>();
+    private final Map<EntityType, Map<String, Integer>> vertexCountMaps = new HashMap<>();
     
     // Simple cube model for fallback entities
     private int simpleCubeVAO;
@@ -60,13 +60,11 @@ public class EntityRenderer {
             vertexCountMaps.put(entityType, new HashMap<>());
             
             switch (entityType) {
-                case COW:
-                    createCowModel();
-                    break;
+                case COW -> createCowModel();
                 // Add other entity types here as they're implemented
-                default:
+                default -> {
                     // No special model needed - will use simple cube fallback
-                    break;
+                }
             }
         }
     }
@@ -302,13 +300,11 @@ public class EntityRenderer {
         
         // Render based on entity type
         switch (entityType) {
-            case COW:
-                renderCowParts(baseMatrix, entity);
-                break;
+            case COW -> renderCowParts(baseMatrix, entity);
             // Add other complex entity types here
-            default:
+            default -> {
                 // Shouldn't reach here, but fallback to simple rendering
-                break;
+            }
         }
         
         // Clean up and restore previous OpenGL state
@@ -332,8 +328,18 @@ public class EntityRenderer {
     private void renderCowParts(Matrix4f baseMatrix, Entity entity) {
         // Get animated cow model parts
         CowModel cowModel = CowModel.getInstance();
-        float animationTime = System.currentTimeMillis() / 1000.0f;
-        CowModel.ModelPart[] animatedParts = cowModel.getAnimatedParts(CowModel.CowAnimation.IDLE, animationTime);
+        
+        // Get the current animation and time from the cow entity
+        CowModel.CowAnimation currentAnimation = CowModel.CowAnimation.IDLE;
+        float animationTime = System.currentTimeMillis() / 1000.0f; // Default fallback
+        
+        if (entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+            currentAnimation = cow.getCurrentAnimation();
+            // Use the cow's animation controller time for consistent timing
+            animationTime = cow.getAnimationController().getTotalAnimationTime();
+        }
+        
+        CowModel.ModelPart[] animatedParts = cowModel.getAnimatedParts(currentAnimation, animationTime);
         
         String[] partNames = {"body", "head", "leg1", "leg2", "leg3", "leg4", "horn1", "horn2", "udder", "tail"};
         Map<String, Integer> cowVaoMap = vaoMaps.get(EntityType.COW);

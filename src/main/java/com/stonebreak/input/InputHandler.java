@@ -3,46 +3,33 @@ package com.stonebreak.input;
 import java.util.Arrays;
 
 import org.joml.Vector2f;
+import org.joml.Vector3f;
+import org.joml.Vector3i;
 
-import com.stonebreak.util.MemoryProfiler;
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.chat.ChatSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.EntityManager;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.Player;
-import com.stonebreak.world.World;
 import com.stonebreak.ui.InventoryScreen;
-import com.stonebreak.ui.WorkbenchScreen;
-import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.UIRenderer;
+import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.SettingsMenu;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_1;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL; // Kept for Chat
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_T;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
-import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LAST;
-import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
-import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
-import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
-import static org.lwjgl.glfw.GLFW.glfwGetKey;
-import static org.lwjgl.glfw.GLFW.glfwSetScrollCallback;
+import com.stonebreak.ui.UIRenderer;
+import com.stonebreak.ui.WorkbenchScreen;
+import com.stonebreak.util.MemoryProfiler;
+import com.stonebreak.world.World;
+
+import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
 
 /**
  * Handles player input for movement and interaction.
@@ -386,8 +373,8 @@ public class InputHandler {
         }
         
         // Get player position and camera direction for throwing
-        org.joml.Vector3f playerPos = player.getPosition();
-        org.joml.Vector3f cameraForward = player.getCamera().getFront();
+        Vector3f playerPos = player.getPosition();
+        Vector3f cameraForward = player.getCamera().getFront();
         
         // Spawn the drop at player position (eye level)
         float dropX = playerPos.x;
@@ -396,7 +383,7 @@ public class InputHandler {
         
         // Calculate throwing velocity - forward direction with upward arc
         float throwSpeed = 8.0f; // Throwing speed
-        org.joml.Vector3f throwVelocity = new org.joml.Vector3f(
+        Vector3f throwVelocity = new Vector3f(
             cameraForward.x * throwSpeed,
             Math.max(2.0f, cameraForward.y * throwSpeed + 3.0f), // Minimum upward velocity for arc
             cameraForward.z * throwSpeed
@@ -417,7 +404,7 @@ public class InputHandler {
     
     private void handleDebugKeys() {
         // F3 - Toggle debug overlay
-        boolean isF3Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F3) == GLFW_PRESS;
+        boolean isF3Pressed = glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS;
         if (isF3Pressed && !f3KeyPressed) {
             f3KeyPressed = true;
             Game.toggleDebugOverlay();
@@ -426,7 +413,7 @@ public class InputHandler {
         }
         
         // F4 - Trigger memory leak analysis
-        boolean isF4Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F4) == GLFW_PRESS;
+        boolean isF4Pressed = glfwGetKey(window, GLFW_KEY_F4) == GLFW_PRESS;
         if (isF4Pressed && !f4KeyPressed) {
             f4KeyPressed = true;
             System.out.println("[DEBUG] Manual memory leak analysis triggered by F4 key...");
@@ -436,7 +423,7 @@ public class InputHandler {
         }
         
         // F5 - Detailed memory profiling
-        boolean isF5Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F5) == GLFW_PRESS;
+        boolean isF5Pressed = glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS;
         if (isF5Pressed && !f5KeyPressed) {
             f5KeyPressed = true;
             System.out.println("[DEBUG] Detailed memory profiling triggered by F5 key...");
@@ -449,16 +436,16 @@ public class InputHandler {
         }
         
         // F6 - Spawn test cow
-        boolean isF6Pressed = glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_F6) == GLFW_PRESS;
+        boolean isF6Pressed = glfwGetKey(window, GLFW_KEY_F6) == GLFW_PRESS;
         if (isF6Pressed && !f6KeyPressed) {
             f6KeyPressed = true;
             Player player = Game.getPlayer();
-            com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+            EntityManager entityManager = Game.getEntityManager();
             if (player != null && entityManager != null) {
                 // Spawn cow 5 blocks in front of the player
-                org.joml.Vector3f playerPos = player.getPosition();
-                org.joml.Vector3f playerDir = player.getCamera().getFront();
-                org.joml.Vector3f spawnPos = new org.joml.Vector3f(
+                Vector3f playerPos = player.getPosition();
+                Vector3f playerDir = player.getCamera().getFront();
+                Vector3f spawnPos = new Vector3f(
                     playerPos.x + playerDir.x * 5.0f,
                     playerPos.y,
                     playerPos.z + playerDir.z * 5.0f
@@ -475,7 +462,7 @@ public class InputHandler {
                 }
                 spawnPos.y = groundY;
                 
-                com.stonebreak.mobs.entities.Entity cow = entityManager.spawnEntity(com.stonebreak.mobs.entities.EntityType.COW, spawnPos);
+                Entity cow = entityManager.spawnEntity(EntityType.COW, spawnPos);
                 if (cow != null) {
                     System.out.println("[DEBUG] Spawned test cow at " + spawnPos);
                 } else {
@@ -577,7 +564,7 @@ public class InputHandler {
                         player.startAttackAnimation(); // Animate for interaction attempts as well
 
                         // Raycast to see what block is being targeted
-                        org.joml.Vector3i targetedBlockPos = player.raycast();
+                        Vector3i targetedBlockPos = player.raycast();
                         if (targetedBlockPos != null) {
                             BlockType targetedBlockType = Game.getWorld().getBlockAt(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z);
                             if (targetedBlockType == BlockType.WORKBENCH) {

@@ -93,7 +93,10 @@ public class Chunk {
             this.dataReadyForGL = true; // Mark data as ready for GL upload ONLY on success
         } catch (Exception e) {
             System.err.println("CRITICAL: Exception during generateMeshData for chunk (" + x + ", " + z + "): " + e.getMessage());
-            // e.printStackTrace(); // Print stack trace for better debugging
+            System.err.println("Time: " + java.time.LocalDateTime.now());
+            System.err.println("Thread: " + Thread.currentThread().getName());
+            System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
             this.dataReadyForGL = false; // Ensure it's false on error
             // meshDataGenerationScheduledOrInProgress is reset by the worker task's finally block in World.java.
         }
@@ -160,7 +163,12 @@ public class Chunk {
             freeMeshDataArrays();
         } catch (Exception e) {
             System.err.println("CRITICAL: Error during createMesh for chunk (" + x + ", " + z + "): " + e.getMessage());
-            // e.printStackTrace();
+            System.err.println("Time: " + java.time.LocalDateTime.now());
+            System.err.println("Thread: " + Thread.currentThread().getName());
+            System.err.println("VAO ID: " + this.vaoId + ", VBO ID: " + this.vertexVboId + ", Index Buffer ID: " + this.indexVboId);
+            System.err.println("Vertex count: " + this.vertexCount);
+            System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
             
             // createMesh failed. this.vaoId etc. might now hold IDs of partially created, invalid GL objects.
             // These new, failed GL objects need to be cleaned up. cleanupMesh() uses this.vaoId etc.
@@ -256,7 +264,7 @@ public class Chunk {
                                 // Check if we should render between water blocks based on water levels
                                 WaterEffects waterEffects = Game.getWaterEffects();
                                 if (waterEffects != null) {
-                                    int currentWaterLevel = waterEffects.getWaterLevel(getWorldX(lx), ly, getWorldZ(lz));
+                                    float currentWaterLevel = waterEffects.getWaterLevel(getWorldX(lx), ly, getWorldZ(lz));
                                     
                                     // Get adjacent block's world coordinates for level check
                                     int adjWorldX = getWorldX(lx);
@@ -272,7 +280,7 @@ public class Chunk {
                                         case 5 -> adjWorldX -= 1; // Left
                                     }
                                     
-                                    int adjacentWaterLevel = waterEffects.getWaterLevel(adjWorldX, adjWorldY, adjWorldZ);
+                                    float adjacentWaterLevel = waterEffects.getWaterLevel(adjWorldX, adjWorldY, adjWorldZ);
                                     
                                     // Render face if water levels are different or if one is a source
                                     renderFace = currentWaterLevel != adjacentWaterLevel || 

@@ -600,7 +600,7 @@ public class InventoryScreen {
             }
         } catch (Exception e) {
             System.err.println("ERROR in drawInventorySlot: " + e.getMessage() + ". Problem drawing item: " + (itemStack != null ? itemStack.getItem().getName() : "unknown"));
-            // e.printStackTrace(); // Replaced with more specific logging above
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
 
             // Try to recover UI state
             try {

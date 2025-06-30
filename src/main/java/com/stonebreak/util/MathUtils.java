@@ -109,14 +109,14 @@ public class MathUtils {
      * @return The adjacent block position
      */
     public static Vector3i getAdjacentBlockPos(Vector3i pos, int face) {
-        switch (face) {
-            case 0: return new Vector3i(pos.x, pos.y + 1, pos.z); // Top
-            case 1: return new Vector3i(pos.x, pos.y - 1, pos.z); // Bottom
-            case 2: return new Vector3i(pos.x, pos.y, pos.z + 1); // Front
-            case 3: return new Vector3i(pos.x, pos.y, pos.z - 1); // Back
-            case 4: return new Vector3i(pos.x + 1, pos.y, pos.z); // Right
-            case 5: return new Vector3i(pos.x - 1, pos.y, pos.z); // Left
-            default: return new Vector3i(pos);
-        }
+        return switch (face) {
+            case 0 -> new Vector3i(pos.x, pos.y + 1, pos.z); // Top
+            case 1 -> new Vector3i(pos.x, pos.y - 1, pos.z); // Bottom
+            case 2 -> new Vector3i(pos.x, pos.y, pos.z + 1); // Front
+            case 3 -> new Vector3i(pos.x, pos.y, pos.z - 1); // Back
+            case 4 -> new Vector3i(pos.x + 1, pos.y, pos.z); // Right
+            case 5 -> new Vector3i(pos.x - 1, pos.y, pos.z); // Left
+            default -> new Vector3i(pos);
+        };
     }
 }

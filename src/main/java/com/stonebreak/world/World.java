@@ -12,13 +12,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import com.stonebreak.util.SplineInterpolator;
-import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.blocks.BlockDropManager;
 import com.stonebreak.blocks.BlockType;
-
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
+import com.stonebreak.util.MemoryProfiler;
+import com.stonebreak.util.SplineInterpolator;
 
 /**
  * Manages the game world and chunks.
@@ -1182,8 +1181,33 @@ public class World {
         int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
 
         while ((chunkToUpdate = chunksReadyForGLUpload.poll()) != null && updatesThisFrame < maxUpdatesPerFrame) {
-            chunkToUpdate.applyPreparedDataToGL();
-            updatesThisFrame++;
+            try {
+                chunkToUpdate.applyPreparedDataToGL();
+                updatesThisFrame++;
+            } catch (Exception e) {
+                System.err.println("CRITICAL: Exception during applyPreparedDataToGL for chunk (" + chunkToUpdate.getChunkX() + ", " + chunkToUpdate.getChunkZ() + ")");
+                System.err.println("Time: " + java.time.LocalDateTime.now());
+                System.err.println("Updates this frame: " + updatesThisFrame + "/" + maxUpdatesPerFrame);
+                System.err.println("Queue size: " + chunksReadyForGLUpload.size());
+                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                System.err.println("Exception: " + e.getMessage());
+                System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+                
+                // Try to save crash log to file
+                try (java.io.FileWriter fw = new java.io.FileWriter("chunk_gl_errors.txt", true)) {
+                    fw.write("=== CHUNK GL ERROR " + java.time.LocalDateTime.now() + " ===\n");
+                    fw.write("Chunk: (" + chunkToUpdate.getChunkX() + ", " + chunkToUpdate.getChunkZ() + ")\n");
+                    fw.write("Updates: " + updatesThisFrame + "/" + maxUpdatesPerFrame + "\n");
+                    fw.write("Queue size: " + chunksReadyForGLUpload.size() + "\n");
+                    fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
+                    fw.write("Exception: " + e.getMessage() + "\n");
+                    fw.write("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()) + "\n\n");
+                } catch (java.io.IOException logEx) {
+                    System.err.println("Failed to write chunk GL error log: " + logEx.getMessage());
+                }
+                
+                // Continue processing other chunks instead of crashing
+            }
         }
         
         // Log memory usage when processing many GL updates or when memory is high
