@@ -1,10 +1,10 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import com.stonebreak.World;
-import com.stonebreak.Player;
-import com.stonebreak.Renderer;
-import com.stonebreak.ItemStack;
+import com.stonebreak.world.World;
+import com.stonebreak.player.Player;
+import com.stonebreak.rendering.Renderer;
+import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.AnimationController;

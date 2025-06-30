@@ -1,8 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
-import com.stonebreak.Renderer;
-import com.stonebreak.World;
+import com.stonebreak.rendering.Renderer;
+import com.stonebreak.world.World;
 
 /**
  * Base class for all living entities in the game world.

@@ -1,7 +1,7 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import com.stonebreak.MobTextureAtlas;
+import com.stonebreak.rendering.MobTextureAtlas;
 
 /**
  * Defines the 3D model structure for cow entities.

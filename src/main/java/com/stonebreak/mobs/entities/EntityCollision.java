@@ -1,8 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
-import com.stonebreak.World;
-import com.stonebreak.BlockType;
+import com.stonebreak.world.World;
+import com.stonebreak.blocks.BlockType;
 
 /**
  * Handles collision detection and resolution for entities in the world.

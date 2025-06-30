@@ -1,9 +1,9 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
-import com.stonebreak.World;
-import com.stonebreak.Renderer;
-import com.stonebreak.Player;
+import com.stonebreak.world.World;
+import com.stonebreak.rendering.Renderer;
+import com.stonebreak.player.Player;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -8,8 +8,8 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
-import com.stonebreak.ShaderProgram;
-import com.stonebreak.MobTextureAtlas;
+import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.MobTextureAtlas;
 import com.stonebreak.mobs.cow.CowModel;
 
 import java.nio.FloatBuffer;

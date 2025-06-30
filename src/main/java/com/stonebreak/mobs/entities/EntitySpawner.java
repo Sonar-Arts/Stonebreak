@@ -1,9 +1,9 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
-import com.stonebreak.World;
-import com.stonebreak.Chunk;
-import com.stonebreak.BlockType;
+import com.stonebreak.world.World;
+import com.stonebreak.world.Chunk;
+import com.stonebreak.blocks.BlockType;
 
 import java.util.Random;
 
@@ -12,9 +12,9 @@ import java.util.Random;
  * Manages spawn rules, biome restrictions, and population limits.
  */
 public class EntitySpawner {
-    private World world;
-    private EntityManager entityManager;
-    private Random random;
+    private final World world;
+    private final EntityManager entityManager;
+    private final Random random;
     
     // Spawning rules for cows
     private static final int MAX_COWS_PER_CHUNK = 4;
@@ -114,12 +114,10 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         
-        switch (type) {
-            case COW:
-                return isValidCowSpawnLocation(x, y, z);
-            default:
-                return false;
-        }
+        return switch (type) {
+            case COW -> isValidCowSpawnLocation(x, y, z);
+            default -> false;
+        };
     }
     
     /**

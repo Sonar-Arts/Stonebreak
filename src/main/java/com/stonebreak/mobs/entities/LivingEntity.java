@@ -1,9 +1,10 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
-import com.stonebreak.Player;
-import com.stonebreak.World;
-import com.stonebreak.ItemStack;
+import com.stonebreak.player.Player;
+import com.stonebreak.world.World;
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.blocks.BlockType;
 
 /**
  * Base class for all living entities that can move, interact, and have AI behavior.
@@ -260,9 +261,9 @@ public abstract class LivingEntity extends Entity {
     /**
      * Helper method to identify flower blocks.
      */
-    private boolean isFlower(com.stonebreak.BlockType blockType) {
-        return blockType == com.stonebreak.BlockType.ROSE || 
-               blockType == com.stonebreak.BlockType.DANDELION;
+    private boolean isFlower(BlockType blockType) {
+        return blockType == BlockType.ROSE || 
+               blockType == BlockType.DANDELION;
     }
     
     // Abstract methods that must be implemented by subclasses

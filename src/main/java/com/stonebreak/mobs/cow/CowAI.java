@@ -1,8 +1,8 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import com.stonebreak.Player;
-import com.stonebreak.Game;
+import com.stonebreak.player.Player;
+import com.stonebreak.core.Game;
 
 /**
  * Simple AI controller for cow behavior.
