@@ -74,27 +74,29 @@ public class CowModel {
             "cow_horns" // COW_HORNS texture
         );
         
-        // Four legs - positioned so feet touch ground when entity body is at Y=0
+        // Four legs - positioned closer to body center (inward from original position)
+        // Body width is 1.1f (extends from -0.55f to +0.55f), body depth is 1.3f (extends from -0.65f to +0.65f)
+        // Move legs inward from original ±0.3f position to be more under the body
         // Legs should extend from body bottom (Y=0) down to feet (Y=-0.62)
         // So leg center should be at Y = -0.31 (middle of 0 to -0.62)
         this.legs = new ModelPart[4];
         this.legs[0] = new ModelPart( // Front left
-            new Vector3f(-0.3f, -0.31f, -0.3f), // center at Y=-0.31f (extends from 0 to -0.62)
+            new Vector3f(-0.2f, -0.31f, -0.2f), // moved inward from -0.3f to -0.2f
             new Vector3f(0.2f, 0.62f, 0.2f),   // height 0.62f
             "cow_legs" // COW_LEGS texture
         );
         this.legs[1] = new ModelPart( // Front right
-            new Vector3f(0.3f, -0.31f, -0.3f),  
+            new Vector3f(0.2f, -0.31f, -0.2f),  // moved inward from 0.3f to 0.2f
             new Vector3f(0.2f, 0.62f, 0.2f),   
             "cow_legs" // COW_LEGS texture
         );
         this.legs[2] = new ModelPart( // Back left
-            new Vector3f(-0.3f, -0.31f, 0.3f),  
+            new Vector3f(-0.2f, -0.31f, 0.2f),  // moved inward from -0.3f to -0.2f
             new Vector3f(0.2f, 0.62f, 0.2f),   
             "cow_legs" // COW_LEGS texture
         );
         this.legs[3] = new ModelPart( // Back right
-            new Vector3f(0.3f, -0.31f, 0.3f),   
+            new Vector3f(0.2f, -0.31f, 0.2f),   // moved inward from 0.3f to 0.2f
             new Vector3f(0.2f, 0.62f, 0.2f),   
             "cow_legs" // COW_LEGS texture
         );

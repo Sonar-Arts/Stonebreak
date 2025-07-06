@@ -12,9 +12,12 @@ import com.stonebreak.rendering.ShaderProgram;
 import com.stonebreak.rendering.MobTextureAtlas;
 import com.stonebreak.mobs.cow.CowModel;
 
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.lwjgl.system.MemoryUtil.*;
@@ -40,12 +43,18 @@ public class EntityRenderer {
     private int simpleCubeVBO;
     private int simpleCubeTexVBO;
     
+    // Debug sphere model for pathfinding targets
+    private int debugSphereVAO;
+    private int debugSphereVBO;
+    private int debugSphereTexVBO;
+    
     public void initialize() {
         if (initialized) return;
         
         createShader();
         createTextureAtlas();
         createSimpleCubeModel();
+        createDebugSphereModel();
         initializeEntityModels();
         initialized = true;
     }
@@ -167,6 +176,76 @@ public class EntityRenderer {
         texCoordBuffer.put(texCoords).flip();
         
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, simpleCubeTexVBO);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, texCoordBuffer, GL15.GL_STATIC_DRAW);
+        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
+        GL20.glEnableVertexAttribArray(1);
+        
+        GL30.glBindVertexArray(0);
+        
+        memFree(vertexBuffer);
+        memFree(texCoordBuffer);
+    }
+    
+    private void createDebugSphereModel() {
+        // Create a simple sphere using triangle approximation
+        List<Float> vertices = new ArrayList<>();
+        List<Float> texCoords = new ArrayList<>();
+        
+        int segments = 12; // Lower resolution for performance
+        int rings = 8;
+        float radius = 0.1f; // Small red sphere
+        
+        // Generate sphere vertices
+        for (int ring = 0; ring <= rings; ring++) {
+            float phi = (float) (Math.PI * ring / rings);
+            for (int segment = 0; segment <= segments; segment++) {
+                float theta = (float) (2.0 * Math.PI * segment / segments);
+                
+                float x = radius * (float) (Math.sin(phi) * Math.cos(theta));
+                float y = radius * (float) (Math.cos(phi));
+                float z = radius * (float) (Math.sin(phi) * Math.sin(theta));
+                
+                vertices.add(x);
+                vertices.add(y);
+                vertices.add(z);
+                
+                // Simple texture coordinates
+                texCoords.add((float) segment / segments);
+                texCoords.add((float) ring / rings);
+            }
+        }
+        
+        // Convert to arrays
+        float[] vertexArray = new float[vertices.size()];
+        float[] texCoordArray = new float[texCoords.size()];
+        
+        for (int i = 0; i < vertices.size(); i++) {
+            vertexArray[i] = vertices.get(i);
+        }
+        for (int i = 0; i < texCoords.size(); i++) {
+            texCoordArray[i] = texCoords.get(i);
+        }
+        
+        debugSphereVAO = GL30.glGenVertexArrays();
+        debugSphereVBO = GL15.glGenBuffers();
+        debugSphereTexVBO = GL15.glGenBuffers();
+        
+        GL30.glBindVertexArray(debugSphereVAO);
+        
+        // Upload vertex data
+        FloatBuffer vertexBuffer = memAllocFloat(vertexArray.length);
+        vertexBuffer.put(vertexArray).flip();
+        
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, debugSphereVBO);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexBuffer, GL15.GL_STATIC_DRAW);
+        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0);
+        GL20.glEnableVertexAttribArray(0);
+        
+        // Upload texture coordinate data
+        FloatBuffer texCoordBuffer = memAllocFloat(texCoordArray.length);
+        texCoordBuffer.put(texCoordArray).flip();
+        
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, debugSphereTexVBO);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, texCoordBuffer, GL15.GL_STATIC_DRAW);
         GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
         GL20.glEnableVertexAttribArray(1);
@@ -300,7 +379,13 @@ public class EntityRenderer {
         
         // Render based on entity type
         switch (entityType) {
-            case COW -> renderCowParts(baseMatrix, entity);
+            case COW -> {
+                renderCowParts(baseMatrix, entity);
+                // Render pathfinding target if it exists
+                if (entity instanceof com.stonebreak.mobs.cow.Cow cow) {
+                    renderCowPathfindingTarget(cow, viewMatrix, projectionMatrix);
+                }
+            }
             // Add other complex entity types here
             default -> {
                 // Shouldn't reach here, but fallback to simple rendering
@@ -366,6 +451,73 @@ public class EntityRenderer {
                 // Render this part
                 GL30.glBindVertexArray(cowVaoMap.get(partName));
                 GL11.glDrawElements(GL11.GL_TRIANGLES, cowVertexCountMap.get(partName), GL11.GL_UNSIGNED_INT, 0);
+            }
+        }
+    }
+    
+    private void renderCowPathfindingTarget(com.stonebreak.mobs.cow.Cow cow, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        // Only render debug spheres when debug overlay is visible
+        if (com.stonebreak.core.Game.getDebugOverlay() == null || 
+            !com.stonebreak.core.Game.getDebugOverlay().isVisible()) {
+            return;
+        }
+        
+        // Get the pathfinding target from the cow's AI
+        Vector3f wanderTarget = cow.getAI().getWanderTarget();
+        
+        // Only render if the cow has a wander target
+        if (wanderTarget != null && cow.getAI().hasWanderTarget()) {
+            // Save current OpenGL state
+            int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            
+            // Use a simple approach - render a larger red sphere floating above the target position
+            // Create model matrix for the target position, floating 1 block above
+            Vector3f floatingTarget = new Vector3f(wanderTarget.x, wanderTarget.y + 1.0f, wanderTarget.z);
+            Matrix4f targetMatrix = new Matrix4f()
+                .translate(floatingTarget)
+                .scale(0.5f); // Larger red indicator
+            
+            // Temporarily disable depth testing to make it always visible
+            boolean wasDepthTestEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            
+            // Use the existing shader
+            shader.setUniform("view", viewMatrix);
+            shader.setUniform("projection", projectionMatrix);
+            shader.setUniform("model", targetMatrix);
+            
+            // Bind a solid red texture (use a single red pixel)
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            
+            // Create a simple red texture on the fly
+            int redTexture = GL11.glGenTextures();
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, redTexture);
+            
+            // Single red pixel texture
+            ByteBuffer redPixel = ByteBuffer.allocateDirect(4);
+            redPixel.put((byte) 255); // Red
+            redPixel.put((byte) 0);   // Green
+            redPixel.put((byte) 0);   // Blue
+            redPixel.put((byte) 255); // Alpha
+            redPixel.flip();
+            
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, 1, 1, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, redPixel);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            
+            shader.setUniform("textureSampler", 0);
+            
+            // Render the debug sphere
+            GL30.glBindVertexArray(debugSphereVAO);
+            GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, (8 + 1) * (12 + 1)); // rings * segments
+            GL30.glBindVertexArray(0);
+            
+            // Cleanup temporary texture
+            GL11.glDeleteTextures(redTexture);
+            
+            // Restore depth testing
+            if (wasDepthTestEnabled) {
+                GL11.glEnable(GL11.GL_DEPTH_TEST);
             }
         }
     }
@@ -439,6 +591,17 @@ public class EntityRenderer {
             }
             if (simpleCubeTexVBO != 0) {
                 GL15.glDeleteBuffers(simpleCubeTexVBO);
+            }
+            
+            // Cleanup debug sphere model
+            if (debugSphereVAO != 0) {
+                GL30.glDeleteVertexArrays(debugSphereVAO);
+            }
+            if (debugSphereVBO != 0) {
+                GL15.glDeleteBuffers(debugSphereVBO);
+            }
+            if (debugSphereTexVBO != 0) {
+                GL15.glDeleteBuffers(debugSphereTexVBO);
             }
             
             // Cleanup texture atlas

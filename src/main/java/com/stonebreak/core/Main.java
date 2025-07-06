@@ -567,6 +567,10 @@ public class Main {
         // Render debug overlay last, so it's on top of everything
         DebugOverlay debugOverlay = Game.getDebugOverlay();
         if (debugOverlay != null && debugOverlay.isVisible()) {
+            // Render wireframes first (3D rendering)
+            debugOverlay.renderWireframes(renderer);
+            
+            // Then render UI overlay on top
             if (uiRenderer != null) {
                 uiRenderer.beginFrame(width, height, 1.0f);
                 debugOverlay.render(uiRenderer);

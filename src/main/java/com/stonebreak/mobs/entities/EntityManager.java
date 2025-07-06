@@ -102,6 +102,10 @@ public class EntityManager {
     public Entity spawnEntity(EntityType type, Vector3f position) {
         Entity entity = createEntity(type, position);
         if (entity != null) {
+            // Check if entity is spawning inside a block and push to open space
+            Vector3f safePosition = findSafeSpawnPosition(position, entity);
+            entity.setPosition(safePosition);
+            
             synchronized (entitiesToAdd) {
                 entitiesToAdd.add(entity);
             }
@@ -121,6 +125,130 @@ public class EntityManager {
                 yield null;
             }
         };
+    }
+    
+    /**
+     * Finds a safe spawn position for an entity, moving it out of blocks if necessary.
+     */
+    private Vector3f findSafeSpawnPosition(Vector3f originalPosition, Entity entity) {
+        Vector3f safePosition = new Vector3f(originalPosition);
+        
+        // Check if the entity is inside a block
+        if (!isPositionSafe(safePosition, entity)) {
+            // Try to find a safe position by searching in expanding radius
+            Vector3f foundPosition = searchForSafePosition(safePosition, entity);
+            if (foundPosition != null) {
+                return foundPosition;
+            }
+            
+            // If no safe position found, try pushing up
+            safePosition = pushEntityUp(safePosition, entity);
+        }
+        
+        return safePosition;
+    }
+    
+    /**
+     * Checks if a position is safe for an entity (not inside blocks).
+     */
+    private boolean isPositionSafe(Vector3f position, Entity entity) {
+        float entityHeight = entity.getHeight();
+        float entityWidth = entity.getWidth();
+        float entityLength = entity.getLength();
+        
+        // Add small buffer to prevent edge collision issues
+        float buffer = 0.1f;
+        float halfWidth = (entityWidth + buffer) / 2;
+        float halfLength = (entityLength + buffer) / 2;
+        
+        // Check the entity's bounding box with buffer
+        int minX = (int) Math.floor(position.x - halfWidth);
+        int maxX = (int) Math.ceil(position.x + halfWidth);
+        int minY = (int) Math.floor(position.y);
+        int maxY = (int) Math.ceil(position.y + entityHeight);
+        int minZ = (int) Math.floor(position.z - halfLength);
+        int maxZ = (int) Math.ceil(position.z + halfLength);
+        
+        // Check all blocks the entity would occupy
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    var block = world.getBlockAt(x, y, z);
+                    if (block != null && block != com.stonebreak.blocks.BlockType.AIR) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // For living entities, also check leg space
+        if (entity instanceof com.stonebreak.mobs.entities.LivingEntity livingEntity) {
+            float legHeight = livingEntity.getLegHeight();
+            int legMinY = (int) Math.floor(position.y - legHeight);
+            int legMaxY = (int) Math.floor(position.y);
+            
+            for (int x = minX; x <= maxX; x++) {
+                for (int y = legMinY; y <= legMaxY; y++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        var block = world.getBlockAt(x, y, z);
+                        if (block != null && block != com.stonebreak.blocks.BlockType.AIR) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Searches for a safe position around the original position.
+     */
+    private Vector3f searchForSafePosition(Vector3f originalPosition, Entity entity) {
+        int maxRadius = 5; // Search within 5 blocks
+        
+        for (int radius = 1; radius <= maxRadius; radius++) {
+            // Check positions in a cube around the original position
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        // Only check positions on the current radius boundary
+                        if (Math.abs(dx) == radius || Math.abs(dy) == radius || Math.abs(dz) == radius) {
+                            Vector3f testPosition = new Vector3f(
+                                originalPosition.x + dx,
+                                originalPosition.y + dy,
+                                originalPosition.z + dz
+                            );
+                            
+                            if (isPositionSafe(testPosition, entity)) {
+                                return testPosition;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return null; // No safe position found
+    }
+    
+    /**
+     * Pushes an entity up until it finds a safe position.
+     */
+    private Vector3f pushEntityUp(Vector3f position, Entity entity) {
+        Vector3f newPosition = new Vector3f(position);
+        int maxPushUp = 10; // Don't push more than 10 blocks up
+        
+        for (int i = 0; i < maxPushUp; i++) {
+            newPosition.y += 1.0f;
+            if (isPositionSafe(newPosition, entity)) {
+                return newPosition;
+            }
+        }
+        
+        // If we can't find a safe position by pushing up, return original position
+        return position;
     }
     
     /**
@@ -336,6 +464,22 @@ public class EntityManager {
         return String.format("Entities: %d alive, %d total, %d pending add, %d pending remove",
                 getLivingEntityCount(), getEntityCount(), 
                 entitiesToAdd.size(), entitiesToRemove.size());
+    }
+    
+    /**
+     * Clears all cow path data for debug visualization.
+     */
+    public void clearAllCowPaths() {
+        List<Entity> cowEntities = getEntitiesByType(EntityType.COW);
+        for (Entity entity : cowEntities) {
+            if (entity instanceof com.stonebreak.mobs.cow.Cow) {
+                com.stonebreak.mobs.cow.Cow cow = (com.stonebreak.mobs.cow.Cow) entity;
+                com.stonebreak.mobs.cow.CowAI cowAI = cow.getAI();
+                if (cowAI != null) {
+                    cowAI.clearDebugPaths();
+                }
+            }
+        }
     }
     
     // Getters

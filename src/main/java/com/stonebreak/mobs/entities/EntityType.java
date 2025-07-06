@@ -7,9 +7,12 @@ package com.stonebreak.mobs.entities;
 public enum EntityType {
     // Living creatures (adjusted to match new model proportions)
     // Parameters: name, maxHealth, moveSpeed, height, width, length, legHeight, isLiving
-    // Width reduced by 0.1 (0.05 per side) to move legs inward toward body
-    // legHeight set to 0.62f to match visual model feet bottom (leg center -0.31f + leg half-height 0.31f = 0.62f from body to feet)
-    COW("Cow", 10.0f, 1.2f, 1.125f, 0.65f, 0.625f, 0.62f, true),
+    // Values match the actual CowModel geometry:
+    // Body: 1.1f × 0.8f × 1.3f (center at Y=0, extends from Y=-0.4 to Y=+0.4)
+    // Legs: extend from body bottom (Y=0) down to feet (Y=-0.62f)
+    // Entity position.y = body bottom (model Y=0), legHeight = 0.62f
+    // Entity height = distance from body bottom to body top = 0.4f
+    COW("Cow", 10.0f, 1.2f, 0.4f, 1.1f, 1.3f, 0.62f, true),
     
     // Future entities can be added here
     // SHEEP("Sheep", 8.0f, 1.5f, 1.3f, 0.9f, 1.3f, true),

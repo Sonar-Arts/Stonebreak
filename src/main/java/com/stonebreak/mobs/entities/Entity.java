@@ -24,7 +24,7 @@ public abstract class Entity {
     protected float age;
     
     // Physics constants
-    protected static final float GRAVITY = -20.0f;
+    protected static final float GRAVITY = -40.0f;
     protected static final float FRICTION = 0.95f;
     protected static final float AIR_RESISTANCE = 0.98f;
     protected static final float BOUNCE_DAMPENING = 0.6f;

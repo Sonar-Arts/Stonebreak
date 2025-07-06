@@ -5,6 +5,14 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.core.Game;
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.EntityManager;
+import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.rendering.Renderer;
+import com.stonebreak.mobs.cow.Cow;
+import com.stonebreak.mobs.cow.CowAI;
+import java.util.List;
+import static org.lwjgl.opengl.GL11.*;
 
 public class DebugOverlay {
     private boolean visible = false;
@@ -80,6 +88,8 @@ public class DebugOverlay {
         debug.append(String.format("Chunks: %d loaded\n", loadedChunks));
         debug.append(String.format("Pending Mesh: %d\n", world.getPendingMeshBuildCount()));
         debug.append(String.format("Pending GL: %d\n", world.getPendingGLUploadCount()));
+        debug.append("\n");
+        debug.append("Path Visualization: ON\n");
 
         return debug.toString();
     }
@@ -121,6 +131,70 @@ public class DebugOverlay {
             }
             y += lineHeight;
         }
+    }
+    
+    /**
+     * Renders debug wireframes for entities (called after UI rendering).
+     */
+    public void renderWireframes(Renderer renderer) {
+        if (!visible) {
+            return;
+        }
+        
+        EntityManager entityManager = Game.getEntityManager();
+        if (entityManager == null) {
+            return;
+        }
+        
+        // Get all cow entities
+        List<Entity> cowEntities = entityManager.getEntitiesByType(EntityType.COW);
+        
+        
+        // Render green wireframe bounding boxes for each cow
+        for (Entity cow : cowEntities) {
+            if (cow.isAlive()) {
+                renderEntityBoundingBox(cow, renderer);
+                
+                // Render path wireframe if entity is a Cow
+                if (cow instanceof Cow) {
+                    renderCowPathWireframe((Cow) cow, renderer);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Renders a green wireframe bounding box for an entity.
+     */
+    private void renderEntityBoundingBox(Entity entity, Renderer renderer) {
+        Entity.BoundingBox boundingBox = entity.getBoundingBox();
+        
+        // Use green color for cow bounding boxes
+        Vector3f green = new Vector3f(0.0f, 1.0f, 0.0f);
+        
+        // Use the renderer's modern wireframe rendering method
+        renderer.renderWireframeBoundingBox(boundingBox, green);
+    }
+    
+    /**
+     * Renders a blue wireframe path for a cow's AI pathfinding.
+     */
+    private void renderCowPathWireframe(Cow cow, Renderer renderer) {
+        CowAI cowAI = cow.getAI();
+        if (cowAI == null) {
+            return;
+        }
+        
+        List<Vector3f> pathPoints = cowAI.getPathPoints();
+        if (pathPoints == null || pathPoints.size() < 2) {
+            return;
+        }
+        
+        // Use blue color for path visualization
+        Vector3f blue = new Vector3f(0.0f, 0.5f, 1.0f);
+        
+        // Use the renderer's path wireframe rendering method
+        renderer.renderWireframePath(pathPoints, blue);
     }
 
     private String getCardinalDirection(Vector3f front) {

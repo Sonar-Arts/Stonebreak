@@ -132,7 +132,8 @@ public abstract class LivingEntity extends Entity {
         if (direction.length() < 0.1f) return;
         
         // Calculate target rotation
-        float targetYaw = (float) Math.atan2(direction.x, direction.z);
+        // Note: We use -direction.z because the model's front faces negative Z
+        float targetYaw = (float) Math.atan2(direction.x, -direction.z);
         float currentYaw = (float) Math.toRadians(rotation.y);
         
         // Smoothly rotate toward target

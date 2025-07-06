@@ -72,6 +72,9 @@ public class Cow extends LivingEntity {
         
         // Set interaction range for cows
         this.interactionRange = 2.5f;
+        
+        // Set faster turning speed for cows
+        this.turnSpeed = 180.0f; // Faster rotation for more responsive movement
     }
     
     /**
@@ -243,7 +246,10 @@ public class Cow extends LivingEntity {
      */
     @Override
     protected void onDeath() {
-        // Cleanup any AI state or references
+        // Cleanup AI state and references
+        if (cowAI != null) {
+            cowAI.cleanup();
+        }
     }
     
     /**
@@ -297,6 +303,97 @@ public class Cow extends LivingEntity {
         }
     }
     
+    /**
+     * Makes the cow jump by applying upward velocity.
+     * Jump height is calibrated to clear one block like the player.
+     */
+    public void jump() {
+        if (isOnGround()) {
+            Vector3f velocity = getVelocity();
+            // Jump velocity matches player's JUMP_FORCE exactly for consistent one-block jumps
+            velocity.y = 8.5f; // Same as player's JUMP_FORCE for proper one-block height
+            setVelocity(velocity);
+            // Immediately set onGround to false to prevent multiple jumps (same as player)
+            setOnGround(false);
+        }
+    }
+    
+    /**
+     * Checks if the cow should jump to reach a target position.
+     * Returns true if there's a single block obstacle that can be jumped over.
+     */
+    public boolean shouldJumpToReach(Vector3f targetPosition) {
+        Vector3f currentPos = getPosition();
+        
+        // Check if there's a block directly in front that we can jump over
+        Vector3f direction = new Vector3f(targetPosition).sub(currentPos).normalize();
+        
+        // Check multiple positions in front to be more thorough
+        for (int i = 1; i <= 2; i++) {
+            Vector3f testPos = new Vector3f(currentPos).add(direction.x * i, 0, direction.z * i);
+            int blockX = (int) Math.floor(testPos.x);
+            int blockY = (int) Math.floor(currentPos.y);
+            int blockZ = (int) Math.floor(testPos.z);
+            
+            // Check if there's a solid block at ground level
+            var groundBlock = world.getBlockAt(blockX, blockY, blockZ);
+            if (groundBlock != null && groundBlock.isSolid()) {
+                // Check if there's a solid block one level up (would be too high to jump)
+                var upperBlock = world.getBlockAt(blockX, blockY + 1, blockZ);
+                if (upperBlock != null && upperBlock.isSolid()) {
+                    return false; // Can't jump over a 2-block high obstacle
+                }
+                
+                // Check if there's space to land on the other side
+                Vector3f landingPos = new Vector3f(currentPos).add(direction.x * 2.5f, 0, direction.z * 2.5f);
+                if (canMoveTo(landingPos)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Enhanced collision detection specifically for cow movement.
+     * Checks for solid blocks in the intended path and prevents movement into walls.
+     */
+    public boolean canMoveInDirection(Vector3f direction, float distance) {
+        Vector3f currentPos = getPosition();
+        Vector3f targetPos = new Vector3f(currentPos).add(
+            direction.x * distance,
+            0,
+            direction.z * distance
+        );
+        
+        // Use the standard collision detection method
+        return canMoveTo(targetPos);
+    }
+    
+    /**
+     * Checks if the cow is currently walking against a wall.
+     */
+    public boolean isWalkingAgainstWall() {
+        Vector3f currentPos = getPosition();
+        Vector3f velocity = getVelocity();
+        
+        // If not moving, not walking against a wall
+        if (velocity.length() < 0.1f) {
+            return false;
+        }
+        
+        // Check if there's a wall in the direction of movement
+        Vector3f movementDirection = new Vector3f(velocity.x, 0, velocity.z).normalize();
+        Vector3f checkPos = new Vector3f(currentPos).add(
+            movementDirection.x * 1.0f,
+            0,
+            movementDirection.z * 1.0f
+        );
+        
+        return !canMoveTo(checkPos);
+    }
+    
     // Getters for AI and behavior system
     public float getWanderDirection() { return wanderDirection; }
     public float getWanderTimer() { return wanderTimer; }
@@ -305,6 +402,7 @@ public class Cow extends LivingEntity {
     public float getGrazingTimer() { return grazingTimer; }
     public CowAI getAI() { return cowAI; }
     public AnimationController getAnimationController() { return animationController; }
+    public World getWorld() { return world; }
     
     // Setters
     public void setWanderDirection(float direction) { this.wanderDirection = direction; }

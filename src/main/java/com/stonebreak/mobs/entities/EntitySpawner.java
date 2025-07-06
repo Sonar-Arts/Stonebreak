@@ -71,7 +71,12 @@ public class EntitySpawner {
             // Find suitable Y position
             int y = findSuitableSpawnHeight(x, z);
             if (y > 0) {
+                // Position the entity body properly - y is the ground surface where feet should touch
+                // For cows with large bounding boxes, ensure they're centered properly
                 Vector3f spawnPos = new Vector3f(x + 0.5f, y, z + 0.5f);
+                
+                // Adjust position to avoid block edge issues for large entities
+                spawnPos = adjustSpawnPositionForLargeEntity(spawnPos, EntityType.COW);
                 
                 if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
                     // Spawn the cow
@@ -82,6 +87,46 @@ public class EntitySpawner {
                 }
             }
         }
+    }
+    
+    /**
+     * Adjusts spawn position for large entities to avoid block edge collisions.
+     */
+    private Vector3f adjustSpawnPositionForLargeEntity(Vector3f position, EntityType entityType) {
+        float entityWidth = entityType.getWidth();
+        float entityLength = entityType.getLength();
+        
+        // If entity is large (> 1.0 blocks), ensure it's well-centered
+        if (entityWidth > 1.0f || entityLength > 1.0f) {
+            // Calculate how much the entity extends beyond 1 block
+            float widthOverhang = Math.max(0, (entityWidth - 1.0f) / 2);
+            float lengthOverhang = Math.max(0, (entityLength - 1.0f) / 2);
+            
+            // Adjust position to keep entity away from block edges
+            float adjustedX = position.x;
+            float adjustedZ = position.z;
+            
+            // Check if we're too close to block edges and adjust
+            float xFraction = adjustedX - (float)Math.floor(adjustedX);
+            float zFraction = adjustedZ - (float)Math.floor(adjustedZ);
+            
+            // If too close to edges, move towards center
+            if (xFraction < 0.5f - widthOverhang) {
+                adjustedX = (float)Math.floor(adjustedX) + 0.5f;
+            } else if (xFraction > 0.5f + widthOverhang) {
+                adjustedX = (float)Math.floor(adjustedX) + 0.5f;
+            }
+            
+            if (zFraction < 0.5f - lengthOverhang) {
+                adjustedZ = (float)Math.floor(adjustedZ) + 0.5f;
+            } else if (zFraction > 0.5f + lengthOverhang) {
+                adjustedZ = (float)Math.floor(adjustedZ) + 0.5f;
+            }
+            
+            return new Vector3f(adjustedX, position.y, adjustedZ);
+        }
+        
+        return position;
     }
     
     /**
@@ -130,12 +175,28 @@ public class EntitySpawner {
             return false;
         }
         
-        // Check for enough space (cow is 1.4 blocks tall)
+        // Check for enough space (cow needs 2 blocks of height)
         BlockType airBlock1 = world.getBlockAt(x, y, z);
         BlockType airBlock2 = world.getBlockAt(x, y + 1, z);
         if ((airBlock1 != null && airBlock1 != BlockType.AIR) ||
             (airBlock2 != null && airBlock2 != BlockType.AIR)) {
             return false;
+        }
+        
+        // Check cow's width (0.8 blocks) - ensure surrounding blocks are also clear
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue; // Skip center, already checked
+                
+                BlockType sideBlock1 = world.getBlockAt(x + dx, y, z + dz);
+                BlockType sideBlock2 = world.getBlockAt(x + dx, y + 1, z + dz);
+                
+                // Allow partial obstruction but not complete blockage
+                if ((sideBlock1 != null && sideBlock1 != BlockType.AIR) &&
+                    (sideBlock2 != null && sideBlock2 != BlockType.AIR)) {
+                    return false;
+                }
+            }
         }
         
         // Check not in water
@@ -197,7 +258,12 @@ public class EntitySpawner {
             // Find ground level
             int groundY = findSuitableSpawnHeight((int)spawnPos.x, (int)spawnPos.z);
             if (groundY > 0) {
+                // Position the entity body properly - groundY is the ground surface where feet should touch
+                // With new physics system, entity position represents body bottom, which is at ground level
                 spawnPos.y = groundY;
+                
+                // Adjust position to avoid block edge issues for large entities
+                spawnPos = adjustSpawnPositionForLargeEntity(spawnPos, EntityType.COW);
                 
                 if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
                     Entity cow = entityManager.spawnEntity(EntityType.COW, spawnPos);

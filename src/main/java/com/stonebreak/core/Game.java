@@ -1174,6 +1174,11 @@ public class Game {
         if (getInstance().debugOverlay != null) {
             getInstance().debugOverlay.toggleVisibility();
             System.out.println("Debug overlay " + (getInstance().debugOverlay.isVisible() ? "enabled" : "disabled"));
+            
+            // Clear all cow path data when debug overlay is hidden
+            if (!getInstance().debugOverlay.isVisible() && getInstance().entityManager != null) {
+                getInstance().entityManager.clearAllCowPaths();
+            }
         }
     }
     
