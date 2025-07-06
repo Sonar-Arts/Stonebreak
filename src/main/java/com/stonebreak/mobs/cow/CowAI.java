@@ -356,7 +356,8 @@ public class CowAI {
             float distance = cow.distanceTo(player.getPosition());
             
             if (distance < 2.0f) {
-                // Player is very close - maybe look at them
+                // Player is very close - AI could react here in the future
+                // For now, just acknowledge the proximity but don't change behavior
             }
         }
     }
@@ -365,6 +366,8 @@ public class CowAI {
      * Called when the cow takes damage (for future flee behavior).
      */
     public void onDamaged(float damage) {
+        // For now, just change to idle state regardless of damage amount
+        // In the future, damage amount could affect flee behavior intensity
         setState(CowBehaviorState.IDLE);
         stateChangeTimer = 2.0f; // Stay in current state for 2 seconds
     }
@@ -373,7 +376,9 @@ public class CowAI {
      * Called when a player gets nearby (for future interaction).
      */
     public void onPlayerNearby(Player player, float distance) {
-        // Placeholder for now
+        // For now, just acknowledge the player presence
+        // In the future, this could trigger different behaviors based on distance
+        // For example: flee if too close, or look at player if at medium distance
     }
     
     // Getters
