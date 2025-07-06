@@ -382,8 +382,16 @@ public class CowModel {
             for (int face = 0; face < 6; face++) {
                 float[] coords = faceCoords[face];
                 if (coords == null) {
-                    // Fallback to default coordinates if texture not found (corrected orientation)
-                    coords = new float[]{0, 1, 1, 1, 1, 0, 0, 0};
+                    // Fallback to a single tile instead of full atlas
+                    // Use tile (0,0) which should be the cow head front texture
+                    float tileSize = 1.0f / 16.0f; // 16x16 grid
+                    coords = new float[]{
+                        0, 0,                    // bottom-left
+                        tileSize, 0,             // bottom-right
+                        tileSize, tileSize,      // top-right
+                        0, tileSize              // top-left
+                    };
+                    System.err.println("Warning: Missing texture coordinates for " + textureName + " face " + face + ", using fallback tile");
                 }
                 
                 // Add UV coordinates for this face (4 vertices × 2 coordinates = 8 values)

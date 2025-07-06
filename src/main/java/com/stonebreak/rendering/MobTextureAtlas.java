@@ -7,6 +7,8 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
+import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.CowTextureDefinition;
 
 /**
  * Manages texture atlases for all mob entities in the game.
@@ -130,6 +132,8 @@ public class MobTextureAtlas {
      * Initialize all texture mappings for mob body parts.
      */
     private void initializeTextureMappings() {
+        // TESTING: Commented out hardcoded cow texture mappings to test JSON implementation
+        /*
         // Cow texture mappings with detailed face-specific textures
         Map<BodyPart, TextureMapping> cowMappings = new EnumMap<>(BodyPart.class);
         
@@ -319,6 +323,18 @@ public class MobTextureAtlas {
         highlandCowMappings.put(BodyPart.UDDER_TOP, new TextureMapping(0, 12));     // Udder top (attachment)
         highlandCowMappings.put(BodyPart.UDDER_BOTTOM, new TextureMapping(1, 12));  // Udder bottom (teats)
         textureMappings.put(MobType.COW_HIGHLAND, highlandCowMappings);
+        */
+        // END OF COMMENTED OUT HARDCODED COW TEXTURES
+        
+        // Load cow textures from JSON
+        try {
+            loadCowTexturesFromJSON();
+            System.out.println("[MobTextureAtlas] ✓ Successfully loaded cow textures from JSON configuration");
+        } catch (Exception e) {
+            System.err.println("[MobTextureAtlas] ✗ Failed to load cow textures from JSON: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Critical error: Could not load cow textures from JSON", e);
+        }
         
         // Placeholder mappings for future mobs
         Map<BodyPart, TextureMapping> pigMappings = new EnumMap<>(BodyPart.class);
@@ -333,6 +349,116 @@ public class MobTextureAtlas {
         sheepMappings.put(BodyPart.WOOL, new TextureMapping(2, 4, 2, 2));
         textureMappings.put(MobType.SHEEP, sheepMappings);
     }
+    
+    /**
+     * Load cow texture mappings from JSON definition.
+     * This method provides a data-driven approach to texture mapping that can be
+     * modified without recompiling the code.
+     */
+    private void loadCowTexturesFromJSON() {
+        try {
+            CowTextureDefinition textureDefinition = CowTextureLoader.loadTextureDefinition("textures/mobs/cow/cow_textures.json");
+            
+            // Load each cow variant from JSON
+            for (Map.Entry<String, CowTextureDefinition.CowVariant> entry : textureDefinition.getCowVariants().entrySet()) {
+                String variantName = entry.getKey();
+                CowTextureDefinition.CowVariant variant = entry.getValue();
+                
+                // Determine the mob type based on variant name
+                MobType mobType = switch (variantName.toLowerCase()) {
+                    case "jersey" -> MobType.COW_JERSEY;
+                    case "angus" -> MobType.COW_ANGUS;
+                    case "highland" -> MobType.COW_HIGHLAND;
+                    default -> MobType.COW;
+                };
+                
+                // Create mappings for this variant
+                Map<BodyPart, TextureMapping> variantMappings = new EnumMap<>(BodyPart.class);
+                
+                // Process each body part
+                for (Map.Entry<String, CowTextureDefinition.BodyPart> bodyPartEntry : variant.getBodyParts().entrySet()) {
+                    String bodyPartName = bodyPartEntry.getKey();
+                    CowTextureDefinition.BodyPart bodyPartData = bodyPartEntry.getValue();
+                    
+                    // Map JSON body part names to enum values and add face-specific mappings
+                    if ("head".equals(bodyPartName)) {
+                        mapBodyPartFaces(variantMappings, bodyPartData, "HEAD");
+                    } else if ("body".equals(bodyPartName)) {
+                        mapBodyPartFaces(variantMappings, bodyPartData, "BODY");
+                    } else if ("legs".equals(bodyPartName)) {
+                        mapBodyPartFaces(variantMappings, bodyPartData, "LEG");
+                    } else if ("horns".equals(bodyPartName)) {
+                        mapBodyPartFaces(variantMappings, bodyPartData, "HORNS");
+                    } else if ("tail".equals(bodyPartName)) {
+                        mapBodyPartFaces(variantMappings, bodyPartData, "TAIL");
+                    } else if ("udder".equals(bodyPartName)) {
+                        mapBodyPartFaces(variantMappings, bodyPartData, "UDDER");
+                    }
+                }
+                
+                // Override the hardcoded mappings with JSON data
+                textureMappings.put(mobType, variantMappings);
+                System.out.println("  Loaded " + variantName + " variant with " + variantMappings.size() + " body part mappings");
+                
+                // Debug: print some mappings to verify
+                if (variantMappings.containsKey(BodyPart.HEAD_FRONT)) {
+                    TextureMapping tm = variantMappings.get(BodyPart.HEAD_FRONT);
+                    System.out.println("    HEAD_FRONT -> (" + tm.atlasX + "," + tm.atlasY + ")");
+                }
+            }
+            
+            // Success - loaded texture definitions for all variants
+            
+            // IMPORTANT: Ensure MobType.COW has mappings
+            // If not present, use the first available variant as default
+            if (!textureMappings.containsKey(MobType.COW)) {
+                if (textureMappings.containsKey(MobType.COW_JERSEY)) {
+                    textureMappings.put(MobType.COW, new EnumMap<>(textureMappings.get(MobType.COW_JERSEY)));
+                    System.out.println("  Set default COW textures to Jersey variant");
+                } else if (textureMappings.containsKey(MobType.COW_ANGUS)) {
+                    textureMappings.put(MobType.COW, new EnumMap<>(textureMappings.get(MobType.COW_ANGUS)));
+                    System.out.println("  Set default COW textures to Angus variant");
+                } else if (textureMappings.containsKey(MobType.COW_HIGHLAND)) {
+                    textureMappings.put(MobType.COW, new EnumMap<>(textureMappings.get(MobType.COW_HIGHLAND)));
+                    System.out.println("  Set default COW textures to Highland variant");
+                }
+            }
+            
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load cow textures from JSON", e);
+        }
+    }
+    
+    /**
+     * Map UV coordinates from JSON to body part enum values for all faces.
+     */
+    private void mapBodyPartFaces(Map<BodyPart, TextureMapping> mappings, CowTextureDefinition.BodyPart bodyPartData, String bodyPartPrefix) {
+        Map<String, CowTextureDefinition.UVCoordinate> uvMapping = bodyPartData.getUvMapping();
+        
+        for (Map.Entry<String, CowTextureDefinition.UVCoordinate> faceEntry : uvMapping.entrySet()) {
+            String faceName = faceEntry.getKey().toUpperCase();
+            CowTextureDefinition.UVCoordinate uvCoord = faceEntry.getValue();
+            
+            // Convert UV coordinates to texture mapping (JSON already uses tile coordinates)
+            TextureMapping mapping = new TextureMapping(
+                uvCoord.getU(),  // Already in tile coordinates
+                uvCoord.getV(),
+                uvCoord.getWidth(),
+                uvCoord.getHeight()
+            );
+            
+            // Map to appropriate body part enum
+            try {
+                BodyPart bodyPart = BodyPart.valueOf(bodyPartPrefix + "_" + faceName);
+                mappings.put(bodyPart, mapping);
+                // Debug: Show successful mapping
+                System.out.println("  Mapped " + bodyPartPrefix + "_" + faceName + " -> (" + uvCoord.getU() + "," + uvCoord.getV() + ")");
+            } catch (IllegalArgumentException e) {
+                System.err.println("  ✗ Unknown body part: " + bodyPartPrefix + "_" + faceName);
+            }
+        }
+    }
+    
     
     /**
      * Create the OpenGL texture and generate pixel data.
@@ -841,11 +967,13 @@ public class MobTextureAtlas {
     public float[] getUVCoordinates(MobType mobType, BodyPart bodyPart) {
         Map<BodyPart, TextureMapping> mobMappings = textureMappings.get(mobType);
         if (mobMappings == null) {
+            System.err.println("No texture mappings found for mob type: " + mobType);
             return null;
         }
         
         TextureMapping mapping = mobMappings.get(bodyPart);
         if (mapping == null) {
+            System.err.println("No texture mapping found for body part: " + bodyPart + " on mob type: " + mobType);
             return null;
         }
         
