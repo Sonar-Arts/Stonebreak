@@ -1,7 +1,7 @@
 package com.stonebreak.mobs.cow;
 
 import org.joml.Vector3f;
-import com.stonebreak.rendering.MobTextureAtlas;
+import com.stonebreak.rendering.CowTextureAtlas;
 
 /**
  * Defines the 3D model structure for cow entities.
@@ -370,9 +370,31 @@ public class CowModel {
          * Returns 48 texture coordinates (2 per vertex, 4 vertices per face, 6 faces).
          * Uses different textures for different faces to ensure proper appearance.
          */
-        public float[] getTextureCoords(MobTextureAtlas atlas) {
-            // Get face-specific texture coordinates
-            float[][] faceCoords = atlas.getFaceTextureCoords(MobTextureAtlas.MobType.COW, textureName);
+        public float[] getTextureCoords() {
+            return getTextureCoords("default");
+        }
+        
+        public float[] getTextureCoords(String textureVariant) {
+            // Map texture part to base name for JSON lookups
+            String partType = switch (textureName) {
+                case "cow_head" -> "HEAD";
+                case "cow_body" -> "BODY";
+                case "cow_legs" -> "LEG";
+                case "cow_horns" -> "HORNS";
+                case "cow_udder" -> "UDDER";
+                case "cow_tail" -> "TAIL";
+                default -> "HEAD"; // fallback
+            };
+            
+            // Face order: front(0), back(1), left(2), right(3), top(4), bottom(5)
+            String[] faceNames = {
+                partType + "_FRONT",
+                partType + "_BACK", 
+                partType + "_LEFT",
+                partType + "_RIGHT",
+                partType + "_TOP",
+                partType + "_BOTTOM"
+            };
             
             // Build the final texture coordinate array (48 values total)
             float[] result = new float[48];
@@ -380,18 +402,23 @@ public class CowModel {
             
             // Process each face (front, back, left, right, top, bottom)
             for (int face = 0; face < 6; face++) {
-                float[] coords = faceCoords[face];
+                float[] coords = CowTextureAtlas.getUVCoordinates(textureVariant, faceNames[face]);
+                
                 if (coords == null) {
-                    // Fallback to a single tile instead of full atlas
-                    // Use tile (0,0) which should be the cow head front texture
-                    float tileSize = 1.0f / 16.0f; // 16x16 grid
-                    coords = new float[]{
-                        0, 0,                    // bottom-left
-                        tileSize, 0,             // bottom-right
-                        tileSize, tileSize,      // top-right
-                        0, tileSize              // top-left
-                    };
-                    System.err.println("Warning: Missing texture coordinates for " + textureName + " face " + face + ", using fallback tile");
+                    // Use fallback coordinates
+                    coords = CowTextureAtlas.getUVCoordinates("default", partType + "_FRONT");
+                    if (coords == null) {
+                        // Final fallback - use first tile
+                        float tileSize = 1.0f / 16.0f;
+                        coords = new float[]{
+                            0, 0,                    // bottom-left
+                            tileSize, 0,             // bottom-right
+                            tileSize, tileSize,      // top-right
+                            0, tileSize              // top-left
+                        };
+                    }
+                    System.err.println("[CowModel] Warning: Missing texture coordinates for " + 
+                        textureVariant + ":" + faceNames[face] + ", using fallback");
                 }
                 
                 // Add UV coordinates for this face (4 vertices × 2 coordinates = 8 values)

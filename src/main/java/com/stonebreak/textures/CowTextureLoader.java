@@ -21,16 +21,14 @@ public class CowTextureLoader {
                 textureDefinition = objectMapper.readValue(inputStream, CowTextureDefinition.class);
                 
                 // Validate the loaded definition
-                TextureValidation.ValidationResult validation = TextureValidation.validateTextureDefinition(textureDefinition);
-                if (!validation.isValid()) {
-                    System.err.println("Texture definition validation failed for: " + resourcePath);
-                    validation.printResults();
-                    throw new IOException("Invalid texture definition: " + validation.getErrors());
-                } else {
-                    System.out.println("Successfully validated texture definition: " + resourcePath);
-                    if (!validation.getWarnings().isEmpty()) {
-                        validation.printResults();
-                    }
+                validateTextureDefinition(textureDefinition);
+                System.out.println("[CowTextureLoader] Successfully loaded cow texture definition: " + resourcePath);
+                
+                // Log loaded variants
+                for (String variantName : textureDefinition.getCowVariants().keySet()) {
+                    CowTextureDefinition.CowVariant variant = textureDefinition.getCowVariants().get(variantName);
+                    System.out.println("  Loaded variant '" + variantName + "' (" + variant.getDisplayName() + ") with " + 
+                        variant.getFaceMappings().size() + " face mappings");
                 }
             }
         }
@@ -42,7 +40,7 @@ public class CowTextureLoader {
             try {
                 loadTextureDefinition("textures/mobs/cow/cow_textures.json");
             } catch (IOException e) {
-                System.err.println("Failed to load cow texture definition: " + e.getMessage());
+                System.err.println("[CowTextureLoader] Failed to load cow texture definition: " + e.getMessage());
                 return null;
             }
         }
@@ -50,33 +48,82 @@ public class CowTextureLoader {
         return cachedVariants.computeIfAbsent(variantName, name -> {
             CowTextureDefinition.CowVariant variant = textureDefinition.getCowVariants().get(name);
             if (variant == null) {
-                System.err.println("Unknown cow variant: " + name + ". Available variants: " + 
+                System.err.println("[CowTextureLoader] Unknown cow variant: " + name + ". Available variants: " + 
                     textureDefinition.getCowVariants().keySet());
-                return textureDefinition.getCowVariants().get("jersey");
+                return textureDefinition.getCowVariants().get("default");
             }
             return variant;
         });
     }
     
-    public static CowTextureDefinition.UVCoordinate getUVCoordinate(String variantName, String bodyPart, String face) {
+    /**
+     * Get atlas coordinates for a specific body part face.
+     * @param variantName The cow variant (default, angus, highland, jersey)
+     * @param faceName The face name (e.g., "HEAD_FRONT", "BODY_LEFT", etc.)
+     * @return AtlasCoordinate containing atlasX and atlasY, or null if not found
+     */
+    public static CowTextureDefinition.AtlasCoordinate getAtlasCoordinate(String variantName, String faceName) {
         CowTextureDefinition.CowVariant variant = getCowVariant(variantName);
         if (variant == null) {
+            System.err.println("[CowTextureLoader] Could not get variant: " + variantName);
             return null;
         }
         
-        CowTextureDefinition.BodyPart bodyPartDef = variant.getBodyParts().get(bodyPart);
-        if (bodyPartDef == null) {
-            System.err.println("Unknown body part: " + bodyPart + " for variant: " + variantName);
+        CowTextureDefinition.AtlasCoordinate coordinate = variant.getFaceMappings().get(faceName);
+        if (coordinate == null) {
+            System.err.println("[CowTextureLoader] No mapping found for face: " + faceName + " in variant: " + variantName);
+            System.err.println("  Available faces: " + variant.getFaceMappings().keySet());
             return null;
         }
         
-        CowTextureDefinition.UVCoordinate uvCoord = bodyPartDef.getUvMapping().get(face);
-        if (uvCoord == null) {
-            System.err.println("Unknown face: " + face + " for body part: " + bodyPart);
-            return null;
+        return coordinate;
+    }
+    
+    /**
+     * Get normalized UV coordinates for a specific body part face.
+     * @param variantName The cow variant
+     * @param faceName The face name
+     * @param gridSize The texture atlas grid size (usually 16)
+     * @return float array with UV coordinates [u1, v1, u2, v2] normalized to 0.0-1.0 range
+     */
+    public static float[] getNormalizedUVCoordinates(String variantName, String faceName, int gridSize) {
+        CowTextureDefinition.AtlasCoordinate coordinate = getAtlasCoordinate(variantName, faceName);
+        if (coordinate == null) {
+            // Return fallback coordinates (0,0 tile)
+            float tileSize = 1.0f / gridSize;
+            return new float[]{0.0f, 0.0f, tileSize, tileSize};
         }
         
-        return uvCoord;
+        float tileSize = 1.0f / gridSize;
+        float u1 = coordinate.getAtlasX() * tileSize;
+        float v1 = coordinate.getAtlasY() * tileSize;
+        float u2 = u1 + tileSize;
+        float v2 = v1 + tileSize;
+        
+        return new float[]{u1, v1, u2, v2};
+    }
+    
+    /**
+     * Get UV coordinates formatted for quad rendering (bottom-left, bottom-right, top-right, top-left).
+     * @param variantName The cow variant
+     * @param faceName The face name
+     * @param gridSize The texture atlas grid size
+     * @return float array with 8 UV coordinates for quad vertices
+     */
+    public static float[] getQuadUVCoordinates(String variantName, String faceName, int gridSize) {
+        float[] coords = getNormalizedUVCoordinates(variantName, faceName, gridSize);
+        float u1 = coords[0];
+        float v1 = coords[1]; 
+        float u2 = coords[2];
+        float v2 = coords[3];
+        
+        // Return coordinates for quad vertices (OpenGL style)
+        return new float[]{
+            u1, v1,  // bottom-left
+            u2, v1,  // bottom-right
+            u2, v2,  // top-right
+            u1, v2   // top-left
+        };
     }
     
     public static String getBaseColor(String variantName, String colorType) {
@@ -101,7 +148,7 @@ public class CowTextureLoader {
         try {
             return Integer.parseInt(hexColor.substring(1), 16);
         } catch (NumberFormatException e) {
-            System.err.println("Invalid hex color format: " + hexColor);
+            System.err.println("[CowTextureLoader] Invalid hex color format: " + hexColor);
             return 0xFFFFFF;
         }
     }
@@ -120,5 +167,54 @@ public class CowTextureLoader {
             }
         }
         return textureDefinition.getCowVariants().containsKey(variantName);
+    }
+    
+    /**
+     * Validate the texture definition to ensure it has all required data.
+     */
+    private static void validateTextureDefinition(CowTextureDefinition definition) throws IOException {
+        if (definition.getCowVariants() == null || definition.getCowVariants().isEmpty()) {
+            throw new IOException("No cow variants defined in texture definition");
+        }
+        
+        if (definition.getTextureAtlas() == null) {
+            throw new IOException("No texture atlas information defined");
+        }
+        
+        int gridSize = definition.getTextureAtlas().getGridSize();
+        if (gridSize <= 0) {
+            throw new IOException("Invalid grid size: " + gridSize);
+        }
+        
+        // Validate each variant has required face mappings
+        String[] requiredFaces = {
+            "HEAD_FRONT", "HEAD_BACK", "HEAD_LEFT", "HEAD_RIGHT", "HEAD_TOP", "HEAD_BOTTOM",
+            "BODY_FRONT", "BODY_BACK", "BODY_LEFT", "BODY_RIGHT", "BODY_TOP", "BODY_BOTTOM"
+        };
+        
+        for (Map.Entry<String, CowTextureDefinition.CowVariant> entry : definition.getCowVariants().entrySet()) {
+            String variantName = entry.getKey();
+            CowTextureDefinition.CowVariant variant = entry.getValue();
+            
+            if (variant.getFaceMappings() == null) {
+                throw new IOException("Variant '" + variantName + "' has no face mappings");
+            }
+            
+            for (String requiredFace : requiredFaces) {
+                if (!variant.getFaceMappings().containsKey(requiredFace)) {
+                    throw new IOException("Variant '" + variantName + "' missing required face: " + requiredFace);
+                }
+                
+                CowTextureDefinition.AtlasCoordinate coord = variant.getFaceMappings().get(requiredFace);
+                if (coord.getAtlasX() < 0 || coord.getAtlasX() >= gridSize ||
+                    coord.getAtlasY() < 0 || coord.getAtlasY() >= gridSize) {
+                    throw new IOException("Variant '" + variantName + "' face '" + requiredFace + 
+                        "' has invalid coordinates: (" + coord.getAtlasX() + "," + coord.getAtlasY() + 
+                        ") - must be within 0-" + (gridSize-1));
+                }
+            }
+        }
+        
+        System.out.println("[CowTextureLoader] Texture definition validation passed");
     }
 }

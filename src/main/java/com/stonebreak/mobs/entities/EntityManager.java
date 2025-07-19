@@ -114,12 +114,34 @@ public class EntityManager {
     }
     
     /**
+     * Spawns a cow entity with a specific texture variant.
+     */
+    public Entity spawnCowWithVariant(Vector3f position, String textureVariant) {
+        Entity entity = new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
+        if (entity != null) {
+            // Check if entity is spawning inside a block and push to open space
+            Vector3f safePosition = findSafeSpawnPosition(position, entity);
+            entity.setPosition(safePosition);
+            
+            synchronized (entitiesToAdd) {
+                entitiesToAdd.add(entity);
+            }
+        }
+        return entity;
+    }
+    
+    /**
      * Creates an entity instance based on the entity type.
      * This method will be expanded in future phases as new entity types are added.
      */
     private Entity createEntity(EntityType type, Vector3f position) {
         return switch (type) {
-            case COW -> new com.stonebreak.mobs.cow.Cow(world, position);
+            case COW -> {
+                // Select random texture variant for fallback cow creation
+                String[] variants = {"default", "angus", "highland"};
+                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
+            }
             default -> {
                 System.err.println("Unknown entity type: " + type);
                 yield null;

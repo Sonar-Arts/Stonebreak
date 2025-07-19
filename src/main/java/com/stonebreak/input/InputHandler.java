@@ -462,7 +462,10 @@ public class InputHandler {
                 }
                 spawnPos.y = groundY;
                 
-                Entity cow = entityManager.spawnEntity(EntityType.COW, spawnPos);
+                // Select random texture variant for manual spawning
+                String[] variants = {"default", "angus", "highland"};
+                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                 if (cow != null) {
                     System.out.println("[DEBUG] Spawned test cow at " + spawnPos);
                 } else {

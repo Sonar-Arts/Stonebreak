@@ -9,7 +9,7 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 import com.stonebreak.rendering.ShaderProgram;
-import com.stonebreak.rendering.MobTextureAtlas;
+import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.mobs.cow.CowModel;
 
 import java.nio.ByteBuffer;
@@ -28,7 +28,7 @@ import static org.lwjgl.system.MemoryUtil.*;
  */
 public class EntityRenderer {
     private ShaderProgram shader;
-    private MobTextureAtlas textureAtlas;
+    // Note: Using static CowTextureAtlas instead of instance variable
     private boolean initialized = false;
     
     // VAO and VBO storage for model parts - organized by entity type
@@ -37,6 +37,9 @@ public class EntityRenderer {
     private final Map<EntityType, Map<String, Integer>> eboMaps = new HashMap<>();
     private final Map<EntityType, Map<String, Integer>> texCoordVboMaps = new HashMap<>();
     private final Map<EntityType, Map<String, Integer>> vertexCountMaps = new HashMap<>();
+    
+    // Track current texture variant for each part to avoid unnecessary updates
+    private final Map<EntityType, Map<String, String>> currentTextureVariants = new HashMap<>();
     
     // Simple cube model for fallback entities
     private int simpleCubeVAO;
@@ -67,6 +70,7 @@ public class EntityRenderer {
             eboMaps.put(entityType, new HashMap<>());
             texCoordVboMaps.put(entityType, new HashMap<>());
             vertexCountMaps.put(entityType, new HashMap<>());
+            currentTextureVariants.put(entityType, new HashMap<>());
             
             switch (entityType) {
                 case COW -> createCowModel();
@@ -124,9 +128,8 @@ public class EntityRenderer {
     }
     
     private void createTextureAtlas() {
-        // Create a 16x16 texture atlas for mob textures
-        textureAtlas = new MobTextureAtlas(16);
-        textureAtlas.printDebugInfo();
+        // Initialize the static cow texture atlas
+        CowTextureAtlas.initialize();
     }
     
     private void createSimpleCubeModel() {
@@ -273,7 +276,8 @@ public class EntityRenderer {
     private void createModelPart(EntityType entityType, String partName, CowModel.ModelPart part) {
         float[] vertices = part.getVertices();
         int[] indices = part.getIndices();
-        float[] texCoords = part.getTextureCoords(textureAtlas);
+        // Use default texture coordinates for initial VBO creation
+        float[] texCoords = part.getTextureCoords();
         
         // Generate VAO, VBO, EBO, and texture coordinate VBO
         int vao = GL30.glGenVertexArrays();
@@ -323,6 +327,38 @@ public class EntityRenderer {
         memFree(vertexBuffer);
         memFree(texCoordBuffer);
         memFree(indexBuffer);
+        
+        // Initialize texture variant tracking
+        currentTextureVariants.get(entityType).put(partName, "default");
+    }
+    
+    /**
+     * Updates texture coordinates for a model part if the variant has changed.
+     */
+    private void updateTextureCoordinatesForVariant(EntityType entityType, String partName, 
+                                                   CowModel.ModelPart part, String textureVariant) {
+        // Check if variant has changed
+        String currentVariant = currentTextureVariants.get(entityType).get(partName);
+        if (textureVariant.equals(currentVariant)) {
+            return; // No update needed
+        }
+        
+        // Get new texture coordinates for this variant
+        float[] newTexCoords = part.getTextureCoords(textureVariant);
+        
+        // Update the texture coordinate VBO
+        int texVbo = texCoordVboMaps.get(entityType).get(partName);
+        
+        FloatBuffer texCoordBuffer = memAllocFloat(newTexCoords.length);
+        texCoordBuffer.put(newTexCoords).flip();
+        
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, texVbo);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, texCoordBuffer);
+        
+        memFree(texCoordBuffer);
+        
+        // Update tracking
+        currentTextureVariants.get(entityType).put(partName, textureVariant);
     }
     
     public void renderEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
@@ -360,7 +396,7 @@ public class EntityRenderer {
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureAtlas.getTextureId());
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
         shader.setUniform("textureSampler", 0);
         
         // Set common uniforms
@@ -417,11 +453,18 @@ public class EntityRenderer {
         // Get the current animation and time from the cow entity
         CowModel.CowAnimation currentAnimation = CowModel.CowAnimation.IDLE;
         float animationTime = System.currentTimeMillis() / 1000.0f; // Default fallback
+        String textureVariant = "default";
         
         if (entity instanceof com.stonebreak.mobs.cow.Cow cow) {
             currentAnimation = cow.getCurrentAnimation();
             // Use the cow's animation controller time for consistent timing
             animationTime = cow.getAnimationController().getTotalAnimationTime();
+            textureVariant = cow.getTextureVariant();
+            // Debug: Log texture variant being rendered (only occasionally to avoid spam)
+            if (System.currentTimeMillis() % 5000 < 100) { // Log every ~5 seconds
+                System.out.println("DEBUG: Rendering cow with variant: " + textureVariant + " at position " + cow.getPosition());
+                System.out.println("DEBUG: Cow entity class: " + cow.getClass().getSimpleName());
+            }
         }
         
         CowModel.ModelPart[] animatedParts = cowModel.getAnimatedParts(currentAnimation, animationTime);
@@ -436,6 +479,9 @@ public class EntityRenderer {
             String partName = partNames[i];
             
             if (cowVaoMap.containsKey(partName)) {
+                // Update texture coordinates for this variant if needed
+                updateTextureCoordinatesForVariant(EntityType.COW, partName, part, textureVariant);
+                
                 // Create model matrix for this part
                 Matrix4f partMatrix = new Matrix4f(baseMatrix)
                     .translate(part.getPosition())
@@ -527,7 +573,7 @@ public class EntityRenderer {
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureAtlas.getTextureId());
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
         shader.setUniform("textureSampler", 0);
         
         // Set uniforms
@@ -605,9 +651,7 @@ public class EntityRenderer {
             }
             
             // Cleanup texture atlas
-            if (textureAtlas != null) {
-                textureAtlas.cleanup();
-            }
+            CowTextureAtlas.cleanup();
             
             // Clear all maps
             vaoMaps.clear();
@@ -615,6 +659,7 @@ public class EntityRenderer {
             eboMaps.clear();
             texCoordVboMaps.clear();
             vertexCountMaps.clear();
+            currentTextureVariants.clear();
         }
     }
 }

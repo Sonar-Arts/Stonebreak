@@ -12,6 +12,7 @@ import com.stonebreak.input.*;
 import com.stonebreak.items.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
+import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
@@ -29,7 +30,7 @@ public class Game {
     private Player player;
     private Renderer renderer;
     private TextureAtlas textureAtlas;
-    private MobTextureAtlas mobTextureAtlas; // Separate texture atlas for mobs
+    // Note: Using static CowTextureAtlas instead of instance variable
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
@@ -444,10 +445,9 @@ public class Game {
         this.debugOverlay = new DebugOverlay();
         System.out.println("Debug overlay initialized (F3 to toggle).");
         
-        // Initialize mob texture atlas
-        this.mobTextureAtlas = new MobTextureAtlas(16); // 16x16 texture atlas for mobs
-        this.mobTextureAtlas.printDebugInfo(); // Debug output
-        System.out.println("Mob texture atlas initialized");
+        // Initialize cow texture atlas
+        CowTextureAtlas.initialize();
+        System.out.println("Cow texture atlas initialized");
         
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);

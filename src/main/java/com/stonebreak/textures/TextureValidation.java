@@ -6,8 +6,10 @@ import java.util.Map;
 
 public class TextureValidation {
     
-    private static final String[] REQUIRED_FACES = {"front", "back", "left", "right", "top", "bottom"};
-    private static final String[] REQUIRED_BODY_PARTS = {"head", "body", "legs", "horns", "tail", "udder"};
+    private static final String[] REQUIRED_FACES = {
+        "HEAD_FRONT", "HEAD_BACK", "HEAD_LEFT", "HEAD_RIGHT", "HEAD_TOP", "HEAD_BOTTOM",
+        "BODY_FRONT", "BODY_BACK", "BODY_LEFT", "BODY_RIGHT", "BODY_TOP", "BODY_BOTTOM"
+    };
     
     public static class ValidationResult {
         private final boolean valid;
@@ -85,10 +87,14 @@ public class TextureValidation {
             errors.add("Texture atlas height must be positive");
         }
         
-        if (atlas.getFile() == null || atlas.getFile().trim().isEmpty()) {
-            errors.add("Texture atlas file path is required");
-        } else if (!atlas.getFile().toLowerCase().endsWith(".png")) {
-            warnings.add("Texture atlas file should be a PNG image");
+        if (atlas.getGridSize() <= 0) {
+            errors.add("Texture atlas grid size must be positive");
+        }
+        
+        if (atlas.getFile() != null && !atlas.getFile().trim().isEmpty()) {
+            if (!atlas.getFile().toLowerCase().endsWith(".png")) {
+                warnings.add("Texture atlas file should be a PNG image");
+            }
         }
         
         // Check for power-of-two dimensions (common GPU optimization)
@@ -104,6 +110,11 @@ public class TextureValidation {
             return;
         }
         
+        // Validate display name
+        if (variant.getDisplayName() == null || variant.getDisplayName().trim().isEmpty()) {
+            warnings.add("Cow variant '" + variantName + "' has no display name defined");
+        }
+        
         // Validate base colors
         if (variant.getBaseColors() == null) {
             warnings.add("Cow variant '" + variantName + "' has no base colors defined");
@@ -111,11 +122,11 @@ public class TextureValidation {
             validateBaseColors(variantName, variant.getBaseColors(), errors, warnings);
         }
         
-        // Validate body parts
-        if (variant.getBodyParts() == null || variant.getBodyParts().isEmpty()) {
-            errors.add("Cow variant '" + variantName + "' has no body parts defined");
+        // Validate face mappings
+        if (variant.getFaceMappings() == null || variant.getFaceMappings().isEmpty()) {
+            errors.add("Cow variant '" + variantName + "' has no face mappings defined");
         } else {
-            validateBodyParts(variantName, variant.getBodyParts(), errors, warnings);
+            validateFaceMappings(variantName, variant.getFaceMappings(), errors, warnings);
         }
     }
     
@@ -139,130 +150,47 @@ public class TextureValidation {
         }
     }
     
-    private static void validateBodyParts(String variantName, Map<String, CowTextureDefinition.BodyPart> bodyParts,
-                                        List<String> errors, List<String> warnings) {
-        // Check for required body parts
-        for (String requiredPart : REQUIRED_BODY_PARTS) {
-            if (!bodyParts.containsKey(requiredPart)) {
-                warnings.add("Cow variant '" + variantName + "' is missing body part: " + requiredPart);
-            }
-        }
-        
-        // Validate each body part
-        for (Map.Entry<String, CowTextureDefinition.BodyPart> entry : bodyParts.entrySet()) {
-            validateBodyPart(variantName, entry.getKey(), entry.getValue(), errors, warnings);
-        }
-    }
-    
-    private static void validateBodyPart(String variantName, String partName, CowTextureDefinition.BodyPart bodyPart,
-                                       List<String> errors, List<String> warnings) {
-        if (bodyPart == null) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + "' is null");
-            return;
-        }
-        
-        // Validate UV mapping
-        if (bodyPart.getUvMapping() == null || bodyPart.getUvMapping().isEmpty()) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + "' has no UV mapping");
-        } else {
-            validateUVMapping(variantName, partName, bodyPart.getUvMapping(), errors, warnings);
-        }
-        
-        // Validate patterns (optional but warn if missing)
-        if (bodyPart.getPatterns() == null || bodyPart.getPatterns().isEmpty()) {
-            warnings.add("Cow variant '" + variantName + "' body part '" + partName + "' has no patterns defined");
-        } else {
-            validatePatterns(variantName, partName, bodyPart.getPatterns(), errors, warnings);
-        }
-    }
-    
-    private static void validateUVMapping(String variantName, String partName, 
-                                        Map<String, CowTextureDefinition.UVCoordinate> uvMapping,
-                                        List<String> errors, List<String> warnings) {
+    private static void validateFaceMappings(String variantName, Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings,
+                                           List<String> errors, List<String> warnings) {
         // Check for required faces
         for (String requiredFace : REQUIRED_FACES) {
-            if (!uvMapping.containsKey(requiredFace)) {
-                warnings.add("Cow variant '" + variantName + "' body part '" + partName + 
-                           "' is missing face: " + requiredFace);
+            if (!faceMappings.containsKey(requiredFace)) {
+                warnings.add("Cow variant '" + variantName + "' is missing required face: " + requiredFace);
             }
         }
         
-        // Validate each UV coordinate
-        for (Map.Entry<String, CowTextureDefinition.UVCoordinate> entry : uvMapping.entrySet()) {
-            validateUVCoordinate(variantName, partName, entry.getKey(), entry.getValue(), errors, warnings);
+        // Validate each face mapping
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
+            validateAtlasCoordinate(variantName, entry.getKey(), entry.getValue(), errors, warnings);
         }
     }
     
-    private static void validateUVCoordinate(String variantName, String partName, String faceName,
-                                           CowTextureDefinition.UVCoordinate uvCoord,
-                                           List<String> errors, List<String> warnings) {
-        if (uvCoord == null) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + 
-                      "' face '" + faceName + "' UV coordinate is null");
+    private static void validateAtlasCoordinate(String variantName, String faceName,
+                                              CowTextureDefinition.AtlasCoordinate coordinate,
+                                              List<String> errors, List<String> warnings) {
+        if (coordinate == null) {
+            errors.add("Cow variant '" + variantName + "' face '" + faceName + "' atlas coordinate is null");
             return;
         }
         
-        // Validate coordinate values
-        if (uvCoord.getU() < 0) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + 
-                      "' face '" + faceName + "' U coordinate cannot be negative");
+        // Validate coordinate values (should be within atlas grid bounds)
+        if (coordinate.getAtlasX() < 0) {
+            errors.add("Cow variant '" + variantName + "' face '" + faceName + "' atlasX coordinate cannot be negative");
         }
         
-        if (uvCoord.getV() < 0) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + 
-                      "' face '" + faceName + "' V coordinate cannot be negative");
+        if (coordinate.getAtlasY() < 0) {
+            errors.add("Cow variant '" + variantName + "' face '" + faceName + "' atlasY coordinate cannot be negative");
         }
         
-        if (uvCoord.getWidth() <= 0) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + 
-                      "' face '" + faceName + "' width must be positive");
+        // Check for reasonable bounds (assuming 16x16 grid is max)
+        if (coordinate.getAtlasX() >= 16) {
+            warnings.add("Cow variant '" + variantName + "' face '" + faceName + 
+                        "' atlasX coordinate (" + coordinate.getAtlasX() + ") is unusually high");
         }
         
-        if (uvCoord.getHeight() <= 0) {
-            errors.add("Cow variant '" + variantName + "' body part '" + partName + 
-                      "' face '" + faceName + "' height must be positive");
-        }
-    }
-    
-    private static void validatePatterns(String variantName, String partName, 
-                                       List<CowTextureDefinition.Pattern> patterns,
-                                       List<String> errors, List<String> warnings) {
-        for (int i = 0; i < patterns.size(); i++) {
-            CowTextureDefinition.Pattern pattern = patterns.get(i);
-            if (pattern == null) {
-                errors.add("Cow variant '" + variantName + "' body part '" + partName + 
-                          "' pattern " + i + " is null");
-                continue;
-            }
-            
-            validatePattern(variantName, partName, i, pattern, errors, warnings);
-        }
-    }
-    
-    private static void validatePattern(String variantName, String partName, int patternIndex,
-                                      CowTextureDefinition.Pattern pattern,
-                                      List<String> errors, List<String> warnings) {
-        String context = "Cow variant '" + variantName + "' body part '" + partName + "' pattern " + patternIndex;
-        
-        // Validate pattern type
-        if (pattern.getType() == null || pattern.getType().trim().isEmpty()) {
-            errors.add(context + " has no type defined");
-        }
-        
-        // Validate density
-        if (pattern.getDensity() < 0 || pattern.getDensity() > 1) {
-            warnings.add(context + " density should be between 0 and 1");
-        }
-        
-        // Validate size
-        if (pattern.getSize() <= 0) {
-            errors.add(context + " size must be positive");
-        }
-        
-        // Validate color
-        if (pattern.getColor() != null && !pattern.getColor().matches("#[0-9A-Fa-f]{6}")) {
-            errors.add(context + " color '" + pattern.getColor() + 
-                      "' is not a valid hex color (format: #RRGGBB)");
+        if (coordinate.getAtlasY() >= 16) {
+            warnings.add("Cow variant '" + variantName + "' face '" + faceName + 
+                        "' atlasY coordinate (" + coordinate.getAtlasY() + ") is unusually high");
         }
     }
     

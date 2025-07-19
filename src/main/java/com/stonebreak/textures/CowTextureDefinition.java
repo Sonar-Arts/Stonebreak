@@ -1,7 +1,6 @@
 package com.stonebreak.textures;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.List;
 import java.util.Map;
 
 public class CowTextureDefinition {
@@ -29,11 +28,30 @@ public class CowTextureDefinition {
     }
     
     public static class CowVariant {
+        @JsonProperty("displayName")
+        private String displayName;
+        
+        @JsonProperty("faceMappings")
+        private Map<String, AtlasCoordinate> faceMappings;
+        
         @JsonProperty("baseColors")
         private BaseColors baseColors;
         
-        @JsonProperty("bodyParts")
-        private Map<String, BodyPart> bodyParts;
+        public String getDisplayName() {
+            return displayName;
+        }
+        
+        public void setDisplayName(String displayName) {
+            this.displayName = displayName;
+        }
+        
+        public Map<String, AtlasCoordinate> getFaceMappings() {
+            return faceMappings;
+        }
+        
+        public void setFaceMappings(Map<String, AtlasCoordinate> faceMappings) {
+            this.faceMappings = faceMappings;
+        }
         
         public BaseColors getBaseColors() {
             return baseColors;
@@ -41,14 +59,6 @@ public class CowTextureDefinition {
         
         public void setBaseColors(BaseColors baseColors) {
             this.baseColors = baseColors;
-        }
-        
-        public Map<String, BodyPart> getBodyParts() {
-            return bodyParts;
-        }
-        
-        public void setBodyParts(Map<String, BodyPart> bodyParts) {
-            this.bodyParts = bodyParts;
         }
     }
     
@@ -87,119 +97,27 @@ public class CowTextureDefinition {
         }
     }
     
-    public static class BodyPart {
-        @JsonProperty("uvMapping")
-        private Map<String, UVCoordinate> uvMapping;
+    public static class AtlasCoordinate {
+        @JsonProperty("atlasX")
+        private int atlasX;
         
-        @JsonProperty("patterns")
-        private List<Pattern> patterns;
+        @JsonProperty("atlasY")
+        private int atlasY;
         
-        public Map<String, UVCoordinate> getUvMapping() {
-            return uvMapping;
+        public int getAtlasX() {
+            return atlasX;
         }
         
-        public void setUvMapping(Map<String, UVCoordinate> uvMapping) {
-            this.uvMapping = uvMapping;
+        public void setAtlasX(int atlasX) {
+            this.atlasX = atlasX;
         }
         
-        public List<Pattern> getPatterns() {
-            return patterns;
+        public int getAtlasY() {
+            return atlasY;
         }
         
-        public void setPatterns(List<Pattern> patterns) {
-            this.patterns = patterns;
-        }
-    }
-    
-    public static class UVCoordinate {
-        @JsonProperty("u")
-        private int u;
-        
-        @JsonProperty("v")
-        private int v;
-        
-        @JsonProperty("width")
-        private int width;
-        
-        @JsonProperty("height")
-        private int height;
-        
-        public int getU() {
-            return u;
-        }
-        
-        public void setU(int u) {
-            this.u = u;
-        }
-        
-        public int getV() {
-            return v;
-        }
-        
-        public void setV(int v) {
-            this.v = v;
-        }
-        
-        public int getWidth() {
-            return width;
-        }
-        
-        public void setWidth(int width) {
-            this.width = width;
-        }
-        
-        public int getHeight() {
-            return height;
-        }
-        
-        public void setHeight(int height) {
-            this.height = height;
-        }
-    }
-    
-    public static class Pattern {
-        @JsonProperty("type")
-        private String type;
-        
-        @JsonProperty("density")
-        private double density;
-        
-        @JsonProperty("size")
-        private int size;
-        
-        @JsonProperty("color")
-        private String color;
-        
-        public String getType() {
-            return type;
-        }
-        
-        public void setType(String type) {
-            this.type = type;
-        }
-        
-        public double getDensity() {
-            return density;
-        }
-        
-        public void setDensity(double density) {
-            this.density = density;
-        }
-        
-        public int getSize() {
-            return size;
-        }
-        
-        public void setSize(int size) {
-            this.size = size;
-        }
-        
-        public String getColor() {
-            return color;
-        }
-        
-        public void setColor(String color) {
-            this.color = color;
+        public void setAtlasY(int atlasY) {
+            this.atlasY = atlasY;
         }
     }
     
@@ -209,6 +127,9 @@ public class CowTextureDefinition {
         
         @JsonProperty("height")
         private int height;
+        
+        @JsonProperty("gridSize")
+        private int gridSize;
         
         @JsonProperty("file")
         private String file;
@@ -227,6 +148,14 @@ public class CowTextureDefinition {
         
         public void setHeight(int height) {
             this.height = height;
+        }
+        
+        public int getGridSize() {
+            return gridSize;
+        }
+        
+        public void setGridSize(int gridSize) {
+            this.gridSize = gridSize;
         }
         
         public String getFile() {

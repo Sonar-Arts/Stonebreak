@@ -22,6 +22,9 @@ public class EntitySpawner {
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
     
+    // Cow texture variants for random selection
+    private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland"};
+    
     // Biome types where cows can spawn (basic implementation)
     // Note: Stonebreak doesn't have complex biomes yet, so we'll use basic terrain checks
     
@@ -79,10 +82,17 @@ public class EntitySpawner {
                 spawnPos = adjustSpawnPositionForLargeEntity(spawnPos, EntityType.COW);
                 
                 if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                    // Spawn the cow
-                    Entity cow = entityManager.spawnEntity(EntityType.COW, spawnPos);
+                    // Select random texture variant
+                    String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
+                    System.out.println("DEBUG: Spawning cow with variant: " + textureVariant + " at " + spawnPos);
+                    
+                    // Spawn the cow with selected variant
+                    Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                     if (cow != null) {
                         cowsSpawned++;
+                        if (cow instanceof com.stonebreak.mobs.cow.Cow cowEntity) {
+                            System.out.println("DEBUG: Cow spawned successfully with variant: " + cowEntity.getTextureVariant());
+                        }
                     }
                 }
             }
@@ -266,9 +276,17 @@ public class EntitySpawner {
                 spawnPos = adjustSpawnPositionForLargeEntity(spawnPos, EntityType.COW);
                 
                 if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                    Entity cow = entityManager.spawnEntity(EntityType.COW, spawnPos);
+                    // Select random texture variant
+                    String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
+                    System.out.println("DEBUG: Spawning herd cow with variant: " + textureVariant + " at " + spawnPos);
+                    
+                    // Spawn the cow with selected variant
+                    Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                     if (cow != null) {
                         spawned++;
+                        if (cow instanceof com.stonebreak.mobs.cow.Cow cowEntity) {
+                            System.out.println("DEBUG: Herd cow spawned successfully with variant: " + cowEntity.getTextureVariant());
+                        }
                     }
                 }
             }

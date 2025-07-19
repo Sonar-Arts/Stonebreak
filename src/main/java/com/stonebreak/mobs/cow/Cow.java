@@ -35,6 +35,9 @@ public class Cow extends LivingEntity {
     // AI system
     private final CowAI cowAI;
     
+    // Texture variant system
+    private final String textureVariant;
+    
     // Animation system
     private CowModel.CowAnimation currentAnimation;
     private float animationTransitionTime;
@@ -42,10 +45,20 @@ public class Cow extends LivingEntity {
     private final AnimationController animationController;
     
     /**
-     * Creates a new cow at the specified position.
+     * Creates a new cow at the specified position with default texture variant.
      */
     public Cow(World world, Vector3f position) {
+        this(world, position, "default");
+    }
+    
+    /**
+     * Creates a new cow at the specified position with a specific texture variant.
+     */
+    public Cow(World world, Vector3f position, String textureVariant) {
         super(world, position, EntityType.COW);
+        
+        // Initialize texture variant
+        this.textureVariant = textureVariant != null ? textureVariant : "default";
         
         // Initialize cow-specific properties
         this.wanderTimer = 0.0f;
@@ -286,6 +299,13 @@ public class Cow extends LivingEntity {
      */
     public AnimationController getAnimationController() {
         return animationController;
+    }
+    
+    /**
+     * Gets the cow's texture variant.
+     */
+    public String getTextureVariant() {
+        return textureVariant;
     }
     
     

@@ -903,7 +903,10 @@ public class World {
                     worldZ + 0.5f  // Center of block
                 );
                 
-                entityManager.spawnEntity(com.stonebreak.mobs.entities.EntityType.COW, spawnPos);
+                // Select random texture variant for world generation cow spawning
+                String[] variants = {"default", "angus", "highland"};
+                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                 spawned++;
             }
         }
