@@ -12,13 +12,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
- * Simplified texture atlas system specifically for cows using JSON-based direct mappings.
- * Replaces the complex MobTextureAtlas with a streamlined approach.
+ * JSON-driven texture atlas system for cows using individual variant files.
+ * Each cow variant has its own JSON file with drawing instructions.
  */
 public class CowTextureAtlas {
     
-    private static final String COW_TEXTURES_PATH = "textures/mobs/cow/cow_textures.json";
-    private static CowTextureDefinition textureDefinition;
     private static boolean initialized = false;
     
     // OpenGL texture ID for the cow texture atlas
@@ -32,7 +30,7 @@ public class CowTextureAtlas {
     
     /**
      * Initialize the cow texture atlas system.
-     * Loads the JSON texture definition, generates the texture atlas, and creates OpenGL texture.
+     * Loads individual JSON variant files, generates the texture atlas, and creates OpenGL texture.
      */
     public static void initialize() {
         if (initialized) {
@@ -40,14 +38,17 @@ public class CowTextureAtlas {
         }
         
         try {
-            // Load JSON texture definition
-            textureDefinition = CowTextureLoader.loadTextureDefinition(COW_TEXTURES_PATH);
-            System.out.println("[CowTextureAtlas] Successfully loaded " + 
-                textureDefinition.getCowVariants().size() + " cow variants");
+            // Get available cow variants
+            String[] variants = CowTextureLoader.getAvailableVariants();
+            System.out.println("[CowTextureAtlas] Successfully found " + variants.length + " cow variants");
             
-            // Generate texture atlas from JSON data
-            System.out.println("[CowTextureAtlas] Generating procedural texture atlas...");
-            ByteBuffer textureData = CowTextureGenerator.generateTextureAtlas(textureDefinition);
+            // Test all variants to identify any issues
+            System.out.println("[CowTextureAtlas] Testing variant integrity...");
+            CowTextureLoader.testAllVariants();
+            
+            // Generate texture atlas from individual JSON files
+            System.out.println("[CowTextureAtlas] Generating JSON-driven texture atlas...");
+            ByteBuffer textureData = CowTextureGenerator.generateTextureAtlas();
             
             // Create OpenGL texture
             int glTextureId = createOpenGLTexture(textureData, 256, 256);
@@ -56,11 +57,8 @@ public class CowTextureAtlas {
             System.out.println("[CowTextureAtlas] Successfully created texture atlas with ID: " + glTextureId);
             initialized = true;
             
-        } catch (IOException e) {
-            System.err.println("[CowTextureAtlas] Failed to initialize: " + e.getMessage());
-            e.printStackTrace();
         } catch (Exception e) {
-            System.err.println("[CowTextureAtlas] Failed to generate texture: " + e.getMessage());
+            System.err.println("[CowTextureAtlas] Failed to initialize: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -102,12 +100,7 @@ public class CowTextureAtlas {
             initialize();
         }
         
-        if (textureDefinition == null) {
-            System.err.println("[CowTextureAtlas] Texture definition not loaded");
-            return getDefaultUVCoordinates();
-        }
-        
-        int gridSize = textureDefinition.getTextureAtlas().getGridSize();
+        int gridSize = 16; // Fixed grid size for cow textures
         float[] coords = CowTextureLoader.getQuadUVCoordinates(variant, faceName, gridSize);
         
         if (coords == null) {
@@ -130,12 +123,14 @@ public class CowTextureAtlas {
             initialize();
         }
         
-        if (textureDefinition == null) {
+        int gridSize = 16; // Fixed grid size for cow textures
+        float[] coords = CowTextureLoader.getNormalizedUVCoordinates(variant, faceName, gridSize);
+        
+        if (coords == null) {
             return new float[]{0.0f, 0.0f, 0.0625f, 0.0625f}; // Default tile in 16x16 grid
         }
         
-        int gridSize = textureDefinition.getTextureAtlas().getGridSize();
-        return CowTextureLoader.getNormalizedUVCoordinates(variant, faceName, gridSize);
+        return coords;
     }
     
     /**
@@ -182,57 +177,25 @@ public class CowTextureAtlas {
      * Get the texture atlas grid size.
      */
     public static int getGridSize() {
-        if (!initialized) {
-            initialize();
-        }
-        
-        if (textureDefinition == null) {
-            return 16; // Default grid size
-        }
-        
-        return textureDefinition.getTextureAtlas().getGridSize();
+        return 16; // Fixed grid size for cow textures
     }
     
     /**
      * Get the texture atlas pixel dimensions.
      */
     public static int getAtlasWidth() {
-        if (!initialized) {
-            initialize();
-        }
-        
-        if (textureDefinition == null) {
-            return 256; // Default width
-        }
-        
-        return textureDefinition.getTextureAtlas().getWidth();
+        return 256; // Fixed width for cow textures
     }
     
     public static int getAtlasHeight() {
-        if (!initialized) {
-            initialize();
-        }
-        
-        if (textureDefinition == null) {
-            return 256; // Default height
-        }
-        
-        return textureDefinition.getTextureAtlas().getHeight();
+        return 256; // Fixed height for cow textures
     }
     
     /**
      * Get all available cow variants.
      */
     public static String[] getAvailableVariants() {
-        if (!initialized) {
-            initialize();
-        }
-        
-        if (textureDefinition == null) {
-            return new String[]{DEFAULT_VARIANT};
-        }
-        
-        return textureDefinition.getCowVariants().keySet().toArray(new String[0]);
+        return CowTextureLoader.getAvailableVariants();
     }
     
     /**
@@ -283,7 +246,6 @@ public class CowTextureAtlas {
      */
     public static void cleanup() {
         CowTextureLoader.clearCache();
-        textureDefinition = null;
         initialized = false;
         
         if (textureId != -1) {

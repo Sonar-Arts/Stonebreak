@@ -23,7 +23,7 @@ public class EntitySpawner {
     private static final int MAX_SPAWN_HEIGHT = 120;
     
     // Cow texture variants for random selection
-    private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland"};
+    private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland", "jersey"};
     
     // Biome types where cows can spawn (basic implementation)
     // Note: Stonebreak doesn't have complex biomes yet, so we'll use basic terrain checks
@@ -85,6 +85,15 @@ public class EntitySpawner {
                     // Select random texture variant
                     String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
                     System.out.println("DEBUG: Spawning cow with variant: " + textureVariant + " at " + spawnPos);
+                    
+                    // Verify the variant will load correctly before spawning
+                    com.stonebreak.textures.CowTextureDefinition.CowVariant variantTest = 
+                        com.stonebreak.textures.CowTextureLoader.getCowVariant(textureVariant);
+                    if (variantTest != null) {
+                        System.out.println("DEBUG: Verified variant loads as: " + variantTest.getDisplayName());
+                    } else {
+                        System.err.println("DEBUG: WARNING - Variant " + textureVariant + " failed to load!");
+                    }
                     
                     // Spawn the cow with selected variant
                     Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
@@ -279,6 +288,15 @@ public class EntitySpawner {
                     // Select random texture variant
                     String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
                     System.out.println("DEBUG: Spawning herd cow with variant: " + textureVariant + " at " + spawnPos);
+                    
+                    // Verify the variant will load correctly before spawning
+                    com.stonebreak.textures.CowTextureDefinition.CowVariant variantTest = 
+                        com.stonebreak.textures.CowTextureLoader.getCowVariant(textureVariant);
+                    if (variantTest != null) {
+                        System.out.println("DEBUG: Verified herd variant loads as: " + variantTest.getDisplayName());
+                    } else {
+                        System.err.println("DEBUG: WARNING - Herd variant " + textureVariant + " failed to load!");
+                    }
                     
                     // Spawn the cow with selected variant
                     Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);

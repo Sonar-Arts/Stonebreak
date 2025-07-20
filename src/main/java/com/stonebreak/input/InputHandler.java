@@ -462,14 +462,13 @@ public class InputHandler {
                 }
                 spawnPos.y = groundY;
                 
-                // Select random texture variant for manual spawning
-                String[] variants = {"default", "angus", "highland"};
-                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                // Force spawn Angus cow for testing updated face texture
+                String textureVariant = "angus";
                 Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                 if (cow != null) {
-                    System.out.println("[DEBUG] Spawned test cow at " + spawnPos);
+                    System.out.println("[DEBUG] Spawned test Angus cow with new cute face at " + spawnPos);
                 } else {
-                    System.out.println("[DEBUG] Failed to spawn test cow");
+                    System.out.println("[DEBUG] Failed to spawn test Angus cow");
                 }
             }
         } else if (!isF6Pressed) {
