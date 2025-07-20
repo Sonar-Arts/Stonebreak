@@ -10,7 +10,8 @@ import org.lwjgl.opengl.GL30;
 
 import com.stonebreak.rendering.ShaderProgram;
 import com.stonebreak.rendering.CowTextureAtlas;
-import com.stonebreak.mobs.cow.CowModel;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.model.ModelDefinition;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -260,20 +261,19 @@ public class EntityRenderer {
     }
     
     private void createCowModel() {
-        CowModel cowModel = CowModel.getInstance();
-        CowModel.ModelPart[] parts = cowModel.getAllParts();
+        ModelDefinition.ModelPart[] parts = ModelLoader.getAllParts(ModelLoader.getCowModel("standard_cow"));
         
         String[] partNames = {"body", "head", "leg1", "leg2", "leg3", "leg4", "horn1", "horn2", "udder", "tail"};
         
         for (int i = 0; i < parts.length; i++) {
-            CowModel.ModelPart part = parts[i];
+            ModelDefinition.ModelPart part = parts[i];
             String partName = partNames[i];
             
             createModelPart(EntityType.COW, partName, part);
         }
     }
     
-    private void createModelPart(EntityType entityType, String partName, CowModel.ModelPart part) {
+    private void createModelPart(EntityType entityType, String partName, ModelDefinition.ModelPart part) {
         float[] vertices = part.getVertices();
         int[] indices = part.getIndices();
         // Use default texture coordinates for initial VBO creation
@@ -336,7 +336,7 @@ public class EntityRenderer {
      * Updates texture coordinates for a model part if the variant has changed.
      */
     private void updateTextureCoordinatesForVariant(EntityType entityType, String partName, 
-                                                   CowModel.ModelPart part, String textureVariant) {
+                                                   ModelDefinition.ModelPart part, String textureVariant) {
         // Check if variant has changed
         String currentVariant = currentTextureVariants.get(entityType).get(partName);
         if (textureVariant.equals(currentVariant)) {
@@ -447,11 +447,8 @@ public class EntityRenderer {
     }
     
     private void renderCowParts(Matrix4f baseMatrix, Entity entity) {
-        // Get animated cow model parts
-        CowModel cowModel = CowModel.getInstance();
-        
         // Get the current animation and time from the cow entity
-        CowModel.CowAnimation currentAnimation = CowModel.CowAnimation.IDLE;
+        String currentAnimation = "IDLE";
         float animationTime = System.currentTimeMillis() / 1000.0f; // Default fallback
         String textureVariant = "default";
         
@@ -467,7 +464,8 @@ public class EntityRenderer {
             }
         }
         
-        CowModel.ModelPart[] animatedParts = cowModel.getAnimatedParts(currentAnimation, animationTime);
+        // Get animated cow model parts from JSON model system
+        ModelDefinition.ModelPart[] animatedParts = ModelLoader.getAnimatedParts("standard_cow", currentAnimation, animationTime);
         
         String[] partNames = {"body", "head", "leg1", "leg2", "leg3", "leg4", "horn1", "horn2", "udder", "tail"};
         Map<String, Integer> cowVaoMap = vaoMaps.get(EntityType.COW);
@@ -475,7 +473,7 @@ public class EntityRenderer {
         
         // Render each part of the cow
         for (int i = 0; i < animatedParts.length && i < partNames.length; i++) {
-            CowModel.ModelPart part = animatedParts[i];
+            ModelDefinition.ModelPart part = animatedParts[i];
             String partName = partNames[i];
             
             if (cowVaoMap.containsKey(partName)) {
@@ -484,7 +482,7 @@ public class EntityRenderer {
                 
                 // Create model matrix for this part
                 Matrix4f partMatrix = new Matrix4f(baseMatrix)
-                    .translate(part.getPosition())
+                    .translate(part.getPositionVector())
                     .rotateXYZ(
                         (float) Math.toRadians(part.getRotation().x),
                         (float) Math.toRadians(part.getRotation().y),

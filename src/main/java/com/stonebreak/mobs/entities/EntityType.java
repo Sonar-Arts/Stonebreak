@@ -7,7 +7,7 @@ package com.stonebreak.mobs.entities;
 public enum EntityType {
     // Living creatures (adjusted to match new model proportions)
     // Parameters: name, maxHealth, moveSpeed, height, width, length, legHeight, isLiving
-    // Values match the actual CowModel geometry:
+    // Values match the JSON cow model geometry (standard_cow.json):
     // Body: 1.1f × 0.8f × 1.3f (center at Y=0, extends from Y=-0.4 to Y=+0.4)
     // Legs: extend from body bottom (Y=0) down to feet (Y=-0.62f)
     // Entity position.y = body bottom (model Y=0), legHeight = 0.62f

@@ -39,7 +39,7 @@ public class Cow extends LivingEntity {
     private final String textureVariant;
     
     // Animation system
-    private CowModel.CowAnimation currentAnimation;
+    private String currentAnimation;
     private float animationTransitionTime;
     private static final float ANIMATION_TRANSITION_DURATION = 0.5f;
     private final AnimationController animationController;
@@ -77,7 +77,7 @@ public class Cow extends LivingEntity {
         this.cowAI = new CowAI(this);
         
         // Initialize animation system
-        this.currentAnimation = CowModel.CowAnimation.IDLE;
+        this.currentAnimation = "IDLE";
         this.animationTransitionTime = 0.0f;
         this.animationController = new AnimationController(this);
         
@@ -155,10 +155,10 @@ public class Cow extends LivingEntity {
      */
     private void updateAnimationState(float deltaTime) {
         // Determine target animation based on AI state
-        CowModel.CowAnimation targetAnimation = getAnimationForBehavior(cowAI.getCurrentState());
+        String targetAnimation = getAnimationForBehavior(cowAI.getCurrentState());
         
         // Check if animation should change
-        if (targetAnimation != currentAnimation) {
+        if (!targetAnimation.equals(currentAnimation)) {
             // Start animation transition
             currentAnimation = targetAnimation;
             animationTransitionTime = 0.0f;
@@ -173,18 +173,18 @@ public class Cow extends LivingEntity {
     /**
      * Gets the appropriate animation for a cow behavior state.
      */
-    private CowModel.CowAnimation getAnimationForBehavior(CowAI.CowBehaviorState behaviorState) {
+    private String getAnimationForBehavior(CowAI.CowBehaviorState behaviorState) {
         return switch (behaviorState) {
-            case WANDERING -> CowModel.CowAnimation.WALKING;
-            case GRAZING -> CowModel.CowAnimation.GRAZING;
-            case IDLE -> CowModel.CowAnimation.IDLE;
+            case WANDERING -> "WALKING";
+            case GRAZING -> "GRAZING";
+            case IDLE -> "IDLE";
         };
     }
     
     /**
      * Gets the current animation with transition blending.
      */
-    public CowModel.CowAnimation getCurrentAnimation() {
+    public String getCurrentAnimation() {
         // If we're still transitioning, we might want to blend animations
         // For simplicity, we'll just return the current animation
         return currentAnimation;
