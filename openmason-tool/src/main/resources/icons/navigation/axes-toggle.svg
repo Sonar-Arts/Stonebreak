@@ -1,0 +1,28 @@
+<!-- Axes Toggle Icon - X/Y/Z coordinate axes -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .x-axis { stroke: #e74c3c; }
+      .y-axis { stroke: #2ecc71; }
+      .z-axis { stroke: #3498db; }
+    </style>
+  </defs>
+  <!-- Origin point -->
+  <circle cx="8" cy="16" r="2" fill="currentColor" opacity="0.3"/>
+  
+  <!-- X-axis (red) -->
+  <path class="x-axis" d="M8 16h10" stroke-width="3"/>
+  <path class="x-axis" d="M16 14l2 2l-2 2"/>
+  <text x="19" y="17" font-size="8" fill="#e74c3c" font-weight="bold">X</text>
+  
+  <!-- Y-axis (green) -->
+  <path class="y-axis" d="M8 16V6" stroke-width="3"/>
+  <path class="y-axis" d="M6 8l2 -2l2 2"/>
+  <text x="9" y="5" font-size="8" fill="#2ecc71" font-weight="bold">Y</text>
+  
+  <!-- Z-axis (blue) -->
+  <path class="z-axis" d="M8 16l-4 -4" stroke-width="3"/>
+  <path class="z-axis" d="M6 14l-2 -2l2 -2"/>
+  <text x="1" y="11" font-size="8" fill="#3498db" font-weight="bold">Z</text>
+</svg>

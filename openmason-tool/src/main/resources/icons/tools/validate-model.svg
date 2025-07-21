@@ -1,0 +1,15 @@
+<!-- Validate Model Icon - Checkmark in circle -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- Circle -->
+  <circle class="icon-path" cx="12" cy="12" r="9"/>
+  <!-- Checkmark -->
+  <path class="icon-path" d="M8 12l3 3l5 -5"/>
+  <!-- 3D cube hint -->
+  <path class="icon-path" d="M16 7h2v2h-2z" opacity="0.4"/>
+  <path class="icon-path" d="M18 7l1 -1v2l-1 1" opacity="0.4"/>
+</svg>

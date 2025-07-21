@@ -1,0 +1,18 @@
+<!-- Open Model Icon - Folder with arrow -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- Folder -->
+  <path class="icon-path" d="M4 4h5l2 3h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/>
+  <!-- 3D Cube -->
+  <path class="icon-path" d="M9 10h3v3h-3z"/>
+  <path class="icon-path" d="M12 10l2 -2v3l-2 2"/>
+  <path class="icon-path" d="M12 13l2 -2"/>
+  <path class="icon-path" d="M9 13l2 -2"/>
+  <!-- Arrow pointing into folder -->
+  <path class="icon-path" d="M7 15l2 -2l2 2"/>
+  <path class="icon-path" d="M9 13v4"/>
+</svg>

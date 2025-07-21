@@ -1,0 +1,17 @@
+<!-- Project Folder Icon - Folder with Stonebreak logo -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- Folder -->
+  <path class="icon-path" d="M4 4h5l2 3h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/>
+  <!-- Stonebreak cube pattern -->
+  <rect class="icon-path" x="8" y="9" width="2" height="2"/>
+  <rect class="icon-path" x="10" y="11" width="2" height="2"/>
+  <rect class="icon-path" x="12" y="9" width="2" height="2"/>
+  <rect class="icon-path" x="10" y="13" width="2" height="2"/>
+  <!-- Folder label indicator -->
+  <circle class="icon-path" cx="16" cy="10" r="1" fill="currentColor"/>
+</svg>

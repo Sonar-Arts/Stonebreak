@@ -1,0 +1,18 @@
+<!-- Reset View Icon - House/home symbol -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- House outline -->
+  <path class="icon-path" d="M3 12l9 -9l9 9"/>
+  <path class="icon-path" d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"/>
+  <!-- Door -->
+  <rect class="icon-path" x="9" y="14" width="2" height="5"/>
+  <!-- Window -->
+  <rect class="icon-path" x="13" y="14" width="2" height="2"/>
+  <!-- 3D Cube inside to indicate model view -->
+  <path class="icon-path" d="M10 10h2v2h-2z" opacity="0.6"/>
+  <path class="icon-path" d="M12 10l1 -1v2l-1 1" opacity="0.6"/>
+</svg>

@@ -1,0 +1,19 @@
+<!-- Wireframe Mode Icon - Cube outline -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- Wireframe cube -->
+  <path class="icon-path" d="M6 6h8v8H6z"/>
+  <path class="icon-path" d="M10 2h8v8h-8z"/>
+  <path class="icon-path" d="M6 6l4 -4"/>
+  <path class="icon-path" d="M14 6l4 -4"/>
+  <path class="icon-path" d="M14 14l4 -4"/>
+  <path class="icon-path" d="M6 14l4 -4"/>
+  <!-- Hidden/dashed edges -->
+  <path class="icon-path" d="M10 10l4 -4" stroke-dasharray="2,2" opacity="0.5"/>
+  <path class="icon-path" d="M6 10l4 -4" stroke-dasharray="2,2" opacity="0.5"/>
+  <path class="icon-path" d="M10 14l4 -4" stroke-dasharray="2,2" opacity="0.5"/>
+</svg>

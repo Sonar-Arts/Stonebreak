@@ -1,0 +1,24 @@
+<!-- Fit to View Icon - Target crosshairs -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <style>
+      .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- Outer frame -->
+  <rect class="icon-path" x="3" y="3" width="18" height="18" rx="2"/>
+  <!-- Target circles -->
+  <circle class="icon-path" cx="12" cy="12" r="6"/>
+  <circle class="icon-path" cx="12" cy="12" r="3"/>
+  <circle class="icon-path" cx="12" cy="12" r="1" fill="currentColor"/>
+  <!-- Crosshairs -->
+  <path class="icon-path" d="M12 6v3"/>
+  <path class="icon-path" d="M12 15v3"/>
+  <path class="icon-path" d="M6 12h3"/>
+  <path class="icon-path" d="M15 12h3"/>
+  <!-- Corner indicators -->
+  <path class="icon-path" d="M6 6l2 2"/>
+  <path class="icon-path" d="M18 6l-2 2"/>
+  <path class="icon-path" d="M6 18l2 -2"/>
+  <path class="icon-path" d="M18 18l-2 -2"/>
+</svg>
