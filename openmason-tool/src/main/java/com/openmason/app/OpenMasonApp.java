@@ -160,6 +160,12 @@ public class OpenMasonApp extends Application {
      * Main method - application entry point.
      */
     public static void main(String[] args) {
+        // Check for validation test argument
+        if (args.length > 0 && "--validate".equals(args[0])) {
+            runValidationTest();
+            return;
+        }
+        
         // Set system properties for better rendering
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
@@ -170,6 +176,19 @@ public class OpenMasonApp extends Application {
             launch(args);
         } catch (Exception e) {
             logger.error("Failed to launch OpenMason application", e);
+            System.exit(1);
+        }
+    }
+    
+    /**
+     * Run validation test for Stonebreak integration
+     */
+    private static void runValidationTest() {
+        try {
+            com.openmason.test.SimpleValidationTest.runValidation();
+        } catch (Exception e) {
+            System.err.println("Validation test failed: " + e.getMessage());
+            e.printStackTrace();
             System.exit(1);
         }
     }

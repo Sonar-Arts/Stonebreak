@@ -35,16 +35,18 @@ module com.openmason {
     // Open packages for JavaFX FXML access
     opens com.openmason.app to javafx.fxml;
     opens com.openmason.ui to javafx.fxml;
-    // TODO: Add these when packages are implemented
-    // opens com.openmason.model to javafx.fxml, com.fasterxml.jackson.databind;
-    // opens com.openmason.texture to javafx.fxml, com.fasterxml.jackson.databind;
-    // opens com.openmason.config to com.fasterxml.jackson.databind;
+    
+    // Open packages for Jackson JSON processing
+    opens com.openmason.model to javafx.fxml, com.fasterxml.jackson.databind;
+    opens com.openmason.texture to javafx.fxml, com.fasterxml.jackson.databind;
+    opens com.openmason.model.stonebreak to com.fasterxml.jackson.databind;
+    opens com.openmason.texture.stonebreak to com.fasterxml.jackson.databind;
     
     // Export packages for potential future extensions
     exports com.openmason.app;
     exports com.openmason.ui;
-    // TODO: Add these when packages are implemented
-    // exports com.openmason.model;
-    // exports com.openmason.texture;
-    // exports com.openmason.util;
+    exports com.openmason.model;
+    exports com.openmason.texture;
+    exports com.openmason.model.stonebreak;
+    exports com.openmason.texture.stonebreak;
 }

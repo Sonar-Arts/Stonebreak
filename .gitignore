@@ -48,6 +48,9 @@ out/
 .settings/
 bin/
 
+#nul
+nul
+
 # VS Code
 .vscode/
 .code-workspace
