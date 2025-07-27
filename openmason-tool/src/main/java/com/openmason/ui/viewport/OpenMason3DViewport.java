@@ -1093,7 +1093,7 @@ public class OpenMason3DViewport extends StackPane {
             return;
         }
         
-        logger.debug("Canvas rendering state validated successfully");
+        // Validation successful - no logging needed for normal operation
     }
 
     /**

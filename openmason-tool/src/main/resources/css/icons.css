@@ -33,7 +33,7 @@
 .icon:disabled:hover,
 .icon.disabled:hover {
     fill: #666666;
-    transform: none;
+    -fx-translate-y: 0;
 }
 
 /* ===== SIZE VARIANTS ===== */
@@ -160,19 +160,19 @@
 }
 
 @keyframes icon-rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from { -fx-rotate: 0; }
+    to { -fx-rotate: 360; }
 }
 
 @keyframes icon-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(1.1); }
+    0%, 100% { -fx-opacity: 1; -fx-scale-x: 1; -fx-scale-y: 1; }
+    50% { -fx-opacity: 0.7; -fx-scale-x: 1.1; -fx-scale-y: 1.1; }
 }
 
 @keyframes icon-bounce {
-    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-    40% { transform: translateY(-4px); }
-    60% { transform: translateY(-2px); }
+    0%, 20%, 50%, 80%, 100% { -fx-translate-y: 0; }
+    40% { -fx-translate-y: -4px; }
+    60% { -fx-translate-y: -2px; }
 }
 
 /* ===== ICON GROUPS ===== */
@@ -317,7 +317,7 @@
     }
     
     .icon:hover {
-        transform: none;
+        -fx-translate-y: 0;
     }
 }
 
@@ -327,27 +327,26 @@
     position: absolute;
     bottom: 100%;
     left: 50%;
-    transform: translateX(-50%);
-    background: #1a1a1a;
-    color: #ffffff;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    white-space: nowrap;
-    z-index: 1000;
+    -fx-translate-x: -50%;
+    -fx-background-color: #1a1a1a;
+    -fx-text-fill: #ffffff;
+    -fx-padding: 4px 8px;
+    -fx-background-radius: 4px;
+    -fx-font-size: 11px;
     margin-bottom: 4px;
-    border: 1px solid #555555;
+    -fx-border-color: #555555;
+    -fx-border-width: 1px;
 }
 
 /* ===== FOCUS INDICATORS FOR ACCESSIBILITY ===== */
 .icon:focus {
-    outline: 2px solid #007ACC;
-    outline-offset: 2px;
-    border-radius: 2px;
+    -fx-border-color: #007ACC;
+    -fx-border-width: 2px;
+    -fx-border-radius: 2px;
 }
 
 .icon:focus:not(:focus-visible) {
-    outline: none;
+    -fx-border-color: transparent;
 }
 
 /* ===== PRINT STYLES ===== */

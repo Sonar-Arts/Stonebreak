@@ -26,6 +26,9 @@ public abstract class OpenGLBuffer implements AutoCloseable {
     protected int dataSize;
     protected int usage;
     
+    // Static cleaner for resource cleanup detection
+    private static final java.lang.ref.Cleaner cleaner = java.lang.ref.Cleaner.create();
+    
     // Cleaner for resource cleanup detection
     private final BufferCleanupState cleanupState;
     private final java.lang.ref.Cleaner.Cleanable cleanable;
@@ -50,9 +53,14 @@ public abstract class OpenGLBuffer implements AutoCloseable {
             throw new RuntimeException("Failed to generate OpenGL buffer: " + this.debugName);
         }
         
-        // Set up cleaner for resource leak detection
+        // Set up cleaner for resource leak detection with fallback
         this.cleanupState = new BufferCleanupState(this.debugName);
-        this.cleanable = cleaner.register(this, cleanupState);
+        try {
+            this.cleanable = cleaner.register(this, cleanupState);
+        } catch (Exception e) {
+            System.err.println("WARNING: Failed to register buffer cleaner for " + this.debugName + ": " + e.getMessage());
+            throw new RuntimeException("Critical: Resource management initialization failed", e);
+        }
         
         // Register with buffer manager for tracking
         BufferManager.getInstance().registerBuffer(this);
@@ -188,16 +196,27 @@ public abstract class OpenGLBuffer implements AutoCloseable {
     @Override
     public void close() {
         if (!isDisposed && bufferId != 0) {
-            GL15.glDeleteBuffers(bufferId);
-            BufferManager.getInstance().unregisterBuffer(this);
-            
-            // Mark as disposed in cleanup state and clean the cleanable
-            cleanupState.markDisposed();
-            cleanable.clean();
-            
-            isDisposed = true;
-            isValid = false;
-            bufferId = 0;
+            try {
+                GL15.glDeleteBuffers(bufferId);
+                BufferManager.getInstance().unregisterBuffer(this);
+                
+                // Mark as disposed in cleanup state and clean the cleanable
+                cleanupState.markDisposed();
+                if (cleanable != null) {
+                    cleanable.clean();
+                }
+                
+                isDisposed = true;
+                isValid = false;
+                bufferId = 0;
+            } catch (Exception e) {
+                System.err.println("WARNING: Error during buffer cleanup for " + debugName + ": " + e.getMessage());
+                // Force disposal even if cleanup failed
+                isDisposed = true;
+                isValid = false;
+                bufferId = 0;
+                throw new RuntimeException("Buffer cleanup failed", e);
+            }
         }
     }
     
@@ -220,8 +239,8 @@ public abstract class OpenGLBuffer implements AutoCloseable {
     /**
      * Cleanup detection using Cleaner instead of deprecated finalize().
      * Should not be relied upon - always call close() explicitly.
+     * Cleaner is now defined at the top of the class for proper initialization order.
      */
-    private static final java.lang.ref.Cleaner cleaner = java.lang.ref.Cleaner.create();
     
     /**
      * State holder for the cleaner to track buffer disposal.

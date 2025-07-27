@@ -1,5 +1,6 @@
 package com.openmason.camera;
 
+import com.openmason.util.VectorPool;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Quaternionf;
@@ -255,15 +256,18 @@ public class ArcBallCamera {
      * @param deltaY Vertical mouse movement in pixels
      */
     public void pan(float deltaX, float deltaY) {
-        Vector3f right = calculateRightVector();
-        Vector3f up = calculateUpVector();
-        
-        // Calculate pan offset relative to current camera distance
-        Vector3f panOffset = new Vector3f()
-            .add(new Vector3f(right).mul(deltaX * PAN_SENSITIVITY * distance))
-            .add(new Vector3f(up).mul(-deltaY * PAN_SENSITIVITY * distance));
-        
-        targetTarget.add(panOffset);
+        // Use vector pool to avoid allocations during frequent panning
+        VectorPool.withVectors((right, up, panOffset) -> {
+            calculateRightVector(right);
+            calculateUpVector(up);
+            
+            // Calculate pan offset relative to current camera distance
+            panOffset.set(right).mul(deltaX * PAN_SENSITIVITY * distance);
+            right.set(up).mul(-deltaY * PAN_SENSITIVITY * distance);
+            panOffset.add(right);
+            
+            targetTarget.add(panOffset);
+        });
         
         logger.trace("Camera pan - Target: {}", targetTarget);
     }
@@ -303,9 +307,12 @@ public class ArcBallCamera {
      * @param max Maximum corner of bounding box
      */
     public void frameObject(Vector3f min, Vector3f max) {
-        // Calculate center and size of bounding box
-        Vector3f center = new Vector3f(min).add(max).mul(0.5f);
-        Vector3f size = new Vector3f(max).sub(min);
+        // Calculate center and size of bounding box using vector pool
+        Vector3f center = VectorPool.acquireVector3f(min);
+        Vector3f size = VectorPool.acquireVector3f(max);
+        
+        center.add(max).mul(0.5f);
+        size.sub(min);
         float maxDimension = Math.max(Math.max(size.x, size.y), size.z);
         
         // Set target to center of object
@@ -319,6 +326,10 @@ public class ArcBallCamera {
         targetDistance = optimalDistance;
         
         logger.info("Framed object - Center: {}, Distance: {}", center, optimalDistance);
+        
+        // Release vectors back to pool
+        VectorPool.release(center);
+        VectorPool.release(size);
     }
     
     /**
@@ -443,17 +454,51 @@ public class ArcBallCamera {
      * Calculates the right vector for camera-relative movement.
      */
     private Vector3f calculateRightVector() {
-        Vector3f forward = new Vector3f(target).sub(cameraPosition).normalize();
-        return new Vector3f(forward).cross(cameraUp).normalize();
+        Vector3f forward = VectorPool.acquireVector3f(target).sub(cameraPosition).normalize();
+        Vector3f right = VectorPool.acquireVector3f(forward).cross(cameraUp).normalize();
+        VectorPool.release(forward);
+        return right;
+    }
+    
+    /**
+     * Calculates the right vector for camera-relative movement using pre-allocated vector.
+     * 
+     * @param result The vector to store the result in
+     */
+    private void calculateRightVector(Vector3f result) {
+        Vector3f forward = VectorPool.acquireVector3f(target);
+        forward.sub(cameraPosition).normalize();
+        result.set(forward).cross(cameraUp).normalize();
+        VectorPool.release(forward);
     }
     
     /**
      * Calculates the up vector for camera-relative movement.
      */
     private Vector3f calculateUpVector() {
-        Vector3f forward = new Vector3f(target).sub(cameraPosition).normalize();
+        Vector3f forward = VectorPool.acquireVector3f(target).sub(cameraPosition).normalize();
         Vector3f right = calculateRightVector();
-        return new Vector3f(right).cross(forward).normalize();
+        Vector3f up = VectorPool.acquireVector3f(right).cross(forward).normalize();
+        VectorPool.release(forward);
+        VectorPool.release(right);
+        return up;
+    }
+    
+    /**
+     * Calculates the up vector for camera-relative movement using pre-allocated vector.
+     * 
+     * @param result The vector to store the result in
+     */
+    private void calculateUpVector(Vector3f result) {
+        Vector3f forward = VectorPool.acquireVector3f(target);
+        Vector3f right = VectorPool.acquireVector3f();
+        
+        forward.sub(cameraPosition).normalize();
+        calculateRightVector(right);
+        result.set(right).cross(forward).normalize();
+        
+        VectorPool.release(forward);
+        VectorPool.release(right);
     }
     
     /**

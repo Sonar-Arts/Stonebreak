@@ -64,6 +64,14 @@
             <artifactId>joml</artifactId>
         </dependency>
         
+        <!-- Stonebreak Game Module for shared resources -->
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>stonebreak-game</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+        
         <!-- Jackson JSON library for data parsing (same as Stonebreak) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

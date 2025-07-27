@@ -48,12 +48,12 @@ public class StonebreakTextureLoader {
         LOW         // Load when system is idle
     }
     
-    // Paths to individual cow variant JSON files
+    // Paths to individual cow variant JSON files (from stonebreak-game module)
     private static final Map<String, String> VARIANT_FILE_PATHS = Map.of(
-        "default", "stonebreak/textures/mobs/cow/default_cow.json",
-        "angus", "stonebreak/textures/mobs/cow/angus_cow.json",
-        "highland", "stonebreak/textures/mobs/cow/highland_cow.json",
-        "jersey", "stonebreak/textures/mobs/cow/jersey_cow.json"
+        "default", "textures/mobs/cow/default_cow.json",
+        "angus", "textures/mobs/cow/angus_cow.json",
+        "highland", "textures/mobs/cow/highland_cow.json",
+        "jersey", "textures/mobs/cow/jersey_cow.json"
     );
     
     

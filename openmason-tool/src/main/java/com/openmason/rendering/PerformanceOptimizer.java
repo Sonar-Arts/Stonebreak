@@ -7,9 +7,13 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.DoubleAdder;
 
 /**
  * Professional performance monitoring and adaptive quality optimization system for OpenMason 3D viewport.
@@ -56,35 +60,36 @@ public class PerformanceOptimizer {
     private static final int[] MSAA_LEVELS = {0, 2, 4, 8}; // No AA, 2x, 4x, 8x
     private static final float[] RENDER_SCALES = {0.5f, 0.75f, 1.0f}; // 50%, 75%, 100%
     
-    // Frame timing data
-    private final List<FrameTimingData> frameHistory = new ArrayList<>(FRAME_HISTORY_SIZE);
+    // Frame timing data - thread-safe collections
+    private final ConcurrentLinkedQueue<FrameTimingData> frameHistory = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger frameHistorySize = new AtomicInteger(0);
     private final AtomicLong frameCount = new AtomicLong(0);
-    private final AtomicLong totalFrameTime = new AtomicLong(0);
-    private volatile long lastFrameStartTime = 0;
-    private volatile long lastStatisticsUpdate = 0;
+    private final DoubleAdder totalFrameTime = new DoubleAdder();
+    private final AtomicLong lastFrameStartTime = new AtomicLong(0);
+    private final AtomicLong lastStatisticsUpdate = new AtomicLong(0);
     
-    // Current performance metrics
-    private volatile double currentFPS = 0.0;
-    private volatile double averageFrameTime = 0.0;
-    private volatile double frameTimeVariance = 0.0;
-    private volatile PerformanceLevel currentPerformanceLevel = PerformanceLevel.EXCELLENT;
+    // Current performance metrics - using atomic references for thread safety
+    private final AtomicReference<Double> currentFPS = new AtomicReference<>(0.0);
+    private final AtomicReference<Double> averageFrameTime = new AtomicReference<>(0.0);
+    private final AtomicReference<Double> frameTimeVariance = new AtomicReference<>(0.0);
+    private final AtomicReference<PerformanceLevel> currentPerformanceLevel = new AtomicReference<>(PerformanceLevel.EXCELLENT);
     
-    // Adaptive quality state
-    private volatile int currentMSAALevel = 2; // Start with 4x MSAA
-    private volatile float currentRenderScale = 1.0f; // Start with 100% scale
+    // Adaptive quality state - thread-safe
+    private final AtomicInteger currentMSAALevel = new AtomicInteger(2); // Start with 4x MSAA
+    private final AtomicReference<Float> currentRenderScale = new AtomicReference<>(1.0f); // Start with 100% scale
     private final AtomicBoolean adaptiveQualityEnabled = new AtomicBoolean(true);
-    private volatile long lastQualityAdjustment = 0;
+    private final AtomicLong lastQualityAdjustment = new AtomicLong(0);
     private static final long QUALITY_ADJUSTMENT_COOLDOWN_MS = 3000; // 3 seconds
     
-    // Memory monitoring
-    private volatile long lastMemoryCheck = 0;
-    private volatile long currentMemoryUsage = 0;
-    private volatile MemoryStatus memoryStatus = MemoryStatus.NORMAL;
+    // Memory monitoring - thread-safe
+    private final AtomicLong lastMemoryCheck = new AtomicLong(0);
+    private final AtomicLong currentMemoryUsage = new AtomicLong(0);
+    private final AtomicReference<MemoryStatus> memoryStatus = new AtomicReference<>(MemoryStatus.NORMAL);
     private BufferManager bufferManager;
     
-    // Performance warnings and recommendations
-    private final List<PerformanceWarning> activeWarnings = new ArrayList<>();
-    private final List<String> optimizationRecommendations = new ArrayList<>();
+    // Performance warnings and recommendations - thread-safe collections
+    private final CopyOnWriteArrayList<PerformanceWarning> activeWarnings = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<String> optimizationRecommendations = new CopyOnWriteArrayList<>();
     
     // Configuration and state
     private final AtomicBoolean enabled = new AtomicBoolean(true);
@@ -96,8 +101,9 @@ public class PerformanceOptimizer {
      */
     public PerformanceOptimizer() {
         this.bufferManager = BufferManager.getInstance();
-        this.lastStatisticsUpdate = System.currentTimeMillis();
-        this.lastMemoryCheck = System.currentTimeMillis();
+        long currentTime = System.currentTimeMillis();
+        this.lastStatisticsUpdate.set(currentTime);
+        this.lastMemoryCheck.set(currentTime);
         
         logger.info("PerformanceOptimizer initialized - Target: {:.1f} FPS ({:.2f}ms)", TARGET_FPS, TARGET_FRAME_TIME_MS);
     }
@@ -111,7 +117,7 @@ public class PerformanceOptimizer {
             return;
         }
         
-        lastFrameStartTime = System.nanoTime();
+        lastFrameStartTime.set(System.nanoTime());
     }
     
     /**
@@ -119,12 +125,12 @@ public class PerformanceOptimizer {
      * Call this at the end of each frame render cycle.
      */
     public void endFrame() {
-        if (!enabled.get() || lastFrameStartTime == 0) {
+        if (!enabled.get() || lastFrameStartTime.get() == 0) {
             return;
         }
         
         long frameEndTime = System.nanoTime();
-        long frameTimeNanos = frameEndTime - lastFrameStartTime;
+        long frameTimeNanos = frameEndTime - lastFrameStartTime.get();
         double frameTimeMs = frameTimeNanos / 1_000_000.0;
         
         // Update frame statistics
@@ -143,47 +149,69 @@ public class PerformanceOptimizer {
         updateStatistics();
         
         frameCount.incrementAndGet();
-        totalFrameTime.addAndGet((long) frameTimeMs);
+        totalFrameTime.add(frameTimeMs);
     }
     
     /**
      * Updates frame timing history and calculates rolling statistics.
+     * Now thread-safe using concurrent collections and atomic operations.
      */
     private void updateFrameStatistics(double frameTimeMs) {
-        synchronized (frameHistory) {
-            // Add new frame data
-            frameHistory.add(new FrameTimingData(System.currentTimeMillis(), frameTimeMs));
-            
-            // Trim history if too large
-            while (frameHistory.size() > FRAME_HISTORY_SIZE) {
-                frameHistory.remove(0);
+        // Add new frame data to concurrent queue
+        frameHistory.offer(new FrameTimingData(System.currentTimeMillis(), frameTimeMs));
+        frameHistorySize.incrementAndGet();
+        
+        // Trim history if too large using atomic operations
+        while (frameHistorySize.get() > FRAME_HISTORY_SIZE) {
+            if (frameHistory.poll() != null) {
+                frameHistorySize.decrementAndGet();
+            } else {
+                break; // Another thread already trimmed
             }
-            
-            // Calculate rolling statistics
-            calculateRollingStatistics();
+        }
+        
+        // Calculate rolling statistics periodically (reduces contention)
+        long currentTime = System.currentTimeMillis();
+        long lastUpdate = lastStatisticsUpdate.get();
+        if (currentTime - lastUpdate > STATISTICS_UPDATE_INTERVAL_MS) {
+            if (lastStatisticsUpdate.compareAndSet(lastUpdate, currentTime)) {
+                calculateRollingStatistics();
+            }
         }
     }
     
     /**
      * Calculates rolling statistics from frame history.
+     * Now thread-safe using atomic operations and snapshot approach.
      */
     private void calculateRollingStatistics() {
         if (frameHistory.isEmpty()) {
             return;
         }
         
+        // Take snapshot of frame history for consistent calculations
+        List<FrameTimingData> snapshot = new ArrayList<>(frameHistory);
+        if (snapshot.isEmpty()) {
+            return;
+        }
+        
         // Calculate average frame time
-        double totalTime = frameHistory.stream().mapToDouble(f -> f.frameTimeMs).sum();
-        averageFrameTime = totalTime / frameHistory.size();
+        double totalTime = snapshot.stream().mapToDouble(f -> f.frameTimeMs).sum();
+        double avgFrameTime = totalTime / snapshot.size();
         
         // Calculate FPS
-        currentFPS = averageFrameTime > 0 ? 1000.0 / averageFrameTime : 0.0;
+        double fps = avgFrameTime > 0 ? 1000.0 / avgFrameTime : 0.0;
         
         // Calculate variance for smoothness analysis
-        double sumSquaredDiff = frameHistory.stream()
-            .mapToDouble(f -> Math.pow(f.frameTimeMs - averageFrameTime, 2))
+        double sumSquaredDiff = snapshot.stream()
+            .mapToDouble(f -> Math.pow(f.frameTimeMs - avgFrameTime, 2))
             .sum();
-        frameTimeVariance = Math.sqrt(sumSquaredDiff / frameHistory.size());
+        double variance = Math.sqrt(sumSquaredDiff / snapshot.size());
+        
+        // Update atomic references atomically
+        averageFrameTime.set(avgFrameTime);
+        currentFPS.set(fps);
+        frameTimeVariance.set(variance);
         
         // Determine performance level
         updatePerformanceLevel();
@@ -193,16 +221,19 @@ public class PerformanceOptimizer {
      * Updates the current performance level based on FPS and frame time consistency.
      */
     private void updatePerformanceLevel() {
-        if (currentFPS >= TARGET_FPS && frameTimeVariance < 2.0) {
-            currentPerformanceLevel = PerformanceLevel.EXCELLENT;
-        } else if (currentFPS >= TARGET_FPS * 0.9 && frameTimeVariance < 5.0) {
-            currentPerformanceLevel = PerformanceLevel.GOOD;
-        } else if (currentFPS >= MINIMUM_FPS) {
-            currentPerformanceLevel = PerformanceLevel.ACCEPTABLE;
-        } else if (currentFPS >= CRITICAL_FPS) {
-            currentPerformanceLevel = PerformanceLevel.POOR;
+        double fps = currentFPS.get();
+        double variance = frameTimeVariance.get();
+        
+        if (fps >= TARGET_FPS && variance < 2.0) {
+            currentPerformanceLevel.set(PerformanceLevel.EXCELLENT);
+        } else if (fps >= TARGET_FPS * 0.9 && variance < 5.0) {
+            currentPerformanceLevel.set(PerformanceLevel.GOOD);
+        } else if (fps >= MINIMUM_FPS) {
+            currentPerformanceLevel.set(PerformanceLevel.ACCEPTABLE);
+        } else if (fps >= CRITICAL_FPS) {
+            currentPerformanceLevel.set(PerformanceLevel.POOR);
         } else {
-            currentPerformanceLevel = PerformanceLevel.CRITICAL;
+            currentPerformanceLevel.set(PerformanceLevel.CRITICAL);
         }
     }
     
@@ -229,25 +260,27 @@ public class PerformanceOptimizer {
         }
         
         // Frame time variance analysis
-        if (frameTimeVariance > 10.0) {
+        double variance = frameTimeVariance.get();
+        if (variance > 10.0) {
             activeWarnings.add(new PerformanceWarning(
                 WarningType.HIGH_VARIANCE,
-                String.format("High frame time variance %.2fms indicates inconsistent performance", frameTimeVariance)
+                String.format("High frame time variance %.2fms indicates inconsistent performance", variance)
             ));
             optimizationRecommendations.add("Check for background processes or memory pressure");
         }
         
         // Memory analysis
-        if (memoryStatus == MemoryStatus.CRITICAL) {
+        MemoryStatus status = memoryStatus.get();
+        if (status == MemoryStatus.CRITICAL) {
             activeWarnings.add(new PerformanceWarning(
                 WarningType.MEMORY_CRITICAL,
-                String.format("Memory usage %s exceeds critical threshold", formatBytes(currentMemoryUsage))
+                String.format("Memory usage %s exceeds critical threshold", formatBytes(currentMemoryUsage.get()))
             ));
             optimizationRecommendations.add("Reduce texture quality or model complexity");
-        } else if (memoryStatus == MemoryStatus.WARNING) {
+        } else if (status == MemoryStatus.WARNING) {
             activeWarnings.add(new PerformanceWarning(
                 WarningType.MEMORY_HIGH,
-                String.format("Memory usage %s approaching threshold", formatBytes(currentMemoryUsage))
+                String.format("Memory usage %s approaching threshold", formatBytes(currentMemoryUsage.get()))
             ));
         }
     }
@@ -261,72 +294,75 @@ public class PerformanceOptimizer {
         }
         
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastQualityAdjustment < QUALITY_ADJUSTMENT_COOLDOWN_MS) {
+        if (currentTime - lastQualityAdjustment.get() < QUALITY_ADJUSTMENT_COOLDOWN_MS) {
             return; // Too soon to adjust again
         }
         
         boolean qualityChanged = false;
+        PerformanceLevel level = currentPerformanceLevel.get();
         
         // Adjust quality based on performance level
-        switch (currentPerformanceLevel) {
-            case CRITICAL:
-            case POOR:
-                // Aggressively reduce quality
-                if (currentMSAALevel > 0) {
-                    currentMSAALevel = Math.max(0, currentMSAALevel - 1);
-                    qualityChanged = true;
-                } else if (currentRenderScale > RENDER_SCALES[0]) {
+        if (level == PerformanceLevel.CRITICAL || level == PerformanceLevel.POOR) {
+            // Aggressively reduce quality
+            int msaaLevel = currentMSAALevel.get();
+            if (msaaLevel > 0) {
+                currentMSAALevel.set(Math.max(0, msaaLevel - 1));
+                qualityChanged = true;
+            } else {
+                float renderScale = currentRenderScale.get();
+                if (renderScale > RENDER_SCALES[0]) {
                     // Find next lower render scale
                     for (int i = RENDER_SCALES.length - 1; i >= 0; i--) {
-                        if (RENDER_SCALES[i] < currentRenderScale) {
-                            currentRenderScale = RENDER_SCALES[i];
+                        if (RENDER_SCALES[i] < renderScale) {
+                            currentRenderScale.set(RENDER_SCALES[i]);
                             qualityChanged = true;
                             break;
                         }
                     }
                 }
-                break;
+            }
+        } else if (level == PerformanceLevel.ACCEPTABLE) {
+            // Slightly reduce quality if variance is high
+            double variance = frameTimeVariance.get();
+            int msaaLevel = currentMSAALevel.get();
+            if (variance > 5.0 && msaaLevel > 1) {
+                currentMSAALevel.set(Math.max(1, msaaLevel - 1));
+                qualityChanged = true;
+            }
+        } else if (level == PerformanceLevel.GOOD || level == PerformanceLevel.EXCELLENT) {
+            // Gradually increase quality if performance is consistently good
+            if (frameHistory.size() >= 60) { // At least 1 second of consistent performance
+                boolean consistentlyGood = frameHistory.stream()
+                    .skip(frameHistory.size() - 60)
+                    .allMatch(f -> f.frameTimeMs < TARGET_FRAME_TIME_MS * 1.1);
                 
-            case ACCEPTABLE:
-                // Slightly reduce quality if variance is high
-                if (frameTimeVariance > 5.0 && currentMSAALevel > 1) {
-                    currentMSAALevel = Math.max(1, currentMSAALevel - 1);
-                    qualityChanged = true;
-                }
-                break;
-                
-            case GOOD:
-            case EXCELLENT:
-                // Gradually increase quality if performance is consistently good
-                if (frameHistory.size() >= 60) { // At least 1 second of consistent performance
-                    boolean consistentlyGood = frameHistory.stream()
-                        .skip(frameHistory.size() - 60)
-                        .allMatch(f -> f.frameTimeMs < TARGET_FRAME_TIME_MS * 1.1);
-                    
-                    if (consistentlyGood) {
-                        if (currentRenderScale < RENDER_SCALES[RENDER_SCALES.length - 1]) {
-                            // Find next higher render scale
-                            for (float scale : RENDER_SCALES) {
-                                if (scale > currentRenderScale) {
-                                    currentRenderScale = scale;
-                                    qualityChanged = true;
-                                    break;
-                                }
+                if (consistentlyGood) {
+                    float renderScale = currentRenderScale.get();
+                    if (renderScale < RENDER_SCALES[RENDER_SCALES.length - 1]) {
+                        // Find next higher render scale
+                        for (float scale : RENDER_SCALES) {
+                            if (scale > renderScale) {
+                                currentRenderScale.set(scale);
+                                qualityChanged = true;
+                                break;
                             }
-                        } else if (currentMSAALevel < MSAA_LEVELS.length - 1) {
-                            currentMSAALevel = Math.min(MSAA_LEVELS.length - 1, currentMSAALevel + 1);
+                        }
+                    } else {
+                        int msaaLevel = currentMSAALevel.get();
+                        if (msaaLevel < MSAA_LEVELS.length - 1) {
+                            currentMSAALevel.set(Math.min(MSAA_LEVELS.length - 1, msaaLevel + 1));
                             qualityChanged = true;
                         }
                     }
                 }
-                break;
+            }
         }
         
         if (qualityChanged) {
-            lastQualityAdjustment = currentTime;
+            lastQualityAdjustment.set(currentTime);
             if (debugMode.get()) {
                 logger.debug("Adaptive quality adjustment: MSAA={}x, Scale={:.1f}%", 
-                    MSAA_LEVELS[currentMSAALevel], currentRenderScale * 100);
+                    MSAA_LEVELS[currentMSAALevel.get()], currentRenderScale.get() * 100);
             }
         }
     }
@@ -336,21 +372,22 @@ public class PerformanceOptimizer {
      */
     private void checkMemoryUsage() {
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastMemoryCheck < 500) { // Check every 500ms
+        if (currentTime - lastMemoryCheck.get() < 500) { // Check every 500ms
             return;
         }
         
-        lastMemoryCheck = currentTime;
+        lastMemoryCheck.set(currentTime);
         
         if (bufferManager != null) {
-            currentMemoryUsage = bufferManager.getCurrentMemoryUsage();
+            currentMemoryUsage.set(bufferManager.getCurrentMemoryUsage());
             
-            if (currentMemoryUsage > MEMORY_CRITICAL_THRESHOLD) {
-                memoryStatus = MemoryStatus.CRITICAL;
-            } else if (currentMemoryUsage > MEMORY_WARNING_THRESHOLD) {
-                memoryStatus = MemoryStatus.WARNING;
+            long memUsage = currentMemoryUsage.get();
+            if (memUsage > MEMORY_CRITICAL_THRESHOLD) {
+                memoryStatus.set(MemoryStatus.CRITICAL);
+            } else if (memUsage > MEMORY_WARNING_THRESHOLD) {
+                memoryStatus.set(MemoryStatus.WARNING);
             } else {
-                memoryStatus = MemoryStatus.NORMAL;
+                memoryStatus.set(MemoryStatus.NORMAL);
             }
         }
     }
@@ -360,11 +397,11 @@ public class PerformanceOptimizer {
      */
     private void updateStatistics() {
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastStatisticsUpdate < STATISTICS_UPDATE_INTERVAL_MS) {
+        if (currentTime - lastStatisticsUpdate.get() < STATISTICS_UPDATE_INTERVAL_MS) {
             return;
         }
         
-        lastStatisticsUpdate = currentTime;
+        lastStatisticsUpdate.set(currentTime);
         
         if (debugMode.get()) {
             logPerformanceStatistics();
@@ -376,8 +413,8 @@ public class PerformanceOptimizer {
      */
     private void logPerformanceStatistics() {
         logger.debug("[{}] Performance: {:.1f} FPS, {:.2f}ms avg, {:.2f}ms variance, Level: {}, Memory: {}",
-            debugPrefix.get(), currentFPS, averageFrameTime, frameTimeVariance, 
-            currentPerformanceLevel, formatBytes(currentMemoryUsage));
+            debugPrefix.get(), currentFPS.get(), averageFrameTime.get(), frameTimeVariance.get(), 
+            currentPerformanceLevel.get(), formatBytes(currentMemoryUsage.get()));
     }
     
     /**
@@ -390,7 +427,7 @@ public class PerformanceOptimizer {
         }
         
         // Apply MSAA setting
-        int msaaSamples = MSAA_LEVELS[currentMSAALevel];
+        int msaaSamples = MSAA_LEVELS[currentMSAALevel.get()];
         if (msaaSamples > 0) {
             GL11.glEnable(GL30.GL_MULTISAMPLE);
             // Note: MSAA sample count is typically set during framebuffer creation
@@ -409,17 +446,17 @@ public class PerformanceOptimizer {
         synchronized (frameHistory) {
             return new PerformanceStatistics(
                 frameCount.get(),
-                currentFPS,
-                averageFrameTime,
-                frameTimeVariance,
-                currentPerformanceLevel,
+                currentFPS.get(),
+                averageFrameTime.get(),
+                frameTimeVariance.get(),
+                currentPerformanceLevel.get(),
                 new ArrayList<>(activeWarnings),
                 new ArrayList<>(optimizationRecommendations),
-                currentMSAALevel,
-                currentRenderScale,
+                currentMSAALevel.get(),
+                currentRenderScale.get(),
                 adaptiveQualityEnabled.get(),
-                currentMemoryUsage,
-                memoryStatus,
+                currentMemoryUsage.get(),
+                memoryStatus.get(),
                 new ArrayList<>(frameHistory)
             );
         }
@@ -430,12 +467,12 @@ public class PerformanceOptimizer {
      */
     public PerformanceSummary getSummary() {
         return new PerformanceSummary(
-            currentFPS,
-            averageFrameTime,
-            currentPerformanceLevel,
+            currentFPS.get(),
+            averageFrameTime.get(),
+            currentPerformanceLevel.get(),
             activeWarnings.size(),
-            formatBytes(currentMemoryUsage),
-            String.format("%dx MSAA, %.0f%% Scale", MSAA_LEVELS[currentMSAALevel], currentRenderScale * 100)
+            formatBytes(currentMemoryUsage.get()),
+            String.format("%dx MSAA, %.0f%% Scale", MSAA_LEVELS[currentMSAALevel.get()], currentRenderScale.get() * 100)
         );
     }
     
@@ -447,20 +484,21 @@ public class PerformanceOptimizer {
         List<String> overlay = new ArrayList<>();
         
         // FPS with color indication
-        String fpsColor = getFPSColorCode(currentFPS);
-        overlay.add(String.format("%sFPS: %.1f", fpsColor, currentFPS));
+        double fps = currentFPS.get();
+        String fpsColor = getFPSColorCode(fps);
+        overlay.add(String.format("%sFPS: %.1f", fpsColor, fps));
         
         // Frame time
-        overlay.add(String.format("Frame: %.2fms", averageFrameTime));
+        overlay.add(String.format("Frame: %.2fms", averageFrameTime.get()));
         
         // Performance level
-        overlay.add(String.format("Level: %s", currentPerformanceLevel));
+        overlay.add(String.format("Level: %s", currentPerformanceLevel.get()));
         
         // Quality settings
-        overlay.add(String.format("Quality: %dx MSAA, %.0f%%", MSAA_LEVELS[currentMSAALevel], currentRenderScale * 100));
+        overlay.add(String.format("Quality: %dx MSAA, %.0f%%", MSAA_LEVELS[currentMSAALevel.get()], currentRenderScale.get() * 100));
         
         // Memory usage
-        overlay.add(String.format("Memory: %s", formatBytes(currentMemoryUsage)));
+        overlay.add(String.format("Memory: %s", formatBytes(currentMemoryUsage.get())));
         
         // Warnings
         if (!activeWarnings.isEmpty()) {
@@ -513,21 +551,29 @@ public class PerformanceOptimizer {
     // Manual quality control
     public void setMSAALevel(int level) {
         if (level >= 0 && level < MSAA_LEVELS.length) {
-            this.currentMSAALevel = level;
+            this.currentMSAALevel.set(level);
             this.adaptiveQualityEnabled.set(false); // Disable adaptive when manually set
         }
     }
     
     public void setRenderScale(float scale) {
         if (scale >= 0.1f && scale <= 2.0f) {
-            this.currentRenderScale = scale;
+            this.currentRenderScale.set(scale);
             this.adaptiveQualityEnabled.set(false); // Disable adaptive when manually set
         }
     }
     
-    public int getCurrentMSAALevel() { return currentMSAALevel; }
-    public int getCurrentMSAASamples() { return MSAA_LEVELS[currentMSAALevel]; }
-    public float getCurrentRenderScale() { return currentRenderScale; }
+    public int getCurrentMSAALevel() { return currentMSAALevel.get(); }
+    public int getCurrentMSAASamples() { return MSAA_LEVELS[currentMSAALevel.get()]; }
+    public float getCurrentRenderScale() { return currentRenderScale.get(); }
+    
+    // Performance metrics getters
+    public double getCurrentFPS() { return currentFPS.get(); }
+    public double getAverageFrameTime() { return averageFrameTime.get(); }
+    public double getFrameTimeVariance() { return frameTimeVariance.get(); }
+    public PerformanceLevel getCurrentPerformanceLevel() { return currentPerformanceLevel.get(); }
+    public MemoryStatus getMemoryStatus() { return memoryStatus.get(); }
+    public boolean hasActiveWarnings() { return !activeWarnings.isEmpty(); }
     
     // Performance level enumeration
     public enum PerformanceLevel {
