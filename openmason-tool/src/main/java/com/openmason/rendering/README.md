@@ -1,112 +1,122 @@
-# OpenGL Buffer Management System for Open Mason
+# Canvas-Based 3D Rendering System for OpenMason
 
 ## Overview
 
-The OpenGL Buffer Management System provides a comprehensive, high-performance solution for managing OpenGL resources in Open Mason. This system is designed to integrate seamlessly with the existing StonebreakModel architecture while preparing for Phase 3 DriftFX integration.
+The Canvas-Based 3D Rendering System provides a comprehensive, high-performance solution for 3D model visualization within JavaFX using innovative Canvas-based rendering techniques. This system integrates seamlessly with the existing StonebreakModel architecture while providing professional-grade 3D visualization without requiring complex native dependencies.
 
 ## Key Features
 
-- **Automatic Resource Management**: All buffers and vertex arrays automatically clean up OpenGL resources
-- **Memory Monitoring**: Real-time tracking of GPU memory usage and leak detection
-- **Real-time Texture Switching**: Efficient texture variant updates without buffer recreation
-- **1:1 Rendering Parity**: Maintains exact compatibility with Stonebreak's EntityRenderer
-- **Thread-Safe Design**: Safe for use in multi-threaded environments
-- **Comprehensive Validation**: Built-in error checking and OpenGL state validation
+- **Canvas-Based 3D Projection**: Real-time 3D-to-2D projection using camera matrices for realistic depth perception
+- **Professional Arc-Ball Camera**: Industry-standard camera navigation with smooth interpolation
+- **Advanced Model Visualization**: Wireframe and solid rendering modes with depth-based lighting simulation
+- **Real-time Texture Switching**: Instant texture variant updates with visual feedback
+- **Memory Efficient**: Lightweight Canvas-based approach with automatic resource management
+- **Cross-Platform Compatibility**: No native dependencies or complex setup requirements
+- **Performance Optimized**: Hardware-accelerated Canvas drawing with adaptive quality settings
 
 ## Architecture
 
 ### Core Components
 
-1. **OpenGLBuffer** - Base class for all buffer objects with lifecycle management
-2. **VertexBuffer** - Manages vertex position data (VBO)
-3. **IndexBuffer** - Manages triangle indices (EBO)
-4. **TextureCoordinateBuffer** - Manages UV coordinates with atlas integration
-5. **VertexArray** - Combines all buffers into renderable objects (VAO)
-6. **BufferManager** - Central resource tracking and memory monitoring
-7. **ModelRenderer** - High-level rendering interface
-8. **OpenGLValidator** - Validation and error handling utilities
+1. **OpenMason3DViewport** - Main Canvas-based 3D viewport extending JavaFX StackPane
+2. **ArcBallCamera** - Professional camera system with 3D navigation and presets
+3. **Canvas3DProjection** - 3D-to-2D projection system using camera matrices
+4. **ModelRenderer** - High-level rendering interface for Canvas-based model display
+5. **PerformanceOptimizer** - Adaptive quality and performance monitoring system
+6. **BufferManager** - Resource tracking and memory monitoring (legacy OpenGL support)
+7. **TextureManager** - Texture variant management and Canvas integration
+8. **CanvasRenderingEngine** - Core Canvas drawing and optimization utilities
 
-### Buffer Lifecycle
+### Canvas Rendering Lifecycle
 
 ```
-Create Buffer → Upload Data → Use for Rendering → Update if Needed → Dispose
+Initialize Canvas → Setup Camera → Project 3D to 2D → Render on Canvas → Update Display
 ```
 
-All buffers implement `AutoCloseable` for automatic resource cleanup with try-with-resources.
+All Canvas operations are handled through JavaFX's hardware-accelerated GraphicsContext with automatic resource management.
 
 ## Usage Examples
 
-### Basic Buffer Creation
+### Basic Canvas 3D Viewport Setup
 
 ```java
-// Create individual buffers
-try (VertexBuffer vertexBuf = new VertexBuffer("MyVertices");
-     IndexBuffer indexBuf = new IndexBuffer("MyIndices");
-     TextureCoordinateBuffer texCoordBuf = new TextureCoordinateBuffer("MyTexCoords");
-     VertexArray vao = new VertexArray("MyVAO")) {
-    
-    // Upload data
-    vertexBuf.uploadVertices(vertices);
-    indexBuf.uploadIndices(indices);
-    texCoordBuf.uploadTextureCoords(texCoords);
-    
-    // Configure VAO
-    vao.setVertexBuffer(vertexBuf);
-    vao.setIndexBuffer(indexBuf);
-    vao.setTextureCoordinateBuffer(texCoordBuf);
-    
-    // Render
-    vao.renderTriangles();
-    
-    // Resources automatically cleaned up at end of try block
-}
+// Create Canvas-based 3D viewport
+OpenMason3DViewport viewport = new OpenMason3DViewport();
+
+// Set up in JavaFX scene
+StackPane root = new StackPane();
+root.getChildren().add(viewport);
+
+Scene scene = new Scene(root, 800, 600);
+stage.setScene(scene);
+
+// Load and display a model
+StonebreakModel cowModel = ModelManager.loadModel("cow");
+viewport.setCurrentModel(cowModel);
+
+// Set texture variant
+viewport.setCurrentTextureVariant("angus");
+
+// Configure camera for optimal viewing
+ArcBallCamera camera = viewport.getCamera();
+camera.applyPreset(ArcBallCamera.CameraPreset.ISOMETRIC);
+
+// Enable wireframe mode
+viewport.setWireframeMode(true);
+
+// Resources automatically managed by JavaFX
 ```
 
-### Model Integration
+### Advanced Camera Controls
 
 ```java
-// High-level model rendering
-ModelRenderer renderer = new ModelRenderer("CowRenderer");
-renderer.initialize();
+// Get camera from viewport
+ArcBallCamera camera = viewport.getCamera();
 
-// Load model
-StonebreakModel cowModel = StonebreakModel.loadFromResources(
-    "/stonebreak/models/cow/standard_cow.json",
-    "/stonebreak/textures/mobs/cow/default_cow.json",
-    "default"
-);
+// Apply camera presets
+camera.applyPreset(ArcBallCamera.CameraPreset.FRONT);      // Front view
+camera.applyPreset(ArcBallCamera.CameraPreset.ISOMETRIC);  // Isometric view
+camera.applyPreset(ArcBallCamera.CameraPreset.TOP);        // Top-down view
 
-// Prepare for rendering (creates all buffers)
-renderer.prepareModel(cowModel);
+// Manual camera control
+camera.setOrientation(45.0f, 20.0f);  // Azimuth, elevation in degrees
+camera.setDistance(5.0f);              // Distance from target
+camera.setTarget(new Vector3f(0, 0, 0)); // Look-at point
 
-// Render with different texture variants
-renderer.renderModel(cowModel, "default");
-renderer.renderModel(cowModel, "angus");   // Real-time texture switching
-renderer.renderModel(cowModel, "highland");
+// Smooth camera movements
+camera.rotate(deltaX, deltaY);         // Mouse drag rotation
+camera.zoom(scrollDelta);              // Mouse wheel zoom
+camera.pan(deltaX, deltaY);            // Mouse pan
 
-// Cleanup
-renderer.close();
+// Reset to default position
+camera.reset();
+
+// Fit camera to model bounds
+camera.frameObject(minBounds, maxBounds);
 ```
 
-### Memory Monitoring
+### Performance Monitoring
 
 ```java
-BufferManager bufferManager = BufferManager.getInstance();
+// Get performance statistics from viewport
+PerformanceOptimizer.PerformanceStatistics stats = viewport.getPerformanceStatistics();
+System.out.println("FPS: " + stats.getCurrentFPS());
+System.out.println("Frame time: " + stats.getAverageFrameTime() + "ms");
 
-// Configure monitoring
-bufferManager.setMemoryTrackingEnabled(true);
-bufferManager.setMemoryWarningThreshold(100 * 1024 * 1024); // 100MB
+// Enable performance overlay for debugging
+viewport.setPerformanceOverlayEnabled(true);
 
-// Get statistics
-BufferManager.BufferManagerStatistics stats = bufferManager.getStatistics();
-System.out.println("Active buffers: " + stats.activeBufferCount);
-System.out.println("Memory usage: " + stats.currentMemoryUsage + " bytes");
+// Configure adaptive quality
+viewport.setAdaptiveQualityEnabled(true);
 
-// Validate system health
-OpenGLValidator.ValidationReport report = OpenGLValidator.validateBufferSystem(bufferManager);
-if (report.hasIssues()) {
-    System.err.println("Issues found: " + report);
-}
+// Manual quality settings
+viewport.setRenderScale(0.8f);  // Reduce render scale for better performance
+
+// Get rendering statistics
+OpenMason3DViewport.RenderingStatistics renderStats = viewport.getStatistics();
+System.out.println("Total frames: " + renderStats.getFrameCount());
+System.out.println("Errors: " + renderStats.getErrorCount());
+System.out.println("Initialized: " + renderStats.isInitialized());
 ```
 
 ## Integration with Existing Systems
@@ -220,69 +230,93 @@ bufferManager.setMemoryWarningThreshold(100 * 1024 * 1024); // 100MB warning thr
 bufferManager.setMaxHistoryEntries(1000); // History size for statistics
 ```
 
-## Phase 3 DriftFX Preparation
+## Canvas-Based 3D Advantages
 
-The buffer management system is designed with DriftFX integration in mind:
+The Canvas-based 3D rendering approach offers several key advantages:
 
-1. **Resource Sharing**: Buffers can be shared between OpenGL contexts
-2. **Validation**: Comprehensive validation ensures DriftFX compatibility
-3. **Memory Monitoring**: Essential for DriftFX resource management
-4. **Thread Safety**: Required for DriftFX's multi-threaded nature
+1. **No Native Dependencies**: Pure JavaFX implementation without complex setup
+2. **Cross-Platform Compatibility**: Works consistently across all JavaFX-supported platforms
+3. **Hardware Acceleration**: Leverages JavaFX's built-in Canvas hardware acceleration
+4. **Simplified Deployment**: No additional libraries or native components required
+5. **Professional Quality**: Provides excellent visual quality with depth simulation and lighting
 
 ## File Structure
 
 ```
-com.openmason.rendering/
-├── OpenGLBuffer.java              # Base buffer class
-├── VertexBuffer.java              # Vertex position buffer
-├── IndexBuffer.java               # Triangle index buffer
-├── TextureCoordinateBuffer.java   # UV coordinate buffer
-├── VertexArray.java               # VAO wrapper
-├── BufferManager.java             # Resource tracking and monitoring
-├── ModelRenderer.java             # High-level rendering interface
-├── OpenGLValidator.java           # Validation and error handling
-└── RenderingIntegrationExample.java # Usage examples and demos
+com.openmason/
+├── ui/viewport/
+│   └── OpenMason3DViewport.java           # Main Canvas-based 3D viewport
+├── camera/
+│   └── ArcBallCamera.java                 # Professional camera system
+├── rendering/
+│   ├── BufferManager.java                 # Resource tracking (legacy OpenGL support)
+│   ├── ModelRenderer.java                 # High-level rendering interface
+│   ├── PerformanceOptimizer.java          # Performance monitoring and optimization
+│   └── OpenGLValidator.java               # Validation and error handling
+├── model/
+│   ├── ModelManager.java                  # Model loading and management
+│   └── StonebreakModel.java               # Model definition and data
+└── texture/
+    └── TextureManager.java                # Texture variant management
 ```
 
 ## Best Practices
 
-1. **Always use try-with-resources** for automatic cleanup
-2. **Initialize BufferManager early** in application startup
-3. **Enable monitoring during development** to catch leaks
-4. **Validate VAOs after creation** to catch configuration errors
-5. **Use ModelRenderer for high-level operations** instead of direct buffer manipulation
-6. **Call BufferManager.cleanup()** during application shutdown
+1. **Initialize viewport early** in JavaFX Application.start() method
+2. **Use camera presets** for consistent model viewing angles
+3. **Enable performance monitoring** during development to optimize frame rates
+4. **Bind viewport properties** to UI controls for responsive interaction
+5. **Handle model loading asynchronously** to avoid blocking the UI thread
+6. **Call viewport.dispose()** during application shutdown for clean resource cleanup
 
 ## Dependencies
 
-- LWJGL 3.3.2+ (OpenGL bindings)
-- JOML 1.10.5+ (Math library)
+- JavaFX 17+ (UI framework and Canvas rendering)
+- JOML 1.10.5+ (3D math library for matrices and vectors)
 - Jackson (JSON processing for model definitions)
 - Existing StonebreakModel and texture systems
+- No additional native libraries required
 
 ## Future Enhancements
 
-- Instanced rendering support for multiple entities
-- Compute shader integration for advanced processing
-- Vulkan backend compatibility
-- DriftFX integration for JavaFX embedding
-- Multi-threaded buffer loading and updating
+- Multiple model support for side-by-side comparison
+- Advanced lighting models and shadow simulation
+- Animation support for animated models
+- Multi-viewport layouts (quad view, side-by-side)
+- Model measurement and analysis tools
+- Export capabilities for rendered views
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Buffer not rendering**: Check VAO validation and ensure all required buffers are set
-2. **Memory warnings**: Monitor buffer creation/destruction ratio
-3. **OpenGL errors**: Use OpenGLValidator to identify state issues
-4. **Texture not updating**: Ensure texture variant names match definition files
+1. **Viewport not rendering**: Check that viewport is properly added to JavaFX scene graph
+2. **Camera controls not working**: Ensure viewport has focus and camera controls are enabled
+3. **Model not visible**: Verify model is loaded and camera is positioned correctly
+4. **Performance issues**: Enable performance overlay to identify bottlenecks
+5. **Texture variants not switching**: Check texture variant names match definition files
 
 ### Debug Information
 
 Enable detailed logging by setting system properties:
 ```
--Dopenmason.rendering.debug=true
--Dopenmason.rendering.validate=true
+-Dopenmason.viewport.debug=true
+-Dopenmason.performance.debug=true
+-Djavafx.animation.fullspeed=true
 ```
 
-This will enable detailed validation and debug output for all buffer operations.
+This will enable detailed Canvas rendering debug output and performance monitoring.
+
+### Performance Tuning
+
+For optimal Canvas 3D performance:
+```
+// Enable performance overlay to monitor frame rates
+viewport.setPerformanceOverlayEnabled(true);
+
+// Use adaptive quality for automatic optimization
+viewport.setAdaptiveQualityEnabled(true);
+
+// Manually tune render scale if needed
+viewport.setRenderScale(0.8f);  // Reduce for better performance
+```

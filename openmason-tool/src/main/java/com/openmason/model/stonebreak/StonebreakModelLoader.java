@@ -58,7 +58,7 @@ public class StonebreakModelLoader {
     
     // Paths to model definition JSON files
     private static final Map<String, String> MODEL_FILE_PATHS = Map.of(
-        "standard_cow", "stonebreak/models/cow/standard_cow.json"
+        "standard_cow", "models/cow/standard_cow.json"
         // Future cow variants can be added here
     );
     

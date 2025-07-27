@@ -15,12 +15,12 @@
 
 .icon:hover {
     fill: #007ACC;
-    transform: translateY(-1px);
+    -fx-translate-y: -1px;
 }
 
 .icon:active {
-    transform: translateY(0);
-    transition: transform 0.1s ease;
+    -fx-translate-y: 0;
+    transition: -fx-translate-y 0.1s ease;
 }
 
 .icon:disabled,

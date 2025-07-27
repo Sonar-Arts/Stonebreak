@@ -16,6 +16,16 @@ import java.util.List;
 public class OpenGLValidator {
     
     /**
+     * Validates the current OpenGL context for a specific operation.
+     * 
+     * @param operation The operation being validated
+     * @return List of validation issues, empty if no problems detected
+     */
+    public static List<String> validateContext(String operation) {
+        return validateOpenGLContext();
+    }
+    
+    /**
      * Validates the current OpenGL context and returns any issues found.
      * 
      * @return List of validation issues, empty if no problems detected

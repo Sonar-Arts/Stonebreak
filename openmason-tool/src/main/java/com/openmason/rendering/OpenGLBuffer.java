@@ -26,6 +26,10 @@ public abstract class OpenGLBuffer implements AutoCloseable {
     protected int dataSize;
     protected int usage;
     
+    // Cleaner for resource cleanup detection
+    private final BufferCleanupState cleanupState;
+    private final java.lang.ref.Cleaner.Cleanable cleanable;
+    
     /**
      * Creates a new OpenGL buffer of the specified type.
      * 
@@ -45,6 +49,10 @@ public abstract class OpenGLBuffer implements AutoCloseable {
         if (this.bufferId == 0) {
             throw new RuntimeException("Failed to generate OpenGL buffer: " + this.debugName);
         }
+        
+        // Set up cleaner for resource leak detection
+        this.cleanupState = new BufferCleanupState(this.debugName);
+        this.cleanable = cleaner.register(this, cleanupState);
         
         // Register with buffer manager for tracking
         BufferManager.getInstance().registerBuffer(this);
@@ -182,6 +190,11 @@ public abstract class OpenGLBuffer implements AutoCloseable {
         if (!isDisposed && bufferId != 0) {
             GL15.glDeleteBuffers(bufferId);
             BufferManager.getInstance().unregisterBuffer(this);
+            
+            // Mark as disposed in cleanup state and clean the cleanable
+            cleanupState.markDisposed();
+            cleanable.clean();
+            
             isDisposed = true;
             isValid = false;
             bufferId = 0;
@@ -205,16 +218,33 @@ public abstract class OpenGLBuffer implements AutoCloseable {
     }
     
     /**
-     * Finalizer as a safety net for resource cleanup.
+     * Cleanup detection using Cleaner instead of deprecated finalize().
      * Should not be relied upon - always call close() explicitly.
      */
-    @Override
-    protected void finalize() throws Throwable {
-        if (!isDisposed) {
-            System.err.println("WARNING: Buffer not properly disposed: " + debugName);
-            // Note: Cannot call OpenGL functions from finalizer thread
-            // This is just for detection - proper cleanup must happen on main thread
+    private static final java.lang.ref.Cleaner cleaner = java.lang.ref.Cleaner.create();
+    
+    /**
+     * State holder for the cleaner to track buffer disposal.
+     */
+    private static class BufferCleanupState implements Runnable {
+        private final String debugName;
+        private volatile boolean disposed = false;
+        
+        BufferCleanupState(String debugName) {
+            this.debugName = debugName;
         }
-        super.finalize();
+        
+        void markDisposed() {
+            disposed = true;
+        }
+        
+        @Override
+        public void run() {
+            if (!disposed) {
+                System.err.println("WARNING: Buffer not properly disposed: " + debugName);
+                // Note: Cannot call OpenGL functions from cleaner thread
+                // This is just for detection - proper cleanup must happen on main thread
+            }
+        }
     }
 }

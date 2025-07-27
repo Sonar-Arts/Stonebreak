@@ -15,6 +15,12 @@
 
     <name>OpenMason Tool</name>
     <description>Tool for texture and model generation utilities for Stonebreak</description>
+    
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
 
     <dependencies>
         <!-- JavaFX for main UI framework -->
@@ -27,26 +33,23 @@
             <artifactId>javafx-fxml</artifactId>
         </dependency>
         
-        <!-- LWJGL for 3D rendering (identical to Stonebreak) -->
+        
+        <!-- LWJGL core -->
         <dependency>
             <groupId>org.lwjgl</groupId>
             <artifactId>lwjgl</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-opengl</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-glfw</artifactId>
-        </dependency>
-        
-        <!-- LWJGL platform-specific natives -->
         <dependency>
             <groupId>org.lwjgl</groupId>
             <artifactId>lwjgl</artifactId>
             <classifier>${lwjgl.natives}</classifier>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- LWJGL OpenGL -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
         </dependency>
         <dependency>
             <groupId>org.lwjgl</groupId>
@@ -54,35 +57,8 @@
             <classifier>${lwjgl.natives}</classifier>
             <scope>runtime</scope>
         </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-glfw</artifactId>
-            <classifier>${lwjgl.natives}</classifier>
-            <scope>runtime</scope>
-        </dependency>
-        
-        <!-- DriftFX for hardware-accelerated 3D viewport integration (TODO: integrate in future) -->
-        <!--
-        <dependency>
-            <groupId>de.saxsys</groupId>
-            <artifactId>driftfx</artifactId>
-            <version>0.20.0</version>
-        </dependency>
-        -->
-        
-        <!-- LWJGL STB for image loading -->
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-stb</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-stb</artifactId>
-            <classifier>${lwjgl.natives}</classifier>
-            <scope>runtime</scope>
-        </dependency>
-        
-        <!-- JOML for 3D math (same as Stonebreak) -->
+
+        <!-- Java OpenGL Math Library -->
         <dependency>
             <groupId>org.joml</groupId>
             <artifactId>joml</artifactId>
@@ -113,13 +89,108 @@
             <artifactId>logback-classic</artifactId>
             <version>1.4.14</version>
         </dependency>
+        
+        <!-- Testing Dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- Mockito for mocking -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.8.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>5.8.0</version>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- TestFX for JavaFX UI testing -->
+        <dependency>
+            <groupId>org.testfx</groupId>
+            <artifactId>testfx-core</artifactId>
+            <version>4.0.17</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testfx</groupId>
+            <artifactId>testfx-junit5</artifactId>
+            <version>4.0.17</version>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- AssertJ for fluent assertions -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.24.2</version>
+            <scope>test</scope>
+        </dependency>
+        
+        <!-- Awaitility for asynchronous testing -->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <version>4.2.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+
 
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            
+            <!-- Maven Surefire Plugin for running tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.3</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/Test*.java</include>
+                    </includes>
+                    <!-- JVM args for JavaFX testing -->
+                    <argLine>
+                        --add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
+                        --add-opens java.desktop/sun.awt=ALL-UNNAMED
+                        --add-exports javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
+                        -Dtestfx.robot=glass
+                        -Dtestfx.headless=true
+                        -Dprism.order=sw
+                        -Dprism.text=t2k
+                        -Djava.awt.headless=true
+                    </argLine>
+                    <systemPropertyVariables>
+                        <headless.test>true</headless.test>
+                        <performance.test.mode>true</performance.test.mode>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

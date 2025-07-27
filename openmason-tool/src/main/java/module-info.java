@@ -1,22 +1,18 @@
 /**
  * OpenMason Tool Module
- * Professional 3D Model Development Tool for Stonebreak with 1:1 rendering parity
+ * Professional 3D Model Development Tool for Stonebreak with Canvas-based 3D rendering
  */
 module com.openmason {
     
-    // JavaFX requirements
+    // JavaFX requirements for Canvas-based 3D viewport
     requires javafx.controls;
     requires javafx.fxml;
+    requires javafx.graphics;
+    requires javafx.base;
     
-    // DriftFX for hardware-accelerated 3D viewport (TODO: integrate in future)
-    // requires de.saxsys.driftfx;
-    
-    // LWJGL for 3D rendering (identical to Stonebreak)
+    // LWJGL for OpenGL rendering
     requires org.lwjgl;
     requires org.lwjgl.opengl;
-    requires org.lwjgl.glfw;
-    
-    // JOML for 3D mathematics (shared with Stonebreak)
     requires org.joml;
     
     // Jackson for JSON processing (shared with Stonebreak)

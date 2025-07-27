@@ -1,5 +1,12 @@
 package com.openmason.ui;
 
+import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.model.StonebreakModel;
+import com.openmason.model.ModelManager;
+import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.openmason.model.stonebreak.StonebreakModelLoader;
+import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.openmason.texture.stonebreak.StonebreakTextureLoader;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
@@ -115,6 +122,9 @@ public class MainController implements Initializable {
     private boolean modelLoaded = false;
     private String currentModelPath = null;
     private boolean unsavedChanges = false;
+    
+    // 3D Viewport
+    private OpenMason3DViewport viewport3D;
     
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -282,6 +292,69 @@ public class MainController implements Initializable {
         // Set up listeners
         cmbViewMode.setOnAction(e -> changeViewMode());
         cmbRenderMode.setOnAction(e -> changeRenderMode());
+        
+        // Create and integrate the 3D viewport
+        try {
+            logger.info("Initializing 3D viewport...");
+            viewport3D = new OpenMason3DViewport();
+            
+            // Remove placeholder and add the actual 3D viewport
+            viewportContainer.getChildren().clear();
+            
+            // Add viewport to fill the container
+            AnchorPane.setTopAnchor(viewport3D, 0.0);
+            AnchorPane.setBottomAnchor(viewport3D, 0.0);
+            AnchorPane.setLeftAnchor(viewport3D, 0.0);
+            AnchorPane.setRightAnchor(viewport3D, 0.0);
+            
+            viewportContainer.getChildren().add(viewport3D);
+            
+            // Bind viewport properties to UI controls
+            bindViewportControls();
+            
+            logger.info("3D viewport initialized and integrated successfully");
+            
+        } catch (Exception e) {
+            logger.error("Failed to initialize 3D viewport", e);
+            
+            // Add error message as fallback
+            Label errorLabel = new Label("3D Viewport initialization failed: " + e.getMessage());
+            errorLabel.setTextFill(Color.RED);
+            errorLabel.setStyle("-fx-font-size: 12px; -fx-padding: 10px;");
+            
+            AnchorPane.setTopAnchor(errorLabel, 0.0);
+            AnchorPane.setBottomAnchor(errorLabel, 0.0);
+            AnchorPane.setLeftAnchor(errorLabel, 0.0);
+            AnchorPane.setRightAnchor(errorLabel, 0.0);
+            
+            viewportContainer.getChildren().add(errorLabel);
+        }
+    }
+    
+    /**
+     * Bind viewport controls to UI elements.
+     */
+    private void bindViewportControls() {
+        if (viewport3D == null) {
+            return;
+        }
+        
+        // Bind wireframe mode
+        menuWireframeMode.selectedProperty().bindBidirectional(viewport3D.wireframeModeProperty());
+        btnWireframe.selectedProperty().bindBidirectional(viewport3D.wireframeModeProperty());
+        
+        // Bind grid visibility
+        menuShowGrid.selectedProperty().bindBidirectional(viewport3D.gridVisibleProperty());
+        btnShowGrid.selectedProperty().bindBidirectional(viewport3D.gridVisibleProperty());
+        
+        // Bind axes visibility
+        menuShowAxes.selectedProperty().bindBidirectional(viewport3D.axesVisibleProperty());
+        btnShowAxes.selectedProperty().bindBidirectional(viewport3D.axesVisibleProperty());
+        
+        // Bind texture variant
+        viewport3D.currentTextureVariantProperty().bindBidirectional(cmbTextureVariant.valueProperty());
+        
+        logger.debug("Viewport controls bound successfully");
     }
     
     /**
@@ -442,6 +515,17 @@ public class MainController implements Initializable {
     
     private void exitApplication() {
         logger.info("Exit application action triggered");
+        
+        // Cleanup 3D viewport resources
+        if (viewport3D != null) {
+            try {
+                viewport3D.dispose();
+                logger.info("3D viewport disposed successfully");
+            } catch (Exception e) {
+                logger.error("Error disposing 3D viewport", e);
+            }
+        }
+        
         Platform.exit();
     }
     
@@ -463,44 +547,65 @@ public class MainController implements Initializable {
     private void resetView() {
         logger.info("Reset view action triggered");
         updateStatus("Resetting view...");
-        // TODO: Implement view reset
+        if (viewport3D != null) {
+            viewport3D.resetCamera();
+            updateStatus("View reset");
+        }
     }
     
     private void fitToView() {
         logger.info("Fit to view action triggered");
         updateStatus("Fitting to view...");
-        // TODO: Implement fit to view
+        if (viewport3D != null && viewport3D.getCurrentModel() != null) {
+            // The viewport will automatically fit to the current model
+            viewport3D.requestRender();
+            updateStatus("Fitted to view");
+        } else {
+            updateStatus("No model to fit to view");
+        }
     }
     
     private void zoomIn() {
         logger.info("Zoom in action triggered");
-        // TODO: Implement zoom in
+        if (viewport3D != null && viewport3D.getCamera() != null) {
+            viewport3D.getCamera().zoom(1.0f); // Positive zoom = zoom in
+            viewport3D.requestRender();
+        }
     }
     
     private void zoomOut() {
         logger.info("Zoom out action triggered");
-        // TODO: Implement zoom out
+        if (viewport3D != null && viewport3D.getCamera() != null) {
+            viewport3D.getCamera().zoom(-1.0f); // Negative zoom = zoom out
+            viewport3D.requestRender();
+        }
     }
     
     private void toggleGrid() {
         boolean showGrid = menuShowGrid.isSelected();
         btnShowGrid.setSelected(showGrid);
         logger.info("Toggle grid: {}", showGrid);
-        // TODO: Implement grid toggle
+        if (viewport3D != null) {
+            viewport3D.setGridVisible(showGrid);
+        }
     }
     
     private void toggleAxes() {
         boolean showAxes = menuShowAxes.isSelected();
         btnShowAxes.setSelected(showAxes);
         logger.info("Toggle axes: {}", showAxes);
-        // TODO: Implement axes toggle
+        if (viewport3D != null) {
+            viewport3D.setAxesVisible(showAxes);
+        }
     }
     
     private void toggleWireframe() {
         boolean wireframe = menuWireframeMode.isSelected();
         btnWireframe.setSelected(wireframe);
         logger.info("Toggle wireframe: {}", wireframe);
-        // TODO: Implement wireframe toggle
+        if (viewport3D != null) {
+            viewport3D.setWireframeMode(wireframe);
+        }
     }
     
     private void toggleModelBrowser() {
@@ -549,7 +654,73 @@ public class MainController implements Initializable {
     private void selectModel(String modelName) {
         logger.info("Selected model: {}", modelName);
         lblModelInfo.setText("Selected: " + modelName);
-        // TODO: Implement model loading
+        
+        // Load model based on selection
+        if (viewport3D != null) {
+            try {
+                if (modelName.contains("Cow") || modelName.contains("cow")) {
+                    // Set texture variant based on selection
+                    String textureVariant = "default";
+                    if (modelName.toLowerCase().contains("angus")) {
+                        textureVariant = "angus";
+                    } else if (modelName.toLowerCase().contains("highland")) {
+                        textureVariant = "highland";
+                    } else if (modelName.toLowerCase().contains("jersey")) {
+                        textureVariant = "jersey";
+                    }
+                    
+                    updateStatus("Loading model: " + modelName + " with texture variant: " + textureVariant);
+                    
+                    // Load model definition
+                    StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
+                    if (modelDef != null) {
+                        // Load texture definition for the variant
+                        StonebreakTextureLoader textureLoader = new StonebreakTextureLoader();
+                        String texturePath = "/stonebreak/textures/mobs/cow/" + textureVariant + "_cow.json";
+                        StonebreakTextureDefinition.CowVariant textureDef = textureLoader.loadIndividualVariantSync(texturePath);
+                        
+                        if (textureDef != null) {
+                            // Create the integrated StonebreakModel
+                            StonebreakModel cowModel = new StonebreakModel(modelDef, textureDef, textureVariant);
+                            
+                            // Set model and texture in viewport
+                            viewport3D.setCurrentModel(cowModel);
+                            viewport3D.setCurrentTextureVariant(textureVariant);
+                            cmbTextureVariant.setValue(capitalizeFirst(textureVariant));
+                            
+                            modelLoaded = true;
+                            currentModelPath = modelName;
+                            updateUIState();
+                            updateStatus("Model loaded: " + modelName + " (" + textureVariant + " variant)");
+                            
+                            logger.info("Successfully loaded model: {} with texture variant: {}", modelName, textureVariant);
+                        } else {
+                            logger.warn("Failed to load texture variant: {}", textureVariant);
+                            updateStatus("Failed to load texture variant: " + textureVariant);
+                        }
+                    } else {
+                        logger.warn("Failed to load cow model definition");
+                        updateStatus("Failed to load model: " + modelName);
+                    }
+                } else {
+                    updateStatus("Model type not yet supported: " + modelName);
+                }
+                
+            } catch (Exception e) {
+                logger.error("Error loading model: {}", modelName, e);
+                updateStatus("Error loading model: " + e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Capitalize the first letter of a string.
+     */
+    private String capitalizeFirst(String str) {
+        if (str == null || str.isEmpty()) {
+            return str;
+        }
+        return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
     }
     
     private void changeViewMode() {
@@ -568,7 +739,47 @@ public class MainController implements Initializable {
         String variant = cmbTextureVariant.getValue();
         logger.info("Changed texture variant to: {}", variant);
         updateStatus("Loading texture variant: " + variant);
-        // TODO: Implement texture variant switching
+        
+        if (viewport3D != null && variant != null && modelLoaded) {
+            try {
+                String variantLower = variant.toLowerCase();
+                
+                // Reload the model with the new texture variant
+                StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
+                if (modelDef != null) {
+                    // Load the new texture definition
+                    StonebreakTextureLoader textureLoader = new StonebreakTextureLoader();
+                    String texturePath = "/stonebreak/textures/mobs/cow/" + variantLower + "_cow.json";
+                    StonebreakTextureDefinition.CowVariant textureDef = textureLoader.loadIndividualVariantSync(texturePath);
+                    
+                    if (textureDef != null) {
+                        // Create updated model with new texture
+                        StonebreakModel updatedModel = new StonebreakModel(modelDef, textureDef, variantLower);
+                        
+                        // Update viewport
+                        viewport3D.setCurrentModel(updatedModel);
+                        viewport3D.setCurrentTextureVariant(variantLower);
+                        
+                        updateStatus("Texture variant changed to: " + variant);
+                        logger.info("Successfully changed texture variant to: {}", variant);
+                    } else {
+                        logger.warn("Failed to load texture variant: {}", variant);
+                        updateStatus("Failed to load texture variant: " + variant);
+                    }
+                } else {
+                    logger.warn("Failed to reload model definition");
+                    updateStatus("Failed to reload model for texture variant: " + variant);
+                }
+                
+            } catch (Exception e) {
+                logger.error("Error changing texture variant to: {}", variant, e);
+                updateStatus("Error changing texture variant: " + e.getMessage());
+            }
+        } else if (viewport3D != null && variant != null) {
+            // Just update the texture variant setting if no model is loaded
+            viewport3D.setCurrentTextureVariant(variant.toLowerCase());
+            updateStatus("Texture variant set to: " + variant + " (will apply when model is loaded)");
+        }
     }
     
     private void changeAnimation() {
@@ -621,7 +832,18 @@ public class MainController implements Initializable {
     }
     
     private void updateFrameRate() {
-        Platform.runLater(() -> lblFrameRate.setText("FPS: 60")); // Placeholder
+        Platform.runLater(() -> {
+            if (viewport3D != null) {
+                var stats = viewport3D.getStatistics();
+                if (stats != null) {
+                    lblFrameRate.setText(String.format("FPS: %.1f", stats.getCurrentFPS()));
+                } else {
+                    lblFrameRate.setText("FPS: --");
+                }
+            } else {
+                lblFrameRate.setText("FPS: --");
+            }
+        });
     }
     
     private void startPeriodicUpdates() {
@@ -849,14 +1071,14 @@ public class MainController implements Initializable {
         // Arrow pointing clockwise
         Polygon arrow = new Polygon();
         double arrowSize = size * 0.1;
-        arrow.getPoints().addAll(new Double[]{
+        arrow.getPoints().addAll(
             centerX + size * 0.25, centerY - size * 0.05,  // tip
             centerX + size * 0.15, centerY - size * 0.15,  // left
             centerX + size * 0.15, centerY - size * 0.1,   // inner left
             centerX + size * 0.2, centerY - size * 0.1,    // inner right
             centerX + size * 0.2, centerY + size * 0.05,   // bottom
             centerX + size * 0.25, centerY + size * 0.05   // right
-        });
+        );
         arrow.setFill(Color.WHITE);
         
         pane.getChildren().addAll(circle, arrow);
@@ -979,11 +1201,11 @@ public class MainController implements Initializable {
         
         // Check mark
         Polyline check = new Polyline();
-        check.getPoints().addAll(new Double[]{
+        check.getPoints().addAll(
             size * 0.35, size * 0.5,
             size * 0.45, size * 0.6,
             size * 0.65, size * 0.4
-        });
+        );
         check.setStroke(Color.LIGHTGREEN);
         check.setStrokeWidth(2);
         check.setFill(Color.TRANSPARENT);
@@ -1049,11 +1271,11 @@ public class MainController implements Initializable {
         pane.setPrefSize(size, size);
         
         Polygon triangle = new Polygon();
-        triangle.getPoints().addAll(new Double[]{
+        triangle.getPoints().addAll(
             size * 0.3, size * 0.2,
             size * 0.3, size * 0.8,
             size * 0.8, size * 0.5
-        });
+        );
         triangle.setFill(Color.LIGHTGREEN);
         
         pane.getChildren().add(triangle);
