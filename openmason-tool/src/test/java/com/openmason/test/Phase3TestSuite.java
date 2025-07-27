@@ -9,6 +9,7 @@ import org.junit.platform.suite.api.SuiteDisplayName;
  * 
  * This suite orchestrates all Phase 3 tests including:
  * - System Integration Testing (Phase3IntegrationTest)
+ * - Critical Fixes Integration Testing (CriticalFixesIntegrationTest)
  * - Performance Benchmarking (ViewportPerformanceTest) 
  * - Camera Controls Validation (CameraControlsTest)
  * - Model Rendering Validation (ModelRenderingValidationTest)
@@ -27,6 +28,9 @@ import org.junit.platform.suite.api.SuiteDisplayName;
 @SelectClasses({
     // Core integration testing
     Phase3IntegrationTest.class,
+    
+    // Critical fixes integration testing
+    CriticalFixesIntegrationTest.class,
     
     // Performance validation
     ViewportPerformanceTest.class,

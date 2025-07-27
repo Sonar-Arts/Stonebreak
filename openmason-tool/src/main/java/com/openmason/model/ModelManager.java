@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.ArrayList;
 import java.util.concurrent.CancellationException;
@@ -65,7 +66,7 @@ public class ModelManager {
     }
     
     /**
-     * Internal load request for priority queue.
+     * Internal load request for priority queue with thread-safe cancellation handling.
      */
     private static class LoadRequest implements Comparable<LoadRequest> {
         final String modelName;
@@ -73,6 +74,8 @@ public class ModelManager {
         final CompletableFuture<ModelInfo> future;
         final ProgressCallback callback;
         final long timestamp;
+        private final AtomicBoolean isProcessing = new AtomicBoolean(false);
+        private final AtomicReference<Thread> processingThread = new AtomicReference<>();
         
         LoadRequest(String modelName, LoadingPriority priority, CompletableFuture<ModelInfo> future, ProgressCallback callback) {
             this.modelName = modelName;
@@ -80,6 +83,43 @@ public class ModelManager {
             this.future = future;
             this.callback = callback;
             this.timestamp = System.nanoTime();
+        }
+        
+        /**
+         * Atomically try to start processing this request.
+         * @return true if this thread should process the request, false if already being processed or cancelled
+         */
+        boolean tryStartProcessing() {
+            if (future.isCancelled() || future.isDone()) {
+                return false;
+            }
+            if (isProcessing.compareAndSet(false, true)) {
+                processingThread.set(Thread.currentThread());
+                return true;
+            }
+            return false;
+        }
+        
+        /**
+         * Mark processing as complete and clear the processing thread.
+         */
+        void finishProcessing() {
+            processingThread.set(null);
+            isProcessing.set(false);
+        }
+        
+        /**
+         * Check if this request is currently being processed.
+         */
+        boolean isBeingProcessed() {
+            return isProcessing.get();
+        }
+        
+        /**
+         * Get the thread currently processing this request, if any.
+         */
+        Thread getProcessingThread() {
+            return processingThread.get();
         }
         
         @Override
@@ -100,14 +140,28 @@ public class ModelManager {
             while (!shutdownRequested.get()) {
                 try {
                     LoadRequest request = loadQueue.poll(1, TimeUnit.SECONDS);
-                    if (request != null && !request.future.isCancelled()) {
-                        processLoadRequest(request);
+                    if (request != null) {
+                        // Use atomic operation to check if we should process this request
+                        if (request.tryStartProcessing()) {
+                            try {
+                                processLoadRequest(request);
+                            } finally {
+                                request.finishProcessing();
+                            }
+                        }
+                        // If tryStartProcessing() returns false, the request was already
+                        // cancelled, completed, or being processed by another thread
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
+                } catch (CancellationException e) {
+                    // Normal cancellation, not an error condition
+                    // Continue processing other requests
                 } catch (Exception e) {
                     System.err.println("[ModelManager] Background processor error: " + e.getMessage());
+                    // Log full stack trace for debugging in development
+                    e.printStackTrace();
                 }
             }
         }, "ModelManager-BackgroundProcessor");
@@ -296,8 +350,16 @@ public class ModelManager {
         LoadRequest request = new LoadRequest(modelName, priority, future, progressCallback);
         
         if (priority == LoadingPriority.IMMEDIATE) {
-            // Process immediately on current thread
-            backgroundLoader.submit(() -> processLoadRequest(request));
+            // Process immediately with thread-safe handling
+            backgroundLoader.submit(() -> {
+                if (request.tryStartProcessing()) {
+                    try {
+                        processLoadRequest(request);
+                    } finally {
+                        request.finishProcessing();
+                    }
+                }
+            });
         } else {
             // Add to queue for background processing
             loadQueue.offer(request);
@@ -308,10 +370,12 @@ public class ModelManager {
     
     /**
      * Process a load request from the background queue.
+     * This method assumes that tryStartProcessing() has already been called successfully.
      */
     private static void processLoadRequest(LoadRequest request) {
         try {
-            if (request.future.isCancelled()) {
+            // Double-check cancellation state after gaining processing lock
+            if (request.future.isCancelled() || request.future.isDone()) {
                 return;
             }
             
@@ -320,12 +384,13 @@ public class ModelManager {
                     "Loading model: " + request.modelName);
             }
             
-            // Use the async model loader
+            // Use the async model loader with proper cancellation handling
             StonebreakModelLoader.getCowModelAsync(request.modelName, 
                 StonebreakModelLoader.LoadingPriority.NORMAL, null)
                 .thenAccept(model -> {
                     try {
-                        if (model != null && !request.future.isCancelled()) {
+                        // Thread-safe check: only complete if not already cancelled/completed
+                        if (model != null && !request.future.isDone()) {
                             if (request.callback != null) {
                                 request.callback.onProgress("loadModelInfoAsync", 75, 100, 
                                     "Creating model info");
@@ -334,30 +399,38 @@ public class ModelManager {
                             ModelInfo info = createModelInfo(request.modelName, model);
                             modelInfoCache.put(request.modelName, info);
                             
-                            if (request.callback != null) {
-                                request.callback.onProgress("loadModelInfoAsync", 100, 100, 
-                                    "Model info loaded successfully");
-                                request.callback.onComplete("loadModelInfoAsync", info);
+                            // Atomic completion - only complete if not already done
+                            if (request.future.complete(info)) {
+                                if (request.callback != null) {
+                                    request.callback.onProgress("loadModelInfoAsync", 100, 100, 
+                                        "Model info loaded successfully");
+                                    request.callback.onComplete("loadModelInfoAsync", info);
+                                }
+                                System.out.println("[ModelManager] Loaded model info asynchronously: " + info);
                             }
-                            
-                            request.future.complete(info);
-                            System.out.println("[ModelManager] Loaded model info asynchronously: " + info);
-                        } else {
+                        } else if (!request.future.isDone()) {
+                            // Only complete exceptionally if not already done
                             request.future.completeExceptionally(
                                 new RuntimeException("Failed to load model: " + request.modelName));
                         }
                     } catch (Exception e) {
-                        if (request.callback != null) {
-                            request.callback.onError("loadModelInfoAsync", e);
+                        // Only handle error if future is not already completed
+                        if (!request.future.isDone()) {
+                            if (request.callback != null) {
+                                request.callback.onError("loadModelInfoAsync", e);
+                            }
+                            request.future.completeExceptionally(e);
                         }
-                        request.future.completeExceptionally(e);
                     }
                 })
                 .exceptionally(throwable -> {
-                    if (request.callback != null) {
-                        request.callback.onError("loadModelInfoAsync", throwable);
+                    // Only handle error if future is not already completed
+                    if (!request.future.isDone()) {
+                        if (request.callback != null) {
+                            request.callback.onError("loadModelInfoAsync", throwable);
+                        }
+                        request.future.completeExceptionally(throwable);
                     }
-                    request.future.completeExceptionally(throwable);
                     return null;
                 });
                 
@@ -386,6 +459,9 @@ public class ModelManager {
         try {
             // Use async loading with IMMEDIATE priority for legacy compatibility
             return loadModelInfoAsync(modelName, LoadingPriority.IMMEDIATE, null).get();
+        } catch (CancellationException e) {
+            System.err.println("[ModelManager] Model loading was cancelled for '" + modelName + "'");
+            return null;
         } catch (Exception e) {
             System.err.println("[ModelManager] Failed to get model info for '" + modelName + "': " + e.getMessage());
             return null;
@@ -553,9 +629,13 @@ public class ModelManager {
         int cancelledCount = 0;
         LoadRequest request;
         while ((request = loadQueue.poll()) != null) {
+            // Cancel the future first
             if (request.future.cancel(false)) {
                 cancelledCount++;
             }
+            // If the request is currently being processed, interrupt the processing thread
+            // Note: We don't interrupt here as it could cause issues with the underlying model loader
+            // The processing thread will check cancellation status and exit gracefully
         }
         
         System.out.println("[ModelManager] Cancelled " + cancelledCount + " pending load requests");
@@ -569,6 +649,42 @@ public class ModelManager {
      */
     public static int getPendingLoadCount() {
         return loadQueue.size();
+    }
+    
+    /**
+     * Get the number of requests currently being processed.
+     * 
+     * @return Number of requests currently being processed
+     */
+    public static int getProcessingCount() {
+        return (int) loadQueue.stream()
+            .filter(LoadRequest::isBeingProcessed)
+            .count();
+    }
+    
+    /**
+     * Get detailed information about current load queue status.
+     * 
+     * @return Status string with queue and processing information
+     */
+    public static String getLoadQueueStatus() {
+        int pending = getPendingLoadCount();
+        int processing = getProcessingCount();
+        StringBuilder status = new StringBuilder();
+        status.append(String.format("Load Queue Status: %d pending, %d processing\n", pending, processing));
+        
+        if (pending > 0 || processing > 0) {
+            status.append("Current requests:\n");
+            loadQueue.forEach(request -> {
+                String state = request.isBeingProcessed() ? "PROCESSING" : "PENDING";
+                Thread processingThread = request.getProcessingThread();
+                String threadInfo = processingThread != null ? " (" + processingThread.getName() + ")" : "";
+                status.append(String.format("  - %s [%s] %s%s\n", 
+                    request.modelName, request.priority, state, threadInfo));
+            });
+        }
+        
+        return status.toString();
     }
     
     /**
@@ -644,9 +760,15 @@ public class ModelManager {
         System.out.println("  Initialized: " + initialized);
         System.out.println("  Initializing: " + isInitializing());
         System.out.println("  Pending loads: " + getPendingLoadCount());
+        System.out.println("  Processing loads: " + getProcessingCount());
         System.out.println("  Cached models: " + modelInfoCache.size());
         System.out.println("  Shutdown requested: " + shutdownRequested.get());
         System.out.println();
+        
+        // Print detailed queue status if there are active operations
+        if (getPendingLoadCount() > 0 || getProcessingCount() > 0) {
+            System.out.println(getLoadQueueStatus());
+        }
         
         if (initialized) {
             for (ModelInfo info : modelInfoCache.values()) {

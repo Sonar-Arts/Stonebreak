@@ -5,6 +5,7 @@ import com.openmason.model.stonebreak.StonebreakModelDefinition;
 import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,6 +26,10 @@ public class ModelRenderer implements AutoCloseable {
     // Performance tracking
     private long totalRenderCalls = 0;
     private long lastRenderTime = 0;
+    
+    // Context validation tracking
+    private boolean contextValidationEnabled = true;
+    private long lastContextValidationTime = 0;
     
     /**
      * Creates a new ModelRenderer.
@@ -59,6 +64,18 @@ public class ModelRenderer implements AutoCloseable {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
         
+        // Validate OpenGL context before model preparation
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("prepareModel");
+            if (!contextIssues.isEmpty()) {
+                System.err.println("OpenGL context validation failed in prepareModel:");
+                for (String issue : contextIssues) {
+                    System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot prepare model due to invalid OpenGL context");
+            }
+        }
+        
         try {
             // Get model parts from the definition
             for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
@@ -90,6 +107,18 @@ public class ModelRenderer implements AutoCloseable {
         // Skip if already prepared
         if (modelPartVAOs.containsKey(partName)) {
             return;
+        }
+        
+        // Validate OpenGL context before model part preparation
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("prepareModelPart:" + partName);
+            if (!contextIssues.isEmpty()) {
+                System.err.println("OpenGL context validation failed in prepareModelPart for " + partName + ":");
+                for (String issue : contextIssues) {
+                    System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot prepare model part '" + partName + "' due to invalid OpenGL context");
+            }
         }
         
         // Use the model part directly
@@ -166,6 +195,28 @@ public class ModelRenderer implements AutoCloseable {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
         
+        // Validate OpenGL context and rendering state before rendering
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("renderModel");
+            if (!contextIssues.isEmpty()) {
+                System.err.println("OpenGL context validation failed in renderModel:");
+                for (String issue : contextIssues) {
+                    System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot render model due to invalid OpenGL context");
+            }
+            
+            // Also validate rendering state for optimal performance
+            List<String> stateIssues = OpenGLValidator.validateRenderingState();
+            if (!stateIssues.isEmpty()) {
+                System.err.println("OpenGL rendering state validation issues in renderModel:");
+                for (String issue : stateIssues) {
+                    System.err.println("  - WARNING: " + issue);
+                }
+                // Note: These are warnings, not fatal errors, so we continue rendering
+            }
+        }
+        
         // Update texture variants if needed
         updateTextureVariants(model, textureVariant);
         
@@ -184,8 +235,32 @@ public class ModelRenderer implements AutoCloseable {
      * @param partName The name of the part to render
      */
     public void renderModelPart(String partName) {
+        // Validate OpenGL context before rendering individual parts
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
+            if (!contextIssues.isEmpty()) {
+                System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
+                for (String issue : contextIssues) {
+                    System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot render model part '" + partName + "' due to invalid OpenGL context");
+            }
+        }
+        
         VertexArray vao = modelPartVAOs.get(partName);
         if (vao != null && vao.isValid()) {
+            // Additional VAO validation before rendering
+            if (contextValidationEnabled) {
+                List<String> vaoIssues = OpenGLValidator.validateVertexArray(vao);
+                if (!vaoIssues.isEmpty()) {
+                    System.err.println("VAO validation issues for part " + partName + ":");
+                    for (String issue : vaoIssues) {
+                        System.err.println("  - WARNING: " + issue);
+                    }
+                    // Continue rendering despite warnings, but the user is informed
+                }
+            }
+            
             vao.renderTriangles();
         } else {
             System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
@@ -279,12 +354,118 @@ public class ModelRenderer implements AutoCloseable {
         initialized = false;
     }
     
+    /**
+     * Enables or disables OpenGL context validation.
+     * Validation can be disabled for performance in production builds.
+     * 
+     * @param enabled Whether to enable context validation
+     */
+    public void setContextValidationEnabled(boolean enabled) {
+        this.contextValidationEnabled = enabled;
+        if (enabled) {
+            System.out.println("OpenGL context validation enabled for ModelRenderer: " + debugPrefix);
+        } else {
+            System.out.println("OpenGL context validation disabled for ModelRenderer: " + debugPrefix);
+        }
+    }
+    
+    /**
+     * Performs a comprehensive validation of the current rendering state.
+     * This method can be called periodically to check system health.
+     * 
+     * @return Validation report with any issues found
+     */
+    public ValidationReport validateRenderingSystem() {
+        ValidationReport report = new ValidationReport();
+        
+        // Basic context validation
+        report.contextIssues.addAll(OpenGLValidator.validateContext("validateRenderingSystem"));
+        
+        // Validate all VAOs
+        for (Map.Entry<String, VertexArray> entry : modelPartVAOs.entrySet()) {
+            String partName = entry.getKey();
+            VertexArray vao = entry.getValue();
+            
+            List<String> vaoIssues = OpenGLValidator.validateVertexArray(vao);
+            for (String issue : vaoIssues) {
+                report.vaoIssues.add(partName + ": " + issue);
+            }
+        }
+        
+        // Check initialization state
+        if (!initialized) {
+            report.stateIssues.add("ModelRenderer not initialized");
+        }
+        
+        // Check for resource consistency
+        if (modelPartVAOs.size() != currentTextureVariants.size()) {
+            report.stateIssues.add("Mismatch between VAO count (" + modelPartVAOs.size() + 
+                                 ") and texture variant count (" + currentTextureVariants.size() + ")");
+        }
+        
+        lastContextValidationTime = System.currentTimeMillis();
+        return report;
+    }
+    
     // Getters
     public boolean isInitialized() { return initialized; }
     public String getDebugPrefix() { return debugPrefix; }
     public int getModelPartCount() { return modelPartVAOs.size(); }
     public long getTotalRenderCalls() { return totalRenderCalls; }
     public long getLastRenderTime() { return lastRenderTime; }
+    public boolean isContextValidationEnabled() { return contextValidationEnabled; }
+    public long getLastContextValidationTime() { return lastContextValidationTime; }
+    
+    /**
+     * Validation report for ModelRenderer system health checks.
+     */
+    public static class ValidationReport {
+        public final List<String> contextIssues = new java.util.ArrayList<>();
+        public final List<String> vaoIssues = new java.util.ArrayList<>();
+        public final List<String> stateIssues = new java.util.ArrayList<>();
+        
+        public boolean hasIssues() {
+            return !contextIssues.isEmpty() || !vaoIssues.isEmpty() || !stateIssues.isEmpty();
+        }
+        
+        public int getTotalIssueCount() {
+            return contextIssues.size() + vaoIssues.size() + stateIssues.size();
+        }
+        
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("=== ModelRenderer Validation Report ===").append("\n");
+            
+            if (!contextIssues.isEmpty()) {
+                sb.append("OpenGL Context Issues (").append(contextIssues.size()).append("):").append("\n");
+                for (String issue : contextIssues) {
+                    sb.append("  - ").append(issue).append("\n");
+                }
+            }
+            
+            if (!vaoIssues.isEmpty()) {
+                sb.append("VAO Issues (").append(vaoIssues.size()).append("):").append("\n");
+                for (String issue : vaoIssues) {
+                    sb.append("  - ").append(issue).append("\n");
+                }
+            }
+            
+            if (!stateIssues.isEmpty()) {
+                sb.append("State Issues (").append(stateIssues.size()).append("):").append("\n");
+                for (String issue : stateIssues) {
+                    sb.append("  - ").append(issue).append("\n");
+                }
+            }
+            
+            if (!hasIssues()) {
+                sb.append("No issues detected - ModelRenderer is healthy!").append("\n");
+            }
+            
+            sb.append("===========================================");
+            return sb.toString();
+        }
+    }
     
     /**
      * Statistics class for rendering performance monitoring.
