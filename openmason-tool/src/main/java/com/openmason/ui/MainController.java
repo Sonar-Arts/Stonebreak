@@ -783,7 +783,29 @@ public class MainController implements Initializable {
     private void changeRenderMode() {
         String renderMode = cmbRenderMode.getValue();
         logger.info("Changed render mode to: {}", renderMode);
-        // TODO: Implement render mode change
+        
+        if (viewport3D != null && renderMode != null) {
+            switch (renderMode.toLowerCase()) {
+                case "wireframe":
+                    viewport3D.setWireframeMode(true);
+                    // Update wireframe button and menu to match
+                    btnWireframe.setSelected(true);
+                    menuWireframeMode.setSelected(true);
+                    break;
+                case "solid":
+                case "textured":
+                default:
+                    viewport3D.setWireframeMode(false);
+                    // Update wireframe button and menu to match
+                    btnWireframe.setSelected(false);
+                    menuWireframeMode.setSelected(false);
+                    break;
+            }
+            updateStatus("Render mode: " + renderMode);
+        } else {
+            logger.warn("Cannot change render mode - viewport3D is null or renderMode is null");
+            updateStatus("Error: Cannot change render mode");
+        }
     }
     
     private void changeTextureVariant() {
