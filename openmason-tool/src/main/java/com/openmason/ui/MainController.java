@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.ResourceBundle;
 
 /**
@@ -126,6 +128,9 @@ public class MainController implements Initializable {
     // 3D Viewport
     private OpenMason3DViewport viewport3D;
     
+    // Property Panel Controller
+    private PropertyPanelController propertyPanelController;
+    
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         logger.info("Initializing MainController...");
@@ -137,6 +142,7 @@ public class MainController implements Initializable {
             setupModelBrowser();
             setupViewport();
             setupPropertiesPanel();
+            setupPropertyPanelController();
             setupStatusBar();
             updateUIState();
             
@@ -361,10 +367,9 @@ public class MainController implements Initializable {
      * Set up properties panel.
      */
     private void setupPropertiesPanel() {
-        // Initialize texture variant combo
-        cmbTextureVariant.getItems().addAll("Default", "Angus", "Highland", "Jersey");
+        // Initialize texture variant combo (items will be set by PropertyPanelController)  
         cmbTextureVariant.setValue("Default");
-        cmbTextureVariant.setOnAction(e -> changeTextureVariant());
+        // Note: setOnAction is handled by PropertyPanelController.setControlReferences() for consistent behavior
         
         // Set up rotation sliders
         setupRotationSlider(sliderRotationX, txtRotationX);
@@ -387,6 +392,48 @@ public class MainController implements Initializable {
         // Set up property buttons
         btnValidateProperties.setOnAction(e -> validateModel());
         btnResetProperties.setOnAction(e -> resetProperties());
+    }
+    
+    /**
+     * Set up integrated PropertyPanelController for Phase 5 texture variant system.
+     */
+    private void setupPropertyPanelController() {
+        try {
+            logger.info("Setting up PropertyPanelController integration...");
+            
+            // Create PropertyPanelController instance
+            propertyPanelController = new PropertyPanelController();
+            
+            // Initialize the controller manually since it's not loaded via FXML
+            propertyPanelController.initialize(null, null);
+            
+            // Connect the 3D viewport
+            if (viewport3D != null) {
+                propertyPanelController.setViewport3D(viewport3D);
+            }
+            
+            // Connect the FXML control references
+            propertyPanelController.setControlReferences(
+                cmbTextureVariant, 
+                lblPartCount, 
+                lblVertexCount, 
+                lblTriangleCount, 
+                lblTextureVariants
+            );
+            
+            // Bind status updates to main status bar (optional)
+            propertyPanelController.statusMessageProperty().addListener((obs, oldValue, newValue) -> {
+                if (newValue != null && !newValue.isEmpty() && !newValue.equals("Ready")) {
+                    updateStatus(newValue);
+                }
+            });
+            
+            logger.info("PropertyPanelController integration complete");
+            
+        } catch (Exception e) {
+            logger.error("Failed to setup PropertyPanelController", e);
+            updateStatus("PropertyPanelController setup failed: " + e.getMessage());
+        }
     }
     
     /**
@@ -675,9 +722,7 @@ public class MainController implements Initializable {
                     StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
                     if (modelDef != null) {
                         // Load texture definition for the variant
-                        StonebreakTextureLoader textureLoader = new StonebreakTextureLoader();
-                        String texturePath = "/stonebreak/textures/mobs/cow/" + textureVariant + "_cow.json";
-                        StonebreakTextureDefinition.CowVariant textureDef = textureLoader.loadIndividualVariantSync(texturePath);
+                        StonebreakTextureDefinition.CowVariant textureDef = StonebreakTextureLoader.loadIndividualVariantSync(textureVariant);
                         
                         if (textureDef != null) {
                             // Create the integrated StonebreakModel
@@ -690,6 +735,12 @@ public class MainController implements Initializable {
                             
                             modelLoaded = true;
                             currentModelPath = modelName;
+                            
+                            // Load texture variants using PropertyPanelController
+                            if (propertyPanelController != null) {
+                                propertyPanelController.loadTextureVariants(modelName);
+                            }
+                            
                             updateUIState();
                             updateStatus("Model loaded: " + modelName + " (" + textureVariant + " variant)");
                             
@@ -737,48 +788,16 @@ public class MainController implements Initializable {
     
     private void changeTextureVariant() {
         String variant = cmbTextureVariant.getValue();
-        logger.info("Changed texture variant to: {}", variant);
-        updateStatus("Loading texture variant: " + variant);
+        logger.info("MainController: Texture variant change requested: {}", variant);
         
-        if (viewport3D != null && variant != null && modelLoaded) {
-            try {
-                String variantLower = variant.toLowerCase();
-                
-                // Reload the model with the new texture variant
-                StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
-                if (modelDef != null) {
-                    // Load the new texture definition
-                    StonebreakTextureLoader textureLoader = new StonebreakTextureLoader();
-                    String texturePath = "/stonebreak/textures/mobs/cow/" + variantLower + "_cow.json";
-                    StonebreakTextureDefinition.CowVariant textureDef = textureLoader.loadIndividualVariantSync(texturePath);
-                    
-                    if (textureDef != null) {
-                        // Create updated model with new texture
-                        StonebreakModel updatedModel = new StonebreakModel(modelDef, textureDef, variantLower);
-                        
-                        // Update viewport
-                        viewport3D.setCurrentModel(updatedModel);
-                        viewport3D.setCurrentTextureVariant(variantLower);
-                        
-                        updateStatus("Texture variant changed to: " + variant);
-                        logger.info("Successfully changed texture variant to: {}", variant);
-                    } else {
-                        logger.warn("Failed to load texture variant: {}", variant);
-                        updateStatus("Failed to load texture variant: " + variant);
-                    }
-                } else {
-                    logger.warn("Failed to reload model definition");
-                    updateStatus("Failed to reload model for texture variant: " + variant);
-                }
-                
-            } catch (Exception e) {
-                logger.error("Error changing texture variant to: {}", variant, e);
-                updateStatus("Error changing texture variant: " + e.getMessage());
-            }
-        } else if (viewport3D != null && variant != null) {
-            // Just update the texture variant setting if no model is loaded
-            viewport3D.setCurrentTextureVariant(variant.toLowerCase());
-            updateStatus("Texture variant set to: " + variant + " (will apply when model is loaded)");
+        // Always delegate to PropertyPanelController for consistent behavior
+        if (propertyPanelController != null && variant != null) {
+            // PropertyPanelController handles all texture switching with performance monitoring
+            // This method should not be called directly due to PropertyPanelController.setControlReferences() setup
+            logger.debug("Texture variant switching is handled by PropertyPanelController");
+        } else {
+            logger.warn("PropertyPanelController not available - texture variant switching disabled");
+            updateStatus("Error: Texture variant system not initialized");
         }
     }
     
@@ -1311,5 +1330,52 @@ public class MainController implements Initializable {
         
         pane.getChildren().add(square);
         return pane;
+    }
+    
+    // Phase 5 Public API Methods
+    
+    /**
+     * Get the integrated PropertyPanelController for external access.
+     */
+    public PropertyPanelController getPropertyPanelController() {
+        return propertyPanelController;
+    }
+    
+    /**
+     * Get combined performance metrics from all components.
+     */
+    public Map<String, Object> getPerformanceMetrics() {
+        Map<String, Object> metrics = new HashMap<>();
+        
+        // MainController metrics
+        metrics.put("modelLoaded", modelLoaded);
+        metrics.put("currentModelPath", currentModelPath);
+        metrics.put("unsavedChanges", unsavedChanges);
+        
+        // PropertyPanelController metrics
+        if (propertyPanelController != null) {
+            metrics.putAll(propertyPanelController.getPerformanceMetrics());
+        }
+        
+        // Viewport metrics
+        if (viewport3D != null) {
+            var viewportStats = viewport3D.getStatistics();
+            if (viewportStats != null) {
+                metrics.put("currentFPS", viewportStats.getCurrentFPS());
+                metrics.put("averageFPS", viewportStats.getCurrentFPS());
+                metrics.put("frameCount", viewportStats.getFrameCount());
+            }
+        }
+        
+        return metrics;
+    }
+    
+    /**
+     * Force a texture variant reload for testing purposes.
+     */
+    public void forceTextureVariantReload(String modelName) {
+        if (propertyPanelController != null) {
+            propertyPanelController.loadTextureVariants(modelName);
+        }
     }
 }

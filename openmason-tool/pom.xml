@@ -224,6 +224,26 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.openmason.app.OpenMasonApp</mainClass>
+                    <options>
+                        <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
+                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        <!-- Alternative: specific modules if needed -->
+                        <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl</option> -->
+                        
+                        <!-- Java 24+ compatibility flags -->
+                        <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
+                        <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
+                        <option>--add-opens=java.base/java.nio=org.lwjgl</option>
+                        
+                        <!-- JavaFX native access for Canvas OpenGL -->
+                        <option>--add-exports=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</option>
+                        <option>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</option>
+                        
+                        <!-- Additional stability flags for native library interaction -->
+                        <option>-Djava.library.path=.</option>
+                        <option>-Dorg.lwjgl.util.Debug=true</option>
+                        <option>-Dorg.lwjgl.util.NoChecks=false</option>
+                    </options>
                 </configuration>
             </plugin>
             
@@ -234,6 +254,19 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.openmason.app.OpenMasonApp</mainClass>
+                    <options>
+                        <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
+                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        
+                        <!-- Java 24+ compatibility flags -->
+                        <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
+                        <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
+                        <option>--add-opens=java.base/java.nio=org.lwjgl</option>
+                        
+                        <!-- JavaFX native access for Canvas OpenGL -->
+                        <option>--add-exports=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</option>
+                        <option>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</option>
+                    </options>
                 </configuration>
             </plugin>
         </plugins>

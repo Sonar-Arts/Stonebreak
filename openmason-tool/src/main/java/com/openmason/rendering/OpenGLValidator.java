@@ -16,6 +16,24 @@ import java.util.List;
 public class OpenGLValidator {
     
     /**
+     * Checks if there is a valid OpenGL context available.
+     * This method attempts to make a minimal OpenGL call to detect context availability.
+     * 
+     * @return True if OpenGL context is available, false otherwise
+     */
+    public static boolean hasValidOpenGLContext() {
+        try {
+            // Try to check if OpenGL context is current
+            // This is safer than calling glGetError() directly
+            org.lwjgl.opengl.GLCapabilities caps = org.lwjgl.opengl.GL.getCapabilities();
+            return caps != null && caps.OpenGL11;
+        } catch (Exception | Error e) {
+            // Any exception/error means no valid context
+            return false;
+        }
+    }
+    
+    /**
      * Validates the current OpenGL context for a specific operation.
      * 
      * @param operation The operation being validated
@@ -33,39 +51,54 @@ public class OpenGLValidator {
     public static List<String> validateOpenGLContext() {
         List<String> issues = new ArrayList<>();
         
-        // Check for OpenGL errors
-        int error = GL11.glGetError();
-        if (error != GL11.GL_NO_ERROR) {
-            issues.add("OpenGL error detected: " + getErrorString(error));
+        // First check if we have any OpenGL context at all
+        if (!hasValidOpenGLContext()) {
+            issues.add("No valid OpenGL context available");
+            return issues; // Early return - no point checking further
         }
         
-        // Check OpenGL version
-        String version = GL11.glGetString(GL11.GL_VERSION);
-        if (version == null) {
-            issues.add("Cannot retrieve OpenGL version - context may be invalid");
-        } else {
-            // Parse version and check minimum requirements
-            if (!checkMinimumOpenGLVersion(version, 3, 3)) {
-                issues.add("OpenGL version too low: " + version + " (minimum required: 3.3)");
+        try {
+            // Check for OpenGL errors
+            int error = GL11.glGetError();
+            if (error != GL11.GL_NO_ERROR) {
+                issues.add("OpenGL error detected: " + getErrorString(error));
             }
+        } catch (Exception e) {
+            issues.add("Failed to check OpenGL error state: " + e.getMessage());
+            return issues; // Context is invalid, don't continue
         }
         
-        // Check renderer string
-        String renderer = GL11.glGetString(GL11.GL_RENDERER);
-        if (renderer == null) {
-            issues.add("Cannot retrieve OpenGL renderer information");
-        }
-        
-        // Check maximum texture size
-        int maxTextureSize = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
-        if (maxTextureSize < 1024) {
-            issues.add("Maximum texture size very low: " + maxTextureSize + "x" + maxTextureSize);
-        }
-        
-        // Check maximum vertex attributes
-        int maxVertexAttribs = GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS);
-        if (maxVertexAttribs < 8) {
-            issues.add("Very few vertex attributes supported: " + maxVertexAttribs);
+        try {
+            // Check OpenGL version
+            String version = GL11.glGetString(GL11.GL_VERSION);
+            if (version == null) {
+                issues.add("Cannot retrieve OpenGL version - context may be invalid");
+            } else {
+                // Parse version and check minimum requirements
+                if (!checkMinimumOpenGLVersion(version, 3, 3)) {
+                    issues.add("OpenGL version too low: " + version + " (minimum required: 3.3)");
+                }
+            }
+            
+            // Check renderer string
+            String renderer = GL11.glGetString(GL11.GL_RENDERER);
+            if (renderer == null) {
+                issues.add("Cannot retrieve OpenGL renderer information");
+            }
+            
+            // Check maximum texture size
+            int maxTextureSize = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
+            if (maxTextureSize < 1024) {
+                issues.add("Maximum texture size very low: " + maxTextureSize + "x" + maxTextureSize);
+            }
+            
+            // Check maximum vertex attributes
+            int maxVertexAttribs = GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS);
+            if (maxVertexAttribs < 8) {
+                issues.add("Very few vertex attributes supported: " + maxVertexAttribs);
+            }
+        } catch (Exception e) {
+            issues.add("Failed to retrieve OpenGL context information: " + e.getMessage());
         }
         
         return issues;

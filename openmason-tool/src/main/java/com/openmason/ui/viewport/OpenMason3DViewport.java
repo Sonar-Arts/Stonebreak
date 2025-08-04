@@ -10,6 +10,7 @@ import com.openmason.model.ModelManager;
 import com.openmason.texture.TextureManager;
 import com.openmason.camera.ArcBallCamera;
 import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.openmason.model.stonebreak.StonebreakModelDefinition;
 
 // Enhanced Canvas-based 3D rendering (DriftFX-free implementation)
 
@@ -561,20 +562,81 @@ public class OpenMason3DViewport extends StackPane {
     private void renderModel3DOnCanvas(StonebreakModel model, boolean showWireframe) {
         if (model == null) return;
         
-        // For demonstration, render a sophisticated cube representation
+        // Render the actual cow model parts instead of a cube
+        renderActualCowModel(model, showWireframe);
+    }
+    
+    /**
+     * Render the actual cow model with all its parts (body, head, legs, etc.)
+     */
+    private void renderActualCowModel(StonebreakModel model, boolean showWireframe) {
+        // Debug logging
+        String modelName = model.getModelDefinition().getModelName();
+        System.out.println("[OpenMason3DViewport] Attempting to load model parts for: " + modelName);
+        System.out.println("[OpenMason3DViewport] Available models: " + ModelManager.getAvailableModels());
+        System.out.println("[OpenMason3DViewport] ModelManager initialized: " + !ModelManager.isInitializing());
+        
+        // Get model parts from the loaded definition
+        var modelParts = ModelManager.getStaticModelParts(modelName);
+        System.out.println("[OpenMason3DViewport] Model parts result: " + (modelParts != null ? modelParts.length + " parts" : "null"));
+        
+        if (modelParts == null || modelParts.length == 0) {
+            System.out.println("[OpenMason3DViewport] No model parts found, using fallback cube");
+            // Fallback to simple representation if no parts available
+            renderFallbackCube(showWireframe);
+            return;
+        }
+        
+        // Render each model part individually
+        for (int i = 0; i < modelParts.length; i++) {
+            var part = modelParts[i];
+            if (part != null) {
+                renderModelPart(part, showWireframe);
+            }
+        }
+        
+        // Show model information
         Vector3f modelCenter = new Vector3f(0, 0, 0);
         float modelSize = 2.0f;
+        renderModelInfo(model, modelCenter, modelSize);
+    }
+    
+    /**
+     * Render a single model part (body, head, leg, etc.)
+     */
+    private void renderModelPart(StonebreakModelDefinition.ModelPart part, boolean showWireframe) {
+        // Convert part position and size to Vector3f
+        Vector3f position = new Vector3f(part.getPosition().getX(), part.getPosition().getY(), part.getPosition().getZ());
+        Vector3f size = new Vector3f(part.getSize().getX(), part.getSize().getY(), part.getSize().getZ());
         
-        // Get base color based on texture variant
-        Color baseColor = getModelColorForVariant(currentTextureVariant.get());
+        // Get color based on part type and current texture variant
+        Color partColor = getPartColor(part.getName(), currentTextureVariant.get());
         
         if (!showWireframe) {
-            // Draw solid model with depth shading
-            drawSolidCube3D(modelCenter, modelSize, baseColor);
+            // Draw solid part with proper dimensions
+            drawSolidCuboid3D(position, size, partColor);
         }
         
         if (showWireframe || wireframeMode.get()) {
             // Draw wireframe overlay
+            Color wireColor = showWireframe ? Color.WHITE : partColor.brighter();
+            drawWireframeCuboid3D(position, size, wireColor);
+        }
+    }
+    
+    /**
+     * Fallback rendering method when model parts aren't available
+     */
+    private void renderFallbackCube(boolean showWireframe) {
+        Vector3f modelCenter = new Vector3f(0, 0, 0);
+        float modelSize = 2.0f;
+        Color baseColor = getModelColorForVariant(currentTextureVariant.get());
+        
+        if (!showWireframe) {
+            drawSolidCube3D(modelCenter, modelSize, baseColor);
+        }
+        
+        if (showWireframe || wireframeMode.get()) {
             Color wireColor = showWireframe ? Color.WHITE : baseColor.brighter();
             drawWireframeCube3D(modelCenter, modelSize, wireColor);
         }
@@ -584,11 +646,117 @@ public class OpenMason3DViewport extends StackPane {
         Vector3f screenLabelPos = new Vector3f();
         if (project3DTo2D(labelPos, screenLabelPos)) {
             graphicsContext.setFill(Color.WHITE);
-            String label = "Model: " + (model.getVariantName() != null ? model.getVariantName() : "Unknown");
-            graphicsContext.fillText(label, screenLabelPos.x - 30, screenLabelPos.y);
+            graphicsContext.fillText("Model: Fallback Cube", screenLabelPos.x - 30, screenLabelPos.y);
         }
     }
     
+    /**
+     * Draw a solid cuboid with specified position and size (for individual model parts)
+     */
+    private void drawSolidCuboid3D(Vector3f position, Vector3f size, Color baseColor) {
+        Vector3f halfSize = new Vector3f(size.x / 2.0f, size.y / 2.0f, size.z / 2.0f);
+        
+        // Define cuboid faces with vertices
+        Vector3f[][][] faces = {
+            // Front face
+            {{new Vector3f(position.x - halfSize.x, position.y - halfSize.y, position.z + halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y - halfSize.y, position.z + halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z + halfSize.z),
+              new Vector3f(position.x - halfSize.x, position.y + halfSize.y, position.z + halfSize.z)}},
+            // Right face
+            {{new Vector3f(position.x + halfSize.x, position.y - halfSize.y, position.z + halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y - halfSize.y, position.z - halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z - halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z + halfSize.z)}},
+            // Top face
+            {{new Vector3f(position.x - halfSize.x, position.y + halfSize.y, position.z + halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z + halfSize.z),
+              new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z - halfSize.z),
+              new Vector3f(position.x - halfSize.x, position.y + halfSize.y, position.z - halfSize.z)}}
+        };
+        
+        // Draw faces with depth-based shading
+        drawCubeFace(faces[0][0], baseColor.brighter()); // Front face (brightest)
+        drawCubeFace(faces[1][0], baseColor.darker());   // Right face (darker)
+        drawCubeFace(faces[2][0], baseColor);            // Top face (medium)
+    }
+    
+    /**
+     * Draw wireframe cuboid with specified position and size
+     */
+    private void drawWireframeCuboid3D(Vector3f position, Vector3f size, Color wireColor) {
+        Vector3f halfSize = new Vector3f(size.x / 2.0f, size.y / 2.0f, size.z / 2.0f);
+        
+        // Define the 8 vertices of the cuboid
+        Vector3f[] vertices = {
+            new Vector3f(position.x - halfSize.x, position.y - halfSize.y, position.z - halfSize.z), // 0: back-bottom-left
+            new Vector3f(position.x + halfSize.x, position.y - halfSize.y, position.z - halfSize.z), // 1: back-bottom-right
+            new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z - halfSize.z), // 2: back-top-right
+            new Vector3f(position.x - halfSize.x, position.y + halfSize.y, position.z - halfSize.z), // 3: back-top-left
+            new Vector3f(position.x - halfSize.x, position.y - halfSize.y, position.z + halfSize.z), // 4: front-bottom-left
+            new Vector3f(position.x + halfSize.x, position.y - halfSize.y, position.z + halfSize.z), // 5: front-bottom-right
+            new Vector3f(position.x + halfSize.x, position.y + halfSize.y, position.z + halfSize.z), // 6: front-top-right
+            new Vector3f(position.x - halfSize.x, position.y + halfSize.y, position.z + halfSize.z)  // 7: front-top-left
+        };
+        
+        graphicsContext.setStroke(wireColor);
+        graphicsContext.setLineWidth(1.0);
+        
+        // Draw 12 edges of the cuboid
+        int[][] edges = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0}, // Back face edges
+            {4, 5}, {5, 6}, {6, 7}, {7, 4}, // Front face edges
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}  // Connecting edges
+        };
+        
+        for (int[] edge : edges) {
+            drawLine3D(vertices[edge[0]], vertices[edge[1]], wireColor);
+        }
+    }
+    
+    /**
+     * Get appropriate color for a model part based on its name and texture variant
+     */
+    private Color getPartColor(String partName, String variant) {
+        // Define color mappings for different cow parts
+        Map<String, Color> partColors = new HashMap<>();
+        
+        // Base colors for different parts
+        partColors.put("body", Color.SADDLEBROWN);
+        partColors.put("head", Color.PERU);
+        partColors.put("front_left", Color.DARKGOLDENROD);
+        partColors.put("front_right", Color.DARKGOLDENROD);
+        partColors.put("back_left", Color.DARKGOLDENROD);
+        partColors.put("back_right", Color.DARKGOLDENROD);
+        partColors.put("left_horn", Color.LIGHTGRAY);
+        partColors.put("right_horn", Color.LIGHTGRAY);
+        partColors.put("udder", Color.PINK);
+        partColors.put("tail", Color.BROWN);
+        
+        // Get base color for the part
+        Color baseColor = partColors.getOrDefault(partName, Color.LIGHTBLUE);
+        
+        // Modify color based on texture variant
+        if (variant != null) {
+            switch (variant.toLowerCase()) {
+                case "angus":
+                    return baseColor.darker();
+                case "highland":
+                    return baseColor.brighter();
+                case "jersey":
+                    return Color.color(
+                        Math.min(1.0, baseColor.getRed() + 0.1),
+                        Math.min(1.0, baseColor.getGreen() + 0.1),
+                        baseColor.getBlue()
+                    );
+                default:
+                    return baseColor;
+            }
+        }
+        
+        return baseColor;
+    }
+
     /**
      * Gets the appropriate color for a model based on its texture variant.
      * 
@@ -891,25 +1059,8 @@ public class OpenMason3DViewport extends StackPane {
     private void renderSophisticatedModel3D(StonebreakModel model) {
         if (model == null) return;
         
-        // Model positioning and sizing
-        Vector3f modelCenter = new Vector3f(0, 0, 0);
-        float modelSize = 2.0f;
-        
-        // Get model appearance settings
-        Color baseColor = getModelColorForVariant(currentTextureVariant.get());
-        boolean showWireframe = wireframeMode.get();
-        
-        // Render based on mode
-        if (!showWireframe) {
-            // Solid rendering with depth-based lighting simulation
-            renderSolidModelWithLighting(modelCenter, modelSize, baseColor);
-        } else {
-            // Wireframe rendering
-            renderWireframeModel(modelCenter, modelSize, baseColor.brighter());
-        }
-        
-        // Always show model information
-        renderModelInfo(model, modelCenter, modelSize);
+        // Use the new actual cow model rendering instead of the old cube approach
+        renderActualCowModel(model, wireframeMode.get());
     }
     
     /**
@@ -1515,6 +1666,23 @@ public class OpenMason3DViewport extends StackPane {
      */
     public void setCurrentModel(StonebreakModel model) {
         this.currentModel = model;
+        
+        // Prepare the model for rendering if model renderer is available
+        if (model != null && modelRenderer != null) {
+            try {
+                boolean prepared = modelRenderer.prepareModel(model);
+                if (!prepared) {
+                    System.err.println("Failed to prepare model for rendering: OpenGL context not available");
+                    // Don't continue with rendering if model preparation failed
+                    return;
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to prepare model for rendering: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+        }
+        
         requestRender();
     }
     

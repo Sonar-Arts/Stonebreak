@@ -66,13 +66,20 @@ public class ModelRenderer implements AutoCloseable {
         
         // Validate OpenGL context before model preparation
         if (contextValidationEnabled) {
+            // First check if we have any OpenGL context at all
+            if (!OpenGLValidator.hasValidOpenGLContext()) {
+                System.err.println("ModelRenderer.prepareModel: No valid OpenGL context available");
+                return false; // Return false instead of throwing exception
+            }
+            
             List<String> contextIssues = OpenGLValidator.validateContext("prepareModel");
             if (!contextIssues.isEmpty()) {
                 System.err.println("OpenGL context validation failed in prepareModel:");
                 for (String issue : contextIssues) {
                     System.err.println("  - " + issue);
                 }
-                throw new RuntimeException("Cannot prepare model due to invalid OpenGL context");
+                // Return false instead of throwing exception - let caller handle gracefully
+                return false;
             }
         }
         

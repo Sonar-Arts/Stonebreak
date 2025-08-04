@@ -261,23 +261,28 @@ public class ModelDefinition {
             
             // Process each face (front, back, left, right, top, bottom)
             for (int face = 0; face < 6; face++) {
-                float[] coords = com.stonebreak.rendering.CowTextureAtlas.getUVCoordinates(textureVariant, faceNames[face]);
+                float[] coords = null;
+                
+                try {
+                    // Safe texture coordinate lookup - avoid OpenGL calls during model loading
+                    coords = getTextureCoordinatesSafe(textureVariant, faceNames[face]);
+                } catch (Exception e) {
+                    System.err.println("[ModelDefinition] Error getting texture coordinates for " + 
+                        textureVariant + ":" + faceNames[face] + " - " + e.getMessage());
+                    coords = null;
+                }
                 
                 if (coords == null) {
-                    // Use fallback coordinates
-                    coords = com.stonebreak.rendering.CowTextureAtlas.getUVCoordinates("default", partType + "_FRONT");
-                    if (coords == null) {
-                        // Final fallback - use first tile
-                        float tileSize = 1.0f / 16.0f;
-                        coords = new float[]{
-                            0, 0,                    // bottom-left
-                            tileSize, 0,             // bottom-right
-                            tileSize, tileSize,      // top-right
-                            0, tileSize              // top-left
-                        };
-                    }
+                    // Use safe fallback coordinates without OpenGL calls
+                    float tileSize = 1.0f / 16.0f;
+                    coords = new float[]{
+                        0, 0,                    // bottom-left
+                        tileSize, 0,             // bottom-right
+                        tileSize, tileSize,      // top-right
+                        0, tileSize              // top-left
+                    };
                     System.err.println("[ModelDefinition] Warning: Missing texture coordinates for " + 
-                        textureVariant + ":" + faceNames[face] + ", using fallback");
+                        textureVariant + ":" + faceNames[face] + ", using safe fallback");
                 }
                 
                 // Add UV coordinates for this face (4 vertices × 2 coordinates = 8 values)
@@ -288,6 +293,20 @@ public class ModelDefinition {
             }
             
             return result;
+        }
+        
+        /**
+         * Safe texture coordinate lookup that avoids OpenGL native calls during model loading.
+         * This prevents EXCEPTION_ACCESS_VIOLATION crashes when called before OpenGL context is ready.
+         */
+        private static float[] getTextureCoordinatesSafe(String textureVariant, String faceName) {
+            try {
+                // Use texture loader directly without triggering OpenGL initialization
+                return com.stonebreak.textures.CowTextureLoader.getQuadUVCoordinates(textureVariant, faceName, 16);
+            } catch (Exception e) {
+                System.err.println("[ModelDefinition] Safe texture lookup failed for " + textureVariant + ":" + faceName);
+                return null;
+            }
         }
     }
     

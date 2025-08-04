@@ -133,6 +133,15 @@
                 <configuration>
                     <mainClass>com.stonebreak.core.Main</mainClass>
                     <options>
+                        <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
+                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        <!-- Alternative: specific modules if needed -->
+                        <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl,org.lwjgl.glfw,org.lwjgl.stb,org.lwjgl.nanovg,org.lwjgl.openal</option> -->
+                        
+                        <!-- Java 24+ compatibility flags -->
+                        <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
+                        <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
+                        
                         <!-- Use G1GC for better multi-threaded performance -->
                         <option>-XX:+UseG1GC</option>
                         <!-- Reduce GC pause times for smoother gameplay -->
@@ -152,6 +161,11 @@
                         <option>-XX:+UseStringDeduplication</option>
                         <!-- Reduce GC overhead -->
                         <option>-XX:G1HeapRegionSize=16m</option>
+                        
+                        <!-- Additional stability flags for native library interaction -->
+                        <option>-Djava.library.path=.</option>
+                        <option>-Dorg.lwjgl.util.Debug=true</option>
+                        <option>-Dorg.lwjgl.util.NoChecks=false</option>
                     </options>
                 </configuration>
             </plugin>
