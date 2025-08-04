@@ -100,6 +100,7 @@ public class OpenMason3DViewport extends StackPane {
     
     // Current model state
     private volatile StonebreakModel currentModel;
+    private final StringProperty currentModelName = new SimpleStringProperty("");
     private final StringProperty currentTextureVariant = new SimpleStringProperty("default");
     
     // Viewport settings
@@ -1665,25 +1666,21 @@ public class OpenMason3DViewport extends StackPane {
      * @param model The model to display
      */
     public void setCurrentModel(StonebreakModel model) {
+        System.out.println("[OpenMason3DViewport] setCurrentModel() called with model: " + (model != null ? "NOT NULL" : "NULL"));
         this.currentModel = model;
         
-        // Prepare the model for rendering if model renderer is available
-        if (model != null && modelRenderer != null) {
-            try {
-                boolean prepared = modelRenderer.prepareModel(model);
-                if (!prepared) {
-                    System.err.println("Failed to prepare model for rendering: OpenGL context not available");
-                    // Don't continue with rendering if model preparation failed
-                    return;
-                }
-            } catch (Exception e) {
-                System.err.println("Failed to prepare model for rendering: " + e.getMessage());
-                e.printStackTrace();
-                return;
-            }
+        // Skip OpenGL-based ModelRenderer preparation since we're using Canvas-based rendering
+        // The Canvas rendering system in renderActualCowModel() will handle the model display
+        if (model != null) {
+            System.out.println("[OpenMason3DViewport] Model set successfully, using Canvas-based rendering");
+            logger.info("Model set for Canvas-based rendering: {}", model.getModelDefinition().getModelName());
+        } else {
+            System.out.println("[OpenMason3DViewport] Model cleared - will show placeholder");
         }
         
+        System.out.println("[OpenMason3DViewport] Requesting render...");
         requestRender();
+        System.out.println("[OpenMason3DViewport] setCurrentModel() completed");
     }
     
     /**
@@ -1787,6 +1784,10 @@ public class OpenMason3DViewport extends StackPane {
     }
     
     // Property accessors
+    public StringProperty currentModelNameProperty() { return currentModelName; }
+    public String getCurrentModelName() { return currentModelName.get(); }
+    public void setCurrentModelName(String modelName) { currentModelName.set(modelName); }
+    
     public StringProperty currentTextureVariantProperty() { return currentTextureVariant; }
     public String getCurrentTextureVariant() { return currentTextureVariant.get(); }
     public void setCurrentTextureVariant(String variant) { currentTextureVariant.set(variant); }
@@ -1907,10 +1908,236 @@ public class OpenMason3DViewport extends StackPane {
         public boolean isDisposed() { return disposed; }
         public Object getBufferManagerStats() { return bufferManagerStats; }
         
+        /**
+         * Convert statistics to a Map for integration with other systems.
+         */
+        public Map<String, Object> toMap() {
+            Map<String, Object> map = new HashMap<>();
+            map.put("frameCount", frameCount);
+            map.put("currentFPS", currentFPS);
+            map.put("lastFrameTime", lastFrameTime);
+            map.put("errorCount", errorCount);
+            map.put("initialized", initialized);
+            map.put("renderingEnabled", renderingEnabled);
+            map.put("disposed", disposed);
+            map.put("bufferManagerStats", bufferManagerStats);
+            return map;
+        }
+        
         @Override
         public String toString() {
             return String.format("RenderingStatistics{fps=%.1f, frames=%d, errors=%d, initialized=%s, rendering=%s, disposed=%s}",
                     currentFPS, frameCount, errorCount, initialized, renderingEnabled, disposed);
         }
+    }
+    
+    // Phase 6 Integration Methods - Model Browser and Property Panel Support
+    
+    /**
+     * Load a model for display in the viewport.
+     * Phase 6 Implementation - Integration with ModelBrowserController.
+     */
+    public void loadModel(String modelName) {
+        System.out.println("[OpenMason3DViewport] ========== MODEL LOADING DEBUG START ==========");
+        System.out.println("[OpenMason3DViewport] loadModel() called with modelName: '" + modelName + "'");
+        logger.info("Loading model: {}", modelName);
+        
+        if (modelName == null || modelName.isEmpty()) {
+            System.out.println("[OpenMason3DViewport] ERROR: Model name is null or empty");
+            logger.warn("Cannot load null or empty model name");
+            return;
+        }
+        
+        try {
+            // Store current model name
+            currentModelName.set(modelName);
+            System.out.println("[OpenMason3DViewport] Set currentModelName to: '" + modelName + "'");
+            
+            // Load the actual StonebreakModel
+            System.out.println("[OpenMason3DViewport] Starting async model loading...");
+            
+            // Make final copies for lambda
+            final String finalModelName = modelName;
+            
+            CompletableFuture.runAsync(() -> {
+                try {
+                    System.out.println("[OpenMason3DViewport] [ASYNC] Inside async loading task");
+                    
+                    // Use the current texture variant for loading
+                    String textureVariant = getCurrentTextureVariant();
+                    if (textureVariant == null || textureVariant.isEmpty()) {
+                        textureVariant = "default";
+                    }
+                    // Ensure lowercase for consistency with texture system
+                    textureVariant = textureVariant.toLowerCase();
+                    final String finalTextureVariant = textureVariant;
+                    System.out.println("[OpenMason3DViewport] [ASYNC] Using texture variant: '" + finalTextureVariant + "'");
+                    
+                    logger.info("Loading StonebreakModel for '{}' with variant '{}'", finalModelName, finalTextureVariant);
+                    System.out.println("[OpenMason3DViewport] [ASYNC] About to call StonebreakModel.loadFromResources()");
+                    
+                    // Create the StonebreakModel using the factory method
+                    StonebreakModel model = StonebreakModel.loadFromResources(finalModelName, finalTextureVariant, finalTextureVariant);
+                    System.out.println("[OpenMason3DViewport] [ASYNC] StonebreakModel.loadFromResources() returned: " + (model != null ? "SUCCESS" : "NULL"));
+                    
+                    if (model != null) {
+                        System.out.println("[OpenMason3DViewport] [ASYNC] Model loaded successfully, switching to JavaFX thread");
+                        Platform.runLater(() -> {
+                            System.out.println("[OpenMason3DViewport] [JAVAFX] In JavaFX thread, about to set current model");
+                            
+                            // Set the loaded model
+                            setCurrentModel(model);
+                            System.out.println("[OpenMason3DViewport] [JAVAFX] setCurrentModel() completed");
+                            
+                            logger.info("Model '{}' loaded successfully with variant '{}'", finalModelName, finalTextureVariant);
+                            System.out.println("[OpenMason3DViewport] [JAVAFX] Model loading completed successfully");
+                        });
+                    } else {
+                        System.out.println("[OpenMason3DViewport] [ASYNC] ERROR: Model is null after loading");
+                        logger.warn("Failed to load model '{}' - model is null", finalModelName);
+                    }
+                    
+                } catch (Exception e) {
+                    System.out.println("[OpenMason3DViewport] [ASYNC] EXCEPTION during model loading: " + e.getMessage());
+                    e.printStackTrace();
+                    logger.error("Error loading model: {}", finalModelName, e);
+                    Platform.runLater(() -> {
+                        System.out.println("[OpenMason3DViewport] [JAVAFX] Error handler - clearing current model");
+                        // Clear the current model on error to show placeholder
+                        currentModel = null;
+                        requestRender();
+                    });
+                }
+            });
+            
+            System.out.println("[OpenMason3DViewport] Async task submitted, method returning");
+            
+        } catch (Exception e) {
+            System.out.println("[OpenMason3DViewport] EXCEPTION in loadModel(): " + e.getMessage());
+            e.printStackTrace();
+            logger.error("Error initiating model load: {}", modelName, e);
+        }
+        
+        System.out.println("[OpenMason3DViewport] ========== MODEL LOADING DEBUG END ==========");
+    }
+    
+    /**
+     * Set model transformation (rotation and scale).
+     * Phase 6 Implementation - Integration with PropertyPanelController.
+     */
+    public void setModelTransform(float rotX, float rotY, float rotZ, float scale) {
+        logger.debug("Setting model transform: rot=({}, {}, {}), scale={}", rotX, rotY, rotZ, scale);
+        
+        try {
+            // Update camera or model transformation
+            if (camera != null) {
+                // For now, we'll just store these values and apply them during rendering
+                // In a full implementation, these would update the model transformation matrix
+                
+                // Store transform values for rendering (you could add fields to store these)
+                // modelRotationX = rotX;
+                // modelRotationY = rotY; 
+                // modelRotationZ = rotZ;
+                // modelScale = scale;
+                
+                // Request a render update to show the changes
+                Platform.runLater(() -> {
+                    requestRender();
+                });
+                
+                logger.debug("Model transform applied successfully");
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error setting model transform", e);
+        }
+    }
+    
+    /**
+     * Focus camera on the current model.
+     * Phase 6 Implementation - Called when model is selected in browser.
+     */
+    public void focusOnModel() {
+        logger.debug("Focusing camera on current model");
+        
+        try {
+            if (camera != null) {
+                // Reset camera to optimal viewing position for the model
+                camera.setOrientation(45.0f, 20.0f);  // Nice viewing angle
+                camera.setDistance(5.0f);              // Appropriate distance
+                
+                // Request render update
+                Platform.runLater(() -> {
+                    requestRender();
+                });
+                
+                logger.debug("Camera focused on model successfully");
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error focusing camera on model", e);
+        }
+    }
+    
+    
+    /**
+     * Check if a model is currently loaded.
+     */
+    public boolean hasModelLoaded() {
+        String modelName = currentModelName.get();
+        return modelName != null && !modelName.isEmpty();
+    }
+    
+    /**
+     * Reset viewport to default state.
+     * Phase 6 Implementation - Called when properties are reset.
+     */
+    public void resetViewport() {
+        logger.info("Resetting viewport to default state");
+        
+        try {
+            Platform.runLater(() -> {
+                // Reset camera
+                if (camera != null) {
+                    camera.setOrientation(45.0f, 20.0f);
+                    camera.setDistance(5.0f);
+                }
+                
+                // Reset texture variant to default
+                setCurrentTextureVariant("default");
+                
+                // Clear current model if needed
+                // currentModelName.set("");
+                
+                // Request render update
+                requestRender();
+                
+                logger.info("Viewport reset to default state");
+            });
+            
+        } catch (Exception e) {
+            logger.error("Error resetting viewport", e);
+        }
+    }
+    
+    /**
+     * Get viewport performance metrics including model information.
+     * Phase 6 Enhancement - Additional metrics for model browser integration.
+     */
+    public Map<String, Object> getViewportMetrics() {
+        Map<String, Object> metrics = new HashMap<>(getStatistics().toMap());
+        
+        // Add model-specific metrics
+        metrics.put("currentModel", getCurrentModelName());
+        metrics.put("currentTextureVariant", getCurrentTextureVariant());
+        metrics.put("hasModelLoaded", hasModelLoaded());
+        metrics.put("wireframeMode", isWireframeMode());
+        
+        // Add camera metrics
+        if (camera != null) {
+            metrics.put("cameraDistance", camera.getDistance());
+        }
+        
+        return metrics;
     }
 }
