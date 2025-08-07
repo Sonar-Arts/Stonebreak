@@ -11,6 +11,7 @@ import javafx.scene.shape.Cylinder;
 import javafx.scene.shape.DrawMode;
 import javafx.scene.text.Text;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
 
@@ -44,11 +45,12 @@ public class ViewportDebugRenderer {
     private boolean partLabelsVisible = false;
     private boolean debugMode = false;
     
-    // Grid and axes configuration
-    private static final float GRID_SIZE = 20.0f;
-    private static final int GRID_LINES = 20;
-    private static final float AXIS_LENGTH = 10.0f;
-    private static final float AXIS_THICKNESS = 0.05f;
+    // Professional 3D viewport grid configuration
+    private static final float GRID_SIZE = 40.0f;          // Total grid size (40x40 units)
+    private static final float GRID_SPACING = 2.0f;        // Distance between grid lines
+    private static final float MAJOR_GRID_INTERVAL = 10.0f; // Major grid lines every 10 units
+    private static final float GRID_LINE_THICKNESS = 0.02f; // Thin grid lines
+    private static final float MAJOR_LINE_THICKNESS = 0.04f; // Thicker major lines
     
     /**
      * Initialize with scene manager reference.
@@ -89,131 +91,71 @@ public class ViewportDebugRenderer {
     private void updateAxes() {
         if (sceneManager == null) return;
         
-        if (axesVisible || coordinateAxesVisible) {
-            Group axesElements = create3DAxes();
-            sceneManager.setAxesElements(axesElements);
-        } else {
-            sceneManager.setAxesElements(null);
-        }
+        // Axes disabled - not properly implemented
+        sceneManager.setAxesElements(null);
     }
     
     /**
-     * Create 3D grid visualization emphasizing the X axis with better visibility.
+     * Create professional 3D viewport grid system.
+     * Standard grid layout suitable for 3D model visualization with:
+     * - Regular grid lines every 2 units
+     * - Major grid lines every 10 units 
+     * - Clean, minimal appearance
+     * - Proper depth perception
      */
     private Group create3DGrid() {
         Group gridGroup = new Group();
         
         try {
             float halfSize = GRID_SIZE / 2.0f;
-            float step = GRID_SIZE / GRID_LINES;
+            int numLines = (int) (GRID_SIZE / GRID_SPACING);
             
-            // Create grid lines parallel to X axis (running along X direction) - more prominent
-            for (int i = 0; i <= GRID_LINES; i++) {
-                float z = -halfSize + i * step;
-                Color lineColor = (i == GRID_LINES / 2) ? Color.DARKRED : Color.DARKGRAY;
-                float thickness = (i == GRID_LINES / 2) ? AXIS_THICKNESS * 1.2f : AXIS_THICKNESS * 0.6f;
+            // Create horizontal grid lines (parallel to X-axis)
+            for (int i = 0; i <= numLines; i++) {
+                float z = -halfSize + i * GRID_SPACING;
+                boolean isMajorLine = (Math.abs(z) % MAJOR_GRID_INTERVAL) < 0.01f;
+                
+                Color lineColor = isMajorLine ? Color.GRAY.darker() : Color.LIGHTGRAY;
+                float thickness = isMajorLine ? MAJOR_LINE_THICKNESS : GRID_LINE_THICKNESS;
                 
                 Cylinder line = createLine3D(-halfSize, 0, z, halfSize, 0, z, thickness, lineColor);
                 gridGroup.getChildren().add(line);
             }
             
-            // Create grid lines perpendicular to X axis (running along Z direction) - clearer visibility
-            for (int i = 0; i <= GRID_LINES; i += 2) { // Every 2nd line for less visual clutter
-                float x = -halfSize + i * step;
-                Color lineColor = (i == GRID_LINES / 2) ? Color.DARKBLUE : Color.GRAY;
-                float thickness = (i == GRID_LINES / 2) ? AXIS_THICKNESS * 1.0f : AXIS_THICKNESS * 0.4f;
+            // Create vertical grid lines (parallel to Z-axis) 
+            for (int i = 0; i <= numLines; i++) {
+                float x = -halfSize + i * GRID_SPACING;
+                boolean isMajorLine = (Math.abs(x) % MAJOR_GRID_INTERVAL) < 0.01f;
+                
+                Color lineColor = isMajorLine ? Color.GRAY.darker() : Color.LIGHTGRAY;
+                float thickness = isMajorLine ? MAJOR_LINE_THICKNESS : GRID_LINE_THICKNESS;
                 
                 Cylinder line = createLine3D(x, 0, -halfSize, x, 0, halfSize, thickness, lineColor);
                 gridGroup.getChildren().add(line);
             }
             
-            // Highlight the main X axis with a bold red line
-            Cylinder mainXAxis = createLine3D(-halfSize, 0, 0, halfSize, 0, 0, AXIS_THICKNESS * 1.2f, Color.DARKRED);
-            gridGroup.getChildren().add(mainXAxis);
-            
-            // Add X axis markers at regular intervals
-            for (int i = -5; i <= 5; i++) {
-                if (i == 0) continue; // Skip origin, handled separately
-                float x = i * 2.0f; // Every 2 units
-                
-                // Create small tick marks
-                Cylinder tick = createLine3D(x, 0, -0.2f, x, 0, 0.2f, AXIS_THICKNESS * 0.8f, Color.DARKRED);
-                gridGroup.getChildren().add(tick);
-                
-                // Add text labels for major X coordinates
-                if (i % 2 == 0) { // Every 4 units
-                    String labelText = (i * 2) + "u"; // Add "u" for units
-                    Text label = new Text(labelText);
-                    label.setFont(Font.font("Arial", 10));
-                    label.setFill(Color.DARKRED);
-                    label.setTranslateX(x);
-                    label.setTranslateY(0.8f);
-                    label.setTranslateZ(-0.8f);
-                    gridGroup.getChildren().add(label);
-                }
-            }
-            
-            // Add origin marker - more visible
-            Box originMarker = new Box(0.6, 0.2, 0.6);
+            // Add subtle origin marker
+            Box originMarker = new Box(0.3, 0.05, 0.3);
             PhongMaterial originMaterial = new PhongMaterial();
-            originMaterial.setDiffuseColor(Color.GOLD);
-            originMaterial.setSpecularColor(Color.YELLOW);
+            originMaterial.setDiffuseColor(Color.ORANGE);
+            originMaterial.setSpecularColor(Color.GOLD);
             originMarker.setMaterial(originMaterial);
             originMarker.setTranslateX(0);
-            originMarker.setTranslateY(0.1);
+            originMarker.setTranslateY(0.025);
             originMarker.setTranslateZ(0);
             gridGroup.getChildren().add(originMarker);
             
-            // Add origin label - more visible
-            Text originLabel = new Text("ORIGIN (0,0,0)");
-            originLabel.setFont(Font.font("Arial", 14));
-            originLabel.setFill(Color.GOLD);
-            originLabel.setTranslateX(0.8);
-            originLabel.setTranslateY(1.2);
-            originLabel.setTranslateZ(0.8);
-            gridGroup.getChildren().add(originLabel);
-            
-            logger.debug("Created X-axis-focused 2D grid with {} lines and X-axis markers", GRID_LINES + GRID_LINES/2 + 1);
+            logger.debug("Created professional 3D viewport grid: {} lines, spacing={}, major intervals={}", 
+                numLines * 2, GRID_SPACING, MAJOR_GRID_INTERVAL);
             
         } catch (Exception e) {
-            logger.error("Failed to create X-axis grid", e);
+            logger.error("Failed to create 3D viewport grid", e);
         }
         
         return gridGroup;
     }
     
-    /**
-     * Create 3D coordinate axes.
-     */
-    private Group create3DAxes() {
-        Group axesGroup = new Group();
-        
-        try {
-            // X-axis (Red)
-            Cylinder xAxis = createLine3D(0, 0, 0, AXIS_LENGTH, 0, 0, AXIS_THICKNESS, Color.RED);
-            axesGroup.getChildren().add(xAxis);
-            
-            // Y-axis (Green)
-            Cylinder yAxis = createLine3D(0, 0, 0, 0, AXIS_LENGTH, 0, AXIS_THICKNESS, Color.GREEN);
-            axesGroup.getChildren().add(yAxis);
-            
-            // Z-axis (Blue)
-            Cylinder zAxis = createLine3D(0, 0, 0, 0, 0, AXIS_LENGTH, AXIS_THICKNESS, Color.BLUE);
-            axesGroup.getChildren().add(zAxis);
-            
-            // Add axis labels if coordinate axes are visible
-            if (coordinateAxesVisible) {
-                addAxisLabels(axesGroup);
-            }
-            
-            logger.trace("Created 3D coordinate axes");
-            
-        } catch (Exception e) {
-            logger.error("Failed to create 3D axes", e);
-        }
-        
-        return axesGroup;
-    }
+    // Coordinate axes removed - not properly implemented
     
     /**
      * Create a 3D line using a cylinder between two points.
@@ -258,38 +200,8 @@ public class ViewportDebugRenderer {
         return cylinder;
     }
     
-    /**
-     * Add axis labels to the axes group.
-     */
-    private void addAxisLabels(Group axesGroup) {
-        try {
-            // X-axis label
-            Text xLabel = new Text("X");
-            xLabel.setFont(Font.font(16));
-            xLabel.setFill(Color.RED);
-            xLabel.getTransforms().add(new Translate(AXIS_LENGTH + 0.5, 0, 0));
-            axesGroup.getChildren().add(xLabel);
-            
-            // Y-axis label
-            Text yLabel = new Text("Y");
-            yLabel.setFont(Font.font(16));
-            yLabel.setFill(Color.GREEN);
-            yLabel.getTransforms().add(new Translate(0, AXIS_LENGTH + 0.5, 0));
-            axesGroup.getChildren().add(yLabel);
-            
-            // Z-axis label
-            Text zLabel = new Text("Z");
-            zLabel.setFont(Font.font(16));
-            zLabel.setFill(Color.BLUE);
-            zLabel.getTransforms().add(new Translate(0, 0, AXIS_LENGTH + 0.5));
-            axesGroup.getChildren().add(zLabel);
-            
-            logger.trace("Added axis labels");
-            
-        } catch (Exception e) {
-            logger.error("Failed to add axis labels", e);
-        }
-    }
+    
+    // Axis labels removed - not needed without axes
     
     /**
      * Render debug information for a model.
@@ -386,8 +298,7 @@ public class ViewportDebugRenderer {
         logger.debug("- Grid visible: {}", gridVisible);
         logger.debug("- Axes visible: {}", axesVisible);
         logger.debug("- Debug mode: {}", debugMode);
-        logger.debug("- Grid size: {}, lines: {}", GRID_SIZE, GRID_LINES);
-        logger.debug("- Axis length: {}, thickness: {}", AXIS_LENGTH, AXIS_THICKNESS);
+        logger.debug("- Grid size: {}, spacing: {}", GRID_SIZE, GRID_SPACING);
     }
     
     /**

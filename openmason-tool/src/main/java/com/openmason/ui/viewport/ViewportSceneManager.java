@@ -71,7 +71,7 @@ public class ViewportSceneManager {
             
             // Create 3D SubScene
             subScene3D = new SubScene(rootGroup3D, sceneWidth, sceneHeight, true, SceneAntialiasing.BALANCED);
-            subScene3D.setFill(Color.LIGHTGRAY);
+            subScene3D.setFill(Color.rgb(40, 40, 40)); // Dark dark gray background
             
             // Ensure SubScene can receive input events
             subScene3D.setFocusTraversable(true);
