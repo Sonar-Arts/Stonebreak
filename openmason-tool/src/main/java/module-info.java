@@ -9,6 +9,8 @@ module com.openmason {
     requires javafx.fxml;
     requires javafx.graphics;
     requires javafx.base;
+    requires javafx.swing;
+    requires javafx.web;
     
     // LWJGL for OpenGL rendering
     requires org.lwjgl;

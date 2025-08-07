@@ -22,7 +22,7 @@
         <joml.version>1.10.5</joml.version>
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <jackson.version>2.15.2</jackson.version>
-        <javafx.version>17.0.2</javafx.version>
+        <javafx.version>21</javafx.version>
     </properties>
 
     <dependencyManagement>
@@ -144,6 +144,16 @@
             <dependency>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-fxml</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-swing</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-web</artifactId>
                 <version>${javafx.version}</version>
             </dependency>
         </dependencies>

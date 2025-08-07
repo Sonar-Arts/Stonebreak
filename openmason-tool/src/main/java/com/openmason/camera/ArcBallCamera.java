@@ -1,93 +1,222 @@
 package com.openmason.camera;
 
-import com.openmason.util.VectorPool;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Quaternionf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Professional arc-ball camera system for 3D model inspection and navigation.
+ * Simple and functional camera system specifically designed for OpenMason's green cube visualization.
+ * This camera always focuses on the origin point (0,0,0) where the green cube is positioned.
  * 
- * Provides industry-standard camera controls with smooth interpolation and preset configurations.
- * Features spherical coordinate navigation, constraint enforcement, and professional-grade
- * user interaction patterns commonly found in 3D modeling software.
- * 
- * Key Features:
- * - Arc-ball rotation with spherical coordinates (azimuth/elevation)
- * - Smooth zoom with exponential scaling and distance constraints
- * - Pan controls using camera-relative coordinate system
- * - Camera preset system for standard viewing angles
- * - Quaternion-based smooth interpolation for all movements
- * - Auto-fit functionality for optimal model framing
- * - Professional keyboard shortcuts and mouse controls
- * 
- * Architecture:
- * - Spherical coordinates (azimuth, elevation, distance) for intuitive navigation
- * - Target-based camera system (always looking at a specific point)
- * - Smooth interpolation targets for fluid camera movement
- * - Constraint system for zoom and elevation limits
- * - Matrix-based view calculations with proper up vector handling
+ * Features:
+ * - Always targets the origin point (0,0,0)
+ * - Simple spherical coordinate system (distance, azimuth, elevation)
+ * - Smooth interpolation for professional feel
+ * - Mouse controls optimized for model inspection
+ * - Professional default viewing angle
  */
 public class ArcBallCamera {
     
     private static final Logger logger = LoggerFactory.getLogger(ArcBallCamera.class);
     
-    // Camera state (current values)
-    private Vector3f target;                    // Look-at target (model center)
-    private float distance;                     // Distance from target
-    private float azimuth;                      // Horizontal rotation (degrees)
-    private float elevation;                    // Vertical rotation (degrees)
-    private float fov;                          // Field of view (degrees)
-    
-    // Smooth interpolation targets
-    private Vector3f targetTarget;              // Target for smooth panning
-    private float targetDistance;               // Target distance for smooth zooming
-    private float targetAzimuth;               // Target azimuth for smooth rotation
-    private float targetElevation;             // Target elevation for smooth rotation
-    private float targetFov;                   // Target field of view
-    
-    // Camera constraints
-    private static final float MIN_DISTANCE = 0.1f;
+    // Camera constants
+    private static final float MIN_DISTANCE = 2.0f;
     private static final float MAX_DISTANCE = 100.0f;
     private static final float MIN_ELEVATION = -89.0f;
     private static final float MAX_ELEVATION = 89.0f;
-    private static final float MIN_FOV = 5.0f;
-    private static final float MAX_FOV = 120.0f;
     private static final float DEFAULT_FOV = 45.0f;
     
-    // Interpolation settings
-    private static final float INTERPOLATION_SPEED = 8.0f;      // Higher = faster transition
-    private static final float ZOOM_SENSITIVITY = 1.15f;        // Zoom factor per scroll step
-    private static final float ROTATION_SENSITIVITY = 0.3f;     // Degrees per pixel
-    private static final float PAN_SENSITIVITY = 0.002f;        // World units per pixel
-    private static final float INTERPOLATION_THRESHOLD = 0.001f; // Stop interpolating below this
+    // Sensitivity settings
+    private static final float ROTATION_SENSITIVITY = 0.3f;
+    private static final float ZOOM_SENSITIVITY = 1.08f;
+    private static final float INTERPOLATION_SPEED = 10.0f;
     
-    // Cached matrices and vectors for performance
+    // Current camera state
+    private float distance = 15.0f;
+    private float azimuth = -45.0f;      // Horizontal angle (degrees)
+    private float elevation = 25.0f;     // Vertical angle (degrees)
+    private float fov = DEFAULT_FOV;
+    
+    // Target state for smooth interpolation
+    private float targetDistance = 15.0f;
+    private float targetAzimuth = -45.0f;
+    private float targetElevation = 25.0f;
+    
+    // Fixed target at origin - this is the green cube's position
+    private final Vector3f target = new Vector3f(0, 0, 0);
+    
+    // Cached matrices
     private final Matrix4f viewMatrix = new Matrix4f();
-    private final Matrix4f projectionMatrix = new Matrix4f();
     private final Vector3f cameraPosition = new Vector3f();
-    private final Vector3f cameraUp = new Vector3f(0, 1, 0);
-    private final Vector3f tempVector = new Vector3f();
+    private final Vector3f up = new Vector3f(0, 1, 0);
     
-    // Animation and interpolation state
+    // Animation state
     private boolean isAnimating = false;
-    private long lastUpdateTime = 0;
+    private long lastUserInputTime = 0;
     
     /**
-     * Camera preset enumeration for standard viewing angles.
-     * Provides industry-standard views commonly used in 3D modeling software.
+     * Creates a new camera focused on the origin point with optimal viewing angle.
      */
+    public ArcBallCamera() {
+        logger.info("Initializing Origin-Focused Camera for green cube at (0,0,0)");
+        updateCameraPosition();
+        updateViewMatrix();
+    }
+    
+    /**
+     * Updates camera interpolation and matrices.
+     */
+    public void update(float deltaTime) {
+        boolean wasAnimating = isAnimating;
+        isAnimating = false;
+        
+        float lerpSpeed = INTERPOLATION_SPEED * deltaTime;
+        
+        // Smooth interpolation
+        if (Math.abs(targetDistance - distance) > 0.01f) {
+            distance = lerp(distance, targetDistance, lerpSpeed);
+            isAnimating = true;
+        }
+        
+        if (Math.abs(targetAzimuth - azimuth) > 0.1f) {
+            azimuth = lerpAngle(azimuth, targetAzimuth, lerpSpeed);
+            isAnimating = true;
+        }
+        
+        if (Math.abs(targetElevation - elevation) > 0.1f) {
+            elevation = lerp(elevation, targetElevation, lerpSpeed);
+            isAnimating = true;
+        }
+        
+        if (isAnimating || !wasAnimating) {
+            updateCameraPosition();
+            updateViewMatrix();
+        }
+        
+        if (wasAnimating && !isAnimating) {
+            logger.debug("Camera animation completed");
+        }
+    }
+    
+    /**
+     * Handle mouse rotation input.
+     */
+    public void rotate(float deltaX, float deltaY) {
+        targetAzimuth = normalizeAngle(targetAzimuth - deltaX * ROTATION_SENSITIVITY);
+        targetElevation = clamp(targetElevation - deltaY * ROTATION_SENSITIVITY, MIN_ELEVATION, MAX_ELEVATION);
+        
+        lastUserInputTime = System.currentTimeMillis();
+        logger.trace("Rotate - Azimuth: {}°, Elevation: {}°", targetAzimuth, targetElevation);
+    }
+    
+    /**
+     * Handle mouse zoom input.
+     */
+    public void zoom(float scrollDelta) {
+        float zoomFactor = (float) Math.pow(ZOOM_SENSITIVITY, scrollDelta);
+        targetDistance = clamp(targetDistance * zoomFactor, MIN_DISTANCE, MAX_DISTANCE);
+        
+        lastUserInputTime = System.currentTimeMillis();
+        logger.trace("Zoom - Distance: {}", targetDistance);
+    }
+    
+    /**
+     * Handle panning - for this simple camera, we'll just ignore panning
+     * since we're always focused on the origin.
+     */
+    public void pan(float deltaX, float deltaY) {
+        // No-op - we always focus on origin
+        lastUserInputTime = System.currentTimeMillis();
+    }
+    
+    /**
+     * Reset camera to default position facing the green cube.
+     */
+    public void reset() {
+        targetDistance = 15.0f;
+        targetAzimuth = -45.0f;
+        targetElevation = 25.0f;
+        
+        logger.info("Camera reset to default position facing origin");
+    }
+    
+    /**
+     * Frame the origin with specified model size.
+     */
+    public void frameOrigin(float modelSize) {
+        // Calculate optimal distance to frame the model
+        float optimalDistance = modelSize * 3.0f; // Better viewing distance with more context
+        targetDistance = clamp(optimalDistance, MIN_DISTANCE, MAX_DISTANCE);
+        
+        logger.info("Camera framed origin with model size: {}, distance: {}", modelSize, targetDistance);
+    }
+    
+    /**
+     * Frame the origin with default model size.
+     */
+    public void frameOrigin() {
+        frameOrigin(2.0f); // Default green cube size
+    }
+    
+    // Getters for camera state
+    public Matrix4f getViewMatrix() {
+        return new Matrix4f(viewMatrix);
+    }
+    
+    public Matrix4f getProjectionMatrix(int width, int height, float nearPlane, float farPlane) {
+        float aspectRatio = (float) width / (float) Math.max(height, 1);
+        return new Matrix4f().perspective(
+            (float) Math.toRadians(fov),
+            aspectRatio,
+            nearPlane,
+            farPlane
+        );
+    }
+    
+    public Vector3f getCameraPosition() {
+        return new Vector3f(cameraPosition);
+    }
+    
+    public Vector3f getTarget() {
+        return new Vector3f(target);
+    }
+    
+    public float getDistance() {
+        return distance;
+    }
+    
+    public float getAzimuth() {
+        return azimuth;
+    }
+    
+    public float getElevation() {
+        return elevation;
+    }
+    
+    public float getFOV() {
+        return fov;
+    }
+    
+    public boolean isAnimating() {
+        return isAnimating;
+    }
+    
+    public boolean isUserInputActive() {
+        return (System.currentTimeMillis() - lastUserInputTime) < 500; // 500ms timeout
+    }
+    
+    // Camera presets for different viewing angles
     public enum CameraPreset {
         FRONT(0, 0, "Front View"),
         BACK(180, 0, "Back View"),
         LEFT(-90, 0, "Left View"),
         RIGHT(90, 0, "Right View"),
-        TOP(0, 90, "Top View"),
-        BOTTOM(0, -90, "Bottom View"),
-        ISOMETRIC(45, 35.264f, "Isometric View"),
-        PERSPECTIVE(-30, 20, "Perspective View");
+        TOP(0, 89, "Top View"),
+        BOTTOM(0, -89, "Bottom View"),
+        ISOMETRIC(45, 35, "Isometric View"),
+        PERSPECTIVE(45, 30, "Professional Perspective"),
+        HIGH_ANGLE(30, 60, "High Angle View");
         
         public final float azimuth;
         public final float elevation;
@@ -101,420 +230,76 @@ public class ArcBallCamera {
     }
     
     /**
-     * Creates a new ArcBall camera with default positioning.
-     * Initializes camera to look at origin from a reasonable distance.
-     */
-    public ArcBallCamera() {
-        // Initialize camera state
-        target = new Vector3f(0, 0, 0);
-        distance = 5.0f;
-        azimuth = 45.0f;
-        elevation = 20.0f;
-        fov = DEFAULT_FOV;
-        
-        // Initialize interpolation targets
-        targetTarget = new Vector3f(target);
-        targetDistance = distance;
-        targetAzimuth = azimuth;
-        targetElevation = elevation;
-        targetFov = fov;
-        
-        lastUpdateTime = System.currentTimeMillis();
-        
-        logger.debug("ArcBall camera initialized - Target: {}, Distance: {}, Azimuth: {}°, Elevation: {}°", 
-                    target, distance, azimuth, elevation);
-    }
-    
-    /**
-     * Updates camera interpolation and calculates current matrices.
-     * Should be called every frame to ensure smooth camera movement.
-     * 
-     * @param deltaTime Time since last frame in seconds
-     */
-    public void update(float deltaTime) {
-        boolean wasAnimating = isAnimating;
-        isAnimating = false;
-        
-        // Smooth interpolation for all camera parameters
-        if (interpolateFloat(targetDistance, distance, deltaTime)) {
-            distance = lerp(distance, targetDistance, INTERPOLATION_SPEED * deltaTime);
-            isAnimating = true;
-        }
-        
-        if (interpolateAngle(targetAzimuth, azimuth, deltaTime)) {
-            azimuth = lerpAngle(azimuth, targetAzimuth, INTERPOLATION_SPEED * deltaTime);
-            isAnimating = true;
-        }
-        
-        if (interpolateFloat(targetElevation, elevation, deltaTime)) {
-            elevation = lerp(elevation, targetElevation, INTERPOLATION_SPEED * deltaTime);
-            isAnimating = true;
-        }
-        
-        if (interpolateVector(targetTarget, target, deltaTime)) {
-            target.lerp(targetTarget, INTERPOLATION_SPEED * deltaTime);
-            isAnimating = true;
-        }
-        
-        if (interpolateFloat(targetFov, fov, deltaTime)) {
-            fov = lerp(fov, targetFov, INTERPOLATION_SPEED * deltaTime);
-            isAnimating = true;
-        }
-        
-        // Log animation state changes
-        if (wasAnimating && !isAnimating) {
-            logger.debug("Camera animation completed");
-        }
-        
-        // Update cached matrices
-        updateViewMatrix();
-    }
-    
-    /**
-     * Calculates and returns the current view matrix.
-     * 
-     * @return View matrix for current camera state
-     */
-    public Matrix4f getViewMatrix() {
-        return new Matrix4f(viewMatrix);
-    }
-    
-    /**
-     * Calculates and returns projection matrix for given viewport dimensions.
-     * 
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     * @param nearPlane Near clipping plane distance
-     * @param farPlane Far clipping plane distance
-     * @return Projection matrix for current camera state
-     */
-    public Matrix4f getProjectionMatrix(int viewportWidth, int viewportHeight, float nearPlane, float farPlane) {
-        float aspectRatio = (float) viewportWidth / (float) Math.max(viewportHeight, 1);
-        projectionMatrix.identity().perspective(
-            (float) Math.toRadians(fov),
-            aspectRatio,
-            nearPlane,
-            farPlane
-        );
-        return new Matrix4f(projectionMatrix);
-    }
-    
-    /**
-     * Gets the current camera position in world space.
-     * 
-     * @return Current camera position
-     */
-    public Vector3f getCameraPosition() {
-        return new Vector3f(cameraPosition);
-    }
-    
-    /**
-     * Gets the current look-at target position.
-     * 
-     * @return Current target position
-     */
-    public Vector3f getTarget() {
-        return new Vector3f(target);
-    }
-    
-    /**
-     * Handles mouse rotation input (typically left mouse button drag).
-     * 
-     * @param deltaX Horizontal mouse movement in pixels
-     * @param deltaY Vertical mouse movement in pixels
-     */
-    public void rotate(float deltaX, float deltaY) {
-        targetAzimuth -= deltaX * ROTATION_SENSITIVITY;
-        targetElevation = Math.max(MIN_ELEVATION, 
-                         Math.min(MAX_ELEVATION, targetElevation - deltaY * ROTATION_SENSITIVITY));
-        
-        // Wrap azimuth to stay within 0-360 range
-        while (targetAzimuth < 0) targetAzimuth += 360;
-        while (targetAzimuth >= 360) targetAzimuth -= 360;
-        
-        logger.trace("Camera rotation - Azimuth: {}°, Elevation: {}°", targetAzimuth, targetElevation);
-    }
-    
-    /**
-     * Handles mouse zoom input (typically scroll wheel).
-     * 
-     * @param scrollDelta Scroll wheel delta (positive = zoom in, negative = zoom out)
-     */
-    public void zoom(float scrollDelta) {
-        float zoomFactor = (float) Math.pow(ZOOM_SENSITIVITY, scrollDelta);
-        targetDistance = Math.max(MIN_DISTANCE, 
-                        Math.min(MAX_DISTANCE, targetDistance * zoomFactor));
-        
-        logger.trace("Camera zoom - Distance: {}", targetDistance);
-    }
-    
-    /**
-     * Handles mouse panning input (typically right mouse button drag).
-     * Pan movement is relative to current camera orientation.
-     * 
-     * @param deltaX Horizontal mouse movement in pixels
-     * @param deltaY Vertical mouse movement in pixels
-     */
-    public void pan(float deltaX, float deltaY) {
-        // Use vector pool to avoid allocations during frequent panning
-        VectorPool.withVectors((right, up, panOffset) -> {
-            calculateRightVector(right);
-            calculateUpVector(up);
-            
-            // Calculate pan offset relative to current camera distance
-            panOffset.set(right).mul(deltaX * PAN_SENSITIVITY * distance);
-            right.set(up).mul(-deltaY * PAN_SENSITIVITY * distance);
-            panOffset.add(right);
-            
-            targetTarget.add(panOffset);
-        });
-        
-        logger.trace("Camera pan - Target: {}", targetTarget);
-    }
-    
-    /**
-     * Changes field of view (zoom alternative).
-     * 
-     * @param fovDelta Change in field of view in degrees
-     */
-    public void changeFOV(float fovDelta) {
-        targetFov = Math.max(MIN_FOV, Math.min(MAX_FOV, targetFov + fovDelta));
-        logger.trace("Camera FOV change - FOV: {}°", targetFov);
-    }
-    
-    /**
-     * Applies a camera preset with smooth transition.
-     * 
-     * @param preset The camera preset to apply
+     * Apply a camera preset.
      */
     public void applyPreset(CameraPreset preset) {
         targetAzimuth = preset.azimuth;
         targetElevation = preset.elevation;
         
-        // Adjust distance for certain presets
-        if (preset == CameraPreset.ISOMETRIC) {
-            targetDistance = Math.max(targetDistance, 3.0f); // Ensure good isometric view
-        }
-        
-        logger.info("Applied camera preset: {} (Azimuth: {}°, Elevation: {}°)", 
-                   preset.displayName, preset.azimuth, preset.elevation);
+        logger.info("Applied camera preset: {}", preset.displayName);
     }
     
-    /**
-     * Automatically frames the camera to show a bounding box optimally.
-     * 
-     * @param min Minimum corner of bounding box
-     * @param max Maximum corner of bounding box
-     */
-    public void frameObject(Vector3f min, Vector3f max) {
-        // Calculate center and size of bounding box using vector pool
-        Vector3f center = VectorPool.acquireVector3f(min);
-        Vector3f size = VectorPool.acquireVector3f(max);
-        
-        center.add(max).mul(0.5f);
-        size.sub(min);
-        float maxDimension = Math.max(Math.max(size.x, size.y), size.z);
-        
-        // Set target to center of object
-        targetTarget.set(center);
-        
-        // Calculate optimal distance based on field of view and object size
-        float halfFov = (float) Math.toRadians(fov * 0.5f);
-        float optimalDistance = (maxDimension * 0.6f) / (float) Math.tan(halfFov);
-        optimalDistance = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, optimalDistance));
-        
-        targetDistance = optimalDistance;
-        
-        logger.info("Framed object - Center: {}, Distance: {}", center, optimalDistance);
-        
-        // Release vectors back to pool
-        VectorPool.release(center);
-        VectorPool.release(size);
-    }
-    
-    /**
-     * Resets camera to default position and orientation.
-     */
-    public void reset() {
-        targetTarget.set(0, 0, 0);
-        targetDistance = 5.0f;
-        targetAzimuth = 45.0f;
-        targetElevation = 20.0f;
-        targetFov = DEFAULT_FOV;
-        
-        logger.info("Camera reset to default position");
-    }
-    
-    /**
-     * Sets camera target position immediately (no interpolation).
-     * 
-     * @param newTarget New target position
-     */
+    // Additional methods to maintain compatibility with existing viewport code
     public void setTarget(Vector3f newTarget) {
-        target.set(newTarget);
-        targetTarget.set(newTarget);
+        // This camera is designed to always target the origin (0,0,0)
+        // Log any attempts to change target for debugging
+        if (newTarget != null && !newTarget.equals(target)) {
+            logger.debug("Target change requested from ({},{},{}) to ({},{},{}), but always maintaining origin focus", 
+                target.x, target.y, target.z, newTarget.x, newTarget.y, newTarget.z);
+        }
     }
     
-    /**
-     * Sets camera distance immediately (no interpolation).
-     * 
-     * @param newDistance New distance from target
-     */
     public void setDistance(float newDistance) {
-        distance = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, newDistance));
+        distance = clamp(newDistance, MIN_DISTANCE, MAX_DISTANCE);
         targetDistance = distance;
     }
     
-    /**
-     * Sets camera orientation immediately (no interpolation).
-     * 
-     * @param newAzimuth New azimuth angle in degrees
-     * @param newElevation New elevation angle in degrees
-     */
     public void setOrientation(float newAzimuth, float newElevation) {
         azimuth = normalizeAngle(newAzimuth);
-        elevation = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, newElevation));
+        elevation = clamp(newElevation, MIN_ELEVATION, MAX_ELEVATION);
         targetAzimuth = azimuth;
         targetElevation = elevation;
     }
     
-    /**
-     * Checks if camera is currently animating/interpolating.
-     * 
-     * @return True if camera is moving, false if stationary
-     */
-    public boolean isAnimating() {
-        return isAnimating;
+    public void setOrientationSmooth(float azimuth, float elevation) {
+        targetAzimuth = normalizeAngle(azimuth);
+        targetElevation = clamp(elevation, MIN_ELEVATION, MAX_ELEVATION);
     }
     
-    /**
-     * Gets current camera distance from target.
-     * 
-     * @return Current distance
-     */
-    public float getDistance() {
-        return distance;
+    public void setDistanceSmooth(float distance) {
+        targetDistance = clamp(distance, MIN_DISTANCE, MAX_DISTANCE);
     }
     
-    /**
-     * Gets current azimuth angle.
-     * 
-     * @return Current azimuth in degrees
-     */
-    public float getAzimuth() {
-        return azimuth;
-    }
-    
-    /**
-     * Gets current elevation angle.
-     * 
-     * @return Current elevation in degrees
-     */
-    public float getElevation() {
-        return elevation;
-    }
-    
-    /**
-     * Gets current field of view.
-     * 
-     * @return Current FOV in degrees
-     */
-    public float getFOV() {
-        return fov;
+    public void frameObject(Vector3f min, Vector3f max) {
+        // Calculate size and frame accordingly
+        Vector3f size = new Vector3f(max).sub(min);
+        float maxDimension = Math.max(Math.max(size.x, size.y), size.z);
+        frameOrigin(maxDimension);
     }
     
     // Private helper methods
-    
-    /**
-     * Updates the view matrix based on current camera state.
-     */
-    private void updateViewMatrix() {
-        // Calculate camera position from spherical coordinates
-        calculateCameraPosition();
-        
-        // Create view matrix using lookAt
-        viewMatrix.identity().lookAt(cameraPosition, target, cameraUp);
-    }
-    
-    /**
-     * Calculates camera position from spherical coordinates.
-     */
-    private void calculateCameraPosition() {
+    private void updateCameraPosition() {
         float azimuthRad = (float) Math.toRadians(azimuth);
         float elevationRad = (float) Math.toRadians(elevation);
         
-        // Convert spherical to Cartesian coordinates
         float cosElevation = (float) Math.cos(elevationRad);
         cameraPosition.x = target.x + distance * cosElevation * (float) Math.sin(azimuthRad);
         cameraPosition.y = target.y + distance * (float) Math.sin(elevationRad);
         cameraPosition.z = target.z + distance * cosElevation * (float) Math.cos(azimuthRad);
     }
     
-    /**
-     * Calculates the right vector for camera-relative movement.
-     */
-    private Vector3f calculateRightVector() {
-        Vector3f forward = VectorPool.acquireVector3f(target).sub(cameraPosition).normalize();
-        Vector3f right = VectorPool.acquireVector3f(forward).cross(cameraUp).normalize();
-        VectorPool.release(forward);
-        return right;
+    private void updateViewMatrix() {
+        viewMatrix.identity().lookAt(cameraPosition, target, up);
     }
     
-    /**
-     * Calculates the right vector for camera-relative movement using pre-allocated vector.
-     * 
-     * @param result The vector to store the result in
-     */
-    private void calculateRightVector(Vector3f result) {
-        Vector3f forward = VectorPool.acquireVector3f(target);
-        forward.sub(cameraPosition).normalize();
-        result.set(forward).cross(cameraUp).normalize();
-        VectorPool.release(forward);
-    }
-    
-    /**
-     * Calculates the up vector for camera-relative movement.
-     */
-    private Vector3f calculateUpVector() {
-        Vector3f forward = VectorPool.acquireVector3f(target).sub(cameraPosition).normalize();
-        Vector3f right = calculateRightVector();
-        Vector3f up = VectorPool.acquireVector3f(right).cross(forward).normalize();
-        VectorPool.release(forward);
-        VectorPool.release(right);
-        return up;
-    }
-    
-    /**
-     * Calculates the up vector for camera-relative movement using pre-allocated vector.
-     * 
-     * @param result The vector to store the result in
-     */
-    private void calculateUpVector(Vector3f result) {
-        Vector3f forward = VectorPool.acquireVector3f(target);
-        Vector3f right = VectorPool.acquireVector3f();
-        
-        forward.sub(cameraPosition).normalize();
-        calculateRightVector(right);
-        result.set(right).cross(forward).normalize();
-        
-        VectorPool.release(forward);
-        VectorPool.release(right);
-    }
-    
-    /**
-     * Linear interpolation for float values.
-     */
     private float lerp(float a, float b, float t) {
         return a + (b - a) * Math.min(t, 1.0f);
     }
     
-    /**
-     * Angular interpolation that handles wraparound correctly.
-     */
     private float lerpAngle(float from, float to, float t) {
         float difference = to - from;
         
-        // Handle wraparound
+        // Handle angle wraparound
         if (difference > 180) {
             difference -= 360;
         } else if (difference < -180) {
@@ -524,35 +309,13 @@ public class ArcBallCamera {
         return normalizeAngle(from + difference * Math.min(t, 1.0f));
     }
     
-    /**
-     * Normalizes angle to 0-360 range.
-     */
     private float normalizeAngle(float angle) {
         while (angle < 0) angle += 360;
         while (angle >= 360) angle -= 360;
         return angle;
     }
     
-    /**
-     * Checks if float interpolation should continue.
-     */
-    private boolean interpolateFloat(float target, float current, float deltaTime) {
-        return Math.abs(target - current) > INTERPOLATION_THRESHOLD;
-    }
-    
-    /**
-     * Checks if angle interpolation should continue.
-     */
-    private boolean interpolateAngle(float target, float current, float deltaTime) {
-        float difference = Math.abs(target - current);
-        if (difference > 180) difference = 360 - difference;
-        return difference > INTERPOLATION_THRESHOLD;
-    }
-    
-    /**
-     * Checks if vector interpolation should continue.
-     */
-    private boolean interpolateVector(Vector3f target, Vector3f current, float deltaTime) {
-        return target.distance(current) > INTERPOLATION_THRESHOLD;
+    private float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

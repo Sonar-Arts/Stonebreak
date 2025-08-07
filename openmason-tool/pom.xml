@@ -32,6 +32,14 @@
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-fxml</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+        </dependency>
         
         
         <!-- LWJGL core -->
@@ -239,6 +247,10 @@
                         <option>--add-exports=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</option>
                         <option>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</option>
                         
+                        <!-- JavaFX Web module access -->
+                        <option>--add-exports=javafx.web/com.sun.webkit=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.web/javafx.scene.web=ALL-UNNAMED</option>
+                        
                         <!-- Additional stability flags for native library interaction -->
                         <option>-Djava.library.path=.</option>
                         <option>-Dorg.lwjgl.util.Debug=true</option>
@@ -266,6 +278,10 @@
                         <!-- JavaFX native access for Canvas OpenGL -->
                         <option>--add-exports=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</option>
                         <option>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</option>
+                        
+                        <!-- JavaFX Web module access -->
+                        <option>--add-exports=javafx.web/com.sun.webkit=ALL-UNNAMED</option>
+                        <option>--add-opens=javafx.web/javafx.scene.web=ALL-UNNAMED</option>
                     </options>
                 </configuration>
             </plugin>

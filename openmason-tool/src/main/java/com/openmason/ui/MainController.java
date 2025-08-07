@@ -423,10 +423,15 @@ public class MainController implements Initializable {
         // Create and integrate the 3D viewport
         try {
             logger.info("Initializing 3D viewport...");
+            logger.info("ViewportContainer initial children count: {}", viewportContainer.getChildren().size());
+            
             viewport3D = new OpenMason3DViewport();
+            logger.info("Created OpenMason3DViewport instance");
             
             // Remove placeholder and add the actual 3D viewport
+            logger.info("Clearing viewportContainer children...");
             viewportContainer.getChildren().clear();
+            logger.info("ViewportContainer children count after clear: {}", viewportContainer.getChildren().size());
             
             // Add viewport to fill the container
             AnchorPane.setTopAnchor(viewport3D, 0.0);
@@ -434,12 +439,66 @@ public class MainController implements Initializable {
             AnchorPane.setLeftAnchor(viewport3D, 0.0);
             AnchorPane.setRightAnchor(viewport3D, 0.0);
             
+            logger.info("Adding viewport3D to viewportContainer...");
             viewportContainer.getChildren().add(viewport3D);
+            logger.info("ViewportContainer children count after add: {}", viewportContainer.getChildren().size());
+            
+            // Ensure viewport has minimum size and is visible
+            viewport3D.setPrefSize(800, 600);
+            viewport3D.setMinSize(400, 300);
+            viewport3D.setVisible(true);
+            viewport3D.setManaged(true);
+            
+            // Add a colored background to make the viewport visible
+            viewport3D.setStyle("-fx-background-color: #2a2a2a; -fx-border-color: red; -fx-border-width: 2px;");
+            
+            logger.info("Set viewport3D size constraints and visibility");
+            
+            // REMOVED: Test rectangle - now testing SubScene visibility
+            logger.info("Test rectangle removed - checking SubScene visibility");
             
             // Bind viewport properties to UI controls
             bindViewportControls();
             
             logger.info("3D viewport initialized and integrated successfully");
+            
+            // Add debug: Verify viewport dimensions and status (with delay for layout)
+            Platform.runLater(() -> {
+                // Add a slight delay to allow layout to complete
+                Platform.runLater(() -> {
+                    try {
+                        logger.info("=== VIEWPORT DEBUG INFO ===");
+                        logger.info("ViewportContainer size: {}x{}", viewportContainer.getWidth(), viewportContainer.getHeight());
+                        logger.info("ViewportContainer visible: {}", viewportContainer.isVisible());
+                        logger.info("ViewportContainer managed: {}", viewportContainer.isManaged());
+                        logger.info("ViewportContainer style classes: {}", viewportContainer.getStyleClass());
+                        
+                        logger.info("Viewport3D size: {}x{}", viewport3D.getWidth(), viewport3D.getHeight());
+                        logger.info("Viewport3D prefSize: {}x{}", viewport3D.getPrefWidth(), viewport3D.getPrefHeight());
+                        logger.info("Viewport3D minSize: {}x{}", viewport3D.getMinWidth(), viewport3D.getMinHeight());
+                        logger.info("Viewport3D visible: {}", viewport3D.isVisible());
+                        logger.info("Viewport3D managed: {}", viewport3D.isManaged());
+                        logger.info("Viewport3D children count: {}", viewport3D.getChildren().size());
+                        logger.info("Viewport3D style: {}", viewport3D.getStyle());
+                        
+                        // Check if viewport is actually in the scene graph
+                        logger.info("Viewport3D parent: {}", viewport3D.getParent());
+                        logger.info("Viewport3D scene: {}", viewport3D.getScene());
+                        
+                        // Check SubScene specifics if accessible
+                        viewport3D.getChildren().forEach(child -> {
+                            logger.info("Viewport child: {} - size: {}x{}, visible: {}", 
+                                child.getClass().getSimpleName(), 
+                                child.getBoundsInLocal().getWidth(), 
+                                child.getBoundsInLocal().getHeight(),
+                                child.isVisible());
+                        });
+                        
+                    } catch (Exception ex) {
+                        logger.error("Failed to debug viewport", ex);
+                    }
+                });
+            });
             
         } catch (Exception e) {
             logger.error("Failed to initialize 3D viewport", e);
@@ -447,7 +506,7 @@ public class MainController implements Initializable {
             // Add error message as fallback
             Label errorLabel = new Label("3D Viewport initialization failed: " + e.getMessage());
             errorLabel.setTextFill(Color.RED);
-            errorLabel.setStyle("-fx-font-size: 12px; -fx-padding: 10px;");
+            errorLabel.setStyle("-fx-font-size: 12px; -fx-padding: 10px; -fx-background-color: #ffcccc;");
             
             AnchorPane.setTopAnchor(errorLabel, 0.0);
             AnchorPane.setBottomAnchor(errorLabel, 0.0);
@@ -455,6 +514,17 @@ public class MainController implements Initializable {
             AnchorPane.setRightAnchor(errorLabel, 0.0);
             
             viewportContainer.getChildren().add(errorLabel);
+            
+            // Also add a simple test rectangle to verify container is working
+            Rectangle testRect = new Rectangle(200, 100);
+            testRect.setFill(Color.BLUE);
+            testRect.setStroke(Color.WHITE);
+            testRect.setStrokeWidth(2);
+            AnchorPane.setTopAnchor(testRect, 50.0);
+            AnchorPane.setLeftAnchor(testRect, 50.0);
+            viewportContainer.getChildren().add(testRect);
+            
+            logger.info("Added fallback error display and test rectangle");
         }
     }
     
