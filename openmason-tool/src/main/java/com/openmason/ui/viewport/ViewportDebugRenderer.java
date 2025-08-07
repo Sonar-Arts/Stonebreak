@@ -45,12 +45,13 @@ public class ViewportDebugRenderer {
     private boolean partLabelsVisible = false;
     private boolean debugMode = false;
     
-    // Professional 3D viewport grid configuration
+    // 2D grid plane configuration - visible thickness for both X and Z lines
     private static final float GRID_SIZE = 40.0f;          // Total grid size (40x40 units)
     private static final float GRID_SPACING = 2.0f;        // Distance between grid lines
     private static final float MAJOR_GRID_INTERVAL = 10.0f; // Major grid lines every 10 units
-    private static final float GRID_LINE_THICKNESS = 0.02f; // Thin grid lines
-    private static final float MAJOR_LINE_THICKNESS = 0.04f; // Thicker major lines
+    private static final float GRID_LINE_THICKNESS = 0.05f; // Visible thin grid lines
+    private static final float MAJOR_LINE_THICKNESS = 0.08f; // Thicker major lines
+    private static final float AXIS_LINE_THICKNESS = 0.12f; // Thickest axis lines
     
     /**
      * Initialize with scene manager reference.
@@ -67,8 +68,16 @@ public class ViewportDebugRenderer {
         updateGrid();
         updateAxes();
         
-        logger.trace("Debug visualization updated: grid={}, axes={}, coordAxes={}, labels={}", 
+        logger.debug("Debug visualization updated: grid={}, axes={}, coordAxes={}, labels={}", 
             gridVisible, axesVisible, coordinateAxesVisible, partLabelsVisible);
+    }
+    
+    /**
+     * Force grid refresh - useful for testing changes.
+     */
+    public void forceGridRefresh() {
+        logger.info("Forcing grid refresh...");
+        updateGrid();
     }
     
     /**
@@ -96,12 +105,12 @@ public class ViewportDebugRenderer {
     }
     
     /**
-     * Create professional 3D viewport grid system.
-     * Standard grid layout suitable for 3D model visualization with:
-     * - Regular grid lines every 2 units
+     * Create professional 2D grid plane system.
+     * Creates a flat grid on the XZ plane (Y=0) suitable for 2D visualization with:
+     * - Regular grid lines every 2 units in both X and Z directions
      * - Major grid lines every 10 units 
-     * - Clean, minimal appearance
-     * - Proper depth perception
+     * - Enhanced X-axis (red) and Z-axis (blue) visibility
+     * - Thin lines for clean 2D grid plane appearance
      */
     private Group create3DGrid() {
         Group gridGroup = new Group();
@@ -110,46 +119,87 @@ public class ViewportDebugRenderer {
             float halfSize = GRID_SIZE / 2.0f;
             int numLines = (int) (GRID_SIZE / GRID_SPACING);
             
-            // Create horizontal grid lines (parallel to X-axis)
+            logger.debug("Creating 2D grid plane: size={}, spacing={}, numLines={}", GRID_SIZE, GRID_SPACING, numLines);
+            
+            int xLinesCreated = 0;
+            int zLinesCreated = 0;
+            
+            // Create lines parallel to X-axis (horizontal lines, varying Z position)
             for (int i = 0; i <= numLines; i++) {
                 float z = -halfSize + i * GRID_SPACING;
                 boolean isMajorLine = (Math.abs(z) % MAJOR_GRID_INTERVAL) < 0.01f;
+                boolean isXAxis = Math.abs(z) < 0.01f; // Z=0 line (X-axis)
                 
-                Color lineColor = isMajorLine ? Color.GRAY.darker() : Color.LIGHTGRAY;
-                float thickness = isMajorLine ? MAJOR_LINE_THICKNESS : GRID_LINE_THICKNESS;
+                Color lineColor;
+                float thickness;
                 
-                Cylinder line = createLine3D(-halfSize, 0, z, halfSize, 0, z, thickness, lineColor);
-                gridGroup.getChildren().add(line);
+                if (isXAxis) {
+                    // Highlight the X-axis (Z=0 line) with red
+                    lineColor = Color.RED;
+                    thickness = AXIS_LINE_THICKNESS;
+                } else if (isMajorLine) {
+                    lineColor = Color.DARKGRAY;
+                    thickness = MAJOR_LINE_THICKNESS;
+                } else {
+                    lineColor = Color.LIGHTGRAY;
+                    thickness = GRID_LINE_THICKNESS;
+                }
+                
+                // Create flat X-direction line (horizontal line on 2D plane)
+                Box xLine = createFlatGridLine(GRID_SIZE, thickness, 0.001f, lineColor); // width, height, depth
+                xLine.setTranslateX(0);
+                xLine.setTranslateY(0);
+                xLine.setTranslateZ(z);
+                gridGroup.getChildren().add(xLine);
+                xLinesCreated++;
             }
             
-            // Create vertical grid lines (parallel to Z-axis) 
+            // Create lines parallel to Z-axis (vertical lines, varying X position)
             for (int i = 0; i <= numLines; i++) {
                 float x = -halfSize + i * GRID_SPACING;
                 boolean isMajorLine = (Math.abs(x) % MAJOR_GRID_INTERVAL) < 0.01f;
+                boolean isZAxis = Math.abs(x) < 0.01f; // X=0 line (Z-axis)
                 
-                Color lineColor = isMajorLine ? Color.GRAY.darker() : Color.LIGHTGRAY;
-                float thickness = isMajorLine ? MAJOR_LINE_THICKNESS : GRID_LINE_THICKNESS;
+                Color lineColor;
+                float thickness;
                 
-                Cylinder line = createLine3D(x, 0, -halfSize, x, 0, halfSize, thickness, lineColor);
-                gridGroup.getChildren().add(line);
+                if (isZAxis) {
+                    // Highlight the Z-axis (X=0 line) with blue
+                    lineColor = Color.BLUE;
+                    thickness = AXIS_LINE_THICKNESS;
+                } else if (isMajorLine) {
+                    lineColor = Color.DARKGRAY;
+                    thickness = MAJOR_LINE_THICKNESS;
+                } else {
+                    lineColor = Color.LIGHTGRAY;
+                    thickness = GRID_LINE_THICKNESS;
+                }
+                
+                // Create flat Z-direction line (vertical line on 2D plane)
+                Box zLine = createFlatGridLine(thickness, 0.001f, GRID_SIZE, lineColor); // width, height, depth
+                zLine.setTranslateX(x);
+                zLine.setTranslateY(0);
+                zLine.setTranslateZ(0);
+                gridGroup.getChildren().add(zLine);
+                zLinesCreated++;
             }
             
-            // Add subtle origin marker
-            Box originMarker = new Box(0.3, 0.05, 0.3);
+            // Add visible origin marker
+            Box originMarker = new Box(0.5, 0.05, 0.5);
             PhongMaterial originMaterial = new PhongMaterial();
-            originMaterial.setDiffuseColor(Color.ORANGE);
+            originMaterial.setDiffuseColor(Color.YELLOW);
             originMaterial.setSpecularColor(Color.GOLD);
             originMarker.setMaterial(originMaterial);
             originMarker.setTranslateX(0);
-            originMarker.setTranslateY(0.025);
+            originMarker.setTranslateY(0.025); // Slightly raised
             originMarker.setTranslateZ(0);
             gridGroup.getChildren().add(originMarker);
             
-            logger.debug("Created professional 3D viewport grid: {} lines, spacing={}, major intervals={}", 
-                numLines * 2, GRID_SPACING, MAJOR_GRID_INTERVAL);
+            logger.debug("Created 2D grid plane: {} X-direction lines, {} Z-direction lines, X-axis=red, Z-axis=blue", 
+                xLinesCreated, zLinesCreated);
             
         } catch (Exception e) {
-            logger.error("Failed to create 3D viewport grid", e);
+            logger.error("Failed to create 2D grid plane", e);
         }
         
         return gridGroup;
@@ -157,6 +207,21 @@ public class ViewportDebugRenderer {
     
     // Coordinate axes removed - not properly implemented
     
+    /**
+     * Create a flat grid line using a Box for true 2D appearance.
+     */
+    private Box createFlatGridLine(double width, double height, double depth, Color color) {
+        Box line = new Box(width, height, depth);
+        
+        // Create flat material
+        PhongMaterial material = new PhongMaterial();
+        material.setDiffuseColor(color);
+        material.setSpecularColor(color.brighter());
+        line.setMaterial(material);
+        
+        return line;
+    }
+
     /**
      * Create a 3D line using a cylinder between two points.
      */

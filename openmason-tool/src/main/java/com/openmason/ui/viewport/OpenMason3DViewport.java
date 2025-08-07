@@ -436,6 +436,16 @@ public class OpenMason3DViewport extends StackPane {
     }
     
     /**
+     * Force refresh of the grid system - useful for testing grid changes.
+     */
+    public void refreshGrid() {
+        if (debugRenderer != null) {
+            debugRenderer.forceGridRefresh();
+            requestRender();
+        }
+    }
+    
+    /**
      * Apply camera preset.
      */
     public void applyCameraPreset(ArcBallCamera.CameraPreset preset) {

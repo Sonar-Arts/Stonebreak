@@ -158,8 +158,7 @@ public class ViewportSceneManager {
             
             camera3D.getTransforms().addAll(yawRotate, pitchRotate);
             
-            logger.debug("JavaFX camera updated: pos=({}, {}, {}), looking at origin", 
-                String.format("%.2f", x), String.format("%.2f", y), String.format("%.2f", z));
+            // Camera position updated (debug logging removed to reduce spam)
             
         } catch (Exception e) {
             logger.warn("Failed to update JavaFX camera from matrix", e);

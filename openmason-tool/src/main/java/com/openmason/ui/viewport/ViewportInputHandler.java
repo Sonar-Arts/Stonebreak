@@ -83,7 +83,7 @@ public class ViewportInputHandler {
      * Handle mouse press events.
      */
     private void handleMousePressed(MouseEvent event) {
-        logger.debug("Mouse pressed event received - enabled: {}, camera: {}", cameraControlsEnabled, camera != null);
+        // Mouse pressed event (debug logging removed to reduce spam)
         
         if (!cameraControlsEnabled || camera == null) {
             return;
@@ -96,10 +96,10 @@ public class ViewportInputHandler {
         // Track mouse button state
         if (event.getButton() == MouseButton.PRIMARY) {
             leftMousePressed = true;
-            logger.debug("Left mouse button pressed at ({}, {}) - camera controls active", lastMouseX, lastMouseY);
+            // Left mouse button pressed - camera controls active
         } else if (event.getButton() == MouseButton.SECONDARY) {
             rightMousePressed = true;
-            logger.debug("Right mouse button pressed at ({}, {}) - camera controls active", lastMouseX, lastMouseY);
+            // Right mouse button pressed - camera controls active
         }
         
         event.consume();
@@ -128,8 +128,7 @@ public class ViewportInputHandler {
             // Update camera to apply interpolation
             camera.update(0.016f); // Assume 60 FPS for smooth interpolation
             
-            logger.debug("Camera rotation applied: deltaX={}, deltaY={}, sensitivity={}, azimuth={}°, elevation={}°", 
-                deltaX, deltaY, sensitivity, camera.getAzimuth(), camera.getElevation());
+            // Camera rotation applied (debug logging removed to reduce spam)
             
             // Request render update
             requestRender();
@@ -184,7 +183,7 @@ public class ViewportInputHandler {
         // Update camera to apply interpolation
         camera.update(0.016f); // Assume 60 FPS for smooth interpolation
         
-        logger.debug("Camera zoom: scrollDelta={}, distance={}", scrollDelta, camera.getDistance());
+        // Camera zoom applied (debug logging removed to reduce spam)
         
         // Request render update
         requestRender();
