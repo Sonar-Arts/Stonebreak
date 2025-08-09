@@ -5,17 +5,68 @@ import com.stonebreak.model.ModelDefinition.*;
 import org.joml.Vector3f;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * JSON model loader for cow models.
- * Follows the same pattern as CowTextureLoader.java for consistency.
+ * Production-ready JSON model loader with sync/async APIs and comprehensive error handling.
+ * 
+ * Features:
+ * - Synchronous and asynchronous model loading
+ * - Thread-safe caching with proper concurrency control
+ * - Comprehensive exception hierarchy for different error types
+ * - Progress reporting for async operations
+ * - Strict validation with no silent fallbacks
+ * - Fail-fast error detection
+ * 
+ * @author Enhanced ModelLoader
+ * @version 2.0
  */
 public class ModelLoader {
     
+    // Exception hierarchy for different error types
+    public static class ModelException extends RuntimeException {
+        public ModelException(String message) {
+            super(message);
+        }
+        
+        public ModelException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+    
+    public static class ModelNotFoundException extends ModelException {
+        public ModelNotFoundException(String modelName) {
+            super("Model not found: '" + modelName + "'. Available models: " + Arrays.toString(getAvailableModels()));
+        }
+    }
+    
+    public static class ModelValidationException extends ModelException {
+        public ModelValidationException(String modelName, String reason) {
+            super("Model validation failed for '" + modelName + "': " + reason);
+        }
+    }
+    
+    public static class ModelLoadingException extends ModelException {
+        public ModelLoadingException(String modelName, String reason) {
+            super("Failed to load model '" + modelName + "': " + reason);
+        }
+        
+        public ModelLoadingException(String modelName, String reason, Throwable cause) {
+            super("Failed to load model '" + modelName + "': " + reason, cause);
+        }
+    }
+    
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Map<String, CowModelDefinition> cachedModels = new ConcurrentHashMap<>();
+    private static final ReentrantReadWriteLock cacheLock = new ReentrantReadWriteLock();
+    private static final ExecutorService asyncExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "ModelLoader-Async");
+        t.setDaemon(true);
+        return t;
+    });
     
     // Paths to model definition JSON files
     private static final Map<String, String> MODEL_FILE_PATHS = Map.of(
@@ -24,132 +75,294 @@ public class ModelLoader {
     );
     
     /**
-     * Gets a cow model definition, loading and caching it if necessary.
+     * Gets a cow model definition synchronously, loading and caching it if necessary.
+     * 
+     * @param modelName The name of the model to load
+     * @return The loaded model definition (never null)
+     * @throws ModelNotFoundException if the model name is not recognized
+     * @throws ModelLoadingException if the model file cannot be loaded
+     * @throws ModelValidationException if the model fails validation
      */
     public static CowModelDefinition getCowModel(String modelName) {
-        // Check if model is already cached
-        CowModelDefinition cached = cachedModels.get(modelName);
-        if (cached != null) {
-            return cached;
+        if (modelName == null || modelName.trim().isEmpty()) {
+            throw new ModelNotFoundException("null or empty");
         }
         
-        // Attempt to load the model
+        modelName = modelName.trim();
+        
+        // Check cache with read lock
+        cacheLock.readLock().lock();
         try {
-            CowModelDefinition model = loadModel(modelName);
-            if (model != null) {
-                cachedModels.put(modelName, model);
-                System.out.println("[ModelLoader] Successfully cached model: " + modelName);
-                return model;
+            CowModelDefinition cached = cachedModels.get(modelName);
+            if (cached != null) {
+                return cached;
             }
-        } catch (IOException e) {
-            System.err.println("[ModelLoader] Failed to load model '" + modelName + "': " + e.getMessage());
+        } finally {
+            cacheLock.readLock().unlock();
         }
         
-        // Fallback to standard_cow model
-        if (!"standard_cow".equals(modelName)) {
-            System.err.println("[ModelLoader] Using fallback standard_cow model for failed model: " + modelName);
-            return getCowModel("standard_cow");
+        // Load model with write lock
+        cacheLock.writeLock().lock();
+        try {
+            // Double-check pattern
+            CowModelDefinition cached = cachedModels.get(modelName);
+            if (cached != null) {
+                return cached;
+            }
+            
+            // Validate model name exists
+            if (!MODEL_FILE_PATHS.containsKey(modelName)) {
+                throw new ModelNotFoundException(modelName);
+            }
+            
+            // Load and validate model
+            CowModelDefinition model = loadModelInternal(modelName);
+            validateModelStrict(model, modelName);
+            
+            // Cache and return
+            cachedModels.put(modelName, model);
+            System.out.println("[ModelLoader] Successfully loaded and cached model: " + modelName);
+            return model;
+            
+        } finally {
+            cacheLock.writeLock().unlock();
         }
-        
-        // If standard_cow model itself fails, return null
-        System.err.println("[ModelLoader] Critical error: standard_cow model failed to load");
-        return null;
     }
     
     /**
-     * Load a model definition from its JSON file.
+     * Gets a cow model definition asynchronously with progress reporting.
+     * 
+     * @param modelName The name of the model to load
+     * @param progressCallback Optional progress callback (can be null)
+     * @return CompletableFuture that completes with the loaded model
+     * @throws ModelNotFoundException immediately if the model name is not recognized
      */
-    public static CowModelDefinition loadModel(String modelName) throws IOException {
-        String filePath = MODEL_FILE_PATHS.get(modelName);
-        if (filePath == null) {
-            throw new IOException("Unknown cow model: " + modelName + ". Available models: " + MODEL_FILE_PATHS.keySet());
+    public static CompletableFuture<CowModelDefinition> getCowModelAsync(String modelName, Consumer<String> progressCallback) {
+        if (modelName == null || modelName.trim().isEmpty()) {
+            return CompletableFuture.failedFuture(new ModelNotFoundException("null or empty"));
         }
         
-        try (InputStream inputStream = ModelLoader.class.getClassLoader().getResourceAsStream(filePath)) {
-            if (inputStream == null) {
-                throw new IOException("Could not find resource: " + filePath);
+        final String finalModelName = modelName.trim();
+        
+        // Validate model name exists immediately
+        if (!MODEL_FILE_PATHS.containsKey(finalModelName)) {
+            return CompletableFuture.failedFuture(new ModelNotFoundException(finalModelName));
+        }
+        
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (progressCallback != null) {
+                    progressCallback.accept("Checking cache for model: " + finalModelName);
+                }
+                
+                // Check cache first
+                cacheLock.readLock().lock();
+                try {
+                    CowModelDefinition cached = cachedModels.get(finalModelName);
+                    if (cached != null) {
+                        if (progressCallback != null) {
+                            progressCallback.accept("Model found in cache: " + finalModelName);
+                        }
+                        return cached;
+                    }
+                } finally {
+                    cacheLock.readLock().unlock();
+                }
+                
+                if (progressCallback != null) {
+                    progressCallback.accept("Loading model from file: " + finalModelName);
+                }
+                
+                // Load model with write lock
+                cacheLock.writeLock().lock();
+                try {
+                    // Double-check pattern
+                    CowModelDefinition cached = cachedModels.get(finalModelName);
+                    if (cached != null) {
+                        return cached;
+                    }
+                    
+                    if (progressCallback != null) {
+                        progressCallback.accept("Parsing JSON for model: " + finalModelName);
+                    }
+                    
+                    // Load and validate model
+                    CowModelDefinition model = loadModelInternal(finalModelName);
+                    
+                    if (progressCallback != null) {
+                        progressCallback.accept("Validating model: " + finalModelName);
+                    }
+                    
+                    validateModelStrict(model, finalModelName);
+                    
+                    // Cache and return
+                    cachedModels.put(finalModelName, model);
+                    
+                    if (progressCallback != null) {
+                        progressCallback.accept("Successfully loaded model: " + finalModelName);
+                    }
+                    
+                    System.out.println("[ModelLoader] Async: Successfully loaded and cached model: " + finalModelName);
+                    return model;
+                    
+                } finally {
+                    cacheLock.writeLock().unlock();
+                }
+                
+            } catch (Exception e) {
+                if (progressCallback != null) {
+                    progressCallback.accept("Error loading model " + finalModelName + ": " + e.getMessage());
+                }
+                throw e;
+            }
+        }, asyncExecutor);
+    }
+    
+    /**
+     * Internal method to load a model definition from its JSON file.
+     * Used by both sync and async APIs.
+     */
+    private static CowModelDefinition loadModelInternal(String modelName) {
+        String filePath = MODEL_FILE_PATHS.get(modelName);
+        if (filePath == null) {
+            throw new ModelNotFoundException(modelName);
+        }
+        
+        // Try different approaches for module compatibility
+        InputStream inputStream = null;
+        
+        // First try: Module's class loader
+        inputStream = ModelLoader.class.getClassLoader().getResourceAsStream(filePath);
+        
+        // Second try: Module class itself
+        if (inputStream == null) {
+            inputStream = ModelLoader.class.getResourceAsStream("/" + filePath);
+        }
+        
+        // Third try: Context class loader
+        if (inputStream == null) {
+            inputStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(filePath);
+        }
+        
+        try (InputStream finalInputStream = inputStream) {
+            if (finalInputStream == null) {
+                throw new ModelLoadingException(modelName, "Resource file not found: " + filePath);
             }
             
-            CowModelDefinition model = objectMapper.readValue(inputStream, CowModelDefinition.class);
-            
-            // Validate the loaded model
-            validateModel(model, modelName);
+            CowModelDefinition model = objectMapper.readValue(finalInputStream, CowModelDefinition.class);
             
             System.out.println("[ModelLoader] Successfully loaded cow model '" + modelName + "' (" + 
-                model.getDisplayName() + ") with " + countTotalParts(model) + " parts and " + 
-                model.getAnimations().size() + " animations");
+                (model.getDisplayName() != null ? model.getDisplayName() : "unknown") + ") with " + 
+                countTotalParts(model) + " parts and " + 
+                (model.getAnimations() != null ? model.getAnimations().size() : 0) + " animations");
             
             return model;
+            
+        } catch (IOException e) {
+            throw new ModelLoadingException(modelName, "JSON parsing failed", e);
+        } catch (Exception e) {
+            throw new ModelLoadingException(modelName, "Unexpected error during loading", e);
         }
     }
     
     /**
      * Gets animated model parts for a specific animation and time.
+     * 
+     * @param modelName The model to use
+     * @param animationName The animation to apply
+     * @param animationTime The current animation time
+     * @return Array of animated model parts
+     * @throws ModelException if model or animation cannot be found
      */
     public static ModelPart[] getAnimatedParts(String modelName, String animationName, float animationTime) {
-        CowModelDefinition model = getCowModel(modelName);
-        if (model == null) {
-            System.err.println("[ModelLoader] Cannot get animated parts: model '" + modelName + "' not found");
-            return new ModelPart[0];
-        }
+        CowModelDefinition model = getCowModel(modelName); // This throws on error, never returns null
         
-        // Get base model parts
-        ModelPart[] parts = getAllParts(model);
+        // Get base model parts - strict validation, no fallbacks
+        ModelPart[] parts = getAllPartsStrict(model);
         
         // Apply animation if it exists
-        ModelAnimation animation = model.getAnimations().get(animationName);
-        if (animation != null) {
-            applyAnimation(parts, animation, animationTime);
-        } else {
-            System.err.println("[ModelLoader] Animation '" + animationName + "' not found in model '" + modelName + "'");
-            System.err.println("  Available animations: " + model.getAnimations().keySet());
+        if (animationName != null && !animationName.trim().isEmpty()) {
+            ModelAnimation animation = model.getAnimations().get(animationName.trim());
+            if (animation != null) {
+                applyAnimation(parts, animation, animationTime);
+            } else {
+                throw new ModelValidationException(modelName, 
+                    "Animation '" + animationName + "' not found. Available animations: " + model.getAnimations().keySet());
+            }
         }
         
         return parts;
     }
     
     /**
-     * Gets all model parts in the correct order (compatible with existing rendering system).
+     * Gets all model parts in the correct order with strict validation.
+     * NO FALLBACKS - if any required part is missing, throws an exception.
+     * 
+     * @param model The model definition
+     * @return Array of model parts in rendering order
+     * @throws ModelValidationException if any required part is missing
      */
-    public static ModelPart[] getAllParts(CowModelDefinition model) {
-        if (model == null || model.getParts() == null) {
-            return new ModelPart[0];
+    public static ModelPart[] getAllPartsStrict(CowModelDefinition model) {
+        if (model == null) {
+            throw new ModelValidationException("unknown", "Model is null");
+        }
+        
+        if (model.getParts() == null) {
+            throw new ModelValidationException(model.getModelName(), "Model has no parts");
         }
         
         ModelParts parts = model.getParts();
         ModelPart[] allParts = new ModelPart[10]; // body, head, 4 legs, 2 horns, udder, tail
         
-        // Body and head
-        allParts[0] = parts.getBody() != null ? parts.getBody().copy() : createDefaultPart("body");
-        allParts[1] = parts.getHead() != null ? parts.getHead().copy() : createDefaultPart("head");
-        
-        // Legs (4)
-        if (parts.getLegs() != null && parts.getLegs().size() >= 4) {
-            for (int i = 0; i < 4; i++) {
-                allParts[2 + i] = parts.getLegs().get(i).copy();
-            }
-        } else {
-            System.err.println("[ModelLoader] Warning: Model missing leg parts, using defaults");
-            for (int i = 0; i < 4; i++) {
-                allParts[2 + i] = createDefaultPart("leg" + (i + 1));
-            }
+        // Body and head - required parts
+        if (parts.getBody() == null) {
+            throw new ModelValidationException(model.getModelName(), "Missing required body part");
+        }
+        if (parts.getHead() == null) {
+            throw new ModelValidationException(model.getModelName(), "Missing required head part");
         }
         
-        // Horns (2)
-        if (parts.getHorns() != null && parts.getHorns().size() >= 2) {
-            for (int i = 0; i < 2; i++) {
-                allParts[6 + i] = parts.getHorns().get(i).copy();
-            }
-        } else {
-            System.err.println("[ModelLoader] Warning: Model missing horn parts, using defaults");
-            for (int i = 0; i < 2; i++) {
-                allParts[6 + i] = createDefaultPart("horn" + (i + 1));
-            }
+        allParts[0] = parts.getBody().copy();
+        allParts[1] = parts.getHead().copy();
+        
+        // Legs (4) - required parts
+        if (parts.getLegs() == null || parts.getLegs().size() < 4) {
+            throw new ModelValidationException(model.getModelName(), 
+                "Missing required leg parts (need 4, found " + (parts.getLegs() != null ? parts.getLegs().size() : 0) + ")");
         }
         
-        // Udder and tail
-        allParts[8] = parts.getUdder() != null ? parts.getUdder().copy() : createDefaultPart("udder");
-        allParts[9] = parts.getTail() != null ? parts.getTail().copy() : createDefaultPart("tail");
+        for (int i = 0; i < 4; i++) {
+            ModelPart leg = parts.getLegs().get(i);
+            if (leg == null) {
+                throw new ModelValidationException(model.getModelName(), "Leg " + (i + 1) + " is null");
+            }
+            allParts[2 + i] = leg.copy();
+        }
+        
+        // Horns (2) - required parts
+        if (parts.getHorns() == null || parts.getHorns().size() < 2) {
+            throw new ModelValidationException(model.getModelName(), 
+                "Missing required horn parts (need 2, found " + (parts.getHorns() != null ? parts.getHorns().size() : 0) + ")");
+        }
+        
+        for (int i = 0; i < 2; i++) {
+            ModelPart horn = parts.getHorns().get(i);
+            if (horn == null) {
+                throw new ModelValidationException(model.getModelName(), "Horn " + (i + 1) + " is null");
+            }
+            allParts[6 + i] = horn.copy();
+        }
+        
+        // Udder and tail - required parts
+        if (parts.getUdder() == null) {
+            throw new ModelValidationException(model.getModelName(), "Missing required udder part");
+        }
+        if (parts.getTail() == null) {
+            throw new ModelValidationException(model.getModelName(), "Missing required tail part");
+        }
+        
+        allParts[8] = parts.getUdder().copy();
+        allParts[9] = parts.getTail().copy();
         
         return allParts;
     }
@@ -293,12 +506,6 @@ public class ModelLoader {
         }
     }
     
-    /**
-     * Creates a default model part for fallback purposes.
-     */
-    private static ModelPart createDefaultPart(String name) {
-        return new ModelPart(name, new Position(0, 0, 0), new Size(0.1f, 0.1f, 0.1f), "missing_texture");
-    }
     
     /**
      * Count total parts in a model definition.
@@ -320,63 +527,176 @@ public class ModelLoader {
     }
     
     /**
-     * Validate a loaded model definition.
+     * Strict validation of a loaded model definition.
+     * Validates all required parts, animations, and data integrity.
      */
-    private static void validateModel(CowModelDefinition model, String modelName) throws IOException {
+    private static void validateModelStrict(CowModelDefinition model, String modelName) {
         if (model == null) {
-            throw new IOException("Model '" + modelName + "' is null");
+            throw new ModelValidationException(modelName, "Model is null");
+        }
+        
+        // Validate basic structure
+        if (model.getModelName() == null || model.getModelName().trim().isEmpty()) {
+            throw new ModelValidationException(modelName, "Model name is null or empty");
+        }
+        
+        if (model.getDisplayName() == null || model.getDisplayName().trim().isEmpty()) {
+            throw new ModelValidationException(modelName, "Display name is null or empty");
         }
         
         if (model.getParts() == null) {
-            throw new IOException("Model '" + modelName + "' has no parts");
+            throw new ModelValidationException(modelName, "Model has no parts");
         }
         
         if (model.getAnimations() == null || model.getAnimations().isEmpty()) {
-            throw new IOException("Model '" + modelName + "' has no animations");
+            throw new ModelValidationException(modelName, "Model has no animations");
         }
         
-        // Validate required parts
+        // Validate required parts with detailed error messages
         ModelParts parts = model.getParts();
+        
         if (parts.getBody() == null) {
-            throw new IOException("Model '" + modelName + "' missing body part");
+            throw new ModelValidationException(modelName, "Missing required body part");
         }
+        validateModelPart(parts.getBody(), "body", modelName);
         
         if (parts.getHead() == null) {
-            throw new IOException("Model '" + modelName + "' missing head part");
+            throw new ModelValidationException(modelName, "Missing required head part");
         }
+        validateModelPart(parts.getHead(), "head", modelName);
         
         if (parts.getLegs() == null || parts.getLegs().size() < 4) {
-            throw new IOException("Model '" + modelName + "' missing required leg parts (need 4)");
+            throw new ModelValidationException(modelName, 
+                "Missing required leg parts (need 4, found " + (parts.getLegs() != null ? parts.getLegs().size() : 0) + ")");
+        }
+        
+        for (int i = 0; i < 4; i++) {
+            ModelPart leg = parts.getLegs().get(i);
+            if (leg == null) {
+                throw new ModelValidationException(modelName, "Leg " + (i + 1) + " is null");
+            }
+            validateModelPart(leg, "leg" + (i + 1), modelName);
         }
         
         if (parts.getHorns() == null || parts.getHorns().size() < 2) {
-            throw new IOException("Model '" + modelName + "' missing required horn parts (need 2)");
+            throw new ModelValidationException(modelName, 
+                "Missing required horn parts (need 2, found " + (parts.getHorns() != null ? parts.getHorns().size() : 0) + ")");
         }
+        
+        for (int i = 0; i < 2; i++) {
+            ModelPart horn = parts.getHorns().get(i);
+            if (horn == null) {
+                throw new ModelValidationException(modelName, "Horn " + (i + 1) + " is null");
+            }
+            validateModelPart(horn, "horn" + (i + 1), modelName);
+        }
+        
+        if (parts.getUdder() == null) {
+            throw new ModelValidationException(modelName, "Missing required udder part");
+        }
+        validateModelPart(parts.getUdder(), "udder", modelName);
+        
+        if (parts.getTail() == null) {
+            throw new ModelValidationException(modelName, "Missing required tail part");
+        }
+        validateModelPart(parts.getTail(), "tail", modelName);
         
         // Validate required animations
         String[] requiredAnimations = {"IDLE", "WALKING", "GRAZING"};
         for (String requiredAnimation : requiredAnimations) {
             if (!model.getAnimations().containsKey(requiredAnimation)) {
-                throw new IOException("Model '" + modelName + "' missing required animation: " + requiredAnimation);
+                throw new ModelValidationException(modelName, 
+                    "Missing required animation: " + requiredAnimation + 
+                    ". Available animations: " + model.getAnimations().keySet());
+            }
+            
+            ModelAnimation animation = model.getAnimations().get(requiredAnimation);
+            if (animation == null) {
+                throw new ModelValidationException(modelName, "Animation " + requiredAnimation + " is null");
+            }
+            
+            // Validate animation data
+            if (animation.getLegRotations() == null || animation.getLegRotations().length < 4) {
+                throw new ModelValidationException(modelName, 
+                    "Animation " + requiredAnimation + " has invalid leg rotations (need 4 values)");
             }
         }
         
-        System.out.println("[ModelLoader] Model '" + modelName + "' validation passed");
+        System.out.println("[ModelLoader] Model '" + modelName + "' passed strict validation");
     }
     
     /**
-     * Clear the model cache.
+     * Validates an individual model part for completeness and consistency.
+     */
+    private static void validateModelPart(ModelPart part, String partName, String modelName) {
+        if (part.getName() == null || part.getName().trim().isEmpty()) {
+            throw new ModelValidationException(modelName, "Part " + partName + " has null or empty name");
+        }
+        
+        if (part.getPosition() == null) {
+            throw new ModelValidationException(modelName, "Part " + partName + " has null position");
+        }
+        
+        if (part.getSize() == null) {
+            throw new ModelValidationException(modelName, "Part " + partName + " has null size");
+        }
+        
+        if (part.getTexture() == null || part.getTexture().trim().isEmpty()) {
+            throw new ModelValidationException(modelName, "Part " + partName + " has null or empty texture");
+        }
+        
+        // Validate size is not zero or negative
+        Vector3f size = part.getSizeVector();
+        if (size.x <= 0 || size.y <= 0 || size.z <= 0) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has invalid size: " + size + " (must be positive)");
+        }
+    }
+    
+    /**
+     * Clear the model cache in a thread-safe manner.
      */
     public static void clearCache() {
-        System.out.println("[ModelLoader] Clearing model cache. Current cached models: " + cachedModels.keySet());
-        cachedModels.clear();
+        cacheLock.writeLock().lock();
+        try {
+            System.out.println("[ModelLoader] Clearing model cache. Current cached models: " + cachedModels.keySet());
+            cachedModels.clear();
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
     }
     
     /**
-     * Check if a model name is valid.
+     * Check if a model name is valid and the model can be loaded.
+     * 
+     * @param modelName The model name to check
+     * @return true if the model exists and can be loaded, false otherwise
      */
     public static boolean isValidModel(String modelName) {
-        return MODEL_FILE_PATHS.containsKey(modelName);
+        if (modelName == null || modelName.trim().isEmpty()) {
+            return false;
+        }
+        
+        return MODEL_FILE_PATHS.containsKey(modelName.trim());
+    }
+    
+    /**
+     * Check if a model is already loaded in the cache.
+     * 
+     * @param modelName The model name to check
+     * @return true if the model is cached, false otherwise
+     */
+    public static boolean isModelCached(String modelName) {
+        if (modelName == null || modelName.trim().isEmpty()) {
+            return false;
+        }
+        
+        cacheLock.readLock().lock();
+        try {
+            return cachedModels.containsKey(modelName.trim());
+        } finally {
+            cacheLock.readLock().unlock();
+        }
     }
     
     /**
@@ -387,17 +707,88 @@ public class ModelLoader {
     }
     
     /**
-     * Debug method to get current cache status.
+     * Get the current cache size.
+     * 
+     * @return Number of models currently cached
+     */
+    public static int getCacheSize() {
+        cacheLock.readLock().lock();
+        try {
+            return cachedModels.size();
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+    }
+    
+    /**
+     * Get cache status information.
+     * 
+     * @return Map containing cache statistics
+     */
+    public static Map<String, Object> getCacheStatus() {
+        cacheLock.readLock().lock();
+        try {
+            Map<String, Object> status = new HashMap<>();
+            status.put("availableModels", new ArrayList<>(MODEL_FILE_PATHS.keySet()));
+            status.put("cachedModels", new ArrayList<>(cachedModels.keySet()));
+            status.put("cacheSize", cachedModels.size());
+            status.put("totalAvailable", MODEL_FILE_PATHS.size());
+            
+            Map<String, String> modelInfo = new HashMap<>();
+            for (Map.Entry<String, CowModelDefinition> entry : cachedModels.entrySet()) {
+                String modelName = entry.getKey();
+                CowModelDefinition model = entry.getValue();
+                String displayName = model != null ? model.getDisplayName() : "null";
+                modelInfo.put(modelName, displayName);
+            }
+            status.put("modelDisplayNames", modelInfo);
+            
+            return status;
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+    }
+    
+    /**
+     * Debug method to print current cache status.
      */
     public static void printCacheStatus() {
-        System.out.println("[ModelLoader] Cache Status:");
-        System.out.println("  Available models: " + MODEL_FILE_PATHS.keySet());
-        System.out.println("  Cached models: " + cachedModels.keySet());
-        for (Map.Entry<String, CowModelDefinition> entry : cachedModels.entrySet()) {
-            String modelName = entry.getKey();
-            CowModelDefinition model = entry.getValue();
-            String displayName = model != null ? model.getDisplayName() : "null";
-            System.out.println("    " + modelName + " -> " + displayName);
+        cacheLock.readLock().lock();
+        try {
+            System.out.println("[ModelLoader] Cache Status:");
+            System.out.println("  Available models: " + MODEL_FILE_PATHS.keySet());
+            System.out.println("  Cached models: " + cachedModels.keySet());
+            System.out.println("  Cache utilization: " + cachedModels.size() + "/" + MODEL_FILE_PATHS.size());
+            
+            for (Map.Entry<String, CowModelDefinition> entry : cachedModels.entrySet()) {
+                String modelName = entry.getKey();
+                CowModelDefinition model = entry.getValue();
+                String displayName = model != null ? model.getDisplayName() : "null";
+                int partCount = countTotalParts(model);
+                int animationCount = model != null && model.getAnimations() != null ? model.getAnimations().size() : 0;
+                System.out.println("    " + modelName + " -> " + displayName + 
+                    " (" + partCount + " parts, " + animationCount + " animations)");
+            }
+        } finally {
+            cacheLock.readLock().unlock();
+        }
+    }
+    
+    /**
+     * Shutdown the async executor (call when application is shutting down).
+     */
+    public static void shutdown() {
+        System.out.println("[ModelLoader] Shutting down async executor");
+        asyncExecutor.shutdown();
+        try {
+            if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                System.err.println("[ModelLoader] Async executor did not shut down gracefully, forcing shutdown");
+                asyncExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            System.err.println("[ModelLoader] Interrupted while waiting for executor shutdown");
+            asyncExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 }

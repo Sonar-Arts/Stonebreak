@@ -1,9 +1,9 @@
 package com.openmason.export;
 
 import com.openmason.model.ModelManager;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.model.ModelDefinition;
 import com.openmason.texture.TextureManager;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
 import com.openmason.coordinates.ModelCoordinateSystem;
 import com.openmason.coordinates.AtlasCoordinateSystem;
 import org.slf4j.Logger;
@@ -403,61 +403,56 @@ public class TechnicalDocumentationGenerator {
         try {
             builder.writeHeading(writer, 2, "Model: " + modelName);
             
-            // Get model definition
-            StonebreakModelDefinition.CowModelDefinition modelDef = 
-                com.openmason.model.stonebreak.StonebreakModelLoader.getCowModel(modelName);
+            // Get model definition - ModelLoader now throws exceptions instead of returning null
+            ModelDefinition.CowModelDefinition modelDef = 
+                com.stonebreak.model.ModelLoader.getCowModel(modelName);
             
-            if (modelDef != null) {
-                // Basic information
-                builder.writeParagraph(writer, "Model Name: " + modelName);
-                builder.writeParagraph(writer, "Model Type: " + (modelDef.getDisplayName() != null ? modelDef.getDisplayName() : modelDef.getModelName()));
+            // Basic information
+            builder.writeParagraph(writer, "Model Name: " + modelName);
+            builder.writeParagraph(writer, "Model Type: " + (modelDef.getDisplayName() != null ? modelDef.getDisplayName() : modelDef.getModelName()));
+            
+            // Parts count
+            ModelDefinition.ModelParts parts = modelDef.getParts();
+            int partCount = 0;
+            if (parts != null) {
+                if (parts.getBody() != null) partCount++;
+                if (parts.getHead() != null) partCount++;
+                if (parts.getLegs() != null) partCount += parts.getLegs().size();
+                if (parts.getHorns() != null) partCount += parts.getHorns().size();
+                if (parts.getUdder() != null) partCount++;
+                if (parts.getTail() != null) partCount++;
+            }
+            builder.writeParagraph(writer, "Part Count: " + partCount);
+            
+            // Parts details
+            if (parts != null && !config.isUseCompactFormat()) {
+                builder.writeHeading(writer, 3, "Model Parts");
+                builder.writeTableStart(writer, new String[]{"Part", "Position", "Size", "Texture"});
                 
-                // Parts count
-                StonebreakModelDefinition.ModelParts parts = modelDef.getParts();
-                int partCount = 0;
-                if (parts != null) {
-                    if (parts.getBody() != null) partCount++;
-                    if (parts.getHead() != null) partCount++;
-                    if (parts.getLegs() != null) partCount += parts.getLegs().size();
-                    if (parts.getHorns() != null) partCount += parts.getHorns().size();
-                    if (parts.getUdder() != null) partCount++;
-                    if (parts.getTail() != null) partCount++;
+                if (parts.getBody() != null) {
+                    writePartRow(builder, writer, "Body", parts.getBody());
                 }
-                builder.writeParagraph(writer, "Part Count: " + partCount);
-                
-                // Parts details
-                if (parts != null && !config.isUseCompactFormat()) {
-                    builder.writeHeading(writer, 3, "Model Parts");
-                    builder.writeTableStart(writer, new String[]{"Part", "Position", "Size", "Texture"});
-                    
-                    if (parts.getBody() != null) {
-                        writePartRow(builder, writer, "Body", parts.getBody());
+                if (parts.getHead() != null) {
+                    writePartRow(builder, writer, "Head", parts.getHead());
+                }
+                if (parts.getLegs() != null) {
+                    for (int i = 0; i < parts.getLegs().size(); i++) {
+                        writePartRow(builder, writer, "Leg " + (i + 1), parts.getLegs().get(i));
                     }
-                    if (parts.getHead() != null) {
-                        writePartRow(builder, writer, "Head", parts.getHead());
+                }
+                if (parts.getHorns() != null) {
+                    for (int i = 0; i < parts.getHorns().size(); i++) {
+                        writePartRow(builder, writer, "Horn " + (i + 1), parts.getHorns().get(i));
                     }
-                    if (parts.getLegs() != null) {
-                        for (int i = 0; i < parts.getLegs().size(); i++) {
-                            writePartRow(builder, writer, "Leg " + (i + 1), parts.getLegs().get(i));
-                        }
-                    }
-                    if (parts.getHorns() != null) {
-                        for (int i = 0; i < parts.getHorns().size(); i++) {
-                            writePartRow(builder, writer, "Horn " + (i + 1), parts.getHorns().get(i));
-                        }
-                    }
-                    if (parts.getUdder() != null) {
-                        writePartRow(builder, writer, "Udder", parts.getUdder());
-                    }
-                    if (parts.getTail() != null) {
-                        writePartRow(builder, writer, "Tail", parts.getTail());
-                    }
-                    
-                    builder.writeTableEnd(writer);
+                }
+                if (parts.getUdder() != null) {
+                    writePartRow(builder, writer, "Udder", parts.getUdder());
+                }
+                if (parts.getTail() != null) {
+                    writePartRow(builder, writer, "Tail", parts.getTail());
                 }
                 
-            } else {
-                builder.writeParagraph(writer, "Model definition not found.");
+                builder.writeTableEnd(writer);
             }
             
         } catch (Exception e) {
@@ -470,7 +465,7 @@ public class TechnicalDocumentationGenerator {
      * Write a model part row to the table.
      */
     private void writePartRow(DocumentBuilder builder, PrintWriter writer, String partName, 
-                            StonebreakModelDefinition.ModelPart part) {
+                            ModelDefinition.ModelPart part) {
         String position = String.format("(%.1f, %.1f, %.1f)", 
             part.getPosition().getX(), part.getPosition().getY(), part.getPosition().getZ());
         String size = String.format("%.1f × %.1f × %.1f", 
@@ -559,14 +554,14 @@ public class TechnicalDocumentationGenerator {
                 
                 // Face mappings (if not compact)
                 if (!config.isUseCompactFormat()) {
-                    StonebreakTextureDefinition.CowVariant variant = info.getVariantDefinition();
+                    CowTextureDefinition.CowVariant variant = info.getVariantDefinition();
                     if (variant != null && variant.getFaceMappings() != null) {
                         builder.writeHeading(writer, 3, "Face Mappings");
                         builder.writeTableStart(writer, new String[]{"Face", "Atlas X", "Atlas Y"});
                         
-                        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+                        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
                              variant.getFaceMappings().entrySet()) {
-                            StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+                            CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
                             builder.writeTableRow(writer, new String[]{
                                 entry.getKey(),
                                 String.valueOf(coord.getAtlasX()),
@@ -644,11 +639,11 @@ public class TechnicalDocumentationGenerator {
                     "Face", "Atlas Coord", "UV Min", "UV Max", "Normalized UV"
                 });
                 
-                for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+                for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
                      info.getVariantDefinition().getFaceMappings().entrySet()) {
                     
                     String faceName = entry.getKey();
-                    StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+                    CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
                     
                     // Calculate UV coordinates
                     float[] uvCoords = TextureManager.getNormalizedUVCoordinates(variantName, faceName);

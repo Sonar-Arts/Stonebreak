@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.model.ModelDefinition;
 
 import javafx.scene.paint.Color;
 import javafx.scene.paint.PhongMaterial;
@@ -80,7 +80,7 @@ public class ViewportModelRenderer {
         
         try {
             // Get model definition
-            StonebreakModelDefinition.CowModelDefinition definition = model.getModelDefinition();
+            ModelDefinition.CowModelDefinition definition = model.getModelDefinition();
             if (definition == null) {
                 logger.warn("Model definition is null for model: {}", model.getVariantName());
                 renderPlaceholderModel();
@@ -88,7 +88,7 @@ public class ViewportModelRenderer {
             }
             
             // Render model parts
-            StonebreakModelDefinition.ModelParts parts = definition.getParts();
+            ModelDefinition.ModelParts parts = definition.getParts();
             if (parts != null) {
                 renderModelParts(parts);
                 validateModelRendering(model, parts);
@@ -108,7 +108,7 @@ public class ViewportModelRenderer {
     /**
      * Render individual model parts.
      */
-    private void renderModelParts(StonebreakModelDefinition.ModelParts parts) {
+    private void renderModelParts(ModelDefinition.ModelParts parts) {
         // Create entity matrix for root transformation
         Matrix4f entityMatrix = new Matrix4f().identity();
         
@@ -121,7 +121,7 @@ public class ViewportModelRenderer {
         }
         if (parts.getLegs() != null) {
             for (int i = 0; i < parts.getLegs().size(); i++) {
-                StonebreakModelDefinition.ModelPart leg = parts.getLegs().get(i);
+                ModelDefinition.ModelPart leg = parts.getLegs().get(i);
                 renderModelPart("leg" + (i + 1), leg, entityMatrix);
             }
         }
@@ -138,7 +138,7 @@ public class ViewportModelRenderer {
     /**
      * Render a single model part with transformations.
      */
-    private void renderModelPart(String partName, StonebreakModelDefinition.ModelPart part, Matrix4f entityMatrix) {
+    private void renderModelPart(String partName, ModelDefinition.ModelPart part, Matrix4f entityMatrix) {
         if (part == null) {
             logger.warn("Cannot render part '{}': part is null", partName);
             return;
@@ -323,7 +323,7 @@ public class ViewportModelRenderer {
     /**
      * Validate model rendering accuracy.
      */
-    private void validateModelRendering(StonebreakModel model, StonebreakModelDefinition.ModelParts parts) {
+    private void validateModelRendering(StonebreakModel model, ModelDefinition.ModelParts parts) {
         try {
             int expectedParts = getPartCount(parts);
             int renderedParts = sceneManager.getModelPartBoxes().size();
@@ -343,7 +343,7 @@ public class ViewportModelRenderer {
     /**
      * Count the number of parts in a model definition.
      */
-    private int getPartCount(StonebreakModelDefinition.ModelParts parts) {
+    private int getPartCount(ModelDefinition.ModelParts parts) {
         int count = 0;
         if (parts.getHead() != null) count++;
         if (parts.getBody() != null) count++;

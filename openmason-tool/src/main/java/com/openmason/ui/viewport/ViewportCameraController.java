@@ -2,7 +2,7 @@ package com.openmason.ui.viewport;
 
 import com.openmason.camera.ArcBallCamera;
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.model.ModelDefinition;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -265,17 +265,17 @@ public class ViewportCameraController {
         if (model == null) return 2.0f;
         
         try {
-            StonebreakModelDefinition.CowModelDefinition definition = model.getModelDefinition();
+            ModelDefinition.CowModelDefinition definition = model.getModelDefinition();
             if (definition == null) return 2.0f;
             
-            StonebreakModelDefinition.ModelParts parts = definition.getParts();
+            ModelDefinition.ModelParts parts = definition.getParts();
             if (parts == null) return 2.0f;
             
             float minY = Float.MAX_VALUE;
             float maxY = Float.MIN_VALUE;
             
             // Check all parts for Y bounds
-            for (StonebreakModelDefinition.ModelPart part : getAllParts(parts)) {
+            for (ModelDefinition.ModelPart part : getAllParts(parts)) {
                 if (part == null) continue;
                 
                 Vector3f translation = part.getPositionVector();
@@ -307,17 +307,17 @@ public class ViewportCameraController {
         if (model == null) return 2.0f;
         
         try {
-            StonebreakModelDefinition.CowModelDefinition definition = model.getModelDefinition();
+            ModelDefinition.CowModelDefinition definition = model.getModelDefinition();
             if (definition == null) return 2.0f;
             
-            StonebreakModelDefinition.ModelParts parts = definition.getParts();
+            ModelDefinition.ModelParts parts = definition.getParts();
             if (parts == null) return 2.0f;
             
             float minX = Float.MAX_VALUE;
             float maxX = Float.MIN_VALUE;
             
             // Check all parts for X bounds
-            for (StonebreakModelDefinition.ModelPart part : getAllParts(parts)) {
+            for (ModelDefinition.ModelPart part : getAllParts(parts)) {
                 if (part == null) continue;
                 
                 Vector3f translation = part.getPositionVector();
@@ -349,17 +349,17 @@ public class ViewportCameraController {
         if (model == null) return 2.0f;
         
         try {
-            StonebreakModelDefinition.CowModelDefinition definition = model.getModelDefinition();
+            ModelDefinition.CowModelDefinition definition = model.getModelDefinition();
             if (definition == null) return 2.0f;
             
-            StonebreakModelDefinition.ModelParts parts = definition.getParts();
+            ModelDefinition.ModelParts parts = definition.getParts();
             if (parts == null) return 2.0f;
             
             float minZ = Float.MAX_VALUE;
             float maxZ = Float.MIN_VALUE;
             
             // Check all parts for Z bounds
-            for (StonebreakModelDefinition.ModelPart part : getAllParts(parts)) {
+            for (ModelDefinition.ModelPart part : getAllParts(parts)) {
                 if (part == null) continue;
                 
                 Vector3f translation = part.getPositionVector();
@@ -387,8 +387,8 @@ public class ViewportCameraController {
     /**
      * Get all model parts as a list for iteration.
      */
-    private java.util.List<StonebreakModelDefinition.ModelPart> getAllParts(StonebreakModelDefinition.ModelParts parts) {
-        java.util.List<StonebreakModelDefinition.ModelPart> allParts = new java.util.ArrayList<>();
+    private java.util.List<ModelDefinition.ModelPart> getAllParts(ModelDefinition.ModelParts parts) {
+        java.util.List<ModelDefinition.ModelPart> allParts = new java.util.ArrayList<>();
         
         if (parts.getHead() != null) allParts.add(parts.getHead());
         if (parts.getBody() != null) allParts.add(parts.getBody());

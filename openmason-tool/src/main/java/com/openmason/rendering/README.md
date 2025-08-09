@@ -134,7 +134,7 @@ The buffer system seamlessly integrates with existing model definitions:
 ```java
 // Convert model parts to buffer data
 for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
-    StonebreakModelDefinition.ModelPart modelPart = bodyPart.getModelPart();
+    ModelDefinition.ModelPart modelPart = bodyPart.getModelPart();
     
     // Generate buffer data
     float[] vertices = modelPart.getVertices();

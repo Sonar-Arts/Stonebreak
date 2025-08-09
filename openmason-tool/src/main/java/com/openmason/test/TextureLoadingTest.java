@@ -1,6 +1,6 @@
 package com.openmason.test;
 
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.textures.CowTextureLoader;
 import com.openmason.texture.TextureVariantManager;
 
 /**
@@ -21,7 +21,7 @@ public class TextureLoadingTest {
         };
         
         for (String path : paths) {
-            try (var stream = StonebreakTextureLoader.class.getClassLoader().getResourceAsStream(path)) {
+            try (var stream = CowTextureLoader.class.getClassLoader().getResourceAsStream(path)) {
                 System.out.println("  " + path + ": " + (stream != null ? "✓ FOUND" : "✗ NOT FOUND"));
             } catch (Exception e) {
                 System.out.println("  " + path + ": ✗ ERROR - " + e.getMessage());
@@ -31,7 +31,7 @@ public class TextureLoadingTest {
         // Test 2: Check available variants
         System.out.println("\n2. Testing available variants:");
         try {
-            String[] variants = StonebreakTextureLoader.getAvailableVariants();
+            String[] variants = CowTextureLoader.getAvailableVariants();
             System.out.println("  Available variants: " + java.util.Arrays.toString(variants));
         } catch (Exception e) {
             System.out.println("  ✗ Error getting available variants: " + e.getMessage());
@@ -45,7 +45,7 @@ public class TextureLoadingTest {
         for (String variant : testVariants) {
             System.out.println("  Testing variant: " + variant);
             try {
-                var cowVariant = StonebreakTextureLoader.getCowVariant(variant);
+                var cowVariant = CowTextureLoader.getCowVariant(variant);
                 if (cowVariant != null) {
                     System.out.println("    ✓ Successfully loaded: " + cowVariant.getDisplayName());
                     System.out.println("    Face mappings: " + cowVariant.getFaceMappings().size());

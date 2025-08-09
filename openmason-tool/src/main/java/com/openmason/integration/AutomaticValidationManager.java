@@ -2,8 +2,8 @@ package com.openmason.integration;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.texture.TextureManager;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -327,7 +327,7 @@ public class AutomaticValidationManager {
                                               System.currentTimeMillis() - startTime));
                 }
                 
-                StonebreakTextureDefinition.CowVariant variant = variantInfo.getVariantDefinition();
+                CowTextureDefinition.CowVariant variant = variantInfo.getVariantDefinition();
                 
                 // Perform validation based on level
                 List<ValidationError> errors = new ArrayList<>();
@@ -402,7 +402,7 @@ public class AutomaticValidationManager {
     /**
      * Validates basic format requirements.
      */
-    private void validateBasicFormat(StonebreakTextureDefinition.CowVariant variant, String variantName,
+    private void validateBasicFormat(CowTextureDefinition.CowVariant variant, String variantName,
                                    List<ValidationError> errors, List<ValidationWarning> warnings) {
         
         // Validate face mappings exist
@@ -415,11 +415,11 @@ public class AutomaticValidationManager {
         }
         
         // Validate each face mapping
-        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
              variant.getFaceMappings().entrySet()) {
             
             String faceName = entry.getKey();
-            StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+            CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
             
             if (coord == null) {
                 errors.add(new ValidationError("NULL_COORDINATE", 
@@ -480,7 +480,7 @@ public class AutomaticValidationManager {
     /**
      * Validates Stonebreak game compatibility.
      */
-    private void validateStonebreakCompatibility(StonebreakTextureDefinition.CowVariant variant, String variantName,
+    private void validateStonebreakCompatibility(CowTextureDefinition.CowVariant variant, String variantName,
                                                List<ValidationError> errors, List<ValidationWarning> warnings) {
         
         // Check for required face mappings
@@ -495,11 +495,11 @@ public class AutomaticValidationManager {
         
         // Check for coordinate conflicts
         Map<String, String> coordinateMap = new ConcurrentHashMap<>();
-        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
              variant.getFaceMappings().entrySet()) {
             
             String faceName = entry.getKey();
-            StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+            CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
             
             if (coord != null) {
                 String coordKey = coord.getAtlasX() + "," + coord.getAtlasY();
@@ -531,7 +531,7 @@ public class AutomaticValidationManager {
     /**
      * Validates strict requirements.
      */
-    private void validateStrictRequirements(StonebreakTextureDefinition.CowVariant variant, String variantName,
+    private void validateStrictRequirements(CowTextureDefinition.CowVariant variant, String variantName,
                                           List<ValidationError> errors, List<ValidationWarning> warnings) {
         
         // In strict mode, promote warnings to errors
@@ -563,7 +563,7 @@ public class AutomaticValidationManager {
     /**
      * Validates comprehensive requirements with optimization suggestions.
      */
-    private void validateComprehensive(StonebreakTextureDefinition.CowVariant variant, String variantName,
+    private void validateComprehensive(CowTextureDefinition.CowVariant variant, String variantName,
                                      List<ValidationError> errors, List<ValidationWarning> warnings) {
         
         // Performance optimization suggestions
@@ -596,7 +596,7 @@ public class AutomaticValidationManager {
         // Texture efficiency suggestions
         Set<String> usedCoordinates = new HashSet<>();
         if (variant.getFaceMappings() != null) {
-            for (StonebreakTextureDefinition.AtlasCoordinate coord : variant.getFaceMappings().values()) {
+            for (CowTextureDefinition.AtlasCoordinate coord : variant.getFaceMappings().values()) {
                 if (coord != null) {
                     usedCoordinates.add(coord.getAtlasX() + "," + coord.getAtlasY());
                 }

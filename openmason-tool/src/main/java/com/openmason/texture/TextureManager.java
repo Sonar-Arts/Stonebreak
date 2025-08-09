@@ -1,8 +1,7 @@
 package com.openmason.texture;
 
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -124,11 +123,11 @@ public class TextureManager {
         private final String displayName;
         private final int faceMappingCount;
         private final int drawingInstructionCount;
-        private final StonebreakTextureDefinition.CowVariant variantDefinition;
+        private final CowTextureDefinition.CowVariant variantDefinition;
         private final Map<String, String> baseColors;
         
         public TextureVariantInfo(String variantName, String displayName, int faceMappingCount, 
-                                 int drawingInstructionCount, StonebreakTextureDefinition.CowVariant variantDefinition,
+                                 int drawingInstructionCount, CowTextureDefinition.CowVariant variantDefinition,
                                  Map<String, String> baseColors) {
             this.variantName = variantName;
             this.displayName = displayName;
@@ -142,7 +141,7 @@ public class TextureManager {
         public String getDisplayName() { return displayName; }
         public int getFaceMappingCount() { return faceMappingCount; }
         public int getDrawingInstructionCount() { return drawingInstructionCount; }
-        public StonebreakTextureDefinition.CowVariant getVariantDefinition() { return variantDefinition; }
+        public CowTextureDefinition.CowVariant getVariantDefinition() { return variantDefinition; }
         public Map<String, String> getBaseColors() { return baseColors; }
         
         @Override
@@ -177,14 +176,13 @@ public class TextureManager {
                     
                     System.out.println("[TextureManager] Initializing async texture management system...");
                     
-                    // Initialize texture atlas system
+                    // Initialize texture loading system
                     if (progressCallback != null) {
-                        progressCallback.onProgress("initializeAsync", 10, 100, "Initializing texture atlas system");
+                        progressCallback.onProgress("initializeAsync", 10, 100, "Initializing texture loading system");
                     }
-                    StonebreakTextureAtlas.initialize();
                     
                     // Get available variants
-                    String[] availableVariants = StonebreakTextureLoader.getAvailableVariants();
+                    String[] availableVariants = CowTextureLoader.getAvailableVariants();
                     int totalVariants = availableVariants.length;
                     
                     if (progressCallback != null) {
@@ -331,10 +329,10 @@ public class TextureManager {
                     "Loading texture variant: " + request.variantName);
             }
             
-            // Use the async texture loader
-            StonebreakTextureLoader.getCowVariantAsync(request.variantName, 
-                StonebreakTextureLoader.LoadingPriority.NORMAL, null)
-                .thenAccept(variant -> {
+            // Use the synchronous texture loader wrapped in async
+            CompletableFuture.supplyAsync(() -> {
+                return CowTextureLoader.getCowVariant(request.variantName);
+            }).thenAccept(variant -> {
                     try {
                         if (variant != null && !request.future.isCancelled()) {
                             if (request.callback != null) {
@@ -383,7 +381,7 @@ public class TextureManager {
     /**
      * Create TextureVariantInfo from a loaded variant definition.
      */
-    private static TextureVariantInfo createVariantInfo(String variantName, StonebreakTextureDefinition.CowVariant variant) {
+    private static TextureVariantInfo createVariantInfo(String variantName, CowTextureDefinition.CowVariant variant) {
         int faceMappingCount = variant.getFaceMappings() != null ? variant.getFaceMappings().size() : 0;
         int drawingInstructionCount = variant.getDrawingInstructions() != null ? variant.getDrawingInstructions().size() : 0;
         
@@ -421,7 +419,7 @@ public class TextureManager {
             initialize();
         }
         
-        return StonebreakTextureAtlas.getUVCoordinates(variantName, faceName);
+        return CowTextureLoader.getNormalizedUVCoordinates(variantName, faceName, 16);
     }
     
     /**
@@ -432,18 +430,18 @@ public class TextureManager {
             initialize();
         }
         
-        return StonebreakTextureLoader.getNormalizedUVCoordinates(variantName, faceName, 16);
+        return CowTextureLoader.getNormalizedUVCoordinates(variantName, faceName, 16);
     }
     
     /**
      * Get atlas coordinates for a specific face.
      */
-    public static StonebreakTextureDefinition.AtlasCoordinate getAtlasCoordinate(String variantName, String faceName) {
+    public static CowTextureDefinition.AtlasCoordinate getAtlasCoordinate(String variantName, String faceName) {
         if (!initialized) {
             initialize();
         }
         
-        return StonebreakTextureLoader.getAtlasCoordinate(variantName, faceName);
+        return CowTextureLoader.getAtlasCoordinate(variantName, faceName);
     }
     
     /**
@@ -454,7 +452,7 @@ public class TextureManager {
             initialize();
         }
         
-        return StonebreakTextureLoader.getBaseColor(variantName, colorType);
+        return CowTextureLoader.getBaseColor(variantName, colorType);
     }
     
     /**
@@ -465,7 +463,7 @@ public class TextureManager {
             initialize();
         }
         
-        return Arrays.asList(StonebreakTextureLoader.getAvailableVariants());
+        return Arrays.asList(CowTextureLoader.getAvailableVariants());
     }
     
     /**
@@ -484,7 +482,7 @@ public class TextureManager {
      * Validate that a texture variant can be loaded successfully.
      */
     public static boolean validateVariant(String variantName) {
-        if (!StonebreakTextureLoader.isValidVariant(variantName)) {
+        if (!CowTextureLoader.isValidVariant(variantName)) {
             return false;
         }
         
@@ -506,16 +504,16 @@ public class TextureManager {
             return false;
         }
         
-        Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings = 
+        Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = 
             info.getVariantDefinition().getFaceMappings();
         
         if (faceMappings == null) {
             return false;
         }
         
-        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
             String faceName = entry.getKey();
-            StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+            CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
             
             if (coord == null) {
                 System.err.println("[TextureManager] Null coordinate for face: " + faceName);
@@ -566,7 +564,7 @@ public class TextureManager {
         System.out.println("[TextureManager] Testing UV generation for " + variantName + ":" + faceName);
         
         // Get atlas coordinate
-        StonebreakTextureDefinition.AtlasCoordinate coord = getAtlasCoordinate(variantName, faceName);
+        CowTextureDefinition.AtlasCoordinate coord = getAtlasCoordinate(variantName, faceName);
         if (coord == null) {
             System.err.println("  ✗ Atlas coordinate not found");
             return;
@@ -685,8 +683,8 @@ public class TextureManager {
             Thread.currentThread().interrupt();
         }
         
-        // Shutdown underlying texture loader
-        StonebreakTextureLoader.shutdown();
+        // Clear underlying texture cache
+        CowTextureLoader.clearCache();
         
         System.out.println("[TextureManager] Shutdown complete");
     }
@@ -701,7 +699,7 @@ public class TextureManager {
         cancelAllPendingLoads();
         
         variantInfoCache.clear();
-        StonebreakTextureLoader.clearCache();
+        CowTextureLoader.clearCache();
         initialized = false;
         initializationInProgress.set(false);
         initializationFuture = null;
@@ -733,6 +731,6 @@ public class TextureManager {
             }
         }
         
-        StonebreakTextureLoader.printCacheStatus();
+        CowTextureLoader.printCacheStatus();
     }
 }

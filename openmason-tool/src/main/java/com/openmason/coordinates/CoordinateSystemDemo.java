@@ -1,7 +1,7 @@
 package com.openmason.coordinates;
 
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.model.ModelDefinition;
 
 /**
  * Coordinate System Demo - Phase 7 Open Mason Implementation
@@ -137,13 +137,13 @@ public class CoordinateSystemDemo {
         
         try {
             // Initialize texture atlas
-            StonebreakTextureAtlas.initialize();
+            // Texture atlas initialization is now automatic in CowTextureLoader
             
             // Create a model part
-            StonebreakModelDefinition.ModelPart modelPart = new StonebreakModelDefinition.ModelPart(
+            ModelDefinition.ModelPart modelPart = new ModelDefinition.ModelPart(
                 "demo_head",
-                new StonebreakModelDefinition.Position(0.0f, 1.5f, 0.0f),
-                new StonebreakModelDefinition.Size(1.0f, 1.0f, 1.0f),
+                new ModelDefinition.Position(0.0f, 1.5f, 0.0f),
+                new ModelDefinition.Size(1.0f, 1.0f, 1.0f),
                 "cow_head"
             );
             
@@ -183,10 +183,10 @@ public class CoordinateSystemDemo {
         
         try {
             // Create test model part
-            StonebreakModelDefinition.ModelPart testPart = new StonebreakModelDefinition.ModelPart(
+            ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
                 "perf_test",
-                new StonebreakModelDefinition.Position(0.0f, 0.0f, 0.0f),
-                new StonebreakModelDefinition.Size(1.0f, 1.0f, 1.0f),
+                new ModelDefinition.Position(0.0f, 0.0f, 0.0f),
+                new ModelDefinition.Size(1.0f, 1.0f, 1.0f),
                 "cow_head"
             );
             
@@ -279,22 +279,22 @@ public class CoordinateSystemDemo {
             System.out.println("  Scenario: Rendering a complete cow model with multiple variants");
             
             // Define cow model parts (simplified)
-            StonebreakModelDefinition.ModelPart[] cowParts = {
-                new StonebreakModelDefinition.ModelPart("head", 
-                    new StonebreakModelDefinition.Position(0.0f, 1.5f, 0.0f),
-                    new StonebreakModelDefinition.Size(1.0f, 1.0f, 1.0f), "cow_head"),
+            ModelDefinition.ModelPart[] cowParts = {
+                new ModelDefinition.ModelPart("head", 
+                    new ModelDefinition.Position(0.0f, 1.5f, 0.0f),
+                    new ModelDefinition.Size(1.0f, 1.0f, 1.0f), "cow_head"),
                     
-                new StonebreakModelDefinition.ModelPart("body",
-                    new StonebreakModelDefinition.Position(0.0f, 0.0f, 0.0f),
-                    new StonebreakModelDefinition.Size(2.0f, 1.0f, 1.5f), "cow_body"),
+                new ModelDefinition.ModelPart("body",
+                    new ModelDefinition.Position(0.0f, 0.0f, 0.0f),
+                    new ModelDefinition.Size(2.0f, 1.0f, 1.5f), "cow_body"),
                     
-                new StonebreakModelDefinition.ModelPart("leg1",
-                    new StonebreakModelDefinition.Position(-0.7f, -1.0f, 0.5f),
-                    new StonebreakModelDefinition.Size(0.3f, 1.0f, 0.3f), "cow_legs"),
+                new ModelDefinition.ModelPart("leg1",
+                    new ModelDefinition.Position(-0.7f, -1.0f, 0.5f),
+                    new ModelDefinition.Size(0.3f, 1.0f, 0.3f), "cow_legs"),
                     
-                new StonebreakModelDefinition.ModelPart("udder",
-                    new StonebreakModelDefinition.Position(0.0f, -0.8f, 0.0f),
-                    new StonebreakModelDefinition.Size(0.8f, 0.4f, 0.6f), "cow_udder")
+                new ModelDefinition.ModelPart("udder",
+                    new ModelDefinition.Position(0.0f, -0.8f, 0.0f),
+                    new ModelDefinition.Size(0.8f, 0.4f, 0.6f), "cow_udder")
             };
             
             String[] variants = {"default", "angus", "highland", "jersey"};
@@ -312,7 +312,7 @@ public class CoordinateSystemDemo {
             for (String variant : variants) {
                 System.out.println("    Processing " + variant + " variant:");
                 
-                for (StonebreakModelDefinition.ModelPart part : cowParts) {
+                for (ModelDefinition.ModelPart part : cowParts) {
                     CoordinateSystemIntegration.IntegratedPartData integrated = 
                         CoordinateSystemIntegration.generateIntegratedPartData(part, variant, true);
                     
@@ -377,9 +377,9 @@ public class CoordinateSystemDemo {
             }
             
             // Test integration
-            StonebreakModelDefinition.ModelPart testPart = new StonebreakModelDefinition.ModelPart(
-                "test", new StonebreakModelDefinition.Position(0, 0, 0),
-                new StonebreakModelDefinition.Size(1, 1, 1), "cow_head");
+            ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
+                "test", new ModelDefinition.Position(0, 0, 0),
+                new ModelDefinition.Size(1, 1, 1), "cow_head");
             
             float[] texCoords = CoordinateSystemIntegration.generateTextureCoordinatesForPart(
                 testPart, "default", false);

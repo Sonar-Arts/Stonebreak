@@ -2,8 +2,9 @@ package com.openmason;
 
 import com.openmason.model.ModelManager;
 import com.openmason.texture.TextureManager;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.CowTextureDefinition;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -170,47 +171,19 @@ public class AsyncResourceSystemTest {
         
         // Test model loader
         TestProgressCallback modelCallback = new TestProgressCallback("ModelLoader");
-        CompletableFuture<com.openmason.model.stonebreak.StonebreakModelDefinition.CowModelDefinition> modelFuture = 
-            StonebreakModelLoader.getCowModelAsync("standard_cow", 
-                StonebreakModelLoader.LoadingPriority.HIGH, 
-                new StonebreakModelLoader.ProgressCallback() {
-                    @Override
-                    public void onProgress(String operation, int current, int total, String details) {
-                        modelCallback.onProgress(operation, current, total, details);
-                    }
-                    
-                    @Override
-                    public void onError(String operation, Throwable error) {
-                        modelCallback.onError(operation, error);
-                    }
-                    
-                    @Override
-                    public void onComplete(String operation, Object result) {
-                        modelCallback.onComplete(operation, result);
-                    }
-                });
+        CompletableFuture<com.stonebreak.model.ModelDefinition.CowModelDefinition> modelFuture = 
+            ModelLoader.getCowModelAsync("standard_cow", 
+                (progress) -> modelCallback.onProgress("ModelLoader", 0, 100, progress));
         
         // Test texture loader
         TestProgressCallback textureCallback = new TestProgressCallback("TextureLoader");
-        CompletableFuture<com.openmason.texture.stonebreak.StonebreakTextureDefinition.CowVariant> textureFuture = 
-            StonebreakTextureLoader.getCowVariantAsync("default", 
-                StonebreakTextureLoader.LoadingPriority.HIGH, 
-                new StonebreakTextureLoader.ProgressCallback() {
-                    @Override
-                    public void onProgress(String operation, int current, int total, String details) {
-                        textureCallback.onProgress(operation, current, total, details);
-                    }
-                    
-                    @Override
-                    public void onError(String operation, Throwable error) {
-                        textureCallback.onError(operation, error);
-                    }
-                    
-                    @Override
-                    public void onComplete(String operation, Object result) {
-                        textureCallback.onComplete(operation, result);
-                    }
-                });
+        CompletableFuture<CowTextureDefinition.CowVariant> textureFuture = 
+            CompletableFuture.supplyAsync(() -> {
+                textureCallback.onProgress("CowTextureLoader", 0, 100, "Loading default variant");
+                CowTextureDefinition.CowVariant result = CowTextureLoader.getCowVariant("default");
+                textureCallback.onComplete("CowTextureLoader", result);
+                return result;
+            });
         
         // Wait for both
         CompletableFuture.allOf(modelFuture, textureFuture).get(10, TimeUnit.SECONDS);
@@ -293,8 +266,8 @@ public class AsyncResourceSystemTest {
         
         // Start some operations
         CompletableFuture<Void> future1 = AsyncResourceManager.initializeAsync(new TestProgressCallback("Cancel1"));
-        CompletableFuture<com.openmason.model.stonebreak.StonebreakModelDefinition.CowModelDefinition> future2 = 
-            StonebreakModelLoader.getCowModelAsync("standard_cow", StonebreakModelLoader.LoadingPriority.LOW, null);
+        CompletableFuture<com.stonebreak.model.ModelDefinition.CowModelDefinition> future2 = 
+            ModelLoader.getCowModelAsync("standard_cow", null);
         
         // Give them a moment to start
         Thread.sleep(100);
@@ -317,25 +290,9 @@ public class AsyncResourceSystemTest {
         
         // Test with invalid model name
         TestProgressCallback errorCallback = new TestProgressCallback("ErrorHandling");
-        CompletableFuture<com.openmason.model.stonebreak.StonebreakModelDefinition.CowModelDefinition> errorFuture = 
-            StonebreakModelLoader.getCowModelAsync("nonexistent_model", 
-                StonebreakModelLoader.LoadingPriority.HIGH, 
-                new StonebreakModelLoader.ProgressCallback() {
-                    @Override
-                    public void onProgress(String operation, int current, int total, String details) {
-                        errorCallback.onProgress(operation, current, total, details);
-                    }
-                    
-                    @Override
-                    public void onError(String operation, Throwable error) {
-                        errorCallback.onError(operation, error);
-                    }
-                    
-                    @Override
-                    public void onComplete(String operation, Object result) {
-                        errorCallback.onComplete(operation, result);
-                    }
-                });
+        CompletableFuture<com.stonebreak.model.ModelDefinition.CowModelDefinition> errorFuture = 
+            ModelLoader.getCowModelAsync("nonexistent_model", 
+                (progress) -> errorCallback.onProgress("ModelLoader", 0, 100, progress));
         
         // Should complete exceptionally
         boolean threwException = false;
@@ -363,11 +320,11 @@ public class AsyncResourceSystemTest {
         AsyncResourceManager.initialize();
         
         // Load some resources
-        for (String model : StonebreakModelLoader.getAvailableModels()) {
+        for (String model : ModelLoader.getAvailableModels()) {
             ModelManager.getModelInfo(model);
         }
         
-        for (String variant : StonebreakTextureLoader.getAvailableVariants()) {
+        for (String variant : CowTextureLoader.getAvailableVariants()) {
             TextureManager.getVariantInfo(variant);
         }
         

@@ -106,8 +106,24 @@ public class SoundSystem {
             System.err.println("Error getting URL: " + e.getMessage());
         }
         
-        try (InputStream is = getClass().getResourceAsStream(resourcePath)) {
-            if (is == null) {
+        // Try different approaches for module compatibility
+        InputStream is = null;
+        
+        // First try: Module's class loader
+        is = getClass().getClassLoader().getResourceAsStream(resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath);
+        
+        // Second try: Module class itself
+        if (is == null) {
+            is = getClass().getResourceAsStream(resourcePath);
+        }
+        
+        // Third try: Context class loader
+        if (is == null) {
+            is = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath);
+        }
+        
+        try (InputStream finalIs = is) {
+            if (finalIs == null) {
                 System.err.println("InputStream is NULL for path: " + resourcePath);
                 
                 // Try alternative paths
@@ -121,10 +137,21 @@ public class SoundSystem {
                 
                 for (String altPath : alternativePaths) {
                     System.out.println("Trying: " + altPath);
-                    try (InputStream altIs = getClass().getResourceAsStream(altPath)) {
-                        if (altIs != null) {
+                    InputStream altIs = null;
+                    
+                    // Try different approaches for each alternative path
+                    altIs = getClass().getClassLoader().getResourceAsStream(altPath.startsWith("/") ? altPath.substring(1) : altPath);
+                    if (altIs == null) {
+                        altIs = getClass().getResourceAsStream(altPath);
+                    }
+                    if (altIs == null) {
+                        altIs = Thread.currentThread().getContextClassLoader().getResourceAsStream(altPath.startsWith("/") ? altPath.substring(1) : altPath);
+                    }
+                    
+                    try (InputStream finalAltIs = altIs) {
+                        if (finalAltIs != null) {
                             System.out.println("Found sound at: " + altPath);
-                            loadSoundFromStream(name, altIs, altPath);
+                            loadSoundFromStream(name, finalAltIs, altPath);
                             return;
                         }
                     } catch (Exception e) {
@@ -137,7 +164,7 @@ public class SoundSystem {
             }
             
             System.out.println("Successfully opened InputStream for: " + resourcePath);
-            loadSoundFromStream(name, is, resourcePath);
+            loadSoundFromStream(name, finalIs, resourcePath);
             
         } catch (IOException e) {
             System.err.println("IOException loading sound " + resourcePath + ": " + e.getMessage());

@@ -428,7 +428,7 @@ public class PropertyPanelController implements Initializable {
                 logger.debug("Validating texture variants for: {}", currentModelName);
                 try {
                     if (currentModelName.toLowerCase().contains("cow")) {
-                        String[] availableVariants = com.openmason.texture.stonebreak.StonebreakTextureLoader.getAvailableVariants();
+                        String[] availableVariants = com.stonebreak.textures.CowTextureLoader.getAvailableVariants();
                         if (availableVariants != null && availableVariants.length > 0) {
                             validationResults.add("✓ Texture variants: Found " + availableVariants.length + " variants");
                         } else {
@@ -446,14 +446,14 @@ public class PropertyPanelController implements Initializable {
                 // 3. Validate model parts
                 logger.debug("Validating model parts for: {}", currentModelName);
                 try {
-                    com.openmason.model.stonebreak.StonebreakModelDefinition.ModelPart[] modelParts = 
+                    com.stonebreak.model.ModelDefinition.ModelPart[] modelParts = 
                         com.openmason.model.ModelManager.getStaticModelParts(currentModelName);
                     if (modelParts != null && modelParts.length > 0) {
                         validationResults.add("✓ Model parts: " + modelParts.length + " parts loaded successfully");
                         
                         // Validate coordinate ranges
                         boolean coordinatesValid = true;
-                        for (com.openmason.model.stonebreak.StonebreakModelDefinition.ModelPart part : modelParts) {
+                        for (com.stonebreak.model.ModelDefinition.ModelPart part : modelParts) {
                             // Basic coordinate validation (would be expanded in full implementation)
                             if (part.getSize() == null || part.getPosition() == null) {
                                 coordinatesValid = false;
@@ -1004,7 +1004,7 @@ public class PropertyPanelController implements Initializable {
             }
             
             // Fallback: Try to get model parts directly
-            com.openmason.model.stonebreak.StonebreakModelDefinition.ModelPart[] modelParts = 
+            com.stonebreak.model.ModelDefinition.ModelPart[] modelParts = 
                 com.openmason.model.ModelManager.getStaticModelParts(modelName);
             if (modelParts != null && modelParts.length > 0) {
                 logger.debug("Got part count from static model parts for '{}': {} parts", modelName, modelParts.length);
@@ -1047,7 +1047,7 @@ public class PropertyPanelController implements Initializable {
             }
             
             // Try to get available variants from the texture loader
-            String[] availableVariants = com.openmason.texture.stonebreak.StonebreakTextureLoader.getAvailableVariants();
+            String[] availableVariants = com.stonebreak.textures.CowTextureLoader.getAvailableVariants();
             if (availableVariants != null && availableVariants.length > 0) {
                 logger.debug("Got variant count from StonebreakTextureLoader: {} variants", availableVariants.length);
                 return availableVariants.length;

@@ -23,6 +23,7 @@
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <jackson.version>2.15.2</jackson.version>
         <javafx.version>21</javafx.version>
+        <javafx.maven.plugin.version>0.0.8</javafx.maven.plugin.version>
     </properties>
 
     <dependencyManagement>

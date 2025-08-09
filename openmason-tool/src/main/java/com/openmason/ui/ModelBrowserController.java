@@ -2,7 +2,7 @@ package com.openmason.ui;
 
 import com.openmason.model.ModelManager;
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.model.ModelDefinition;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import javafx.application.Platform;
 import javafx.beans.property.*;
@@ -381,7 +381,7 @@ public class ModelBrowserController implements Initializable {
      */
     private void loadTextureVariants() {
         try {
-            String[] availableVariants = com.openmason.texture.stonebreak.StonebreakTextureLoader.getAvailableVariants();
+            String[] availableVariants = com.stonebreak.textures.CowTextureLoader.getAvailableVariants();
             logger.info("Found {} texture variants: {}", availableVariants.length, String.join(", ", availableVariants));
             totalVariantsDiscovered = availableVariants.length;
             
@@ -406,7 +406,7 @@ public class ModelBrowserController implements Initializable {
             String category = determineModelCategory(modelFile);
             
             // Load model parts to check if model exists
-            StonebreakModelDefinition.ModelPart[] modelParts = ModelManager.getStaticModelParts(modelName);
+            ModelDefinition.ModelPart[] modelParts = ModelManager.getStaticModelParts(modelName);
             StonebreakModel stonebreakModel = null;
             if (modelParts != null && modelParts.length > 0) {
                 try {
@@ -477,7 +477,7 @@ public class ModelBrowserController implements Initializable {
             }
             
             // Get model parts
-            StonebreakModelDefinition.ModelPart[] modelParts = ModelManager.getStaticModelParts(modelName);
+            ModelDefinition.ModelPart[] modelParts = ModelManager.getStaticModelParts(modelName);
             if (modelParts == null || modelParts.length == 0) {
                 logger.warn("No model parts found for: {}", modelName);
                 return;
@@ -612,7 +612,7 @@ public class ModelBrowserController implements Initializable {
     /**
      * Calculate the number of parts in a model.
      */
-    private int calculatePartCount(StonebreakModelDefinition.ModelPart[] modelParts) {
+    private int calculatePartCount(ModelDefinition.ModelPart[] modelParts) {
         if (modelParts == null) {
             return 0;
         }

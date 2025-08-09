@@ -222,13 +222,28 @@ public class Font {    private final int fontTextureId;
     private static ByteBuffer ioResourceToByteBuffer(String resource, int bufferSize) throws IOException {
         ByteBuffer buffer;
         
-        // Always try to load from classpath resources first for module compatibility
-        try (InputStream source = Font.class.getClassLoader().getResourceAsStream(resource)) {
-            if (source == null) {
+        // Try different approaches for module compatibility
+        InputStream source = null;
+        
+        // First try: Module's class loader
+        source = Font.class.getClassLoader().getResourceAsStream(resource);
+        
+        // Second try: Module class itself
+        if (source == null) {
+            source = Font.class.getResourceAsStream("/" + resource);
+        }
+        
+        // Third try: Context class loader
+        if (source == null) {
+            source = Thread.currentThread().getContextClassLoader().getResourceAsStream(resource);
+        }
+        
+        try (InputStream finalSource = source) {
+            if (finalSource == null) {
                 throw new IOException("Resource not found: " + resource);
             }
             
-            try (ReadableByteChannel rbc = Channels.newChannel(source)) {
+            try (ReadableByteChannel rbc = Channels.newChannel(finalSource)) {
                 buffer = MemoryUtil.memAlloc(bufferSize);
                 while (true) {
                     int bytes = rbc.read(buffer);

@@ -1,10 +1,9 @@
 package com.openmason.model;
 
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 
 import java.util.List;
 import java.util.Map;
@@ -16,12 +15,12 @@ import java.util.ArrayList;
  * for the 3D model development tool.
  */
 public class StonebreakModel {
-    private final StonebreakModelDefinition.CowModelDefinition modelDefinition;
-    private final StonebreakTextureDefinition.CowVariant textureDefinition;
+    private final ModelDefinition.CowModelDefinition modelDefinition;
+    private final CowTextureDefinition.CowVariant textureDefinition;
     private final String variantName;
 
-    public StonebreakModel(StonebreakModelDefinition.CowModelDefinition modelDefinition, 
-                          StonebreakTextureDefinition.CowVariant textureDefinition,
+    public StonebreakModel(ModelDefinition.CowModelDefinition modelDefinition, 
+                          CowTextureDefinition.CowVariant textureDefinition,
                           String variantName) {
         this.modelDefinition = modelDefinition;
         this.textureDefinition = textureDefinition;
@@ -33,11 +32,8 @@ public class StonebreakModel {
      */
     public static StonebreakModel loadFromResources(String modelPath, String texturePath, String variantName) {
         try {
-            StonebreakModelLoader modelLoader = new StonebreakModelLoader();
-            StonebreakTextureLoader textureLoader = new StonebreakTextureLoader();
-            
-            StonebreakModelDefinition.CowModelDefinition model = modelLoader.loadModelSync(modelPath);
-            StonebreakTextureDefinition.CowVariant texture = textureLoader.loadIndividualVariantSync(texturePath);
+            ModelDefinition.CowModelDefinition model = ModelLoader.getCowModel(modelPath);
+            CowTextureDefinition.CowVariant texture = CowTextureLoader.getCowVariant(variantName);
             
             return new StonebreakModel(model, texture, variantName);
         } catch (Exception e) {
@@ -53,7 +49,7 @@ public class StonebreakModel {
         List<BodyPart> bodyParts = new ArrayList<>();
         
         if (modelDefinition.getParts() != null) {
-            StonebreakModelDefinition.ModelParts parts = modelDefinition.getParts();
+            ModelDefinition.ModelParts parts = modelDefinition.getParts();
             
             // Add body
             if (parts.getBody() != null) {
@@ -67,14 +63,14 @@ public class StonebreakModel {
             
             // Add legs
             if (parts.getLegs() != null) {
-                for (StonebreakModelDefinition.ModelPart leg : parts.getLegs()) {
+                for (ModelDefinition.ModelPart leg : parts.getLegs()) {
                     bodyParts.add(new BodyPart(leg));
                 }
             }
             
             // Add horns
             if (parts.getHorns() != null) {
-                for (StonebreakModelDefinition.ModelPart horn : parts.getHorns()) {
+                for (ModelDefinition.ModelPart horn : parts.getHorns()) {
                     bodyParts.add(new BodyPart(horn));
                 }
             }
@@ -96,23 +92,23 @@ public class StonebreakModel {
     /**
      * Get texture face mappings for all body parts
      */
-    public Map<String, StonebreakTextureDefinition.AtlasCoordinate> getFaceMappings() {
+    public Map<String, CowTextureDefinition.AtlasCoordinate> getFaceMappings() {
         return textureDefinition.getFaceMappings();
     }
 
     /**
      * Get base colors for the texture variant
      */
-    public StonebreakTextureDefinition.BaseColors getBaseColors() {
+    public CowTextureDefinition.BaseColors getBaseColors() {
         return textureDefinition.getBaseColors();
     }
 
     /**
      * Get facial features configuration
      */
-    public StonebreakTextureDefinition.FacialFeatures getFacialFeatures() {
+    public CowTextureDefinition.FacialFeatures getFacialFeatures() {
         if (textureDefinition.getDrawingInstructions() == null) return null;
-        for (StonebreakTextureDefinition.DrawingInstructions instr : textureDefinition.getDrawingInstructions().values()) {
+        for (CowTextureDefinition.DrawingInstructions instr : textureDefinition.getDrawingInstructions().values()) {
             if (instr.getFacialFeatures() != null) {
                 return instr.getFacialFeatures();
             }
@@ -123,15 +119,15 @@ public class StonebreakModel {
     /**
      * Get drawing instructions for procedural texture generation
      */
-    public Map<String, StonebreakTextureDefinition.DrawingInstructions> getDrawingInstructions() {
+    public Map<String, CowTextureDefinition.DrawingInstructions> getDrawingInstructions() {
         return textureDefinition.getDrawingInstructions();
     }
 
     /**
      * Get the texture atlas for coordinate lookups
      */
-    public StonebreakTextureAtlas getTextureAtlas() {
-        // StonebreakTextureAtlas is a static utility class, return null or create a wrapper
+    public Object getTextureAtlas() {
+        // Texture atlas functionality is now in CowTextureLoader static methods
         return null;
     }
 
@@ -157,8 +153,8 @@ public class StonebreakModel {
         }
         
         // Validate texture atlas coordinates are within valid range (16x16 grid)
-        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : textureDefinition.getFaceMappings().entrySet()) {
-            StonebreakTextureDefinition.AtlasCoordinate mapping = entry.getValue();
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : textureDefinition.getFaceMappings().entrySet()) {
+            CowTextureDefinition.AtlasCoordinate mapping = entry.getValue();
             if (mapping.getAtlasX() < 0 || mapping.getAtlasX() >= 16 || 
                 mapping.getAtlasY() < 0 || mapping.getAtlasY() >= 16) {
                 result.addError("Invalid texture coordinates for " + entry.getKey() + 
@@ -173,8 +169,8 @@ public class StonebreakModel {
     }
 
     // Getters
-    public StonebreakModelDefinition.CowModelDefinition getModelDefinition() { return modelDefinition; }
-    public StonebreakTextureDefinition.CowVariant getTextureDefinition() { return textureDefinition; }
+    public ModelDefinition.CowModelDefinition getModelDefinition() { return modelDefinition; }
+    public CowTextureDefinition.CowVariant getTextureDefinition() { return textureDefinition; }
     public String getVariantName() { return variantName; }
 
     /**
@@ -225,9 +221,9 @@ public class StonebreakModel {
      * for the buffer management system.
      */
     public static class BodyPart {
-        private final StonebreakModelDefinition.ModelPart modelPart;
+        private final ModelDefinition.ModelPart modelPart;
         
-        public BodyPart(StonebreakModelDefinition.ModelPart modelPart) {
+        public BodyPart(ModelDefinition.ModelPart modelPart) {
             this.modelPart = modelPart;
         }
         
@@ -243,7 +239,7 @@ public class StonebreakModel {
             return new BoundingBox(modelPart);
         }
         
-        public StonebreakModelDefinition.ModelPart getModelPart() {
+        public ModelDefinition.ModelPart getModelPart() {
             return modelPart;
         }
     }
@@ -255,9 +251,9 @@ public class StonebreakModel {
         private final float minX, minY, minZ;
         private final float width, height, depth;
         
-        public BoundingBox(StonebreakModelDefinition.ModelPart modelPart) {
-            StonebreakModelDefinition.Position pos = modelPart.getPosition();
-            StonebreakModelDefinition.Size size = modelPart.getSize();
+        public BoundingBox(ModelDefinition.ModelPart modelPart) {
+            ModelDefinition.Position pos = modelPart.getPosition();
+            ModelDefinition.Size size = modelPart.getSize();
             
             this.width = size.getX();
             this.height = size.getY();

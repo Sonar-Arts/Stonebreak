@@ -2,10 +2,10 @@ package com.openmason.ui.controllers;
 
 import com.openmason.model.ModelManager;
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -141,21 +141,17 @@ public class ModelController {
         CompletableFuture.supplyAsync(() -> {
             try {
                 logger.info("Loading initial cow model...");
-                StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
+                // ModelLoader now throws exceptions instead of returning null
+                ModelDefinition.CowModelDefinition modelDef = ModelLoader.getCowModel("standard_cow");
                 
-                if (modelDef != null) {
-                    // Load default texture variant
-                    StonebreakTextureDefinition.CowVariant textureDef = StonebreakTextureLoader.getCowVariant("default");
-                    if (textureDef != null) {
-                        StonebreakModel model = new StonebreakModel(modelDef, textureDef, "default");
-                        logger.info("Successfully loaded cow model with default texture");
-                        return model;
-                    } else {
-                        logger.warn("Failed to load default texture variant");
-                        return null;
-                    }
+                // Load default texture variant
+                CowTextureDefinition.CowVariant textureDef = CowTextureLoader.getCowVariant("default");
+                if (textureDef != null) {
+                    StonebreakModel model = new StonebreakModel(modelDef, textureDef, "default");
+                    logger.info("Successfully loaded cow model with default texture");
+                    return model;
                 } else {
-                    logger.warn("Failed to load cow model definition");
+                    logger.warn("Failed to load default texture variant");
                     return null;
                 }
             } catch (Exception e) {
@@ -219,16 +215,16 @@ public class ModelController {
             try {
                 // For now, only handle cow models
                 if (modelName.toLowerCase().contains("cow")) {
-                    StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
-                    if (modelDef != null) {
-                        // Get current texture variant or default to "default"
-                        String currentVariant = cmbTextureVariant.getValue();
-                        if (currentVariant == null) currentVariant = "default";
-                        
-                        StonebreakTextureDefinition.CowVariant textureDef = StonebreakTextureLoader.getCowVariant(currentVariant);
-                        if (textureDef != null) {
-                            return new StonebreakModel(modelDef, textureDef, currentVariant);
-                        }
+                    // ModelLoader now throws exceptions instead of returning null
+                    ModelDefinition.CowModelDefinition modelDef = ModelLoader.getCowModel("standard_cow");
+                    
+                    // Get current texture variant or default to "default"
+                    String currentVariant = cmbTextureVariant.getValue();
+                    if (currentVariant == null) currentVariant = "default";
+                    
+                    CowTextureDefinition.CowVariant textureDef = CowTextureLoader.getCowVariant(currentVariant);
+                    if (textureDef != null) {
+                        return new StonebreakModel(modelDef, textureDef, currentVariant);
                     }
                 }
                 return null;
@@ -353,7 +349,7 @@ public class ModelController {
             
             CompletableFuture.supplyAsync(() -> {
                 try {
-                    StonebreakTextureDefinition.CowVariant variantDef = StonebreakTextureLoader.getCowVariant(variant);
+                    CowTextureDefinition.CowVariant variantDef = CowTextureLoader.getCowVariant(variant);
                     if (variantDef != null) {
                         // Create a new model with the updated texture variant
                         return new StonebreakModel(currentModel.getModelDefinition(), variantDef, variant);

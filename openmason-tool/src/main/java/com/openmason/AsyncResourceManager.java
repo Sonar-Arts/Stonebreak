@@ -1,9 +1,9 @@
 package com.openmason;
 
 import com.openmason.model.ModelManager;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
+import com.stonebreak.model.ModelLoader;
 import com.openmason.texture.TextureManager;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.textures.CowTextureLoader;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -275,8 +275,7 @@ public class AsyncResourceManager {
      */
     public static int getActiveOperationCount() {
         return activeOperations.size() + 
-               StonebreakModelLoader.getActiveLoadCount() + 
-               StonebreakTextureLoader.getActiveLoadCount() +
+               TextureManager.getPendingLoadCount() +
                ModelManager.getPendingLoadCount() +
                TextureManager.getPendingLoadCount();
     }
@@ -302,8 +301,8 @@ public class AsyncResourceManager {
         activeOperations.clear();
         
         // Cancel operations in subsystems
-        totalCancelled += StonebreakModelLoader.cancelAllLoads(mayInterruptIfRunning);
-        totalCancelled += StonebreakTextureLoader.cancelAllLoads(mayInterruptIfRunning);
+        // Note: ModelLoader no longer supports cancellation tracking
+        totalCancelled += TextureManager.cancelAllPendingLoads();
         totalCancelled += ModelManager.cancelAllPendingLoads();
         totalCancelled += TextureManager.cancelAllPendingLoads();
         
@@ -379,13 +378,13 @@ public class AsyncResourceManager {
         status.append("  Model System:\n");
         status.append("    Initialized: ").append(ModelManager.isInitializing()).append("\n");
         status.append("    Pending Loads: ").append(ModelManager.getPendingLoadCount()).append("\n");
-        status.append("    Active Loads: ").append(StonebreakModelLoader.getActiveLoadCount()).append("\n");
+        status.append("    Active Loads: N/A (not tracked)\n");
         status.append("\n");
         
         status.append("  Texture System:\n");
         status.append("    Initialized: ").append(TextureManager.isInitializing()).append("\n");
         status.append("    Pending Loads: ").append(TextureManager.getPendingLoadCount()).append("\n");
-        status.append("    Active Loads: ").append(StonebreakTextureLoader.getActiveLoadCount()).append("\n");
+        status.append("    Active Loads: ").append(TextureManager.getPendingLoadCount()).append("\n");
         
         return status.toString();
     }

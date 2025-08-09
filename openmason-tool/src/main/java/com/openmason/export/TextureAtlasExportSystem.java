@@ -1,9 +1,8 @@
 package com.openmason.export;
 
 import com.openmason.texture.TextureManager;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import com.openmason.coordinates.AtlasCoordinateSystem;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -367,7 +366,7 @@ public class TextureAtlasExportSystem {
      */
     private void drawTextureCells(GraphicsContext gc, AtlasExportConfig config, 
                                 TextureManager.TextureVariantInfo variantInfo, int cellSize) {
-        StonebreakTextureDefinition.CowVariant variant = variantInfo.getVariantDefinition();
+        CowTextureDefinition.CowVariant variant = variantInfo.getVariantDefinition();
         if (variant == null || variant.getFaceMappings() == null) {
             return;
         }
@@ -375,11 +374,11 @@ public class TextureAtlasExportSystem {
         // Color coding for different face types
         Map<String, Color> faceTypeColors = createFaceTypeColorMap(config);
         
-        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
              variant.getFaceMappings().entrySet()) {
             
             String faceName = entry.getKey();
-            StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+            CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
             
             int x = coord.getAtlasX() * cellSize;
             int y = coord.getAtlasY() * cellSize;
@@ -520,11 +519,11 @@ public class TextureAtlasExportSystem {
                 // Draw texture cells
                 Map<String, Color> faceTypeColors = createFaceTypeColorMap(config);
                 
-                for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+                for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
                      variantInfo.getVariantDefinition().getFaceMappings().entrySet()) {
                     
                     String faceName = entry.getKey();
-                    StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+                    CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
                     
                     int x = coord.getAtlasX() * cellSize;
                     int y = coord.getAtlasY() * cellSize;
@@ -591,11 +590,11 @@ public class TextureAtlasExportSystem {
                 writer.println("FACE MAPPINGS:");
                 writer.println("--------------");
                 
-                for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+                for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
                      variantInfo.getVariantDefinition().getFaceMappings().entrySet()) {
                     
                     String faceName = entry.getKey();
-                    StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+                    CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
                     
                     writer.printf("%-20s -> Atlas(%2d, %2d) -> UV(%.3f, %.3f, %.3f, %.3f)%n",
                         faceName, coord.getAtlasX(), coord.getAtlasY(),
@@ -628,11 +627,11 @@ public class TextureAtlasExportSystem {
             
             Map<String, Map<String, Object>> faceMappings = new HashMap<>();
             
-            for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : 
+            for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : 
                  variantInfo.getVariantDefinition().getFaceMappings().entrySet()) {
                 
                 String faceName = entry.getKey();
-                StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+                CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
                 
                 Map<String, Object> faceData = new HashMap<>();
                 faceData.put("atlasX", coord.getAtlasX());

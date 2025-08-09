@@ -1,8 +1,8 @@
 package com.openmason.coordinates;
 
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.model.ModelDefinition;
 import org.joml.Vector3f;
 
 /**
@@ -399,10 +399,10 @@ public class CoordinateSystemValidator {
         
         try {
             // Create test model part
-            StonebreakModelDefinition.ModelPart testPart = new StonebreakModelDefinition.ModelPart(
+            ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
                 "test_part",
-                new StonebreakModelDefinition.Position(0.0f, 0.0f, 0.0f),
-                new StonebreakModelDefinition.Size(2.0f, 2.0f, 2.0f),
+                new ModelDefinition.Position(0.0f, 0.0f, 0.0f),
+                new ModelDefinition.Size(2.0f, 2.0f, 2.0f),
                 "cow_head"
             );
             
@@ -488,10 +488,10 @@ public class CoordinateSystemValidator {
         
         try {
             // Create test model part
-            StonebreakModelDefinition.ModelPart testPart = new StonebreakModelDefinition.ModelPart(
+            ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
                 "cache_test",
-                new StonebreakModelDefinition.Position(0.0f, 0.0f, 0.0f),
-                new StonebreakModelDefinition.Size(1.0f, 1.0f, 1.0f),
+                new ModelDefinition.Position(0.0f, 0.0f, 0.0f),
+                new ModelDefinition.Size(1.0f, 1.0f, 1.0f),
                 "cow_head"
             );
             
@@ -542,10 +542,10 @@ public class CoordinateSystemValidator {
             
             // Generate coordinate data for multiple parts
             for (int i = 0; i < 100; i++) {
-                StonebreakModelDefinition.ModelPart testPart = new StonebreakModelDefinition.ModelPart(
+                ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
                     "memory_test_" + i,
-                    new StonebreakModelDefinition.Position(i, i, i),
-                    new StonebreakModelDefinition.Size(1.0f, 1.0f, 1.0f),
+                    new ModelDefinition.Position(i, i, i),
+                    new ModelDefinition.Size(1.0f, 1.0f, 1.0f),
                     "cow_head"
                 );
                 

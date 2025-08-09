@@ -1,8 +1,8 @@
 package com.openmason.test;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.textures.CowTextureLoader;
 import com.openmason.ui.viewport.ModelManagementMethods;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import org.slf4j.Logger;

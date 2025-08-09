@@ -2,8 +2,8 @@ package com.openmason.integration;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.texture.TextureManager;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import com.openmason.model.StonebreakModel;
 
 import javafx.application.Platform;
@@ -299,7 +299,7 @@ public class LivePreviewManager {
                 // Store original value if first change
                 String coordKey = faceName + "_coordinate";
                 if (session.getOriginalValue(coordKey) == null) {
-                    StonebreakTextureDefinition.AtlasCoordinate original = 
+                    CowTextureDefinition.AtlasCoordinate original = 
                         TextureManager.getAtlasCoordinate(variantName, faceName);
                     if (original != null) {
                         session.storeOriginalValue(coordKey, 

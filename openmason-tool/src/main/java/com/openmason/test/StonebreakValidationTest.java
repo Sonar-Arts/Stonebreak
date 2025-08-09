@@ -1,8 +1,8 @@
 package com.openmason.test;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
 
 import java.util.Arrays;
 import java.util.List;
@@ -93,14 +93,14 @@ public class StonebreakValidationTest {
             System.out.println("   ⚠️  Warnings: " + result.getWarnings().size());
             
             // Print base colors
-            StonebreakTextureDefinition.BaseColors colors = model.getBaseColors();
+            CowTextureDefinition.BaseColors colors = model.getBaseColors();
             System.out.println("   🎨 Base Colors:");
             System.out.println("      Primary: " + colors.getPrimary());
             System.out.println("      Secondary: " + colors.getSecondary()); 
             System.out.println("      Accent: " + colors.getAccent());
             
             // Print facial features
-            StonebreakTextureDefinition.FacialFeatures features = model.getFacialFeatures();
+            CowTextureDefinition.FacialFeatures features = model.getFacialFeatures();
             if (features != null && features.getExpression() != null) {
                 System.out.println("   😊 Expression: " + features.getExpression());
             }
@@ -136,7 +136,7 @@ public class StonebreakValidationTest {
                 "coordinate_test"
             );
             
-            Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings = model.getFaceMappings();
+            Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = model.getFaceMappings();
             
             System.out.println("   🔍 Validating texture atlas coordinates...");
             
@@ -146,8 +146,8 @@ public class StonebreakValidationTest {
             double minV = Double.MAX_VALUE, maxV = Double.MIN_VALUE;
             
             // Check all face mappings for valid 16x16 grid coordinates
-            for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
-                StonebreakTextureDefinition.AtlasCoordinate mapping = entry.getValue();
+            for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
+                CowTextureDefinition.AtlasCoordinate mapping = entry.getValue();
                 double u = mapping.getAtlasX();
                 double v = mapping.getAtlasY();
                 

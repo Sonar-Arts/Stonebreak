@@ -232,9 +232,12 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.openmason.app.OpenMasonApp</mainClass>
+                    <commandlineArgs>--module-path ${javafx.runtime.path} --add-modules javafx.controls,javafx.fxml,javafx.graphics,javafx.base,javafx.swing,javafx.web</commandlineArgs>
                     <options>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
                         <option>--enable-native-access=ALL-UNNAMED</option>
+                        
+                        
                         <!-- Alternative: specific modules if needed -->
                         <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl</option> -->
                         
@@ -263,12 +266,16 @@
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
-                <version>0.0.8</version>
+                <version>${javafx.maven.plugin.version}</version>
                 <configuration>
                     <mainClass>com.openmason.app.OpenMasonApp</mainClass>
+                    <args>
+                        <arg>--enable-preview</arg>
+                    </args>
                     <options>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
                         <option>--enable-native-access=ALL-UNNAMED</option>
+                        
                         
                         <!-- Java 24+ compatibility flags -->
                         <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>

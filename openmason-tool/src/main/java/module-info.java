@@ -30,6 +30,9 @@ module com.openmason {
     requires java.desktop;
     requires java.prefs;
     
+    // Stonebreak Game Module for model system access
+    requires stonebreak.game;
+    
     // Open packages for JavaFX FXML access
     opens com.openmason.app to javafx.fxml;
     opens com.openmason.ui to javafx.fxml;
@@ -37,14 +40,12 @@ module com.openmason {
     // Open packages for Jackson JSON processing
     opens com.openmason.model to javafx.fxml, com.fasterxml.jackson.databind;
     opens com.openmason.texture to javafx.fxml, com.fasterxml.jackson.databind;
-    opens com.openmason.model.stonebreak to com.fasterxml.jackson.databind;
-    opens com.openmason.texture.stonebreak to com.fasterxml.jackson.databind;
+    // Removed - now using stonebreak.game texture system
     
     // Export packages for potential future extensions
     exports com.openmason.app;
     exports com.openmason.ui;
     exports com.openmason.model;
     exports com.openmason.texture;
-    exports com.openmason.model.stonebreak;
-    exports com.openmason.texture.stonebreak;
+    // Removed - now using stonebreak.game texture system
 }

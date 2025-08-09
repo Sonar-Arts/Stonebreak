@@ -1,7 +1,7 @@
 package com.openmason.model;
 
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.model.ModelLoader;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -177,10 +177,10 @@ public class ModelManager {
         private final String displayName;
         private final int partCount;
         private final int animationCount;
-        private final StonebreakModelDefinition.CowModelDefinition modelDefinition;
+        private final ModelDefinition.CowModelDefinition modelDefinition;
         
         public ModelInfo(String modelName, String displayName, int partCount, int animationCount, 
-                        StonebreakModelDefinition.CowModelDefinition modelDefinition) {
+                        ModelDefinition.CowModelDefinition modelDefinition) {
             this.modelName = modelName;
             this.displayName = displayName;
             this.partCount = partCount;
@@ -192,7 +192,7 @@ public class ModelManager {
         public String getDisplayName() { return displayName; }
         public int getPartCount() { return partCount; }
         public int getAnimationCount() { return animationCount; }
-        public StonebreakModelDefinition.CowModelDefinition getModelDefinition() { return modelDefinition; }
+        public ModelDefinition.CowModelDefinition getModelDefinition() { return modelDefinition; }
         
         @Override
         public String toString() {
@@ -227,7 +227,7 @@ public class ModelManager {
                     System.out.println("[ModelManager] Initializing async model management system...");
                     
                     // Get available models
-                    String[] availableModels = StonebreakModelLoader.getAvailableModels();
+                    String[] availableModels = ModelLoader.getAvailableModels();
                     int totalModels = availableModels.length;
                     
                     if (progressCallback != null) {
@@ -385,8 +385,7 @@ public class ModelManager {
             }
             
             // Use the async model loader with proper cancellation handling
-            StonebreakModelLoader.getCowModelAsync(request.modelName, 
-                StonebreakModelLoader.LoadingPriority.NORMAL, null)
+            ModelLoader.getCowModelAsync(request.modelName, null)
                 .thenAccept(model -> {
                     try {
                         // Thread-safe check: only complete if not already cancelled/completed
@@ -445,7 +444,7 @@ public class ModelManager {
     /**
      * Create ModelInfo from a loaded model definition.
      */
-    private static ModelInfo createModelInfo(String modelName, StonebreakModelDefinition.CowModelDefinition model) {
+    private static ModelInfo createModelInfo(String modelName, ModelDefinition.CowModelDefinition model) {
         int partCount = countModelParts(model);
         int animationCount = model.getAnimations() != null ? model.getAnimations().size() : 0;
         return new ModelInfo(modelName, model.getDisplayName(), partCount, animationCount, model);
@@ -473,11 +472,11 @@ public class ModelManager {
     /**
      * Count the total number of parts in a model.
      */
-    private static int countModelParts(StonebreakModelDefinition.CowModelDefinition model) {
+    private static int countModelParts(ModelDefinition.CowModelDefinition model) {
         if (model.getParts() == null) return 0;
         
         int count = 0;
-        StonebreakModelDefinition.ModelParts parts = model.getParts();
+        ModelDefinition.ModelParts parts = model.getParts();
         
         if (parts.getBody() != null) count++;
         if (parts.getHead() != null) count++;
@@ -492,28 +491,30 @@ public class ModelManager {
     /**
      * Get all model parts for a specific model and animation.
      */
-    public static StonebreakModelDefinition.ModelPart[] getModelParts(String modelName, String animationName, float animationTime) {
+    public static ModelDefinition.ModelPart[] getModelParts(String modelName, String animationName, float animationTime) {
         if (!initialized) {
             initialize();
         }
         
-        return StonebreakModelLoader.getAnimatedParts(modelName, animationName, animationTime);
+        return ModelLoader.getAnimatedParts(modelName, animationName, animationTime);
     }
     
     /**
      * Get static model parts (no animation applied).
      */
-    public static StonebreakModelDefinition.ModelPart[] getStaticModelParts(String modelName) {
+    public static ModelDefinition.ModelPart[] getStaticModelParts(String modelName) {
         if (!initialized) {
             initialize();
         }
         
-        StonebreakModelDefinition.CowModelDefinition model = StonebreakModelLoader.getCowModel(modelName);
-        if (model == null) {
-            return new StonebreakModelDefinition.ModelPart[0];
+        try {
+            // ModelLoader now throws exceptions instead of returning null
+            ModelDefinition.CowModelDefinition model = ModelLoader.getCowModel(modelName);
+            return ModelLoader.getAllPartsStrict(model);
+        } catch (Exception e) {
+            // Return empty array on error (maintains backward compatibility)
+            return new ModelDefinition.ModelPart[0];
         }
-        
-        return StonebreakModelLoader.getAllParts(model);
     }
     
     /**
@@ -524,7 +525,7 @@ public class ModelManager {
             initialize();
         }
         
-        return Arrays.asList(StonebreakModelLoader.getAvailableModels());
+        return Arrays.asList(ModelLoader.getAvailableModels());
     }
     
     /**
@@ -543,7 +544,7 @@ public class ModelManager {
      * Validate that a model can be loaded successfully.
      */
     public static boolean validateModel(String modelName) {
-        if (!StonebreakModelLoader.isValidModel(modelName)) {
+        if (!ModelLoader.isValidModel(modelName)) {
             return false;
         }
         
@@ -560,7 +561,7 @@ public class ModelManager {
      * Calculate the total vertex count for a model.
      */
     public static int calculateVertexCount(String modelName) {
-        StonebreakModelDefinition.ModelPart[] parts = getStaticModelParts(modelName);
+        ModelDefinition.ModelPart[] parts = getStaticModelParts(modelName);
         return parts.length * 24; // 24 vertices per part (cuboid)
     }
     
@@ -568,7 +569,7 @@ public class ModelManager {
      * Calculate the total triangle count for a model.
      */
     public static int calculateTriangleCount(String modelName) {
-        StonebreakModelDefinition.ModelPart[] parts = getStaticModelParts(modelName);
+        ModelDefinition.ModelPart[] parts = getStaticModelParts(modelName);
         return parts.length * 12; // 12 triangles per part (6 faces × 2 triangles)
     }
     
@@ -724,7 +725,7 @@ public class ModelManager {
         }
         
         // Shutdown underlying model loader
-        StonebreakModelLoader.shutdown();
+        ModelLoader.shutdown();
         
         System.out.println("[ModelManager] Shutdown complete");
     }
@@ -739,7 +740,7 @@ public class ModelManager {
         cancelAllPendingLoads();
         
         modelInfoCache.clear();
-        StonebreakModelLoader.clearCache();
+        ModelLoader.clearCache();
         initialized = false;
         initializationInProgress.set(false);
         initializationFuture = null;
@@ -777,6 +778,6 @@ public class ModelManager {
             }
         }
         
-        StonebreakModelLoader.printCacheStatus();
+        ModelLoader.printCacheStatus();
     }
 }

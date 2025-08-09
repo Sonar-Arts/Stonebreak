@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.model.ModelDefinition;
 
 import javafx.scene.Group;
 import javafx.scene.paint.Color;
@@ -275,10 +275,10 @@ public class ViewportDebugRenderer {
         }
         
         try {
-            StonebreakModelDefinition.CowModelDefinition definition = model.getModelDefinition();
+            ModelDefinition.CowModelDefinition definition = model.getModelDefinition();
             if (definition == null) return;
             
-            StonebreakModelDefinition.ModelParts parts = definition.getParts();
+            ModelDefinition.ModelParts parts = definition.getParts();
             if (parts == null) return;
             
             // Create debug info for each part
@@ -290,7 +290,7 @@ public class ViewportDebugRenderer {
             }
             if (parts.getLegs() != null) {
                 for (int i = 0; i < parts.getLegs().size(); i++) {
-                    StonebreakModelDefinition.ModelPart leg = parts.getLegs().get(i);
+                    ModelDefinition.ModelPart leg = parts.getLegs().get(i);
                     renderPartDebugInfo("leg" + (i + 1), leg);
                 }
             }
@@ -311,7 +311,7 @@ public class ViewportDebugRenderer {
     /**
      * Render debug information for a specific model part.
      */
-    private void renderPartDebugInfo(String partName, StonebreakModelDefinition.ModelPart part) {
+    private void renderPartDebugInfo(String partName, ModelDefinition.ModelPart part) {
         if (part == null) return;
         
         try {

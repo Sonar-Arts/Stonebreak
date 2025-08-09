@@ -9,8 +9,8 @@ import com.openmason.model.StonebreakModel;
 import com.openmason.model.ModelManager;
 import com.openmason.texture.TextureManager;
 import com.openmason.camera.ArcBallCamera;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.model.ModelDefinition;
 import com.openmason.coordinates.ModelCoordinateSystem;
 import com.openmason.coordinates.CoordinateSystemIntegration;
 

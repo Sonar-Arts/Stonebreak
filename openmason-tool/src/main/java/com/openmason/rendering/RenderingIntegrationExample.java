@@ -1,7 +1,7 @@
 package com.openmason.rendering;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.model.ModelDefinition;
 
 /**
  * Integration example demonstrating how to use the OpenGL buffer management system

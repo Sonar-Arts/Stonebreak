@@ -1,8 +1,8 @@
 package com.openmason.rendering;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
 
 import java.util.HashMap;
 import java.util.List;
@@ -106,8 +106,8 @@ public class ModelRenderer implements AutoCloseable {
      * @param bodyPart The body part definition from the model
      * @param textureDefinition The texture definition for UV mapping
      */
-    private void prepareModelPart(StonebreakModelDefinition.ModelPart bodyPart, 
-                                StonebreakTextureDefinition.CowVariant textureDefinition) {
+    private void prepareModelPart(ModelDefinition.ModelPart bodyPart, 
+                                CowTextureDefinition.CowVariant textureDefinition) {
         String partName = bodyPart.getName();
         String vaoKey = debugPrefix + "_" + partName;
         
@@ -129,7 +129,7 @@ public class ModelRenderer implements AutoCloseable {
         }
         
         // Use the model part directly
-        StonebreakModelDefinition.ModelPart modelPart = bodyPart;
+        ModelDefinition.ModelPart modelPart = bodyPart;
         
         // Generate vertex data
         float[] vertices = modelPart.getVertices();
@@ -168,21 +168,21 @@ public class ModelRenderer implements AutoCloseable {
      * @param bodyPart The body part to convert
      * @return ModelPart suitable for vertex generation
      */
-    private StonebreakModelDefinition.ModelPart convertModelPartToModelPart(StonebreakModelDefinition.ModelPart bodyPart) {
+    private ModelDefinition.ModelPart convertModelPartToModelPart(ModelDefinition.ModelPart bodyPart) {
         // Create position and size from body part bounds
-        StonebreakModelDefinition.Position position = new StonebreakModelDefinition.Position(
+        ModelDefinition.Position position = new ModelDefinition.Position(
             bodyPart.getPositionVector().x + bodyPart.getSizeVector().x / 2,
             bodyPart.getPositionVector().y + bodyPart.getSizeVector().y / 2,
             bodyPart.getPositionVector().z + bodyPart.getSizeVector().z / 2
         );
         
-        StonebreakModelDefinition.Size size = new StonebreakModelDefinition.Size(
+        ModelDefinition.Size size = new ModelDefinition.Size(
             bodyPart.getSizeVector().x,
             bodyPart.getSizeVector().y,
             bodyPart.getSizeVector().z
         );
         
-        return new StonebreakModelDefinition.ModelPart(
+        return new ModelDefinition.ModelPart(
             bodyPart.getName(),
             position,
             size,

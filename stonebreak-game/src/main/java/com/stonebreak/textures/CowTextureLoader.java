@@ -62,12 +62,28 @@ public class CowTextureLoader {
             throw new IOException("Unknown cow variant: " + variantName + ". Available variants: " + VARIANT_FILE_PATHS.keySet());
         }
         
-        try (InputStream inputStream = CowTextureLoader.class.getClassLoader().getResourceAsStream(filePath)) {
-            if (inputStream == null) {
+        // Try different approaches for module compatibility
+        InputStream inputStream = null;
+        
+        // First try: Module's class loader
+        inputStream = CowTextureLoader.class.getClassLoader().getResourceAsStream(filePath);
+        
+        // Second try: Module class itself
+        if (inputStream == null) {
+            inputStream = CowTextureLoader.class.getResourceAsStream("/" + filePath);
+        }
+        
+        // Third try: Context class loader
+        if (inputStream == null) {
+            inputStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(filePath);
+        }
+        
+        try (InputStream finalInputStream = inputStream) {
+            if (finalInputStream == null) {
                 throw new IOException("Could not find resource: " + filePath);
             }
             
-            CowTextureDefinition.CowVariant variant = objectMapper.readValue(inputStream, CowTextureDefinition.CowVariant.class);
+            CowTextureDefinition.CowVariant variant = objectMapper.readValue(finalInputStream, CowTextureDefinition.CowVariant.class);
             
             // Validate the loaded variant
             validateCowVariant(variant, variantName);

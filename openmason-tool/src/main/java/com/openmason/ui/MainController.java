@@ -3,10 +3,10 @@ package com.openmason.ui;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.model.StonebreakModel;
 import com.openmason.model.ModelManager;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
-import com.openmason.model.stonebreak.StonebreakModelLoader;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
@@ -879,12 +879,12 @@ public class MainController implements Initializable {
             
             // Try to parse as model definition to validate structure
             try (java.io.FileInputStream fis = new java.io.FileInputStream(modelFile)) {
-                StonebreakModelDefinition.CowModelDefinition modelDef = 
-                    mapper.readValue(fis, StonebreakModelDefinition.CowModelDefinition.class);
+                ModelDefinition.CowModelDefinition modelDef = 
+                    mapper.readValue(fis, ModelDefinition.CowModelDefinition.class);
                 
                 if (modelDef != null && modelDef.getParts() != null) {
                     // Count parts - the model has body, head, legs (list), horns (list), udder, tail
-                    StonebreakModelDefinition.ModelParts parts = modelDef.getParts();
+                    ModelDefinition.ModelParts parts = modelDef.getParts();
                     int partCount = 0;
                     
                     if (parts.getBody() != null) partCount++;
@@ -1278,40 +1278,36 @@ public class MainController implements Initializable {
                     
                     updateStatus("Loading model: " + modelName + " with texture variant: " + textureVariant);
                     
-                    // Load model definition
-                    StonebreakModelDefinition.CowModelDefinition modelDef = StonebreakModelLoader.getCowModel("standard_cow");
-                    if (modelDef != null) {
-                        // Load texture definition for the variant
-                        StonebreakTextureDefinition.CowVariant textureDef = StonebreakTextureLoader.loadIndividualVariantSync(textureVariant);
+                    // Load model definition - ModelLoader now throws exceptions instead of returning null
+                    ModelDefinition.CowModelDefinition modelDef = ModelLoader.getCowModel("standard_cow");
+                    
+                    // Load texture definition for the variant
+                    CowTextureDefinition.CowVariant textureDef = CowTextureLoader.getCowVariant(textureVariant);
+                    
+                    if (textureDef != null) {
+                        // Create the integrated StonebreakModel
+                        StonebreakModel cowModel = new StonebreakModel(modelDef, textureDef, textureVariant);
                         
-                        if (textureDef != null) {
-                            // Create the integrated StonebreakModel
-                            StonebreakModel cowModel = new StonebreakModel(modelDef, textureDef, textureVariant);
-                            
-                            // Set model and texture in viewport
-                            viewport3D.setCurrentModel(cowModel);
-                            viewport3D.setCurrentTextureVariant(textureVariant);
-                            cmbTextureVariant.setValue(capitalizeFirst(textureVariant));
-                            
-                            modelLoaded = true;
-                            currentModelPath = modelName;
-                            
-                            // Load texture variants using PropertyPanelController
-                            if (propertyPanelController != null) {
-                                propertyPanelController.loadTextureVariants(modelName);
-                            }
-                            
-                            updateUIState();
-                            updateStatus("Model loaded: " + modelName + " (" + textureVariant + " variant)");
-                            
-                            logger.info("Successfully loaded model: {} with texture variant: {}", modelName, textureVariant);
-                        } else {
-                            logger.warn("Failed to load texture variant: {}", textureVariant);
-                            updateStatus("Failed to load texture variant: " + textureVariant);
+                        // Set model and texture in viewport
+                        viewport3D.setCurrentModel(cowModel);
+                        viewport3D.setCurrentTextureVariant(textureVariant);
+                        cmbTextureVariant.setValue(capitalizeFirst(textureVariant));
+                        
+                        modelLoaded = true;
+                        currentModelPath = modelName;
+                        
+                        // Load texture variants using PropertyPanelController
+                        if (propertyPanelController != null) {
+                            propertyPanelController.loadTextureVariants(modelName);
                         }
+                        
+                        updateUIState();
+                        updateStatus("Model loaded: " + modelName + " (" + textureVariant + " variant)");
+                        
+                        logger.info("Successfully loaded model: {} with texture variant: {}", modelName, textureVariant);
                     } else {
-                        logger.warn("Failed to load cow model definition");
-                        updateStatus("Failed to load model: " + modelName);
+                        logger.warn("Failed to load texture variant: {}", textureVariant);
+                        updateStatus("Failed to load texture variant: " + textureVariant);
                     }
                 } else {
                     updateStatus("Model type not yet supported: " + modelName);

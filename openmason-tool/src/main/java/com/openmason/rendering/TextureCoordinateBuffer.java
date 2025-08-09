@@ -1,7 +1,7 @@
 package com.openmason.rendering;
 
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
@@ -81,7 +81,7 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * @param partName The model part name (e.g., "head", "body", "leg")
      * @param textureVariant The texture variant name (e.g., "default", "angus", "highland")
      */
-    public void updateForTextureVariant(StonebreakTextureDefinition.CowVariant cowVariant, 
+    public void updateForTextureVariant(CowTextureDefinition.CowVariant cowVariant, 
                                       String partName, String textureVariant) {
         // Check if variant has changed to avoid unnecessary updates
         if (textureVariant.equals(currentTextureVariant)) {
@@ -105,8 +105,8 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * @param partName The model part name
      * @return Float array containing texture coordinates (48 values for 6 faces × 4 vertices × 2 coords)
      */
-    private float[] generateTextureCoordinates(StonebreakTextureDefinition.CowVariant cowVariant, String partName) {
-        Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings = cowVariant.getFaceMappings();
+    private float[] generateTextureCoordinates(CowTextureDefinition.CowVariant cowVariant, String partName) {
+        Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = cowVariant.getFaceMappings();
         String partType = partName.toUpperCase();
         
         // Define face names for a cuboid (6 faces)
@@ -142,8 +142,8 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * @param faceName The face name (e.g., "HEAD_FRONT", "BODY_LEFT")
      * @return Float array with 8 values (4 vertices × 2 coordinates)
      */
-    private float[] getFaceTextureCoordinates(Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings, String faceName) {
-        StonebreakTextureDefinition.AtlasCoordinate mapping = faceMappings.get(faceName);
+    private float[] getFaceTextureCoordinates(Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings, String faceName) {
+        CowTextureDefinition.AtlasCoordinate mapping = faceMappings.get(faceName);
         
         if (mapping == null) {
             // Fallback to default coordinates if mapping not found

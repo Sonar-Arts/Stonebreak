@@ -39,7 +39,7 @@ This package implements the coordinate system requirements for Phase 7 of the Op
 ### 3. CoordinateSystemIntegration.java
 **Purpose**: Integration Bridge Between Systems
 - Seamless integration with existing StonebreakTextureAtlas
-- Compatibility with StonebreakModelDefinition
+- Compatibility with ModelDefinition
 - Complete rendering data generation (IntegratedPartData)
 - Performance optimization through caching
 - Error handling and fallback mechanisms
@@ -114,7 +114,7 @@ float vertexZ = centerZ ± halfDepth;
 - Maintains compatibility with JSON texture system
 - Provides enhanced coordinate precision
 
-### With StonebreakModelDefinition  
+### With ModelDefinition  
 - Converts model parts to coordinate system structures
 - Generates complete rendering data packages
 - Supports texture coordinate integration

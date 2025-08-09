@@ -1,5 +1,6 @@
 package com.openmason.rendering;
 
+import com.stonebreak.textures.CowTextureDefinition;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -194,7 +195,7 @@ public class VertexArray implements AutoCloseable {
      * @param partName The model part name
      * @param textureVariant The new texture variant name
      */
-    public void updateTextureVariant(com.openmason.texture.stonebreak.StonebreakTextureDefinition.CowVariant textureDefinition,
+    public void updateTextureVariant(CowTextureDefinition.CowVariant textureDefinition,
                                    String partName, String textureVariant) {
         if (textureCoordBuffer != null) {
             textureCoordBuffer.updateForTextureVariant(textureDefinition, partName, textureVariant);
@@ -217,7 +218,7 @@ public class VertexArray implements AutoCloseable {
      * @throws RuntimeException if VAO or buffer creation fails, with guaranteed cleanup
      */
     public static VertexArray fromModelPart(float[] vertices, int[] indices,
-                                          com.openmason.texture.stonebreak.StonebreakTextureDefinition textureDefinition,
+                                          CowTextureDefinition.CowVariant textureDefinition,
                                           String partName, String debugName) {
         VertexArray vao = null;
         VertexBuffer vertexBuf = null;

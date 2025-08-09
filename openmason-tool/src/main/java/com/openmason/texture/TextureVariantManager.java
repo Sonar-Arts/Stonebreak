@@ -1,7 +1,7 @@
 package com.openmason.texture;
 
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import javafx.application.Platform;
 import javafx.beans.property.*;
 import javafx.collections.FXCollections;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 /**
  * UI-focused texture variant management system for OpenMason Phase 3.
  * 
- * Acts as a bridge between the backend async texture system (TextureManager/StonebreakTextureLoader)
+ * Acts as a bridge between the backend async texture system (TextureManager/CowTextureLoader)
  * and UI components, providing HashMap-based caching for fast variant switching and property panel integration.
  * 
  * Key Features:
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * - Wraps existing TextureManager with UI-focused caching layer
  * - Uses CompletableFuture for async operations while maintaining sync UI methods
  * - Provides both blocking and non-blocking APIs for different use cases
- * - Integrates seamlessly with existing StonebreakTextureLoader async system
+ * - Integrates seamlessly with existing CowTextureLoader async system
  */
 public class TextureVariantManager {
     
@@ -590,7 +590,7 @@ public class TextureVariantManager {
     // UI-specific helper methods
     
     private void initializeAvailableVariants() {
-        String[] variants = StonebreakTextureLoader.getAvailableVariants();
+        String[] variants = CowTextureLoader.getAvailableVariants();
         Platform.runLater(() -> {
             availableVariants.clear();
             availableVariants.addAll(Arrays.asList(variants));

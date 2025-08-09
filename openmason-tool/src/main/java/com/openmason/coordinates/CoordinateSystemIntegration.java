@@ -1,8 +1,8 @@
 package com.openmason.coordinates;
 
-import com.openmason.texture.stonebreak.StonebreakTextureAtlas;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.model.stonebreak.StonebreakModelDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.model.ModelDefinition;
 import org.joml.Vector3f;
 
 /**
@@ -14,7 +14,7 @@ import org.joml.Vector3f;
  * 
  * Integration Features:
  * - Atlas coordinate integration with StonebreakTextureAtlas
- * - Model coordinate integration with StonebreakModelDefinition
+ * - Model coordinate integration with ModelDefinition
  * - Texture coordinate generation for model parts
  * - Validation of coordinate system compatibility
  * - Performance optimization through caching
@@ -87,7 +87,7 @@ public class CoordinateSystemIntegration {
      * @return IntegratedPartData with all coordinate data, or null if generation fails
      */
     public static IntegratedPartData generateIntegratedPartData(
-            StonebreakModelDefinition.ModelPart modelPart, 
+            ModelDefinition.ModelPart modelPart, 
             String textureVariant, 
             boolean enableCaching) {
         
@@ -162,7 +162,7 @@ public class CoordinateSystemIntegration {
      * @return float array with 48 texture coordinates (24 vertices × 2 UV), or null if failed
      */
     public static float[] generateTextureCoordinatesForPart(
-            StonebreakModelDefinition.ModelPart modelPart,
+            ModelDefinition.ModelPart modelPart,
             String textureVariant,
             boolean enableCaching) {
         
@@ -205,8 +205,8 @@ public class CoordinateSystemIntegration {
             // Process each face
             for (String faceName : faceNames) {
                 // Get atlas coordinate from existing texture system
-                StonebreakTextureDefinition.AtlasCoordinate atlasCoord = 
-                    StonebreakTextureAtlas.getAtlasCoordinate(textureVariant, faceName);
+                CowTextureDefinition.AtlasCoordinate atlasCoord = 
+                    CowTextureLoader.getAtlasCoordinate(textureVariant, faceName);
                 
                 if (atlasCoord != null) {
                     // Convert to UV coordinates using atlas coordinate system
@@ -317,10 +317,10 @@ public class CoordinateSystemIntegration {
             // Test integration with actual model part
             System.out.println("  Testing integration with sample model part...");
             
-            StonebreakModelDefinition.ModelPart testPart = new StonebreakModelDefinition.ModelPart(
+            ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
                 "test_head",
-                new StonebreakModelDefinition.Position(0.0f, 1.5f, 0.0f),
-                new StonebreakModelDefinition.Size(1.0f, 1.0f, 1.0f),
+                new ModelDefinition.Position(0.0f, 1.5f, 0.0f),
+                new ModelDefinition.Size(1.0f, 1.0f, 1.0f),
                 "cow_head"
             );
             
@@ -364,7 +364,7 @@ public class CoordinateSystemIntegration {
     }
     
     /**
-     * Test integration with existing StonebreakTextureAtlas.
+     * Test integration with existing CowTextureLoader.
      * Ensures compatibility with the existing texture system.
      * 
      * @return true if compatibility test passes, false otherwise
@@ -374,10 +374,10 @@ public class CoordinateSystemIntegration {
         
         try {
             // Initialize texture atlas if not already done
-            StonebreakTextureAtlas.initialize();
+            // Texture system initialization is automatic
             
             // Test coordinate conversion compatibility
-            String[] variants = StonebreakTextureAtlas.getAvailableVariants();
+            String[] variants = CowTextureLoader.getAvailableVariants();
             String[] testFaces = {"HEAD_FRONT", "BODY_LEFT", "LEG_FRONT_LEFT_FRONT"};
             
             int totalTests = 0;
@@ -388,8 +388,8 @@ public class CoordinateSystemIntegration {
                     totalTests++;
                     
                     // Get coordinates from existing system
-                    StonebreakTextureDefinition.AtlasCoordinate atlasCoord = 
-                        StonebreakTextureAtlas.getAtlasCoordinate(variant, faceName);
+                    CowTextureDefinition.AtlasCoordinate atlasCoord = 
+                        CowTextureLoader.getAtlasCoordinate(variant, faceName);
                     
                     if (atlasCoord != null) {
                         // Test conversion through new coordinate system

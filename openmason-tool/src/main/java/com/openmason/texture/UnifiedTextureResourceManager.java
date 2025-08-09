@@ -1,7 +1,7 @@
 package com.openmason.texture;
 
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
-import com.openmason.texture.stonebreak.StonebreakTextureLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,7 +65,7 @@ public class UnifiedTextureResourceManager {
      */
     public static class TextureResourceInfo {
         private final String variantName;
-        private final StonebreakTextureDefinition.CowVariant variant;
+        private final CowTextureDefinition.CowVariant variant;
         private final long loadTime;
         private final long memoryFootprint;
         private final CacheLevel cacheLevel;
@@ -73,7 +73,7 @@ public class UnifiedTextureResourceManager {
         private volatile long lastAccessed;
         private volatile boolean prefetched;
         
-        public TextureResourceInfo(String variantName, StonebreakTextureDefinition.CowVariant variant, 
+        public TextureResourceInfo(String variantName, CowTextureDefinition.CowVariant variant, 
                                  long loadTime, CacheLevel cacheLevel) {
             this.variantName = variantName;
             this.variant = variant;
@@ -87,7 +87,7 @@ public class UnifiedTextureResourceManager {
             this.memoryFootprint = estimateMemoryFootprint(variant);
         }
         
-        private long estimateMemoryFootprint(StonebreakTextureDefinition.CowVariant variant) {
+        private long estimateMemoryFootprint(CowTextureDefinition.CowVariant variant) {
             if (variant == null) return 0L;
             
             long baseSize = 1024L; // Base object overhead
@@ -112,7 +112,7 @@ public class UnifiedTextureResourceManager {
         
         // Getters
         public String getVariantName() { return variantName; }
-        public StonebreakTextureDefinition.CowVariant getVariant() { return variant; }
+        public CowTextureDefinition.CowVariant getVariant() { return variant; }
         public long getLoadTime() { return loadTime; }
         public long getMemoryFootprint() { return memoryFootprint; }
         public CacheLevel getCacheLevel() { return cacheLevel; }
@@ -343,9 +343,8 @@ public class UnifiedTextureResourceManager {
                 }
                 
                 // Load using existing texture system
-                StonebreakTextureDefinition.CowVariant variant = StonebreakTextureLoader
-                    .getCowVariantAsync(variantName, convertPriority(priority), null)
-                    .get();
+                CowTextureDefinition.CowVariant variant = CowTextureLoader
+                    .getCowVariant(variantName);
                 
                 if (variant == null) {
                     throw new RuntimeException("Failed to load variant: " + variantName);
@@ -554,12 +553,12 @@ public class UnifiedTextureResourceManager {
         }
     }
     
-    private StonebreakTextureLoader.LoadingPriority convertPriority(LoadingPriority priority) {
+    private TextureManager.LoadingPriority convertPriority(LoadingPriority priority) {
         return switch (priority) {
-            case IMMEDIATE -> StonebreakTextureLoader.LoadingPriority.IMMEDIATE;
-            case HIGH -> StonebreakTextureLoader.LoadingPriority.HIGH;
-            case MEDIUM -> StonebreakTextureLoader.LoadingPriority.NORMAL;
-            case LOW -> StonebreakTextureLoader.LoadingPriority.LOW;
+            case IMMEDIATE -> TextureManager.LoadingPriority.IMMEDIATE;
+            case HIGH -> TextureManager.LoadingPriority.HIGH;
+            case MEDIUM -> TextureManager.LoadingPriority.NORMAL;
+            case LOW -> TextureManager.LoadingPriority.LOW;
         };
     }
     

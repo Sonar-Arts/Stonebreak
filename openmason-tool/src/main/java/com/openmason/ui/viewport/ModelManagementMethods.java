@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport;
 
 import com.openmason.model.StonebreakModel;
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
 import javafx.application.Platform;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -140,7 +140,7 @@ public class ModelManagementMethods {
         }
         
         List<StonebreakModel.BodyPart> bodyParts = model.getBodyParts();
-        Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings = model.getFaceMappings();
+        Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = model.getFaceMappings();
         
         return new ModelInfo(
             model.getVariantName(),

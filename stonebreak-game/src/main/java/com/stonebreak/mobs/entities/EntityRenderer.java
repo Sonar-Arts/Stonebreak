@@ -261,7 +261,7 @@ public class EntityRenderer {
     }
     
     private void createCowModel() {
-        ModelDefinition.ModelPart[] parts = ModelLoader.getAllParts(ModelLoader.getCowModel("standard_cow"));
+        ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow"));
         
         String[] partNames = {"body", "head", "leg1", "leg2", "leg3", "leg4", "horn1", "horn2", "udder", "tail"};
         

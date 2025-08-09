@@ -1,6 +1,6 @@
 package com.openmason.integration;
 
-import com.openmason.texture.stonebreak.StonebreakTextureDefinition;
+import com.stonebreak.textures.CowTextureDefinition;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import javafx.application.Platform;
 import javafx.scene.paint.Color;
@@ -51,7 +51,7 @@ public class TextureValidationSystem {
     /**
      * Validates a texture definition against Stonebreak game requirements.
      */
-    public CompletableFuture<ValidationResult> validateTextureDefinition(String variantName, StonebreakTextureDefinition.CowVariant variant) {
+    public CompletableFuture<ValidationResult> validateTextureDefinition(String variantName, CowTextureDefinition.CowVariant variant) {
         return CompletableFuture.supplyAsync(() -> {
             logger.debug("Validating texture definition: {}", variantName);
             
@@ -94,8 +94,8 @@ public class TextureValidationSystem {
     /**
      * Validates that all required face mappings are present.
      */
-    private void validateFaceMappings(StonebreakTextureDefinition.CowVariant variant, ValidationResult result) {
-        Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings = variant.getFaceMappings();
+    private void validateFaceMappings(CowTextureDefinition.CowVariant variant, ValidationResult result) {
+        Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = variant.getFaceMappings();
         
         if (faceMappings == null || faceMappings.isEmpty()) {
             result.addError("MISSING_FACE_MAPPINGS", "No face mappings defined");
@@ -122,16 +122,16 @@ public class TextureValidationSystem {
     /**
      * Validates atlas coordinates are within valid bounds.
      */
-    private void validateAtlasCoordinates(StonebreakTextureDefinition.CowVariant variant, ValidationResult result) {
-        Map<String, StonebreakTextureDefinition.AtlasCoordinate> faceMappings = variant.getFaceMappings();
+    private void validateAtlasCoordinates(CowTextureDefinition.CowVariant variant, ValidationResult result) {
+        Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = variant.getFaceMappings();
         
         if (faceMappings == null) {
             return;
         }
         
-        for (Map.Entry<String, StonebreakTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
+        for (Map.Entry<String, CowTextureDefinition.AtlasCoordinate> entry : faceMappings.entrySet()) {
             String faceName = entry.getKey();
-            StonebreakTextureDefinition.AtlasCoordinate coord = entry.getValue();
+            CowTextureDefinition.AtlasCoordinate coord = entry.getValue();
             
             if (coord == null) {
                 result.addError("NULL_COORDINATE", "Null coordinate for face: " + faceName);
@@ -159,8 +159,8 @@ public class TextureValidationSystem {
     /**
      * Validates base colors are in valid hex format.
      */
-    private void validateBaseColors(StonebreakTextureDefinition.CowVariant variant, ValidationResult result) {
-        StonebreakTextureDefinition.BaseColors baseColors = variant.getBaseColors();
+    private void validateBaseColors(CowTextureDefinition.CowVariant variant, ValidationResult result) {
+        CowTextureDefinition.BaseColors baseColors = variant.getBaseColors();
         
         if (baseColors == null) {
             result.addWarning("MISSING_BASE_COLORS", "No base colors defined");
@@ -199,8 +199,8 @@ public class TextureValidationSystem {
     /**
      * Validates drawing instructions structure and content.
      */
-    private void validateDrawingInstructions(StonebreakTextureDefinition.CowVariant variant, ValidationResult result) {
-        Map<String, StonebreakTextureDefinition.DrawingInstructions> drawingInstructions = variant.getDrawingInstructions();
+    private void validateDrawingInstructions(CowTextureDefinition.CowVariant variant, ValidationResult result) {
+        Map<String, CowTextureDefinition.DrawingInstructions> drawingInstructions = variant.getDrawingInstructions();
         
         if (drawingInstructions == null || drawingInstructions.isEmpty()) {
             result.addWarning("MISSING_DRAWING_INSTRUCTIONS", "No drawing instructions defined");
@@ -209,7 +209,7 @@ public class TextureValidationSystem {
         
         // Check for drawing instructions
         boolean hasFacialFeatures = false;
-        for (StonebreakTextureDefinition.DrawingInstructions instructions : drawingInstructions.values()) {
+        for (CowTextureDefinition.DrawingInstructions instructions : drawingInstructions.values()) {
             if (instructions.getFacialFeatures() != null) {
                 hasFacialFeatures = true;
                 validateFacialFeatures(instructions.getFacialFeatures(), result);
@@ -226,7 +226,7 @@ public class TextureValidationSystem {
     /**
      * Validates facial features structure.
      */
-    private void validateFacialFeatures(StonebreakTextureDefinition.FacialFeatures facialFeatures, ValidationResult result) {
+    private void validateFacialFeatures(CowTextureDefinition.FacialFeatures facialFeatures, ValidationResult result) {
         if (facialFeatures == null) {
             result.addError("NULL_FACIAL_FEATURES", "Facial features is null");
             return;
@@ -247,7 +247,7 @@ public class TextureValidationSystem {
     /**
      * Validates body patterns structure.
      */
-    private void validateBodyPatterns(List<StonebreakTextureDefinition.Pattern> patterns, ValidationResult result) {
+    private void validateBodyPatterns(List<CowTextureDefinition.Pattern> patterns, ValidationResult result) {
         if (patterns == null || patterns.isEmpty()) {
             result.addInfo("NO_BODY_PATTERNS", "No standard body patterns defined (this may be intentional)");
             return;
@@ -257,7 +257,7 @@ public class TextureValidationSystem {
         String[] commonPatterns = {"spots", "stripes", "patches"};
         boolean hasPatterns = false;
         
-        for (StonebreakTextureDefinition.Pattern pattern : patterns) {
+        for (CowTextureDefinition.Pattern pattern : patterns) {
             if (pattern.getType() != null) {
                 for (String commonPattern : commonPatterns) {
                     if (pattern.getType().toLowerCase().contains(commonPattern)) {
