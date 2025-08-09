@@ -63,7 +63,7 @@ public class ViewportCameraController {
             // Set default camera position for optimal viewing of origin and grid
             camera.setTarget(new Vector3f(0f, 0f, 0f)); // Always look at origin
             camera.setDistance(25.0f); // Increase distance to see more of the grid
-            camera.setOrientation(135.0f, 35.0f); // Azimuth 135° for good grid visibility, elevation 35° for overhead view
+            camera.setOrientation(135.0f, -35.0f); // Azimuth 135° for good grid visibility, elevation -35° for proper overhead view
             
             // Update matrices
             updateProjectionMatrix();
@@ -155,7 +155,7 @@ public class ViewportCameraController {
         
         camera.setTarget(new Vector3f(0f, 0f, 0f));
         camera.setDistance(25.0f);
-        camera.setOrientation(135.0f, 35.0f); // Same as default position
+        camera.setOrientation(135.0f, -35.0f); // Same as default position
         
         updateViewMatrix();
         requestRender();

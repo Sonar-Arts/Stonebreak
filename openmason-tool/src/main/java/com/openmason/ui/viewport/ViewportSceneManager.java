@@ -136,7 +136,7 @@ public class ViewportSceneManager {
             
             // Update JavaFX camera position
             camera3D.setTranslateX(x);
-            camera3D.setTranslateY(-y); // JavaFX Y is inverted compared to OpenGL
+            camera3D.setTranslateY(y); // Use standard Y coordinate (no inversion)
             camera3D.setTranslateZ(z);
             
             // For JavaFX camera, we need to apply lookAt transformation
@@ -145,7 +145,7 @@ public class ViewportSceneManager {
             
             // Calculate lookAt rotation
             Vector3f target = new Vector3f(0, 0, 0);
-            Vector3f cameraPos = new Vector3f(x, -y, z); // Use JavaFX coordinate system
+            Vector3f cameraPos = new Vector3f(x, y, z); // Use standard coordinate system
             Vector3f direction = new Vector3f(target).sub(cameraPos).normalize();
             
             // Calculate rotation angles to look at target
@@ -250,7 +250,7 @@ public class ViewportSceneManager {
             gridGroup3D.getChildren().clear();
             if (gridElements != null) {
                 gridGroup3D.getChildren().add(gridElements);
-                logger.debug("Grid elements added to scene");
+                // Grid elements added to scene
             }
         }
     }

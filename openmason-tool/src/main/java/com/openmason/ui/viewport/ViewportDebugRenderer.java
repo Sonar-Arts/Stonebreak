@@ -68,8 +68,7 @@ public class ViewportDebugRenderer {
         updateGrid();
         updateAxes();
         
-        logger.debug("Debug visualization updated: grid={}, axes={}, coordAxes={}, labels={}", 
-            gridVisible, axesVisible, coordinateAxesVisible, partLabelsVisible);
+        // Debug visualization updated silently
     }
     
     /**
@@ -119,7 +118,7 @@ public class ViewportDebugRenderer {
             float halfSize = GRID_SIZE / 2.0f;
             int numLines = (int) (GRID_SIZE / GRID_SPACING);
             
-            logger.debug("Creating 2D grid plane: size={}, spacing={}, numLines={}", GRID_SIZE, GRID_SPACING, numLines);
+            // Creating 2D grid plane
             
             int xLinesCreated = 0;
             int zLinesCreated = 0;
@@ -146,7 +145,7 @@ public class ViewportDebugRenderer {
                 }
                 
                 // Create flat X-direction line (horizontal line on 2D plane)
-                Box xLine = createFlatGridLine(GRID_SIZE, thickness, 0.001f, lineColor); // width, height, depth
+                Box xLine = createFlatGridLine(GRID_SIZE, 0.001f, thickness, lineColor); // width, height, depth
                 xLine.setTranslateX(0);
                 xLine.setTranslateY(0);
                 xLine.setTranslateZ(z);
@@ -185,18 +184,17 @@ public class ViewportDebugRenderer {
             }
             
             // Add visible origin marker
-            Box originMarker = new Box(0.5, 0.05, 0.5);
+            Box originMarker = new Box(AXIS_LINE_THICKNESS, 0.004f, AXIS_LINE_THICKNESS);
             PhongMaterial originMaterial = new PhongMaterial();
             originMaterial.setDiffuseColor(Color.YELLOW);
             originMaterial.setSpecularColor(Color.GOLD);
             originMarker.setMaterial(originMaterial);
             originMarker.setTranslateX(0);
-            originMarker.setTranslateY(0.025); // Slightly raised
+            originMarker.setTranslateY(-0.0005f); // Very close to axis lines
             originMarker.setTranslateZ(0);
             gridGroup.getChildren().add(originMarker);
             
-            logger.debug("Created 2D grid plane: {} X-direction lines, {} Z-direction lines, X-axis=red, Z-axis=blue", 
-                xLinesCreated, zLinesCreated);
+            // Grid plane created successfully
             
         } catch (Exception e) {
             logger.error("Failed to create 2D grid plane", e);
