@@ -1,17 +1,5 @@
 package com.openmason.ui.viewport;
 
-import javafx.scene.Group;
-import javafx.scene.PerspectiveCamera;
-import javafx.scene.SceneAntialiasing;
-import javafx.scene.SubScene;
-import javafx.scene.AmbientLight;
-import javafx.scene.PointLight;
-import javafx.scene.paint.Color;
-import javafx.scene.layout.StackPane;
-import javafx.scene.shape.Box;
-import javafx.scene.paint.PhongMaterial;
-import javafx.scene.transform.Rotate;
-
 import org.joml.Vector3f;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
@@ -19,294 +7,332 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.function.BiConsumer;
 
 /**
- * Manages JavaFX 3D scene setup and components.
+ * ImGui-compatible 3D scene management for OpenGL rendering.
+ * 
+ * Manages OpenGL-based 3D scene setup without JavaFX dependencies.
+ * Designed for use with ImGui framebuffers and Dear ImGui rendering pipeline.
  * 
  * Responsible for:
- * - SubScene and Group hierarchy management
- * - 3D Camera setup and configuration
- * - Basic lighting setup
- * - Scene component lifecycle management
+ * - OpenGL framebuffer management for ImGui integration
+ * - Camera state management for OpenGL rendering
+ * - 3D scene component lifecycle
+ * - ImGui texture presentation
+ * - Viewport state management
  */
 public class ViewportSceneManager {
     
     private static final Logger logger = LoggerFactory.getLogger(ViewportSceneManager.class);
     
-    // JavaFX 3D Scene components
-    private SubScene subScene3D;
-    private Group rootGroup3D;
-    private Group modelGroup3D;
-    private Group gridGroup3D;
-    private Group axesGroup3D;
-    private PerspectiveCamera camera3D;
+    // OpenGL framebuffer components for ImGui
+    private OpenGLFrameBuffer frameBuffer;
+    private ImGuiViewport3D viewportRenderer;
     
-    // Model rendering state
-    private final Map<String, Box> modelPartBoxes = new HashMap<>();
-    private final Map<String, PhongMaterial> modelPartMaterials = new HashMap<>();
-    
-    // Scene properties
+    // Scene dimensions
     private double sceneWidth = 800.0;
     private double sceneHeight = 600.0;
-    private static final float NEAR_PLANE = 0.1f;
-    private static final float FAR_PLANE = 1000.0f;
+    
+    // Camera management (using JOML for OpenGL compatibility)
+    private final Vector3f cameraPosition = new Vector3f(0, 0, 5);
+    private final Vector3f cameraTarget = new Vector3f(0, 0, 0);
+    private final Vector3f cameraUp = new Vector3f(0, 1, 0);
+    private final Matrix4f viewMatrix = new Matrix4f();
+    private final Matrix4f projectionMatrix = new Matrix4f();
+    
+    // Scene state
+    private boolean sceneInitialized = false;
+    private boolean gridVisible = true;
+    private boolean axesVisible = true;
+    
+    // State tracking to prevent logging spam
+    private Object lastGridElements = null;
+    private Object lastAxesElements = null;
+    
+    // Callbacks
+    private BiConsumer<Double, Double> dimensionChangeCallback;
+    private Runnable sceneUpdateCallback;
+    
+    // Performance tracking
+    private final Map<String, Object> performanceMetrics = new HashMap<>();
+    
     
     /**
-     * Initialize the JavaFX 3D scene structure.
+     * Initialize the ImGui-compatible scene manager.
      */
-    public void initializeScene(StackPane parent) {
+    public void initialize() {
+        if (sceneInitialized) {
+            logger.warn("ViewportSceneManager already initialized");
+            return;
+        }
+        
         try {
-            logger.info("Initializing JavaFX 3D Scene Manager");
+            logger.info("Initializing ImGui-compatible ViewportSceneManager...");
             
-            // Create root group for 3D content
-            rootGroup3D = new Group();
+            // Initialize OpenGL framebuffer for ImGui texture rendering
+            frameBuffer = new OpenGLFrameBuffer((int)sceneWidth, (int)sceneHeight);
+            // initialize() is called automatically in constructor
             
-            // Create sub-groups for organization
-            modelGroup3D = new Group();
-            gridGroup3D = new Group();
-            axesGroup3D = new Group();
+            // Initialize viewport renderer
+            viewportRenderer = new ImGuiViewport3D();
+            // No initialize() method needed - initialization handled in constructor
             
-            // Add sub-groups to root
-            rootGroup3D.getChildren().addAll(modelGroup3D, gridGroup3D, axesGroup3D);
+            // Initialize camera matrices
+            updateCameraMatrices();
             
-            // Create 3D SubScene
-            subScene3D = new SubScene(rootGroup3D, sceneWidth, sceneHeight, true, SceneAntialiasing.BALANCED);
-            subScene3D.setFill(Color.rgb(40, 40, 40)); // Dark dark gray background
-            
-            // Ensure SubScene can receive input events
-            subScene3D.setFocusTraversable(true);
-            subScene3D.setMouseTransparent(false);
-            
-            // Create and configure perspective camera
-            setupCamera();
-            
-            // Add basic lighting
-            setupLighting();
-            
-            // Bind scene size to parent
-            subScene3D.widthProperty().bind(parent.widthProperty());
-            subScene3D.heightProperty().bind(parent.heightProperty());
-            
-            // Add scene to parent
-            parent.getChildren().add(subScene3D);
-            
-            logger.info("JavaFX 3D Scene Manager initialized successfully");
+            sceneInitialized = true;
+            logger.info("ViewportSceneManager initialized successfully");
             
         } catch (Exception e) {
-            logger.error("Failed to initialize JavaFX 3D scene", e);
+            logger.error("Failed to initialize ViewportSceneManager", e);
             throw new RuntimeException("Scene initialization failed", e);
         }
     }
     
     /**
-     * Setup the 3D perspective camera.
+     * Update camera view and projection matrices.
      */
-    private void setupCamera() {
-        camera3D = new PerspectiveCamera(true);
-        camera3D.setNearClip(NEAR_PLANE);
-        camera3D.setFarClip(FAR_PLANE);
-        camera3D.setFieldOfView(60.0);
+    private void updateCameraMatrices() {
+        // Update view matrix
+        viewMatrix.setLookAt(
+            cameraPosition.x, cameraPosition.y, cameraPosition.z,
+            cameraTarget.x, cameraTarget.y, cameraTarget.z,
+            cameraUp.x, cameraUp.y, cameraUp.z
+        );
         
-        // Position camera for good default view
-        camera3D.setTranslateX(0);
-        camera3D.setTranslateY(0);
-        camera3D.setTranslateZ(-10);
-        
-        subScene3D.setCamera(camera3D);
-        
-        logger.debug("3D Camera configured: FOV=60°, Near={}, Far={}", NEAR_PLANE, FAR_PLANE);
+        // Update projection matrix
+        float aspectRatio = (float)(sceneWidth / sceneHeight);
+        projectionMatrix.setPerspective(
+            (float)Math.toRadians(45.0), // FOV
+            aspectRatio,
+            0.1f, // Near plane
+            100.0f // Far plane
+        );
     }
     
     /**
-     * Update JavaFX camera position from ArcBall camera state.
+     * Render the 3D scene to the ImGui texture.
      */
-    public void updateCameraFromMatrix(Matrix4f viewMatrix) {
-        if (camera3D == null || viewMatrix == null) {
+    public void renderScene() {
+        if (!sceneInitialized || viewportRenderer == null) {
             return;
         }
         
         try {
-            // Extract camera position from inverse view matrix
-            Matrix4f invViewMatrix = new Matrix4f(viewMatrix).invert();
+            // Bind framebuffer for rendering
+            frameBuffer.bind();
             
-            // Get camera position (translation part of inverse view matrix)
-            float x = invViewMatrix.m30();
-            float y = invViewMatrix.m31(); 
-            float z = invViewMatrix.m32();
+            // Clear the framebuffer
+            frameBuffer.clear(0.1f, 0.1f, 0.1f, 1.0f, 1.0f);
             
-            // Update JavaFX camera position
-            camera3D.setTranslateX(x);
-            camera3D.setTranslateY(y); // Use standard Y coordinate (no inversion)
-            camera3D.setTranslateZ(z);
+            // Update camera matrices
+            updateCameraMatrices();
             
-            // For JavaFX camera, we need to apply lookAt transformation
-            // Reset any existing rotations
-            camera3D.getTransforms().clear();
+            // Render 3D content
+            viewportRenderer.render();
             
-            // Calculate lookAt rotation
-            Vector3f target = new Vector3f(0, 0, 0);
-            Vector3f cameraPos = new Vector3f(x, y, z); // Use standard coordinate system
-            Vector3f direction = new Vector3f(target).sub(cameraPos).normalize();
+            // Render grid if visible
+            if (gridVisible) {
+                renderGrid();
+            }
             
-            // Calculate rotation angles to look at target
-            double yaw = Math.toDegrees(Math.atan2(direction.x, direction.z));
-            double pitch = Math.toDegrees(Math.asin(-direction.y));
+            // Render axes if visible
+            if (axesVisible) {
+                renderAxes();
+            }
             
-            // Apply rotations to camera
-            Rotate yawRotate = new Rotate(yaw, Rotate.Y_AXIS);
-            Rotate pitchRotate = new Rotate(pitch, Rotate.X_AXIS);
+            // Unbind framebuffer
+            frameBuffer.unbind();
             
-            camera3D.getTransforms().addAll(yawRotate, pitchRotate);
-            
-            // Camera position updated (debug logging removed to reduce spam)
+            // Update performance metrics
+            updatePerformanceMetrics();
             
         } catch (Exception e) {
-            logger.warn("Failed to update JavaFX camera from matrix", e);
+            logger.warn("Error during scene rendering", e);
         }
     }
     
     /**
-     * Setup basic scene lighting.
+     * Render the grid overlay.
      */
-    private void setupLighting() {
-        // Ambient light for overall scene illumination
-        AmbientLight ambientLight = new AmbientLight(Color.WHITE.deriveColor(0, 1, 0.3, 1));
-        
-        // Point light for better 3D definition
-        PointLight pointLight = new PointLight(Color.WHITE);
-        pointLight.setTranslateX(10);
-        pointLight.setTranslateY(-10);
-        pointLight.setTranslateZ(-10);
-        
-        rootGroup3D.getChildren().addAll(ambientLight, pointLight);
-        
-        logger.debug("Scene lighting configured: Ambient + Point light");
+    private void renderGrid() {
+        // Grid rendering implementation would go here
+        // For now, this is a placeholder
     }
     
     /**
-     * Update scene dimensions.
+     * Render the coordinate axes overlay.
      */
-    public void updateSceneDimensions(double width, double height) {
-        if (width > 0 && height > 0) {
-            this.sceneWidth = width;
-            this.sceneHeight = height;
-            
-            if (subScene3D != null) {
-                subScene3D.setWidth(width);
-                subScene3D.setHeight(height);
+    private void renderAxes() {
+        // Axes rendering implementation would go here
+        // For now, this is a placeholder
+    }
+    
+    /**
+     * Update performance metrics for monitoring.
+     */
+    private void updatePerformanceMetrics() {
+        performanceMetrics.put("lastRenderTime", System.currentTimeMillis());
+        performanceMetrics.put("sceneWidth", sceneWidth);
+        performanceMetrics.put("sceneHeight", sceneHeight);
+        performanceMetrics.put("cameraPosition", cameraPosition.toString());
+    }
+    
+    /**
+     * Handle viewport resize.
+     */
+    public void handleResize(double width, double height) {
+        if (width <= 0 || height <= 0) return;
+        
+        sceneWidth = width;
+        sceneHeight = height;
+        
+        // Resize framebuffer
+        if (frameBuffer != null) {
+            frameBuffer.resize((int)width, (int)height);
+        }
+        
+        // Update camera projection matrix
+        updateCameraMatrices();
+        
+        // Notify callback
+        if (dimensionChangeCallback != null) {
+            dimensionChangeCallback.accept(width, height);
+        }
+        
+        logger.debug("Scene resized to {}x{}", width, height);
+    }
+    
+    /**
+     * Get the OpenGL texture ID for ImGui rendering.
+     */
+    public int getTextureId() {
+        return frameBuffer != null ? frameBuffer.getColorTextureID() : 0;
+    }
+    
+    /**
+     * Clean up resources.
+     */
+    public void cleanup() {
+        try {
+            if (viewportRenderer != null) {
+                viewportRenderer.dispose();
+                viewportRenderer = null;
             }
             
-            logger.debug("Scene dimensions updated: {}x{}", width, height);
-        }
-    }
-    
-    /**
-     * Clear all model parts from the scene.
-     */
-    public void clearModelParts() {
-        if (modelGroup3D != null) {
-            modelGroup3D.getChildren().clear();
-        }
-        modelPartBoxes.clear();
-        modelPartMaterials.clear();
-        
-        logger.debug("Model parts cleared from scene");
-    }
-    
-    /**
-     * Add a model part box to the scene.
-     */
-    public void addModelPart(String partName, Box box, PhongMaterial material) {
-        if (modelGroup3D != null && box != null) {
-            modelPartBoxes.put(partName, box);
-            if (material != null) {
-                modelPartMaterials.put(partName, material);
-                box.setMaterial(material);
+            if (frameBuffer != null) {
+                frameBuffer.cleanup();
+                frameBuffer = null;
             }
-            modelGroup3D.getChildren().add(box);
             
-            logger.debug("Added model part '{}' to scene", partName);
+            sceneInitialized = false;
+            logger.debug("ViewportSceneManager cleaned up");
+            
+        } catch (Exception e) {
+            logger.warn("Error during cleanup", e);
         }
     }
     
-    /**
-     * Remove a specific model part from the scene.
-     */
-    public void removeModelPart(String partName) {
-        Box box = modelPartBoxes.remove(partName);
-        if (box != null && modelGroup3D != null) {
-            modelGroup3D.getChildren().remove(box);
-        }
-        modelPartMaterials.remove(partName);
-        
-        logger.debug("Removed model part '{}' from scene", partName);
+    // Getters and setters
+    public double getSceneWidth() { return sceneWidth; }
+    public double getSceneHeight() { return sceneHeight; }
+    
+    public boolean isGridVisible() { return gridVisible; }
+    public void setGridVisible(boolean visible) { 
+        this.gridVisible = visible; 
+        logger.debug("Grid visibility: {}", visible);
+    }
+    
+    public boolean isAxesVisible() { return axesVisible; }
+    public void setAxesVisible(boolean visible) { 
+        this.axesVisible = visible; 
+        logger.debug("Axes visibility: {}", visible);
+    }
+    
+    public Vector3f getCameraPosition() { return new Vector3f(cameraPosition); }
+    public void setCameraPosition(Vector3f position) { 
+        this.cameraPosition.set(position); 
+        updateCameraMatrices();
+    }
+    
+    public Vector3f getCameraTarget() { return new Vector3f(cameraTarget); }
+    public void setCameraTarget(Vector3f target) { 
+        this.cameraTarget.set(target); 
+        updateCameraMatrices();
+    }
+    
+    public Matrix4f getViewMatrix() { return new Matrix4f(viewMatrix); }
+    public Matrix4f getProjectionMatrix() { return new Matrix4f(projectionMatrix); }
+    
+    public void setDimensionChangeCallback(BiConsumer<Double, Double> callback) {
+        this.dimensionChangeCallback = callback;
+    }
+    
+    public void setSceneUpdateCallback(Runnable callback) {
+        this.sceneUpdateCallback = callback;
+    }
+    
+    public Map<String, Object> getPerformanceMetrics() {
+        return new HashMap<>(performanceMetrics);
     }
     
     /**
-     * Add grid elements to the scene.
+     * Get scene state for debugging.
      */
-    public void setGridElements(Group gridElements) {
-        if (gridGroup3D != null) {
-            gridGroup3D.getChildren().clear();
+    public String getSceneStateString() {
+        return String.format("Scene: %dx%d, Camera: %s->%s, Grid: %s, Axes: %s", 
+            (int)sceneWidth, (int)sceneHeight, 
+            cameraPosition.toString(), cameraTarget.toString(),
+            gridVisible, axesVisible);
+    }
+    
+    /**
+     * Set grid elements for debug rendering.
+     * @param gridElements Group containing grid visualization elements
+     */
+    public void setGridElements(Object gridElements) {
+        // This would integrate with the actual rendering system
+        // Only log when the state actually changes to prevent spam
+        if (lastGridElements != gridElements) {
             if (gridElements != null) {
-                gridGroup3D.getChildren().add(gridElements);
-                // Grid elements added to scene
+                logger.debug("Grid elements set for rendering");
+            } else {
+                logger.debug("Grid elements cleared");
             }
+            lastGridElements = gridElements;
         }
     }
     
     /**
-     * Add axes elements to the scene.
+     * Set axes elements for debug rendering.
+     * @param axesElements Group containing axes visualization elements  
      */
-    public void setAxesElements(Group axesElements) {
-        if (axesGroup3D != null) {
-            axesGroup3D.getChildren().clear();
+    public void setAxesElements(Object axesElements) {
+        // This would integrate with the actual rendering system
+        // Only log when the state actually changes to prevent spam
+        if (lastAxesElements != axesElements) {
             if (axesElements != null) {
-                axesGroup3D.getChildren().add(axesElements);
-                logger.debug("Axes elements added to scene");
+                logger.debug("Axes elements set for rendering");
+            } else {
+                logger.debug("Axes elements cleared");
             }
+            lastAxesElements = axesElements;
         }
     }
-    
+
     /**
      * Dispose of scene resources.
      */
     public void dispose() {
-        logger.info("Disposing ViewportSceneManager resources");
-        
-        clearModelParts();
-        
-        if (gridGroup3D != null) {
-            gridGroup3D.getChildren().clear();
+        if (frameBuffer != null) {
+            frameBuffer.cleanup();
         }
-        
-        if (axesGroup3D != null) {
-            axesGroup3D.getChildren().clear();
+        if (viewportRenderer != null) {
+            viewportRenderer.dispose();
         }
-        
-        if (rootGroup3D != null) {
-            rootGroup3D.getChildren().clear();
-        }
-        
-        subScene3D = null;
-        rootGroup3D = null;
-        modelGroup3D = null;
-        gridGroup3D = null;
-        axesGroup3D = null;
-        camera3D = null;
+        sceneInitialized = false;
+        logger.debug("ViewportSceneManager disposed");
     }
     
-    // Getters
-    public SubScene getSubScene3D() { return subScene3D; }
-    public Group getRootGroup3D() { return rootGroup3D; }
-    public Group getModelGroup3D() { return modelGroup3D; }
-    public Group getGridGroup3D() { return gridGroup3D; }
-    public Group getAxesGroup3D() { return axesGroup3D; }
-    public PerspectiveCamera getCamera3D() { return camera3D; }
-    
-    public Map<String, Box> getModelPartBoxes() { return modelPartBoxes; }
-    public Map<String, PhongMaterial> getModelPartMaterials() { return modelPartMaterials; }
-    
-    public double getSceneWidth() { return sceneWidth; }
-    public double getSceneHeight() { return sceneHeight; }
 }

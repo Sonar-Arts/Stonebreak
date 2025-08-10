@@ -3,7 +3,7 @@ package com.openmason.integration;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.texture.TextureManager;
 import com.openmason.model.ModelManager;
-import javafx.application.Platform;
+// Removed JavaFX Platform dependency - using standard threading
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -213,16 +213,14 @@ public class LivePreviewSystem {
                 reloadTextureDefinitions();
             }
             
-            // Update viewport on JavaFX thread
-            Platform.runLater(() -> {
-                try {
-                    // Refresh current model/texture in viewport (method not implemented yet)
-                    // viewport.refreshCurrentModel();
-                    logger.info("Live changes detected - viewport refresh pending");
-                } catch (Exception e) {
-                    logger.error("Failed to update viewport", e);
-                }
-            });
+            // Update viewport directly with immediate execution
+            try {
+                // Refresh current model/texture in viewport (method not implemented yet)
+                // viewport.refreshCurrentModel();
+                logger.info("Live changes detected - viewport refresh pending");
+            } catch (Exception e) {
+                logger.error("Failed to update viewport", e);
+            }
             
         } catch (Exception e) {
             logger.error("Failed to perform live reload", e);
@@ -261,16 +259,14 @@ public class LivePreviewSystem {
      * Integrates live preview capabilities with the 3D viewport.
      */
     private void integrateWithViewport() {
-        // Add live preview indicators to viewport
-        Platform.runLater(() -> {
-            // Add visual indicator that live preview is active (methods not implemented yet)
-            // viewport.setLivePreviewActive(true);
-            
-            // Enable hot-reload mode in viewport
-            // viewport.setHotReloadEnabled(true);
-            
-            logger.debug("Live preview integration pending - viewport methods not implemented");
-        });
+        // Add live preview indicators to viewport (direct execution)
+        // Add visual indicator that live preview is active (methods not implemented yet)
+        // viewport.setLivePreviewActive(true);
+        
+        // Enable hot-reload mode in viewport
+        // viewport.setHotReloadEnabled(true);
+        
+        logger.debug("Live preview integration pending - viewport methods not implemented");
     }
     
     /**

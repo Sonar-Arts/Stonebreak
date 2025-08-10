@@ -2,7 +2,7 @@ package com.openmason.texture;
 
 import com.stonebreak.textures.CowTextureDefinition;
 import com.stonebreak.textures.CowTextureLoader;
-import javafx.application.Platform;
+// Removed JavaFX Platform dependency - using standard threading
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

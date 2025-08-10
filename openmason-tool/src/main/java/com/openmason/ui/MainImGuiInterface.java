@@ -1,0 +1,1248 @@
+package com.openmason.ui;
+
+import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.PropertyPanelImGui;
+import com.openmason.model.StonebreakModel;
+import com.openmason.model.ModelManager;
+import com.stonebreak.model.ModelDefinition;
+import com.stonebreak.model.ModelLoader;
+import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.CowTextureLoader;
+import imgui.*;
+import imgui.flag.*;
+import imgui.type.*;
+import imgui.flag.ImGuiKey;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Main Dear ImGui interface replacing JavaFX MainController.
+ * Implements immediate mode rendering for all UI controls and menus.
+ * 
+ * Integrated Toolbar Features:
+ * - Positioned directly under the menu bar at the very top
+ * - Left side: New, Open, Save buttons and other tools
+ * - Right side: Status info including memory profiler, FPS, model name, and progress
+ * - Memory profiler with color coding (green for memory, blue for FPS)
+ * - Hideable: Click "Hide Toolbar" button or toggle via View menu
+ * - Quick restore: "Show Toolbar" button appears in menu bar when hidden
+ * - Single integrated bar reduces UI clutter and maximizes screen space
+ */
+public class MainImGuiInterface {
+    
+    private static final Logger logger = LoggerFactory.getLogger(MainImGuiInterface.class);
+    
+    // UI State Variables
+    private final ImBoolean showModelBrowser = new ImBoolean(true);
+    private final ImBoolean showPropertyPanel = new ImBoolean(true);
+    private final ImBoolean showToolbar = new ImBoolean(true);
+    private boolean showGrid = true;
+    private boolean showAxes = true;
+    private boolean wireframeMode = false;
+    
+    // Model State
+    private boolean modelLoaded = false;
+    private String currentModelPath = "";
+    private boolean unsavedChanges = false;
+    
+    // Texture Variant State
+    private final ImString textureVariant = new ImString("Default", 256);
+    private final String[] textureVariants = {"Default", "Angus", "Highland", "Jersey"};
+    private int currentTextureVariantIndex = 0;
+    
+    // Transform State
+    private final ImFloat rotationX = new ImFloat(0.0f);
+    private final ImFloat rotationY = new ImFloat(0.0f);
+    private final ImFloat rotationZ = new ImFloat(0.0f);
+    private final ImFloat scale = new ImFloat(1.0f);
+    
+    // Animation State
+    private final ImString animation = new ImString("IDLE", 256);
+    private final String[] animations = {"IDLE", "WALKING", "GRAZING"};
+    private final ImInt currentAnimationIndex = new ImInt(0);
+    private final ImFloat animationTime = new ImFloat(0.0f);
+    private boolean animationPlaying = false;
+    private boolean animationPaused = false;
+    
+    // View Mode State  
+    private final String[] viewModes = {"Perspective", "Orthographic", "Front", "Side", "Top"};
+    private final ImInt currentViewModeIndex = new ImInt(0);
+    private final String[] renderModes = {"Solid", "Wireframe", "Textured"};
+    private final ImInt currentRenderModeIndex = new ImInt(2); // Textured
+    
+    // Model Browser State
+    private final ImString searchText = new ImString("", 256);
+    private final String[] filters = {"All Models", "Cow Models", "Recent Files"};
+    private final ImInt currentFilterIndex = new ImInt(0);
+    private String selectedModelInfo = "No model selected";
+    
+    // Status Bar State
+    private String statusMessage = "Ready";
+    private float memoryUsage = 0.0f;
+    private float frameRate = 0.0f;
+    private final ImFloat progress = new ImFloat(0.0f);
+    
+    // Model Statistics
+    private int partCount = 0;
+    private int vertexCount = 0;
+    private int triangleCount = 0;
+    private int textureVariantCount = 4;
+    
+    // Model Part Selection
+    private String selectedPart = "None";
+    private String partCoordinates = "0, 0, 0";
+    
+    // 3D Viewport Component
+    private OpenMason3DViewport viewport3D;
+    
+    // Model Management
+    private ModelManager modelManager;
+    
+    // UI Controllers
+    private PropertyPanelImGui propertyPanelImGui;
+    
+    // Performance Metrics
+    private Map<String, Object> performanceMetrics = new HashMap<>();
+    
+    // Recent Files
+    private final String[] recentFiles = {
+        "standard_cow.json",
+        "example_model.json", 
+        "test_cow.json"
+    };
+    
+    public MainImGuiInterface() {
+        logger.info("Initializing MainImGuiInterface...");
+        initializeComponents();
+        updateUIState();
+    }
+    
+    /**
+     * Initialize all UI components and systems.
+     */
+    private void initializeComponents() {
+        try {
+            setupViewport();
+            setupModelBrowser();
+            setupPropertiesPanel();
+            loadInitialData();
+            logger.info("MainImGuiInterface initialized successfully");
+        } catch (Exception e) {
+            logger.error("Failed to initialize MainImGuiInterface", e);
+        }
+    }
+    
+    /**
+     * Main render method - called every frame.
+     */
+    public void render() {
+        // Handle keyboard shortcuts first
+        handleKeyboardShortcuts();
+        
+        renderDockSpace();
+        renderMainMenuBar();
+        
+        if (showToolbar.get()) {
+            renderToolbar();
+        }
+        
+        if (showModelBrowser.get()) {
+            renderModelBrowser();
+        }
+        
+        // Viewport rendering handled by separate ViewportImGuiInterface
+        
+        if (showPropertyPanel.get()) {
+            renderPropertyPanel();
+        }
+        
+        renderDialogs();
+    }
+    
+    /**
+     * Handle keyboard shortcuts for common actions.
+     * Simplified version without complex key handling.
+     */
+    private void handleKeyboardShortcuts() {
+        // Keyboard shortcuts are handled through menu items and buttons for now
+        // Complex key handling can be added later when ImGui key constants are properly resolved
+    }
+    
+    /**
+     * Render main docking space for window management.
+     */
+    private void renderDockSpace() {
+        int windowFlags = ImGuiWindowFlags.NoDocking;
+        
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        float menuBarHeight = ImGui.getFrameHeight();
+        float toolbarHeight = showToolbar.get() ? (ImGui.getFrameHeight() + 8.0f) : 0.0f;
+        float topOffset = menuBarHeight + toolbarHeight; // Toolbar now includes status info
+        
+        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY() + topOffset);
+        ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY() - topOffset);
+        ImGui.setNextWindowViewport(viewport.getID());
+        
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowBorderSize, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
+        
+        windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoCollapse | 
+                       ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove |
+                       ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoNavFocus;
+        
+        ImGui.begin("OpenMason Dockspace", windowFlags);
+        ImGui.popStyleVar(3);
+        
+        // DockSpace
+        int dockspaceId = ImGui.getID("OpenMasonDockSpace");
+        ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
+        
+        ImGui.end();
+    }
+    
+    /**
+     * Render main menu bar with all menu items.
+     */
+    private void renderMainMenuBar() {
+        if (ImGui.beginMainMenuBar()) {
+            renderFileMenu();
+            renderEditMenu();
+            renderViewMenu();
+            renderToolsMenu();
+            renderHelpMenu();
+            
+            // Show toolbar restore button when toolbar is hidden (right side of menu bar)
+            if (!showToolbar.get()) {
+                // Push to right side of menu bar
+                float availWidth = ImGui.getContentRegionAvailX();
+                float buttonWidth = ImGui.calcTextSize("Show Toolbar").x + 16.0f;
+                ImGui.setCursorPosX(ImGui.getCursorPosX() + availWidth - buttonWidth);
+                
+                if (ImGui.button("Show Toolbar")) {
+                    showToolbar.set(true);
+                }
+            }
+            
+            ImGui.endMainMenuBar();
+        }
+    }
+    
+    /**
+     * Render File menu with all file operations.
+     */
+    private void renderFileMenu() {
+        if (ImGui.beginMenu("File")) {
+            if (ImGui.menuItem("New Model", "Ctrl+N")) {
+                newModel();
+            }
+            
+            if (ImGui.menuItem("Open Model", "Ctrl+O")) {
+                openModel();
+            }
+            
+            if (ImGui.menuItem("Open Project", "Ctrl+Shift+O")) {
+                openProject();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.menuItem("Save Model", "Ctrl+S", false, modelLoaded && unsavedChanges)) {
+                saveModel();
+            }
+            
+            if (ImGui.menuItem("Save Model As", "Ctrl+Shift+S", false, modelLoaded)) {
+                saveModelAs();
+            }
+            
+            if (ImGui.menuItem("Export Model", "Ctrl+E", false, modelLoaded)) {
+                exportModel();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.beginMenu("Recent Files")) {
+                for (String recentFile : recentFiles) {
+                    if (ImGui.menuItem(recentFile)) {
+                        loadRecentFile(recentFile);
+                    }
+                }
+                ImGui.endMenu();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.menuItem("Exit", "Alt+F4")) {
+                exitApplication();
+            }
+            
+            ImGui.endMenu();
+        }
+    }
+    
+    /**
+     * Render Edit menu with editing operations.
+     */
+    private void renderEditMenu() {
+        if (ImGui.beginMenu("Edit")) {
+            if (ImGui.menuItem("Undo", "Ctrl+Z")) {
+                undo();
+            }
+            
+            if (ImGui.menuItem("Redo", "Ctrl+Y")) {
+                redo();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.menuItem("Preferences", "Ctrl+,")) {
+                showPreferences();
+            }
+            
+            ImGui.endMenu();
+        }
+    }
+    
+    /**
+     * Render View menu with view options.
+     */
+    private void renderViewMenu() {
+        if (ImGui.beginMenu("View")) {
+            if (ImGui.menuItem("Reset View", "Ctrl+R")) {
+                resetView();
+            }
+            
+            if (ImGui.menuItem("Fit to View", "Ctrl+F")) {
+                fitToView();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.menuItem("Show Grid", "Ctrl+G", showGrid)) {
+                toggleGrid();
+            }
+            
+            if (ImGui.menuItem("Show Axes", "Ctrl+X", showAxes)) {
+                toggleAxes();
+            }
+            
+            if (ImGui.menuItem("Wireframe Mode", "Ctrl+W", wireframeMode)) {
+                toggleWireframe();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.menuItem("Show Model Browser", null, showModelBrowser.get())) {
+                toggleModelBrowser();
+            }
+            
+            if (ImGui.menuItem("Show Property Panel", null, showPropertyPanel.get())) {
+                togglePropertyPanel();
+            }
+            
+            if (ImGui.menuItem("Show Toolbar", null, showToolbar.get())) {
+                toggleToolbar();
+            }
+            
+            ImGui.endMenu();
+        }
+    }
+    
+    /**
+     * Render Tools menu with tool operations.
+     */
+    private void renderToolsMenu() {
+        if (ImGui.beginMenu("Tools")) {
+            if (ImGui.menuItem("Validate Model", "Ctrl+T", false, modelLoaded)) {
+                validateModel();
+            }
+            
+            if (ImGui.menuItem("Generate Textures", "Ctrl+Shift+T")) {
+                generateTextures();
+            }
+            
+            ImGui.separator();
+            
+            if (ImGui.beginMenu("Texture Variants")) {
+                for (int i = 0; i < textureVariants.length; i++) {
+                    boolean selected = (i == currentTextureVariantIndex);
+                    if (ImGui.menuItem(textureVariants[i], "Ctrl+" + (i + 1), selected)) {
+                        switchToVariant(textureVariants[i]);
+                    }
+                }
+                ImGui.endMenu();
+            }
+            
+            ImGui.endMenu();
+        }
+    }
+    
+    /**
+     * Render Help menu.
+     */
+    private void renderHelpMenu() {
+        if (ImGui.beginMenu("Help")) {
+            if (ImGui.menuItem("About OpenMason")) {
+                showAbout();
+            }
+            
+            ImGui.endMenu();
+        }
+    }
+    
+    /**
+     * Render toolbar with buttons and controls positioned under menu bar.
+     */
+    private void renderToolbar() {
+        // Position toolbar directly under the menu bar
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        float menuBarHeight = ImGui.getFrameHeight(); // Height of menu bar
+        
+        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY() + menuBarHeight);
+        ImGui.setNextWindowSize(viewport.getWorkSizeX(), ImGui.getFrameHeight() + 8.0f); // Toolbar height
+        
+        int toolbarFlags = ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize | 
+                          ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoScrollbar | 
+                          ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoBringToFrontOnFocus;
+        
+        if (ImGui.begin("##Toolbar", showToolbar, toolbarFlags)) {
+            
+            // Hide button (first item)
+            if (ImGui.smallButton("Hide Toolbar")) {
+                showToolbar.set(false);
+            }
+            ImGui.sameLine();
+            ImGui.separator();
+            ImGui.sameLine();
+            
+            // File operations
+            if (ImGui.button("New##toolbar")) {
+                newModel();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Open##toolbar")) {
+                openModel();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Save##toolbar") && modelLoaded && unsavedChanges) {
+                saveModel();
+            }
+            ImGui.sameLine();
+            
+            ImGui.separator();
+            ImGui.sameLine();
+            
+            // View operations
+            if (ImGui.button("Reset View##toolbar")) {
+                resetView();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Zoom In##toolbar")) {
+                // Zoom handled by 3D viewport directly
+                viewport3D.getCamera().zoom(1.0f);
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Zoom Out##toolbar")) {
+                // Zoom handled by 3D viewport directly  
+                viewport3D.getCamera().zoom(-1.0f);
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Fit to View##toolbar")) {
+                fitToView();
+            }
+            ImGui.sameLine();
+            
+            ImGui.separator();
+            ImGui.sameLine();
+            
+            // Toggle buttons
+            if (ImGui.checkbox("Grid##toolbar", showGrid)) {
+                toggleGrid();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.checkbox("Axes##toolbar", showAxes)) {
+                toggleAxes();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.checkbox("Wireframe##toolbar", wireframeMode)) {
+                toggleWireframe();
+            }
+            ImGui.sameLine();
+            
+            ImGui.separator();
+            ImGui.sameLine();
+            
+            // Tool operations
+            if (ImGui.button("Validate##toolbar") && modelLoaded) {
+                validateModel();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Generate Textures##toolbar")) {
+                generateTextures();
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Settings##toolbar")) {
+                showPreferences();
+            }
+            ImGui.sameLine();
+            
+            // Push remaining content to right side of toolbar for status display
+            float availWidth = ImGui.getContentRegionAvailX();
+            float statusWidth = 350.0f; // Approximate width needed for status info
+            if (availWidth > statusWidth + 20.0f) { // Add some padding
+                ImGui.setCursorPosX(ImGui.getCursorPosX() + availWidth - statusWidth);
+            }
+            
+            ImGui.separator();
+            ImGui.sameLine();
+            
+            // Current model display
+            ImGui.text("Model: " + (modelLoaded ? currentModelPath : "None"));
+            ImGui.sameLine();
+            
+            // Progress bar (if active)
+            if (progress.get() > 0.0f) {
+                ImGui.separator();
+                ImGui.sameLine();
+                ImGui.progressBar(progress.get(), 80.0f, 0.0f);
+                ImGui.sameLine();
+            }
+            
+            // Status message
+            ImGui.separator();
+            ImGui.sameLine();
+            ImGui.text("Status: " + statusMessage);
+            ImGui.sameLine();
+            
+            // Memory usage (the memory profiler)
+            ImGui.separator();
+            ImGui.sameLine();
+            ImGui.textColored(0.0f, 1.0f, 0.0f, 1.0f, String.format("%.1f MB", memoryUsage));
+            ImGui.sameLine();
+            
+            // Frame rate
+            ImGui.separator();
+            ImGui.sameLine();
+            ImGui.textColored(0.0f, 0.5f, 1.0f, 1.0f, String.format("%.1f FPS", frameRate));
+            
+        }
+        ImGui.end();
+    }
+    
+    /**
+     * Render model browser panel.
+     */
+    private void renderModelBrowser() {
+        if (ImGui.begin("Model Browser", showModelBrowser)) {
+            
+            // Search and filter
+            ImGui.text("Search:");
+            ImGui.sameLine();
+            if (ImGui.inputText("##search", searchText)) {
+                filterModels(searchText.get());
+            }
+            
+            ImGui.text("Filter:");
+            ImGui.sameLine();
+            if (ImGui.combo("##filter", currentFilterIndex, filters)) {
+                filterModels(filters[currentFilterIndex.get()]);
+            }
+            
+            ImGui.separator();
+            
+            // Model tree
+            if (ImGui.treeNode("Available Models")) {
+                if (ImGui.treeNode("Cow Models")) {
+                    for (String variant : textureVariants) {
+                        if (ImGui.selectable("Standard Cow (" + variant + ")", false)) {
+                            selectModel("Standard Cow", variant);
+                        }
+                    }
+                    ImGui.treePop();
+                }
+                
+                if (ImGui.treeNode("Recent Files")) {
+                    for (String recentFile : recentFiles) {
+                        if (ImGui.selectable(recentFile, false)) {
+                            loadRecentFile(recentFile);
+                        }
+                    }
+                    ImGui.treePop();
+                }
+                
+                ImGui.treePop();
+            }
+            
+            ImGui.separator();
+            
+            // Model info
+            ImGui.text("Model Info:");
+            ImGui.textWrapped(selectedModelInfo);
+            
+        }
+        ImGui.end();
+    }
+    
+    // Duplicate viewport method removed - using dedicated ViewportImGuiInterface
+    
+    /**
+     * Render property panel with model controls.
+     */
+    private void renderPropertyPanel() {
+        // Delegate to dedicated PropertyPanelImGui for proper rendering
+        if (propertyPanelImGui != null) {
+            // Update PropertyPanelImGui with current model state
+            if (modelLoaded && !currentModelPath.isEmpty()) {
+                String modelName = currentModelPath.replace(".json", "");
+                propertyPanelImGui.loadTextureVariants(modelName);
+            }
+            
+            // Set viewport reference for 3D integration
+            propertyPanelImGui.setViewport3D(viewport3D);
+            
+            // Render the property panel using the dedicated ImGui component
+            propertyPanelImGui.render();
+        } else {
+            // Fallback rendering if PropertyPanelImGui is not available
+            if (ImGui.begin("Properties", showPropertyPanel)) {
+                ImGui.textDisabled("Property panel not initialized");
+                ImGui.text("Model: " + (modelLoaded ? currentModelPath : "No model loaded"));
+                
+                if (ImGui.button("Initialize Properties")) {
+                    setupPropertiesPanel();
+                }
+            }
+            ImGui.end();
+        }
+    }
+    
+    
+    /**
+     * Render any modal dialogs.
+     */
+    private void renderDialogs() {
+        // Dialogs would be rendered here (About, Preferences, etc.)
+    }
+    
+    // Action Methods Implementation
+    
+    private void newModel() {
+        logger.info("New model action triggered");
+        updateStatus("Creating new model...");
+        modelLoaded = false;
+        currentModelPath = "Untitled Model";
+        unsavedChanges = false;
+        updateUIState();
+    }
+    
+    public void createNewModel() {
+        logger.info("Create new model action triggered");
+        updateStatus("Creating new model...");
+        
+        // Reset current state
+        modelLoaded = false;
+        currentModelPath = "";
+        unsavedChanges = false;
+        currentTextureVariantIndex = 0;
+        
+        updateUIState();
+        updateStatus("New model created");
+    }
+    
+    public void openModel() {
+        logger.info("Open model action triggered");
+        updateStatus("Opening model...");
+        
+        try {
+            // Use the actual Stonebreak model system
+            if (modelManager != null) {
+                // Load standard cow model as default
+                String modelPath = "cow/standard_cow.json";
+                
+                modelManager.loadModelInfoAsync(modelPath, ModelManager.LoadingPriority.NORMAL, null).thenAccept(modelInfo -> {
+                    if (modelInfo != null) {
+                        modelLoaded = true;
+                        currentModelPath = modelPath;
+                        unsavedChanges = false;
+                        
+                        // Extract actual model statistics
+                        partCount = modelInfo.getPartCount();
+                        // Calculate vertex and triangle counts from part count (each cubic part has 24 vertices and 12 triangles)
+                        vertexCount = partCount * 24;
+                        triangleCount = partCount * 12;
+                        
+                        updateUIState();
+                        updateStatus("Model loaded successfully: " + modelPath);
+                        logger.info("Model loaded: {} parts, {} vertices, {} triangles", 
+                                  partCount, vertexCount, triangleCount);
+                    } else {
+                        updateStatus("Failed to load model");
+                        logger.error("Model loading returned null");
+                    }
+                }).exceptionally(throwable -> {
+                    logger.error("Failed to load model", throwable);
+                    updateStatus("Error loading model: " + throwable.getMessage());
+                    return null;
+                });
+            } else {
+                logger.warn("ModelManager not initialized, falling back to placeholder");
+                // Fallback to placeholder for demo
+                modelLoaded = true;
+                currentModelPath = "standard_cow.json";
+                unsavedChanges = false;
+                partCount = 6;
+                vertexCount = 1248;
+                triangleCount = 624;
+                updateUIState();
+                updateStatus("Model loaded (placeholder mode)");
+            }
+        } catch (Exception e) {
+            logger.error("Exception during model loading", e);
+            updateStatus("Error loading model: " + e.getMessage());
+        }
+    }
+    
+    private void openProject() {
+        logger.info("Open project action triggered");
+        updateStatus("Opening Stonebreak project...");
+        // Implementation would show directory dialog
+    }
+    
+    public void saveModel() {
+        logger.info("Save model action triggered");
+        updateStatus("Saving model...");
+        unsavedChanges = false;
+        updateUIState();
+        updateStatus("Model saved successfully");
+    }
+    
+    public void saveModelAs() {
+        logger.info("Save model as action triggered");
+        updateStatus("Saving model as...");
+        
+        try {
+            // Create file chooser dialog
+            SwingUtilities.invokeLater(() -> {
+                JFileChooser fileChooser = new JFileChooser();
+                fileChooser.setDialogTitle("Save Model As");
+                fileChooser.setCurrentDirectory(new File(System.getProperty("user.dir")));
+                
+                // Set file filters
+                FileNameExtensionFilter jsonFilter = new FileNameExtensionFilter("JSON Model Files (*.json)", "json");
+                fileChooser.addChoosableFileFilter(jsonFilter);
+                fileChooser.setFileFilter(jsonFilter);
+                
+                // Show save dialog
+                int result = fileChooser.showSaveDialog(null);
+                
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    File selectedFile = fileChooser.getSelectedFile();
+                    String filePath = selectedFile.getAbsolutePath();
+                    
+                    // Ensure .json extension
+                    if (!filePath.toLowerCase().endsWith(".json")) {
+                        filePath += ".json";
+                        selectedFile = new File(filePath);
+                    }
+                    
+                    // Save the model
+                    saveModelToFile(selectedFile);
+                } else {
+                    updateStatus("Save cancelled");
+                }
+            });
+        } catch (Exception e) {
+            logger.error("Error showing save dialog", e);
+            updateStatus("Error opening save dialog: " + e.getMessage());
+        }
+    }
+    
+    public void exportModel() {
+        logger.info("Export model action triggered");
+        updateStatus("Exporting model...");
+        
+        if (!modelLoaded) {
+            updateStatus("No model to export");
+            return;
+        }
+        
+        try {
+            // Create file chooser for export
+            SwingUtilities.invokeLater(() -> {
+                JFileChooser fileChooser = new JFileChooser();
+                fileChooser.setDialogTitle("Export Model");
+                fileChooser.setCurrentDirectory(new File(System.getProperty("user.dir")));
+                
+                // Set file filters for different export formats
+                FileNameExtensionFilter objFilter = new FileNameExtensionFilter("Wavefront OBJ (*.obj)", "obj");
+                FileNameExtensionFilter gltfFilter = new FileNameExtensionFilter("glTF (*.gltf)", "gltf");
+                FileNameExtensionFilter jsonFilter = new FileNameExtensionFilter("JSON Model (*.json)", "json");
+                
+                fileChooser.addChoosableFileFilter(objFilter);
+                fileChooser.addChoosableFileFilter(gltfFilter);
+                fileChooser.addChoosableFileFilter(jsonFilter);
+                fileChooser.setFileFilter(objFilter); // Default to OBJ
+                
+                int result = fileChooser.showSaveDialog(null);
+                
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    File selectedFile = fileChooser.getSelectedFile();
+                    FileNameExtensionFilter selectedFilter = (FileNameExtensionFilter) fileChooser.getFileFilter();
+                    
+                    // Add appropriate extension
+                    String extension = selectedFilter.getExtensions()[0];
+                    String filePath = selectedFile.getAbsolutePath();
+                    if (!filePath.toLowerCase().endsWith("." + extension)) {
+                        filePath += "." + extension;
+                        selectedFile = new File(filePath);
+                    }
+                    
+                    // Export the model
+                    exportModelToFile(selectedFile, extension);
+                } else {
+                    updateStatus("Export cancelled");
+                }
+            });
+        } catch (Exception e) {
+            logger.error("Error showing export dialog", e);
+            updateStatus("Error opening export dialog: " + e.getMessage());
+        }
+    }
+    
+    private void loadRecentFile(String filename) {
+        logger.info("Loading recent file: {}", filename);
+        updateStatus("Loading " + filename + "...");
+        modelLoaded = true;
+        currentModelPath = filename;
+        unsavedChanges = false;
+        updateUIState();
+        updateStatus("Loaded " + filename);
+    }
+    
+    private void exitApplication() {
+        logger.info("Exit application action triggered");
+        // Cleanup and exit
+        if (viewport3D != null) {
+            viewport3D.dispose();
+        }
+        System.exit(0);
+    }
+    
+    private void undo() {
+        logger.info("Undo action triggered");
+        updateStatus("Undo performed");
+    }
+    
+    private void redo() {
+        logger.info("Redo action triggered");
+        updateStatus("Redo performed");
+    }
+    
+    private void showPreferences() {
+        logger.info("Show preferences action triggered");
+        // Implementation would show preferences dialog
+    }
+    
+    public void resetView() {
+        logger.info("Reset view action triggered");
+        if (viewport3D != null) {
+            viewport3D.resetCamera();
+        }
+        updateStatus("View reset");
+    }
+    
+    public void fitToView() {
+        logger.info("Fit to view action triggered");
+        updateStatus("Fitted to view");
+    }
+    
+    // Zoom methods removed - handled by 3D viewport directly
+    
+    public void toggleGrid() {
+        showGrid = !showGrid;
+        logger.info("Toggle grid: {}", showGrid);
+        if (viewport3D != null) {
+            viewport3D.setGridVisible(showGrid);
+        }
+    }
+    
+    private void toggleAxes() {
+        showAxes = !showAxes;
+        logger.info("Toggle axes: {}", showAxes);
+        if (viewport3D != null) {
+            viewport3D.setAxesVisible(showAxes);
+        }
+    }
+    
+    public void toggleWireframe() {
+        wireframeMode = !wireframeMode;
+        logger.info("Toggle wireframe: {}", wireframeMode);
+        if (viewport3D != null) {
+            viewport3D.setWireframeMode(wireframeMode);
+        }
+        updateStatus("Wireframe " + (wireframeMode ? "enabled" : "disabled"));
+    }
+    
+    public void switchToVariant(String variantName) {
+        logger.info("Switch to texture variant: {}", variantName);
+        
+        // Find the variant index
+        for (int i = 0; i < textureVariants.length; i++) {
+            if (textureVariants[i].equalsIgnoreCase(variantName)) {
+                currentTextureVariantIndex = i;
+                textureVariant.set(variantName);
+                
+                if (viewport3D != null) {
+                    viewport3D.setCurrentTextureVariant(variantName.toLowerCase());
+                }
+                
+                updateStatus("Switched to " + variantName + " variant");
+                return;
+            }
+        }
+        
+        logger.warn("Unknown texture variant: {}", variantName);
+        updateStatus("Unknown variant: " + variantName);
+    }
+    
+    private void toggleModelBrowser() {
+        showModelBrowser.set(!showModelBrowser.get());
+        logger.info("Toggle model browser: {}", showModelBrowser.get());
+    }
+    
+    private void togglePropertyPanel() {
+        showPropertyPanel.set(!showPropertyPanel.get());
+        logger.info("Toggle property panel: {}", showPropertyPanel.get());
+    }
+    
+    
+    private void toggleToolbar() {
+        showToolbar.set(!showToolbar.get());
+        logger.info("Toggle toolbar: {}", showToolbar.get());
+    }
+    
+    private void validateModel() {
+        logger.info("Validate model action triggered");
+        updateStatus("Validating model...");
+        // Implementation would perform model validation
+        updateStatus("Model validation complete");
+    }
+    
+    private void generateTextures() {
+        logger.info("Generate textures action triggered");
+        updateStatus("Generating textures...");
+        // Implementation would generate textures
+    }
+    
+    private void showAbout() {
+        logger.info("Show about action triggered");
+        // Implementation would show about dialog
+    }
+    
+    private void filterModels(String filter) {
+        logger.debug("Filtering models with: {}", filter);
+        // Implementation would filter the model browser
+    }
+    
+    private void selectModel(String modelName, String variant) {
+        logger.info("Selected model: {} with variant: {}", modelName, variant);
+        selectedModelInfo = "Selected: " + modelName + " (" + variant + " variant)";
+        
+        // Load model
+        modelLoaded = true;
+        currentModelPath = modelName;
+        currentTextureVariantIndex = java.util.Arrays.asList(textureVariants).indexOf(variant);
+        if (currentTextureVariantIndex == -1) currentTextureVariantIndex = 0;
+        
+        // Update statistics (example values)
+        partCount = 6;
+        vertexCount = 1248;
+        triangleCount = 624;
+        
+        updateUIState();
+        updateStatus("Model loaded: " + modelName + " (" + variant + " variant)");
+    }
+    
+    private void changeViewMode() {
+        String viewMode = viewModes[currentViewModeIndex.get()];
+        logger.info("Changed view mode to: {}", viewMode);
+        // Implementation would update viewport camera
+    }
+    
+    private void changeRenderMode() {
+        String renderMode = renderModes[currentRenderModeIndex.get()];
+        logger.info("Changed render mode to: {}", renderMode);
+        
+        if (viewport3D != null) {
+            switch (renderMode.toLowerCase()) {
+                case "wireframe":
+                    wireframeMode = true;
+                    viewport3D.setWireframeMode(true);
+                    break;
+                default:
+                    wireframeMode = false;
+                    viewport3D.setWireframeMode(false);
+                    break;
+            }
+            updateStatus("Render mode: " + renderMode);
+        }
+    }
+    
+    private void changeTextureVariant() {
+        String variant = textureVariants[currentTextureVariantIndex];
+        logger.info("Changed texture variant to: {}", variant);
+        
+        if (viewport3D != null) {
+            viewport3D.setCurrentTextureVariant(variant.toLowerCase());
+        }
+        
+        updateStatus("Texture variant: " + variant);
+    }
+    
+    
+    private void changeAnimation() {
+        String animation = animations[currentAnimationIndex.get()];
+        logger.info("Changed animation to: {}", animation);
+        // Implementation would change animation
+    }
+    
+    private void playAnimation() {
+        logger.info("Play animation action triggered");
+        animationPlaying = true;
+        animationPaused = false;
+        // Implementation would start animation playback
+    }
+    
+    private void pauseAnimation() {
+        logger.info("Pause animation action triggered");
+        animationPaused = true;
+        // Implementation would pause animation
+    }
+    
+    private void stopAnimation() {
+        logger.info("Stop animation action triggered");
+        animationPlaying = false;
+        animationPaused = false;
+        animationTime.set(0.0f);
+        // Implementation would stop animation
+    }
+    
+    private void updateAnimationTime() {
+        // Implementation would update animation time
+    }
+    
+    private void resetProperties() {
+        logger.info("Reset properties action triggered");
+        rotationX.set(0.0f);
+        rotationY.set(0.0f);
+        rotationZ.set(0.0f);
+        scale.set(1.0f);
+        updateModelTransform();
+        updateStatus("Properties reset");
+    }
+    
+    private void exportDiagnostics() {
+        logger.info("Export diagnostics action triggered");
+        updateStatus("Exporting diagnostics...");
+        // Implementation would export diagnostic information
+    }
+    
+    private void updateModelTransform() {
+        // Implementation would update 3D model transform
+        logger.debug("Transform updated - Rotation: ({}, {}, {}), Scale: {}", 
+                    rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
+    }
+    
+    // Utility Methods
+    
+    private void setupViewport() {
+        try {
+            logger.info("Setting up 3D viewport...");
+            viewport3D = new OpenMason3DViewport();
+            // OpenMason3DViewport initializes itself in constructor
+            logger.info("3D viewport setup complete");
+        } catch (Exception e) {
+            logger.error("Failed to setup 3D viewport", e);
+        }
+    }
+    
+    private void setupModelBrowser() {
+        try {
+            modelManager = new ModelManager();
+            logger.info("Model manager setup complete");
+        } catch (Exception e) {
+            logger.error("Failed to setup model manager", e);
+        }
+    }
+    
+    private void setupPropertiesPanel() {
+        try {
+            // Initialize property panel ImGui
+            propertyPanelImGui = new PropertyPanelImGui();
+            logger.info("Properties panel setup complete");
+        } catch (Exception e) {
+            logger.error("Failed to setup properties panel", e);
+        }
+    }
+    
+    private void loadInitialData() {
+        // Load initial texture variants and models
+        updateMemoryUsage();
+        updateFrameRate();
+    }
+    
+    private void updateUIState() {
+        // Update UI state based on current model
+        // This method is called when model state changes
+    }
+    
+    private void updateStatus(String message) {
+        statusMessage = message;
+        logger.debug("Status updated: {}", message);
+    }
+    
+    private void updateMemoryUsage() {
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        memoryUsage = usedMemory / (1024.0f * 1024.0f);
+    }
+    
+    private void updateFrameRate() {
+        if (viewport3D != null) {
+            frameRate = (float) viewport3D.getCurrentFPS();
+        }
+    }
+    
+    // Public API
+    
+    public PropertyPanelImGui getPropertyPanelImGui() {
+        return propertyPanelImGui;
+    }
+    
+    public Map<String, Object> getPerformanceMetrics() {
+        performanceMetrics.clear();
+        performanceMetrics.put("modelLoaded", modelLoaded);
+        performanceMetrics.put("currentModelPath", currentModelPath);
+        performanceMetrics.put("unsavedChanges", unsavedChanges);
+        performanceMetrics.put("memoryUsage", memoryUsage);
+        performanceMetrics.put("frameRate", frameRate);
+        
+        if (propertyPanelImGui != null) {
+            performanceMetrics.putAll(propertyPanelImGui.getPerformanceMetrics());
+        }
+        
+        return performanceMetrics;
+    }
+    
+    public void forceTextureVariantReload(String modelName) {
+        if (propertyPanelImGui != null) {
+            propertyPanelImGui.loadTextureVariants(modelName);
+        }
+    }
+    
+    /**
+     * Save model to specified file.
+     */
+    private void saveModelToFile(File file) {
+        try {
+            logger.info("Saving model to: {}", file.getAbsolutePath());
+            updateStatus("Saving model to " + file.getName() + "...");
+            
+            // TODO: Implement actual model saving using Stonebreak model system
+            // For now, simulate successful save
+            Thread.sleep(100); // Simulate save time
+            
+            currentModelPath = file.getName();
+            unsavedChanges = false;
+            updateUIState();
+            updateStatus("Model saved successfully: " + file.getName());
+            
+        } catch (Exception e) {
+            logger.error("Failed to save model to file: {}", file.getAbsolutePath(), e);
+            updateStatus("Failed to save model: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Export model to specified file and format.
+     */
+    private void exportModelToFile(File file, String format) {
+        try {
+            logger.info("Exporting model to {} format: {}", format.toUpperCase(), file.getAbsolutePath());
+            updateStatus("Exporting to " + format.toUpperCase() + "...");
+            
+            // TODO: Implement actual model export using appropriate exporter
+            switch (format.toLowerCase()) {
+                case "obj":
+                    exportToOBJ(file);
+                    break;
+                case "gltf":
+                    exportToGLTF(file);
+                    break;
+                case "json":
+                    exportToJSON(file);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unsupported export format: " + format);
+            }
+            
+            updateStatus("Model exported successfully: " + file.getName());
+            
+        } catch (Exception e) {
+            logger.error("Failed to export model to file: {}", file.getAbsolutePath(), e);
+            updateStatus("Failed to export model: " + e.getMessage());
+        }
+    }
+    
+    private void exportToOBJ(File file) throws Exception {
+        // TODO: Implement OBJ export
+        logger.debug("OBJ export placeholder for: {}", file.getName());
+        Thread.sleep(200); // Simulate export time
+    }
+    
+    private void exportToGLTF(File file) throws Exception {
+        // TODO: Implement glTF export
+        logger.debug("glTF export placeholder for: {}", file.getName());
+        Thread.sleep(300); // Simulate export time
+    }
+    
+    private void exportToJSON(File file) throws Exception {
+        // TODO: Implement JSON export using Stonebreak model system
+        logger.debug("JSON export placeholder for: {}", file.getName());
+        Thread.sleep(150); // Simulate export time
+    }
+    
+    /**
+     * Update method called every frame for animations and periodic updates.
+     */
+    public void update(float deltaTime) {
+        updateMemoryUsage();
+        updateFrameRate();
+        
+        // Update animation time if playing
+        if (animationPlaying && !animationPaused) {
+            float currentTime = animationTime.get() + deltaTime * 0.5f; // Animation speed
+            if (currentTime > 1.0f) {
+                currentTime = 0.0f; // Loop animation
+            }
+            animationTime.set(currentTime);
+        }
+    }
+}

@@ -5,14 +5,7 @@ import com.openmason.texture.TextureManager;
 import com.stonebreak.textures.CowTextureDefinition;
 import com.stonebreak.textures.CowTextureLoader;
 
-import javafx.application.Platform;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.IntegerProperty;
-import javafx.beans.property.SimpleIntegerProperty;
-import javafx.scene.paint.Color;
+// JavaFX imports removed - using standard Java properties
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,8 +50,8 @@ public class AutomaticValidationManager {
     // Core validation settings
     private final AtomicBoolean validationEnabled = new AtomicBoolean(true);
     private final AtomicBoolean realTimeValidation = new AtomicBoolean(true);
-    private final BooleanProperty visualErrorsEnabled = new SimpleBooleanProperty(true);
-    private final BooleanProperty strictValidation = new SimpleBooleanProperty(false);
+    private final AtomicBoolean visualErrorsEnabled = new AtomicBoolean(true);
+    private final AtomicBoolean strictValidation = new AtomicBoolean(false);
     
     // Validation statistics
     private final AtomicInteger totalValidations = new AtomicInteger(0);
@@ -195,17 +188,39 @@ public class AutomaticValidationManager {
     }
     
     /**
+     * Simple color representation for visual errors.
+     */
+    public static class SimpleColor {
+        private final int r, g, b;
+        
+        public SimpleColor(int r, int g, int b) {
+            this.r = Math.max(0, Math.min(255, r));
+            this.g = Math.max(0, Math.min(255, g));
+            this.b = Math.max(0, Math.min(255, b));
+        }
+        
+        public int getR() { return r; }
+        public int getG() { return g; }
+        public int getB() { return b; }
+        
+        public static final SimpleColor RED = new SimpleColor(255, 0, 0);
+        public static final SimpleColor ORANGE = new SimpleColor(255, 165, 0);
+        public static final SimpleColor YELLOW = new SimpleColor(255, 255, 0);
+        public static final SimpleColor LIGHTBLUE = new SimpleColor(173, 216, 230);
+    }
+    
+    /**
      * Visual error for viewport display.
      */
     public static class VisualError {
         private final String errorId;
         private final String message;
-        private final Color color;
+        private final SimpleColor color;
         private final int x, y, width, height;
         private final long timestamp;
         private final boolean blinking;
         
-        public VisualError(String errorId, String message, Color color, 
+        public VisualError(String errorId, String message, SimpleColor color, 
                          int x, int y, int width, int height, boolean blinking) {
             this.errorId = errorId;
             this.message = message;
@@ -220,7 +235,7 @@ public class AutomaticValidationManager {
         
         public String getErrorId() { return errorId; }
         public String getMessage() { return message; }
-        public Color getColor() { return color; }
+        public SimpleColor getColor() { return color; }
         public int getX() { return x; }
         public int getY() { return y; }
         public int getWidth() { return width; }
@@ -373,11 +388,11 @@ public class AutomaticValidationManager {
                 
                 // Show visual errors if enabled
                 if (visualErrorsEnabled.get() && !errors.isEmpty()) {
-                    Platform.runLater(() -> showVisualErrors(variantName, errors));
+                    showVisualErrors(variantName, errors);
                 }
                 
                 // Notify listeners
-                Platform.runLater(() -> notifyValidationListeners(result));
+                notifyValidationListeners(result);
                 
                 logger.debug("Validation completed for '{}' in {}ms: {}", variantName, 
                            System.currentTimeMillis() - startTime, result.getSummary());
@@ -623,20 +638,20 @@ public class AutomaticValidationManager {
             String errorId = variantName + "_" + error.getErrorCode() + "_" + errorIndex++;
             
             // Determine error color based on severity
-            Color errorColor;
+            SimpleColor errorColor;
             switch (error.getSeverity()) {
                 case CRITICAL:
-                    errorColor = Color.RED;
+                    errorColor = SimpleColor.RED;
                     break;
                 case HIGH:
-                    errorColor = Color.ORANGE;
+                    errorColor = SimpleColor.ORANGE;
                     break;
                 case MEDIUM:
-                    errorColor = Color.YELLOW;
+                    errorColor = SimpleColor.YELLOW;
                     break;
                 case LOW:
                 default:
-                    errorColor = Color.LIGHTBLUE;
+                    errorColor = SimpleColor.LIGHTBLUE;
                     break;
             }
             
@@ -850,11 +865,9 @@ public class AutomaticValidationManager {
         }
     }
     
-    public BooleanProperty visualErrorsEnabledProperty() { return visualErrorsEnabled; }
     public boolean isVisualErrorsEnabled() { return visualErrorsEnabled.get(); }
     public void setVisualErrorsEnabled(boolean enabled) { visualErrorsEnabled.set(enabled); }
     
-    public BooleanProperty strictValidationProperty() { return strictValidation; }
     public boolean isStrictValidation() { return strictValidation.get(); }
     public void setStrictValidation(boolean enabled) { strictValidation.set(enabled); }
     

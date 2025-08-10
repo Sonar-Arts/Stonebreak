@@ -2,8 +2,6 @@ package com.openmason.integration;
 
 import com.stonebreak.textures.CowTextureDefinition;
 import com.openmason.ui.viewport.OpenMason3DViewport;
-import javafx.application.Platform;
-import javafx.scene.paint.Color;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -274,29 +272,48 @@ public class TextureValidationSystem {
     }
     
     /**
+     * Simple color representation for validation feedback.
+     */
+    public static class SimpleColor {
+        private final int r, g, b;
+        
+        public SimpleColor(int r, int g, int b) {
+            this.r = Math.max(0, Math.min(255, r));
+            this.g = Math.max(0, Math.min(255, g));
+            this.b = Math.max(0, Math.min(255, b));
+        }
+        
+        public int getR() { return r; }
+        public int getG() { return g; }
+        public int getB() { return b; }
+        
+        public static final SimpleColor RED = new SimpleColor(255, 0, 0);
+        public static final SimpleColor ORANGE = new SimpleColor(255, 165, 0);
+        public static final SimpleColor GREEN = new SimpleColor(0, 128, 0);
+    }
+    
+    /**
      * Updates the viewport with validation feedback.
      */
     private void updateViewportValidation(ValidationResult result) {
-        Platform.runLater(() -> {
-            try {
-                // Set validation indicator color based on result
-                Color indicatorColor;
-                if (result.hasErrors()) {
-                    indicatorColor = Color.RED;
-                } else if (result.hasWarnings()) {
-                    indicatorColor = Color.ORANGE;
-                } else {
-                    indicatorColor = Color.GREEN;
-                }
-                
-                // Update viewport validation indicator (method not implemented yet)
-                // viewport.setValidationStatus(result.getVariantName(), indicatorColor, result.getSummary());
-                logger.debug("Validation status for {}: {}", result.getVariantName(), result.getSummary());
-                
-            } catch (Exception e) {
-                logger.error("Failed to update viewport validation", e);
+        try {
+            // Set validation indicator color based on result
+            SimpleColor indicatorColor;
+            if (result.hasErrors()) {
+                indicatorColor = SimpleColor.RED;
+            } else if (result.hasWarnings()) {
+                indicatorColor = SimpleColor.ORANGE;
+            } else {
+                indicatorColor = SimpleColor.GREEN;
             }
-        });
+            
+            // Update viewport validation indicator (method not implemented yet)
+            // viewport.setValidationStatus(result.getVariantName(), indicatorColor, result.getSummary());
+            logger.debug("Validation status for {}: {}", result.getVariantName(), result.getSummary());
+            
+        } catch (Exception e) {
+            logger.error("Failed to update viewport validation", e);
+        }
     }
     
     /**

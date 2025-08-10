@@ -95,6 +95,10 @@ wiki/
 # Settings file (user-specific configuration)
 settings.json
 
+# ImGui configuration (user-specific layout)
+imgui.ini
+openmason-tool/imgui.ini
+
 # Backup files
 *.bak
 *~

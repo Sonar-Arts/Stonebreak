@@ -6,15 +6,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Simple and functional camera system specifically designed for OpenMason's green cube visualization.
- * This camera always focuses on the origin point (0,0,0) where the green cube is positioned.
+ * Professional 3D camera system supporting both arc-ball and first-person modes.
+ * Designed for versatile 3D viewport navigation in OpenMason.
  * 
  * Features:
- * - Always targets the origin point (0,0,0)
- * - Simple spherical coordinate system (distance, azimuth, elevation)
+ * - Arc-ball mode: orbit around a target point (default)
+ * - First-person mode: free camera movement like FPS games
  * - Smooth interpolation for professional feel
- * - Mouse controls optimized for model inspection
- * - Professional default viewing angle
+ * - Mouse and keyboard controls for both modes
+ * - Professional default viewing angles
+ * - Seamless mode switching during runtime
  */
 public class ArcBallCamera {
     
@@ -27,24 +28,46 @@ public class ArcBallCamera {
     private static final float MAX_ELEVATION = 89.0f;
     private static final float DEFAULT_FOV = 45.0f;
     
-    // Sensitivity settings
-    private static final float ROTATION_SENSITIVITY = 0.3f;
+    // Movement speeds
+    private static final float DEFAULT_MOVE_SPEED = 5.0f;
+    private static final float DEFAULT_MOUSE_SENSITIVITY = 0.3f;
     private static final float ZOOM_SENSITIVITY = 1.08f;
     private static final float INTERPOLATION_SPEED = 10.0f;
     
-    // Current camera state
+    // Camera mode
+    public enum CameraMode {
+        ARCBALL,        // Orbit around target point
+        FIRST_PERSON    // Free movement like FPS
+    }
+    
+    // Current camera mode
+    private CameraMode cameraMode = CameraMode.ARCBALL;
+    
+    // Arc-ball camera state
     private float distance = 15.0f;
     private float azimuth = -45.0f;      // Horizontal angle (degrees)
     private float elevation = 25.0f;     // Vertical angle (degrees)
     private float fov = DEFAULT_FOV;
     
-    // Target state for smooth interpolation
+    // Target state for smooth interpolation (arc-ball)
     private float targetDistance = 15.0f;
     private float targetAzimuth = -45.0f;
     private float targetElevation = 25.0f;
     
-    // Fixed target at origin - this is the green cube's position
+    // Target for arc-ball mode
     private final Vector3f target = new Vector3f(0, 0, 0);
+    
+    // First-person camera state
+    private final Vector3f fpPosition = new Vector3f(0, 5, 15);
+    private final Vector3f fpTargetPosition = new Vector3f(0, 5, 15);
+    private float fpYaw = -90.0f;   // Horizontal rotation (degrees)
+    private float fpPitch = 0.0f;   // Vertical rotation (degrees)
+    private float fpTargetYaw = -90.0f;
+    private float fpTargetPitch = 0.0f;
+    
+    // First-person movement
+    private float moveSpeed = DEFAULT_MOVE_SPEED;
+    private float mouseSensitivity = DEFAULT_MOUSE_SENSITIVITY;
     
     // Cached matrices
     private final Matrix4f viewMatrix = new Matrix4f();
@@ -56,10 +79,10 @@ public class ArcBallCamera {
     private long lastUserInputTime = 0;
     
     /**
-     * Creates a new camera focused on the origin point with optimal viewing angle.
+     * Creates a new camera with arc-ball mode by default.
      */
     public ArcBallCamera() {
-        logger.info("Initializing Origin-Focused Camera for green cube at (0,0,0)");
+        logger.info("Initializing 3D camera system (default: arc-ball mode)");
         updateCameraPosition();
         updateViewMatrix();
     }
@@ -73,20 +96,40 @@ public class ArcBallCamera {
         
         float lerpSpeed = INTERPOLATION_SPEED * deltaTime;
         
-        // Smooth interpolation
-        if (Math.abs(targetDistance - distance) > 0.01f) {
-            distance = lerp(distance, targetDistance, lerpSpeed);
-            isAnimating = true;
-        }
-        
-        if (Math.abs(targetAzimuth - azimuth) > 0.1f) {
-            azimuth = lerpAngle(azimuth, targetAzimuth, lerpSpeed);
-            isAnimating = true;
-        }
-        
-        if (Math.abs(targetElevation - elevation) > 0.1f) {
-            elevation = lerp(elevation, targetElevation, lerpSpeed);
-            isAnimating = true;
+        if (cameraMode == CameraMode.ARCBALL) {
+            // Arc-ball mode interpolation
+            if (Math.abs(targetDistance - distance) > 0.01f) {
+                distance = lerp(distance, targetDistance, lerpSpeed);
+                isAnimating = true;
+            }
+            
+            if (Math.abs(targetAzimuth - azimuth) > 0.1f) {
+                azimuth = lerpAngle(azimuth, targetAzimuth, lerpSpeed);
+                isAnimating = true;
+            }
+            
+            if (Math.abs(targetElevation - elevation) > 0.1f) {
+                elevation = lerp(elevation, targetElevation, lerpSpeed);
+                isAnimating = true;
+            }
+            
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            // First-person mode interpolation
+            Vector3f positionDelta = new Vector3f(fpTargetPosition).sub(fpPosition);
+            if (positionDelta.length() > 0.01f) {
+                fpPosition.lerp(fpTargetPosition, lerpSpeed);
+                isAnimating = true;
+            }
+            
+            if (Math.abs(fpTargetYaw - fpYaw) > 0.1f) {
+                fpYaw = lerpAngle(fpYaw, fpTargetYaw, lerpSpeed);
+                isAnimating = true;
+            }
+            
+            if (Math.abs(fpTargetPitch - fpPitch) > 0.1f) {
+                fpPitch = lerp(fpPitch, fpTargetPitch, lerpSpeed);
+                isAnimating = true;
+            }
         }
         
         if (isAnimating || !wasAnimating) {
@@ -95,19 +138,33 @@ public class ArcBallCamera {
         }
         
         if (wasAnimating && !isAnimating) {
-            logger.debug("Camera animation completed");
+            logger.debug("Camera animation completed (mode: {})", cameraMode);
         }
     }
     
     /**
-     * Handle mouse rotation input.
+     * Handle mouse rotation input (mode-dependent).
      */
     public void rotate(float deltaX, float deltaY) {
-        targetAzimuth = normalizeAngle(targetAzimuth - deltaX * ROTATION_SENSITIVITY);
-        targetElevation = clamp(targetElevation - deltaY * ROTATION_SENSITIVITY, MIN_ELEVATION, MAX_ELEVATION);
-        
         lastUserInputTime = System.currentTimeMillis();
-        logger.trace("Rotate - Azimuth: {}°, Elevation: {}°", targetAzimuth, targetElevation);
+        
+        if (cameraMode == CameraMode.ARCBALL) {
+            // Arc-ball rotation
+            targetAzimuth = normalizeAngle(targetAzimuth - deltaX * mouseSensitivity);
+            targetElevation = clamp(targetElevation - deltaY * mouseSensitivity, MIN_ELEVATION, MAX_ELEVATION);
+            
+            logger.trace("ArcBall Rotate - Azimuth: {}°, Elevation: {}°", targetAzimuth, targetElevation);
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            // First-person mouse look
+            fpTargetYaw += deltaX * mouseSensitivity;
+            fpTargetPitch = clamp(fpTargetPitch - deltaY * mouseSensitivity, MIN_ELEVATION, MAX_ELEVATION);
+            
+            // Normalize yaw
+            while (fpTargetYaw > 360.0f) fpTargetYaw -= 360.0f;
+            while (fpTargetYaw < 0.0f) fpTargetYaw += 360.0f;
+            
+            logger.trace("FirstPerson Look - Yaw: {}°, Pitch: {}°", fpTargetYaw, fpTargetPitch);
+        }
     }
     
     /**
@@ -122,23 +179,49 @@ public class ArcBallCamera {
     }
     
     /**
-     * Handle panning - for this simple camera, we'll just ignore panning
-     * since we're always focused on the origin.
+     * Handle panning (mode-dependent).
      */
     public void pan(float deltaX, float deltaY) {
-        // No-op - we always focus on origin
         lastUserInputTime = System.currentTimeMillis();
+        
+        if (cameraMode == CameraMode.ARCBALL) {
+            // Pan the target point in arc-ball mode
+            Vector3f right = new Vector3f();
+            Vector3f up = new Vector3f();
+            
+            // Calculate camera's right and up vectors
+            getCameraDirection().cross(this.up, right).normalize();
+            right.cross(getCameraDirection(), up).normalize();
+            
+            // Move target based on camera orientation
+            Vector3f panOffset = new Vector3f(right).mul(deltaX * 0.1f)
+                               .add(new Vector3f(up).mul(-deltaY * 0.1f));
+            target.add(panOffset);
+            
+            logger.trace("ArcBall Pan - Target: ({}, {}, {})", target.x, target.y, target.z);
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            // Strafe movement in first-person mode
+            moveRight(deltaX * 0.1f);
+            moveUp(deltaY * 0.1f);
+        }
     }
     
     /**
-     * Reset camera to default position facing the green cube.
+     * Reset camera to default position based on current mode.
      */
     public void reset() {
-        targetDistance = 15.0f;
-        targetAzimuth = -45.0f;
-        targetElevation = 25.0f;
+        if (cameraMode == CameraMode.ARCBALL) {
+            targetDistance = 15.0f;
+            targetAzimuth = -45.0f;
+            targetElevation = 25.0f;
+            target.set(0, 0, 0);
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            fpTargetPosition.set(0, 5, 15);
+            fpTargetYaw = -90.0f;
+            fpTargetPitch = 0.0f;
+        }
         
-        logger.info("Camera reset to default position facing origin");
+        logger.info("Camera reset to default position (mode: {})", cameraMode);
     }
     
     /**
@@ -277,19 +360,160 @@ public class ArcBallCamera {
         frameOrigin(maxDimension);
     }
     
+    // ========== First-Person Movement Methods ==========
+    
+    /**
+     * Move camera forward/backward in first-person mode.
+     */
+    public void moveForward(float amount) {
+        if (cameraMode == CameraMode.FIRST_PERSON) {
+            Vector3f forward = getCameraDirection();
+            fpTargetPosition.add(new Vector3f(forward).mul(amount * moveSpeed));
+            lastUserInputTime = System.currentTimeMillis();
+        }
+    }
+    
+    /**
+     * Move camera right/left in first-person mode.
+     */
+    public void moveRight(float amount) {
+        if (cameraMode == CameraMode.FIRST_PERSON) {
+            Vector3f right = new Vector3f();
+            getCameraDirection().cross(up, right).normalize();
+            fpTargetPosition.add(new Vector3f(right).mul(amount * moveSpeed));
+            lastUserInputTime = System.currentTimeMillis();
+        }
+    }
+    
+    /**
+     * Move camera up/down in first-person mode.
+     */
+    public void moveUp(float amount) {
+        if (cameraMode == CameraMode.FIRST_PERSON) {
+            fpTargetPosition.add(new Vector3f(up).mul(amount * moveSpeed));
+            lastUserInputTime = System.currentTimeMillis();
+        }
+    }
+    
+    /**
+     * Get camera direction vector.
+     */
+    public Vector3f getCameraDirection() {
+        if (cameraMode == CameraMode.ARCBALL) {
+            return new Vector3f(target).sub(cameraPosition).normalize();
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            float yawRad = (float) Math.toRadians(fpYaw);
+            float pitchRad = (float) Math.toRadians(fpPitch);
+            
+            float x = (float) (Math.cos(yawRad) * Math.cos(pitchRad));
+            float y = (float) Math.sin(pitchRad);
+            float z = (float) (Math.sin(yawRad) * Math.cos(pitchRad));
+            
+            return new Vector3f(x, y, z).normalize();
+        }
+        return new Vector3f(0, 0, -1); // Default forward
+    }
+    
+    // ========== Camera Mode Management ==========
+    
+    /**
+     * Get current camera mode.
+     */
+    public CameraMode getCameraMode() {
+        return cameraMode;
+    }
+    
+    /**
+     * Set camera mode.
+     */
+    public void setCameraMode(CameraMode mode) {
+        if (this.cameraMode != mode) {
+            logger.info("Switching camera mode from {} to {}", this.cameraMode, mode);
+            
+            if (mode == CameraMode.FIRST_PERSON && this.cameraMode == CameraMode.ARCBALL) {
+                // Transition from arc-ball to first-person
+                fpTargetPosition.set(cameraPosition);
+                fpTargetYaw = azimuth;
+                fpTargetPitch = elevation;
+            } else if (mode == CameraMode.ARCBALL && this.cameraMode == CameraMode.FIRST_PERSON) {
+                // Transition from first-person to arc-ball
+                target.set(0, 0, 0); // Reset target to origin
+                
+                // Calculate distance from current position to target
+                Vector3f directionToTarget = new Vector3f(target).sub(fpPosition);
+                targetDistance = directionToTarget.length();
+                
+                // Calculate angles
+                targetAzimuth = fpYaw;
+                targetElevation = fpPitch;
+            }
+            
+            this.cameraMode = mode;
+        }
+    }
+    
+    /**
+     * Toggle between camera modes.
+     */
+    public void toggleCameraMode() {
+        setCameraMode(cameraMode == CameraMode.ARCBALL ? CameraMode.FIRST_PERSON : CameraMode.ARCBALL);
+    }
+    
+    // ========== Settings ==========
+    
+    /**
+     * Set movement speed for first-person mode.
+     */
+    public void setMoveSpeed(float speed) {
+        this.moveSpeed = Math.max(0.1f, Math.min(20.0f, speed));
+    }
+    
+    /**
+     * Get movement speed.
+     */
+    public float getMoveSpeed() {
+        return moveSpeed;
+    }
+    
+    /**
+     * Set mouse sensitivity.
+     */
+    public void setMouseSensitivity(float sensitivity) {
+        this.mouseSensitivity = Math.max(0.1f, Math.min(5.0f, sensitivity));
+    }
+    
+    /**
+     * Get mouse sensitivity.
+     */
+    public float getMouseSensitivity() {
+        return mouseSensitivity;
+    }
+    
     // Private helper methods
     private void updateCameraPosition() {
-        float azimuthRad = (float) Math.toRadians(azimuth);
-        float elevationRad = (float) Math.toRadians(elevation);
-        
-        float cosElevation = (float) Math.cos(elevationRad);
-        cameraPosition.x = target.x + distance * cosElevation * (float) Math.sin(azimuthRad);
-        cameraPosition.y = target.y + distance * (float) Math.sin(elevationRad);
-        cameraPosition.z = target.z + distance * cosElevation * (float) Math.cos(azimuthRad);
+        if (cameraMode == CameraMode.ARCBALL) {
+            // Arc-ball camera position calculation
+            float azimuthRad = (float) Math.toRadians(azimuth);
+            float elevationRad = (float) Math.toRadians(elevation);
+            
+            float cosElevation = (float) Math.cos(elevationRad);
+            cameraPosition.x = target.x + distance * cosElevation * (float) Math.sin(azimuthRad);
+            cameraPosition.y = target.y + distance * (float) Math.sin(elevationRad);
+            cameraPosition.z = target.z + distance * cosElevation * (float) Math.cos(azimuthRad);
+            
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            // First-person camera position is directly set
+            cameraPosition.set(fpPosition);
+        }
     }
     
     private void updateViewMatrix() {
-        viewMatrix.identity().lookAt(cameraPosition, target, up);
+        if (cameraMode == CameraMode.ARCBALL) {
+            viewMatrix.identity().lookAt(cameraPosition, target, up);
+        } else if (cameraMode == CameraMode.FIRST_PERSON) {
+            Vector3f lookTarget = new Vector3f(cameraPosition).add(getCameraDirection());
+            viewMatrix.identity().lookAt(cameraPosition, lookTarget, up);
+        }
     }
     
     private float lerp(float a, float b, float t) {

@@ -261,9 +261,10 @@ public class EntityRenderer {
     }
     
     private void createCowModel() {
-        ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow"));
+        // Use the baked model with pre-applied transformations
+        ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow_baked"));
         
-        String[] partNames = {"body", "head", "leg1", "leg2", "leg3", "leg4", "horn1", "horn2", "udder", "tail"};
+        String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
         
         for (int i = 0; i < parts.length; i++) {
             ModelDefinition.ModelPart part = parts[i];
@@ -403,9 +404,9 @@ public class EntityRenderer {
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
         
-        // Entity position represents feet level, so offset upward by half height for rendering
+        // Entity position is now correctly positioned due to baked transformations in JSON
         Vector3f renderPosition = new Vector3f(entity.getPosition());
-        renderPosition.y += entity.getHeight() / 2.0f;
+        // Removed Y-offset: renderPosition.y += entity.getHeight() / 2.0f;
         
         // Base transformation matrix for the entire entity
         Matrix4f baseMatrix = new Matrix4f()
@@ -464,14 +465,14 @@ public class EntityRenderer {
             }
         }
         
-        // Get animated cow model parts from JSON model system
-        ModelDefinition.ModelPart[] animatedParts = ModelLoader.getAnimatedParts("standard_cow", currentAnimation, animationTime);
+        // Get animated cow model parts from JSON model system (using baked coordinates)
+        ModelDefinition.ModelPart[] animatedParts = ModelLoader.getAnimatedParts("standard_cow_baked", currentAnimation, animationTime);
         
-        String[] partNames = {"body", "head", "leg1", "leg2", "leg3", "leg4", "horn1", "horn2", "udder", "tail"};
+        String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
         Map<String, Integer> cowVaoMap = vaoMaps.get(EntityType.COW);
         Map<String, Integer> cowVertexCountMap = vertexCountMaps.get(EntityType.COW);
         
-        // Render each part of the cow
+        // Render each part of the cow  
         for (int i = 0; i < animatedParts.length && i < partNames.length; i++) {
             ModelDefinition.ModelPart part = animatedParts[i];
             String partName = partNames[i];
@@ -578,9 +579,9 @@ public class EntityRenderer {
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
         
-        // Entity position represents feet level, so offset upward by half height for rendering
+        // Entity position is now correctly positioned due to baked transformations in JSON
         Vector3f renderPosition = new Vector3f(entity.getPosition());
-        renderPosition.y += entity.getHeight() / 2.0f;
+        // Removed Y-offset: renderPosition.y += entity.getHeight() / 2.0f;
         
         Matrix4f modelMatrix = new Matrix4f()
             .translate(renderPosition)

@@ -3,7 +3,7 @@ package com.openmason.integration;
 import com.openmason.texture.TextureManager;
 import com.openmason.model.ModelManager;
 import com.openmason.coordinates.CoordinateSystemValidator;
-import javafx.concurrent.Task;
+// Removed JavaFX Task dependency - using standard CompletableFuture
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

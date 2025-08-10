@@ -1,8 +1,7 @@
 package com.openmason.texture;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
-import javafx.application.Platform;
-import javafx.beans.property.*;
+// JavaFX imports removed - using atomic properties
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,7 +9,9 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Optimized Viewport Texture Manager for 3D Viewport Integration - Phase 5
@@ -42,11 +43,11 @@ public class OptimizedViewportTextureManager {
     private final TextureObjectPool objectPool;
     private final ViewportTextureCache viewportCache;
     
-    // UI Integration
-    private final BooleanProperty textureLoadingInProgress = new SimpleBooleanProperty(false);
-    private final StringProperty currentLoadingVariant = new SimpleStringProperty("");
-    private final IntegerProperty loadingProgress = new SimpleIntegerProperty(0);
-    private final StringProperty loadingStatus = new SimpleStringProperty("Ready");
+    // UI Integration - converted to atomic properties
+    private final AtomicBoolean textureLoadingInProgress = new AtomicBoolean(false);
+    private final AtomicReference<String> currentLoadingVariant = new AtomicReference<>("");
+    private final AtomicInteger loadingProgress = new AtomicInteger(0);
+    private final AtomicReference<String> loadingStatus = new AtomicReference<>("Ready");
     
     // Performance monitoring
     private final AtomicLong textureSwitchCount = new AtomicLong(0);
@@ -165,8 +166,7 @@ public class OptimizedViewportTextureManager {
         this.objectPool = new TextureObjectPool();
         this.viewportCache = new ViewportTextureCache();
         
-        // Set up UI property listeners
-        setupUIPropertyListeners();
+        // Note: UI property listeners removed during JavaFX cleanup
         
         logger.info("Optimized Viewport Texture Manager initialized");
     }
@@ -182,31 +182,25 @@ public class OptimizedViewportTextureManager {
         return resourceManager.initializeAsync(new UnifiedTextureResourceManager.ResourceCallback() {
             @Override
             public void onSuccess(UnifiedTextureResourceManager.TextureResourceInfo resource) {
-                Platform.runLater(() -> {
-                    textureLoadingInProgress.set(false);
-                    loadingStatus.set("Ready");
-                    loadingProgress.set(100);
-                });
+                textureLoadingInProgress.set(false);
+                loadingStatus.set("Ready");
+                loadingProgress.set(100);
                 initialized.set(true);
             }
             
             @Override
             public void onError(String variantName, Throwable error) {
-                Platform.runLater(() -> {
-                    textureLoadingInProgress.set(false);
-                    loadingStatus.set("Error: " + error.getMessage());
-                    loadingProgress.set(0);
-                });
+                textureLoadingInProgress.set(false);
+                loadingStatus.set("Error: " + error.getMessage());
+                loadingProgress.set(0);
                 logger.error("Failed to initialize viewport texture manager", error);
             }
             
             @Override
             public void onProgress(String operation, int current, int total, String details) {
-                Platform.runLater(() -> {
-                    textureLoadingInProgress.set(true);
-                    loadingProgress.set((int) ((double) current / total * 100));
-                    loadingStatus.set(details);
-                });
+                textureLoadingInProgress.set(true);
+                loadingProgress.set((int) ((double) current / total * 100));
+                loadingStatus.set(details);
             }
         });
     }
@@ -240,7 +234,7 @@ public class OptimizedViewportTextureManager {
             
             // Update viewport if connected
             if (connectedViewport != null) {
-                Platform.runLater(() -> connectedViewport.setCurrentTextureVariant(variantName));
+                connectedViewport.setCurrentTextureVariant(variantName);
             }
             
             return CompletableFuture.completedFuture(cachedInfo);
@@ -254,7 +248,7 @@ public class OptimizedViewportTextureManager {
                 
                 // Update viewport if connected
                 if (connectedViewport != null) {
-                    Platform.runLater(() -> connectedViewport.setCurrentTextureVariant(variantName));
+                    connectedViewport.setCurrentTextureVariant(variantName);
                 }
                 
                 return viewportInfo;
@@ -283,11 +277,9 @@ public class OptimizedViewportTextureManager {
         
         activeLoads.add(variantName);
         
-        Platform.runLater(() -> {
-            textureLoadingInProgress.set(true);
-            currentLoadingVariant.set(variantName);
-            loadingStatus.set("Loading texture: " + variantName);
-        });
+        textureLoadingInProgress.set(true);
+        currentLoadingVariant.set(variantName);
+        loadingStatus.set("Loading texture: " + variantName);
         
         return resourceManager.getResourceAsync(
             variantName, 
@@ -295,27 +287,21 @@ public class OptimizedViewportTextureManager {
             new UnifiedTextureResourceManager.ResourceCallback() {
                 @Override
                 public void onSuccess(UnifiedTextureResourceManager.TextureResourceInfo resource) {
-                    Platform.runLater(() -> {
-                        loadingProgress.set(100);
-                        loadingStatus.set("Texture loaded: " + variantName);
-                    });
+                    loadingProgress.set(100);
+                    loadingStatus.set("Texture loaded: " + variantName);
                 }
                 
                 @Override
                 public void onError(String variantName, Throwable error) {
-                    Platform.runLater(() -> {
-                        textureLoadingInProgress.set(false);
-                        loadingStatus.set("Failed to load: " + variantName);
-                        loadingProgress.set(0);
-                    });
+                    textureLoadingInProgress.set(false);
+                    loadingStatus.set("Failed to load: " + variantName);
+                    loadingProgress.set(0);
                 }
                 
                 @Override
                 public void onProgress(String operation, int current, int total, String details) {
-                    Platform.runLater(() -> {
-                        loadingProgress.set((int) ((double) current / total * 100));
-                        loadingStatus.set(details);
-                    });
+                    loadingProgress.set((int) ((double) current / total * 100));
+                    loadingStatus.set(details);
                 }
             }
         ).thenApply(resourceInfo -> {
@@ -330,22 +316,18 @@ public class OptimizedViewportTextureManager {
             
             activeLoads.remove(variantName);
             
-            Platform.runLater(() -> {
-                textureLoadingInProgress.set(false);
-                currentLoadingVariant.set("");
-                loadingStatus.set("Ready");
-                loadingProgress.set(100);
-            });
+            textureLoadingInProgress.set(false);
+            currentLoadingVariant.set("");
+            loadingStatus.set("Ready");
+            loadingProgress.set(100);
             
             return viewportInfo;
         }).exceptionally(throwable -> {
             activeLoads.remove(variantName);
             
-            Platform.runLater(() -> {
-                textureLoadingInProgress.set(false);
-                loadingStatus.set("Error loading: " + variantName);
-                loadingProgress.set(0);
-            });
+            textureLoadingInProgress.set(false);
+            loadingStatus.set("Error loading: " + variantName);
+            loadingProgress.set(0);
             
             logger.error("Failed to load texture for viewport: {}", variantName, throwable);
             return null;
@@ -473,14 +455,8 @@ public class OptimizedViewportTextureManager {
     
     // Helper methods
     
-    private void setupUIPropertyListeners() {
-        // Listen for loading state changes to update connected viewport
-        textureLoadingInProgress.addListener((obs, oldVal, newVal) -> {
-            if (connectedViewport != null) {
-                // Could update viewport loading indicator
-            }
-        });
-    }
+    // Note: UI property listeners removed during JavaFX cleanup
+    // Consider implementing observer pattern if needed for viewport updates
     
     private void setupViewportOptimizations() {
         if (connectedViewport == null) return;
@@ -507,18 +483,14 @@ public class OptimizedViewportTextureManager {
         return count > 0 ? (double) totalSwitchTime.get() / count : 0;
     }
     
-    // JavaFX Property accessors for UI binding
+    // Property accessors for UI integration (JavaFX removed)
     
-    public BooleanProperty textureLoadingInProgressProperty() { return textureLoadingInProgress; }
     public boolean isTextureLoadingInProgress() { return textureLoadingInProgress.get(); }
     
-    public StringProperty currentLoadingVariantProperty() { return currentLoadingVariant; }
     public String getCurrentLoadingVariant() { return currentLoadingVariant.get(); }
     
-    public IntegerProperty loadingProgressProperty() { return loadingProgress; }
     public int getLoadingProgress() { return loadingProgress.get(); }
     
-    public StringProperty loadingStatusProperty() { return loadingStatus; }
     public String getLoadingStatus() { return loadingStatus.get(); }
     
     /**

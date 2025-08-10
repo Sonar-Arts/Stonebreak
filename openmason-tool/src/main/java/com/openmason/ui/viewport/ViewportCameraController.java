@@ -123,10 +123,7 @@ public class ViewportCameraController {
         
         viewMatrix.set(camera.getViewMatrix());
         
-        // Update JavaFX camera position if scene manager is available
-        if (sceneManager != null) {
-            sceneManager.updateCameraFromMatrix(viewMatrix);
-        }
+        // Camera matrices are managed internally by the scene manager
         
         logger.trace("View matrix updated from camera state");
     }

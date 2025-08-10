@@ -4,6 +4,7 @@ import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;
 import com.stonebreak.textures.CowTextureDefinition;
 import com.stonebreak.textures.CowTextureLoader;
+import com.openmason.model.ModelManager;
 
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,27 @@ public class StonebreakModel {
         this.modelDefinition = modelDefinition;
         this.textureDefinition = textureDefinition;
         this.variantName = variantName;
+    }
+    
+    /**
+     * Constructor for ModelManager integration (with default texture).
+     */
+    public StonebreakModel(ModelManager.ModelInfo modelInfo, ModelDefinition.ModelPart[] parts) {
+        this.modelDefinition = modelInfo.getModelDefinition();
+        this.textureDefinition = getDefaultTextureVariant();
+        this.variantName = "default";
+    }
+    
+    /**
+     * Get default texture variant for models without specific texture.
+     */
+    private static CowTextureDefinition.CowVariant getDefaultTextureVariant() {
+        try {
+            return CowTextureLoader.getCowVariant("default");
+        } catch (Exception e) {
+            System.err.println("[StonebreakModel] Warning: Could not load default texture variant: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

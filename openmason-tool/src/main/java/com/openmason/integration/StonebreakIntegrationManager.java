@@ -3,8 +3,7 @@ package com.openmason.integration;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.texture.TextureManager;
 import com.openmason.model.ModelManager;
-import javafx.application.Platform;
-import javafx.concurrent.Task;
+// JavaFX imports removed - using standard Java concurrency
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -155,10 +154,8 @@ public class StonebreakIntegrationManager {
                 integrationActive.set(true);
                 
                 // Update viewport integration status (method not implemented yet)
-                Platform.runLater(() -> {
-                    // viewport.setStonebreakIntegrationActive(true);
-                    logger.debug("Stonebreak integration started - viewport update pending");
-                });
+                // viewport.setStonebreakIntegrationActive(true);
+                logger.debug("Stonebreak integration started - viewport update pending");
                 
                 // Notify listeners
                 notifyIntegrationListeners(IntegrationEventType.STARTED, status);
@@ -206,10 +203,8 @@ public class StonebreakIntegrationManager {
                 integrationActive.set(false);
                 
                 // Update viewport integration status (method not implemented yet)
-                Platform.runLater(() -> {
-                    // viewport.setStonebreakIntegrationActive(false);
-                    logger.debug("Stonebreak integration stopped - viewport update pending");
-                });
+                // viewport.setStonebreakIntegrationActive(false);
+                logger.debug("Stonebreak integration stopped - viewport update pending");
                 
                 // Notify listeners
                 notifyIntegrationListeners(IntegrationEventType.STOPPED, status);

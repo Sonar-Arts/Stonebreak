@@ -1,21 +1,21 @@
 package com.openmason.ui;
 
-import com.openmason.ui.docking.DockingSystem;
-import com.openmason.ui.docking.DockablePanel;
-import com.openmason.ui.help.HelpSystem;
-import com.openmason.ui.help.ContextHelpProvider;
-import com.openmason.ui.shortcuts.KeyboardShortcutSystem;
+import com.openmason.ui.docking.DockingSystemImGui;
+import com.openmason.ui.help.ImGuiHelpBrowser;
 import com.openmason.ui.themes.ThemeManager;
-import javafx.scene.Scene;
-import javafx.scene.Node;
-import javafx.stage.Stage;
+import imgui.ImGui;
+import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
- * Advanced UI Manager for integrating all Phase 8 UI enhancement systems
- * with the existing OpenMason architecture. Provides centralized management
- * and seamless integration of advanced UI features.
+ * Advanced ImGui UI Manager for integrating all UI enhancement systems
+ * with the OpenMason ImGui architecture. Provides centralized management
+ * and seamless integration of ImGui-based UI features.
+ * Converted from JavaFX to Dear ImGui architecture.
  */
 public class AdvancedUIManager {
     
@@ -24,27 +24,32 @@ public class AdvancedUIManager {
     // Singleton instance
     private static AdvancedUIManager instance;
     
-    // Core systems
-    private final KeyboardShortcutSystem shortcutSystem;
-    private final DockingSystem dockingSystem;
+    // Core ImGui systems
+    private final DockingSystemImGui dockingSystem;
     private final ThemeManager themeManager;
-    private final HelpSystem helpSystem;
-    private final ContextHelpProvider contextHelpProvider;
+    private final ImGuiHelpBrowser helpBrowser;
     
     // Integration state
-    private MainController mainController;
-    private Stage primaryStage;
-    private Scene primaryScene;
+    private ImGuiManager imguiManager;
+    private MainImGuiInterface mainInterface;
     private boolean initialized = false;
     
+    // UI state
+    private final Map<String, Boolean> panelVisibility = new HashMap<>();
+    private final Map<String, Runnable> shortcutActions = new HashMap<>();
+    
     private AdvancedUIManager() {
-        this.shortcutSystem = KeyboardShortcutSystem.getInstance();
-        this.dockingSystem = new DockingSystem();
+        this.dockingSystem = new DockingSystemImGui();
         this.themeManager = ThemeManager.getInstance();
-        this.helpSystem = HelpSystem.getInstance();
-        this.contextHelpProvider = new ContextHelpProvider();
+        this.helpBrowser = new ImGuiHelpBrowser(new com.openmason.ui.help.HelpSystem());
         
-        logger.info("Advanced UI Manager created");
+        // Initialize panel visibility states
+        initializePanelStates();
+        
+        // Initialize shortcut actions
+        initializeShortcutActions();
+        
+        logger.info("Advanced ImGui UI Manager created");
     }
     
     public static synchronized AdvancedUIManager getInstance() {
@@ -55,22 +60,18 @@ public class AdvancedUIManager {
     }
     
     /**
-     * Initialize the advanced UI systems with the main application components
+     * Initialize the advanced ImGui UI systems with the main application components
      */
-    public void initialize(MainController mainController, Stage primaryStage, Scene primaryScene) {
+    public void initialize(ImGuiManager imguiManager, MainImGuiInterface mainInterface) {
         if (initialized) {
             logger.warn("Advanced UI Manager already initialized");
             return;
         }
         
-        this.mainController = mainController;
-        this.primaryStage = primaryStage;
-        this.primaryScene = primaryScene;
+        this.imguiManager = imguiManager;
+        this.mainInterface = mainInterface;
         
         try {
-            // Initialize keyboard shortcuts
-            initializeKeyboardShortcuts();
-            
             // Initialize docking system
             initializeDockingSystem();
             
@@ -80,14 +81,11 @@ public class AdvancedUIManager {
             // Initialize help system
             initializeHelpSystem();
             
-            // Initialize context help
-            initializeContextHelp();
-            
             // Connect systems together
             connectSystems();
             
             initialized = true;
-            logger.info("Advanced UI Manager initialized successfully");
+            logger.info("Advanced ImGui UI Manager initialized successfully");
             
         } catch (Exception e) {
             logger.error("Failed to initialize Advanced UI Manager", e);
@@ -96,290 +94,234 @@ public class AdvancedUIManager {
     }
     
     /**
-     * Initialize keyboard shortcuts system
+     * Initialize panel states
      */
-    private void initializeKeyboardShortcuts() {
-        // Initialize with the primary scene
-        shortcutSystem.initialize(primaryScene);
-        
-        // Connect shortcut actions to MainController methods
-        connectShortcutActions();
-        
-        logger.info("Keyboard shortcuts system initialized");
+    private void initializePanelStates() {
+        panelVisibility.put("model-browser", true);
+        panelVisibility.put("property-panel", true);
+        panelVisibility.put("help-browser", false);
+        panelVisibility.put("performance-monitor", false);
+        panelVisibility.put("preferences", false);
     }
     
     /**
-     * Connect shortcut actions to MainController methods
+     * Initialize shortcut actions for ImGui interface
      */
-    private void connectShortcutActions() {
-        if (mainController == null) {
-            logger.warn("MainController not available for shortcut integration");
+    private void initializeShortcutActions() {
+        if (mainInterface == null) {
+            logger.debug("Main interface not available yet for shortcut integration");
             return;
         }
         
-        // File operations shortcuts
-        updateShortcutAction("file.new", () -> invokeMainControllerMethod("newModel"));
-        updateShortcutAction("file.open", () -> invokeMainControllerMethod("openModel"));
-        updateShortcutAction("file.save", () -> invokeMainControllerMethod("saveModel"));
-        updateShortcutAction("file.save_as", () -> invokeMainControllerMethod("saveModelAs"));
-        updateShortcutAction("file.export", () -> invokeMainControllerMethod("exportModel"));
+        // File operations
+        shortcutActions.put("Ctrl+N", this::newModel);
+        shortcutActions.put("Ctrl+O", this::openModel);
+        shortcutActions.put("Ctrl+S", this::saveModel);
+        shortcutActions.put("Ctrl+Shift+S", this::saveModelAs);
+        shortcutActions.put("Ctrl+E", this::exportModel);
         
-        // Edit operations shortcuts
-        updateShortcutAction("edit.undo", () -> invokeMainControllerMethod("undo"));
-        updateShortcutAction("edit.redo", () -> invokeMainControllerMethod("redo"));
-        updateShortcutAction("edit.preferences", () -> showPreferencesDialog());
-        
-        // View shortcuts
-        updateShortcutAction("view.reset", () -> invokeMainControllerMethod("resetView"));
-        updateShortcutAction("view.fit", () -> invokeMainControllerMethod("fitToView"));
-        updateShortcutAction("view.wireframe", () -> invokeMainControllerMethod("toggleWireframe"));
-        updateShortcutAction("view.grid", () -> invokeMainControllerMethod("toggleGrid"));
-        updateShortcutAction("view.axes", () -> invokeMainControllerMethod("toggleAxes"));
-        
-        // Texture variant shortcuts
-        updateShortcutAction("texture.variant1", () -> switchTextureVariant("default"));
-        updateShortcutAction("texture.variant2", () -> switchTextureVariant("angus"));
-        updateShortcutAction("texture.variant3", () -> switchTextureVariant("highland"));
-        updateShortcutAction("texture.variant4", () -> switchTextureVariant("jersey"));
-        
-        // Navigation shortcuts
-        updateShortcutAction("nav.zoom_in", () -> invokeMainControllerMethod("zoomIn"));
-        updateShortcutAction("nav.zoom_out", () -> invokeMainControllerMethod("zoomOut"));
+        // View operations
+        shortcutActions.put("Ctrl+R", this::resetView);
+        shortcutActions.put("Ctrl+F", this::fitToView);
+        shortcutActions.put("Ctrl+W", this::toggleWireframe);
+        shortcutActions.put("Ctrl+G", this::toggleGrid);
         
         // Panel toggles
-        updateShortcutAction("panel.model_browser", () -> invokeMainControllerMethod("toggleModelBrowser"));
-        updateShortcutAction("panel.properties", () -> invokeMainControllerMethod("togglePropertyPanel"));
-        updateShortcutAction("panel.status_bar", () -> invokeMainControllerMethod("toggleStatusBar"));
+        shortcutActions.put("Ctrl+1", () -> togglePanel("model-browser"));
+        shortcutActions.put("Ctrl+2", () -> togglePanel("property-panel"));
+        shortcutActions.put("F1", () -> togglePanel("help-browser"));
         
-        // Tools shortcuts
-        updateShortcutAction("tools.validate", () -> invokeMainControllerMethod("validateModel"));
-        updateShortcutAction("tools.generate_textures", () -> invokeMainControllerMethod("generateTextures"));
+        // Texture variants
+        shortcutActions.put("1", () -> switchTextureVariant("default"));
+        shortcutActions.put("2", () -> switchTextureVariant("angus"));
+        shortcutActions.put("3", () -> switchTextureVariant("highland"));
+        shortcutActions.put("4", () -> switchTextureVariant("jersey"));
         
-        logger.info("Connected {} shortcut actions to MainController", shortcutSystem.getAllShortcuts().size());
+        logger.info("Initialized {} shortcut actions", shortcutActions.size());
     }
     
     /**
-     * Update a shortcut action
+     * Handle keyboard input for shortcuts (called from ImGui render loop)
      */
-    private void updateShortcutAction(String shortcutId, Runnable action) {
-        var shortcuts = shortcutSystem.getAllShortcuts();
-        var shortcut = shortcuts.stream()
-                .filter(s -> s.getId().equals(shortcutId))
-                .findFirst()
-                .orElse(null);
-        
-        if (shortcut != null) {
-            // In a full implementation, this would update the shortcut's action
-            logger.debug("Updated shortcut action: {}", shortcutId);
-        }
-    }
-    
-    /**
-     * Invoke a method on the MainController via reflection
-     */
-    private void invokeMainControllerMethod(String methodName) {
-        if (mainController == null) {
-            logger.warn("MainController not available for method invocation: {}", methodName);
+    public void handleKeyboardInput() {
+        if (!initialized || imguiManager == null) {
             return;
         }
         
-        try {
-            var method = mainController.getClass().getDeclaredMethod(methodName);
-            method.setAccessible(true);
-            method.invoke(mainController);
-            logger.debug("Invoked MainController method: {}", methodName);
-        } catch (Exception e) {
-            logger.error("Failed to invoke MainController method: {}", methodName, e);
+        // Check for shortcut combinations
+        for (Map.Entry<String, Runnable> entry : shortcutActions.entrySet()) {
+            if (isShortcutPressed(entry.getKey())) {
+                entry.getValue().run();
+                break; // Only handle one shortcut per frame
+            }
         }
     }
     
     /**
-     * Switch texture variant via MainController
+     * Check if a keyboard shortcut is pressed
+     * Note: Simplified implementation - ImGuiKey constants not available in this version
+     */
+    private boolean isShortcutPressed(String shortcut) {
+        // TODO: Implement keyboard shortcut detection when ImGui key constants are available
+        return false;
+    }
+    
+    // Action methods for shortcuts
+    private void newModel() {
+        if (mainInterface != null) {
+            mainInterface.createNewModel();
+        }
+    }
+    
+    private void openModel() {
+        if (mainInterface != null) {
+            mainInterface.openModel();
+        }
+    }
+    
+    private void saveModel() {
+        if (mainInterface != null) {
+            mainInterface.saveModel();
+        }
+    }
+    
+    private void saveModelAs() {
+        if (mainInterface != null) {
+            mainInterface.saveModelAs();
+        }
+    }
+    
+    private void exportModel() {
+        if (mainInterface != null) {
+            mainInterface.exportModel();
+        }
+    }
+    
+    private void resetView() {
+        if (mainInterface != null) {
+            mainInterface.resetView();
+        }
+    }
+    
+    private void fitToView() {
+        if (mainInterface != null) {
+            mainInterface.fitToView();
+        }
+    }
+    
+    private void toggleWireframe() {
+        if (mainInterface != null) {
+            mainInterface.toggleWireframe();
+        }
+    }
+    
+    private void toggleGrid() {
+        if (mainInterface != null) {
+            mainInterface.toggleGrid();
+        }
+    }
+    
+    /**
+     * Switch texture variant via MainInterface
      */
     private void switchTextureVariant(String variantName) {
-        if (mainController != null) {
-            mainController.switchToVariant(variantName);
+        if (mainInterface != null) {
+            mainInterface.switchToVariant(variantName);
         }
     }
     
     /**
-     * Initialize docking system
+     * Initialize ImGui docking system
      */
     private void initializeDockingSystem() {
-        // Create dockable panels for existing UI components
-        createDockablePanels();
+        // Initialize the docking system
+        dockingSystem.initialize();
         
-        // Set up docking system with main window
-        if (primaryScene != null) {
-            // In a full implementation, this would replace the existing layout
-            // with the docking system's root pane
-            logger.info("Docking system integration prepared");
-        }
+        // Set up default docking layout
+        setupDefaultDockingLayout();
         
-        logger.info("Docking system initialized");
+        logger.info("ImGui docking system initialized");
     }
     
     /**
-     * Create dockable panels for existing UI components
+     * Set up default ImGui docking layout
      */
-    private void createDockablePanels() {
-        // Model Browser Panel
-        DockablePanel modelBrowserPanel = new DockablePanel(
-            "model-browser", "Model Browser", "Navigation",
-            null // Content would be the actual model browser component
-        );
-        modelBrowserPanel.setDockPosition(DockablePanel.DockPosition.LEFT);
-        modelBrowserPanel.setPreferredWidth(300);
-        modelBrowserPanel.setMinWidth(200);
-        dockingSystem.addPanel(modelBrowserPanel);
-        
-        // Property Panel
-        DockablePanel propertyPanel = new DockablePanel(
-            "property-panel", "Properties", "Editing",
-            null // Content would be the actual property panel component
-        );
-        propertyPanel.setDockPosition(DockablePanel.DockPosition.RIGHT);
-        propertyPanel.setPreferredWidth(300);
-        propertyPanel.setMinWidth(200);
-        dockingSystem.addPanel(propertyPanel);
-        
-        // Performance Monitor Panel
-        DockablePanel performancePanel = new DockablePanel(
-            "performance-monitor", "Performance Monitor", "Tools",
-            null // Content would be the performance monitoring component
-        );
-        performancePanel.setDockPosition(DockablePanel.DockPosition.BOTTOM);
-        performancePanel.setPreferredHeight(200);
-        performancePanel.setMinHeight(100);
-        performancePanel.setVisible(false); // Hidden by default
-        dockingSystem.addPanel(performancePanel);
-        
-        logger.info("Created {} dockable panels", dockingSystem.getAllPanels().size());
+    private void setupDefaultDockingLayout() {
+        // This will be handled by the DockingSystemImGui during render
+        logger.info("Default docking layout prepared");
     }
     
     /**
-     * Initialize theme system
+     * Initialize ImGui theme system
      */
     private void initializeThemeSystem() {
-        // Register the primary scene
-        if (primaryScene != null) {
-            themeManager.registerScene(primaryScene);
-        }
-        
-        // Apply current theme
+        // Apply current ImGui theme
         if (themeManager.getCurrentTheme() != null) {
-            themeManager.applyTheme(themeManager.getCurrentTheme());
+            themeManager.applyImGuiTheme(themeManager.getCurrentTheme());
         }
         
-        logger.info("Theme system initialized");
+        logger.info("ImGui theme system initialized");
     }
     
     /**
-     * Initialize help system
+     * Initialize ImGui help system
      */
     private void initializeHelpSystem() {
-        // Help system is already initialized with content
-        logger.info("Help system initialized");
+        // ImGuiHelpBrowser is initialized in constructor
+        logger.info("ImGui help system initialized");
     }
     
     /**
-     * Initialize context help
+     * Render ImGui UI (called from main render loop)
      */
-    private void initializeContextHelp() {
-        // Register context help for main UI components
-        registerContextHelpForComponents();
-        
-        logger.info("Context help initialized");
-    }
-    
-    /**
-     * Register context help for main UI components
-     */
-    private void registerContextHelpForComponents() {
-        if (primaryScene == null) {
-            logger.warn("Primary scene not available for context help registration");
+    public void render() {
+        if (!initialized) {
             return;
         }
         
-        // This would register context help for specific UI components
-        // For now, we'll add the help content to the context help provider
+        // Handle keyboard shortcuts
+        handleKeyboardInput();
         
-        // Model Browser context help
-        contextHelpProvider.addContextHelp(helpSystem.getContextHelp("model-browser"));
+        // Render docking system
+        dockingSystem.render();
         
-        // Property Panel context help
-        contextHelpProvider.addContextHelp(helpSystem.getContextHelp("property-panel"));
+        // Render help browser if visible
+        if (panelVisibility.get("help-browser")) {
+            helpBrowser.render();
+        }
         
-        // Viewport context help
-        contextHelpProvider.addContextHelp(helpSystem.getContextHelp("viewport"));
-        
-        // Toolbar context help
-        contextHelpProvider.addContextHelp(helpSystem.getContextHelp("toolbar"));
-        
-        logger.info("Registered context help for main UI components");
+        // Handle other UI panels
+        renderPanels();
     }
     
     /**
-     * Connect all systems together for seamless integration
+     * Render UI panels
+     */
+    private void renderPanels() {
+        // This method will coordinate panel rendering with the docking system
+        logger.debug("Rendering UI panels");
+    }
+    
+    /**
+     * Connect all ImGui systems together for seamless integration
      */
     private void connectSystems() {
-        // Connect theme changes to update all systems
-        themeManager.addThemeChangeListener(new ThemeManager.ThemeChangeListener() {
-            @Override
-            public void onThemeChanged(ThemeManager.Theme oldTheme, ThemeManager.Theme newTheme) {
-                // Update docking system theme
-                // Update help system theme
-                logger.info("Applied theme change to all systems: {}", newTheme.getName());
-            }
-            
-            @Override
-            public void onDensityChanged(ThemeManager.UIDensity oldDensity, ThemeManager.UIDensity newDensity) {
-                // Update all systems for density change
-                logger.info("Applied density change to all systems: {}", newDensity.getDisplayName());
-            }
-            
-            @Override
-            public void onPreviewModeChanged(boolean previewMode) {
-                // Handle preview mode changes
-                logger.debug("Preview mode changed: {}", previewMode);
-            }
-        });
+        // Note: Theme change listening not available in current ThemeManager implementation
+        logger.debug("Theme change listener not available - themes applied directly");
         
-        // Connect shortcut changes to update help system
-        shortcutSystem.addChangeListener(new KeyboardShortcutSystem.ShortcutChangeListener() {
-            @Override
-            public void onShortcutChanged(String shortcutId, javafx.scene.input.KeyCombination oldKey, javafx.scene.input.KeyCombination newKey) {
-                // Update help system with new shortcuts
-                logger.debug("Shortcut changed: {} -> {}", shortcutId, newKey);
-            }
-            
-            @Override
-            public void onPresetChanged(KeyboardShortcutSystem.ShortcutPreset oldPreset, KeyboardShortcutSystem.ShortcutPreset newPreset) {
-                // Update help system with new preset
-                logger.info("Shortcut preset changed: {}", newPreset.getDisplayName());
-            }
-            
-            @Override
-            public void onConflictDetected(java.util.List<KeyboardShortcutSystem.ShortcutConflict> conflicts) {
-                // Show conflict notification
-                logger.warn("Shortcut conflicts detected: {}", conflicts.size());
-            }
-        });
-        
-        logger.info("Connected all advanced UI systems");
+        logger.info("Connected all ImGui advanced UI systems");
     }
     
     /**
-     * Show advanced preferences dialog
+     * Show advanced preferences
      */
-    public void showPreferencesDialog() {
+    public void showPreferences() {
         try {
-            // Create and show advanced preferences dialog
-            AdvancedPreferencesDialog dialog = new AdvancedPreferencesDialog(primaryStage);
-            dialog.showAndWait();
+            panelVisibility.put("preferences", true);
+            logger.info("Showing ImGui preferences panel");
             
         } catch (Exception e) {
-            logger.error("Failed to show preferences dialog", e);
+            logger.error("Failed to show preferences", e);
         }
     }
     
@@ -388,9 +330,8 @@ public class AdvancedUIManager {
      */
     public void showShortcutEditor() {
         try {
-            com.openmason.ui.shortcuts.ShortcutEditorDialog dialog = 
-                new com.openmason.ui.shortcuts.ShortcutEditorDialog(primaryStage);
-            dialog.showAndWait();
+            panelVisibility.put("shortcut-editor", true);
+            logger.info("Showing ImGui shortcut editor");
             
         } catch (Exception e) {
             logger.error("Failed to show shortcut editor", e);
@@ -398,13 +339,12 @@ public class AdvancedUIManager {
     }
     
     /**
-     * Show theme customization dialog
+     * Show theme customization
      */
     public void showThemeCustomization() {
         try {
-            com.openmason.ui.themes.ThemeCustomizationDialog dialog = 
-                new com.openmason.ui.themes.ThemeCustomizationDialog(primaryStage);
-            dialog.showAndWait();
+            panelVisibility.put("theme-customization", true);
+            logger.info("Showing ImGui theme customization");
             
         } catch (Exception e) {
             logger.error("Failed to show theme customization", e);
@@ -412,37 +352,42 @@ public class AdvancedUIManager {
     }
     
     /**
-     * Show help browser
+     * Show ImGui help browser
      */
     public void showHelp() {
-        helpSystem.showHelp();
+        panelVisibility.put("help-browser", true);
+        helpBrowser.show();
     }
     
     /**
      * Show help for specific topic
      */
     public void showHelp(String topicId) {
-        helpSystem.showHelp(topicId);
+        panelVisibility.put("help-browser", true);
+        // Get the actual HelpTopic from the help system
+        com.openmason.ui.help.HelpSystem.HelpTopic topic = new com.openmason.ui.help.HelpSystem().getTopic(topicId);
+        helpBrowser.showTopic(topic);
     }
     
     /**
      * Start getting started tutorial
      */
     public void startGettingStartedTutorial() {
-        helpSystem.startTutorial("getting-started-tutorial");
+        panelVisibility.put("help-browser", true);
+        helpBrowser.startTutorial("getting-started");
     }
     
     /**
      * Toggle panel visibility
      */
     public void togglePanel(String panelId) {
-        DockablePanel panel = dockingSystem.findPanel(panelId);
-        if (panel != null) {
-            if (panel.isVisible()) {
-                panel.hide();
-            } else {
-                panel.show();
-            }
+        Boolean currentState = panelVisibility.get(panelId);
+        if (currentState != null) {
+            panelVisibility.put(panelId, !currentState);
+            logger.debug("Toggled panel {}: {}", panelId, !currentState);
+        } else {
+            panelVisibility.put(panelId, true);
+            logger.debug("Created and showed panel: {}", panelId);
         }
     }
     
@@ -451,14 +396,13 @@ public class AdvancedUIManager {
      */
     public String getSystemStatistics() {
         StringBuilder stats = new StringBuilder();
-        stats.append("Advanced UI Manager Statistics:\n");
+        stats.append("ImGui Advanced UI Manager Statistics:\n");
         stats.append("- Initialized: ").append(initialized).append("\n");
-        stats.append("- ").append(dockingSystem.getStatistics()).append("\n");
-        stats.append("- Shortcuts: ").append(shortcutSystem.getAllShortcuts().size()).append(" registered\n");
+        stats.append("- Docking System: ").append(dockingSystem.isEnabled()).append("\n");
+        stats.append("- Shortcut Actions: ").append(shortcutActions.size()).append(" registered\n");
         stats.append("- Themes: ").append(themeManager.getAvailableThemes().size()).append(" available\n");
-        stats.append("- Help Topics: ").append(helpSystem.getAllTopics().size()).append(" topics\n");
-        stats.append("- Tutorials: ").append(helpSystem.getAllTutorials().size()).append(" tutorials\n");
-        stats.append("- ").append(contextHelpProvider.getStatistics()).append("\n");
+        stats.append("- Visible Panels: ").append(panelVisibility.values().stream().mapToInt(b -> b ? 1 : 0).sum()).append("/").append(panelVisibility.size()).append("\n");
+        stats.append("- Help Browser: ").append(helpBrowser.isInitialized()).append("\n");
         
         return stats.toString();
     }
@@ -471,32 +415,34 @@ public class AdvancedUIManager {
     }
     
     // Getters for individual systems
-    public KeyboardShortcutSystem getShortcutSystem() { return shortcutSystem; }
-    public DockingSystem getDockingSystem() { return dockingSystem; }
+    public DockingSystemImGui getDockingSystem() { return dockingSystem; }
     public ThemeManager getThemeManager() { return themeManager; }
-    public HelpSystem getHelpSystem() { return helpSystem; }
-    public ContextHelpProvider getContextHelpProvider() { return contextHelpProvider; }
+    public ImGuiHelpBrowser getHelpBrowser() { return helpBrowser; }
+    public Map<String, Boolean> getPanelVisibility() { return new HashMap<>(panelVisibility); }
+    public Map<String, Runnable> getShortcutActions() { return new HashMap<>(shortcutActions); }
     
     /**
-     * Dispose all advanced UI systems
+     * Dispose all ImGui advanced UI systems
      */
     public void dispose() {
         try {
-            if (contextHelpProvider != null) {
-                contextHelpProvider.dispose();
+            if (helpBrowser != null) {
+                helpBrowser.dispose();
             }
             
-            if (helpSystem != null) {
-                helpSystem.dispose();
+            if (dockingSystem != null) {
+                dockingSystem.dispose();
             }
             
-            // Other systems don't need explicit disposal in this implementation
+            // Clear state
+            panelVisibility.clear();
+            shortcutActions.clear();
             
             initialized = false;
-            logger.info("Advanced UI Manager disposed");
+            logger.info("ImGui Advanced UI Manager disposed");
             
         } catch (Exception e) {
-            logger.error("Error disposing Advanced UI Manager", e);
+            logger.error("Error disposing ImGui Advanced UI Manager", e);
         }
     }
 }

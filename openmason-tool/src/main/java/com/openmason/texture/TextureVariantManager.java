@@ -2,17 +2,16 @@ package com.openmason.texture;
 
 import com.stonebreak.textures.CowTextureDefinition;
 import com.stonebreak.textures.CowTextureLoader;
-import javafx.application.Platform;
-import javafx.beans.property.*;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
+// JavaFX imports removed - using standard Java collections and atomic properties
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -28,7 +27,7 @@ import java.util.stream.Collectors;
  * - UI-friendly methods for property panel integration
  * - Real-time variant switching with immediate feedback
  * - Batch texture loading and validation operations
- * - JavaFX property bindings for reactive UI updates
+ * - Standard Java properties for UI updates
  * - Performance monitoring and optimization
  * 
  * Architecture:
@@ -45,12 +44,12 @@ public class TextureVariantManager {
     private final Map<String, CachedVariantInfo> variantCache = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<CachedVariantInfo>> activeLoads = new ConcurrentHashMap<>();
     
-    // UI integration properties
-    private final ObservableList<String> availableVariants = FXCollections.observableArrayList();
-    private final StringProperty currentVariant = new SimpleStringProperty();
-    private final BooleanProperty loadingInProgress = new SimpleBooleanProperty(false);
-    private final StringProperty loadingStatus = new SimpleStringProperty("");
-    private final IntegerProperty loadingProgress = new SimpleIntegerProperty(0);
+    // UI integration properties - converted to atomic references
+    private final List<String> availableVariants = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicReference<String> currentVariant = new AtomicReference<>();
+    private final AtomicBoolean loadingInProgress = new AtomicBoolean(false);
+    private final AtomicReference<String> loadingStatus = new AtomicReference<>("");
+    private final AtomicInteger loadingProgress = new AtomicInteger(0);
     
     // Performance tracking
     private final AtomicLong cacheHits = new AtomicLong(0);
@@ -170,7 +169,7 @@ public class TextureVariantManager {
     public CompletableFuture<Void> initializeAsync(VariantCallback callback) {
         if (initialized.get()) {
             if (callback != null) {
-                Platform.runLater(() -> callback.onSuccess(null));
+                callback.onSuccess(null);
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -183,17 +182,15 @@ public class TextureVariantManager {
                 TextureManager.initializeAsync(new TextureManager.ProgressCallback() {
                     @Override
                     public void onProgress(String operation, int current, int total, String details) {
-                        if (callback != null && Platform.isFxApplicationThread()) {
+                        if (callback != null) {
                             callback.onProgress(operation, current, total, details);
-                        } else if (callback != null) {
-                            Platform.runLater(() -> callback.onProgress(operation, current, total, details));
                         }
                     }
                     
                     @Override
                     public void onError(String operation, Throwable error) {
                         if (callback != null) {
-                            Platform.runLater(() -> callback.onError("Initialize", error));
+                            callback.onError("Initialize", error);
                         }
                     }
                     
@@ -212,11 +209,9 @@ public class TextureVariantManager {
                 
                 initialized.set(true);
                 
-                Platform.runLater(() -> {
-                    loadingInProgress.set(false);
-                    loadingStatus.set("Ready");
-                    loadingProgress.set(100);
-                });
+                loadingInProgress.set(false);
+                loadingStatus.set("Ready");
+                loadingProgress.set(100);
                 
                 logger.info("TextureVariantManager initialization complete. Cached {} variants.", 
                     variantCache.size());
@@ -226,7 +221,7 @@ public class TextureVariantManager {
             } catch (Exception e) {
                 logger.error("TextureVariantManager initialization failed", e);
                 if (callback != null) {
-                    Platform.runLater(() -> callback.onError("initialization", e));
+                    callback.onError("initialization", e);
                 }
                 throw new RuntimeException("Failed to initialize TextureVariantManager", e);
             }
@@ -303,7 +298,7 @@ public class TextureVariantManager {
         if (cached != null && !cached.isExpired()) {
             cacheHits.incrementAndGet();
             if (callback != null) {
-                Platform.runLater(() -> callback.onSuccess(cached));
+                callback.onSuccess(cached);
             }
             return CompletableFuture.completedFuture(cached);
         }
@@ -319,8 +314,8 @@ public class TextureVariantManager {
         CompletableFuture<CachedVariantInfo> loadFuture = CompletableFuture.supplyAsync(() -> {
             try {
                 if (callback != null) {
-                    Platform.runLater(() -> callback.onProgress("loadVariant", 0, 100, 
-                        "Loading variant: " + variantName));
+                    callback.onProgress("loadVariant", 0, 100, 
+                        "Loading variant: " + variantName);
                 }
                 
                 // Use existing TextureManager to load variant info
@@ -332,8 +327,8 @@ public class TextureVariantManager {
                 }
                 
                 if (callback != null) {
-                    Platform.runLater(() -> callback.onProgress("loadVariant", 75, 100, 
-                        "Creating UI metadata"));
+                    callback.onProgress("loadVariant", 75, 100, 
+                        "Creating UI metadata");
                 }
                 
                 // Create UI-specific metadata
@@ -351,10 +346,8 @@ public class TextureVariantManager {
                 variantCache.put(variantName, cachedInfo);
                 
                 if (callback != null) {
-                    Platform.runLater(() -> {
-                        callback.onProgress("loadVariant", 100, 100, "Variant loaded successfully");
-                        callback.onSuccess(cachedInfo);
-                    });
+                    callback.onProgress("loadVariant", 100, 100, "Variant loaded successfully");
+                    callback.onSuccess(cachedInfo);
                 }
                 
                 logger.debug("Successfully loaded and cached variant: {}", cachedInfo);
@@ -363,7 +356,7 @@ public class TextureVariantManager {
             } catch (Exception e) {
                 logger.error("Failed to load variant '{}'", variantName, e);
                 if (callback != null) {
-                    Platform.runLater(() -> callback.onError(variantName, e));
+                    callback.onError(variantName, e);
                 }
                 throw new RuntimeException("Failed to load variant: " + variantName, e);
             }
@@ -392,11 +385,9 @@ public class TextureVariantManager {
             return CompletableFuture.completedFuture(Map.of());
         }
         
-        Platform.runLater(() -> {
-            loadingInProgress.set(true);
-            loadingProgress.set(0);
-            loadingStatus.set("Loading " + variantNames.size() + " variants...");
-        });
+        loadingInProgress.set(true);
+        loadingProgress.set(0);
+        loadingStatus.set("Loading " + variantNames.size() + " variants...");
         
         // Filter variants that need loading
         List<String> toLoad = variantNames.stream()
@@ -408,11 +399,9 @@ public class TextureVariantManager {
             Map<String, CachedVariantInfo> result = variantNames.stream()
                 .collect(Collectors.toMap(name -> name, variantCache::get));
             
-            Platform.runLater(() -> {
-                loadingInProgress.set(false);
-                loadingStatus.set("All variants cached");
-                loadingProgress.set(100);
-            });
+            loadingInProgress.set(false);
+            loadingStatus.set("All variants cached");
+            loadingProgress.set(100);
             
             return CompletableFuture.completedFuture(result);
         }
@@ -435,15 +424,13 @@ public class TextureVariantManager {
                 long currentCompleted = completed.incrementAndGet();
                 int progress = (int) ((currentCompleted * 100) / total);
                 
-                Platform.runLater(() -> {
-                    loadingProgress.set(progress);
-                    loadingStatus.set("Loaded " + currentCompleted + "/" + total + " variants");
-                    
-                    if (callback != null) {
-                        callback.onProgress("loadMultipleVariants", (int) currentCompleted, total, 
-                            "Loaded: " + variantName);
-                    }
-                });
+                loadingProgress.set(progress);
+                loadingStatus.set("Loaded " + currentCompleted + "/" + total + " variants");
+                
+                if (callback != null) {
+                    callback.onProgress("loadMultipleVariants", (int) currentCompleted, total, 
+                        "Loaded: " + variantName);
+                }
             });
         }
         
@@ -462,15 +449,13 @@ public class TextureVariantManager {
                 }
             }
             
-            Platform.runLater(() -> {
-                loadingInProgress.set(false);
-                loadingStatus.set("Loaded " + results.size() + " variants");
-                loadingProgress.set(100);
-                
-                if (callback != null) {
-                    callback.onSuccess(null); // Signal completion
-                }
-            });
+            loadingInProgress.set(false);
+            loadingStatus.set("Loaded " + results.size() + " variants");
+            loadingProgress.set(100);
+            
+            if (callback != null) {
+                callback.onSuccess(null); // Signal completion
+            }
             
             logger.info("Batch loading complete. {} variants now cached.", results.size());
             return results;
@@ -493,7 +478,7 @@ public class TextureVariantManager {
         
         CachedVariantInfo variant = getVariant(variantName);
         if (variant != null && variant.isValid()) {
-            Platform.runLater(() -> currentVariant.set(variantName));
+            currentVariant.set(variantName);
             
             long switchTime = System.currentTimeMillis() - startTime;
             logger.debug("Switched to variant '{}' in {}ms", variantName, switchTime);
@@ -591,10 +576,8 @@ public class TextureVariantManager {
     
     private void initializeAvailableVariants() {
         String[] variants = CowTextureLoader.getAvailableVariants();
-        Platform.runLater(() -> {
-            availableVariants.clear();
-            availableVariants.addAll(Arrays.asList(variants));
-        });
+        availableVariants.clear();
+        availableVariants.addAll(Arrays.asList(variants));
     }
     
     private Map<String, String> createUIMetadata(TextureManager.TextureVariantInfo backendInfo) {
@@ -618,38 +601,22 @@ public class TextureVariantManager {
         return metadata;
     }
     
-    // JavaFX Property Accessors for UI Binding
+    // Property Accessors for UI Integration (JavaFX removed)
     
-    public ObservableList<String> getAvailableVariants() {
-        return availableVariants;
-    }
-    
-    public StringProperty currentVariantProperty() {
-        return currentVariant;
+    public List<String> getAvailableVariants() {
+        return new ArrayList<>(availableVariants);
     }
     
     public String getCurrentVariant() {
         return currentVariant.get();
     }
     
-    public BooleanProperty loadingInProgressProperty() {
-        return loadingInProgress;
-    }
-    
     public boolean isLoadingInProgress() {
         return loadingInProgress.get();
     }
     
-    public StringProperty loadingStatusProperty() {
-        return loadingStatus;
-    }
-    
     public String getLoadingStatus() {
         return loadingStatus.get();
-    }
-    
-    public IntegerProperty loadingProgressProperty() {
-        return loadingProgress;
     }
     
     public int getLoadingProgress() {

@@ -1,22 +1,203 @@
 package com.openmason.ui.viewport;
 
-import javafx.beans.property.*;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 
 /**
- * JavaFX properties for UI integration with OpenMason3DViewport.
- * Provides observable properties that can be bound to UI controls for seamless
- * integration with the viewport's model rendering and camera systems.
+ * Properties for UI integration with OpenMason3DViewport.
+ * Provides properties that can be used for integration with the viewport's
+ * model rendering and camera systems.
  */
 public class ViewportControlProperties {
+
+    /**
+     * Simple property classes to replace JavaFX properties.
+     */
+    static class StringProperty {
+        private String value;
+        public StringProperty(String initial) { this.value = initial; }
+        public String get() { return value; }
+        public void set(String value) { this.value = value; }
+    }
+
+    static class BooleanProperty {
+        private boolean value;
+        public BooleanProperty(boolean initial) { this.value = initial; }
+        public boolean get() { return value; }
+        public void set(boolean value) { this.value = value; }
+    }
+
+    static class DoubleProperty {
+        private double value;
+        public DoubleProperty(double initial) { this.value = initial; }
+        public double get() { return value; }
+        public void set(double value) { this.value = value; }
+    }
+
+    static class IntegerProperty {
+        private int value;
+        public IntegerProperty(int initial) { this.value = initial; }
+        public int get() { return value; }
+        public void set(int value) { this.value = value; }
+    }
+
+    static class LongProperty {
+        private long value;
+        public LongProperty(long initial) { this.value = initial; }
+        public long get() { return value; }
+        public void set(long value) { this.value = value; }
+    }
+
+    static class ReadOnlyDoubleWrapper {
+        private double value;
+        private ReadOnlyDoubleProperty readOnlyProperty;
+        
+        public ReadOnlyDoubleWrapper(double initial) { 
+            this.value = initial; 
+            this.readOnlyProperty = new ReadOnlyDoubleProperty(initial);
+        }
+        
+        public double get() { return value; }
+        
+        public void set(double value) { 
+            this.value = value; 
+            this.readOnlyProperty = new ReadOnlyDoubleProperty(value);
+        }
+        
+        public ReadOnlyDoubleProperty getReadOnlyProperty() { 
+            return readOnlyProperty; 
+        }
+    }
+
+    static class ReadOnlyIntegerWrapper {
+        private int value;
+        private ReadOnlyIntegerProperty readOnlyProperty;
+        
+        public ReadOnlyIntegerWrapper(int initial) { 
+            this.value = initial; 
+            this.readOnlyProperty = new ReadOnlyIntegerProperty(initial);
+        }
+        
+        public int get() { return value; }
+        
+        public void set(int value) { 
+            this.value = value; 
+            this.readOnlyProperty = new ReadOnlyIntegerProperty(value);
+        }
+        
+        public ReadOnlyIntegerProperty getReadOnlyProperty() { 
+            return readOnlyProperty; 
+        }
+    }
+
+    static class ReadOnlyLongWrapper {
+        private long value;
+        private ReadOnlyLongProperty readOnlyProperty;
+        
+        public ReadOnlyLongWrapper(long initial) { 
+            this.value = initial; 
+            this.readOnlyProperty = new ReadOnlyLongProperty(initial);
+        }
+        
+        public long get() { return value; }
+        
+        public void set(long value) { 
+            this.value = value; 
+            this.readOnlyProperty = new ReadOnlyLongProperty(value);
+        }
+        
+        public ReadOnlyLongProperty getReadOnlyProperty() { 
+            return readOnlyProperty; 
+        }
+    }
+
+    static class ReadOnlyBooleanWrapper {
+        private boolean value;
+        private ReadOnlyBooleanProperty readOnlyProperty;
+        
+        public ReadOnlyBooleanWrapper(boolean initial) { 
+            this.value = initial; 
+            this.readOnlyProperty = new ReadOnlyBooleanProperty(initial);
+        }
+        
+        public boolean get() { return value; }
+        
+        public void set(boolean value) { 
+            this.value = value; 
+            this.readOnlyProperty = new ReadOnlyBooleanProperty(value);
+        }
+        
+        public ReadOnlyBooleanProperty getReadOnlyProperty() { 
+            return readOnlyProperty; 
+        }
+    }
+
+    static class ReadOnlyStringWrapper {
+        private String value;
+        private ReadOnlyStringProperty readOnlyProperty;
+        
+        public ReadOnlyStringWrapper(String initial) { 
+            this.value = initial; 
+            this.readOnlyProperty = new ReadOnlyStringProperty(initial);
+        }
+        
+        public String get() { return value; }
+        
+        public void set(String value) { 
+            this.value = value; 
+            this.readOnlyProperty = new ReadOnlyStringProperty(value);
+        }
+        
+        public ReadOnlyStringProperty getReadOnlyProperty() { 
+            return readOnlyProperty; 
+        }
+    }
+
+    static class ReadOnlyDoubleProperty {
+        private double value;
+        public ReadOnlyDoubleProperty(double initial) { this.value = initial; }
+        public double get() { return value; }
+    }
+
+    static class ReadOnlyIntegerProperty {
+        private int value;
+        public ReadOnlyIntegerProperty(int initial) { this.value = initial; }
+        public int get() { return value; }
+    }
+
+    static class ReadOnlyLongProperty {
+        private long value;
+        public ReadOnlyLongProperty(long initial) { this.value = initial; }
+        public long get() { return value; }
+    }
+
+    static class ReadOnlyBooleanProperty {
+        private boolean value;
+        public ReadOnlyBooleanProperty(boolean initial) { this.value = initial; }
+        public boolean get() { return value; }
+    }
+
+    static class ReadOnlyStringProperty {
+        private String value;
+        public ReadOnlyStringProperty(String initial) { this.value = initial; }
+        public String get() { return value; }
+    }
+
+    static class ObservableList<T> extends java.util.ArrayList<T> {
+        public ObservableList(java.util.Collection<? extends T> items) { super(items); }
+    }
+
+    static class FXCollections {
+        @SafeVarargs
+        public static <T> ObservableList<T> observableArrayList(T... items) {
+            return new ObservableList<>(java.util.Arrays.asList(items));
+        }
+    }
     
     // Model loading and texture properties
-    private final StringProperty currentModelName = new SimpleStringProperty("standard_cow");
-    private final StringProperty currentTextureVariant = new SimpleStringProperty("default");
-    private final BooleanProperty modelLoadingInProgress = new SimpleBooleanProperty(false);
-    private final StringProperty modelLoadingStatus = new SimpleStringProperty("Ready");
-    private final DoubleProperty modelLoadingProgress = new SimpleDoubleProperty(0.0);
+    private final StringProperty currentModelName = new StringProperty("standard_cow");
+    private final StringProperty currentTextureVariant = new StringProperty("default");
+    private final BooleanProperty modelLoadingInProgress = new BooleanProperty(false);
+    private final StringProperty modelLoadingStatus = new StringProperty("Ready");
+    private final DoubleProperty modelLoadingProgress = new DoubleProperty(0.0);
     
     // Texture variant options
     private final ObservableList<String> availableTextureVariants = FXCollections.observableArrayList(
@@ -24,23 +205,23 @@ public class ViewportControlProperties {
     );
     
     // Rendering mode properties
-    private final BooleanProperty wireframeMode = new SimpleBooleanProperty(false);
-    private final BooleanProperty gridVisible = new SimpleBooleanProperty(true);
-    private final BooleanProperty axesVisible = new SimpleBooleanProperty(true);
-    private final BooleanProperty lightingEnabled = new SimpleBooleanProperty(true);
+    private final BooleanProperty wireframeMode = new BooleanProperty(false);
+    private final BooleanProperty gridVisible = new BooleanProperty(true);
+    private final BooleanProperty axesVisible = new BooleanProperty(true);
+    private final BooleanProperty lightingEnabled = new BooleanProperty(true);
     
     // Camera control properties
-    private final BooleanProperty cameraControlsEnabled = new SimpleBooleanProperty(true);
-    private final StringProperty cameraMode = new SimpleStringProperty("arcball");
-    private final DoubleProperty cameraDistance = new SimpleDoubleProperty(5.0);
-    private final DoubleProperty cameraPitch = new SimpleDoubleProperty(20.0);
-    private final DoubleProperty cameraYaw = new SimpleDoubleProperty(45.0);
+    private final BooleanProperty cameraControlsEnabled = new BooleanProperty(true);
+    private final StringProperty cameraMode = new StringProperty("arcball");
+    private final DoubleProperty cameraDistance = new DoubleProperty(5.0);
+    private final DoubleProperty cameraPitch = new DoubleProperty(20.0);
+    private final DoubleProperty cameraYaw = new DoubleProperty(45.0);
     
     // Performance properties
-    private final BooleanProperty performanceOverlayEnabled = new SimpleBooleanProperty(false);
-    private final BooleanProperty adaptiveQualityEnabled = new SimpleBooleanProperty(true);
-    private final IntegerProperty msaaLevel = new SimpleIntegerProperty(2);
-    private final DoubleProperty renderScale = new SimpleDoubleProperty(1.0);
+    private final BooleanProperty performanceOverlayEnabled = new BooleanProperty(false);
+    private final BooleanProperty adaptiveQualityEnabled = new BooleanProperty(true);
+    private final IntegerProperty msaaLevel = new IntegerProperty(2);
+    private final DoubleProperty renderScale = new DoubleProperty(1.0);
     
     // Statistics properties (read-only)
     private final ReadOnlyDoubleWrapper currentFPS = new ReadOnlyDoubleWrapper(0.0);
@@ -55,9 +236,9 @@ public class ViewportControlProperties {
     private final ReadOnlyBooleanWrapper modelPrepared = new ReadOnlyBooleanWrapper(false);
     
     // Error handling properties
-    private final StringProperty lastErrorMessage = new SimpleStringProperty("");
-    private final LongProperty errorCount = new SimpleLongProperty(0);
-    private final BooleanProperty hasErrors = new SimpleBooleanProperty(false);
+    private final StringProperty lastErrorMessage = new StringProperty("");
+    private final LongProperty errorCount = new LongProperty(0);
+    private final BooleanProperty hasErrors = new BooleanProperty(false);
     
     // === PROPERTY ACCESSORS ===
     

@@ -3,11 +3,7 @@ package com.openmason.integration;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.texture.TextureManager;
 
-import javafx.application.Platform;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleStringProperty;
+// JavaFX imports removed - using standard Java properties
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,8 +54,8 @@ public class HotReloadManager {
     // Hot-reload state
     private final AtomicBoolean hotReloadEnabled = new AtomicBoolean(false);
     private final AtomicBoolean monitoring = new AtomicBoolean(false);
-    private final BooleanProperty autoReloadEnabled = new SimpleBooleanProperty(true);
-    private final StringProperty monitoredDirectory = new SimpleStringProperty("");
+    private final AtomicBoolean autoReloadEnabled = new AtomicBoolean(true);
+    private volatile String monitoredDirectory = "";
     
     // Change detection and debouncing
     private final Map<Path, Long> lastModified = new ConcurrentHashMap<>();
@@ -191,13 +187,12 @@ public class HotReloadManager {
                 startMonitoring();
                 
                 hotReloadEnabled.set(true);
-                monitoredDirectory.set(textureDirectory.toString());
+                monitoredDirectory = textureDirectory.toString();
                 
-                Platform.runLater(() -> {
-                    logger.info("Hot-reload monitoring enabled successfully");
-                    notifyReloadListeners(new HotReloadEvent("", textureDirectory, "MONITORING_ENABLED", 
-                                                           true, null, 0));
-                });
+                // Execute UI update directly (removed JavaFX Platform dependency)
+                logger.info("Hot-reload monitoring enabled successfully");
+                notifyReloadListeners(new HotReloadEvent("", textureDirectory, "MONITORING_ENABLED", 
+                                                       true, null, 0));
                 
             } catch (Exception e) {
                 logger.error("Failed to enable hot-reload monitoring", e);
@@ -236,12 +231,11 @@ public class HotReloadManager {
         lastModified.clear();
         
         // Clear state
-        monitoredDirectory.set("");
+        monitoredDirectory = "";
         
-        Platform.runLater(() -> {
-            notifyReloadListeners(new HotReloadEvent("", Paths.get(""), "MONITORING_DISABLED", 
-                                                   true, null, 0));
-        });
+        // Execute UI update directly (removed JavaFX Platform dependency)
+        notifyReloadListeners(new HotReloadEvent("", Paths.get(""), "MONITORING_DISABLED", 
+                                               true, null, 0));
         
         logger.info("Hot-reload monitoring disabled");
     }
@@ -426,10 +420,9 @@ public class HotReloadManager {
         String fileName = filePath.getFileName().toString();
         String variantName = fileName.replace(".json", "").replace("_cow", "");
         
-        Platform.runLater(() -> {
-            notifyReloadListeners(new HotReloadEvent(fileName, filePath, "FILE_DELETED", 
-                                                   true, null, 0));
-        });
+        // Execute UI update directly (removed JavaFX Platform dependency)
+        notifyReloadListeners(new HotReloadEvent(fileName, filePath, "FILE_DELETED", 
+                                               true, null, 0));
     }
     
     /**
@@ -461,23 +454,22 @@ public class HotReloadManager {
                     // Update viewport if this variant is currently active
                     String currentVariant = viewport.getCurrentTextureVariant();
                     if (variantName.equals(currentVariant)) {
-                        Platform.runLater(() -> {
-                            // Restore viewport state
-                            restoreViewportState(viewportState);
-                            
-                            // Reload current model with updated textures
-                            String currentModel = viewport.getCurrentModelName();
-                            if (currentModel != null && !currentModel.isEmpty()) {
-                                viewport.loadModel(currentModel);
-                            }
-                            
-                            // Update live preview if active
-                            if (livePreviewManager.isPreviewActive() && 
-                                variantName.equals(livePreviewManager.getCurrentPreviewVariant())) {
-                                // Reset preview to pick up changes
-                                livePreviewManager.resetPreviewChanges();
-                            }
-                        });
+                        // Execute UI update directly (removed JavaFX Platform dependency)
+                        // Restore viewport state
+                        restoreViewportState(viewportState);
+                        
+                        // Reload current model with updated textures
+                        String currentModel = viewport.getCurrentModelName();
+                        if (currentModel != null && !currentModel.isEmpty()) {
+                            viewport.loadModel(currentModel);
+                        }
+                        
+                        // Update live preview if active
+                        if (livePreviewManager.isPreviewActive() && 
+                            variantName.equals(livePreviewManager.getCurrentPreviewVariant())) {
+                            // Reset preview to pick up changes
+                            livePreviewManager.resetPreviewChanges();
+                        }
                     }
                     
                     // Update statistics
@@ -487,14 +479,13 @@ public class HotReloadManager {
                     successfulReloads.incrementAndGet();
                     
                     // Update reload history
-                    ReloadHistory history = reloadHistory.computeIfAbsent(fileName, ReloadHistory::new);
+                    ReloadHistory history = reloadHistory.computeIfAbsent(fileName, k -> new ReloadHistory(k));
                     history.addReload(duration, true);
                     
-                    Platform.runLater(() -> {
-                        logger.info("Hot-reload completed successfully for {} in {}ms", fileName, duration);
-                        notifyReloadListeners(new HotReloadEvent(fileName, filePath, changeType, 
-                                                               true, null, duration));
-                    });
+                    // Execute UI update directly (removed JavaFX Platform dependency)
+                    logger.info("Hot-reload completed successfully for {} in {}ms", fileName, duration);
+                    notifyReloadListeners(new HotReloadEvent(fileName, filePath, changeType, 
+                                                           true, null, duration));
                 })
                 .exceptionally(throwable -> {
                     // Handle reload failure
@@ -503,14 +494,13 @@ public class HotReloadManager {
                     failedReloads.incrementAndGet();
                     
                     // Update reload history
-                    ReloadHistory history = reloadHistory.computeIfAbsent(fileName, ReloadHistory::new);
+                    ReloadHistory history = reloadHistory.computeIfAbsent(fileName, k -> new ReloadHistory(k));
                     history.addReload(duration, false);
                     
-                    Platform.runLater(() -> {
-                        logger.error("Hot-reload failed for {} after {}ms", fileName, duration, throwable);
-                        notifyReloadListeners(new HotReloadEvent(fileName, filePath, changeType, 
-                                                               false, throwable.getMessage(), duration));
-                    });
+                    // Execute UI update directly (removed JavaFX Platform dependency)
+                    logger.error("Hot-reload failed for {} after {}ms", fileName, duration, throwable);
+                    notifyReloadListeners(new HotReloadEvent(fileName, filePath, changeType, 
+                                                           false, throwable.getMessage(), duration));
                     
                     return null;
                 });
@@ -520,11 +510,10 @@ public class HotReloadManager {
             totalReloads.incrementAndGet();
             failedReloads.incrementAndGet();
             
-            Platform.runLater(() -> {
-                logger.error("Hot-reload failed for {}", fileName, e);
-                notifyReloadListeners(new HotReloadEvent(fileName, filePath, changeType, 
-                                                       false, e.getMessage(), duration));
-            });
+            // Execute UI update directly (removed JavaFX Platform dependency)
+            logger.error("Hot-reload failed for {}", fileName, e);
+            notifyReloadListeners(new HotReloadEvent(fileName, filePath, changeType, 
+                                                   false, e.getMessage(), duration));
         } finally {
             // Remove from pending reloads
             pendingReloads.remove(filePath);
@@ -637,7 +626,7 @@ public class HotReloadManager {
         Map<String, Object> stats = new ConcurrentHashMap<>();
         stats.put("hotReloadEnabled", hotReloadEnabled.get());
         stats.put("monitoring", monitoring.get());
-        stats.put("monitoredDirectory", monitoredDirectory.get());
+        stats.put("monitoredDirectory", monitoredDirectory);
         stats.put("totalReloads", totalReloads.get());
         stats.put("successfulReloads", successfulReloads.get());
         stats.put("failedReloads", failedReloads.get());
@@ -660,12 +649,12 @@ public class HotReloadManager {
     public boolean isHotReloadEnabled() { return hotReloadEnabled.get(); }
     public boolean isMonitoring() { return monitoring.get(); }
     
-    public BooleanProperty autoReloadEnabledProperty() { return autoReloadEnabled; }
+    // Property methods updated to remove JavaFX dependencies
     public boolean isAutoReloadEnabled() { return autoReloadEnabled.get(); }
     public void setAutoReloadEnabled(boolean enabled) { autoReloadEnabled.set(enabled); }
     
-    public StringProperty monitoredDirectoryProperty() { return monitoredDirectory; }
-    public String getMonitoredDirectory() { return monitoredDirectory.get(); }
+    public String getMonitoredDirectory() { return monitoredDirectory; }
+    public void setMonitoredDirectory(String directory) { this.monitoredDirectory = directory; }
     
     /**
      * Disposes of the HotReloadManager and cleans up resources.

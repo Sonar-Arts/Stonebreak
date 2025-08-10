@@ -227,9 +227,9 @@ public class ModelRenderer implements AutoCloseable {
         // Update texture variants if needed
         updateTextureVariants(model, textureVariant);
         
-        // Render each model part
+        // Render each model part with its transformation data
         for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
-            renderModelPart(bodyPart.getName());
+            renderModelPart(bodyPart.getName(), bodyPart);
         }
         
         totalRenderCalls++;
@@ -237,11 +237,21 @@ public class ModelRenderer implements AutoCloseable {
     }
     
     /**
-     * Renders a single model part by name.
+     * Renders a single model part by name with its transformations applied.
      * 
      * @param partName The name of the part to render
      */
     public void renderModelPart(String partName) {
+        renderModelPart(partName, null);
+    }
+    
+    /**
+     * Renders a single model part by name with its transformations applied.
+     * 
+     * @param partName The name of the part to render
+     * @param bodyPart The body part definition containing transformation data (optional)
+     */
+    public void renderModelPart(String partName, StonebreakModel.BodyPart bodyPart) {
         // Validate OpenGL context before rendering individual parts
         if (contextValidationEnabled) {
             List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
@@ -268,6 +278,7 @@ public class ModelRenderer implements AutoCloseable {
                 }
             }
             
+            // Render the VAO (transformations are already baked into vertices during preparation)
             vao.renderTriangles();
         } else {
             System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");

@@ -68,9 +68,13 @@ public class ModelLoader {
         return t;
     });
     
+    // Debug flag to show coordinates only once for first cow loaded
+    private static boolean firstCowCoordinatesShown = false;
+    
     // Paths to model definition JSON files
     private static final Map<String, String> MODEL_FILE_PATHS = Map.of(
-        "standard_cow", "models/cow/standard_cow.json"
+        "standard_cow", "models/cow/standard_cow.json",
+        "standard_cow_baked", "models/cow/standard_cow_baked.json"
         // Future cow variants can be added here
     );
     
@@ -118,6 +122,9 @@ public class ModelLoader {
             // Load and validate model
             CowModelDefinition model = loadModelInternal(modelName);
             validateModelStrict(model, modelName);
+            
+            // Show debug coordinates for first cow model loaded
+            showFirstCowCoordinatesDebug(model, modelName);
             
             // Cache and return
             cachedModels.put(modelName, model);
@@ -194,6 +201,9 @@ public class ModelLoader {
                     }
                     
                     validateModelStrict(model, finalModelName);
+                    
+                    // Show debug coordinates for first cow model loaded
+                    showFirstCowCoordinatesDebug(model, finalModelName);
                     
                     // Cache and return
                     cachedModels.put(finalModelName, model);
@@ -746,6 +756,87 @@ public class ModelLoader {
             return status;
         } finally {
             cacheLock.readLock().unlock();
+        }
+    }
+    
+    /**
+     * Shows debug coordinates for cow model parts only once when first cow is loaded.
+     */
+    private static void showFirstCowCoordinatesDebug(CowModelDefinition model, String modelName) {
+        if (!firstCowCoordinatesShown && modelName.contains("cow")) {
+            firstCowCoordinatesShown = true;
+            
+            System.out.println("=====================================");
+            System.out.println("DEBUG: FIRST COW MODEL PART COORDINATES");
+            System.out.println("Model: " + model.getDisplayName() + " (" + modelName + ")");
+            if (modelName.contains("baked")) {
+                System.out.println("*** USING BAKED TRANSFORMATIONS - NO Y-OFFSET NEEDED ***");
+            }
+            System.out.println("=====================================");
+            
+            ModelParts parts = model.getParts();
+            
+            // Body
+            if (parts.getBody() != null) {
+                ModelPart body = parts.getBody();
+                System.out.println("BODY:");
+                System.out.println("  Position: x=" + body.getPosition().getX() + ", y=" + body.getPosition().getY() + ", z=" + body.getPosition().getZ());
+                System.out.println("  Size: x=" + body.getSize().getX() + ", y=" + body.getSize().getY() + ", z=" + body.getSize().getZ());
+                System.out.println("  Texture: " + body.getTexture());
+            }
+            
+            // Head
+            if (parts.getHead() != null) {
+                ModelPart head = parts.getHead();
+                System.out.println("HEAD:");
+                System.out.println("  Position: x=" + head.getPosition().getX() + ", y=" + head.getPosition().getY() + ", z=" + head.getPosition().getZ());
+                System.out.println("  Size: x=" + head.getSize().getX() + ", y=" + head.getSize().getY() + ", z=" + head.getSize().getZ());
+                System.out.println("  Texture: " + head.getTexture());
+            }
+            
+            // Legs
+            if (parts.getLegs() != null) {
+                for (int i = 0; i < parts.getLegs().size(); i++) {
+                    ModelPart leg = parts.getLegs().get(i);
+                    System.out.println("LEG " + (i + 1) + " (" + leg.getName().toUpperCase() + "):");
+                    System.out.println("  Position: x=" + leg.getPosition().getX() + ", y=" + leg.getPosition().getY() + ", z=" + leg.getPosition().getZ());
+                    System.out.println("  Size: x=" + leg.getSize().getX() + ", y=" + leg.getSize().getY() + ", z=" + leg.getSize().getZ());
+                    System.out.println("  Texture: " + leg.getTexture());
+                }
+            }
+            
+            // Horns
+            if (parts.getHorns() != null) {
+                for (int i = 0; i < parts.getHorns().size(); i++) {
+                    ModelPart horn = parts.getHorns().get(i);
+                    System.out.println("HORN " + (i + 1) + " (" + horn.getName().toUpperCase() + "):");
+                    System.out.println("  Position: x=" + horn.getPosition().getX() + ", y=" + horn.getPosition().getY() + ", z=" + horn.getPosition().getZ());
+                    System.out.println("  Size: x=" + horn.getSize().getX() + ", y=" + horn.getSize().getY() + ", z=" + horn.getSize().getZ());
+                    System.out.println("  Texture: " + horn.getTexture());
+                }
+            }
+            
+            // Udder
+            if (parts.getUdder() != null) {
+                ModelPart udder = parts.getUdder();
+                System.out.println("UDDER:");
+                System.out.println("  Position: x=" + udder.getPosition().getX() + ", y=" + udder.getPosition().getY() + ", z=" + udder.getPosition().getZ());
+                System.out.println("  Size: x=" + udder.getSize().getX() + ", y=" + udder.getSize().getY() + ", z=" + udder.getSize().getZ());
+                System.out.println("  Texture: " + udder.getTexture());
+            }
+            
+            // Tail
+            if (parts.getTail() != null) {
+                ModelPart tail = parts.getTail();
+                System.out.println("TAIL:");
+                System.out.println("  Position: x=" + tail.getPosition().getX() + ", y=" + tail.getPosition().getY() + ", z=" + tail.getPosition().getZ());
+                System.out.println("  Size: x=" + tail.getSize().getX() + ", y=" + tail.getSize().getY() + ", z=" + tail.getSize().getZ());
+                System.out.println("  Texture: " + tail.getTexture());
+            }
+            
+            System.out.println("=====================================");
+            System.out.println("DEBUG: First cow model coordinates displayed above");
+            System.out.println("=====================================");
         }
     }
     

@@ -1,24 +1,19 @@
 package com.openmason.ui.viewport;
 
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleStringProperty;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.HashMap;
 import java.util.function.Consumer;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Manages JavaFX properties and bindings for the 3D viewport.
+ * Manages properties and bindings for the 3D viewport (ImGui-compatible).
  * 
  * Responsible for:
- * - JavaFX property creation and management
+ * - Property creation and management without JavaFX dependencies
  * - Property change listeners and callbacks
- * - Property binding coordination
  * - Property validation and constraints
  * - Property state persistence and restoration
  */
@@ -26,29 +21,118 @@ public class ViewportPropertyManager {
     
     private static final Logger logger = LoggerFactory.getLogger(ViewportPropertyManager.class);
     
-    // Model and texture properties
-    private final StringProperty currentModelName = new SimpleStringProperty("");
-    private final StringProperty currentTextureVariant = new SimpleStringProperty("default");
+    // Property storage
+    private String currentModelName = "";
+    private String currentTextureVariant = "default";
     
     // Visualization properties
-    private final BooleanProperty wireframeMode = new SimpleBooleanProperty(false);
-    private final BooleanProperty gridVisible = new SimpleBooleanProperty(true);
-    private final BooleanProperty axesVisible = new SimpleBooleanProperty(true);
+    private boolean wireframeMode = false;
+    private boolean gridVisible = true;
+    private boolean axesVisible = true;
     
     // Debug properties
-    private final BooleanProperty debugMode = new SimpleBooleanProperty(false);
-    private final BooleanProperty coordinateAxesVisible = new SimpleBooleanProperty(false);
-    private final BooleanProperty partLabelsVisible = new SimpleBooleanProperty(false);
+    private boolean debugMode = false;
+    private boolean coordinateAxesVisible = false;
+    private boolean partLabelsVisible = false;
     
     // Performance properties
-    private final BooleanProperty performanceOverlayEnabled = new SimpleBooleanProperty(false);
-    private final BooleanProperty adaptiveQualityEnabled = new SimpleBooleanProperty(true);
+    private boolean performanceOverlayEnabled = false;
+    private boolean adaptiveQualityEnabled = true;
     
     // Camera properties
-    private final BooleanProperty cameraControlsEnabled = new SimpleBooleanProperty(true);
+    private boolean cameraControlsEnabled = true;
     
     // Property change callbacks
-    private final Map<String, Consumer<Object>> propertyCallbacks = new HashMap<>();
+    private final Map<String, CopyOnWriteArrayList<Consumer<Object>>> propertyCallbacks = new HashMap<>();
+    
+    /**
+     * Simple property wrapper for string values.
+     */
+    public static class StringProperty {
+        private String value;
+        private final CopyOnWriteArrayList<Consumer<String>> listeners = new CopyOnWriteArrayList<>();
+        
+        public StringProperty(String initialValue) {
+            this.value = initialValue;
+        }
+        
+        public String get() { return value; }
+        
+        public void set(String newValue) {
+            String oldValue = this.value;
+            this.value = newValue;
+            notifyListeners(oldValue, newValue);
+        }
+        
+        public void addListener(TriConsumer<Object, String, String> listener) {
+            listeners.add(newVal -> listener.accept(null, value, newVal));
+        }
+        
+        private void notifyListeners(String oldValue, String newValue) {
+            for (Consumer<String> listener : listeners) {
+                try {
+                    listener.accept(newValue);
+                } catch (Exception e) {
+                    // Log but don't fail
+                }
+            }
+        }
+    }
+    
+    /**
+     * Simple property wrapper for boolean values.
+     */
+    public static class BooleanProperty {
+        private boolean value;
+        private final CopyOnWriteArrayList<Consumer<Boolean>> listeners = new CopyOnWriteArrayList<>();
+        
+        public BooleanProperty(boolean initialValue) {
+            this.value = initialValue;
+        }
+        
+        public boolean get() { return value; }
+        
+        public void set(boolean newValue) {
+            boolean oldValue = this.value;
+            this.value = newValue;
+            notifyListeners(oldValue, newValue);
+        }
+        
+        public void addListener(TriConsumer<Object, Boolean, Boolean> listener) {
+            listeners.add(newVal -> listener.accept(null, value, newVal));
+        }
+        
+        private void notifyListeners(boolean oldValue, boolean newValue) {
+            for (Consumer<Boolean> listener : listeners) {
+                try {
+                    listener.accept(newValue);
+                } catch (Exception e) {
+                    // Log but don't fail
+                }
+            }
+        }
+    }
+    
+    /**
+     * Functional interface for triple argument consumers.
+     */
+    @FunctionalInterface
+    public interface TriConsumer<T, U, V> {
+        void accept(T t, U u, V v);
+    }
+    
+    // Property objects for compatibility
+    private final StringProperty currentModelNameProperty = new StringProperty("");
+    private final StringProperty currentTextureVariantProperty = new StringProperty("default");
+    private final BooleanProperty wireframeModeProperty = new BooleanProperty(false);
+    private final BooleanProperty gridVisibleProperty = new BooleanProperty(true);
+    private final BooleanProperty axesVisibleProperty = new BooleanProperty(true);
+    private final BooleanProperty debugModeProperty = new BooleanProperty(false);
+    private final BooleanProperty coordinateAxesVisibleProperty = new BooleanProperty(false);
+    private final BooleanProperty partLabelsVisibleProperty = new BooleanProperty(false);
+    private final BooleanProperty performanceOverlayEnabledProperty = new BooleanProperty(false);
+    private final BooleanProperty adaptiveQualityEnabledProperty = new BooleanProperty(true);
+    private final BooleanProperty cameraControlsEnabledProperty = new BooleanProperty(true);
     
     /**
      * Initialize property manager and set up listeners.
@@ -63,41 +147,41 @@ public class ViewportPropertyManager {
      */
     private void setupPropertyListeners() {
         // Model and texture properties
-        currentModelName.addListener((obs, oldVal, newVal) -> 
+        currentModelNameProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("currentModelName", oldVal, newVal));
             
-        currentTextureVariant.addListener((obs, oldVal, newVal) -> 
+        currentTextureVariantProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("currentTextureVariant", oldVal, newVal));
         
         // Visualization properties
-        wireframeMode.addListener((obs, oldVal, newVal) -> 
+        wireframeModeProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("wireframeMode", oldVal, newVal));
             
-        gridVisible.addListener((obs, oldVal, newVal) -> 
+        gridVisibleProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("gridVisible", oldVal, newVal));
             
-        axesVisible.addListener((obs, oldVal, newVal) -> 
+        axesVisibleProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("axesVisible", oldVal, newVal));
         
         // Debug properties
-        debugMode.addListener((obs, oldVal, newVal) -> 
+        debugModeProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("debugMode", oldVal, newVal));
             
-        coordinateAxesVisible.addListener((obs, oldVal, newVal) -> 
+        coordinateAxesVisibleProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("coordinateAxesVisible", oldVal, newVal));
             
-        partLabelsVisible.addListener((obs, oldVal, newVal) -> 
+        partLabelsVisibleProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("partLabelsVisible", oldVal, newVal));
         
         // Performance properties
-        performanceOverlayEnabled.addListener((obs, oldVal, newVal) -> 
+        performanceOverlayEnabledProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("performanceOverlayEnabled", oldVal, newVal));
             
-        adaptiveQualityEnabled.addListener((obs, oldVal, newVal) -> 
+        adaptiveQualityEnabledProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("adaptiveQualityEnabled", oldVal, newVal));
         
         // Camera properties
-        cameraControlsEnabled.addListener((obs, oldVal, newVal) -> 
+        cameraControlsEnabledProperty.addListener((obs, oldVal, newVal) -> 
             notifyPropertyChange("cameraControlsEnabled", oldVal, newVal));
         
         logger.debug("Property listeners configured");
@@ -107,14 +191,16 @@ public class ViewportPropertyManager {
      * Notify registered callbacks about property changes.
      */
     private void notifyPropertyChange(String propertyName, Object oldValue, Object newValue) {
-        Consumer<Object> callback = propertyCallbacks.get(propertyName);
-        if (callback != null) {
-            try {
-                callback.accept(newValue);
-                logger.trace("Property change notification: {}={} (was: {})", 
-                    propertyName, newValue, oldValue);
-            } catch (Exception e) {
-                logger.warn("Failed to notify property change for: " + propertyName, e);
+        CopyOnWriteArrayList<Consumer<Object>> callbacks = propertyCallbacks.get(propertyName);
+        if (callbacks != null) {
+            for (Consumer<Object> callback : callbacks) {
+                try {
+                    callback.accept(newValue);
+                    logger.trace("Property change notification: {}={} (was: {})", 
+                        propertyName, newValue, oldValue);
+                } catch (Exception e) {
+                    logger.warn("Failed to notify property change for: " + propertyName, e);
+                }
             }
         }
     }
@@ -124,7 +210,7 @@ public class ViewportPropertyManager {
      */
     public void registerPropertyCallback(String propertyName, Consumer<Object> callback) {
         if (propertyName != null && callback != null) {
-            propertyCallbacks.put(propertyName, callback);
+            propertyCallbacks.computeIfAbsent(propertyName, k -> new CopyOnWriteArrayList<>()).add(callback);
             logger.debug("Registered callback for property: {}", propertyName);
         }
     }
@@ -132,9 +218,15 @@ public class ViewportPropertyManager {
     /**
      * Unregister a property callback.
      */
-    public void unregisterPropertyCallback(String propertyName) {
-        propertyCallbacks.remove(propertyName);
-        logger.debug("Unregistered callback for property: {}", propertyName);
+    public void unregisterPropertyCallback(String propertyName, Consumer<Object> callback) {
+        CopyOnWriteArrayList<Consumer<Object>> callbacks = propertyCallbacks.get(propertyName);
+        if (callbacks != null) {
+            callbacks.remove(callback);
+            if (callbacks.isEmpty()) {
+                propertyCallbacks.remove(propertyName);
+            }
+            logger.debug("Unregistered callback for property: {}", propertyName);
+        }
     }
     
     /**
@@ -190,25 +282,25 @@ public class ViewportPropertyManager {
         Map<String, Object> state = new HashMap<>();
         
         // Model and texture properties
-        state.put("currentModelName", currentModelName.get());
-        state.put("currentTextureVariant", currentTextureVariant.get());
+        state.put("currentModelName", currentModelName);
+        state.put("currentTextureVariant", currentTextureVariant);
         
         // Visualization properties
-        state.put("wireframeMode", wireframeMode.get());
-        state.put("gridVisible", gridVisible.get());
-        state.put("axesVisible", axesVisible.get());
+        state.put("wireframeMode", wireframeMode);
+        state.put("gridVisible", gridVisible);
+        state.put("axesVisible", axesVisible);
         
         // Debug properties
-        state.put("debugMode", debugMode.get());
-        state.put("coordinateAxesVisible", coordinateAxesVisible.get());
-        state.put("partLabelsVisible", partLabelsVisible.get());
+        state.put("debugMode", debugMode);
+        state.put("coordinateAxesVisible", coordinateAxesVisible);
+        state.put("partLabelsVisible", partLabelsVisible);
         
         // Performance properties
-        state.put("performanceOverlayEnabled", performanceOverlayEnabled.get());
-        state.put("adaptiveQualityEnabled", adaptiveQualityEnabled.get());
+        state.put("performanceOverlayEnabled", performanceOverlayEnabled);
+        state.put("adaptiveQualityEnabled", adaptiveQualityEnabled);
         
         // Camera properties
-        state.put("cameraControlsEnabled", cameraControlsEnabled.get());
+        state.put("cameraControlsEnabled", cameraControlsEnabled);
         
         return state;
     }
@@ -224,55 +316,55 @@ public class ViewportPropertyManager {
             if (state.containsKey("currentModelName")) {
                 String modelName = (String) state.get("currentModelName");
                 if (validateProperty("currentModelName", modelName)) {
-                    currentModelName.set(modelName);
+                    setCurrentModelName(modelName);
                 }
             }
             
             if (state.containsKey("currentTextureVariant")) {
                 String variant = (String) state.get("currentTextureVariant");
                 if (validateProperty("currentTextureVariant", variant)) {
-                    currentTextureVariant.set(variant);
+                    setCurrentTextureVariant(variant);
                 }
             }
             
             // Visualization properties
             if (state.containsKey("wireframeMode")) {
-                wireframeMode.set((Boolean) state.get("wireframeMode"));
+                setWireframeMode((Boolean) state.get("wireframeMode"));
             }
             
             if (state.containsKey("gridVisible")) {
-                gridVisible.set((Boolean) state.get("gridVisible"));
+                setGridVisible((Boolean) state.get("gridVisible"));
             }
             
             if (state.containsKey("axesVisible")) {
-                axesVisible.set((Boolean) state.get("axesVisible"));
+                setAxesVisible((Boolean) state.get("axesVisible"));
             }
             
             // Debug properties
             if (state.containsKey("debugMode")) {
-                debugMode.set((Boolean) state.get("debugMode"));
+                setDebugMode((Boolean) state.get("debugMode"));
             }
             
             if (state.containsKey("coordinateAxesVisible")) {
-                coordinateAxesVisible.set((Boolean) state.get("coordinateAxesVisible"));
+                setCoordinateAxesVisible((Boolean) state.get("coordinateAxesVisible"));
             }
             
             if (state.containsKey("partLabelsVisible")) {
-                partLabelsVisible.set((Boolean) state.get("partLabelsVisible"));
+                setPartLabelsVisible((Boolean) state.get("partLabelsVisible"));
             }
             
             // Performance properties
             if (state.containsKey("performanceOverlayEnabled")) {
-                performanceOverlayEnabled.set((Boolean) state.get("performanceOverlayEnabled"));
+                setPerformanceOverlayEnabled((Boolean) state.get("performanceOverlayEnabled"));
             }
             
             if (state.containsKey("adaptiveQualityEnabled")) {
-                adaptiveQualityEnabled.set((Boolean) state.get("adaptiveQualityEnabled"));
+                setAdaptiveQualityEnabled((Boolean) state.get("adaptiveQualityEnabled"));
             }
             
             // Camera properties
             if (state.containsKey("cameraControlsEnabled")) {
-                cameraControlsEnabled.set((Boolean) state.get("cameraControlsEnabled"));
+                setCameraControlsEnabled((Boolean) state.get("cameraControlsEnabled"));
             }
             
             logger.debug("Property state restored from {} properties", state.size());
@@ -286,77 +378,106 @@ public class ViewportPropertyManager {
      * Reset all properties to their default values.
      */
     public void resetToDefaults() {
-        currentModelName.set("");
-        currentTextureVariant.set("default");
-        wireframeMode.set(false);
-        gridVisible.set(true);
-        axesVisible.set(true);
-        debugMode.set(false);
-        coordinateAxesVisible.set(false);
-        partLabelsVisible.set(false);
-        performanceOverlayEnabled.set(false);
-        adaptiveQualityEnabled.set(true);
-        cameraControlsEnabled.set(true);
+        setCurrentModelName("");
+        setCurrentTextureVariant("default");
+        setWireframeMode(false);
+        setGridVisible(true);
+        setAxesVisible(true);
+        setDebugMode(false);
+        setCoordinateAxesVisible(false);
+        setPartLabelsVisible(false);
+        setPerformanceOverlayEnabled(false);
+        setAdaptiveQualityEnabled(true);
+        setCameraControlsEnabled(true);
         
         logger.debug("All properties reset to default values");
     }
     
     // Model and Texture Properties
-    public StringProperty currentModelNameProperty() { return currentModelName; }
-    public String getCurrentModelName() { return currentModelName.get(); }
+    public StringProperty currentModelNameProperty() { return currentModelNameProperty; }
+    public String getCurrentModelName() { return currentModelName; }
     public void setCurrentModelName(String modelName) { 
         if (validateProperty("currentModelName", modelName)) {
-            currentModelName.set(modelName); 
+            this.currentModelName = modelName;
+            currentModelNameProperty.set(modelName);
         }
     }
     
-    public StringProperty currentTextureVariantProperty() { return currentTextureVariant; }
-    public String getCurrentTextureVariant() { return currentTextureVariant.get(); }
+    public StringProperty currentTextureVariantProperty() { return currentTextureVariantProperty; }
+    public String getCurrentTextureVariant() { return currentTextureVariant; }
     public void setCurrentTextureVariant(String variant) { 
         if (validateProperty("currentTextureVariant", variant)) {
-            currentTextureVariant.set(variant); 
+            this.currentTextureVariant = variant;
+            currentTextureVariantProperty.set(variant);
         }
     }
     
     // Visualization Properties
-    public BooleanProperty wireframeModeProperty() { return wireframeMode; }
-    public boolean isWireframeMode() { return wireframeMode.get(); }
-    public void setWireframeMode(boolean enabled) { wireframeMode.set(enabled); }
+    public BooleanProperty wireframeModeProperty() { return wireframeModeProperty; }
+    public boolean isWireframeMode() { return wireframeMode; }
+    public void setWireframeMode(boolean enabled) { 
+        this.wireframeMode = enabled;
+        wireframeModeProperty.set(enabled);
+    }
     
-    public BooleanProperty gridVisibleProperty() { return gridVisible; }
-    public boolean isGridVisible() { return gridVisible.get(); }
-    public void setGridVisible(boolean visible) { gridVisible.set(visible); }
+    public BooleanProperty gridVisibleProperty() { return gridVisibleProperty; }
+    public boolean isGridVisible() { return gridVisible; }
+    public void setGridVisible(boolean visible) { 
+        this.gridVisible = visible;
+        gridVisibleProperty.set(visible);
+    }
     
-    public BooleanProperty axesVisibleProperty() { return axesVisible; }
-    public boolean isAxesVisible() { return axesVisible.get(); }
-    public void setAxesVisible(boolean visible) { axesVisible.set(visible); }
+    public BooleanProperty axesVisibleProperty() { return axesVisibleProperty; }
+    public boolean isAxesVisible() { return axesVisible; }
+    public void setAxesVisible(boolean visible) { 
+        this.axesVisible = visible;
+        axesVisibleProperty.set(visible);
+    }
     
     // Debug Properties
-    public BooleanProperty debugModeProperty() { return debugMode; }
-    public boolean isDebugMode() { return debugMode.get(); }
-    public void setDebugMode(boolean enabled) { debugMode.set(enabled); }
+    public BooleanProperty debugModeProperty() { return debugModeProperty; }
+    public boolean isDebugMode() { return debugMode; }
+    public void setDebugMode(boolean enabled) { 
+        this.debugMode = enabled;
+        debugModeProperty.set(enabled);
+    }
     
-    public BooleanProperty coordinateAxesVisibleProperty() { return coordinateAxesVisible; }
-    public boolean isCoordinateAxesVisible() { return coordinateAxesVisible.get(); }
-    public void setCoordinateAxesVisible(boolean visible) { coordinateAxesVisible.set(visible); }
+    public BooleanProperty coordinateAxesVisibleProperty() { return coordinateAxesVisibleProperty; }
+    public boolean isCoordinateAxesVisible() { return coordinateAxesVisible; }
+    public void setCoordinateAxesVisible(boolean visible) { 
+        this.coordinateAxesVisible = visible;
+        coordinateAxesVisibleProperty.set(visible);
+    }
     
-    public BooleanProperty partLabelsVisibleProperty() { return partLabelsVisible; }
-    public boolean isPartLabelsVisible() { return partLabelsVisible.get(); }
-    public void setPartLabelsVisible(boolean visible) { partLabelsVisible.set(visible); }
+    public BooleanProperty partLabelsVisibleProperty() { return partLabelsVisibleProperty; }
+    public boolean isPartLabelsVisible() { return partLabelsVisible; }
+    public void setPartLabelsVisible(boolean visible) { 
+        this.partLabelsVisible = visible;
+        partLabelsVisibleProperty.set(visible);
+    }
     
     // Performance Properties
-    public BooleanProperty performanceOverlayEnabledProperty() { return performanceOverlayEnabled; }
-    public boolean isPerformanceOverlayEnabled() { return performanceOverlayEnabled.get(); }
-    public void setPerformanceOverlayEnabled(boolean enabled) { performanceOverlayEnabled.set(enabled); }
+    public BooleanProperty performanceOverlayEnabledProperty() { return performanceOverlayEnabledProperty; }
+    public boolean isPerformanceOverlayEnabled() { return performanceOverlayEnabled; }
+    public void setPerformanceOverlayEnabled(boolean enabled) { 
+        this.performanceOverlayEnabled = enabled;
+        performanceOverlayEnabledProperty.set(enabled);
+    }
     
-    public BooleanProperty adaptiveQualityEnabledProperty() { return adaptiveQualityEnabled; }
-    public boolean isAdaptiveQualityEnabled() { return adaptiveQualityEnabled.get(); }
-    public void setAdaptiveQualityEnabled(boolean enabled) { adaptiveQualityEnabled.set(enabled); }
+    public BooleanProperty adaptiveQualityEnabledProperty() { return adaptiveQualityEnabledProperty; }
+    public boolean isAdaptiveQualityEnabled() { return adaptiveQualityEnabled; }
+    public void setAdaptiveQualityEnabled(boolean enabled) { 
+        this.adaptiveQualityEnabled = enabled;
+        adaptiveQualityEnabledProperty.set(enabled);
+    }
     
     // Camera Properties
-    public BooleanProperty cameraControlsEnabledProperty() { return cameraControlsEnabled; }
-    public boolean areCameraControlsEnabled() { return cameraControlsEnabled.get(); }
-    public void setCameraControlsEnabled(boolean enabled) { cameraControlsEnabled.set(enabled); }
+    public BooleanProperty cameraControlsEnabledProperty() { return cameraControlsEnabledProperty; }
+    public boolean areCameraControlsEnabled() { return cameraControlsEnabled; }
+    public void setCameraControlsEnabled(boolean enabled) { 
+        this.cameraControlsEnabled = enabled;
+        cameraControlsEnabledProperty.set(enabled);
+    }
     
     /**
      * Get property manager state as a formatted string for debugging.

@@ -2,7 +2,6 @@ package com.openmason.ui.viewport;
 
 import com.openmason.model.StonebreakModel;
 import com.stonebreak.textures.CowTextureDefinition;
-import javafx.application.Platform;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,11 +39,10 @@ public class ModelManagementMethods {
                     textureVariant   // Variant name
                 );
                 
-                Platform.runLater(() -> {
-                    viewport.setCurrentModel(model);
-                    viewport.setCurrentTextureVariant(textureVariant);
-                    logger.info("Cow model loaded successfully: {}", textureVariant);
-                });
+                // Update viewport directly (no longer using JavaFX threading)
+                viewport.setCurrentModel(model);
+                viewport.setCurrentTextureVariant(textureVariant);
+                logger.info("Cow model loaded successfully: {}", textureVariant);
                 
                 return model;
                 

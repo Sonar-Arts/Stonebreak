@@ -1,7 +1,7 @@
 package com.openmason.export;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
-import com.openmason.camera.ArcBallCamera;
+import com.openmason.ui.viewport.Camera;
 import com.openmason.texture.TextureManager;
 import com.openmason.model.ModelManager;
 import org.slf4j.Logger;
@@ -299,7 +299,7 @@ public class BatchExportSystem {
             Thread.sleep(500);
             
             // Set camera angle
-            ArcBallCamera camera = viewport.getCamera();
+            Camera camera = viewport.getCamera();
             if (camera != null) {
                 camera.setOrientation(angle.getAzimuth(), angle.getElevation());
                 camera.setDistance(5.0f); // Standard viewing distance
@@ -391,7 +391,7 @@ public class BatchExportSystem {
     }
     
     private ViewportState saveViewportState() {
-        ArcBallCamera camera = viewport.getCamera();
+        Camera camera = viewport.getCamera();
         return new ViewportState(
             viewport.getCurrentModelName(),
             viewport.getCurrentTextureVariant(),
@@ -417,7 +417,7 @@ public class BatchExportSystem {
             viewport.setGridVisible(state.gridVisible);
             viewport.setAxesVisible(state.axesVisible);
             
-            ArcBallCamera camera = viewport.getCamera();
+            Camera camera = viewport.getCamera();
             if (camera != null) {
                 camera.setOrientation(state.cameraAzimuth, state.cameraElevation);
                 camera.setDistance(state.cameraDistance);

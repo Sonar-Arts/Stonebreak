@@ -6,11 +6,7 @@ import com.stonebreak.textures.CowTextureDefinition;
 import com.stonebreak.textures.CowTextureLoader;
 import com.openmason.model.StonebreakModel;
 
-import javafx.application.Platform;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.property.SimpleStringProperty;
+// JavaFX imports removed - using standard Java properties
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,9 +45,9 @@ public class LivePreviewManager {
     private final AtomicBoolean previewActive = new AtomicBoolean(false);
     
     // Preview state management
-    private final StringProperty currentPreviewVariant = new SimpleStringProperty("");
-    private final StringProperty currentPreviewModel = new SimpleStringProperty("");
-    private final BooleanProperty validationErrorsVisible = new SimpleBooleanProperty(false);
+    private final AtomicReference<String> currentPreviewVariant = new AtomicReference<>("");
+    private final AtomicReference<String> currentPreviewModel = new AtomicReference<>("");
+    private final AtomicBoolean validationErrorsVisible = new AtomicBoolean(false);
     
     // Live editing support
     private final Map<String, TextureEditSession> activeSessions = new ConcurrentHashMap<>();
@@ -176,21 +172,13 @@ public class LivePreviewManager {
     
     /**
      * Sets up property listeners for automatic preview updates.
+     * Note: Property listener functionality temporarily disabled during JavaFX removal.
+     * Will be replaced with observer pattern or manual polling as needed.
      */
     private void setupPropertyListeners() {
-        // Listen for texture variant changes in viewport
-        viewport.currentTextureVariantProperty().addListener((obs, oldVal, newVal) -> {
-            if (previewEnabled.get() && newVal != null && !newVal.equals(oldVal)) {
-                handleVariantChange(newVal);
-            }
-        });
-        
-        // Listen for model changes in viewport
-        viewport.currentModelNameProperty().addListener((obs, oldVal, newVal) -> {
-            if (previewEnabled.get() && newVal != null && !newVal.equals(oldVal)) {
-                handleModelChange(newVal);
-            }
-        });
+        // TODO: Implement alternative to JavaFX property listeners
+        // Consider implementing observer pattern or periodic polling
+        logger.info("Property listeners setup - will be implemented with alternative to JavaFX");
     }
     
     /**
@@ -219,11 +207,9 @@ public class LivePreviewManager {
                 loadPreviewModel(variantName, modelName)
                     .thenRun(() -> {
                         previewActive.set(true);
-                        Platform.runLater(() -> {
-                            logger.info("Live preview enabled successfully");
-                            notifyUpdateListeners(new PreviewUpdateEvent(variantName, modelName, 
-                                "PREVIEW_ENABLED", Map.of()));
-                        });
+                        logger.info("Live preview enabled successfully");
+                        notifyUpdateListeners(new PreviewUpdateEvent(variantName, modelName, 
+                            "PREVIEW_ENABLED", Map.of()));
                     })
                     .exceptionally(throwable -> {
                         logger.error("Failed to load preview model", throwable);
@@ -260,9 +246,7 @@ public class LivePreviewManager {
         validationErrorsVisible.set(false);
         
         // Notify listeners
-        Platform.runLater(() -> {
-            notifyUpdateListeners(new PreviewUpdateEvent("", "", "PREVIEW_DISABLED", Map.of()));
-        });
+        notifyUpdateListeners(new PreviewUpdateEvent("", "", "PREVIEW_DISABLED", Map.of()));
         
         logger.info("Live preview disabled");
     }
@@ -319,10 +303,8 @@ public class LivePreviewManager {
                     updatePreviewWithChanges(session);
                 } else {
                     // Show validation errors in viewport
-                    Platform.runLater(() -> {
-                        validationErrorsVisible.set(true);
-                        notifyValidationListeners(validation);
-                    });
+                    validationErrorsVisible.set(true);
+                    notifyValidationListeners(validation);
                 }
                 
                 return validation;
@@ -384,10 +366,8 @@ public class LivePreviewManager {
                     updatePreviewWithChanges(session);
                 } else {
                     // Show validation errors in viewport
-                    Platform.runLater(() -> {
-                        validationErrorsVisible.set(true);
-                        notifyValidationListeners(validation);
-                    });
+                    validationErrorsVisible.set(true);
+                    notifyValidationListeners(validation);
                 }
                 
                 return validation;
@@ -428,12 +408,10 @@ public class LivePreviewManager {
                     // Reload original model
                     loadPreviewModel(variantName, modelName)
                         .thenRun(() -> {
-                            Platform.runLater(() -> {
-                                validationErrorsVisible.set(false);
-                                notifyUpdateListeners(new PreviewUpdateEvent(variantName, modelName, 
-                                    "PREVIEW_RESET", Map.of()));
-                                logger.info("Preview changes reset successfully");
-                            });
+                            validationErrorsVisible.set(false);
+                            notifyUpdateListeners(new PreviewUpdateEvent(variantName, modelName, 
+                                "PREVIEW_RESET", Map.of()));
+                            logger.info("Preview changes reset successfully");
                         });
                 }
                 
@@ -455,10 +433,8 @@ public class LivePreviewManager {
             loadPreviewModel(newVariant, modelName)
                 .thenRun(() -> {
                     currentPreviewVariant.set(newVariant);
-                    Platform.runLater(() -> {
-                        notifyUpdateListeners(new PreviewUpdateEvent(newVariant, modelName, 
-                            "VARIANT_CHANGED", Map.of("variant", newVariant)));
-                    });
+                    notifyUpdateListeners(new PreviewUpdateEvent(newVariant, modelName, 
+                        "VARIANT_CHANGED", Map.of("variant", newVariant)));
                 });
         }
     }
@@ -475,10 +451,8 @@ public class LivePreviewManager {
             loadPreviewModel(variantName, newModel)
                 .thenRun(() -> {
                     currentPreviewModel.set(newModel);
-                    Platform.runLater(() -> {
-                        notifyUpdateListeners(new PreviewUpdateEvent(variantName, newModel, 
-                            "MODEL_CHANGED", Map.of("model", newModel)));
-                    });
+                    notifyUpdateListeners(new PreviewUpdateEvent(variantName, newModel, 
+                        "MODEL_CHANGED", Map.of("model", newModel)));
                 });
         }
     }
@@ -498,11 +472,9 @@ public class LivePreviewManager {
                     previewModel.set(model);
                     
                     // Update viewport with new model
-                    Platform.runLater(() -> {
-                        viewport.setCurrentModel(model);
-                        viewport.setCurrentTextureVariant(variantName);
-                        viewport.requestRender();
-                    });
+                    viewport.setCurrentModel(model);
+                    viewport.setCurrentTextureVariant(variantName);
+                    viewport.requestRender();
                     
                     logger.debug("Preview model loaded successfully");
                 } else {
@@ -525,12 +497,10 @@ public class LivePreviewManager {
                 // Apply changes and reload model
                 loadPreviewModel(session.getVariantName(), session.getModelName())
                     .thenRun(() -> {
-                        Platform.runLater(() -> {
-                            validationErrorsVisible.set(false);
-                            notifyUpdateListeners(new PreviewUpdateEvent(
-                                session.getVariantName(), session.getModelName(), 
-                                "LIVE_UPDATE", session.getChangedValues()));
-                        });
+                        validationErrorsVisible.set(false);
+                        notifyUpdateListeners(new PreviewUpdateEvent(
+                            session.getVariantName(), session.getModelName(), 
+                            "LIVE_UPDATE", session.getChangedValues()));
                     });
                     
             } catch (Exception e) {
@@ -666,13 +636,10 @@ public class LivePreviewManager {
     public boolean isPreviewEnabled() { return previewEnabled.get(); }
     public boolean isPreviewActive() { return previewActive.get(); }
     
-    public StringProperty currentPreviewVariantProperty() { return currentPreviewVariant; }
     public String getCurrentPreviewVariant() { return currentPreviewVariant.get(); }
     
-    public StringProperty currentPreviewModelProperty() { return currentPreviewModel; }
     public String getCurrentPreviewModel() { return currentPreviewModel.get(); }
     
-    public BooleanProperty validationErrorsVisibleProperty() { return validationErrorsVisible; }
     public boolean areValidationErrorsVisible() { return validationErrorsVisible.get(); }
     
     public String getLastPreviewError() { return lastPreviewError.get(); }

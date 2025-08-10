@@ -23,25 +23,6 @@
     </properties>
 
     <dependencies>
-        <!-- JavaFX for main UI framework -->
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-fxml</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-swing</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-        </dependency>
-        
-        
         <!-- LWJGL core -->
         <dependency>
             <groupId>org.lwjgl</groupId>
@@ -66,11 +47,97 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- LWJGL GLFW for window management -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
+            <classifier>${lwjgl.natives}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Dear ImGui for immediate mode UI -->
+        <dependency>
+            <groupId>io.github.spair</groupId>
+            <artifactId>imgui-java-binding</artifactId>
+            <version>1.86.11</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.spair</groupId>
+            <artifactId>imgui-java-lwjgl3</artifactId>
+            <version>1.86.11</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.spair</groupId>
+            <artifactId>imgui-java-natives-windows</artifactId>
+            <version>1.86.11</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.spair</groupId>
+            <artifactId>imgui-java-natives-linux</artifactId>
+            <version>1.86.11</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.spair</groupId>
+            <artifactId>imgui-java-natives-macos</artifactId>
+            <version>1.86.11</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- LWJGL STB for image loading -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-stb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-stb</artifactId>
+            <classifier>${lwjgl.natives}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- LWJGL NFD for native file dialogs -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-nfd</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-nfd</artifactId>
+            <version>${lwjgl.version}</version>
+            <classifier>${lwjgl.natives}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Java OpenGL Math Library -->
         <dependency>
             <groupId>org.joml</groupId>
             <artifactId>joml</artifactId>
         </dependency>
+
+        <!-- SVG Processing for Icon System -->
+        <dependency>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-transcoder</artifactId>
+            <version>1.17</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-codec</artifactId>
+            <version>1.17</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-rasterizer</artifactId>
+            <version>1.17</version>
+        </dependency>
+        
         
         <!-- Stonebreak Game Module for shared resources -->
         <dependency>
@@ -140,20 +207,6 @@
             <scope>test</scope>
         </dependency>
         
-        <!-- TestFX for JavaFX UI testing -->
-        <dependency>
-            <groupId>org.testfx</groupId>
-            <artifactId>testfx-core</artifactId>
-            <version>4.0.17</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testfx</groupId>
-            <artifactId>testfx-junit5</artifactId>
-            <version>4.0.17</version>
-            <scope>test</scope>
-        </dependency>
-        
         <!-- AssertJ for fluent assertions -->
         <dependency>
             <groupId>org.assertj</groupId>
@@ -191,19 +244,17 @@
                         <include>**/*Tests.java</include>
                         <include>**/Test*.java</include>
                     </includes>
-                    <!-- JVM args for JavaFX testing -->
+                    <!-- JVM args for LWJGL/ImGui testing -->
                     <argLine>
-                        --add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
-                        --add-opens java.desktop/sun.awt=ALL-UNNAMED
-                        --add-exports javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
-                        -Dtestfx.robot=glass
-                        -Dtestfx.headless=true
-                        -Dprism.order=sw
-                        -Dprism.text=t2k
-                        -Djava.awt.headless=true
+                        --enable-native-access=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=org.lwjgl
+                        --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+                        --add-exports=java.base/sun.security.util=ALL-UNNAMED
+                        -Dorg.lwjgl.util.Debug=false
+                        -Dorg.lwjgl.util.NoChecks=true
                     </argLine>
                     <systemPropertyVariables>
-                        <headless.test>true</headless.test>
+                        <headless.test>false</headless.test>
                         <performance.test.mode>true</performance.test.mode>
                     </systemPropertyVariables>
                 </configuration>
@@ -232,63 +283,20 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.openmason.app.OpenMasonApp</mainClass>
-                    <commandlineArgs>--module-path ${javafx.runtime.path} --add-modules javafx.controls,javafx.fxml,javafx.graphics,javafx.base,javafx.swing,javafx.web</commandlineArgs>
                     <options>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
                         <option>--enable-native-access=ALL-UNNAMED</option>
-                        
-                        
-                        <!-- Alternative: specific modules if needed -->
-                        <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl</option> -->
                         
                         <!-- Java 24+ compatibility flags -->
                         <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
                         <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
                         <option>--add-opens=java.base/java.nio=org.lwjgl</option>
-                        
-                        <!-- JavaFX native access for Canvas OpenGL -->
-                        <option>--add-exports=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</option>
-                        <option>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</option>
-                        
-                        <!-- JavaFX Web module access -->
-                        <option>--add-exports=javafx.web/com.sun.webkit=ALL-UNNAMED</option>
-                        <option>--add-opens=javafx.web/javafx.scene.web=ALL-UNNAMED</option>
                         
                         <!-- Additional stability flags for native library interaction -->
                         <option>-Djava.library.path=.</option>
-                        <option>-Dorg.lwjgl.util.Debug=true</option>
-                        <option>-Dorg.lwjgl.util.NoChecks=false</option>
-                    </options>
-                </configuration>
-            </plugin>
-            
-            <!-- JavaFX plugin for development -->
-            <plugin>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-maven-plugin</artifactId>
-                <version>${javafx.maven.plugin.version}</version>
-                <configuration>
-                    <mainClass>com.openmason.app.OpenMasonApp</mainClass>
-                    <args>
-                        <arg>--enable-preview</arg>
-                    </args>
-                    <options>
-                        <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
-                        <option>--enable-native-access=ALL-UNNAMED</option>
-                        
-                        
-                        <!-- Java 24+ compatibility flags -->
-                        <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
-                        <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
-                        <option>--add-opens=java.base/java.nio=org.lwjgl</option>
-                        
-                        <!-- JavaFX native access for Canvas OpenGL -->
-                        <option>--add-exports=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</option>
-                        <option>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</option>
-                        
-                        <!-- JavaFX Web module access -->
-                        <option>--add-exports=javafx.web/com.sun.webkit=ALL-UNNAMED</option>
-                        <option>--add-opens=javafx.web/javafx.scene.web=ALL-UNNAMED</option>
+                        <option>-Dorg.lwjgl.util.Debug=false</option>
+                        <option>-Dorg.lwjgl.util.NoChecks=true</option>
+                        <option>-Dorg.lwjgl.system.SharedLibraryExtractPath=./natives</option>
                     </options>
                 </configuration>
             </plugin>
