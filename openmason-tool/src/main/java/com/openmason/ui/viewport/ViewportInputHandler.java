@@ -1,381 +1,334 @@
 package com.openmason.ui.viewport;
 
-import com.openmason.camera.ArcBallCamera;
-
 import imgui.ImGui;
-import imgui.ImGuiIO;
+import imgui.ImVec2;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.function.Consumer;
+import java.nio.DoubleBuffer;
 
 /**
- * ImGui-compatible input handler for the 3D viewport.
+ * Handles all input processing for the OpenMason 3D viewport.
+ * Separates input concerns from viewport rendering for better architecture.
  * 
- * Handles ImGui and GLFW input events with native performance.
- * Designed for use with Dear ImGui immediate mode input handling.
- * 
- * Responsible for:
- * - ImGui mouse and keyboard input processing
- * - Camera control interactions via ImGui
- * - Input state management for viewport
- * - GLFW input callback integration
+ * Features:
+ * - Mouse capture for endless dragging
+ * - Camera rotation and zooming
+ * - Professional mouse sensitivity settings
+ * - Raw mouse motion support
+ * - Clean separation of input and rendering concerns
  */
 public class ViewportInputHandler {
     
     private static final Logger logger = LoggerFactory.getLogger(ViewportInputHandler.class);
     
-    // Input state
-    private boolean leftMousePressed = false;
-    private boolean rightMousePressed = false;
-    private boolean middleMousePressed = false;
-    private double lastMouseX = 0;
-    private double lastMouseY = 0;
+    // Camera reference for input handling
+    private final Camera camera;
     
-    // Camera reference
-    private ArcBallCamera camera;
-    private boolean cameraControlsEnabled = true;
+    // Mouse interaction state
+    private boolean isDragging = false;
     
-    // Scene manager reference
-    private ViewportSceneManager sceneManager;
+    // Mouse capture state for endless dragging
+    private boolean isMouseCaptured = false;
+    private double savedCursorX = 0.0;
+    private double savedCursorY = 0.0;
+    private long windowHandle = 0L; // GLFW window handle
+    private boolean rawMouseMotionSupported = false;
     
-    // Event callbacks
-    private Consumer<Void> renderRequestCallback;
-    private Runnable fitCameraToModelCallback;
-    private Runnable resetCameraCallback;
-    private Runnable frameOriginCallback;
-    
-    // Coordinate system consistency
-    private ViewportModelRenderer modelRenderer;
-    
-    // Input sensitivity settings
-    private float mouseSensitivity = 1.0f;
-    private float scrollSensitivity = 1.0f;
-    private float keyboardSensitivity = 1.0f;
-    
-    // ImGui viewport dimensions
-    private float viewportWidth = 800.0f;
-    private float viewportHeight = 600.0f;
-    
-    /**
-     * Constructor.
-     */
-    public ViewportInputHandler(ArcBallCamera camera, ViewportSceneManager sceneManager, 
-                               ViewportModelRenderer modelRenderer) {
+    public ViewportInputHandler(Camera camera) {
         this.camera = camera;
-        this.sceneManager = sceneManager;
-        this.modelRenderer = modelRenderer;
-        
-        logger.debug("ViewportInputHandler initialized for ImGui");
+        logger.info("ViewportInputHandler initialized");
     }
     
     /**
-     * Process ImGui input events for the viewport.
-     * Call this each frame within an ImGui viewport window.
+     * Set the GLFW window handle for mouse capture functionality.
+     * This should be called from the main application.
      */
-    public void processImGuiInput(float viewportX, float viewportY, float viewportWidth, float viewportHeight) {
-        if (!cameraControlsEnabled || camera == null) {
+    public void setWindowHandle(long windowHandle) {
+        this.windowHandle = windowHandle;
+        if (windowHandle != 0L) {
+            // Check if raw mouse motion is supported
+            this.rawMouseMotionSupported = GLFW.glfwRawMouseMotionSupported();
+            logger.info("Window handle set. Raw mouse motion supported: {}", rawMouseMotionSupported);
+        }
+    }
+    
+    /**
+     * Capture the mouse cursor for endless dragging.
+     * Hides cursor and enables unlimited mouse movement.
+     */
+    private void captureMouse() {
+        if (windowHandle == 0L || isMouseCaptured) {
             return;
         }
         
-        this.viewportWidth = viewportWidth;
-        this.viewportHeight = viewportHeight;
-        
-        ImGuiIO io = ImGui.getIO();
-        
-        // Check if mouse is over viewport
-        boolean mouseOverViewport = isMouseOverViewport(io, viewportX, viewportY, viewportWidth, viewportHeight);
-        
-        if (mouseOverViewport) {
-            // Process mouse input
-            processMouseInput(io, viewportX, viewportY);
+        try {
+            // Save current cursor position
+            DoubleBuffer xPos = BufferUtils.createDoubleBuffer(1);
+            DoubleBuffer yPos = BufferUtils.createDoubleBuffer(1);
+            GLFW.glfwGetCursorPos(windowHandle, xPos, yPos);
+            savedCursorX = xPos.get(0);
+            savedCursorY = yPos.get(0);
             
-            // Process scroll input
-            processScrollInput(io);
+            // Disable cursor (hides it and enables infinite movement)
+            GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
             
-            // Process keyboard input
-            processKeyboardInput(io);
-        }
-    }
-    
-    /**
-     * Check if mouse is over the viewport area.
-     */
-    private boolean isMouseOverViewport(ImGuiIO io, float viewportX, float viewportY, 
-                                       float viewportWidth, float viewportHeight) {
-        float mouseX = io.getMousePosX();
-        float mouseY = io.getMousePosY();
-        
-        return mouseX >= viewportX && mouseX <= viewportX + viewportWidth &&
-               mouseY >= viewportY && mouseY <= viewportY + viewportHeight;
-    }
-    
-    /**
-     * Process mouse input events.
-     */
-    private void processMouseInput(ImGuiIO io, float viewportX, float viewportY) {
-        float mouseX = io.getMousePosX() - viewportX;
-        float mouseY = io.getMousePosY() - viewportY;
-        
-        // Handle mouse press/release
-        boolean leftPressed = io.getMouseDown(0);
-        boolean rightPressed = io.getMouseDown(1);
-        boolean middlePressed = io.getMouseDown(2);
-        
-        // Mouse press events
-        if (leftPressed && !leftMousePressed) {
-            handleMousePressed(mouseX, mouseY, MouseButton.LEFT);
-        }
-        if (rightPressed && !rightMousePressed) {
-            handleMousePressed(mouseX, mouseY, MouseButton.RIGHT);
-        }
-        if (middlePressed && !middleMousePressed) {
-            handleMousePressed(mouseX, mouseY, MouseButton.MIDDLE);
-        }
-        
-        // Mouse release events  
-        if (!leftPressed && leftMousePressed) {
-            handleMouseReleased(mouseX, mouseY, MouseButton.LEFT);
-        }
-        if (!rightPressed && rightMousePressed) {
-            handleMouseReleased(mouseX, mouseY, MouseButton.RIGHT);
-        }
-        if (!middlePressed && middleMousePressed) {
-            handleMouseReleased(mouseX, mouseY, MouseButton.MIDDLE);
-        }
-        
-        // Mouse drag events
-        if (leftPressed || rightPressed || middlePressed) {
-            handleMouseDragged(mouseX, mouseY);
-        }
-        
-        // Update state
-        leftMousePressed = leftPressed;
-        rightMousePressed = rightPressed;
-        middleMousePressed = middlePressed;
-        lastMouseX = mouseX;
-        lastMouseY = mouseY;
-    }
-    
-    /**
-     * Process scroll input events.
-     */
-    private void processScrollInput(ImGuiIO io) {
-        float scrollY = io.getMouseWheelH();
-        if (Math.abs(scrollY) > 0.01f) {
-            handleMouseScroll(scrollY * scrollSensitivity);
-        }
-    }
-    
-    /**
-     * Process keyboard input events.
-     */
-    private void processKeyboardInput(ImGuiIO io) {
-        // Camera reset shortcuts
-        if (io.getKeyCtrl()) {
-            // Note: Using available ImGuiKey constants - R and F may not be available in this ImGui version
-            if (ImGui.isKeyPressed(ImGui.getKeyIndex(imgui.flag.ImGuiKey.Space))) {
-                // Use Space as reset camera shortcut instead of Ctrl+R
-                handleKeyPressed(KeyCode.SPACE, true, false, false);
+            // Enable raw mouse motion if supported for better camera control
+            if (rawMouseMotionSupported) {
+                GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_RAW_MOUSE_MOTION, GLFW.GLFW_TRUE);
             }
-            if (ImGui.isKeyPressed(ImGui.getKeyIndex(imgui.flag.ImGuiKey.Enter))) {
-                // Use Enter as fit to view shortcut instead of Ctrl+F
-                handleKeyPressed(KeyCode.ENTER, true, false, false);
+            
+            isMouseCaptured = true;
+            logger.info("Mouse captured for endless dragging at position: ({}, {})", savedCursorX, savedCursorY);
+            
+        } catch (Exception e) {
+            logger.error("Failed to capture mouse", e);
+        }
+    }
+    
+    /**
+     * Release mouse capture and restore cursor visibility and position.
+     */
+    private void releaseMouse() {
+        if (windowHandle == 0L || !isMouseCaptured) {
+            return;
+        }
+        
+        try {
+            // Restore normal cursor mode
+            GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+            
+            // Disable raw mouse motion
+            if (rawMouseMotionSupported) {
+                GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_RAW_MOUSE_MOTION, GLFW.GLFW_FALSE);
             }
-            if (ImGui.isKeyPressed(ImGui.getKeyIndex(imgui.flag.ImGuiKey.Home))) {
-                handleKeyPressed(KeyCode.HOME, true, false, false);
-            }
-        }
-        
-        // Individual key shortcuts
-        if (ImGui.isKeyPressed(ImGui.getKeyIndex(imgui.flag.ImGuiKey.Home))) {
-            handleKeyPressed(KeyCode.HOME, false, false, false);
-        }
-    }
-    
-    /**
-     * Handle mouse press events.
-     */
-    private void handleMousePressed(double mouseX, double mouseY, MouseButton button) {
-        lastMouseX = mouseX;
-        lastMouseY = mouseY;
-        
-        switch (button) {
-            case LEFT:
-                logger.trace("Left mouse pressed at ({}, {})", mouseX, mouseY);
-                break;
-            case RIGHT:
-                logger.trace("Right mouse pressed at ({}, {})", mouseX, mouseY);
-                break;
-            case MIDDLE:
-                logger.trace("Middle mouse pressed at ({}, {})", mouseX, mouseY);
-                break;
+            
+            // Restore cursor position
+            GLFW.glfwSetCursorPos(windowHandle, savedCursorX, savedCursorY);
+            
+            isMouseCaptured = false;
+            logger.info("Mouse released and cursor restored to position: ({}, {})", savedCursorX, savedCursorY);
+            
+        } catch (Exception e) {
+            logger.error("Failed to release mouse", e);
         }
     }
     
     /**
-     * Handle mouse release events.
+     * Handle input for camera controls with endless dragging and mouse capture.
+     * This is the main entry point for input processing.
      */
-    private void handleMouseReleased(double mouseX, double mouseY, MouseButton button) {
-        logger.trace("Mouse released: {} at ({}, {})", button, mouseX, mouseY);
-        requestRender();
-    }
-    
-    /**
-     * Handle mouse drag events.
-     */
-    private void handleMouseDragged(double mouseX, double mouseY) {
-        double deltaX = mouseX - lastMouseX;
-        double deltaY = mouseY - lastMouseY;
-        
-        if (Math.abs(deltaX) < 0.1 && Math.abs(deltaY) < 0.1) {
-            return; // Ignore very small movements
+    public void handleInput(ImVec2 imagePos, float imageWidth, float imageHeight) {
+        if (camera == null) {
+            logger.warn("Camera is null - cannot handle input");
+            return;
         }
         
-        // Apply mouse sensitivity
-        deltaX *= mouseSensitivity;
-        deltaY *= mouseSensitivity;
+        // Get mouse state
+        ImVec2 mousePos = ImGui.getIO().getMousePos();
+        boolean wantCapture = ImGui.getIO().getWantCaptureMouse();
         
-        // Camera rotation (left mouse) or panning (right mouse)
-        if (leftMousePressed) {
-            camera.rotate((float) deltaX, (float) deltaY);
-            requestRender();
-        } else if (rightMousePressed) {
-            camera.pan((float) deltaX, (float) deltaY);
-            requestRender();
+        // Always log when mouse is clicked to reduce noise
+        boolean mouseClicked = ImGui.isMouseClicked(0);
+        if (mouseClicked) {
+            logger.info("CLICK EVENT - mouse: ({}, {}), imageBounds: ({}, {}) to ({}, {})", 
+                mousePos.x, mousePos.y, imagePos.x, imagePos.y, 
+                imagePos.x + imageWidth, imagePos.y + imageHeight);
         }
         
-        lastMouseX = mouseX;
-        lastMouseY = mouseY;
-    }
-    
-    /**
-     * Handle mouse scroll events.
-     */
-    private void handleMouseScroll(double deltaY) {
-        double zoomFactor = deltaY * 0.1; // Scale zoom
-        camera.zoom((float) zoomFactor);
-        requestRender();
-        
-        logger.trace("Mouse scroll: deltaY={}, zoom={}", deltaY, zoomFactor);
-    }
-    
-    /**
-     * Handle keyboard events.
-     */
-    private void handleKeyPressed(KeyCode key, boolean ctrl, boolean shift, boolean alt) {
-        logger.trace("Key pressed: {} (Ctrl: {}, Shift: {}, Alt: {})", key, ctrl, shift, alt);
-        
-        switch (key) {
-            case R:
-                if (ctrl && resetCameraCallback != null) {
-                    resetCameraCallback.run();
-                    requestRender();
-                }
-                break;
-                
-            case F:
-                if (ctrl && fitCameraToModelCallback != null) {
-                    fitCameraToModelCallback.run();
-                    requestRender();
-                }
-                break;
-                
-            case HOME:
-                if (frameOriginCallback != null) {
-                    frameOriginCallback.run();
-                    requestRender();
-                }
-                break;
-        }
-    }
-    
-    /**
-     * Request a render update.
-     */
-    private void requestRender() {
-        if (renderRequestCallback != null) {
-            renderRequestCallback.accept(null);
-        }
-    }
-    
-    /**
-     * Set up GLFW input callbacks for the viewport window.
-     */
-    public void setupGLFWCallbacks(long windowHandle) {
-        // This would set up GLFW callbacks if needed
-        // For ImGui integration, input is typically handled through ImGui's input processing
-        logger.debug("GLFW callbacks setup for window: {}", windowHandle);
-    }
-    
-    // Getters and setters
-    public void setCamera(ArcBallCamera camera) { 
-        this.camera = camera; 
-        logger.debug("Camera updated: {}", camera != null ? "set" : "null");
-    }
-    
-    public boolean areCameraControlsEnabled() { return cameraControlsEnabled; }
-    public void setCameraControlsEnabled(boolean enabled) { 
-        this.cameraControlsEnabled = enabled; 
-        logger.debug("Camera controls enabled: {}", enabled);
-    }
-    
-    public float getMouseSensitivity() { return mouseSensitivity; }
-    public void setMouseSensitivity(float sensitivity) { 
-        this.mouseSensitivity = Math.max(0.1f, Math.min(5.0f, sensitivity)); 
-    }
-    
-    public float getScrollSensitivity() { return scrollSensitivity; }
-    public void setScrollSensitivity(float sensitivity) { 
-        this.scrollSensitivity = Math.max(0.1f, Math.min(5.0f, sensitivity)); 
-    }
-    
-    public float getKeyboardSensitivity() { return keyboardSensitivity; }
-    public void setKeyboardSensitivity(float sensitivity) { 
-        this.keyboardSensitivity = Math.max(0.1f, Math.min(5.0f, sensitivity)); 
-    }
-    
-    // Callback setters
-    public void setRenderRequestCallback(Consumer<Void> callback) { 
-        this.renderRequestCallback = callback; 
-    }
-    
-    public void setFitCameraToModelCallback(Runnable callback) { 
-        this.fitCameraToModelCallback = callback; 
-    }
-    
-    public void setResetCameraCallback(Runnable callback) { 
-        this.resetCameraCallback = callback; 
-    }
-    
-    public void setFrameOriginCallback(Runnable callback) { 
-        this.frameOriginCallback = callback; 
-    }
-    
-    /**
-     * Get input state for debugging.
-     */
-    /**
-     * Get diagnostics information.
-     */
-    public String getDiagnostics() {
-        return String.format("Camera Controls: %s, Mouse: (%.1f, %.1f), Pressed: L:%s R:%s M:%s",
-            cameraControlsEnabled, lastMouseX, lastMouseY, 
-            leftMousePressed, rightMousePressed, middleMousePressed);
-    }
+        // Check if mouse is within viewport bounds
+        boolean mouseInBounds = !isMouseCaptured && (mousePos.x >= imagePos.x && 
+                               mousePos.x < imagePos.x + imageWidth && 
+                               mousePos.y >= imagePos.y && 
+                               mousePos.y < imagePos.y + imageHeight);
 
-    public String getInputStateString() {
-        return String.format("Input: L:%s R:%s M:%s Pos:(%.1f,%.1f) Controls:%s", 
-            leftMousePressed, rightMousePressed, middleMousePressed, 
-            lastMouseX, lastMouseY, cameraControlsEnabled);
+        // Only respect WantCaptureMouse if mouse is NOT in viewport bounds or we're not actively dragging
+        if (wantCapture && !mouseInBounds && !isDragging) {
+            // If ImGui wants mouse input and mouse is outside viewport, stop any ongoing drag operation
+            if (isDragging) {
+                logger.info("ImGui captured mouse outside viewport - stopping drag operation");
+                stopDragging();
+            }
+            return; // Don't process camera input when ImGui wants mouse control outside viewport
+        }
+        
+        // Use the same mouseClicked variable for consistency 
+        if (mouseClicked) {
+            boolean xInBounds = mousePos.x >= imagePos.x && mousePos.x < imagePos.x + imageWidth;
+            boolean yInBounds = mousePos.y >= imagePos.y && mousePos.y < imagePos.y + imageHeight;
+            boolean notCaptured = !isMouseCaptured;
+            
+            logger.warn("CLICK ANALYSIS - mouseInBounds: {}", mouseInBounds);
+            logger.warn("  notCaptured: {} (isMouseCaptured: {})", notCaptured, isMouseCaptured);
+            logger.warn("  xInBounds: {} ({} >= {} && {} < {})", xInBounds, mousePos.x, imagePos.x, mousePos.x, imagePos.x + imageWidth);
+            logger.warn("  yInBounds: {} ({} >= {} && {} < {})", yInBounds, mousePos.y, imagePos.y, mousePos.y, imagePos.y + imageHeight);
+        }
+        
+        // Start dragging when left mouse button is pressed within viewport bounds
+        if (mouseInBounds && mouseClicked) {
+            startDragging();
+        }
+        
+        // Continue dragging with unlimited mouse movement (mouse is now captured)
+        if (isDragging && ImGui.isMouseDown(0)) {
+            processDragging();
+        }
+        
+        // Stop dragging when mouse button is released
+        if (ImGui.isMouseReleased(0)) {
+            if (isDragging) {
+                stopDragging();
+            }
+        }
+        
+        // Handle mouse wheel for zooming (only when hovering over viewport or actively dragging)
+        if (mouseInBounds || isDragging) {
+            processZooming();
+        }
     }
     
-    // Enums for ImGui compatibility
-    public enum MouseButton {
-        LEFT, RIGHT, MIDDLE
+    /**
+     * Start a drag operation.
+     */
+    private void startDragging() {
+        isDragging = true;
+        captureMouse(); // Enable endless dragging with mouse capture
+        logger.info("Started endless dragging in 3D viewport - mouse captured");
     }
     
-    public enum KeyCode {
-        R, F, HOME, ESCAPE, SPACE, ENTER
+    /**
+     * Process mouse dragging for camera rotation.
+     */
+    private void processDragging() {
+        ImVec2 mouseDelta = ImGui.getIO().getMouseDelta();
+        
+        // Process any mouse movement - even tiny amounts for smooth rotation
+        if (Math.abs(mouseDelta.x) > 0.0001f || Math.abs(mouseDelta.y) > 0.0001f) {
+            logger.trace("Processing mouse delta: ({}, {})", mouseDelta.x, mouseDelta.y);
+            
+            // Apply rotation with appropriate sensitivity for captured mouse
+            float rotationSpeed = isMouseCaptured ? 0.003f : 0.1f; // Lower sensitivity for captured mouse
+            camera.rotate(-mouseDelta.x * rotationSpeed, -mouseDelta.y * rotationSpeed);
+            logger.trace("Camera rotated by delta: ({}, {}) with speed: {}", 
+                -mouseDelta.x * rotationSpeed, -mouseDelta.y * rotationSpeed, rotationSpeed);
+        }
+    }
+    
+    /**
+     * Stop the current drag operation.
+     */
+    private void stopDragging() {
+        logger.info("Stopped endless dragging in 3D viewport - mouse released");
+        isDragging = false;
+        releaseMouse(); // Restore cursor visibility and position
+    }
+    
+    /**
+     * Process mouse wheel for zooming.
+     */
+    private void processZooming() {
+        float wheel = ImGui.getIO().getMouseWheel();
+        if (wheel != 0) {
+            camera.zoom(wheel * 0.5f);
+            logger.debug("Camera zoomed by: {}", wheel * 0.5f);
+        }
+    }
+    
+    /**
+     * Force release mouse capture. Useful for escape key handling.
+     */
+    public void forceReleaseMouse() {
+        if (isDragging) {
+            isDragging = false;
+            logger.info("Forced release of mouse capture");
+        }
+        releaseMouse();
+    }
+    
+    /**
+     * Handle keyboard input for camera controls.
+     * This can be extended for first-person camera movement.
+     */
+    public void handleKeyboardInput(float deltaTime) {
+        if (camera == null || camera.getCameraMode() != Camera.CameraMode.FIRST_PERSON) {
+            return;
+        }
+        
+        // First-person movement controls
+        boolean moved = false;
+        
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_W)) {
+            camera.moveForward(deltaTime);
+            moved = true;
+        }
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_S)) {
+            camera.moveForward(-deltaTime);
+            moved = true;
+        }
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_A)) {
+            camera.moveRight(-deltaTime);
+            moved = true;
+        }
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_D)) {
+            camera.moveRight(deltaTime);
+            moved = true;
+        }
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_SPACE)) {
+            camera.moveUp(deltaTime);
+            moved = true;
+        }
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT)) {
+            camera.moveUp(-deltaTime);
+            moved = true;
+        }
+        
+        if (moved) {
+            logger.trace("First-person camera movement processed");
+        }
+    }
+    
+    /**
+     * Reset the input handler state.
+     */
+    public void reset() {
+        if (isDragging) {
+            stopDragging();
+        }
+        logger.debug("ViewportInputHandler reset");
+    }
+    
+    /**
+     * Cleanup resources when the input handler is no longer needed.
+     */
+    public void cleanup() {
+        reset();
+        logger.info("ViewportInputHandler cleaned up");
+    }
+    
+    // Getters for state information
+    public boolean isDragging() { 
+        return isDragging; 
+    }
+    
+    public boolean isMouseCaptured() { 
+        return isMouseCaptured; 
+    }
+    
+    public boolean isRawMouseMotionSupported() { 
+        return rawMouseMotionSupported; 
+    }
+    
+    public double getSavedCursorX() { 
+        return savedCursorX; 
+    }
+    
+    public double getSavedCursorY() { 
+        return savedCursorY; 
+    }
+    
+    public long getWindowHandle() { 
+        return windowHandle; 
     }
 }

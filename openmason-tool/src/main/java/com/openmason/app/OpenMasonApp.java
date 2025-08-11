@@ -295,6 +295,14 @@ public class OpenMasonApp {
             // Initialize viewport interface
             viewportInterface = new ViewportImGuiInterface();
             
+            // CRITICAL: Set window handle for mouse capture functionality
+            if (window != 0L) {
+                viewportInterface.setWindowHandle(window);
+                logger.info("Window handle passed to viewport interface for mouse capture");
+            } else {
+                logger.error("Cannot set window handle - window not created");
+            }
+            
             logger.debug("UI interfaces initialized successfully");
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);

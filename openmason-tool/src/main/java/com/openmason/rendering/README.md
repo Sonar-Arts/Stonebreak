@@ -23,7 +23,7 @@ The Canvas-Based 3D Rendering System provides a comprehensive, high-performance 
 ### Core Components
 
 1. **OpenMason3DViewport** - Main Canvas-based 3D viewport extending JavaFX StackPane
-2. **ArcBallCamera** - Professional camera system with 3D navigation, presets, and VectorPool integration
+2. **Camera** - Professional camera system with arc-ball and first-person modes, 3D navigation, and presets
 3. **Canvas3DProjection** - 3D-to-2D projection system using camera matrices
 4. **ModelRenderer** - High-level rendering interface for Canvas-based model display
 5. **PerformanceOptimizer** - Thread-safe adaptive quality and performance monitoring with atomic operations
@@ -64,8 +64,8 @@ viewport.setCurrentModel(cowModel);
 viewport.setCurrentTextureVariant("angus");
 
 // Configure camera for optimal viewing
-ArcBallCamera camera = viewport.getCamera();
-camera.applyPreset(ArcBallCamera.CameraPreset.ISOMETRIC);
+Camera camera = viewport.getCamera();
+camera.applyPreset(Camera.CameraPreset.ISOMETRIC);
 
 // Enable wireframe mode
 viewport.setWireframeMode(true);
@@ -77,12 +77,17 @@ viewport.setWireframeMode(true);
 
 ```java
 // Get camera from viewport
-ArcBallCamera camera = viewport.getCamera();
+Camera camera = viewport.getCamera();
 
 // Apply camera presets
-camera.applyPreset(ArcBallCamera.CameraPreset.FRONT);      // Front view
-camera.applyPreset(ArcBallCamera.CameraPreset.ISOMETRIC);  // Isometric view
-camera.applyPreset(ArcBallCamera.CameraPreset.TOP);        // Top-down view
+camera.applyPreset(Camera.CameraPreset.FRONT);      // Front view
+camera.applyPreset(Camera.CameraPreset.ISOMETRIC);  // Isometric view
+camera.applyPreset(Camera.CameraPreset.TOP);        // Top-down view
+
+// Switch between camera modes
+camera.setCameraMode(Camera.CameraMode.FIRST_PERSON);  // First-person mode
+camera.setCameraMode(Camera.CameraMode.ARCBALL);       // Arc-ball mode (default)
+camera.toggleCameraMode();                             // Toggle between modes
 
 // Manual camera control
 camera.setOrientation(45.0f, 20.0f);  // Azimuth, elevation in degrees
@@ -253,7 +258,7 @@ com.openmason/
 ├── ui/viewport/
 │   └── OpenMason3DViewport.java           # Main Canvas-based 3D viewport
 ├── camera/
-│   └── ArcBallCamera.java                 # Professional camera system
+│   └── Camera.java                       # Professional dual-mode camera system
 ├── rendering/
 │   ├── BufferManager.java                 # Resource tracking (legacy OpenGL support)
 │   ├── ModelRenderer.java                 # High-level rendering interface

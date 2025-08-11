@@ -68,10 +68,10 @@ public class OpenGL3DGrid {
     // Grid data structures
     private static class GridLine {
         final Vector3f start, end;
-        final DebugColor color;
+        final Vector3f color;
         final float thickness;
         
-        GridLine(float x1, float y1, float z1, float x2, float y2, float z2, DebugColor color, float thickness) {
+        GridLine(float x1, float y1, float z1, float x2, float y2, float z2, Vector3f color, float thickness) {
             this.start = new Vector3f(x1, y1, z1);
             this.end = new Vector3f(x2, y2, z2);
             this.color = color;
@@ -81,10 +81,10 @@ public class OpenGL3DGrid {
     
     private static class GridPoint {
         final Vector3f position;
-        final DebugColor color;
+        final Vector3f color;
         final float size;
         
-        GridPoint(float x, float y, float z, DebugColor color, float size) {
+        GridPoint(float x, float y, float z, Vector3f color, float size) {
             this.position = new Vector3f(x, y, z);
             this.color = color;
             this.size = size;
@@ -101,93 +101,76 @@ public class OpenGL3DGrid {
     /**
      * Add a line to the grid.
      */
-    public void addLine(float x1, float y1, float z1, float x2, float y2, float z2, DebugColor color, float thickness) {
+    public void addLine(float x1, float y1, float z1, float x2, float y2, float z2, Vector3f color, float thickness) {
         gridLines.add(new GridLine(x1, y1, z1, x2, y2, z2, color, thickness));
     }
     
     /**
      * Add a point to the grid.
      */
-    public void addPoint(float x, float y, float z, DebugColor color, float size) {
+    public void addPoint(float x, float y, float z, Vector3f color, float size) {
         gridPoints.add(new GridPoint(x, y, z, color, size));
     }
     
     /**
-     * Build and return a viewport group containing the OpenGL grid.
-     * For now, this returns a placeholder Group that can be used by the existing viewport system.
+     * Add a line to the grid with RGB color values.
      */
-    public Group buildViewportGroup() {
-        Group gridGroup = new Group();
-        
-        logger.info("Building viewport group from OpenGL grid: {} lines, {} points", 
-                   gridLines.size(), gridPoints.size());
-        
-        try {
-            // Convert OpenGL grid data to viewport-compatible objects
-            convertLinesToViewportObjects(gridGroup);
-            convertPointsToViewportObjects(gridGroup);
-            
-        } catch (Exception e) {
-            logger.error("Failed to build viewport group from OpenGL grid", e);
-        }
-        
-        return gridGroup;
+    public void addLine(float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float b, float thickness) {
+        addLine(x1, y1, z1, x2, y2, z2, new Vector3f(r, g, b), thickness);
     }
     
     /**
-     * Convert grid lines to viewport objects.
+     * Add a point to the grid with RGB color values.
      */
-    private void convertLinesToViewportObjects(Group gridGroup) {
-        for (GridLine line : gridLines) {
-            // Create a thin box to represent the line
-            Vector3f direction = new Vector3f(line.end).sub(line.start);
-            float lineLength = direction.length();
-            
-            if (lineLength < 0.001f) continue; // Skip degenerate lines
-            
-            // Create line as a thin box
-            Box lineBox = new Box(
-                Math.abs(direction.x) > 0.1f ? lineLength : line.thickness,
-                Math.abs(direction.y) > 0.1f ? lineLength : line.thickness,
-                Math.abs(direction.z) > 0.1f ? lineLength : line.thickness
-            );
-            
-            // Position at line center
-            Vector3f center = new Vector3f(line.start).add(line.end).mul(0.5f);
-            lineBox.setTranslateX(center.x);
-            lineBox.setTranslateY(center.y);
-            lineBox.setTranslateZ(center.z);
-            
-            // Set material color
-            PhongMaterial lineMaterial = new PhongMaterial();
-            lineMaterial.setDiffuseColor(line.color);
-            lineMaterial.setSpecularColor(line.color);
-            lineBox.setMaterial(lineMaterial);
-            
-            gridGroup.getChildren().add(lineBox);
-        }
+    public void addPoint(float x, float y, float z, float r, float g, float b, float size) {
+        addPoint(x, y, z, new Vector3f(r, g, b), size);
     }
     
     /**
-     * Convert grid points to viewport objects.
+     * Create a standard 3D grid with the specified parameters.
      */
-    private void convertPointsToViewportObjects(Group gridGroup) {
-        for (GridPoint point : gridPoints) {
-            // Create a small box to represent the point
-            Box pointBox = new Box(point.size, point.size, point.size);
-            
-            pointBox.setTranslateX(point.position.x);
-            pointBox.setTranslateY(point.position.y);
-            pointBox.setTranslateZ(point.position.z);
-            
-            // Set material color
-            PhongMaterial pointMaterial = new PhongMaterial();
-            pointMaterial.setDiffuseColor(point.color);
-            pointMaterial.setSpecularColor(point.color);
-            pointBox.setMaterial(pointMaterial);
-            
-            gridGroup.getChildren().add(pointBox);
+    public void createGrid(int gridSize, float gridSpacing, Vector3f gridColor, float lineThickness) {
+        clear();
+        
+        float halfSize = gridSize * gridSpacing * 0.5f;
+        
+        // Horizontal lines (along X-axis)
+        for (int i = 0; i <= gridSize; i++) {
+            float z = -halfSize + i * gridSpacing;
+            addLine(-halfSize, 0.0f, z, halfSize, 0.0f, z, gridColor, lineThickness);
         }
+        
+        // Vertical lines (along Z-axis)  
+        for (int i = 0; i <= gridSize; i++) {
+            float x = -halfSize + i * gridSpacing;
+            addLine(x, 0.0f, -halfSize, x, 0.0f, halfSize, gridColor, lineThickness);
+        }
+        
+        logger.debug("Created {}x{} grid with {} total lines", gridSize, gridSize, gridLines.size());
+    }
+    
+    /**
+     * Create coordinate axes (X=red, Y=green, Z=blue).
+     */
+    public void createAxes(float axisLength, float axisThickness) {
+        // X-axis (red)
+        addLine(0, 0, 0, axisLength, 0, 0, new Vector3f(1.0f, 0.0f, 0.0f), axisThickness);
+        
+        // Y-axis (green) 
+        addLine(0, 0, 0, 0, axisLength, 0, new Vector3f(0.0f, 1.0f, 0.0f), axisThickness);
+        
+        // Z-axis (blue)
+        addLine(0, 0, 0, 0, 0, axisLength, new Vector3f(0.0f, 0.0f, 1.0f), axisThickness);
+        
+        logger.debug("Created coordinate axes with length {}", axisLength);
+    }
+    
+    /**
+     * Clear all grid lines and points.
+     */
+    public void clear() {
+        gridLines.clear();
+        gridPoints.clear();
     }
     
     /**
@@ -303,17 +286,17 @@ public class OpenGL3DGrid {
         for (GridLine line : gridLines) {
             // Start vertex
             vertexData.put(line.start.x).put(line.start.y).put(line.start.z);
-            vertexData.put(line.color.r).put(line.color.g).put(line.color.b);
+            vertexData.put(line.color.x).put(line.color.y).put(line.color.z);
             
             // End vertex
             vertexData.put(line.end.x).put(line.end.y).put(line.end.z);
-            vertexData.put(line.color.r).put(line.color.g).put(line.color.b);
+            vertexData.put(line.color.x).put(line.color.y).put(line.color.z);
         }
         
         // Add point vertices
         for (GridPoint point : gridPoints) {
             vertexData.put(point.position.x).put(point.position.y).put(point.position.z);
-            vertexData.put(point.color.r).put(point.color.g).put(point.color.b);
+            vertexData.put(point.color.x).put(point.color.y).put(point.color.z);
         }
         
         vertexData.flip();

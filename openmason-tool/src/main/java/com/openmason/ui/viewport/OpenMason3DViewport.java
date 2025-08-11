@@ -19,8 +19,17 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Clean 3D viewport implementation using pure LWJGL/ImGui.
+ * Clean and robust 3D viewport implementation using pure LWJGL/ImGui.
  * Displays 3D models loaded from stonebreak-game module.
+ * 
+ * This class is responsible only for rendering and viewport management.
+ * All input handling is delegated to ViewportInputHandler for better architecture.
+ * 
+ * Features:
+ * - Safe OpenGL resource management
+ * - Robust error handling and validation
+ * - Clean separation of rendering and input concerns
+ * - Professional viewport rendering pipeline
  */
 public class OpenMason3DViewport {
     
@@ -52,6 +61,9 @@ public class OpenMason3DViewport {
     // Camera system
     private Camera camera;
     
+    // Input handling delegation
+    private ViewportInputHandler inputHandler;
+    
     // Model and texture state
     private String currentModelName = null;
     private String currentTextureVariant = null;
@@ -68,22 +80,47 @@ public class OpenMason3DViewport {
     
     public OpenMason3DViewport() {
         this.camera = new Camera();
-        logger.info("OpenMason 3D Viewport created");
+        this.inputHandler = new ViewportInputHandler(camera);
+        logger.info("OpenMason 3D Viewport created with input handler");
     }
     
     /**
-     * Initialize OpenGL resources.
+     * Set the GLFW window handle for mouse capture functionality.
+     * This should be called from the main application.
+     */
+    public void setWindowHandle(long windowHandle) {
+        if (inputHandler != null) {
+            inputHandler.setWindowHandle(windowHandle);
+            logger.info("Window handle set on input handler");
+        } else {
+            logger.warn("Cannot set window handle - input handler is null");
+        }
+    }
+    
+    
+    /**
+     * Initialize OpenGL resources with robust error handling.
      */
     public void initialize() {
         if (initialized) {
+            logger.debug("Viewport already initialized");
             return;
         }
         
         try {
+            logger.info("Initializing OpenMason 3D Viewport...");
+            
+            // Validate OpenGL context
+            validateOpenGLContext();
+            
+            // Initialize resources in order
             createShaders();
             createFramebuffer();
             createTestCube();
             createGrid();
+            
+            // Validate all resources were created
+            validateResources();
             
             initialized = true;
             logger.info("OpenMason 3D Viewport initialized successfully");
@@ -93,6 +130,42 @@ public class OpenMason3DViewport {
             cleanup();
             throw new RuntimeException("Viewport initialization failed", e);
         }
+    }
+    
+    /**
+     * Validate that we have a valid OpenGL context.
+     */
+    private void validateOpenGLContext() {
+        try {
+            // Try a simple OpenGL call to validate context
+            int maxTextureSize = glGetInteger(GL_MAX_TEXTURE_SIZE);
+            logger.debug("OpenGL context validated - Max texture size: {}", maxTextureSize);
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid OpenGL context", e);
+        }
+    }
+    
+    /**
+     * Validate that all required resources were created successfully.
+     */
+    private void validateResources() {
+        if (shaderProgram == -1) {
+            throw new RuntimeException("Shader program creation failed");
+        }
+        if (framebuffer == -1) {
+            throw new RuntimeException("Framebuffer creation failed");
+        }
+        if (colorTexture == -1) {
+            throw new RuntimeException("Color texture creation failed");
+        }
+        if (cubeVAO == -1 || cubeVBO == -1) {
+            throw new RuntimeException("Cube geometry creation failed");
+        }
+        if (gridVAO == -1 || gridVBO == -1) {
+            throw new RuntimeException("Grid geometry creation failed");
+        }
+        
+        logger.debug("All OpenGL resources validated successfully");
     }
     
     /**
@@ -153,36 +226,67 @@ public class OpenMason3DViewport {
     }
     
     /**
-     * Create framebuffer for off-screen rendering.
+     * Create framebuffer for off-screen rendering with error checking.
      */
     private void createFramebuffer() {
-        // Generate framebuffer
-        framebuffer = glGenFramebuffers();
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-        
-        // Create color texture
-        colorTexture = glGenTextures();
-        glBindTexture(GL_TEXTURE_2D, colorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, viewportWidth, viewportHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
-        
-        // Create depth renderbuffer
-        depthRenderbuffer = glGenRenderbuffers();
-        glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, viewportWidth, viewportHeight);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer);
-        
-        // Check framebuffer completeness
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            throw new RuntimeException("Framebuffer not complete");
+        try {
+            // Generate framebuffer
+            framebuffer = glGenFramebuffers();
+            if (framebuffer == 0) {
+                throw new RuntimeException("Failed to generate framebuffer");
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+            
+            // Create color texture
+            colorTexture = glGenTextures();
+            if (colorTexture == 0) {
+                throw new RuntimeException("Failed to generate color texture");
+            }
+            glBindTexture(GL_TEXTURE_2D, colorTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, viewportWidth, viewportHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+            
+            // Create depth renderbuffer
+            depthRenderbuffer = glGenRenderbuffers();
+            if (depthRenderbuffer == 0) {
+                throw new RuntimeException("Failed to generate depth renderbuffer");
+            }
+            glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, viewportWidth, viewportHeight);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer);
+            
+            // Check framebuffer completeness
+            int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                String errorMessage = getFramebufferErrorMessage(status);
+                throw new RuntimeException("Framebuffer not complete: " + errorMessage);
+            }
+            
+            // Unbind framebuffer
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            
+            logger.info("Framebuffer created successfully: {}x{}", viewportWidth, viewportHeight);
+            
+        } catch (Exception e) {
+            logger.error("Failed to create framebuffer", e);
+            throw new RuntimeException("Framebuffer creation failed", e);
         }
-        
-        // Unbind framebuffer
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        
-        logger.info("Framebuffer created: {}x{}", viewportWidth, viewportHeight);
+    }
+    
+    /**
+     * Get human-readable framebuffer error message.
+     */
+    private String getFramebufferErrorMessage(int status) {
+        return switch (status) {
+            case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT -> "Incomplete attachment";
+            case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT -> "Missing attachment";
+            case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER -> "Incomplete draw buffer";
+            case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER -> "Incomplete read buffer";
+            case GL_FRAMEBUFFER_UNSUPPORTED -> "Unsupported framebuffer format";
+            default -> "Unknown error (status: " + status + ")";
+        };
     }
     
     /**
@@ -315,22 +419,41 @@ public class OpenMason3DViewport {
     }
     
     /**
-     * Recreate framebuffer with new dimensions.
+     * Recreate framebuffer with new dimensions with proper error handling.
      */
     private void recreateFramebuffer() {
-        // Delete old resources
+        logger.debug("Recreating framebuffer with dimensions: {}x{}", viewportWidth, viewportHeight);
+        
+        try {
+            // Delete old resources safely
+            deleteFramebufferResources();
+            
+            // Create new framebuffer
+            createFramebuffer();
+            
+            logger.debug("Framebuffer recreated successfully");
+        } catch (Exception e) {
+            logger.error("Failed to recreate framebuffer", e);
+            throw new RuntimeException("Framebuffer recreation failed", e);
+        }
+    }
+    
+    /**
+     * Safely delete framebuffer resources.
+     */
+    private void deleteFramebufferResources() {
         if (colorTexture != -1) {
             glDeleteTextures(colorTexture);
+            colorTexture = -1;
         }
         if (depthRenderbuffer != -1) {
             glDeleteRenderbuffers(depthRenderbuffer);
+            depthRenderbuffer = -1;
         }
         if (framebuffer != -1) {
             glDeleteFramebuffers(framebuffer);
+            framebuffer = -1;
         }
-        
-        // Create new framebuffer
-        createFramebuffer();
     }
     
     /**
@@ -354,6 +477,10 @@ public class OpenMason3DViewport {
         
         // Use shader program
         glUseProgram(shaderProgram);
+        
+        // Update camera animation (smooth interpolation) - ensure matrices are updated
+        camera.update(0.016f); // Assuming ~60fps (16ms frame time)
+        camera.updateMatrices(); // Force matrix update for immediate response
         
         // Calculate MVP matrix
         Matrix4f mvpMatrix = new Matrix4f();
@@ -397,7 +524,13 @@ public class OpenMason3DViewport {
             return;
         }
         
+        // Begin 3D Viewport window with focus capture for proper mouse handling
         ImGui.begin("3D Viewport", ImGuiWindowFlags.None);
+        
+        // Ensure window can capture mouse input
+        if (ImGui.isWindowFocused()) {
+            logger.debug("3D Viewport window has focus");
+        }
         
         // Get available content region
         ImVec2 contentRegion = ImGui.getContentRegionAvail();
@@ -412,12 +545,15 @@ public class OpenMason3DViewport {
         // Render 3D content
         render();
         
-        // Display the rendered texture
+        // Display the rendered texture as an image
+        ImVec2 imagePos = ImGui.getCursorScreenPos();
         ImGui.image(colorTexture, contentRegion.x, contentRegion.y, 0, 1, 1, 0);
         
-        // Handle input
-        if (ImGui.isItemHovered()) {
-            handleInput();
+        // Delegate input handling to the input handler
+        if (inputHandler != null) {
+            inputHandler.handleInput(imagePos, contentRegion.x, contentRegion.y);
+        } else {
+            logger.warn("Input handler is null - input will not be processed");
         }
         
         ImGui.end();
@@ -426,42 +562,73 @@ public class OpenMason3DViewport {
         showControls();
     }
     
-    /**
-     * Handle input for camera controls.
-     */
-    private void handleInput() {
-        ImVec2 mouseDelta = ImGui.getIO().getMouseDelta();
-        
-        if (ImGui.isMouseDown(0)) { // Left mouse button
-            // Rotate camera
-            camera.rotate(-mouseDelta.x * 0.01f, -mouseDelta.y * 0.01f);
-        }
-        
-        // Handle mouse wheel for zooming
-        float wheel = ImGui.getIO().getMouseWheel();
-        if (wheel != 0) {
-            camera.zoom(wheel * 0.5f);
-        }
-    }
     
     /**
-     * Show viewport controls.
+     * Show viewport controls and status.
      */
     private void showControls() {
         ImGui.begin("Viewport Controls");
         
+        // Grid controls
         if (ImGui.checkbox("Show Grid", showGrid)) {
-            // Grid visibility changed
+            logger.debug("Grid visibility changed to: {}", showGrid);
         }
         
+        // Camera controls
         if (ImGui.button("Reset Camera")) {
-            camera.reset();
+            if (camera != null) {
+                camera.reset();
+                logger.info("Camera reset to default position");
+            }
         }
         
         ImGui.separator();
         ImGui.text("Controls:");
-        ImGui.text("Left Mouse: Rotate camera");
-        ImGui.text("Mouse Wheel: Zoom");
+        ImGui.text("Left Click & Drag in viewport: Rotate camera (Endless)");
+        ImGui.text("Mouse Wheel in viewport: Zoom");
+        
+        ImGui.separator();
+        ImGui.text("Status:");
+        
+        // Show viewport status
+        ImGui.text("Viewport: " + viewportWidth + "x" + viewportHeight);
+        ImGui.text("Initialized: " + (initialized ? "Yes" : "No"));
+        
+        // Show input handler status
+        if (inputHandler != null) {
+            ImGui.textColored(0.0f, 1.0f, 0.0f, 1.0f, "Input Handler: Active");
+            
+            // Show current dragging state
+            if (inputHandler.isDragging()) {
+                ImGui.textColored(0.0f, 1.0f, 0.0f, 1.0f, "Dragging camera - endless mode active!");
+            }
+            
+            // Show mouse capture state
+            if (inputHandler.isMouseCaptured()) {
+                ImGui.textColored(1.0f, 1.0f, 0.0f, 1.0f, "Mouse captured - cursor hidden");
+                ImGui.text("Cursor will return to: (" + (int)inputHandler.getSavedCursorX() + ", " + (int)inputHandler.getSavedCursorY() + ")");
+            }
+            
+            // Show raw mouse motion status
+            if (inputHandler.getWindowHandle() != 0L) {
+                ImGui.text("Raw mouse motion: " + (inputHandler.isRawMouseMotionSupported() ? "Supported" : "Not supported"));
+            } else {
+                ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Warning: Window handle not set!");
+                ImGui.text("Call setWindowHandle() to enable endless dragging");
+            }
+        } else {
+            ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Input Handler: NULL");
+        }
+        
+        // Show camera status
+        if (camera != null) {
+            ImGui.separator();
+            ImGui.text("Camera:");
+            ImGui.text("Mode: " + camera.getCameraMode());
+            ImGui.text("Distance: " + String.format("%.1f", camera.getDistance()));
+            ImGui.text("Yaw: " + String.format("%.1f°", camera.getYaw()));
+            ImGui.text("Pitch: " + String.format("%.1f°", camera.getPitch()));
+        }
         
         ImGui.end();
     }
@@ -489,10 +656,15 @@ public class OpenMason3DViewport {
     }
     
     /**
-     * Cleanup OpenGL resources.
+     * Cleanup OpenGL resources safely.
      */
     public void cleanup() {
         logger.info("Cleaning up viewport resources");
+        
+        // Cleanup input handler
+        if (inputHandler != null) {
+            inputHandler.cleanup();
+        }
         
         if (cubeVBO != -1) {
             glDeleteBuffers(cubeVBO);
@@ -548,12 +720,43 @@ public class OpenMason3DViewport {
         logger.info("Viewport resources cleaned up");
     }
     
-    // Getters
+    // Getters with null-safety
     public Camera getCamera() { return camera; }
     public boolean isShowGrid() { return showGrid; }
-    public void setShowGrid(boolean showGrid) { this.showGrid = showGrid; }
+    public void setShowGrid(boolean showGrid) { 
+        this.showGrid = showGrid; 
+        logger.debug("Grid visibility set to: {}", showGrid);
+    }
     public int getColorTexture() { return colorTexture; }
     public boolean isInitialized() { return initialized; }
+    
+    // Input handler state getters
+    public boolean isDragging() { 
+        return inputHandler != null ? inputHandler.isDragging() : false; 
+    }
+    public boolean isMouseCaptured() { 
+        return inputHandler != null ? inputHandler.isMouseCaptured() : false; 
+    }
+    public boolean isRawMouseMotionSupported() { 
+        return inputHandler != null ? inputHandler.isRawMouseMotionSupported() : false; 
+    }
+    
+    // Get input handler reference
+    public ViewportInputHandler getInputHandler() {
+        return inputHandler;
+    }
+    
+    /**
+     * Force release mouse capture. Useful for escape key handling.
+     */
+    public void forceReleaseMouse() {
+        if (inputHandler != null) {
+            inputHandler.forceReleaseMouse();
+            logger.info("Forced release of mouse capture via input handler");
+        } else {
+            logger.warn("Cannot force release mouse - input handler is null");
+        }
+    }
     
     // Legacy compatibility methods
     public void resetCamera() {
@@ -645,6 +848,20 @@ public class OpenMason3DViewport {
      */
     public StonebreakModel getCurrentModel() {
         return currentModel;
+    }
+    
+    /**
+     * Handle frame update - should be called every frame.
+     */
+    public void update(float deltaTime) {
+        if (camera != null) {
+            camera.update(deltaTime);
+        }
+        
+        // Handle keyboard input for first-person camera mode
+        if (inputHandler != null) {
+            inputHandler.handleKeyboardInput(deltaTime);
+        }
     }
     
     /**

@@ -149,7 +149,7 @@ public class ViewportImGuiInterface {
             
             ImGui.separator();
             
-            // Render 3D viewport content - no fallbacks, fail hard if not working
+            // Render 3D viewport content embedded in this window
             renderViewport3D();
             
         }
@@ -250,17 +250,21 @@ public class ViewportImGuiInterface {
         // Render 3D content
         viewport3D.render();
         
-        // Display the rendered texture - fail hard if texture is invalid
+        // Display the rendered texture with mouse capture functionality
         int colorTexture = viewport3D.getColorTexture();
         if (colorTexture == -1) {
             throw new RuntimeException("Viewport color texture is invalid - OpenGL initialization failed");
         }
         
+        // Get image position before drawing for manual bounds checking
+        ImVec2 imagePos = ImGui.getCursorScreenPos();
+        
+        // Display the rendered texture directly without any widgets
         ImGui.image(colorTexture, viewportSize.x, viewportSize.y, 0, 1, 1, 0);
         
-        // Handle input when hovering over image
-        if (ImGui.isItemHovered()) {
-            handleViewportInput();
+        // Handle input after image - no widgets interfering with raw input
+        if (viewport3D.getInputHandler() != null) {
+            viewport3D.getInputHandler().handleInput(imagePos, viewportSize.x, viewportSize.y);
         }
     }
     
@@ -310,58 +314,6 @@ public class ViewportImGuiInterface {
                         ImColor.rgba(100, 100, 255, 255), "Z");
     }
     
-    /**
-     * Handle viewport input directly through the viewport's input system.
-     */
-    private void handleViewportInput() {
-        // Mouse wheel zoom
-        float mouseWheel = ImGui.getIO().getMouseWheel();
-        if (mouseWheel != 0) {
-            viewport3D.getCamera().zoom(mouseWheel * 0.5f);
-        }
-        
-        // Mouse drag for camera rotation
-        if (ImGui.isMouseDragging(0)) {
-            ImVec2 mouseDelta = ImGui.getMouseDragDelta(0);
-            if (Math.abs(mouseDelta.x) > 0.1f || Math.abs(mouseDelta.y) > 0.1f) {
-                viewport3D.getCamera().rotate(-mouseDelta.x * 0.01f, -mouseDelta.y * 0.01f);
-                ImGui.resetMouseDragDelta(0);
-            }
-        }
-        
-        // Right-click for context menu
-        if (ImGui.isMouseClicked(1)) {
-            ImGui.openPopup("viewport_context_menu");
-        }
-        
-        // Context menu
-        if (ImGui.beginPopup("viewport_context_menu")) {
-            if (ImGui.menuItem("Reset View")) {
-                resetView();
-            }
-            if (ImGui.menuItem("Fit to View")) {
-                fitToView();
-            }
-            ImGui.separator();
-            if (ImGui.menuItem("Toggle Grid", null, gridVisible)) {
-                toggleGrid();
-            }
-            if (ImGui.menuItem("Toggle Axes", null, axesVisible)) {
-                toggleAxes();
-            }
-            if (ImGui.menuItem("Toggle Wireframe", null, wireframeMode)) {
-                toggleWireframe();
-            }
-            ImGui.endPopup();
-        }
-    }
-    
-    /**
-     * Handle mouse and keyboard interaction in viewport.
-     */
-    private void handleViewportInteraction() {
-        handleViewportInput();
-    }
     
     /**
      * Render viewport controls window.
@@ -493,6 +445,19 @@ public class ViewportImGuiInterface {
         viewport3D = new OpenMason3DViewport();
         viewportInitialized = true;
         logger.info("3D viewport initialized successfully");
+    }
+    
+    /**
+     * Set the GLFW window handle for mouse capture functionality.
+     * This must be called from the main application after initialization.
+     */
+    public void setWindowHandle(long windowHandle) {
+        if (viewport3D != null) {
+            viewport3D.setWindowHandle(windowHandle);
+            logger.info("Window handle set on viewport for mouse capture");
+        } else {
+            logger.warn("Cannot set window handle - viewport not initialized");
+        }
     }
     
     

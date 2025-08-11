@@ -338,16 +338,48 @@ public class MainImGuiInterface {
             
             ImGui.separator();
             
-            if (ImGui.menuItem("Show Model Browser", null, showModelBrowser.get())) {
+            // Panel visibility toggles
+            if (ImGui.menuItem("Show 3D Viewport", "Ctrl+1", true)) {
+                showViewport();
+            }
+            
+            if (ImGui.menuItem("Show Model Browser", "Ctrl+2", showModelBrowser.get())) {
                 toggleModelBrowser();
             }
             
-            if (ImGui.menuItem("Show Property Panel", null, showPropertyPanel.get())) {
+            if (ImGui.menuItem("Show Property Panel", "Ctrl+3", showPropertyPanel.get())) {
                 togglePropertyPanel();
             }
             
-            if (ImGui.menuItem("Show Toolbar", null, showToolbar.get())) {
+            if (ImGui.menuItem("Show Viewport Controls", "Ctrl+4", true)) {
+                showViewportControls();
+            }
+            
+            if (ImGui.menuItem("Show Toolbar", "Ctrl+5", showToolbar.get())) {
                 toggleToolbar();
+            }
+            
+            ImGui.separator();
+            
+            // Layout options
+            if (ImGui.beginMenu("Layout")) {
+                if (ImGui.menuItem("Reset to Default")) {
+                    resetToDefaultLayout();
+                }
+                
+                if (ImGui.menuItem("Full Screen Viewport", "F11")) {
+                    toggleFullScreenViewport();
+                }
+                
+                if (ImGui.menuItem("Modeling Layout")) {
+                    applyModelingLayout();
+                }
+                
+                if (ImGui.menuItem("Texturing Layout")) {
+                    applyTexturingLayout();
+                }
+                
+                ImGui.endMenu();
             }
             
             ImGui.endMenu();
@@ -934,6 +966,103 @@ public class MainImGuiInterface {
     private void toggleToolbar() {
         showToolbar.set(!showToolbar.get());
         logger.info("Toggle toolbar: {}", showToolbar.get());
+    }
+    
+    private void showViewport() {
+        logger.info("Show 3D viewport action triggered");
+        // Viewport is always shown in current implementation
+        updateStatus("3D Viewport is visible");
+    }
+    
+    private void showViewportControls() {
+        logger.info("Show viewport controls action triggered");
+        // Viewport controls are always shown in current implementation
+        updateStatus("Viewport controls are visible");
+    }
+    
+    private void resetToDefaultLayout() {
+        logger.info("Reset to default layout action triggered");
+        updateStatus("Resetting to default layout...");
+        
+        // Reset panel visibility to defaults
+        showModelBrowser.set(true);
+        showPropertyPanel.set(true);
+        showToolbar.set(true);
+        
+        // Reset ImGui docking layout by deleting imgui.ini
+        try {
+            java.nio.file.Path iniPath = java.nio.file.Paths.get("openmason-tool/imgui.ini");
+            if (java.nio.file.Files.exists(iniPath)) {
+                java.nio.file.Files.delete(iniPath);
+                logger.info("Deleted ImGui layout configuration for reset");
+            }
+            updateStatus("Layout reset - restart application to see changes");
+        } catch (Exception e) {
+            logger.error("Failed to reset layout", e);
+            updateStatus("Failed to reset layout: " + e.getMessage());
+        }
+    }
+    
+    private void toggleFullScreenViewport() {
+        logger.info("Toggle full screen viewport action triggered");
+        updateStatus("Full screen viewport mode toggled");
+        
+        // Hide/show other panels for full screen effect
+        if (showModelBrowser.get() || showPropertyPanel.get()) {
+            // Hide panels for full screen
+            showModelBrowser.set(false);
+            showPropertyPanel.set(false);
+            showToolbar.set(false);
+        } else {
+            // Restore panels
+            showModelBrowser.set(true);
+            showPropertyPanel.set(true);
+            showToolbar.set(true);
+        }
+    }
+    
+    private void applyModelingLayout() {
+        logger.info("Apply modeling layout action triggered");
+        updateStatus("Applying modeling layout...");
+        
+        // Configure panels for modeling workflow
+        showModelBrowser.set(true);
+        showPropertyPanel.set(true);
+        showToolbar.set(true);
+        
+        if (viewport3D != null) {
+            viewport3D.setGridVisible(true);
+            viewport3D.setAxesVisible(true);
+            viewport3D.setWireframeMode(false);
+        }
+        
+        showGrid = true;
+        showAxes = true;
+        wireframeMode = false;
+        
+        updateStatus("Modeling layout applied");
+    }
+    
+    private void applyTexturingLayout() {
+        logger.info("Apply texturing layout action triggered");
+        updateStatus("Applying texturing layout...");
+        
+        // Configure panels for texturing workflow
+        showModelBrowser.set(true);
+        showPropertyPanel.set(true);
+        showToolbar.set(true);
+        
+        if (viewport3D != null) {
+            viewport3D.setGridVisible(false);
+            viewport3D.setAxesVisible(false);
+            viewport3D.setWireframeMode(false);
+        }
+        
+        showGrid = false;
+        showAxes = false;
+        wireframeMode = false;
+        
+        updateStatus("Texturing layout applied");
     }
     
     private void validateModel() {

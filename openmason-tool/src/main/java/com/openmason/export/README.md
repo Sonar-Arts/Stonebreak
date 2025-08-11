@@ -180,7 +180,7 @@ The export system integrates with existing Open Mason components:
 - **TextureManager** - Texture variant data
 - **ModelManager** - Model definitions
 - **AtlasCoordinateSystem** - Coordinate mapping
-- **ArcBallCamera** - Camera positioning
+- **Camera** - Dual-mode camera positioning (arc-ball/first-person)
 
 ### Thread Safety
 
