@@ -97,8 +97,8 @@ public class Camera {
     public void rotate(float deltaX, float deltaY) {
         lastUserInputTime = System.currentTimeMillis();
         
-        // Enhanced debug logging
-        logger.info("Camera.rotate() called - deltaX: {}, deltaY: {}, mode: {}, sensitivity: {}", 
+        // Debug logging (trace level to avoid spam)
+        logger.trace("Camera.rotate() called - deltaX: {}, deltaY: {}, mode: {}, sensitivity: {}", 
             deltaX, deltaY, cameraMode, mouseSensitivity);
         
         if (cameraMode == CameraMode.ARCBALL) {
@@ -113,7 +113,7 @@ public class Camera {
             yaw = targetYaw;
             pitch = targetPitch;
             
-            logger.info("ArcBall Rotate - Old: Yaw={}°, Pitch={}° | New: Yaw={}°, Pitch={}°", 
+            logger.trace("ArcBall Rotate - Old: Yaw={}°, Pitch={}° | New: Yaw={}°, Pitch={}°", 
                 oldYaw, oldPitch, targetYaw, targetPitch);
         } else if (cameraMode == CameraMode.FIRST_PERSON) {
             // First-person mouse look
@@ -131,7 +131,7 @@ public class Camera {
             fpYaw = fpTargetYaw;
             fpPitch = fpTargetPitch;
             
-            logger.info("FirstPerson Look - Old: Yaw={}°, Pitch={}° | New: Yaw={}°, Pitch={}°", 
+            logger.trace("FirstPerson Look - Old: Yaw={}°, Pitch={}° | New: Yaw={}°, Pitch={}°", 
                 oldYaw, oldPitch, fpTargetYaw, fpTargetPitch);
         }
         

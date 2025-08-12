@@ -9,6 +9,10 @@ import com.openmason.model.ModelManager;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.HashMap;
+
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /**
  * Integration bridge between Stonebreak game data and Open Mason UI.
@@ -50,11 +54,36 @@ public class StonebreakModel {
     }
 
     /**
-     * Factory method to create a StonebreakModel from resource files
+     * Maps legacy model names to their correct baked variants for proper positioning.
+     * This ensures compatibility with Stonebreak's rendering system which uses baked transformations.
+     * 
+     * @param modelName The requested model name
+     * @return The actual model name to load (may be a baked variant)
+     */
+    private static String mapModelName(String modelName) {
+        // Use baked model variants for proper positioning - these have pre-applied Y-offset transformations
+        // that match Stonebreak's EntityRenderer expectations
+        return switch (modelName) {
+            case "standard_cow" -> "standard_cow_baked";
+            // Future model variants can be added here
+            default -> modelName;
+        };
+    }
+    
+    /**
+     * Factory method to create a StonebreakModel from resource files.
+     * Automatically maps model names to their baked variants for proper positioning.
      */
     public static StonebreakModel loadFromResources(String modelPath, String texturePath, String variantName) {
         try {
-            ModelDefinition.CowModelDefinition model = ModelLoader.getCowModel(modelPath);
+            // Map to baked model variant if needed for proper positioning
+            String actualModelName = mapModelName(modelPath);
+            if (!actualModelName.equals(modelPath)) {
+                System.out.println("[StonebreakModel] Mapped model '" + modelPath + "' to '" + actualModelName + 
+                                 "' for proper positioning compatibility");
+            }
+            
+            ModelDefinition.CowModelDefinition model = ModelLoader.getCowModel(actualModelName);
             CowTextureDefinition.CowVariant texture = CowTextureLoader.getCowVariant(variantName);
             
             return new StonebreakModel(model, texture, variantName);
@@ -154,13 +183,164 @@ public class StonebreakModel {
     }
 
     /**
-     * Validate that the model and texture data are consistent
+     * Validate that the model and texture data are consistent and complete
      */
     public ValidationResult validate() {
         ValidationResult result = new ValidationResult();
         
-        // Check that all body parts have corresponding face mappings
+        // First validate model part completeness
+        validateModelPartCompleteness(result);
+        
+        // Then validate texture mappings
+        validateTextureMappings(result);
+        
+        return result;
+    }
+    
+    /**
+     * Validates that all model parts have complete geometric data for rendering
+     */
+    private void validateModelPartCompleteness(ValidationResult result) {
         List<BodyPart> bodyParts = getBodyParts();
+        
+        if (bodyParts.isEmpty()) {
+            result.addError("Model has no body parts defined");
+            return;
+        }
+        
+        result.setModelPartCount(bodyParts.size());
+        
+        for (BodyPart bodyPart : bodyParts) {
+            validateModelPart(bodyPart, result);
+        }
+    }
+    
+    /**
+     * Validates a single model part for completeness
+     */
+    private void validateModelPart(BodyPart bodyPart, ValidationResult result) {
+        String partName = bodyPart.getName();
+        ModelDefinition.ModelPart modelPart = bodyPart.getModelPart();
+        
+        // Check basic structure
+        if (modelPart == null) {
+            result.addError("Model part '" + partName + "' is null");
+            return;
+        }
+        
+        // Validate name
+        if (partName == null || partName.trim().isEmpty()) {
+            result.addError("Model part has null or empty name");
+        }
+        
+        // Validate position data
+        ModelDefinition.Position position = modelPart.getPosition();
+        if (position == null) {
+            result.addError("Model part '" + partName + "' has no position data");
+        } else {
+            if (Float.isNaN(position.getX()) || Float.isNaN(position.getY()) || Float.isNaN(position.getZ())) {
+                result.addError("Model part '" + partName + "' has NaN position values");
+            }
+            if (Float.isInfinite(position.getX()) || Float.isInfinite(position.getY()) || Float.isInfinite(position.getZ())) {
+                result.addError("Model part '" + partName + "' has infinite position values");
+            }
+        }
+        
+        // Validate size data
+        ModelDefinition.Size size = modelPart.getSize();
+        if (size == null) {
+            result.addError("Model part '" + partName + "' has no size data");
+        } else {
+            if (size.getX() <= 0 || size.getY() <= 0 || size.getZ() <= 0) {
+                result.addError("Model part '" + partName + "' has invalid size: (" + 
+                               size.getX() + ", " + size.getY() + ", " + size.getZ() + ") - all dimensions must be positive");
+            }
+            if (Float.isNaN(size.getX()) || Float.isNaN(size.getY()) || Float.isNaN(size.getZ())) {
+                result.addError("Model part '" + partName + "' has NaN size values");
+            }
+            if (Float.isInfinite(size.getX()) || Float.isInfinite(size.getY()) || Float.isInfinite(size.getZ())) {
+                result.addError("Model part '" + partName + "' has infinite size values");
+            }
+        }
+        
+        // Test vertex generation (this is critical for rendering)
+        if (position != null && size != null) {
+            try {
+                float[] vertices = modelPart.getVertices();
+                if (vertices == null) {
+                    result.addError("Model part '" + partName + "' getVertices() returns null");
+                } else if (vertices.length == 0) {
+                    result.addError("Model part '" + partName + "' has empty vertices array");
+                } else if (vertices.length % 3 != 0) {
+                    result.addError("Model part '" + partName + "' has invalid vertex data length (" + 
+                                   vertices.length + " - must be multiple of 3)");
+                } else {
+                    result.addValidModelPart(partName, vertices.length / 3);
+                    
+                    // Check for NaN or infinite vertices
+                    for (int i = 0; i < vertices.length; i++) {
+                        if (Float.isNaN(vertices[i]) || Float.isInfinite(vertices[i])) {
+                            result.addError("Model part '" + partName + "' has invalid vertex data at index " + i + ": " + vertices[i]);
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                result.addError("Model part '" + partName + "' vertex generation failed: " + e.getMessage());
+            }
+            
+            // Test index generation
+            try {
+                int[] indices = modelPart.getIndices();
+                if (indices == null) {
+                    result.addError("Model part '" + partName + "' getIndices() returns null");
+                } else if (indices.length == 0) {
+                    result.addError("Model part '" + partName + "' has empty indices array");
+                } else if (indices.length % 3 != 0) {
+                    result.addError("Model part '" + partName + "' has invalid indices data length (" + 
+                                   indices.length + " - must be multiple of 3)");
+                } else {
+                    // Check for valid index ranges (if we have vertex data)
+                    try {
+                        float[] vertices = modelPart.getVertices();
+                        if (vertices != null) {
+                            int maxValidIndex = (vertices.length / 3) - 1;
+                            for (int i = 0; i < indices.length; i++) {
+                                if (indices[i] < 0 || indices[i] > maxValidIndex) {
+                                    result.addError("Model part '" + partName + "' has out-of-range index at position " + i + 
+                                                   ": " + indices[i] + " (valid range: 0-" + maxValidIndex + ")");
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        // Already reported vertex error above
+                    }
+                }
+            } catch (Exception e) {
+                result.addError("Model part '" + partName + "' index generation failed: " + e.getMessage());
+            }
+        }
+        
+        // Validate texture key
+        String textureKey = modelPart.getTexture();
+        if (textureKey == null || textureKey.trim().isEmpty()) {
+            result.addWarning("Model part '" + partName + "' has no texture key defined");
+        }
+    }
+    
+    /**
+     * Validates texture mappings and coordinates
+     */
+    private void validateTextureMappings(ValidationResult result) {
+        if (textureDefinition == null) {
+            result.addError("No texture definition available");
+            return;
+        }
+        
+        List<BodyPart> bodyParts = getBodyParts();
+        
+        // Check that all body parts have corresponding face mappings
         for (BodyPart bodyPart : bodyParts) {
             String partName = bodyPart.getName().toUpperCase();
             
@@ -186,8 +366,6 @@ public class StonebreakModel {
         
         // Count face mappings
         result.setFaceMappingCount(textureDefinition.getFaceMappings().size());
-        
-        return result;
     }
 
     // Getters
@@ -201,39 +379,61 @@ public class StonebreakModel {
     public static class ValidationResult {
         private final List<String> errors = new java.util.ArrayList<>();
         private final List<String> warnings = new java.util.ArrayList<>();
+        private final Map<String, Integer> validModelParts = new HashMap<>();
         private int faceMappingCount = 0;
+        private int modelPartCount = 0;
 
         public void addError(String error) { errors.add(error); }
         public void addWarning(String warning) { warnings.add(warning); }
         public void setFaceMappingCount(int count) { this.faceMappingCount = count; }
+        public void setModelPartCount(int count) { this.modelPartCount = count; }
+        public void addValidModelPart(String partName, int vertexCount) { 
+            validModelParts.put(partName, vertexCount); 
+        }
 
         public boolean isValid() { return errors.isEmpty(); }
+        public boolean hasModelPartErrors() {
+            return errors.stream().anyMatch(error -> 
+                error.contains("Model part") || error.contains("vertex") || error.contains("indices"));
+        }
         public List<String> getErrors() { return errors; }
         public List<String> getWarnings() { return warnings; }
         public int getFaceMappingCount() { return faceMappingCount; }
+        public int getModelPartCount() { return modelPartCount; }
+        public int getValidModelPartCount() { return validModelParts.size(); }
+        public Map<String, Integer> getValidModelParts() { return new HashMap<>(validModelParts); }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
-            sb.append("Validation Result:\n");
-            sb.append("  Face Mappings: ").append(faceMappingCount).append("\n");
-            sb.append("  Errors: ").append(errors.size()).append("\n");
-            sb.append("  Warnings: ").append(warnings.size()).append("\n");
+            sb.append("=== Model Validation Result ===\n");
+            sb.append("Model Parts: ").append(getValidModelPartCount()).append("/").append(modelPartCount).append(" valid\n");
+            sb.append("Face Mappings: ").append(faceMappingCount).append("\n");
+            sb.append("Errors: ").append(errors.size()).append("\n");
+            sb.append("Warnings: ").append(warnings.size()).append("\n");
+            
+            if (!validModelParts.isEmpty()) {
+                sb.append("\nValid Model Parts:\n");
+                for (Map.Entry<String, Integer> entry : validModelParts.entrySet()) {
+                    sb.append("  ✓ ").append(entry.getKey()).append(": ").append(entry.getValue()).append(" vertices\n");
+                }
+            }
             
             if (!errors.isEmpty()) {
-                sb.append("  Error Details:\n");
+                sb.append("\nError Details:\n");
                 for (String error : errors) {
-                    sb.append("    - ").append(error).append("\n");
+                    sb.append("  ✗ ").append(error).append("\n");
                 }
             }
             
             if (!warnings.isEmpty()) {
-                sb.append("  Warning Details:\n");
+                sb.append("\nWarning Details:\n");
                 for (String warning : warnings) {
-                    sb.append("    - ").append(warning).append("\n");
+                    sb.append("  ⚠ ").append(warning).append("\n");
                 }
             }
             
+            sb.append("===============================");
             return sb.toString();
         }
     }
@@ -263,6 +463,42 @@ public class StonebreakModel {
         
         public ModelDefinition.ModelPart getModelPart() {
             return modelPart;
+        }
+        
+        /**
+         * Get the current transformation matrix for this body part.
+         */
+        public Matrix4f getTransformationMatrix() {
+            return modelPart.getTransformationMatrix();
+        }
+        
+        /**
+         * Get the current position of this body part.
+         */
+        public Vector3f getPosition() {
+            return modelPart.getPositionVector();
+        }
+        
+        /**
+         * Get the current rotation of this body part.
+         */
+        public Vector3f getRotation() {
+            return modelPart.getRotation();
+        }
+        
+        /**
+         * Get the current scale of this body part.
+         */
+        public Vector3f getScale() {
+            return modelPart.getScale();
+        }
+        
+        /**
+         * Matrix transformations are always enabled.
+         * @return Always true
+         */
+        public boolean isUsingMatrixTransform() {
+            return true;
         }
     }
     

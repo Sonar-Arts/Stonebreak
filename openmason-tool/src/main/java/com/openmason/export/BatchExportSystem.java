@@ -480,7 +480,7 @@ public class BatchExportSystem {
         ExportTemplate template = new ExportTemplate("Quick Preview");
         template.setDescription("Quick preview images for rapid iteration");
         
-        // Limited selection for speed
+        // Limited selection for speed - model mapping will handle baked variant selection
         template.setModelNames(Arrays.asList("standard_cow"));
         template.setTextureVariants(Arrays.asList("default", "angus"));
         template.setCameraAngles(Arrays.asList(CameraAngle.ISOMETRIC, CameraAngle.FRONT));
@@ -508,6 +508,7 @@ public class BatchExportSystem {
         ExportTemplate template = new ExportTemplate("Presentation Quality");
         template.setDescription("High-quality images for presentations and marketing");
         
+        // Model mapping will handle baked variant selection
         template.setModelNames(Arrays.asList("standard_cow"));
         template.setTextureVariants(TextureManager.getAvailableVariants());
         template.setCameraAngles(Arrays.asList(

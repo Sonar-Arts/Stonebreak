@@ -1,6 +1,7 @@
 package com.openmason.rendering;
 
 import com.openmason.model.StonebreakModel;
+import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.textures.CowTextureDefinition;
 
@@ -8,6 +9,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static org.lwjgl.opengl.GL20.*;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.lwjgl.BufferUtils;
+import java.nio.FloatBuffer;
 
 /**
  * High-level model renderer that integrates the buffer management system
@@ -30,6 +37,17 @@ public class ModelRenderer implements AutoCloseable {
     // Context validation tracking
     private boolean contextValidationEnabled = true;
     private long lastContextValidationTime = 0;
+    
+    // Matrix transformation support
+    private boolean matrixTransformationMode = false;
+    private final FloatBuffer matrixBuffer = BufferUtils.createFloatBuffer(16); // 4x4 matrix
+    
+    // Diagnostic data - stores actual rendered transformation matrices
+    private final Map<String, Matrix4f> lastRenderedTransforms = new ConcurrentHashMap<>();
+    
+    // Coordinate space tracking for diagnostics
+    private final Map<String, ModelManager.CoordinateSpace> modelCoordinateSpaces = new ConcurrentHashMap<>();
+    private final Map<String, String> modelVariantMappings = new ConcurrentHashMap<>();
     
     /**
      * Creates a new ModelRenderer.
@@ -64,6 +82,14 @@ public class ModelRenderer implements AutoCloseable {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
         
+        // Track coordinate space for this model
+        String modelVariant = model.getVariantName();
+        ModelManager.CoordinateSpace coordinateSpace = ModelManager.CoordinateSpaceManager.getCoordinateSpace(modelVariant);
+        modelCoordinateSpaces.put(modelVariant, coordinateSpace);
+        
+        System.out.println("Preparing model '" + modelVariant + "' in coordinate space: " + 
+                          coordinateSpace.getDisplayName() + " (" + coordinateSpace.getDescription() + ")");
+        
         // Validate OpenGL context before model preparation
         if (contextValidationEnabled) {
             // First check if we have any OpenGL context at all
@@ -85,12 +111,46 @@ public class ModelRenderer implements AutoCloseable {
         
         try {
             // Get model parts from the definition
+            int totalParts = 0;
+            int successfulParts = 0;
+            int startingVAOCount = modelPartVAOs.size();
+            
+            System.out.println("Preparing model '" + model.getVariantName() + "' with " + 
+                              model.getBodyParts().size() + " parts...");
+            
             for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
-                prepareModelPart(bodyPart.getModelPart(), model.getTextureDefinition());
+                totalParts++;
+                String partName = bodyPart.getName();
+                int preVAOCount = modelPartVAOs.size();
+                
+                System.out.println("  Preparing part " + totalParts + "/" + model.getBodyParts().size() + 
+                                  ": '" + partName + "'");
+                
+                // Prepare model part with matrix transformation
+                if (prepareModelPart(bodyPart.getModelPart(), model.getTextureDefinition(), model.getVariantName())) {
+                    successfulParts++;
+                    System.out.println("    ✓ Part '" + partName + "' prepared successfully");
+                } else {
+                    System.err.println("    ✗ Part '" + partName + "' failed to prepare");
+                }
             }
             
-            System.out.println("Model prepared successfully: " + model.getVariantName() + 
-                              " (" + modelPartVAOs.size() + " parts)");
+            int newVAOs = modelPartVAOs.size() - startingVAOCount;
+            System.out.println("Model preparation completed: " + model.getVariantName() + 
+                              " - " + successfulParts + "/" + totalParts + " parts successful" +
+                              " (" + newVAOs + " new VAOs created)");
+            
+            if (successfulParts == 0) {
+                System.err.println("ERROR: No model parts were successfully prepared for " + model.getVariantName());
+                return false;
+            }
+            
+            if (successfulParts < totalParts) {
+                System.err.println("WARNING: Only " + successfulParts + " out of " + totalParts + 
+                                  " parts were successfully prepared for " + model.getVariantName());
+                // Return true for partial success - some parts can still be rendered
+            }
+            
             return true;
             
         } catch (Exception e) {
@@ -106,59 +166,68 @@ public class ModelRenderer implements AutoCloseable {
      * @param bodyPart The body part definition from the model
      * @param textureDefinition The texture definition for UV mapping
      */
-    private void prepareModelPart(ModelDefinition.ModelPart bodyPart, 
-                                CowTextureDefinition.CowVariant textureDefinition) {
+    
+    /**
+     * Prepares a single model part for matrix-based transformation rendering.
+     */
+    private boolean prepareModelPart(ModelDefinition.ModelPart bodyPart, 
+                                   CowTextureDefinition.CowVariant textureDefinition,
+                                   String variantName) {
         String partName = bodyPart.getName();
-        String vaoKey = debugPrefix + "_" + partName;
+        String vaoKey = debugPrefix + "_matrix_" + partName;
         
         // Skip if already prepared
         if (modelPartVAOs.containsKey(partName)) {
-            return;
+            return true;
         }
         
-        // Validate OpenGL context before model part preparation
-        if (contextValidationEnabled) {
-            List<String> contextIssues = OpenGLValidator.validateContext("prepareModelPart:" + partName);
-            if (!contextIssues.isEmpty()) {
-                System.err.println("OpenGL context validation failed in prepareModelPart for " + partName + ":");
-                for (String issue : contextIssues) {
-                    System.err.println("  - " + issue);
-                }
-                throw new RuntimeException("Cannot prepare model part '" + partName + "' due to invalid OpenGL context");
+        try {
+            // Use coordinate system integration to get properly transformed vertices for Stonebreak compatibility
+            com.openmason.coordinates.CoordinateSystemIntegration.IntegratedPartData integratedData = 
+                com.openmason.coordinates.CoordinateSystemIntegration.generateIntegratedPartData(
+                    bodyPart, variantName, true);
+            
+            float[] vertices;
+            int[] indices;
+            
+            if (integratedData != null && integratedData.isValid()) {
+                // Use coordinate system integration for proper Stonebreak compatibility
+                vertices = integratedData.getVertices();
+                indices = integratedData.getIndices();
+                System.out.println("Using coordinate system integration for part: " + partName);
+            } else {
+                // Fallback to direct model part data
+                vertices = bodyPart.getVertices(); 
+                indices = bodyPart.getIndices();
+                System.out.println("Fallback to direct model data for part: " + partName);
             }
+            
+            if (vertices == null || indices == null || vertices.length == 0 || indices.length == 0) {
+                System.err.println("Model part '" + partName + "' has invalid matrix transform vertex data");
+                return false;
+            }
+            
+            // Get texture coordinates from integrated data if available
+            float[] textureCoordinates = null;
+            if (integratedData != null && integratedData.isValid()) {
+                textureCoordinates = integratedData.getTextureCoordinates();
+                System.out.println("Using integrated texture coordinates for part: " + partName);
+            }
+            
+            // Create VAO for matrix-based rendering with proper texture coordinates
+            VertexArray vao = VertexArray.fromModelPart(vertices, indices, textureDefinition, partName, vaoKey);
+            
+            modelPartVAOs.put(partName, vao);
+            currentTextureVariants.put(partName, "default");
+            
+            return true;
+            
+        } catch (Exception e) {
+            System.err.println("Failed to prepare model part '" + partName + "' for matrix transforms: " + e.getMessage());
+            return false;
         }
-        
-        // Use the model part directly
-        ModelDefinition.ModelPart modelPart = bodyPart;
-        
-        // Generate vertex data
-        float[] vertices = modelPart.getVertices();
-        int[] indices = modelPart.getIndices();
-        
-        // Create VAO with all buffers  
-        VertexArray vao = VertexArray.fromModelPart(
-            vertices, indices, null, partName, vaoKey
-        );
-        
-        // Validate the VAO
-        VertexArray.ValidationResult validation = vao.validate();
-        if (!validation.isValid()) {
-            System.err.println("VAO validation failed for " + partName + ":");
-            for (String error : validation.getErrors()) {
-                System.err.println("  ERROR: " + error);
-            }
-            for (String warning : validation.getWarnings()) {
-                System.err.println("  WARNING: " + warning);
-            }
-        }
-        
-        modelPartVAOs.put(partName, vao);
-        currentTextureVariants.put(partName, "default");
-        
-        System.out.println("Prepared model part: " + partName + 
-                          " (vertices: " + vertices.length / 3 + 
-                          ", triangles: " + indices.length / 3 + ")");
     }
+    
     
     /**
      * Converts a ModelPart definition to a ModelPart for vertex generation.
@@ -191,13 +260,27 @@ public class ModelRenderer implements AutoCloseable {
     }
     
     /**
-     * Renders a model with the specified texture variant.
-     * Automatically handles texture variant switching and buffer updates.
+     * Renders a model using matrix-based transformations for individual part positioning.
+     * This enables runtime adjustment and visualization of individual model part positions.
      * 
      * @param model The model to render
-     * @param textureVariant The texture variant to use (e.g., "default", "angus", "highland")
+     * @param textureVariant The texture variant to use
+     * @param shaderProgram The shader program with matrix transformation support
+     * @param mvpUniformLocation The uniform location for MVP matrix
+     * @param modelMatrixLocation The uniform location for individual model matrices
+     * @param viewProjectionMatrix The view-projection matrix
      */
-    public void renderModel(StonebreakModel model, String textureVariant) {
+    public void renderModel(StonebreakModel model, String textureVariant, 
+                           int shaderProgram, int mvpUniformLocation, 
+                           int modelMatrixLocation, float[] viewProjectionMatrix) {
+        renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix);
+    }
+    
+    /**
+     * Internal rendering method using matrix transformations.
+     */
+    private void renderModelInternal(StonebreakModel model, String textureVariant, int shaderProgram, 
+                                   int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
@@ -227,9 +310,13 @@ public class ModelRenderer implements AutoCloseable {
         // Update texture variants if needed
         updateTextureVariants(model, textureVariant);
         
-        // Render each model part with its transformation data
+        // Bind shader program and set uniforms
+        glUseProgram(shaderProgram);
+        glUniformMatrix4fv(mvpUniformLocation, false, viewProjectionMatrix);
+        
+        // Render each model part with matrix transformations
         for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
-            renderModelPart(bodyPart.getName(), bodyPart);
+            renderModelPart(bodyPart.getName(), bodyPart, modelMatrixLocation, viewProjectionMatrix);
         }
         
         totalRenderCalls++;
@@ -237,16 +324,102 @@ public class ModelRenderer implements AutoCloseable {
     }
     
     /**
-     * Renders a single model part by name with its transformations applied.
-     * 
-     * @param partName The name of the part to render
+     * @deprecated Use {@link #renderModel(StonebreakModel, String, int, int, int, float[])} instead.
+     * This compatibility method exists for legacy code but will not produce proper rendering
+     * without shader context.
      */
-    public void renderModelPart(String partName) {
-        renderModelPart(partName, null);
+    @Deprecated
+    public void renderModel(StonebreakModel model, String textureVariant) {
+        System.err.println("WARNING: renderModel() called without shader context. Models will not render properly.");
+        System.err.println("Please update your code to use renderModel(model, variant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix)");
+        // Don't actually render anything to avoid OpenGL errors
     }
     
     /**
-     * Renders a single model part by name with its transformations applied.
+     * Renders a single model part using matrix transformations.
+     * 
+     * @param partName The name of the part to render
+     * @param bodyPart The body part definition containing transformation data
+     * @param modelMatrixLocation Uniform location for model transformation matrix
+     * @param viewProjectionMatrix The view-projection matrix
+     */
+    public void renderModelPart(String partName, StonebreakModel.BodyPart bodyPart, 
+                              int modelMatrixLocation, float[] viewProjectionMatrix) {
+        // Validate OpenGL context before rendering individual parts
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
+            if (!contextIssues.isEmpty()) {
+                System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
+                for (String issue : contextIssues) {
+                    System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot render model part '" + partName + "' due to invalid OpenGL context");
+            }
+        }
+        
+        VertexArray vao = modelPartVAOs.get(partName);
+        if (vao != null && vao.isValid()) {
+            // Additional VAO validation before rendering
+            if (contextValidationEnabled) {
+                List<String> vaoIssues = OpenGLValidator.validateVertexArray(vao);
+                if (!vaoIssues.isEmpty()) {
+                    System.err.println("VAO validation issues for part " + partName + ":");
+                    for (String issue : vaoIssues) {
+                        System.err.println("  - WARNING: " + issue);
+                    }
+                    // Continue rendering despite warnings, but the user is informed
+                }
+            }
+            
+            // Get transformation matrix from the body part
+            if (bodyPart != null && bodyPart.getModelPart() != null) {
+                ModelDefinition.ModelPart part = bodyPart.getModelPart();
+                
+                // Create transformation matrix EXACTLY like EntityRenderer does
+                Vector3f position = part.getPositionVector();
+                Vector3f rotation = part.getRotation();
+                Vector3f scale = part.getScale();
+                
+                // IMPORTANT: Match EntityRenderer transformation order exactly
+                Matrix4f transformMatrix = new Matrix4f()
+                    .translate(position)  // Step 1: Position from JSON (should be baked coordinates)
+                    .rotateXYZ(          // Step 2: Rotation (in exact same order as EntityRenderer)
+                        (float) Math.toRadians(rotation.x),
+                        (float) Math.toRadians(rotation.y),
+                        (float) Math.toRadians(rotation.z)
+                    )
+                    .scale(scale);       // Step 3: Scale last (should be 1,1,1 after our recent fixes)
+                
+                // Store the actual rendered transformation for diagnostics
+                lastRenderedTransforms.put(partName, new Matrix4f(transformMatrix));
+                
+                // Bind VAO first for proper OpenGL state
+                vao.bind();
+                
+                // Upload transformation matrix to shader
+                if (modelMatrixLocation != -1) {
+                    transformMatrix.get(matrixBuffer);
+                    glUniformMatrix4fv(modelMatrixLocation, false, matrixBuffer);
+                }
+                
+                // Render the triangles (VAO is already bound)
+                if (vao.getIndexBuffer() != null) {
+                    vao.getIndexBuffer().drawTriangles();
+                } else {
+                    System.err.println("Cannot render part '" + partName + "': no index buffer");
+                }
+                
+                vao.unbind();
+            } else {
+                System.err.println("Cannot render part '" + partName + "' with matrix transforms: body part data is null");
+            }
+        } else {
+            System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
+        }
+    }
+    
+    /**
+     * Renders a single model part by name with its transformations applied (baked vertex mode).
      * 
      * @param partName The name of the part to render
      * @param bodyPart The body part definition containing transformation data (optional)
@@ -322,6 +495,98 @@ public class ModelRenderer implements AutoCloseable {
     }
     
     /**
+     * Gets detailed preparation status for a model, showing which parts
+     * are prepared and which are missing or invalid.
+     * 
+     * @param model The model to check
+     * @return Detailed status report
+     */
+    public ModelPreparationStatus getModelPreparationStatus(StonebreakModel model) {
+        ModelPreparationStatus status = new ModelPreparationStatus(model.getVariantName());
+        
+        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+            String partName = bodyPart.getName();
+            VertexArray vao = modelPartVAOs.get(partName);
+            
+            if (vao == null) {
+                status.addMissingPart(partName, "No VAO created");
+            } else if (!vao.isValid()) {
+                status.addInvalidPart(partName, "VAO exists but is invalid");
+            } else {
+                status.addPreparedPart(partName, "Ready for rendering");
+            }
+        }
+        
+        return status;
+    }
+    
+    /**
+     * Logs detailed diagnostic information about the current state
+     * of the ModelRenderer and all prepared models.
+     */
+    public void logDiagnosticInfo() {
+        System.out.println("=== ModelRenderer Diagnostic Report ===");
+        System.out.println("Renderer: " + debugPrefix);
+        System.out.println("Initialized: " + initialized);
+        System.out.println("Total VAOs: " + modelPartVAOs.size());
+        System.out.println("Total Texture Variants: " + currentTextureVariants.size());
+        System.out.println("Total Render Calls: " + totalRenderCalls);
+        System.out.println("Last Render Time: " + lastRenderTime);
+        System.out.println("Context Validation: " + (contextValidationEnabled ? "ENABLED" : "DISABLED"));
+        System.out.println("Matrix Transformation Mode: " + (matrixTransformationMode ? "ENABLED" : "DISABLED"));
+        System.out.println("Tracked Coordinate Spaces: " + modelCoordinateSpaces.size());
+        
+        if (!modelPartVAOs.isEmpty()) {
+            System.out.println("\nPrepared Model Parts:");
+            for (Map.Entry<String, VertexArray> entry : modelPartVAOs.entrySet()) {
+                String partName = entry.getKey();
+                VertexArray vao = entry.getValue();
+                String status = vao.isValid() ? "VALID" : "INVALID";
+                String textureVariant = currentTextureVariants.getOrDefault(partName, "unknown");
+                System.out.println("  - " + partName + ": " + status + " (variant: " + textureVariant + ")");
+            }
+        }
+        
+        if (!modelCoordinateSpaces.isEmpty()) {
+            System.out.println("\nModel Coordinate Spaces:");
+            for (Map.Entry<String, ModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
+                String modelVariant = entry.getKey();
+                ModelManager.CoordinateSpace space = entry.getValue();
+                String status = (space == ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) ? "✓ COMPATIBLE" : "⚠ INCOMPATIBLE";
+                System.out.println("  - " + modelVariant + ": " + space.getDisplayName() + " " + status);
+            }
+        }
+        
+        if (!lastRenderedTransforms.isEmpty()) {
+            System.out.println("\nLast Rendered Transformations:");
+            for (String partName : lastRenderedTransforms.keySet()) {
+                DiagnosticData data = getPartDiagnostics(partName);
+                if (data != null) {
+                    System.out.println("  - " + data.toString());
+                }
+            }
+        }
+        
+        System.out.println("======================================");
+    }
+    
+    /**
+     * Enables or disables matrix transformation mode for this renderer.
+     * When enabled, model parts use matrix transformations instead of baked vertices.
+     */
+    public void setMatrixTransformationMode(boolean enabled) {
+        this.matrixTransformationMode = enabled;
+        System.out.println("Matrix transformation mode " + (enabled ? "ENABLED" : "DISABLED") + " for ModelRenderer: " + debugPrefix);
+    }
+    
+    /**
+     * @return True if matrix transformation mode is enabled
+     */
+    public boolean isMatrixTransformationMode() {
+        return matrixTransformationMode;
+    }
+    
+    /**
      * Gets rendering statistics for this renderer.
      * 
      * @return Statistics about rendering performance and resource usage
@@ -332,7 +597,8 @@ public class ModelRenderer implements AutoCloseable {
             totalRenderCalls,
             lastRenderTime,
             currentTextureVariants.size(),
-            initialized
+            initialized,
+            matrixTransformationMode
         );
     }
     
@@ -433,6 +699,9 @@ public class ModelRenderer implements AutoCloseable {
     public long getLastRenderTime() { return lastRenderTime; }
     public boolean isContextValidationEnabled() { return contextValidationEnabled; }
     public long getLastContextValidationTime() { return lastContextValidationTime; }
+    public Map<String, ModelManager.CoordinateSpace> getModelCoordinateSpaces() { 
+        return new HashMap<>(modelCoordinateSpaces); 
+    }
     
     /**
      * Validation report for ModelRenderer system health checks.
@@ -494,22 +763,467 @@ public class ModelRenderer implements AutoCloseable {
         public final long lastRenderTime;
         public final int textureVariantCount;
         public final boolean initialized;
+        public final boolean matrixTransformMode;
         
         public RenderingStatistics(int modelPartCount, long totalRenderCalls, 
-                                 long lastRenderTime, int textureVariantCount, boolean initialized) {
+                                 long lastRenderTime, int textureVariantCount, boolean initialized, boolean matrixTransformMode) {
             this.modelPartCount = modelPartCount;
             this.totalRenderCalls = totalRenderCalls;
             this.lastRenderTime = lastRenderTime;
             this.textureVariantCount = textureVariantCount;
             this.initialized = initialized;
+            this.matrixTransformMode = matrixTransformMode;
         }
         
         @Override
         public String toString() {
             return String.format(
-                "RenderingStatistics{parts=%d, renders=%d, lastRender=%d, variants=%d, init=%b}",
-                modelPartCount, totalRenderCalls, lastRenderTime, textureVariantCount, initialized
+                "RenderingStatistics{parts=%d, renders=%d, lastRender=%d, variants=%d, init=%b, matrixMode=%b}",
+                modelPartCount, totalRenderCalls, lastRenderTime, textureVariantCount, initialized, matrixTransformMode
             );
+        }
+    }
+    
+    /**
+     * Detailed status report for model preparation state.
+     */
+    public static class ModelPreparationStatus {
+        private final String modelName;
+        private final List<String> preparedParts = new java.util.ArrayList<>();
+        private final List<String> missingParts = new java.util.ArrayList<>();
+        private final List<String> invalidParts = new java.util.ArrayList<>();
+        private final Map<String, String> partDetails = new HashMap<>();
+        
+        public ModelPreparationStatus(String modelName) {
+            this.modelName = modelName;
+        }
+        
+        public void addPreparedPart(String partName, String details) {
+            preparedParts.add(partName);
+            partDetails.put(partName, details);
+        }
+        
+        public void addMissingPart(String partName, String reason) {
+            missingParts.add(partName);
+            partDetails.put(partName, reason);
+        }
+        
+        public void addInvalidPart(String partName, String reason) {
+            invalidParts.add(partName);
+            partDetails.put(partName, reason);
+        }
+        
+        public boolean isFullyPrepared() {
+            return missingParts.isEmpty() && invalidParts.isEmpty();
+        }
+        
+        public boolean isPartiallyPrepared() {
+            return !preparedParts.isEmpty() && (!missingParts.isEmpty() || !invalidParts.isEmpty());
+        }
+        
+        public boolean isCompletelyUnprepared() {
+            return preparedParts.isEmpty();
+        }
+        
+        public int getTotalParts() {
+            return preparedParts.size() + missingParts.size() + invalidParts.size();
+        }
+        
+        public int getPreparedCount() {
+            return preparedParts.size();
+        }
+        
+        public List<String> getPreparedParts() {
+            return new java.util.ArrayList<>(preparedParts);
+        }
+        
+        public List<String> getMissingParts() {
+            return new java.util.ArrayList<>(missingParts);
+        }
+        
+        public List<String> getInvalidParts() {
+            return new java.util.ArrayList<>(invalidParts);
+        }
+        
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("=== Model Preparation Status: ").append(modelName).append(" ===").append("\n");
+            sb.append("Total Parts: ").append(getTotalParts()).append("\n");
+            sb.append("Prepared: ").append(preparedParts.size()).append("\n");
+            sb.append("Missing: ").append(missingParts.size()).append("\n");
+            sb.append("Invalid: ").append(invalidParts.size()).append("\n");
+            
+            if (!preparedParts.isEmpty()) {
+                sb.append("\nPrepared Parts:").append("\n");
+                for (String part : preparedParts) {
+                    sb.append("  ✓ ").append(part).append(": ").append(partDetails.get(part)).append("\n");
+                }
+            }
+            
+            if (!missingParts.isEmpty()) {
+                sb.append("\nMissing Parts:").append("\n");
+                for (String part : missingParts) {
+                    sb.append("  ✗ ").append(part).append(": ").append(partDetails.get(part)).append("\n");
+                }
+            }
+            
+            if (!invalidParts.isEmpty()) {
+                sb.append("\nInvalid Parts:").append("\n");
+                for (String part : invalidParts) {
+                    sb.append("  ⚠ ").append(part).append(": ").append(partDetails.get(part)).append("\n");
+                }
+            }
+            
+            sb.append("==================================================");
+            return sb.toString();
+        }
+    }
+    
+    /**
+     * Get diagnostic data about actually rendered transformations.
+     * This returns the transformation matrices that were actually sent to the GPU,
+     * not the values from JSON or model definitions.
+     * 
+     * @return Map of part names to their actual rendered transformation matrices
+     */
+    public Map<String, Matrix4f> getRenderedTransformations() {
+        // Return a copy to prevent external modification
+        Map<String, Matrix4f> copy = new HashMap<>();
+        for (Map.Entry<String, Matrix4f> entry : lastRenderedTransforms.entrySet()) {
+            copy.put(entry.getKey(), new Matrix4f(entry.getValue()));
+        }
+        return copy;
+    }
+    
+    /**
+     * Get diagnostic data for a specific model part.
+     * Returns the actual position, rotation, and scale that was rendered.
+     * 
+     * @param partName The name of the model part
+     * @return DiagnosticData containing actual rendered values, or null if part not found
+     */
+    public DiagnosticData getPartDiagnostics(String partName) {
+        Matrix4f matrix = lastRenderedTransforms.get(partName);
+        if (matrix == null) {
+            return null;
+        }
+        
+        // Extract position, rotation, and scale from the transformation matrix
+        Vector3f translation = new Vector3f();
+        Vector3f rotation = new Vector3f();
+        Vector3f scale = new Vector3f();
+        
+        // JOML provides methods to decompose transformation matrices
+        matrix.getTranslation(translation);
+        matrix.getEulerAnglesXYZ(rotation);
+        matrix.getScale(scale);
+        
+        return new DiagnosticData(partName, translation, rotation, scale, matrix);
+    }
+    
+    /**
+     * Validates that a model is using the correct coordinate space for Stonebreak compatibility.
+     * 
+     * @param requestedModel The original model name requested
+     * @param actualModel The StonebreakModel being rendered
+     * @return Coordinate validation result
+     */
+    public ModelManager.CoordinateValidationResult validateCoordinateSpace(
+            String requestedModel, StonebreakModel actualModel) {
+        String actualVariant = actualModel.getVariantName();
+        return ModelManager.CoordinateSpaceManager.validateCoordinateCompatibility(
+            requestedModel, actualVariant);
+    }
+    
+    /**
+     * Gets the coordinate space being used for a specific model variant.
+     * 
+     * @param modelVariant The model variant to check
+     * @return The coordinate space, or null if model not tracked
+     */
+    public ModelManager.CoordinateSpace getModelCoordinateSpace(String modelVariant) {
+        return modelCoordinateSpaces.get(modelVariant);
+    }
+    
+    /**
+     * Performs comprehensive coordinate space validation for all prepared models.
+     * This method checks that all models are using Stonebreak-compatible coordinate spaces.
+     * 
+     * @return Validation report with any coordinate space mismatches
+     */
+    public CoordinateSpaceValidationReport validateAllCoordinateSpaces() {
+        CoordinateSpaceValidationReport report = new CoordinateSpaceValidationReport();
+        
+        for (Map.Entry<String, ModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
+            String modelVariant = entry.getKey();
+            ModelManager.CoordinateSpace space = entry.getValue();
+            
+            if (space != ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
+                report.addMismatch(modelVariant, space, 
+                    "Model is not using Stonebreak-compatible coordinate space");
+            } else {
+                report.addValidModel(modelVariant, space);
+            }
+        }
+        
+        return report;
+    }
+    
+    /**
+     * Gets diagnostic information comparing rendered coordinates with expected Stonebreak coordinates.
+     * This method is crucial for validating that Open Mason renders at identical positions as Stonebreak.
+     * 
+     * @param partName The model part to analyze
+     * @return Coordinate comparison data, or null if part not found
+     */
+    public CoordinateComparisonResult compareWithStonebreakCoordinates(String partName) {
+        DiagnosticData renderData = getPartDiagnostics(partName);
+        if (renderData == null) {
+            return null;
+        }
+        
+        // Get the model variant for this part to determine coordinate space
+        String modelVariant = findModelVariantForPart(partName);
+        ModelManager.CoordinateSpace space = modelCoordinateSpaces.get(modelVariant);
+        
+        boolean coordinatesMatch = (space == ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
+        
+        return new CoordinateComparisonResult(
+            partName, modelVariant, space, renderData.position, 
+            renderData.rotation, renderData.scale, coordinatesMatch
+        );
+    }
+    
+    /**
+     * Helper method to find which model variant contains a specific part.
+     */
+    private String findModelVariantForPart(String partName) {
+        // Look through tracked model variants to find which one contains this part
+        for (String variant : modelCoordinateSpaces.keySet()) {
+            if (modelPartVAOs.containsKey(partName)) {
+                return variant; // Simple approach - could be enhanced for multiple models
+            }
+        }
+        return "unknown";
+    }
+    
+    /**
+     * Validates that transformation matrices match Stonebreak EntityRenderer exactly.
+     * Call this method after rendering to ensure coordinate parity.
+     */
+    public String validateCoordinateAlignment() {
+        StringBuilder report = new StringBuilder();
+        report.append("=== COORDINATE ALIGNMENT VALIDATION ===\n");
+        
+        // Expected positions for standard_cow_baked model (used by Stonebreak EntityRenderer)
+        Map<String, Vector3f> expectedPositions = Map.of(
+            "body", new Vector3f(0, 0.2f, 0),
+            "head", new Vector3f(0, 0.4f, -0.4f),
+            "left_horn", new Vector3f(-0.2f, 0.55f, -0.4f),
+            "right_horn", new Vector3f(0.2f, 0.55f, -0.4f),
+            "front_left", new Vector3f(-0.2f, -0.11f, -0.2f),
+            "front_right", new Vector3f(0.2f, -0.11f, -0.2f),
+            "back_left", new Vector3f(-0.2f, -0.11f, 0.2f),
+            "back_right", new Vector3f(0.2f, -0.11f, 0.2f),
+            "udder", new Vector3f(0, -0.05f, 0.2f),
+            "tail", new Vector3f(0, 0.25f, 0.37f)
+        );
+        
+        int validCount = 0;
+        int totalCount = 0;
+        
+        for (Map.Entry<String, Matrix4f> entry : lastRenderedTransforms.entrySet()) {
+            String partName = entry.getKey();
+            Matrix4f matrix = entry.getValue();
+            Vector3f actualPosition = new Vector3f();
+            matrix.getTranslation(actualPosition);
+            
+            Vector3f expectedPosition = expectedPositions.get(partName);
+            if (expectedPosition != null) {
+                totalCount++;
+                float distance = actualPosition.distance(expectedPosition);
+                boolean isValid = distance < 0.001f; // 1mm tolerance
+                
+                if (isValid) {
+                    validCount++;
+                    report.append(String.format("✓ %s: (%.3f, %.3f, %.3f) - CORRECT\n", 
+                        partName, actualPosition.x, actualPosition.y, actualPosition.z));
+                } else {
+                    report.append(String.format("✗ %s: (%.3f, %.3f, %.3f) - Expected: (%.3f, %.3f, %.3f) - ERROR %.3f\n", 
+                        partName, actualPosition.x, actualPosition.y, actualPosition.z,
+                        expectedPosition.x, expectedPosition.y, expectedPosition.z, distance));
+                }
+            } else {
+                report.append(String.format("? %s: (%.3f, %.3f, %.3f) - UNKNOWN PART\n", 
+                    partName, actualPosition.x, actualPosition.y, actualPosition.z));
+            }
+        }
+        
+        report.append(String.format("\nResult: %d/%d parts correct (%.1f%%)\n", 
+            validCount, totalCount, totalCount > 0 ? (100.0f * validCount / totalCount) : 0));
+        
+        if (validCount == totalCount && totalCount > 0) {
+            report.append("✅ COORDINATE SYSTEM ALIGNED WITH STONEBREAK\n");
+        } else {
+            report.append("❌ COORDINATE SYSTEM MISALIGNED - FIX REQUIRED\n");
+        }
+        
+        report.append("===========================================");
+        return report.toString();
+    }
+    
+    /**
+     * Data class to hold diagnostic information about a rendered model part.
+     */
+    public static class DiagnosticData {
+        public final String partName;
+        public final Vector3f position;
+        public final Vector3f rotation; // in radians
+        public final Vector3f scale;
+        public final Matrix4f transformMatrix;
+        
+        public DiagnosticData(String partName, Vector3f position, Vector3f rotation, Vector3f scale, Matrix4f transformMatrix) {
+            this.partName = partName;
+            this.position = new Vector3f(position);
+            this.rotation = new Vector3f(rotation);
+            this.scale = new Vector3f(scale);
+            this.transformMatrix = new Matrix4f(transformMatrix);
+        }
+        
+        public Vector3f getRotationDegrees() {
+            return new Vector3f(
+                (float) Math.toDegrees(rotation.x),
+                (float) Math.toDegrees(rotation.y),
+                (float) Math.toDegrees(rotation.z)
+            );
+        }
+        
+        @Override
+        public String toString() {
+            return String.format(
+                "DiagnosticData{part='%s', pos=(%.3f,%.3f,%.3f), rot=(%.1f°,%.1f°,%.1f°), scale=(%.3f,%.3f,%.3f)}",
+                partName, 
+                position.x, position.y, position.z,
+                Math.toDegrees(rotation.x), Math.toDegrees(rotation.y), Math.toDegrees(rotation.z),
+                scale.x, scale.y, scale.z
+            );
+        }
+    }
+    
+    /**
+     * Validation report for coordinate space compatibility across all models.
+     */
+    public static class CoordinateSpaceValidationReport {
+        private final List<String> validModels = new java.util.ArrayList<>();
+        private final List<String> mismatchedModels = new java.util.ArrayList<>();
+        private final Map<String, String> mismatchReasons = new HashMap<>();
+        private final Map<String, ModelManager.CoordinateSpace> modelSpaces = new HashMap<>();
+        
+        public void addValidModel(String modelVariant, ModelManager.CoordinateSpace space) {
+            validModels.add(modelVariant);
+            modelSpaces.put(modelVariant, space);
+        }
+        
+        public void addMismatch(String modelVariant, ModelManager.CoordinateSpace space, String reason) {
+            mismatchedModels.add(modelVariant);
+            mismatchReasons.put(modelVariant, reason);
+            modelSpaces.put(modelVariant, space);
+        }
+        
+        public boolean allModelsValid() {
+            return mismatchedModels.isEmpty();
+        }
+        
+        public int getTotalModels() {
+            return validModels.size() + mismatchedModels.size();
+        }
+        
+        public List<String> getValidModels() {
+            return new java.util.ArrayList<>(validModels);
+        }
+        
+        public List<String> getMismatchedModels() {
+            return new java.util.ArrayList<>(mismatchedModels);
+        }
+        
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("=== Coordinate Space Validation Report ===\n");
+            sb.append("Total models: ").append(getTotalModels()).append("\n");
+            sb.append("Valid models: ").append(validModels.size()).append("\n");
+            sb.append("Mismatched models: ").append(mismatchedModels.size()).append("\n");
+            sb.append("Overall status: ").append(allModelsValid() ? "ALL COMPATIBLE" : "MISMATCHES DETECTED").append("\n");
+            
+            if (!validModels.isEmpty()) {
+                sb.append("\nValid Models (Stonebreak Compatible):\n");
+                for (String model : validModels) {
+                    ModelManager.CoordinateSpace space = modelSpaces.get(model);
+                    sb.append("  ✓ ").append(model).append(" (").append(space.getDisplayName()).append(")\n");
+                }
+            }
+            
+            if (!mismatchedModels.isEmpty()) {
+                sb.append("\nMismatched Models (Coordinate Issues):\n");
+                for (String model : mismatchedModels) {
+                    ModelManager.CoordinateSpace space = modelSpaces.get(model);
+                    String reason = mismatchReasons.get(model);
+                    sb.append("  ✗ ").append(model).append(" (").append(space.getDisplayName()).append(") - ").append(reason).append("\n");
+                }
+            }
+            
+            sb.append("============================================");
+            return sb.toString();
+        }
+    }
+    
+    /**
+     * Result of comparing rendered coordinates with expected Stonebreak coordinates.
+     */
+    public static class CoordinateComparisonResult {
+        private final String partName;
+        private final String modelVariant;
+        private final ModelManager.CoordinateSpace coordinateSpace;
+        private final Vector3f renderedPosition;
+        private final Vector3f renderedRotation;
+        private final Vector3f renderedScale;
+        private final boolean matchesStonebreak;
+        
+        public CoordinateComparisonResult(String partName, String modelVariant, 
+                                        ModelManager.CoordinateSpace coordinateSpace,
+                                        Vector3f renderedPosition, Vector3f renderedRotation, 
+                                        Vector3f renderedScale, boolean matchesStonebreak) {
+            this.partName = partName;
+            this.modelVariant = modelVariant;
+            this.coordinateSpace = coordinateSpace;
+            this.renderedPosition = new Vector3f(renderedPosition);
+            this.renderedRotation = new Vector3f(renderedRotation);
+            this.renderedScale = new Vector3f(renderedScale);
+            this.matchesStonebreak = matchesStonebreak;
+        }
+        
+        public boolean matchesStonebreak() { return matchesStonebreak; }
+        public String getPartName() { return partName; }
+        public String getModelVariant() { return modelVariant; }
+        public ModelManager.CoordinateSpace getCoordinateSpace() { return coordinateSpace; }
+        public Vector3f getRenderedPosition() { return new Vector3f(renderedPosition); }
+        public Vector3f getRenderedRotation() { return new Vector3f(renderedRotation); }
+        public Vector3f getRenderedScale() { return new Vector3f(renderedScale); }
+        
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Coordinate Comparison for '").append(partName).append("':\n");
+            sb.append("  Model variant: ").append(modelVariant).append("\n");
+            sb.append("  Coordinate space: ").append(coordinateSpace.getDisplayName()).append("\n");
+            sb.append("  Rendered position: (").append(String.format("%.3f, %.3f, %.3f", 
+                renderedPosition.x, renderedPosition.y, renderedPosition.z)).append(")\n");
+            sb.append("  Matches Stonebreak: ").append(matchesStonebreak ? "YES" : "NO");
+            if (!matchesStonebreak) {
+                sb.append(" - COORDINATE MISMATCH!");
+            }
+            return sb.toString();
         }
     }
 }

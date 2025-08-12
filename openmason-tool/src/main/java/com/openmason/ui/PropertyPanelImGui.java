@@ -53,6 +53,7 @@ public class PropertyPanelImGui {
     // Status
     private String statusMessage = "Ready";
     private boolean loadingInProgress = false;
+    private String lastViewportModelCheck = null; // Track last model sent to viewport
     private boolean validationInProgress = false;
     
     // Performance tracking
@@ -105,6 +106,8 @@ public class PropertyPanelImGui {
             renderAnimationSection();
             ImGui.separator();
             renderStatisticsSection();
+            ImGui.separator();
+            renderDiagnosticsSection();
             ImGui.separator();
             renderActionsSection();
             ImGui.separator();
@@ -271,6 +274,75 @@ public class PropertyPanelImGui {
         }
     }
     
+    private void renderDiagnosticsSection() {
+        if (ImGui.collapsingHeader("Diagnostics")) {
+            ImGui.indent();
+            
+            if (viewport3D != null && viewport3D.getModelRenderer() != null) {
+                com.openmason.rendering.ModelRenderer renderer = viewport3D.getModelRenderer();
+                
+                ImGui.text("Actual Rendered Coordinates:");
+                ImGui.text("(Retrieved from GPU transformation matrices)");
+                ImGui.separator();
+                
+                // Get all rendered transformations
+                java.util.Map<String, org.joml.Matrix4f> transforms = renderer.getRenderedTransformations();
+                
+                if (transforms.isEmpty()) {
+                    ImGui.textColored(0.8f, 0.8f, 0.0f, 1.0f, "No render data available");
+                    ImGui.text("Model must be rendered at least once");
+                } else {
+                    // Display each part's actual coordinates
+                    for (String partName : transforms.keySet()) {
+                        com.openmason.rendering.ModelRenderer.DiagnosticData data = renderer.getPartDiagnostics(partName);
+                        if (data != null) {
+                            if (ImGui.treeNode(partName)) {
+                                // Position
+                                ImGui.text(String.format("Position: (%.3f, %.3f, %.3f)", 
+                                    data.position.x, data.position.y, data.position.z));
+                                
+                                // Rotation (in degrees for readability)
+                                org.joml.Vector3f rotDeg = data.getRotationDegrees();
+                                ImGui.text(String.format("Rotation: (%.1f°, %.1f°, %.1f°)", 
+                                    rotDeg.x, rotDeg.y, rotDeg.z));
+                                
+                                // Scale
+                                ImGui.text(String.format("Scale: (%.3f, %.3f, %.3f)", 
+                                    data.scale.x, data.scale.y, data.scale.z));
+                                
+                                // Matrix (collapsed by default)
+                                if (ImGui.treeNode("Transformation Matrix")) {
+                                    org.joml.Matrix4f m = data.transformMatrix;
+                                    ImGui.text(String.format("│%.3f %.3f %.3f %.3f│", m.m00(), m.m01(), m.m02(), m.m03()));
+                                    ImGui.text(String.format("│%.3f %.3f %.3f %.3f│", m.m10(), m.m11(), m.m12(), m.m13()));
+                                    ImGui.text(String.format("│%.3f %.3f %.3f %.3f│", m.m20(), m.m21(), m.m22(), m.m23()));
+                                    ImGui.text(String.format("│%.3f %.3f %.3f %.3f│", m.m30(), m.m31(), m.m32(), m.m33()));
+                                    ImGui.treePop();
+                                }
+                                
+                                ImGui.treePop();
+                            }
+                        }
+                    }
+                    
+                    ImGui.separator();
+                    ImGui.text(String.format("Total parts rendered: %d", transforms.size()));
+                }
+                
+                if (ImGui.button("Refresh Diagnostics")) {
+                    // Diagnostics are automatically updated on each render
+                    logger.info("Diagnostic data refreshed from renderer");
+                }
+                
+            } else {
+                ImGui.textColored(1.0f, 0.6f, 0.6f, 1.0f, "Viewport not available");
+                ImGui.text("Diagnostics require an active 3D viewport");
+            }
+            
+            ImGui.unindent();
+        }
+    }
+    
     private void renderActionsSection() {
         if (ImGui.collapsingHeader("Actions")) {
             ImGui.indent();
@@ -330,14 +402,34 @@ public class PropertyPanelImGui {
             return;
         }
         
-        // Don't reload if it's the same model
+        // Don't reload if it's the same model, but still ensure viewport has it (only check once)
         if (modelName.equals(this.currentModelName) && availableVariants != null && availableVariants.length > 0) {
-            logger.debug("Model {} already loaded with {} variants, skipping reload", modelName, availableVariants.length);
+            // Only check viewport status once per model, not every frame
+            String modelFileName = modelName.toLowerCase().replace(" ", "_");
+            if (!modelFileName.equals(lastViewportModelCheck)) {
+                logger.debug("Model {} already loaded with {} variants, ensuring viewport has model", modelName, availableVariants.length);
+                
+                // Even if already loaded, make sure viewport has the model
+                if (viewport3D != null) {
+                    String currentViewportModel = viewport3D.getCurrentModelName();
+                    boolean hasActualModel = viewport3D.getCurrentModel() != null;
+                    
+                    if (!modelFileName.equals(currentViewportModel) || !hasActualModel) {
+                        logger.info("Viewport needs model: name='{}' vs '{}', hasModel={} - loading '{}' (file: '{}') into 3D viewport", 
+                                   currentViewportModel, modelFileName, hasActualModel, modelName, modelFileName);
+                        viewport3D.loadModel(modelFileName);
+                    } else {
+                        logger.debug("Viewport already has model: {}", modelFileName);
+                    }
+                }
+                lastViewportModelCheck = modelFileName;
+            }
             return;
         }
         
         logger.info("Loading texture variants for model: {}", modelName);
         this.currentModelName = modelName;
+        lastViewportModelCheck = null; // Reset for new model
         
         loadingInProgress = true;
         statusMessage = "Loading texture variants for " + modelName + "...";
@@ -362,6 +454,14 @@ public class PropertyPanelImGui {
                 variantCount = availableVariants.length;
                 
                 updateModelStatistics();
+                
+                // Load model into viewport if connected
+                if (viewport3D != null) {
+                    // Convert display name to model file name (e.g., "Standard Cow" -> "standard_cow")
+                    String modelFileName = modelName.toLowerCase().replace(" ", "_");
+                    logger.info("Loading model '{}' (file: '{}') into 3D viewport", modelName, modelFileName);
+                    viewport3D.loadModel(modelFileName);
+                }
                 
                 loadingInProgress = false;
                 if (modelName.toLowerCase().contains("cow")) {
@@ -686,7 +786,8 @@ public class PropertyPanelImGui {
     public void setViewport3D(OpenMason3DViewport viewport) {
         if (this.viewport3D != viewport) {
             this.viewport3D = viewport;
-            logger.info("3D viewport reference set for PropertyPanelImGui");
+            logger.error("=== PropertyPanelImGui: viewport3D set to instance: {} ===", 
+                        viewport != null ? System.identityHashCode(viewport) : "NULL");
         }
     }
     

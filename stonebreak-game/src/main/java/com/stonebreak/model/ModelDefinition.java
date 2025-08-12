@@ -1,7 +1,9 @@
 package com.stonebreak.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.joml.Vector3f;
+import org.joml.Matrix4f;
 import java.util.List;
 import java.util.Map;
 
@@ -99,9 +101,15 @@ public class ModelDefinition {
         @JsonProperty("texture")
         private String texture;
         
-        // Runtime fields for animation (not serialized)
+        // Runtime fields for animation (not serialized to JSON)
+        @JsonIgnore
         private Vector3f rotation = new Vector3f(0, 0, 0);
+        @JsonIgnore
         private Vector3f scale = new Vector3f(1, 1, 1);
+        
+        // Matrix-based transformation support (always enabled) - not serialized to JSON
+        @JsonIgnore
+        private Matrix4f transformationMatrix;
         
         // Constructors
         public ModelPart() {}
@@ -111,6 +119,8 @@ public class ModelDefinition {
             this.position = position;
             this.size = size;
             this.texture = texture;
+            // Initialize scale from size values after construction
+            initializeScaleFromSize();
         }
         
         // Getters and setters
@@ -118,19 +128,62 @@ public class ModelDefinition {
         public void setName(String name) { this.name = name; }
         
         public Position getPosition() { return position; }
-        public void setPosition(Position position) { this.position = position; }
+        public void setPosition(Position position) { 
+            this.position = position; 
+            // Invalidate cached transformation matrix
+            transformationMatrix = null;
+        }
         
         public Size getSize() { return size; }
-        public void setSize(Size size) { this.size = size; }
+        public void setSize(Size size) { 
+            this.size = size;
+            // Update scale when size changes
+            initializeScaleFromSize();
+        }
         
         public String getTexture() { return texture; }
         public void setTexture(String texture) { this.texture = texture; }
         
         public Vector3f getRotation() { return new Vector3f(rotation); }
-        public void setRotation(Vector3f rotation) { this.rotation.set(rotation); }
+        public void setRotation(Vector3f rotation) { 
+            this.rotation.set(rotation); 
+            // Invalidate cached transformation matrix
+            transformationMatrix = null;
+        }
         
         public Vector3f getScale() { return new Vector3f(scale); }
-        public void setScale(Vector3f scale) { this.scale.set(scale); }
+        public void setScale(Vector3f scale) { 
+            this.scale.set(scale); 
+            // Invalidate cached transformation matrix
+            transformationMatrix = null;
+        }
+        
+        /**
+         * Initialize scale to unity values.
+         * The vertices are already sized correctly from JSON size values,
+         * so scale should remain (1,1,1) to avoid double-scaling.
+         */
+        private void initializeScaleFromSize() {
+            // Vertices are already sized correctly from getSizeVector() in getVerticesAtOrigin()
+            // Scale should remain (1,1,1) to avoid double-scaling
+            this.scale.set(1.0f, 1.0f, 1.0f);
+            // Invalidate cached transformation matrix
+            transformationMatrix = null;
+        }
+        
+        /**
+         * Called after JSON deserialization to ensure scale is properly initialized.
+         * This should be called by the ModelLoader after loading from JSON.
+         */
+        public void postLoadInitialization() {
+            initializeScaleFromSize();
+        }
+        
+        /**
+         * Matrix transformations are always enabled in this system.
+         * @return Always true
+         */
+        public boolean isUseMatrixTransform() { return true; }
         
         // Helper methods to convert to Vector3f (for compatibility with existing code)
         public Vector3f getPositionVector() {
@@ -138,6 +191,22 @@ public class ModelDefinition {
         }
         
         public Vector3f getSizeVector() {
+            return new Vector3f(size.getX(), size.getY(), size.getZ());
+        }
+        
+        /**
+         * Get the base position from JSON (immutable reference).
+         * Use this for animations to ensure they start from the correct base position.
+         */
+        public Vector3f getBasePositionVector() {
+            return new Vector3f(position.getX(), position.getY(), position.getZ());
+        }
+        
+        /**
+         * Get the base scale from JSON size (immutable reference).
+         * Use this for animations to ensure they start from the correct base scale.
+         */
+        public Vector3f getBaseScaleVector() {
             return new Vector3f(size.getX(), size.getY(), size.getZ());
         }
         
@@ -152,10 +221,102 @@ public class ModelDefinition {
         }
         
         /**
-         * Gets the vertices for this model part as a cuboid.
+         * Gets the transformation matrix for this model part.
+         * The matrix includes position, rotation, and scale transformations.
+         * 
+         * @return Transformation matrix for this part
+         */
+        public Matrix4f getTransformationMatrix() {
+            if (transformationMatrix == null) {
+                transformationMatrix = new Matrix4f();
+            }
+            
+            // Reset matrix
+            transformationMatrix.identity();
+            
+            // Apply transformations in order: translate, rotate, scale
+            Vector3f pos = getPositionVector();
+            transformationMatrix.translate(pos);
+            
+            // Apply rotation (in radians)
+            if (rotation.lengthSquared() > 0.0001f) {
+                transformationMatrix.rotateXYZ(rotation.x, rotation.y, rotation.z);
+            }
+            
+            // Apply scale
+            if (!scale.equals(1.0f, 1.0f, 1.0f)) {
+                transformationMatrix.scale(scale);
+            }
+            
+            return transformationMatrix;
+        }
+        
+        /**
+         * Gets the vertices for this model part as a cuboid at origin.
          * Returns vertex data in the format expected by OpenGL (24 vertices for 6 faces).
+         * Transformations are applied via transformation matrix during rendering.
+         * 
+         * @return Vertex array for OpenGL rendering with transformations applied via matrix
          */
         public float[] getVertices() {
+            return getVerticesAtOrigin();
+        }
+        
+        /**
+         * Gets vertices positioned at origin for matrix-based transformation.
+         */
+        public float[] getVerticesAtOrigin() {
+            Vector3f sz = getSizeVector();
+            
+            // Calculate half-sizes for convenience
+            float halfWidth = sz.x / 2.0f;
+            float halfHeight = sz.y / 2.0f;
+            float halfDepth = sz.z / 2.0f;
+            
+            // Define vertices at origin (0,0,0) - transformations applied via matrix
+            return new float[] {
+                // Front face (4 vertices)
+                -halfWidth, -halfHeight, +halfDepth,
+                +halfWidth, -halfHeight, +halfDepth,
+                +halfWidth, +halfHeight, +halfDepth,
+                -halfWidth, +halfHeight, +halfDepth,
+                
+                // Back face (4 vertices)
+                -halfWidth, -halfHeight, -halfDepth,
+                +halfWidth, -halfHeight, -halfDepth,
+                +halfWidth, +halfHeight, -halfDepth,
+                -halfWidth, +halfHeight, -halfDepth,
+                
+                // Left face (4 vertices)
+                -halfWidth, -halfHeight, -halfDepth,
+                -halfWidth, -halfHeight, +halfDepth,
+                -halfWidth, +halfHeight, +halfDepth,
+                -halfWidth, +halfHeight, -halfDepth,
+                
+                // Right face (4 vertices)
+                +halfWidth, -halfHeight, -halfDepth,
+                +halfWidth, -halfHeight, +halfDepth,
+                +halfWidth, +halfHeight, +halfDepth,
+                +halfWidth, +halfHeight, -halfDepth,
+                
+                // Top face (4 vertices)
+                -halfWidth, +halfHeight, -halfDepth,
+                +halfWidth, +halfHeight, -halfDepth,
+                +halfWidth, +halfHeight, +halfDepth,
+                -halfWidth, +halfHeight, +halfDepth,
+                
+                // Bottom face (4 vertices)
+                -halfWidth, -halfHeight, -halfDepth,
+                +halfWidth, -halfHeight, -halfDepth,
+                +halfWidth, -halfHeight, +halfDepth,
+                -halfWidth, -halfHeight, +halfDepth
+            };
+        }
+        
+        /**
+         * Gets vertices with baked position transformations (original behavior).
+         */
+        private float[] getVerticesBaked() {
             Vector3f pos = getPositionVector();
             Vector3f sz = getSizeVector();
             

@@ -183,6 +183,8 @@ public class ModelBrowserImGui {
     private int totalVariantsDiscovered = 0;
     
     public ModelBrowserImGui() {
+        logger.error("=== ModelBrowserImGui CONSTRUCTOR CALLED ===");
+        logger.error("Stack trace:", new RuntimeException("ModelBrowserImGui instantiation trace"));
         initialize();
     }
     
@@ -686,8 +688,9 @@ public class ModelBrowserImGui {
     }
     
     private void loadSelectedModel() {
+        logger.error("=== MODEL BROWSER: loadSelectedModel() called ===");
         if (selectedNode == null) {
-            logger.debug("No model selected, cannot load");
+            logger.error("=== MODEL BROWSER: No model selected, cannot load ===");
             return;
         }
         
@@ -698,19 +701,20 @@ public class ModelBrowserImGui {
                 return;
             }
             
-            logger.info("Loading model: {}", modelName);
+            logger.error("=== MODEL BROWSER: Loading model: {} ===", modelName);
             
             if (viewport3D != null) {
                 try {
+                    logger.error("=== MODEL BROWSER: Calling viewport3D.loadModel({}) ===", modelName);
                     viewport3D.loadModel(modelName);
-                    logger.debug("Model load request sent to viewport: {}", modelName);
+                    logger.error("=== MODEL BROWSER: Model load request sent to viewport: {} ===", modelName);
                 } catch (Exception e) {
                     logger.error("Error loading model in viewport: {}", modelName, e);
                     // Mark model as having error
                     selectedNode.setMetadata("loadError", e.getMessage());
                 }
             } else {
-                logger.warn("viewport3D is null when trying to load model: {}", modelName);
+                logger.error("=== MODEL BROWSER: viewport3D is null when trying to load model: {} ===", modelName);
             }
             
         } catch (Exception e) {

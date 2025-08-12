@@ -2,7 +2,9 @@ package com.openmason.ui.viewport;
 
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.flag.ImGuiInputTextFlags;
 import imgui.flag.ImGuiWindowFlags;
+import imgui.type.ImString;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL30;
@@ -17,6 +19,13 @@ import org.lwjgl.BufferUtils;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
+
+// Model rendering imports
+import com.openmason.model.ModelManager;
+import com.openmason.model.StonebreakModel;
+import com.openmason.rendering.ModelRenderer;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Clean and robust 3D viewport implementation using pure LWJGL/ImGui.
@@ -47,7 +56,16 @@ public class OpenMason3DViewport {
     
     // Uniform locations
     private int mvpMatrixLocation = -1;
+    private int modelMatrixLocation = -1;
     private int colorLocation = -1;
+    
+    // Matrix transformation shader program (for individual part transformations)
+    private int matrixShaderProgram = -1;
+    private int matrixVertexShader = -1;
+    private int matrixFragmentShader = -1;
+    private int matrixMvpLocation = -1;
+    private int matrixModelLocation = -1;
+    private int matrixColorLocation = -1;
     
     // Test cube data
     private int cubeVAO = -1;
@@ -64,10 +82,17 @@ public class OpenMason3DViewport {
     // Input handling delegation
     private ViewportInputHandler inputHandler;
     
-    // Model and texture state
-    private String currentModelName = null;
-    private String currentTextureVariant = null;
-    private StonebreakModel currentModel = null;
+    // Model rendering system
+    private ModelRenderer modelRenderer;
+    private volatile String currentModelName = null;
+    private volatile String currentTextureVariant = "default";
+    private volatile StonebreakModel currentModel = null;
+    private boolean modelRenderingEnabled = true;
+    private volatile CompletableFuture<Void> currentModelLoadingFuture = null;
+    
+    // Diagnostic throttling
+    private long lastDiagnosticLogTime = 0;
+    private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000; // Log every 2 seconds
     
     // Grid rendering
     private int gridVAO = -1;
@@ -81,7 +106,8 @@ public class OpenMason3DViewport {
     public OpenMason3DViewport() {
         this.camera = new Camera();
         this.inputHandler = new ViewportInputHandler(camera);
-        logger.info("OpenMason 3D Viewport created with input handler");
+        this.modelRenderer = new ModelRenderer("Viewport");
+        logger.info("OpenMason 3D Viewport created with input handler and model renderer");
     }
     
     /**
@@ -115,9 +141,16 @@ public class OpenMason3DViewport {
             
             // Initialize resources in order
             createShaders();
+            createMatrixTransformShaders();
             createFramebuffer();
             createTestCube();
             createGrid();
+            
+            // Initialize model renderer
+            modelRenderer.initialize();
+            
+            // Enable matrix transformation mode for proper Stonebreak coordinate system support
+            modelRenderer.setMatrixTransformationMode(true);
             
             // Validate all resources were created
             validateResources();
@@ -220,9 +253,72 @@ public class OpenMason3DViewport {
         
         // Get uniform locations
         mvpMatrixLocation = glGetUniformLocation(shaderProgram, "uMVPMatrix");
+        modelMatrixLocation = glGetUniformLocation(shaderProgram, "uModelMatrix");
         colorLocation = glGetUniformLocation(shaderProgram, "uColor");
         
         logger.info("Shaders created successfully");
+    }
+    
+    /**
+     * Create advanced shaders that support per-part transformation matrices.
+     * This enables individual model parts to be positioned using transformation matrices
+     * instead of baked vertex coordinates.
+     */
+    private void createMatrixTransformShaders() {
+        // Advanced vertex shader with model matrix support
+        String matrixVertexShaderSource = """
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            
+            uniform mat4 uMVPMatrix;     // View-Projection matrix (camera)
+            uniform mat4 uModelMatrix;   // Model transformation matrix (per-part positioning)
+            uniform vec3 uColor;
+            
+            out vec3 vertexColor;
+            
+            void main() {
+                // Apply model transformation first, then MVP
+                gl_Position = uMVPMatrix * uModelMatrix * vec4(aPos, 1.0);
+                vertexColor = uColor;
+            }
+            """;
+        
+        // Fragment shader remains the same
+        String matrixFragmentShaderSource = """
+            #version 330 core
+            in vec3 vertexColor;
+            out vec4 FragColor;
+            
+            void main() {
+                FragColor = vec4(vertexColor, 1.0);
+            }
+            """;
+        
+        // Create and compile matrix vertex shader
+        matrixVertexShader = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(matrixVertexShader, matrixVertexShaderSource);
+        glCompileShader(matrixVertexShader);
+        checkShaderCompilation(matrixVertexShader, "MATRIX_VERTEX");
+        
+        // Create and compile matrix fragment shader
+        matrixFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(matrixFragmentShader, matrixFragmentShaderSource);
+        glCompileShader(matrixFragmentShader);
+        checkShaderCompilation(matrixFragmentShader, "MATRIX_FRAGMENT");
+        
+        // Create and link matrix shader program
+        matrixShaderProgram = glCreateProgram();
+        glAttachShader(matrixShaderProgram, matrixVertexShader);
+        glAttachShader(matrixShaderProgram, matrixFragmentShader);
+        glLinkProgram(matrixShaderProgram);
+        checkProgramLinking(matrixShaderProgram);
+        
+        // Get matrix shader uniform locations
+        matrixMvpLocation = glGetUniformLocation(matrixShaderProgram, "uMVPMatrix");
+        matrixModelLocation = glGetUniformLocation(matrixShaderProgram, "uModelMatrix");
+        matrixColorLocation = glGetUniformLocation(matrixShaderProgram, "uColor");
+        
+        logger.info("Matrix transformation shaders created successfully");
     }
     
     /**
@@ -293,19 +389,31 @@ public class OpenMason3DViewport {
      * Create test cube geometry.
      */
     private void createTestCube() {
-        // Cube vertices (positions only)
+        // Cube vertices as triangles (36 vertices = 12 triangles = 6 faces)
         float[] vertices = {
-            // Front face
-            -1.0f, -1.0f,  1.0f,
-             1.0f, -1.0f,  1.0f,
-             1.0f,  1.0f,  1.0f,
-            -1.0f,  1.0f,  1.0f,
+            // Front face (z = 0.5)
+            -0.5f, -0.5f,  0.5f,   0.5f, -0.5f,  0.5f,   0.5f,  0.5f,  0.5f,
+            -0.5f, -0.5f,  0.5f,   0.5f,  0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
             
-            // Back face
-            -1.0f, -1.0f, -1.0f,
-             1.0f, -1.0f, -1.0f,
-             1.0f,  1.0f, -1.0f,
-            -1.0f,  1.0f, -1.0f
+            // Back face (z = -0.5)
+            -0.5f, -0.5f, -0.5f,  -0.5f,  0.5f, -0.5f,   0.5f,  0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,   0.5f,  0.5f, -0.5f,   0.5f, -0.5f, -0.5f,
+            
+            // Left face (x = -0.5)
+            -0.5f, -0.5f, -0.5f,  -0.5f, -0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
+            -0.5f, -0.5f, -0.5f,  -0.5f,  0.5f,  0.5f,  -0.5f,  0.5f, -0.5f,
+            
+            // Right face (x = 0.5)
+             0.5f, -0.5f, -0.5f,   0.5f,  0.5f, -0.5f,   0.5f,  0.5f,  0.5f,
+             0.5f, -0.5f, -0.5f,   0.5f,  0.5f,  0.5f,   0.5f, -0.5f,  0.5f,
+            
+            // Top face (y = 0.5)
+            -0.5f,  0.5f, -0.5f,  -0.5f,  0.5f,  0.5f,   0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f, -0.5f,   0.5f,  0.5f,  0.5f,   0.5f,  0.5f, -0.5f,
+            
+            // Bottom face (y = -0.5)
+            -0.5f, -0.5f, -0.5f,   0.5f, -0.5f, -0.5f,   0.5f, -0.5f,  0.5f,
+            -0.5f, -0.5f, -0.5f,   0.5f, -0.5f,  0.5f,  -0.5f, -0.5f,  0.5f
         };
         
         // Create VAO and VBO
@@ -326,7 +434,7 @@ public class OpenMason3DViewport {
         
         glBindVertexArray(0);
         
-        logger.info("Test cube geometry created");
+        logger.info("Test cube geometry created (36 vertices, 12 triangles)");
     }
     
     /**
@@ -460,7 +568,12 @@ public class OpenMason3DViewport {
      * Render the 3D viewport content.
      */
     public void render() {
+        // Debug logging reduced to avoid spam - uncomment if needed
+        // logger.debug("Render called - initialized: {}, framebuffer: {}, viewport size: {}x{}", 
+        //             initialized, framebuffer, viewportWidth, viewportHeight);
+        
         if (!initialized) {
+            logger.info("Viewport not initialized, initializing now...");
             initialize();
         }
         
@@ -498,14 +611,97 @@ public class OpenMason3DViewport {
             glDrawArrays(GL_LINES, 0, 84); // 42 lines * 2 points
         }
         
-        // Render test cube
-        glUniform3f(colorLocation, 1.0f, 0.5f, 0.2f); // Orange cube
-        glBindVertexArray(cubeVAO);
+        // DIAGNOSTIC: Runtime model state logging (throttled)
+        long currentTime = System.currentTimeMillis();
+        boolean shouldLog = (currentTime - lastDiagnosticLogTime) >= DIAGNOSTIC_LOG_INTERVAL_MS;
         
-        // Draw wireframe cube
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawArrays(GL_QUADS, 0, 8);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        if (shouldLog) {
+            lastDiagnosticLogTime = currentTime;
+            logger.info("RENDER DIAGNOSTIC (viewport instance: {}) - currentModel: {}, currentModelName: {}, modelRenderingEnabled: {}", 
+                       System.identityHashCode(this), (currentModel != null), currentModelName, modelRenderingEnabled);
+            
+            if (currentModel != null) {
+                logger.info("RENDER DIAGNOSTIC - model variant: {}, body parts: {}", 
+                           currentModel.getVariantName(), 
+                           (currentModel.getBodyParts() != null ? currentModel.getBodyParts().size() : "null"));
+                
+                // Check model preparation status
+                boolean isPrepared = modelRenderer.isModelPrepared(currentModel);
+                logger.info("RENDER DIAGNOSTIC - model prepared: {}", isPrepared);
+                
+                if (!isPrepared) {
+                    // Get detailed preparation status
+                    var status = modelRenderer.getModelPreparationStatus(currentModel);
+                    logger.info("RENDER DIAGNOSTIC - preparation status: {}", status.toString());
+                }
+            }
+        }
+        
+        // Prepare loaded model for rendering if needed (must be done on main thread with OpenGL context)
+        if (currentModel != null && !modelRenderer.isModelPrepared(currentModel)) {
+            try {
+                logger.info("Preparing model for rendering: {}", currentModelName);
+                boolean prepared = modelRenderer.prepareModel(currentModel);
+                logger.info("RENDER DIAGNOSTIC - model preparation result: {}", prepared);
+                if (!prepared) {
+                    logger.error("Failed to prepare model for rendering: {}", currentModelName);
+                    // Get detailed diagnostic info
+                    modelRenderer.logDiagnosticInfo();
+                }
+            } catch (Exception e) {
+                logger.error("Exception preparing model: " + e.getMessage(), e);
+                e.printStackTrace();
+            }
+        }
+        
+        // DIAGNOSTIC: Check render conditions (throttled)
+        boolean canRender = modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
+        if (shouldLog) {
+            logger.info("RENDER DIAGNOSTIC - can render model: {} (enabled: {}, model: {}, prepared: {})", 
+                       canRender, modelRenderingEnabled, (currentModel != null), 
+                       (currentModel != null ? modelRenderer.isModelPrepared(currentModel) : "N/A"));
+        }
+        
+        // Render current model if available, otherwise render test cube
+        if (canRender) {
+            // Render the loaded model with shader context
+            try {
+                if (shouldLog) {
+                    logger.info("RENDER DIAGNOSTIC - Attempting to render model: {}", currentModelName);
+                    logger.info("RENDER DIAGNOSTIC - Shader program: {}, MVP location: {}", shaderProgram, mvpMatrixLocation);
+                }
+                
+                // Get MVP matrix as float array
+                float[] mvpArray = new float[16];
+                mvpMatrix.get(mvpArray);
+                
+                modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, matrixMvpLocation, matrixModelLocation, mvpArray);
+                
+                if (shouldLog) {
+                    logger.info("RENDER DIAGNOSTIC - Successfully rendered model: {}", currentModelName);
+                }
+            } catch (Exception e) {
+                logger.error("RENDER DIAGNOSTIC - Error rendering model: " + e.getMessage(), e);
+                e.printStackTrace();
+                // Fall back to test cube on error
+                renderTestCube();
+            }
+        } else {
+            // Render test cube as fallback
+            if (shouldLog) {
+                logger.info("RENDER DIAGNOSTIC - Rendering test cube fallback");
+                
+                if (currentModel != null) {
+                    logger.warn("RENDER DIAGNOSTIC - Model '{}' loaded but not prepared - model: {}, renderer prepared: {}", 
+                               currentModelName, (currentModel != null), modelRenderer.isModelPrepared(currentModel));
+                } else if (currentModelName != null) {
+                    logger.warn("RENDER DIAGNOSTIC - Model name '{}' set but currentModel is null - async loading may have failed", currentModelName);
+                } else {
+                    logger.info("RENDER DIAGNOSTIC - No model loaded, using test cube");
+                }
+            }
+            renderTestCube();
+        }
         
         // Unbind
         glBindVertexArray(0);
@@ -560,6 +756,9 @@ public class OpenMason3DViewport {
         
         // Show controls window
         showControls();
+        
+        // Show model loading window
+        showModelControls();
     }
     
     
@@ -593,6 +792,15 @@ public class OpenMason3DViewport {
         // Show viewport status
         ImGui.text("Viewport: " + viewportWidth + "x" + viewportHeight);
         ImGui.text("Initialized: " + (initialized ? "Yes" : "No"));
+        ImGui.text("Framebuffer: " + framebuffer);
+        ImGui.text("Color Texture: " + colorTexture);
+        ImGui.text("Shader Program: " + shaderProgram);
+        ImGui.text("Cube VAO: " + cubeVAO);
+        
+        // Model rendering controls
+        if (ImGui.checkbox("Enable Model Rendering", modelRenderingEnabled)) {
+            logger.debug("Model rendering toggled to: {}", modelRenderingEnabled);
+        }
         
         // Show input handler status
         if (inputHandler != null) {
@@ -625,9 +833,26 @@ public class OpenMason3DViewport {
             ImGui.separator();
             ImGui.text("Camera:");
             ImGui.text("Mode: " + camera.getCameraMode());
-            ImGui.text("Distance: " + String.format("%.1f", camera.getDistance()));
-            ImGui.text("Yaw: " + String.format("%.1f°", camera.getYaw()));
-            ImGui.text("Pitch: " + String.format("%.1f°", camera.getPitch()));
+            
+            // Make coordinates copyable by using read-only input fields
+            ImString distanceText = new ImString(String.format("%.1f", camera.getDistance()));
+            ImString yawText = new ImString(String.format("%.1f°", camera.getYaw()));
+            ImString pitchText = new ImString(String.format("%.1f°", camera.getPitch()));
+            
+            ImGui.text("Distance: ");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(80);
+            ImGui.inputText("##distance", distanceText, ImGuiInputTextFlags.ReadOnly);
+            
+            ImGui.text("Yaw: ");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(80);
+            ImGui.inputText("##yaw", yawText, ImGuiInputTextFlags.ReadOnly);
+            
+            ImGui.text("Pitch: ");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(80);
+            ImGui.inputText("##pitch", pitchText, ImGuiInputTextFlags.ReadOnly);
         }
         
         ImGui.end();
@@ -664,6 +889,15 @@ public class OpenMason3DViewport {
         // Cleanup input handler
         if (inputHandler != null) {
             inputHandler.cleanup();
+        }
+        
+        // Cleanup model renderer
+        if (modelRenderer != null) {
+            try {
+                modelRenderer.close();
+            } catch (Exception e) {
+                logger.error("Error cleaning up model renderer: " + e.getMessage(), e);
+            }
         }
         
         if (cubeVBO != -1) {
@@ -716,12 +950,29 @@ public class OpenMason3DViewport {
             fragmentShader = -1;
         }
         
+        // Cleanup matrix transformation shaders
+        if (matrixShaderProgram != -1) {
+            glDeleteProgram(matrixShaderProgram);
+            matrixShaderProgram = -1;
+        }
+        
+        if (matrixVertexShader != -1) {
+            glDeleteShader(matrixVertexShader);
+            matrixVertexShader = -1;
+        }
+        
+        if (matrixFragmentShader != -1) {
+            glDeleteShader(matrixFragmentShader);
+            matrixFragmentShader = -1;
+        }
+        
         initialized = false;
         logger.info("Viewport resources cleaned up");
     }
     
     // Getters with null-safety
     public Camera getCamera() { return camera; }
+    public ModelRenderer getModelRenderer() { return modelRenderer; }
     public boolean isShowGrid() { return showGrid; }
     public void setShowGrid(boolean showGrid) { 
         this.showGrid = showGrid; 
@@ -932,22 +1183,215 @@ public class OpenMason3DViewport {
      */
     public void loadModel(String modelName) {
         if (modelName == null || modelName.trim().isEmpty()) {
-            logger.warn("Cannot load model: name is null or empty");
+            logger.error("LOAD MODEL DIAGNOSTIC - Cannot load model: name is null or empty");
             return;
         }
         
-        // Set the current model name
+        logger.error("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: {} ===", modelName);
+        System.err.println("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: " + modelName + " ===");
+        
+        // Load the model asynchronously
+        loadModelAsync(modelName);
+    }
+    
+    /**
+     * Render the test cube as a fallback when no model is loaded.
+     */
+    private void renderTestCube() {
+        // Debug logging reduced to avoid spam - uncomment if needed for debugging
+        // logger.debug("Rendering test cube - shader program: {}, cubeVAO: {}, colorLocation: {}", 
+        //             shaderProgram, cubeVAO, colorLocation);
+        
+        if (shaderProgram == -1) {
+            logger.error("Cannot render test cube - shader program is invalid");
+            return;
+        }
+        
+        if (cubeVAO == -1) {
+            logger.error("Cannot render test cube - cubeVAO is invalid");
+            return;
+        }
+        
+        if (colorLocation == -1) {
+            logger.warn("Color uniform location is -1, cube may not be colored correctly");
+        }
+        
+        glUniform3f(colorLocation, 1.0f, 0.5f, 0.2f); // Orange cube
+        glBindVertexArray(cubeVAO);
+        
+        // Draw filled cube (36 vertices = 12 triangles)
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        
+        // logger.debug("Test cube render commands issued");
+    }
+    
+    /**
+     * Show model selection and loading controls.
+     */
+    private void showModelControls() {
+        ImGui.begin("Model Controls");
+        
+        // Model loading section
+        ImGui.text("Model Loading:");
+        ImGui.separator();
+        
+        // Current model status
+        if (currentModel != null) {
+            ImGui.textColored(0.0f, 1.0f, 0.0f, 1.0f, "Model Loaded: " + currentModelName);
+            ImGui.text("Variant: " + currentTextureVariant);
+            ImGui.text("Parts: " + currentModel.getBodyParts().size());
+            
+            // Texture variant controls
+            ImGui.separator();
+            ImGui.text("Texture Variants:");
+            
+            String[] variants = {"default", "angus", "highland", "jersey"};
+            for (String variant : variants) {
+                if (ImGui.radioButton(variant, currentTextureVariant.equals(variant))) {
+                    if (!currentTextureVariant.equals(variant)) {
+                        setCurrentTextureVariant(variant);
+                        logger.info("Switched to texture variant: {}", variant);
+                    }
+                }
+            }
+            
+            if (ImGui.button("Unload Model")) {
+                unloadCurrentModel();
+            }
+        } else {
+            if (currentModelLoadingFuture != null && !currentModelLoadingFuture.isDone()) {
+                ImGui.textColored(1.0f, 1.0f, 0.0f, 1.0f, "Loading model...");
+                ImGui.text("Model: " + currentModelName);
+            } else {
+                ImGui.text("No model loaded");
+            }
+            
+            ImGui.separator();
+            ImGui.text("Available Models:");
+            
+            // Model loading buttons
+            if (ImGui.button("Load Cow Model")) {
+                loadModelAsync("standard_cow");
+            }
+        }
+        
+        // Model renderer status
+        ImGui.separator();
+        ImGui.text("Renderer Status:");
+        if (modelRenderer != null) {
+            ModelRenderer.RenderingStatistics stats = modelRenderer.getStatistics();
+            ImGui.text("Initialized: " + stats.initialized);
+            ImGui.text("Model Parts: " + stats.modelPartCount);
+            ImGui.text("Render Calls: " + stats.totalRenderCalls);
+            ImGui.text("Last Render: " + (stats.lastRenderTime > 0 ? (System.currentTimeMillis() - stats.lastRenderTime) + "ms ago" : "Never"));
+        }
+        
+        ImGui.end();
+    }
+    
+    /**
+     * Load a model asynchronously with progress feedback.
+     */
+    private void loadModelAsync(String modelName) {
+        if (currentModelLoadingFuture != null && !currentModelLoadingFuture.isDone()) {
+            logger.warn("Model loading already in progress, ignoring request for: {}", modelName);
+            return;
+        }
+        
+        logger.warn("=== STARTING ASYNC MODEL LOAD: {} ===", modelName);
         setCurrentModelName(modelName);
         
-        // TODO: Implement actual model loading using Stonebreak model system
-        // This should integrate with ModelManager to load the actual model data
-        logger.info("Loading model: {} (placeholder implementation)", modelName);
+        // Create progress callback
+        ModelManager.ProgressCallback progressCallback = new ModelManager.ProgressCallback() {
+            @Override
+            public void onProgress(String operation, int current, int total, String details) {
+                logger.debug("Model loading progress: {}% - {}", (current * 100 / total), details);
+            }
+            
+            @Override
+            public void onError(String operation, Throwable error) {
+                logger.error("Model loading error in {}: {}", operation, error.getMessage());
+            }
+            
+            @Override
+            public void onComplete(String operation, Object result) {
+                logger.info("Model loading operation complete: {}", operation);
+            }
+        };
         
-        // For now, just log that we would load the model
-        // In a full implementation, this would:
-        // 1. Use ModelManager to load the model
-        // 2. Create appropriate OpenGL buffers for the model geometry
-        // 3. Set up textures if needed
-        // 4. Update the viewport to render the new model instead of test cube
+        // Load model info asynchronously
+        logger.error("=== STEP 1: Starting ModelManager.loadModelInfoAsync for: {} ===", modelName);
+        currentModelLoadingFuture = ModelManager.loadModelInfoAsync(modelName, 
+                ModelManager.LoadingPriority.HIGH, progressCallback)
+            .thenCompose(modelInfo -> {
+                logger.error("=== STEP 2: thenCompose called with modelInfo: {} ===", 
+                           modelInfo != null ? "NOT NULL" : "NULL");
+                
+                if (modelInfo == null) {
+                    logger.error("=== STEP 2 ERROR: modelInfo is null, throwing exception ===");
+                    throw new RuntimeException("Failed to load model info for: " + modelName);
+                }
+                
+                logger.error("=== STEP 2: Model info loaded successfully: {} ===", modelInfo);
+                
+                // Create StonebreakModel from ModelInfo
+                logger.error("=== STEP 3: Creating StonebreakModel from ModelInfo ===");
+                StonebreakModel model = new StonebreakModel(modelInfo, 
+                    ModelManager.getStaticModelParts(modelName));
+                
+                logger.error("=== STEP 3: StonebreakModel created successfully ===");
+                return CompletableFuture.completedFuture(model);
+            })
+            .thenAccept(model -> {
+                // This runs on background thread, so we need to be careful with OpenGL calls
+                logger.error("=== STEP 4: thenAccept called with model: {} ===", 
+                           model != null ? "NOT NULL" : "NULL");
+                logger.info("Model loaded successfully: {}", modelName);
+                
+                // Store the model (main thread will prepare it for rendering)
+                logger.error("=== STEP 4: Setting this.currentModel (viewport instance: {}) ===", 
+                           System.identityHashCode(OpenMason3DViewport.this));
+                this.currentModel = model;
+                
+                logger.error("=== STEP 4: currentModelName should be: {} ===", modelName);
+                logger.error("=== STEP 4: Actual currentModelName value: {} ===", this.currentModelName);
+                
+                // Clear the loading future to allow new loads
+                logger.error("=== STEP 4: Clearing currentModelLoadingFuture ===");
+                this.currentModelLoadingFuture = null;
+                
+                logger.error("=== STEP 4: Model loading completed successfully ===");
+                // Prepare model for rendering (this needs to be done on main thread)
+                // We'll do this in the render loop when OpenGL context is active
+            })
+            .exceptionally(throwable -> {
+                logger.error("=== STEP ERROR: Exception in model loading chain for {} ===", modelName);
+                logger.error("Failed to load model {}: {}", modelName, throwable.getMessage());
+                throwable.printStackTrace();
+                this.currentModel = null;
+                this.currentModelLoadingFuture = null;
+                return null;
+            });
     }
+    
+    /**
+     * Unload the current model and clean up resources.
+     */
+    private void unloadCurrentModel() {
+        logger.info("Unloading current model: {}", currentModelName);
+        
+        // Cancel any pending loading
+        if (currentModelLoadingFuture != null && !currentModelLoadingFuture.isDone()) {
+            currentModelLoadingFuture.cancel(true);
+            currentModelLoadingFuture = null;
+        }
+        
+        // Clear model state
+        currentModel = null;
+        setCurrentModelName(null);
+        setCurrentTextureVariant("default");
+        
+        logger.info("Model unloaded successfully");
+    }
+    
 }

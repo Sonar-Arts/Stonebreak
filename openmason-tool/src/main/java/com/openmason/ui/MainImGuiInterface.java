@@ -704,7 +704,7 @@ public class MainImGuiInterface {
             // Use the actual Stonebreak model system
             if (modelManager != null) {
                 // Load standard cow model as default
-                String modelPath = "cow/standard_cow.json";
+                String modelPath = "standard_cow";
                 
                 modelManager.loadModelInfoAsync(modelPath, ModelManager.LoadingPriority.NORMAL, null).thenAccept(modelInfo -> {
                     if (modelInfo != null) {
@@ -1373,5 +1373,12 @@ public class MainImGuiInterface {
             }
             animationTime.set(currentTime);
         }
+    }
+    
+    /**
+     * Get the 3D viewport instance for sharing with other UI components.
+     */
+    public OpenMason3DViewport getViewport3D() {
+        return viewport3D;
     }
 }

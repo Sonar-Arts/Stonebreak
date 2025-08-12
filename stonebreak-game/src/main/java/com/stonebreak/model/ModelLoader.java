@@ -261,6 +261,9 @@ public class ModelLoader {
             
             CowModelDefinition model = objectMapper.readValue(finalInputStream, CowModelDefinition.class);
             
+            // Initialize scale from size for all model parts after JSON deserialization
+            initializeModelPartsScale(model);
+            
             System.out.println("[ModelLoader] Successfully loaded cow model '" + modelName + "' (" + 
                 (model.getDisplayName() != null ? model.getDisplayName() : "unknown") + ") with " + 
                 countTotalParts(model) + " parts and " + 
@@ -302,6 +305,20 @@ public class ModelLoader {
         }
         
         return parts;
+    }
+    
+    /**
+     * Gets static (non-animated) model parts with complete geometric data validation.
+     * This method ensures all returned model parts can successfully generate vertices
+     * and indices for rendering. Alias for getAllPartsStrict for Open Mason compatibility.
+     * 
+     * @param modelName The name of the model
+     * @return Array of static model parts with validated geometric data
+     * @throws ModelException if model loading or validation fails
+     */
+    public static ModelPart[] getStaticModelParts(String modelName) {
+        CowModelDefinition model = getCowModel(modelName); // This includes full validation
+        return getAllPartsStrict(model);
     }
     
     /**
@@ -454,9 +471,10 @@ public class ModelLoader {
         
         // Body slightly tilts with walking rhythm
         if (parts.length > 0) {
-            Vector3f bodyPos = parts[0].getPositionVector();
-            bodyPos.y += (float)Math.sin(walkCycle * 2.0f) * 0.02f; // Subtle vertical movement
-            parts[0].setPosition(new Position(bodyPos.x, bodyPos.y, bodyPos.z));
+            // Get base position from JSON and apply walking animation offset
+            Vector3f basePos = parts[0].getBasePositionVector(); // Always use JSON base position
+            float walkingOffset = (float)Math.sin(walkCycle * 2.0f) * 0.02f; // Subtle vertical movement
+            parts[0].setPosition(new Position(basePos.x, basePos.y + walkingOffset, basePos.z));
         }
     }
     
@@ -477,11 +495,12 @@ public class ModelLoader {
             parts[i].setRotation(new Vector3f(0, 0, 0));
         }
         
-        // Body slightly lower when grazing
+        // Body slightly lower when grazing  
         if (parts.length > 0) {
-            Vector3f bodyPos = parts[0].getPositionVector();
-            bodyPos.y -= 0.05f;
-            parts[0].setPosition(new Position(bodyPos.x, bodyPos.y, bodyPos.z));
+            // Get base position from JSON and apply grazing offset
+            Vector3f basePos = parts[0].getBasePositionVector(); // Always use JSON base position
+            float grazingOffset = -0.05f; // Lower body when grazing
+            parts[0].setPosition(new Position(basePos.x, basePos.y + grazingOffset, basePos.z));
         }
     }
     
@@ -494,8 +513,13 @@ public class ModelLoader {
         // Subtle breathing animation
         if (parts.length > 0) {
             float breathingScale = 1.0f + (float)Math.sin(idleCycle) * 0.02f;
-            Vector3f bodyScale = new Vector3f(breathingScale, 1.0f, breathingScale);
-            parts[0].setScale(bodyScale); // Body breathing
+            // Base scale is (1,1,1) since vertices are already sized correctly
+            Vector3f bodyScale = new Vector3f(
+                breathingScale, // Apply breathing to X 
+                1.0f, // Don't scale Y for breathing 
+                breathingScale // Apply breathing to Z
+            );
+            parts[0].setScale(bodyScale); // Body breathing with unity base scale
         }
         
         // Occasional head movements
@@ -516,6 +540,42 @@ public class ModelLoader {
         }
     }
     
+    
+    /**
+     * Initialize scale from size for all model parts after JSON deserialization.
+     * This ensures that the scale values match the size values defined in JSON.
+     */
+    private static void initializeModelPartsScale(CowModelDefinition model) {
+        if (model == null || model.getParts() == null) {
+            return;
+        }
+        
+        ModelParts parts = model.getParts();
+        
+        // Initialize scale for all parts
+        if (parts.getBody() != null) {
+            parts.getBody().postLoadInitialization();
+        }
+        if (parts.getHead() != null) {
+            parts.getHead().postLoadInitialization();
+        }
+        if (parts.getLegs() != null) {
+            for (ModelPart leg : parts.getLegs()) {
+                if (leg != null) leg.postLoadInitialization();
+            }
+        }
+        if (parts.getHorns() != null) {
+            for (ModelPart horn : parts.getHorns()) {
+                if (horn != null) horn.postLoadInitialization();
+            }
+        }
+        if (parts.getUdder() != null) {
+            parts.getUdder().postLoadInitialization();
+        }
+        if (parts.getTail() != null) {
+            parts.getTail().postLoadInitialization();
+        }
+    }
     
     /**
      * Count total parts in a model definition.
@@ -636,7 +696,8 @@ public class ModelLoader {
     }
     
     /**
-     * Validates an individual model part for completeness and consistency.
+     * Validates an individual model part for completeness and consistency,
+     * including testing vertex and index generation capabilities.
      */
     private static void validateModelPart(ModelPart part, String partName, String modelName) {
         if (part.getName() == null || part.getName().trim().isEmpty()) {
@@ -661,6 +722,102 @@ public class ModelLoader {
             throw new ModelValidationException(modelName, 
                 "Part " + partName + " has invalid size: " + size + " (must be positive)");
         }
+        
+        // Validate position values are not NaN or infinite
+        Vector3f position = part.getPositionVector();
+        if (Float.isNaN(position.x) || Float.isNaN(position.y) || Float.isNaN(position.z) ||
+            Float.isInfinite(position.x) || Float.isInfinite(position.y) || Float.isInfinite(position.z)) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has invalid position values: " + position);
+        }
+        
+        // Validate size values are not NaN or infinite
+        if (Float.isNaN(size.x) || Float.isNaN(size.y) || Float.isNaN(size.z) ||
+            Float.isInfinite(size.x) || Float.isInfinite(size.y) || Float.isInfinite(size.z)) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has invalid size values: " + size);
+        }
+        
+        // CRITICAL: Test vertex generation capability
+        validateVertexGeneration(part, partName, modelName);
+    }
+    
+    /**
+     * Validates that a model part can successfully generate vertices and indices
+     * for rendering. This is critical for ensuring the part will work with 
+     * rendering systems that depend on vertex data.
+     */
+    private static void validateVertexGeneration(ModelPart part, String partName, String modelName) {
+        // Test vertex generation
+        float[] vertices = null;
+        try {
+            vertices = part.getVertices();
+        } catch (Exception e) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " vertex generation failed: " + e.getMessage());
+        }
+        
+        if (vertices == null) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " getVertices() returned null - cannot render");
+        }
+        
+        if (vertices.length == 0) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has empty vertices array - cannot render");
+        }
+        
+        if (vertices.length % 3 != 0) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has invalid vertex count (" + vertices.length + 
+                " - must be multiple of 3 for 3D coordinates)");
+        }
+        
+        // Check for invalid vertex data
+        for (int i = 0; i < vertices.length; i++) {
+            if (Float.isNaN(vertices[i]) || Float.isInfinite(vertices[i])) {
+                throw new ModelValidationException(modelName, 
+                    "Part " + partName + " has invalid vertex data at index " + i + ": " + vertices[i]);
+            }
+        }
+        
+        // Test index generation
+        int[] indices = null;
+        try {
+            indices = part.getIndices();
+        } catch (Exception e) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " index generation failed: " + e.getMessage());
+        }
+        
+        if (indices == null) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " getIndices() returned null - cannot render");
+        }
+        
+        if (indices.length == 0) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has empty indices array - cannot render");
+        }
+        
+        if (indices.length % 3 != 0) {
+            throw new ModelValidationException(modelName, 
+                "Part " + partName + " has invalid index count (" + indices.length + 
+                " - must be multiple of 3 for triangles)");
+        }
+        
+        // Validate index ranges
+        int maxValidIndex = (vertices.length / 3) - 1;
+        for (int i = 0; i < indices.length; i++) {
+            if (indices[i] < 0 || indices[i] > maxValidIndex) {
+                throw new ModelValidationException(modelName, 
+                    "Part " + partName + " has out-of-range index at position " + i + 
+                    ": " + indices[i] + " (valid range: 0-" + maxValidIndex + ")");
+            }
+        }
+        
+        System.out.println("[ModelLoader] Part '" + partName + "' vertex generation validated: " +
+                          (vertices.length / 3) + " vertices, " + (indices.length / 3) + " triangles");
     }
     
     /**

@@ -1,11 +1,14 @@
 package com.openmason.ui;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.model.StonebreakModel;
 import imgui.*;
 import imgui.flag.*;
 import imgui.type.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.List;
+import org.joml.Vector3f;
 
 /**
  * Dear ImGui viewport interface replacing JavaFX ViewportController.
@@ -23,6 +26,7 @@ public class ViewportImGuiInterface {
     private boolean showViewportControls = true;
     private boolean showCameraControls = false;
     private boolean showRenderingOptions = false;
+    private boolean showTransformationControls = false;
     
     // View Mode State
     private final String[] viewModes = {"Perspective", "Orthographic", "Front", "Side", "Top", "Bottom", "Isometric"};
@@ -36,6 +40,7 @@ public class ViewportImGuiInterface {
     private final ImBoolean showViewportControlsRef = new ImBoolean(true);
     private final ImBoolean showCameraControlsRef = new ImBoolean(false);
     private final ImBoolean showRenderingOptionsRef = new ImBoolean(false);
+    private final ImBoolean showTransformationControlsRef = new ImBoolean(false);
     private final ImBoolean gridVisibleRef = new ImBoolean(true);
     private final ImBoolean axesVisibleRef = new ImBoolean(true);
     private final ImBoolean wireframeModeRef = new ImBoolean(false);
@@ -45,6 +50,9 @@ public class ViewportImGuiInterface {
     private final ImFloat cameraPitch = new ImFloat(30.0f);
     private final ImFloat cameraYaw = new ImFloat(45.0f);
     private final ImFloat cameraFOV = new ImFloat(60.0f);
+    
+    // Matrix Transformation State
+    private StonebreakModel currentModel = null;
     
     
     // Core Components
@@ -83,9 +91,11 @@ public class ViewportImGuiInterface {
             showViewportControlsRef.set(showViewportControls);
             showCameraControlsRef.set(showCameraControls);
             showRenderingOptionsRef.set(showRenderingOptions);
+            showTransformationControlsRef.set(showTransformationControls);
             gridVisibleRef.set(gridVisible);
             axesVisibleRef.set(axesVisible);
             wireframeModeRef.set(wireframeMode);
+            // Matrix transformations are always enabled
         } catch (Exception e) {
             logger.warn("Error synchronizing boolean states", e);
         }
@@ -98,6 +108,9 @@ public class ViewportImGuiInterface {
         try {
             showViewportControls = showViewportControlsRef.get();
             showCameraControls = showCameraControlsRef.get();
+            showTransformationControls = showTransformationControlsRef.get();
+            
+            // Matrix transformation mode is always enabled
             showRenderingOptions = showRenderingOptionsRef.get();
             gridVisible = gridVisibleRef.get();
             axesVisible = axesVisibleRef.get();
@@ -127,6 +140,12 @@ public class ViewportImGuiInterface {
             if (showRenderingOptions) {
                 renderRenderingOptions();
             }
+            
+            if (showTransformationControls) {
+                renderTransformationControls();
+            }
+            
+            // Model controls are handled by Model Browser
             
             // Update states after rendering
             updateBooleanStates();
@@ -230,6 +249,12 @@ public class ViewportImGuiInterface {
         if (ImGui.button("Rendering##viewport")) {
             showRenderingOptions = !showRenderingOptions;
         }
+        
+        ImGui.sameLine();
+        
+        if (ImGui.button("Transform##viewport")) {
+            showTransformationControls = !showTransformationControls;
+        }
     }
     
     /**
@@ -253,7 +278,8 @@ public class ViewportImGuiInterface {
         // Display the rendered texture with mouse capture functionality
         int colorTexture = viewport3D.getColorTexture();
         if (colorTexture == -1) {
-            throw new RuntimeException("Viewport color texture is invalid - OpenGL initialization failed");
+            ImGui.text("Viewport texture not available");
+            return;
         }
         
         // Get image position before drawing for manual bounds checking
@@ -442,9 +468,23 @@ public class ViewportImGuiInterface {
     
     private void setupViewport() {
         logger.info("Setting up 3D viewport...");
-        viewport3D = new OpenMason3DViewport();
-        viewportInitialized = true;
-        logger.info("3D viewport initialized successfully");
+        // Don't create a new viewport - it should be injected via setViewport3D()
+        if (viewport3D == null) {
+            logger.warn("No viewport3D instance provided - ViewportImGuiInterface requires external viewport injection");
+        } else {
+            viewportInitialized = true;
+            logger.info("3D viewport initialized successfully using injected instance: {}", System.identityHashCode(viewport3D));
+        }
+    }
+    
+    /**
+     * Set the shared 3D viewport instance.
+     * This must be called before initialize() to prevent duplicate viewport creation.
+     */
+    public void setViewport3D(OpenMason3DViewport viewport) {
+        this.viewport3D = viewport;
+        logger.info("Shared 3D viewport injected into ViewportImGuiInterface: {}", 
+                   viewport != null ? System.identityHashCode(viewport) : "NULL");
     }
     
     /**
@@ -624,6 +664,58 @@ public class ViewportImGuiInterface {
         // Implementation would apply rendering quality settings
     }
     
+    /**
+     * Render model loading and control interface from the viewport.
+     */
+    private void renderModelControls() {
+        if (viewport3D != null) {
+            // Create ImGui window for model controls
+            if (ImGui.begin("Model Controls")) {
+                // Get current model state
+                String currentModelName = viewport3D.getCurrentModelName();
+                String currentTextureVariant = viewport3D.getCurrentTextureVariant();
+                
+                // Model loading section
+                ImGui.text("Model Loading:");
+                ImGui.separator();
+                
+                if (currentModelName != null) {
+                    ImGui.textColored(0.0f, 1.0f, 0.0f, 1.0f, "Model: " + currentModelName);
+                    if (currentTextureVariant != null) {
+                        ImGui.text("Variant: " + currentTextureVariant);
+                    }
+                    
+                    // Texture variant controls
+                    ImGui.separator();
+                    ImGui.text("Texture Variants:");
+                    
+                    String[] variants = {"default", "angus", "highland", "jersey"};
+                    for (String variant : variants) {
+                        if (ImGui.radioButton(variant, variant.equals(currentTextureVariant))) {
+                            viewport3D.setCurrentTextureVariant(variant);
+                        }
+                    }
+                    
+                    if (ImGui.button("Unload Model")) {
+                        viewport3D.setCurrentModelName(null);
+                        viewport3D.setCurrentTextureVariant("default");
+                    }
+                } else {
+                    ImGui.text("No model loaded");
+                    
+                    ImGui.separator();
+                    ImGui.text("Available Models:");
+                    
+                    // Model loading buttons
+                    if (ImGui.button("Load Cow Model")) {
+                        viewport3D.loadModel("standard_cow");
+                    }
+                }
+            }
+            ImGui.end();
+        }
+    }
+    
     // Getters for external access
     
     public OpenMason3DViewport getViewport3D() {
@@ -667,6 +759,53 @@ public class ViewportImGuiInterface {
         viewportInitialized = false;
     }
     
+    
+    /**
+     * Render transformation controls for individual model part positioning.
+     */
+    private void renderTransformationControls() {
+        if (ImGui.begin("Matrix Transformations", showTransformationControlsRef)) {
+            
+            // Matrix transformation mode (always enabled)
+            ImGui.text("Matrix Transform Mode: ALWAYS ENABLED");
+            
+            ImGui.separator();
+            
+            // Model selection
+            if (currentModel != null) {
+                ImGui.text("Model: " + currentModel.getVariantName());
+                ImGui.text("Matrix Mode: ALWAYS ENABLED");
+                
+                ImGui.separator();
+                
+                // Model parts info
+                ImGui.text("Model Parts:");
+                for (StonebreakModel.BodyPart bodyPart : currentModel.getBodyParts()) {
+                    ImGui.text("  - " + bodyPart.getName());
+                }
+                
+            } else {
+                ImGui.text("No model loaded");
+                ImGui.text("Load a cow model to view parts information");
+            }
+                
+        }
+        ImGui.end();
+    }
+    
+    
+    
+    
+    /**
+     * Set the current model for display.
+     */
+    public void setCurrentModel(StonebreakModel model) {
+        this.currentModel = model;
+        
+        if (model != null) {
+            logger.info("Set current model for display: " + model.getVariantName());
+        }
+    }
     
     /**
      * Reset viewport to defaults.

@@ -56,7 +56,7 @@ public class OpenMasonApp {
     private boolean shouldApplyDefaultLayout = false;
     
     /**
-     * Initialize and run the Dear ImGui application.
+     * Initialize and run the Dear ImGui application.This
      */
     public void run() {
         logger.info("Starting OpenMason application...");
@@ -292,8 +292,9 @@ public class OpenMasonApp {
             // Initialize main interface
             mainInterface = new MainImGuiInterface();
             
-            // Initialize viewport interface
+            // Initialize viewport interface and inject the shared viewport
             viewportInterface = new ViewportImGuiInterface();
+            viewportInterface.setViewport3D(mainInterface.getViewport3D());
             
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
