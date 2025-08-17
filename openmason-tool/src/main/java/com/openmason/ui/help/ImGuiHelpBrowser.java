@@ -1,6 +1,5 @@
 package com.openmason.ui.help;
 
-import com.openmason.ui.icons.IconTextureManager;
 import imgui.ImGui;
 import imgui.flag.*;
 import imgui.type.ImString;
@@ -45,7 +44,6 @@ public class ImGuiHelpBrowser {
     private final HelpSystem helpSystem;
     private final MarkdownRenderer markdownRenderer;
     private final ContextHelpRenderer contextHelpRenderer;
-    private final IconTextureManager iconManager;
     
     // Window state
     private final ImBoolean windowVisible = new ImBoolean(false);
@@ -87,7 +85,6 @@ public class ImGuiHelpBrowser {
         this.helpSystem = helpSystem;
         this.markdownRenderer = new MarkdownRenderer(this::handleTopicLinkClick);
         this.contextHelpRenderer = new ContextHelpRenderer();
-        this.iconManager = IconTextureManager.getInstance();
         
         // Initialize help system if not already done
         try {

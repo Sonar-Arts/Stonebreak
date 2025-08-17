@@ -395,10 +395,6 @@ public class MainImGuiInterface {
                 validateModel();
             }
             
-            if (ImGui.menuItem("Generate Textures", "Ctrl+Shift+T")) {
-                generateTextures();
-            }
-            
             ImGui.separator();
             
             if (ImGui.beginMenu("Texture Variants")) {
@@ -520,11 +516,6 @@ public class MainImGuiInterface {
             // Tool operations
             if (ImGui.button("Validate##toolbar") && modelLoaded) {
                 validateModel();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Generate Textures##toolbar")) {
-                generateTextures();
             }
             ImGui.sameLine();
             
@@ -1072,11 +1063,6 @@ public class MainImGuiInterface {
         updateStatus("Model validation complete");
     }
     
-    private void generateTextures() {
-        logger.info("Generate textures action triggered");
-        updateStatus("Generating textures...");
-        // Implementation would generate textures
-    }
     
     private void showAbout() {
         logger.info("Show about action triggered");

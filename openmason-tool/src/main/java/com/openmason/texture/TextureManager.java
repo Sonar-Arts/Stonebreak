@@ -6,114 +6,16 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-import java.util.ArrayList;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Asynchronous high-level texture management system for Open Mason Phase 2.
- * Provides both synchronous (legacy) and asynchronous APIs with progress reporting,
- * background loading queues, and comprehensive thread safety for UI responsiveness.
+ * Simplified texture management system for Open Mason.
+ * Provides basic texture variant access and caching functionality.
  * Wraps the Stonebreak texture system with caching and validation.
  */
 public class TextureManager {
     
     private static final Map<String, TextureVariantInfo> variantInfoCache = new ConcurrentHashMap<>();
     private static boolean initialized = false;
-    private static final AtomicBoolean initializationInProgress = new AtomicBoolean(false);
-    private static CompletableFuture<Void> initializationFuture = null;
-    
-    // Background loading queue system
-    private static final ExecutorService backgroundLoader = Executors.newFixedThreadPool(2, r -> {
-        Thread t = new Thread(r, "TextureManager-Background-" + System.currentTimeMillis());
-        t.setDaemon(true);
-        t.setPriority(Thread.NORM_PRIORITY - 1); // Lower priority for background loading
-        return t;
-    });
-    
-    private static final PriorityBlockingQueue<LoadRequest> loadQueue = new PriorityBlockingQueue<>();
-    private static final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
-    
-    /**
-     * Progress callback interface for async operations.
-     */
-    public interface ProgressCallback {
-        void onProgress(String operation, int current, int total, String details);
-        void onError(String operation, Throwable error);
-        void onComplete(String operation, Object result);
-    }
-    
-    /**
-     * Loading priority levels for background queue management.
-     */
-    public enum LoadingPriority {
-        IMMEDIATE(0),   // Load immediately, highest priority
-        HIGH(1),        // Load as soon as possible
-        NORMAL(2),      // Standard background loading
-        LOW(3);         // Load when system is idle
-        
-        private final int priority;
-        LoadingPriority(int priority) { this.priority = priority; }
-        public int getPriority() { return priority; }
-    }
-    
-    /**
-     * Internal load request for priority queue.
-     */
-    private static class LoadRequest implements Comparable<LoadRequest> {
-        final String variantName;
-        final LoadingPriority priority;
-        final CompletableFuture<TextureVariantInfo> future;
-        final ProgressCallback callback;
-        final long timestamp;
-        
-        LoadRequest(String variantName, LoadingPriority priority, CompletableFuture<TextureVariantInfo> future, ProgressCallback callback) {
-            this.variantName = variantName;
-            this.priority = priority;
-            this.future = future;
-            this.callback = callback;
-            this.timestamp = System.nanoTime();
-        }
-        
-        @Override
-        public int compareTo(LoadRequest other) {
-            // Lower priority number = higher actual priority
-            int priorityCompare = Integer.compare(this.priority.getPriority(), other.priority.getPriority());
-            if (priorityCompare != 0) {
-                return priorityCompare;
-            }
-            // If same priority, FIFO by timestamp
-            return Long.compare(this.timestamp, other.timestamp);
-        }
-    }
-    
-    // Start background processing thread
-    static {
-        Thread backgroundProcessor = new Thread(() -> {
-            while (!shutdownRequested.get()) {
-                try {
-                    LoadRequest request = loadQueue.poll(1, TimeUnit.SECONDS);
-                    if (request != null && !request.future.isCancelled()) {
-                        processLoadRequest(request);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    System.err.println("[TextureManager] Background processor error: " + e.getMessage());
-                }
-            }
-        }, "TextureManager-BackgroundProcessor");
-        backgroundProcessor.setDaemon(true);
-        backgroundProcessor.start();
-    }
     
     /**
      * Information about a texture variant.
@@ -152,230 +54,48 @@ public class TextureManager {
     }
     
     /**
-     * ASYNC: Initialize the TextureManager system asynchronously with progress reporting.
-     * 
-     * @param progressCallback Optional progress callback
-     * @return CompletableFuture that completes when initialization is done
-     */
-    public static CompletableFuture<Void> initializeAsync(ProgressCallback progressCallback) {
-        if (initialized) {
-            if (progressCallback != null) {
-                progressCallback.onComplete("initializeAsync", "Already initialized");
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-        
-        // Check if initialization is already in progress
-        if (initializationInProgress.compareAndSet(false, true)) {
-            // We're the first to start initialization
-            initializationFuture = CompletableFuture.supplyAsync(() -> {
-                try {
-                    if (progressCallback != null) {
-                        progressCallback.onProgress("initializeAsync", 0, 100, "Starting TextureManager initialization");
-                    }
-                    
-                    System.out.println("[TextureManager] Initializing async texture management system...");
-                    
-                    // Initialize texture loading system
-                    if (progressCallback != null) {
-                        progressCallback.onProgress("initializeAsync", 10, 100, "Initializing texture loading system");
-                    }
-                    
-                    // Get available variants
-                    String[] availableVariants = CowTextureLoader.getAvailableVariants();
-                    int totalVariants = availableVariants.length;
-                    
-                    if (progressCallback != null) {
-                        progressCallback.onProgress("initializeAsync", 20, 100, 
-                            "Found " + totalVariants + " texture variants to load");
-                    }
-                    
-                    // Load all variants in parallel
-                    List<CompletableFuture<TextureVariantInfo>> variantFutures = new ArrayList<>();
-                    AtomicInteger completed = new AtomicInteger(0);
-                    
-                    for (String variantName : availableVariants) {
-                        CompletableFuture<TextureVariantInfo> variantFuture = loadVariantInfoAsync(variantName, 
-                            LoadingPriority.HIGH, null)
-                            .thenApply(info -> {
-                                int currentCompleted = completed.incrementAndGet();
-                                if (progressCallback != null) {
-                                    int progress = 20 + (currentCompleted * 70 / totalVariants);
-                                    progressCallback.onProgress("initializeAsync", progress, 100, 
-                                        "Loaded variant " + currentCompleted + "/" + totalVariants + ": " + variantName);
-                                }
-                                return info;
-                            })
-                            .exceptionally(throwable -> {
-                                System.err.println("[TextureManager] Failed to load variant '" + variantName + "': " + throwable.getMessage());
-                                if (progressCallback != null) {
-                                    progressCallback.onError("initializeAsync", throwable);
-                                }
-                                return null; // Continue with other variants
-                            });
-                        variantFutures.add(variantFuture);
-                    }
-                    
-                    // Wait for all variants to complete
-                    CompletableFuture.allOf(variantFutures.toArray(new CompletableFuture[0])).join();
-                    
-                    // Count successful loads
-                    long successCount = variantFutures.stream()
-                        .mapToLong(future -> {
-                            try {
-                                return future.get() != null ? 1 : 0;
-                            } catch (Exception e) {
-                                return 0;
-                            }
-                        })
-                        .sum();
-                    
-                    initialized = true;
-                    
-                    if (progressCallback != null) {
-                        progressCallback.onProgress("initializeAsync", 100, 100, 
-                            "Initialization complete: " + successCount + "/" + totalVariants + " variants loaded");
-                        progressCallback.onComplete("initializeAsync", 
-                            "TextureManager initialized with " + successCount + " variants");
-                    }
-                    
-                    System.out.println("[TextureManager] Async initialization complete. Loaded " + 
-                        successCount + "/" + totalVariants + " variant(s)");
-                    
-                    return null;
-                    
-                } catch (Exception e) {
-                    if (progressCallback != null) {
-                        progressCallback.onError("initializeAsync", e);
-                    }
-                    throw new RuntimeException("TextureManager initialization failed: " + e.getMessage(), e);
-                } finally {
-                    initializationInProgress.set(false);
-                }
-            }, backgroundLoader);
-            
-            return initializationFuture;
-        } else {
-            // Initialization already in progress, return existing future
-            return initializationFuture != null ? initializationFuture : CompletableFuture.completedFuture(null);
-        }
-    }
-    
-    /**
-     * LEGACY: Initialize the TextureManager system synchronously.
-     * Preserved for backward compatibility but now uses async system internally.
+     * Initialize the TextureManager system.
      */
     public static synchronized void initialize() {
-        try {
-            initializeAsync(null).get(); // Block until async initialization completes
-        } catch (Exception e) {
-            System.err.println("[TextureManager] Synchronous initialization failed: " + e.getMessage());
-            throw new RuntimeException("Failed to initialize TextureManager", e);
+        if (initialized) {
+            return;
         }
+        
+        System.out.println("[TextureManager] Initializing texture management system...");
+        
+        // Get available variants and pre-load them
+        String[] availableVariants = CowTextureLoader.getAvailableVariants();
+        for (String variantName : availableVariants) {
+            try {
+                loadVariantInfo(variantName);
+            } catch (Exception e) {
+                System.err.println("[TextureManager] Failed to load variant '" + variantName + "': " + e.getMessage());
+            }
+        }
+        
+        initialized = true;
+        System.out.println("[TextureManager] Initialization complete. Loaded " + variantInfoCache.size() + " variants");
     }
     
     /**
-     * ASYNC: Load texture variant information asynchronously with priority support.
-     * 
-     * @param variantName The variant to load info for
-     * @param priority Loading priority
-     * @param progressCallback Optional progress callback
-     * @return CompletableFuture that resolves to TextureVariantInfo
+     * Load variant information if not already cached.
      */
-    public static CompletableFuture<TextureVariantInfo> loadVariantInfoAsync(String variantName, 
-                                                                            LoadingPriority priority, 
-                                                                            ProgressCallback progressCallback) {
-        if (shutdownRequested.get()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("TextureManager is shutting down"));
-        }
-        
+    private static TextureVariantInfo loadVariantInfo(String variantName) {
         // Check if already cached
         TextureVariantInfo cached = variantInfoCache.get(variantName);
         if (cached != null) {
-            if (progressCallback != null) {
-                progressCallback.onComplete("loadVariantInfoAsync", cached);
-            }
-            return CompletableFuture.completedFuture(cached);
+            return cached;
         }
         
-        // Create future for this request
-        CompletableFuture<TextureVariantInfo> future = new CompletableFuture<>();
-        
-        // Add to priority queue for background processing
-        LoadRequest request = new LoadRequest(variantName, priority, future, progressCallback);
-        
-        if (priority == LoadingPriority.IMMEDIATE) {
-            // Process immediately on current thread
-            backgroundLoader.submit(() -> processLoadRequest(request));
-        } else {
-            // Add to queue for background processing
-            loadQueue.offer(request);
+        // Load from texture system
+        CowTextureDefinition.CowVariant variant = CowTextureLoader.getCowVariant(variantName);
+        if (variant != null) {
+            TextureVariantInfo info = createVariantInfo(variantName, variant);
+            variantInfoCache.put(variantName, info);
+            return info;
         }
         
-        return future;
-    }
-    
-    /**
-     * Process a load request from the background queue.
-     */
-    private static void processLoadRequest(LoadRequest request) {
-        try {
-            if (request.future.isCancelled()) {
-                return;
-            }
-            
-            if (request.callback != null) {
-                request.callback.onProgress("loadVariantInfoAsync", 0, 100, 
-                    "Loading texture variant: " + request.variantName);
-            }
-            
-            // Use the synchronous texture loader wrapped in async
-            CompletableFuture.supplyAsync(() -> {
-                return CowTextureLoader.getCowVariant(request.variantName);
-            }).thenAccept(variant -> {
-                    try {
-                        if (variant != null && !request.future.isCancelled()) {
-                            if (request.callback != null) {
-                                request.callback.onProgress("loadVariantInfoAsync", 75, 100, 
-                                    "Creating variant info");
-                            }
-                            
-                            TextureVariantInfo info = createVariantInfo(request.variantName, variant);
-                            variantInfoCache.put(request.variantName, info);
-                            
-                            if (request.callback != null) {
-                                request.callback.onProgress("loadVariantInfoAsync", 100, 100, 
-                                    "Variant info loaded successfully");
-                                request.callback.onComplete("loadVariantInfoAsync", info);
-                            }
-                            
-                            request.future.complete(info);
-                            System.out.println("[TextureManager] Loaded variant info asynchronously: " + info);
-                        } else {
-                            request.future.completeExceptionally(
-                                new RuntimeException("Failed to load variant: " + request.variantName));
-                        }
-                    } catch (Exception e) {
-                        if (request.callback != null) {
-                            request.callback.onError("loadVariantInfoAsync", e);
-                        }
-                        request.future.completeExceptionally(e);
-                    }
-                })
-                .exceptionally(throwable -> {
-                    if (request.callback != null) {
-                        request.callback.onError("loadVariantInfoAsync", throwable);
-                    }
-                    request.future.completeExceptionally(throwable);
-                    return null;
-                });
-                
-        } catch (Exception e) {
-            if (request.callback != null) {
-                request.callback.onError("loadVariantInfoAsync", e);
-            }
-            request.future.completeExceptionally(e);
-        }
+        return null;
     }
     
     /**
@@ -396,20 +116,15 @@ public class TextureManager {
     }
     
     /**
-     * LEGACY: Get information about a specific texture variant.
-     * Now uses async system with blocking for backward compatibility.
+     * Get information about a specific texture variant.
      */
     public static TextureVariantInfo getVariantInfo(String variantName) {
-        try {
-            // Use async loading with IMMEDIATE priority for legacy compatibility
-            return loadVariantInfoAsync(variantName, LoadingPriority.IMMEDIATE, null).get();
-        } catch (Exception e) {
-            System.err.println("[TextureManager] Failed to get variant info for '" + variantName + "': " + e.getMessage());
-            return null;
+        if (!initialized) {
+            initialize();
         }
+        
+        return loadVariantInfo(variantName);
     }
-    
-    // Removed legacy loadVariantInfo method - now handled by async system
     
     /**
      * Get UV coordinates for a specific face of a texture variant.
@@ -593,8 +308,6 @@ public class TextureManager {
         }
     }
     
-    
-    
     /**
      * Test method to validate all texture variants can be loaded correctly.
      */
@@ -619,116 +332,35 @@ public class TextureManager {
     }
     
     /**
-     * Cancel all pending load requests.
-     * 
-     * @return Number of requests cancelled
-     */
-    public static int cancelAllPendingLoads() {
-        System.out.println("[TextureManager] Cancelling all pending loads...");
-        
-        int cancelledCount = 0;
-        LoadRequest request;
-        while ((request = loadQueue.poll()) != null) {
-            if (request.future.cancel(false)) {
-                cancelledCount++;
-            }
-        }
-        
-        System.out.println("[TextureManager] Cancelled " + cancelledCount + " pending load requests");
-        return cancelledCount;
-    }
-    
-    /**
-     * Get the number of pending load requests in the queue.
-     * 
-     * @return Number of pending requests
-     */
-    public static int getPendingLoadCount() {
-        return loadQueue.size();
-    }
-    
-    /**
-     * Check if TextureManager is currently initializing.
-     * 
-     * @return true if initialization is in progress
-     */
-    public static boolean isInitializing() {
-        return initializationInProgress.get();
-    }
-    
-    /**
-     * Shutdown the TextureManager system gracefully.
-     * This should be called when the application is shutting down.
-     */
-    public static void shutdown() {
-        System.out.println("[TextureManager] Shutting down async texture management system...");
-        
-        shutdownRequested.set(true);
-        
-        // Cancel pending loads
-        int cancelledPending = cancelAllPendingLoads();
-        System.out.println("[TextureManager] Cancelled " + cancelledPending + " pending loads");
-        
-        // Shutdown background executor
-        backgroundLoader.shutdown();
-        try {
-            if (!backgroundLoader.awaitTermination(5, TimeUnit.SECONDS)) {
-                backgroundLoader.shutdownNow();
-                System.out.println("[TextureManager] Forced shutdown of background executor");
-            } else {
-                System.out.println("[TextureManager] Background executor shutdown gracefully");
-            }
-        } catch (InterruptedException e) {
-            backgroundLoader.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-        
-        // Clear underlying texture cache
-        CowTextureLoader.clearCache();
-        
-        System.out.println("[TextureManager] Shutdown complete");
-    }
-    
-    /**
      * Clear all cached texture data and reset initialization state.
      */
     public static synchronized void clearCache() {
         System.out.println("[TextureManager] Clearing texture cache...");
         
-        // Cancel any pending operations
-        cancelAllPendingLoads();
-        
         variantInfoCache.clear();
         CowTextureLoader.clearCache();
         initialized = false;
-        initializationInProgress.set(false);
-        initializationFuture = null;
         
         System.out.println("[TextureManager] Cache cleared and system reset");
     }
     
     /**
-     * Enhanced status printing with async information.
+     * Print all variant information.
      */
     public static void printAllVariantInfo() {
-        if (!initialized && !isInitializing()) {
-            System.out.println("[TextureManager] System not initialized. Call initializeAsync() first.");
+        if (!initialized) {
+            System.out.println("[TextureManager] System not initialized. Call initialize() first.");
             return;
         }
         
-        System.out.println("[TextureManager] === Async Texture Management System Status ===");
+        System.out.println("[TextureManager] === Texture Management System Status ===");
         System.out.println("  Initialized: " + initialized);
-        System.out.println("  Initializing: " + isInitializing());
-        System.out.println("  Pending loads: " + getPendingLoadCount());
         System.out.println("  Cached variants: " + variantInfoCache.size());
-        System.out.println("  Shutdown requested: " + shutdownRequested.get());
         System.out.println();
         
-        if (initialized) {
-            for (TextureVariantInfo info : variantInfoCache.values()) {
-                System.out.println(getVariantStatistics(info.getVariantName()));
-                System.out.println("---");
-            }
+        for (TextureVariantInfo info : variantInfoCache.values()) {
+            System.out.println(getVariantStatistics(info.getVariantName()));
+            System.out.println("---");
         }
         
         CowTextureLoader.printCacheStatus();

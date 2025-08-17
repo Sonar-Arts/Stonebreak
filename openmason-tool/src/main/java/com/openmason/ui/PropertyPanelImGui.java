@@ -74,22 +74,20 @@ public class PropertyPanelImGui {
     }
     
     private void initialize() {
-        CompletableFuture.runAsync(() -> {
-            try {
-                // Initialize TextureVariantManager if not already done
-                if (textureManager != null && !textureManager.getPerformanceStats().get("initialized").equals(true)) {
-                    textureManager.initializeAsync(null).get();
-                }
-                
-                initialized = true;
-                statusMessage = "Ready";
-                logger.info("PropertyPanelImGui initialized successfully");
-                
-            } catch (Exception e) {
-                logger.error("Failed to initialize PropertyPanelImGui async", e);
-                statusMessage = "Initialization failed: " + e.getMessage();
+        try {
+            // Initialize TextureVariantManager
+            if (textureManager != null) {
+                textureManager.initialize();
             }
-        });
+            
+            initialized = true;
+            statusMessage = "Ready";
+            logger.info("PropertyPanelImGui initialized successfully");
+            
+        } catch (Exception e) {
+            logger.error("Failed to initialize PropertyPanelImGui", e);
+            statusMessage = "Initialization failed: " + e.getMessage();
+        }
     }
     
     /**
@@ -434,48 +432,46 @@ public class PropertyPanelImGui {
         loadingInProgress = true;
         statusMessage = "Loading texture variants for " + modelName + "...";
         
-        CompletableFuture.runAsync(() -> {
-            try {
-                List<String> variantsToLoad;
-                
-                // For cow models, load all 4 variants
-                if (modelName.toLowerCase().contains("cow")) {
-                    variantsToLoad = Arrays.asList("Default", "Angus", "Highland", "Jersey");
-                    logger.info("Loading cow variants: {}", variantsToLoad);
-                } else {
-                    variantsToLoad = Arrays.asList("Default");
-                    logger.info("Loading default variant for non-cow model: {}", modelName);
-                }
-                
-                // Update available variants
-                availableVariants = variantsToLoad.toArray(new String[0]);
-                selectedVariantIndex.set(0);
-                selectedVariant = "default";
-                variantCount = availableVariants.length;
-                
-                updateModelStatistics();
-                
-                // Load model into viewport if connected
-                if (viewport3D != null) {
-                    // Convert display name to model file name (e.g., "Standard Cow" -> "standard_cow")
-                    String modelFileName = modelName.toLowerCase().replace(" ", "_");
-                    logger.info("Loading model '{}' (file: '{}') into 3D viewport", modelName, modelFileName);
-                    viewport3D.loadModel(modelFileName);
-                }
-                
-                loadingInProgress = false;
-                if (modelName.toLowerCase().contains("cow")) {
-                    statusMessage = "Loaded " + variantsToLoad.size() + " texture variants";
-                } else {
-                    statusMessage = "Model type not supported for texture variants";
-                }
-                
-            } catch (Exception e) {
-                logger.error("Error loading texture variants for model: {}", modelName, e);
-                loadingInProgress = false;
-                statusMessage = "Failed to load texture variants: " + e.getMessage();
+        try {
+            List<String> variantsToLoad;
+            
+            // For cow models, load all 4 variants
+            if (modelName.toLowerCase().contains("cow")) {
+                variantsToLoad = Arrays.asList("Default", "Angus", "Highland", "Jersey");
+                logger.info("Loading cow variants: {}", variantsToLoad);
+            } else {
+                variantsToLoad = Arrays.asList("Default");
+                logger.info("Loading default variant for non-cow model: {}", modelName);
             }
-        });
+            
+            // Update available variants
+            availableVariants = variantsToLoad.toArray(new String[0]);
+            selectedVariantIndex.set(0);
+            selectedVariant = "default";
+            variantCount = availableVariants.length;
+            
+            updateModelStatistics();
+            
+            // Load model into viewport if connected
+            if (viewport3D != null) {
+                // Convert display name to model file name (e.g., "Standard Cow" -> "standard_cow")
+                String modelFileName = modelName.toLowerCase().replace(" ", "_");
+                logger.info("Loading model '{}' (file: '{}') into 3D viewport", modelName, modelFileName);
+                viewport3D.loadModel(modelFileName);
+            }
+            
+            loadingInProgress = false;
+            if (modelName.toLowerCase().contains("cow")) {
+                statusMessage = "Loaded " + variantsToLoad.size() + " texture variants";
+            } else {
+                statusMessage = "Model type not supported for texture variants";
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error loading texture variants for model: {}", modelName, e);
+            loadingInProgress = false;
+            statusMessage = "Failed to load texture variants: " + e.getMessage();
+        }
     }
     
     public void switchTextureVariant(String variantName) {
@@ -492,46 +488,44 @@ public class PropertyPanelImGui {
         loadingInProgress = true;
         statusMessage = "Switching to " + variantName + " variant...";
         
-        CompletableFuture.runAsync(() -> {
-            try {
-                String variantLower = variantName.toLowerCase();
-                
-                // Switch variant using TextureVariantManager
-                boolean success = textureManager.switchToVariant(variantLower);
-                
-                if (success) {
-                    // Update viewport if connected
-                    if (viewport3D != null) {
-                        viewport3D.setCurrentTextureVariant(variantLower);
-                        viewport3D.requestRender();
-                    }
-                    
-                    selectedVariant = variantName;
-                    
-                    long switchTime = System.currentTimeMillis() - startTime;
-                    lastSwitchTime = switchTime;
-                    
-                    loadingInProgress = false;
-                    statusMessage = String.format("Switched to %s variant (%dms)", variantName, switchTime);
-                    
-                    logger.info("Successfully switched to variant '{}' in {}ms", variantName, switchTime);
-                    
-                    if (switchTime > 200) {
-                        logger.warn("Texture variant switch took {}ms (target: <200ms)", switchTime);
-                    }
-                    
-                } else {
-                    loadingInProgress = false;
-                    statusMessage = "Failed to switch to variant: " + variantName;
-                    logger.error("TextureVariantManager failed to switch to variant: {}", variantName);
+        try {
+            String variantLower = variantName.toLowerCase();
+            
+            // Switch variant using TextureVariantManager
+            boolean success = textureManager.switchToVariant(variantLower);
+            
+            if (success) {
+                // Update viewport if connected
+                if (viewport3D != null) {
+                    viewport3D.setCurrentTextureVariant(variantLower);
+                    viewport3D.requestRender();
                 }
                 
-            } catch (Exception e) {
-                logger.error("Error switching to texture variant: {}", variantName, e);
+                selectedVariant = variantName;
+                
+                long switchTime = System.currentTimeMillis() - startTime;
+                lastSwitchTime = switchTime;
+                
                 loadingInProgress = false;
-                statusMessage = "Error switching variant: " + e.getMessage();
+                statusMessage = String.format("Switched to %s variant (%dms)", variantName, switchTime);
+                
+                logger.info("Successfully switched to variant '{}' in {}ms", variantName, switchTime);
+                
+                if (switchTime > 200) {
+                    logger.warn("Texture variant switch took {}ms (target: <200ms)", switchTime);
+                }
+                
+            } else {
+                loadingInProgress = false;
+                statusMessage = "Failed to switch to variant: " + variantName;
+                logger.error("TextureVariantManager failed to switch to variant: {}", variantName);
             }
-        });
+            
+        } catch (Exception e) {
+            logger.error("Error switching to texture variant: {}", variantName, e);
+            loadingInProgress = false;
+            statusMessage = "Error switching variant: " + e.getMessage();
+        }
     }
     
     private void updateModelTransform() {

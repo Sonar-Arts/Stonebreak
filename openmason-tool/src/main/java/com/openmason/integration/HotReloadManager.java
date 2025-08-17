@@ -448,9 +448,10 @@ public class HotReloadManager {
             // Clear texture cache for this variant
             TextureManager.clearCache();
             
-            // Reload texture variant
-            TextureManager.loadVariantInfoAsync(variantName, TextureManager.LoadingPriority.IMMEDIATE, null)
-                .thenRun(() -> {
+            // Reload texture variant (using sync method)
+            CompletableFuture.runAsync(() -> {
+                TextureManager.getVariantInfo(variantName);
+            }).thenRun(() -> {
                     // Update viewport if this variant is currently active
                     String currentVariant = viewport.getCurrentTextureVariant();
                     if (variantName.equals(currentVariant)) {
