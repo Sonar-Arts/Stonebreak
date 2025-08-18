@@ -13,6 +13,24 @@ import java.util.Map;
  */
 public class ModelDefinition {
     
+    // Thread-local flag to control vertex generation mode for backward compatibility
+    private static final ThreadLocal<Boolean> useBakedVertices = ThreadLocal.withInitial(() -> false);
+    
+    /**
+     * Sets whether to use baked vertices (position included in vertex data)
+     * or origin vertices (position applied via transformation matrix).
+     */
+    public static void setUseBakedVertices(boolean useBaked) {
+        useBakedVertices.set(useBaked);
+    }
+    
+    /**
+     * Gets whether baked vertices are currently being used.
+     */
+    public static boolean isUsingBakedVertices() {
+        return useBakedVertices.get();
+    }
+    
     /**
      * Main cow model definition containing all parts and animations.
      */
@@ -252,14 +270,24 @@ public class ModelDefinition {
         }
         
         /**
-         * Gets the vertices for this model part as a cuboid at origin.
+         * Gets the vertices for this model part as a cuboid.
          * Returns vertex data in the format expected by OpenGL (24 vertices for 6 faces).
-         * Transformations are applied via transformation matrix during rendering.
          * 
-         * @return Vertex array for OpenGL rendering with transformations applied via matrix
+         * For baked models (identified by having non-zero positions), vertices include 
+         * the position for backward compatibility with Stonebreak's EntityRenderer.
+         * For non-baked models, vertices are at origin with transformations applied via matrix.
+         * 
+         * @return Vertex array for OpenGL rendering
          */
         public float[] getVertices() {
-            return getVerticesAtOrigin();
+            // Use a thread-local flag to determine vertex generation mode
+            // This allows the ModelLoader to specify whether to use baked vertices
+            // for backward compatibility with Stonebreak's EntityRenderer
+            if (useBakedVertices.get()) {
+                return getVerticesBaked();
+            } else {
+                return getVerticesAtOrigin();
+            }
         }
         
         /**
@@ -315,8 +343,9 @@ public class ModelDefinition {
         
         /**
          * Gets vertices with baked position transformations (original behavior).
+         * Used for backward compatibility with baked models.
          */
-        private float[] getVerticesBaked() {
+        public float[] getVerticesBaked() {
             Vector3f pos = getPositionVector();
             Vector3f sz = getSizeVector();
             

@@ -262,15 +262,22 @@ public class EntityRenderer {
     
     private void createCowModel() {
         // Use the baked model with pre-applied transformations
-        ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow_baked"));
-        
-        String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
-        
-        for (int i = 0; i < parts.length; i++) {
-            ModelDefinition.ModelPart part = parts[i];
-            String partName = partNames[i];
+        // Set flag to use baked vertices for backward compatibility with EntityRenderer
+        ModelDefinition.setUseBakedVertices(true);
+        try {
+            ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow_baked"));
             
-            createModelPart(EntityType.COW, partName, part);
+            String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
+            
+            for (int i = 0; i < parts.length; i++) {
+                ModelDefinition.ModelPart part = parts[i];
+                String partName = partNames[i];
+                
+                createModelPart(EntityType.COW, partName, part);
+            }
+        } finally {
+            // Always reset to origin-based vertices after model creation
+            ModelDefinition.setUseBakedVertices(false);
         }
     }
     
