@@ -225,8 +225,20 @@ public class ViewportImGuiInterface {
         
         ImGui.sameLine();
         
-        if (ImGui.checkbox("Wireframe##viewport", wireframeMode)) {
-            toggleWireframe();
+        if (ImGui.checkbox("Wireframe##viewport", wireframeModeRef)) {
+            wireframeMode = wireframeModeRef.get();
+            
+            // Update viewport wireframe mode
+            if (viewport3D != null) {
+                viewport3D.setWireframeMode(wireframeMode);
+            }
+            
+            // Update render mode combo to match
+            if (wireframeMode) {
+                currentRenderModeIndex.set(1); // Wireframe
+            } else {
+                currentRenderModeIndex.set(0); // Solid
+            }
         }
         
         // Additional controls toggle
@@ -357,8 +369,20 @@ public class ViewportImGuiInterface {
                 toggleAxes();
             }
             
-            if (ImGui.checkbox("Wireframe Mode", wireframeMode)) {
-                toggleWireframe();
+            if (ImGui.checkbox("Wireframe Mode", wireframeModeRef)) {
+                wireframeMode = wireframeModeRef.get();
+                
+                // Update viewport wireframe mode
+                if (viewport3D != null) {
+                    viewport3D.setWireframeMode(wireframeMode);
+                }
+                
+                // Update render mode combo to match
+                if (wireframeMode) {
+                    currentRenderModeIndex.set(1); // Wireframe
+                } else {
+                    currentRenderModeIndex.set(0); // Solid
+                }
             }
             
             ImGui.separator();
@@ -541,11 +565,17 @@ public class ViewportImGuiInterface {
         switch (renderMode.toLowerCase()) {
             case "wireframe":
                 wireframeMode = true;
-                // TODO: Add wireframe mode to viewport
+                wireframeModeRef.set(true); // Keep ImBoolean in sync
+                if (viewport3D != null) {
+                    viewport3D.setWireframeMode(true);
+                }
                 break;
             default:
                 wireframeMode = false;
-                // TODO: Add solid mode to viewport
+                wireframeModeRef.set(false); // Keep ImBoolean in sync
+                if (viewport3D != null) {
+                    viewport3D.setWireframeMode(false);
+                }
                 break;
         }
     }
@@ -603,8 +633,13 @@ public class ViewportImGuiInterface {
     
     private void toggleWireframe() {
         wireframeMode = !wireframeMode;
+        wireframeModeRef.set(wireframeMode); // Keep ImBoolean in sync
         logger.info("Wireframe mode: {}", wireframeMode);
-        // TODO: Add wireframe mode to viewport
+        
+        // Update viewport wireframe mode
+        if (viewport3D != null) {
+            viewport3D.setWireframeMode(wireframeMode);
+        }
         
         // Update render mode combo to match
         if (wireframeMode) {

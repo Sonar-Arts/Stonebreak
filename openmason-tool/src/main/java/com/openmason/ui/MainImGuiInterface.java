@@ -113,8 +113,7 @@ public class MainImGuiInterface {
     // Recent Files
     private final String[] recentFiles = {
         "standard_cow.json",
-        "example_model.json", 
-        "test_cow.json"
+        "example_model.json"
     };
     
     public MainImGuiInterface() {
@@ -494,25 +493,6 @@ public class MainImGuiInterface {
             ImGui.separator();
             ImGui.sameLine();
             
-            // Toggle buttons
-            if (ImGui.checkbox("Grid##toolbar", showGrid)) {
-                toggleGrid();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.checkbox("Axes##toolbar", showAxes)) {
-                toggleAxes();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.checkbox("Wireframe##toolbar", wireframeMode)) {
-                toggleWireframe();
-            }
-            ImGui.sameLine();
-            
-            ImGui.separator();
-            ImGui.sameLine();
-            
             // Tool operations
             if (ImGui.button("Validate##toolbar") && modelLoaded) {
                 validateModel();
@@ -591,10 +571,8 @@ public class MainImGuiInterface {
             // Model tree
             if (ImGui.treeNode("Available Models")) {
                 if (ImGui.treeNode("Cow Models")) {
-                    for (String variant : textureVariants) {
-                        if (ImGui.selectable("Standard Cow (" + variant + ")", false)) {
-                            selectModel("Standard Cow", variant);
-                        }
+                    if (ImGui.selectable("Standard Cow", false)) {
+                        selectModel("Standard Cow", "default");
                     }
                     ImGui.treePop();
                 }

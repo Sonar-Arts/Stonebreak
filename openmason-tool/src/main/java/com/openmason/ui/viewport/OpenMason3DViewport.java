@@ -19,6 +19,9 @@ import org.lwjgl.BufferUtils;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
+import static org.lwjgl.opengl.GL11.GL_FILL;
+import static org.lwjgl.opengl.GL11.GL_LINE;
+import static org.lwjgl.opengl.GL11.GL_FRONT_AND_BACK;
 
 // Model rendering imports
 import com.openmason.model.ModelManager;
@@ -109,10 +112,28 @@ public class OpenMason3DViewport {
     private boolean wireframeMode = false;
     private boolean axesVisible = false;
     
+    // Model transformation state
+    private float modelRotationX = 0.0f;
+    private float modelRotationY = 0.0f;
+    private float modelRotationZ = 0.0f;
+    private float modelScale = 1.0f;
+    private final Matrix4f userTransformMatrix = new Matrix4f();
+    private boolean userTransformDirty = true;
+    
+    // Grid constraints
+    private static final float GRID_SIZE = 10.0f; // Grid extends from -10 to +10
+    private static final float MIN_SCALE = 0.1f;
+    private static final float MAX_SCALE = 3.0f;
+    
     public OpenMason3DViewport() {
         this.camera = new Camera();
         this.inputHandler = new ViewportInputHandler(camera);
         this.modelRenderer = new ModelRenderer("Viewport");
+        
+        // Initialize user transform matrix to identity
+        this.userTransformMatrix.identity();
+        this.userTransformDirty = false;
+        
         // logger.info("OpenMason 3D Viewport created with input handler and model renderer");
     }
     
@@ -614,6 +635,13 @@ public class OpenMason3DViewport {
         // Enable depth testing
         glEnable(GL_DEPTH_TEST);
         
+        // Apply wireframe mode if enabled
+        if (wireframeMode) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        } else {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+        
         // Use shader program
         glUseProgram(shaderProgram);
         
@@ -683,28 +711,50 @@ public class OpenMason3DViewport {
         // DIAGNOSTIC: Check render conditions (throttled)
         boolean canRender = modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
         if (shouldLog) {
-            // logger.info("RENDER DIAGNOSTIC - can render model: {} (enabled: {}, model: {}, prepared: {})", 
-            //            canRender, modelRenderingEnabled, (currentModel != null), 
-            //            (currentModel != null ? modelRenderer.isModelPrepared(currentModel) : "N/A"));
+            logger.trace("RENDER DIAGNOSTIC - can render model: {} (enabled: {}, model: {}, prepared: {})", 
+                canRender, modelRenderingEnabled, (currentModel != null), 
+                (currentModel != null ? modelRenderer.isModelPrepared(currentModel) : "N/A"));
         }
         
         // Render current model if available, otherwise render test cube
         if (canRender) {
             // Render the loaded model with shader context
             try {
+                logger.trace("RENDER PATH: Rendering model with transforms");
+                
                 if (shouldLog) {
                     // logger.info("RENDER DIAGNOSTIC - Attempting to render model: {}", currentModelName);
                     // logger.info("RENDER DIAGNOSTIC - Shader program: {}, MVP location: {}", shaderProgram, mvpMatrixLocation);
                 }
                 
-                // Get MVP matrix as float array
-                float[] mvpArray = new float[16];
-                mvpMatrix.get(mvpArray);
+                // Apply user transforms by passing them to the model renderer
+                if (userTransformDirty) {
+                    updateUserTransformMatrix();
+                }
                 
-                modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, 
-                                         matrixMvpLocation, matrixModelLocation, mvpArray,
-                                         textureAtlas, matrixTextureLocation, matrixUseTextureLocation,
-                                         matrixColorLocation);
+                // Log user transform state at TRACE level
+                logger.trace("Rendering with user transform: rot=({},{},{}), scale={}, determinant={}", 
+                    String.format("%.1f", modelRotationX), String.format("%.1f", modelRotationY), String.format("%.1f", modelRotationZ),
+                    String.format("%.2f", modelScale), String.format("%.3f", userTransformMatrix.determinant()));
+                
+                // Get view-projection matrix (camera only)
+                float[] vpArray = new float[16];
+                mvpMatrix.get(vpArray);
+                
+                // In wireframe mode, pass null textureAtlas to disable textures
+                if (wireframeMode) {
+                    modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, 
+                                             matrixMvpLocation, matrixModelLocation, vpArray,
+                                             userTransformMatrix,
+                                             null, matrixTextureLocation, matrixUseTextureLocation,
+                                             matrixColorLocation);
+                } else {
+                    modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, 
+                                             matrixMvpLocation, matrixModelLocation, vpArray,
+                                             userTransformMatrix,
+                                             textureAtlas, matrixTextureLocation, matrixUseTextureLocation,
+                                             matrixColorLocation);
+                }
                 
                 if (shouldLog) {
                     // logger.info("RENDER DIAGNOSTIC - Successfully rendered model: {}", currentModelName);
@@ -717,16 +767,15 @@ public class OpenMason3DViewport {
             }
         } else {
             // Render test cube as fallback
+            logger.trace("RENDER PATH: Using fallback test cube");
+            
             if (shouldLog) {
-                // logger.info("RENDER DIAGNOSTIC - Rendering test cube fallback");
-                
                 if (currentModel != null) {
-                    // logger.warn("RENDER DIAGNOSTIC - Model '{}' loaded but not prepared - model: {}, renderer prepared: {}", 
-                    //            currentModelName, (currentModel != null), modelRenderer.isModelPrepared(currentModel));
+                    logger.trace("FALLBACK REASON: Model loaded but not prepared");
                 } else if (currentModelName != null) {
-                    // logger.warn("RENDER DIAGNOSTIC - Model name '{}' set but currentModel is null - async loading may have failed", currentModelName);
+                    logger.trace("FALLBACK REASON: Model name set but currentModel is null");
                 } else {
-                    // logger.info("RENDER DIAGNOSTIC - No model loaded, using test cube");
+                    logger.trace("FALLBACK REASON: No model loaded");
                 }
             }
             renderTestCube();
@@ -735,6 +784,11 @@ public class OpenMason3DViewport {
         // Unbind
         glBindVertexArray(0);
         glUseProgram(0);
+        
+        // Restore polygon mode to fill after rendering
+        if (wireframeMode) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
         
         // Unbind framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1063,7 +1117,6 @@ public class OpenMason3DViewport {
     
     public void setWireframeMode(boolean wireframe) {
         this.wireframeMode = wireframe;
-        // TODO: Implement wireframe mode rendering
         // logger.debug("Wireframe mode set to: {}", wireframe);
     }
     
@@ -1082,8 +1135,22 @@ public class OpenMason3DViewport {
     }
     
     public void setModelTransform(float rotX, float rotY, float rotZ, float scale) {
-        // TODO: Implement model transformation
-        // logger.debug("Model transform set: rotation=({},{},{}), scale={}", rotX, rotY, rotZ, scale);
+        // Apply grid constraints
+        float constrainedScale = clampScale(scale);
+        
+        // Update transform state
+        this.modelRotationX = rotX;
+        this.modelRotationY = rotY;
+        this.modelRotationZ = rotZ;
+        this.modelScale = constrainedScale;
+        this.userTransformDirty = true;
+        
+        // Update the user transform matrix
+        updateUserTransformMatrix();
+        
+        logger.trace("Model transform set: rotation=({},{},{}), scale={}", 
+                    String.format("%.1f", rotX), String.format("%.1f", rotY), String.format("%.1f", rotZ), 
+                    String.format("%.2f", constrainedScale));
     }
     
     /**
@@ -1265,7 +1332,11 @@ public class OpenMason3DViewport {
             logger.warn("Color uniform location is -1, cube may not be colored correctly");
         }
         
-        glUniform3f(colorLocation, 1.0f, 0.5f, 0.2f); // Orange cube
+        if (wireframeMode) {
+            glUniform3f(colorLocation, 1.0f, 1.0f, 1.0f); // White wireframe
+        } else {
+            glUniform3f(colorLocation, 1.0f, 0.5f, 0.2f); // Orange cube
+        }
         glBindVertexArray(cubeVAO);
         
         // Draw filled cube (36 vertices = 12 triangles)
@@ -1442,5 +1513,69 @@ public class OpenMason3DViewport {
         
         // logger.info("Model unloaded successfully");
     }
+    
+    // ========== Model Transform Constraint Methods ==========
+    
+    /**
+     * Clamps scale to valid range that keeps model within grid bounds.
+     */
+    private float clampScale(float scale) {
+        return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+    }
+    
+    /**
+     * Validates if a transform would keep the model within grid bounds.
+     */
+    private boolean isTransformValid(float scale) {
+        // For now, just validate scale - position validation would need model bounds
+        return scale >= MIN_SCALE && scale <= MAX_SCALE;
+    }
+    
+    /**
+     * Updates the user transform matrix based on current rotation and scale values.
+     */
+    private void updateUserTransformMatrix() {
+        userTransformMatrix.identity()
+            .rotateXYZ(
+                (float) Math.toRadians(modelRotationX),
+                (float) Math.toRadians(modelRotationY),
+                (float) Math.toRadians(modelRotationZ)
+            )
+            .scale(modelScale);
+        userTransformDirty = false;
+        
+        // Debug logging to verify the transform matrix (reduced to TRACE level)
+        logger.trace("Updated user transform matrix: rot=({},{},{}), scale={}, matrix determinant={}", 
+                    String.format("%.1f", modelRotationX), String.format("%.1f", modelRotationY), 
+                    String.format("%.1f", modelRotationZ), String.format("%.2f", modelScale),
+                    String.format("%.3f", userTransformMatrix.determinant()));
+    }
+    
+    /**
+     * Gets the current user transform matrix.
+     */
+    public Matrix4f getUserTransformMatrix() {
+        if (userTransformDirty) {
+            updateUserTransformMatrix();
+        }
+        return new Matrix4f(userTransformMatrix);
+    }
+    
+    /**
+     * Reset model transform to defaults.
+     */
+    public void resetModelTransform() {
+        setModelTransform(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    
+    /**
+     * Get current model transform values for UI display.
+     */
+    public float getModelRotationX() { return modelRotationX; }
+    public float getModelRotationY() { return modelRotationY; }
+    public float getModelRotationZ() { return modelRotationZ; }
+    public float getModelScale() { return modelScale; }
+    public float getMinScale() { return MIN_SCALE; }
+    public float getMaxScale() { return MAX_SCALE; }
     
 }

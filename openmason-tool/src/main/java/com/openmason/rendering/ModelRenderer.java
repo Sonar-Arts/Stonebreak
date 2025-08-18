@@ -305,6 +305,113 @@ public class ModelRenderer implements AutoCloseable {
     }
     
     /**
+     * Renders a model with user transforms applied.
+     * 
+     * @param model The model to render
+     * @param textureVariant The texture variant to use
+     * @param shaderProgram The shader program with matrix transformation support
+     * @param mvpUniformLocation The uniform location for MVP matrix
+     * @param modelMatrixLocation The uniform location for individual model matrices
+     * @param viewProjectionMatrix The view-projection matrix
+     * @param userTransform The user transform matrix to apply to the entire model
+     * @param textureAtlas The texture atlas to bind (null for solid color rendering)
+     * @param textureUniformLocation The texture sampler uniform location
+     * @param useTextureUniformLocation The useTexture boolean uniform location
+     * @param colorUniformLocation The color uniform location
+     */
+    public void renderModel(StonebreakModel model, String textureVariant, 
+                           int shaderProgram, int mvpUniformLocation, 
+                           int modelMatrixLocation, float[] viewProjectionMatrix,
+                           Matrix4f userTransform,
+                           com.openmason.rendering.TextureAtlas textureAtlas,
+                           int textureUniformLocation, int useTextureUniformLocation,
+                           int colorUniformLocation) {
+        renderModelInternalWithUserTransform(model, textureVariant, shaderProgram, mvpUniformLocation, 
+                                           modelMatrixLocation, viewProjectionMatrix, userTransform, textureAtlas,
+                                           textureUniformLocation, useTextureUniformLocation, colorUniformLocation);
+    }
+    
+    /**
+     * Internal rendering method with user transform support.
+     */
+    private void renderModelInternalWithUserTransform(StonebreakModel model, String textureVariant, int shaderProgram, 
+                                                    int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
+                                                    Matrix4f userTransform,
+                                                    com.openmason.rendering.TextureAtlas textureAtlas,
+                                                    int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
+        if (!initialized) {
+            throw new IllegalStateException("ModelRenderer not initialized");
+        }
+        
+        // Validate OpenGL context and rendering state before rendering
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("renderModel");
+            if (!contextIssues.isEmpty()) {
+                // System.err.println("OpenGL context validation failed in renderModel:");
+                for (String issue : contextIssues) {
+                    // System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot render model due to invalid OpenGL context");
+            }
+            
+            // Also validate rendering state for optimal performance
+            List<String> stateIssues = OpenGLValidator.validateRenderingState();
+            if (!stateIssues.isEmpty()) {
+                // System.err.println("OpenGL rendering state validation issues in renderModel:");
+                for (String issue : stateIssues) {
+                    // System.err.println("  - WARNING: " + issue);
+                }
+                // Note: These are warnings, not fatal errors, so we continue rendering
+            }
+        }
+        
+        // Update texture variants if needed
+        updateTextureVariants(model, textureVariant);
+        
+        // Bind shader program and set uniforms
+        glUseProgram(shaderProgram);
+        glUniformMatrix4fv(mvpUniformLocation, false, viewProjectionMatrix);
+        
+        // Setup texture rendering
+        boolean useTextures = (textureAtlas != null && textureAtlas.isReady());
+        if (useTextures) {
+            // Bind texture atlas
+            textureAtlas.bind(0); // Use texture unit 0
+            textureAtlas.setTextureUniform(shaderProgram, "uTexture", 0);
+            
+            // Enable texture rendering
+            if (useTextureUniformLocation != -1) {
+                glUniform1i(useTextureUniformLocation, 1); // true
+            }
+            
+        } else {
+            // Disable texture rendering, use solid colors
+            if (useTextureUniformLocation != -1) {
+                glUniform1i(useTextureUniformLocation, 0); // false
+            }
+            
+        }
+        
+        // Set vertex color uniform (white for proper texture display, white for wireframe/solid color)
+        if (colorUniformLocation != -1) {
+            if (useTextures) {
+                glUniform3f(colorUniformLocation, 1.0f, 1.0f, 1.0f); // White for textures
+            } else {
+                glUniform3f(colorUniformLocation, 1.0f, 1.0f, 1.0f); // White for wireframe/solid color
+            }
+        }
+        
+        // Render each model part with matrix transformations and user transform
+        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+            renderModelPartWithUserTransform(bodyPart.getName(), bodyPart, modelMatrixLocation, 
+                                           viewProjectionMatrix, userTransform);
+        }
+        
+        totalRenderCalls++;
+        lastRenderTime = System.currentTimeMillis();
+    }
+    
+    /**
      * Internal rendering method using matrix transformations.
      */
     private void renderModelInternal(StonebreakModel model, String textureVariant, int shaderProgram, 
@@ -356,24 +463,20 @@ public class ModelRenderer implements AutoCloseable {
                 glUniform1i(useTextureUniformLocation, 1); // true
             }
             
-            // Debug: Log texture rendering setup
-            System.out.println("[ModelRenderer] Texture rendering enabled for variant: " + textureVariant + 
-                             " (Atlas ID: " + textureAtlas.getTextureId() + ")");
         } else {
             // Disable texture rendering, use solid colors
             if (useTextureUniformLocation != -1) {
                 glUniform1i(useTextureUniformLocation, 0); // false
             }
             
-            System.out.println("[ModelRenderer] Using solid color rendering (no texture atlas available)");
         }
         
-        // Set vertex color uniform (white for proper texture display, orange for solid color)
+        // Set vertex color uniform (white for proper texture display, white for wireframe/solid color)
         if (colorUniformLocation != -1) {
             if (useTextures) {
                 glUniform3f(colorUniformLocation, 1.0f, 1.0f, 1.0f); // White for textures
             } else {
-                glUniform3f(colorUniformLocation, 1.0f, 0.5f, 0.2f); // Orange for solid color
+                glUniform3f(colorUniformLocation, 1.0f, 1.0f, 1.0f); // White for wireframe/solid color
             }
         }
         
@@ -396,6 +499,102 @@ public class ModelRenderer implements AutoCloseable {
         // System.err.println("WARNING: renderModel() called without shader context. Models will not render properly.");
         // System.err.println("Please update your code to use renderModel(model, variant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix)");
         // Don't actually render anything to avoid OpenGL errors
+    }
+    
+    /**
+     * Renders a single model part with user transform applied.
+     * 
+     * @param partName The name of the part to render
+     * @param bodyPart The body part definition containing transformation data
+     * @param modelMatrixLocation Uniform location for model transformation matrix
+     * @param viewProjectionMatrix The view-projection matrix
+     * @param userTransform The user transform matrix to apply
+     */
+    private void renderModelPartWithUserTransform(String partName, StonebreakModel.BodyPart bodyPart, 
+                                                int modelMatrixLocation, float[] viewProjectionMatrix,
+                                                Matrix4f userTransform) {
+        // Validate OpenGL context before rendering individual parts
+        if (contextValidationEnabled) {
+            List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
+            if (!contextIssues.isEmpty()) {
+                // System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
+                for (String issue : contextIssues) {
+                    // System.err.println("  - " + issue);
+                }
+                throw new RuntimeException("Cannot render model part '" + partName + "' due to invalid OpenGL context");
+            }
+        }
+        
+        VertexArray vao = modelPartVAOs.get(partName);
+        if (vao != null && vao.isValid()) {
+            // Additional VAO validation before rendering
+            if (contextValidationEnabled) {
+                List<String> vaoIssues = OpenGLValidator.validateVertexArray(vao);
+                if (!vaoIssues.isEmpty()) {
+                    // System.err.println("VAO validation issues for part " + partName + ":");
+                    for (String issue : vaoIssues) {
+                        // System.err.println("  - WARNING: " + issue);
+                    }
+                    // Continue rendering despite warnings, but the user is informed
+                }
+            }
+            
+            // Get transformation matrix from the body part
+            if (bodyPart != null && bodyPart.getModelPart() != null) {
+                ModelDefinition.ModelPart part = bodyPart.getModelPart();
+                
+                // Create transformation matrix EXACTLY like EntityRenderer does
+                Vector3f position = part.getPositionVector();
+                Vector3f rotation = part.getRotation();
+                Vector3f scale = part.getScale();
+                
+                // IMPORTANT: Match EntityRenderer transformation order exactly, then apply user transform
+                Matrix4f partTransformMatrix = new Matrix4f()
+                    .translate(position)  // Step 1: Position from JSON (should be baked coordinates)
+                    .rotateXYZ(          // Step 2: Rotation (in exact same order as EntityRenderer)
+                        (float) Math.toRadians(rotation.x),
+                        (float) Math.toRadians(rotation.y),
+                        (float) Math.toRadians(rotation.z)
+                    )
+                    .scale(scale);       // Step 3: Scale last (should be 1,1,1 after our recent fixes)
+                
+                // Apply user transform to the part transform
+                Matrix4f finalTransformMatrix = new Matrix4f(userTransform).mul(partTransformMatrix);
+                
+                // Debug logging for first part only to avoid spam (TRACE level)
+                if ("body".equals(partName)) {
+                    // System.out.println("[ModelRenderer] Applying user transform to " + partName + 
+                    //     ": userTransform determinant=" + String.format("%.3f", userTransform.determinant()) +
+                    //     ", partTransform determinant=" + String.format("%.3f", partTransformMatrix.determinant()) +
+                    //     ", final determinant=" + String.format("%.3f", finalTransformMatrix.determinant()));
+                }
+                
+                // Store the actual rendered transformation for diagnostics
+                lastRenderedTransforms.put(partName, new Matrix4f(finalTransformMatrix));
+                
+                // Bind VAO first for proper OpenGL state
+                vao.bind();
+                
+                // Upload transformation matrix to shader
+                if (modelMatrixLocation != -1) {
+                    finalTransformMatrix.get(matrixBuffer);
+                    glUniformMatrix4fv(modelMatrixLocation, false, matrixBuffer);
+                }
+                
+                // Render the triangles (VAO is already bound)
+                if (vao.getIndexBuffer() != null) {
+                    vao.getIndexBuffer().drawTriangles();
+                } else {
+                    // System.err.println("Cannot render part '" + partName + "': no index buffer");
+                }
+                
+                vao.unbind();
+            } else {
+                // System.err.println("Cannot render part '" + partName + "' with matrix transforms: body part data is null");
+            }
+        } else {
+            // System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
+        }
     }
     
     /**

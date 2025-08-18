@@ -61,6 +61,10 @@ public class PropertyPanelImGui {
     private int switchCount = 0;
     private boolean statisticsLogged = false;
     
+    // User interaction tracking
+    private long lastUserInteractionTime = 0;
+    private static final long USER_INTERACTION_TIMEOUT = 100; // ms
+    
     // Animation types
     private final String[] animationTypes = {"IDLE", "WALKING", "GRAZING"};
     
@@ -149,23 +153,6 @@ public class PropertyPanelImGui {
                 
                 ImGui.text("Available: " + availableVariants.length + " variants");
                 
-                // Quick variant buttons for common variants
-                if (ImGui.button("Default")) {
-                    switchTextureVariant("default");
-                }
-                ImGui.sameLine();
-                if (ImGui.button("Angus")) {
-                    switchTextureVariant("angus");
-                }
-                ImGui.sameLine();
-                if (ImGui.button("Highland")) {
-                    switchTextureVariant("highland");
-                }
-                ImGui.sameLine();
-                if (ImGui.button("Jersey")) {
-                    switchTextureVariant("jersey");
-                }
-                
             } else {
                 ImGui.textDisabled("No variants available");
             }
@@ -178,24 +165,59 @@ public class PropertyPanelImGui {
         if (ImGui.collapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen)) {
             ImGui.indent();
             
-            ImGui.text("Rotation:");
+            // Get current constraints from viewport
+            float minScale = (viewport3D != null) ? viewport3D.getMinScale() : 0.1f;
+            float maxScale = (viewport3D != null) ? viewport3D.getMaxScale() : 3.0f;
             
+            // Sync UI values with viewport if connected
+            if (viewport3D != null && !isUserInteracting()) {
+                rotationX.set(viewport3D.getModelRotationX());
+                rotationY.set(viewport3D.getModelRotationY());
+                rotationZ.set(viewport3D.getModelRotationZ());
+                scale.set(viewport3D.getModelScale());
+            }
+            
+            ImGui.text("Rotation:");
+            ImGui.text("(Full 360° rotation allowed)");
+            
+            boolean rotationChanged = false;
             if (ImGui.sliderFloat("X##rotX", rotationX.getData(), -180.0f, 180.0f, "%.1f°")) {
+                rotationChanged = true;
                 updateModelTransform();
             }
             
             if (ImGui.sliderFloat("Y##rotY", rotationY.getData(), -180.0f, 180.0f, "%.1f°")) {
+                rotationChanged = true;
                 updateModelTransform();
             }
             
             if (ImGui.sliderFloat("Z##rotZ", rotationZ.getData(), -180.0f, 180.0f, "%.1f°")) {
+                rotationChanged = true;
                 updateModelTransform();
             }
             
             ImGui.separator();
             ImGui.text("Scale:");
+            ImGui.text(String.format("(Constrained to %.1fx - %.1fx for grid bounds)", minScale, maxScale));
             
-            if (ImGui.sliderFloat("##scale", scale.getData(), 0.1f, 5.0f, "%.2f")) {
+            // Check if scale is at boundaries for visual feedback
+            float currentScale = scale.get();
+            boolean atMinScale = Math.abs(currentScale - minScale) < 0.01f;
+            boolean atMaxScale = Math.abs(currentScale - maxScale) < 0.01f;
+            
+            if (atMinScale || atMaxScale) {
+                if (atMinScale) {
+                    ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange for min
+                    ImGui.text("⚠ Minimum scale reached");
+                    ImGui.popStyleColor();
+                } else {
+                    ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange for max
+                    ImGui.text("⚠ Maximum scale reached");
+                    ImGui.popStyleColor();
+                }
+            }
+            
+            if (ImGui.sliderFloat("##scale", scale.getData(), minScale, maxScale, "%.2f")) {
                 updateModelTransform();
             }
             
@@ -203,6 +225,13 @@ public class PropertyPanelImGui {
             if (ImGui.button("Reset Transform")) {
                 resetTransform();
             }
+            
+            // Grid info
+            ImGui.separator();
+            ImGui.text("Grid Info:");
+            ImGui.text("• Grid bounds: -10 to +10 units");
+            ImGui.text("• Transform constraints keep model visible");
+            ImGui.text("• Rotation is unrestricted");
             
             ImGui.unindent();
         }
@@ -529,6 +558,9 @@ public class PropertyPanelImGui {
     }
     
     private void updateModelTransform() {
+        // Track user interaction
+        lastUserInteractionTime = System.currentTimeMillis();
+        
         // logger.debug("Updating model transform: rot=({}, {}, {}), scale={}", 
         //             rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
         
@@ -542,12 +574,26 @@ public class PropertyPanelImGui {
         }
     }
     
+    /**
+     * Check if user is currently interacting with transform controls.
+     */
+    private boolean isUserInteracting() {
+        return (System.currentTimeMillis() - lastUserInteractionTime) < USER_INTERACTION_TIMEOUT;
+    }
+    
     private void resetTransform() {
         rotationX.set(0.0f);
         rotationY.set(0.0f);
         rotationZ.set(0.0f);
         scale.set(1.0f);
-        updateModelTransform();
+        
+        // Reset both UI and viewport
+        if (viewport3D != null) {
+            viewport3D.resetModelTransform();
+        } else {
+            updateModelTransform();
+        }
+        
         statusMessage = "Transform reset to defaults";
         // logger.info("Transform reset to default values");
     }
