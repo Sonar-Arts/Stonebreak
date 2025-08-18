@@ -28,10 +28,15 @@ public class PropertyPanelImGui {
     private boolean initialized = false;
     
     // Transform Controls
+    private final ImFloat positionX = new ImFloat(0.0f);
+    private final ImFloat positionY = new ImFloat(0.0f);
+    private final ImFloat positionZ = new ImFloat(0.0f);
     private final ImFloat rotationX = new ImFloat(0.0f);
     private final ImFloat rotationY = new ImFloat(0.0f);
     private final ImFloat rotationZ = new ImFloat(0.0f);
     private final ImFloat scale = new ImFloat(1.0f);
+    
+    // Note: Gizmo controls moved to View menu
     
     
     // Texture Variants
@@ -156,14 +161,48 @@ public class PropertyPanelImGui {
             float minScale = (viewport3D != null) ? viewport3D.getMinScale() : 0.1f;
             float maxScale = (viewport3D != null) ? viewport3D.getMaxScale() : 3.0f;
             
-            // Sync UI values with viewport if connected
+            // Sync UI values with viewport if connected (with safe defaults)
             if (viewport3D != null && !isUserInteracting()) {
-                rotationX.set(viewport3D.getModelRotationX());
-                rotationY.set(viewport3D.getModelRotationY());
-                rotationZ.set(viewport3D.getModelRotationZ());
-                scale.set(viewport3D.getModelScale());
+                try {
+                    positionX.set(viewport3D.getModelPositionX());
+                    positionY.set(viewport3D.getModelPositionY());
+                    positionZ.set(viewport3D.getModelPositionZ());
+                    rotationX.set(viewport3D.getModelRotationX());
+                    rotationY.set(viewport3D.getModelRotationY());
+                    rotationZ.set(viewport3D.getModelRotationZ());
+                    scale.set(viewport3D.getModelScale());
+                } catch (Exception e) {
+                    logger.warn("Error syncing transform values from viewport, using defaults", e);
+                    // Use safe defaults if viewport values are invalid
+                    ensureSafeDefaults();
+                }
+            } else {
+                // Ensure we have safe defaults when no viewport is connected
+                ensureSafeDefaults();
             }
             
+            // Note: Transform Gizmo toggle moved to View menu for better organization
+            
+            // Position controls
+            ImGui.text("Position:");
+            
+            boolean positionChanged = false;
+            if (ImGui.sliderFloat("X##posX", positionX.getData(), -10.0f, 10.0f, "%.2f")) {
+                positionChanged = true;
+                updateModelTransform();
+            }
+            
+            if (ImGui.sliderFloat("Y##posY", positionY.getData(), -10.0f, 10.0f, "%.2f")) {
+                positionChanged = true;
+                updateModelTransform();
+            }
+            
+            if (ImGui.sliderFloat("Z##posZ", positionZ.getData(), -10.0f, 10.0f, "%.2f")) {
+                positionChanged = true;
+                updateModelTransform();
+            }
+            
+            ImGui.separator();
             ImGui.text("Rotation:");
             
             boolean rotationChanged = false;
@@ -469,16 +508,45 @@ public class PropertyPanelImGui {
         // Track user interaction
         lastUserInteractionTime = System.currentTimeMillis();
         
-        // logger.debug("Updating model transform: rot=({}, {}, {}), scale={}", 
+        // logger.debug("Updating model transform: pos=({}, {}, {}), rot=({}, {}, {}), scale={}", 
+        //             positionX.get(), positionY.get(), positionZ.get(),
         //             rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
         
         try {
             if (viewport3D != null) {
-                viewport3D.setModelTransform(rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
+                viewport3D.setModelTransform(positionX.get(), positionY.get(), positionZ.get(),
+                                           rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
                 viewport3D.requestRender();
             }
         } catch (Exception e) {
             logger.error("Error updating model transform", e);
+        }
+    }
+    
+    /**
+     * Ensure all transform controls have safe default values.
+     */
+    private void ensureSafeDefaults() {
+        if (Float.isNaN(positionX.get()) || Float.isInfinite(positionX.get())) {
+            positionX.set(0.0f);
+        }
+        if (Float.isNaN(positionY.get()) || Float.isInfinite(positionY.get())) {
+            positionY.set(0.0f);
+        }
+        if (Float.isNaN(positionZ.get()) || Float.isInfinite(positionZ.get())) {
+            positionZ.set(0.0f);
+        }
+        if (Float.isNaN(rotationX.get()) || Float.isInfinite(rotationX.get())) {
+            rotationX.set(0.0f);
+        }
+        if (Float.isNaN(rotationY.get()) || Float.isInfinite(rotationY.get())) {
+            rotationY.set(0.0f);
+        }
+        if (Float.isNaN(rotationZ.get()) || Float.isInfinite(rotationZ.get())) {
+            rotationZ.set(0.0f);
+        }
+        if (Float.isNaN(scale.get()) || Float.isInfinite(scale.get()) || scale.get() <= 0.0f) {
+            scale.set(1.0f);
         }
     }
     
@@ -490,6 +558,9 @@ public class PropertyPanelImGui {
     }
     
     private void resetTransform() {
+        positionX.set(0.0f);
+        positionY.set(0.0f);
+        positionZ.set(0.0f);
         rotationX.set(0.0f);
         rotationY.set(0.0f);
         rotationZ.set(0.0f);

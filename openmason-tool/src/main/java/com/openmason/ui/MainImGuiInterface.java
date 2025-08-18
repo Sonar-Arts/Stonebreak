@@ -339,6 +339,12 @@ public class MainImGuiInterface {
                 toggleWireframe();
             }
             
+            // Transform gizmo toggle
+            boolean gizmoEnabled = (viewport3D != null) ? viewport3D.isGizmoEnabled() : false;
+            if (ImGui.menuItem("Transform Gizmo", "Ctrl+T", gizmoEnabled)) {
+                toggleTransformGizmo();
+            }
+            
             ImGui.separator();
             
             // Panel visibility toggles
@@ -984,6 +990,18 @@ public class MainImGuiInterface {
             viewport3D.setWireframeMode(wireframeMode);
         }
         updateStatus("Wireframe " + (wireframeMode ? "enabled" : "disabled"));
+    }
+    
+    /**
+     * Toggle transform gizmo on/off.
+     */
+    public void toggleTransformGizmo() {
+        if (viewport3D != null) {
+            boolean newState = !viewport3D.isGizmoEnabled();
+            viewport3D.setGizmoEnabled(newState);
+            updateStatus("Transform Gizmo " + (newState ? "enabled" : "disabled"));
+            logger.info("Transform gizmo toggled: {}", newState);
+        }
     }
     
     public void switchToVariant(String variantName) {

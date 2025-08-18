@@ -63,6 +63,13 @@ public class OpenMason3DViewport {
     private int modelMatrixLocation = -1;
     private int colorLocation = -1;
     
+    // Dedicated gizmo shader resources (completely separate from model rendering)
+    private int gizmoShaderProgram = -1;
+    private int gizmoVertexShader = -1;
+    private int gizmoFragmentShader = -1;
+    private int gizmoMvpMatrixLocation = -1;
+    private int gizmoColorLocation = -1;
+    
     // Matrix transformation shader program (for individual part transformations)
     private int matrixShaderProgram = -1;
     private int matrixVertexShader = -1;
@@ -116,9 +123,16 @@ public class OpenMason3DViewport {
     private float modelRotationX = 0.0f;
     private float modelRotationY = 0.0f;
     private float modelRotationZ = 0.0f;
+    private float modelPositionX = 0.0f;
+    private float modelPositionY = 0.0f;
+    private float modelPositionZ = 0.0f;
     private float modelScale = 1.0f;
     private final Matrix4f userTransformMatrix = new Matrix4f();
     private boolean userTransformDirty = true;
+    
+    // Transform gizmo system
+    private TransformGizmo transformGizmo;
+    private boolean gizmoEnabled = false; // Start disabled for safety
     
     // Grid constraints
     private static final float GRID_SIZE = 10.0f; // Grid extends from -10 to +10
@@ -129,6 +143,7 @@ public class OpenMason3DViewport {
         this.camera = new Camera();
         this.inputHandler = new ViewportInputHandler(camera);
         this.modelRenderer = new ModelRenderer("Viewport");
+        this.transformGizmo = new TransformGizmo();
         
         // Initialize user transform matrix to identity
         this.userTransformMatrix.identity();
@@ -169,6 +184,7 @@ public class OpenMason3DViewport {
             // Initialize resources in order
             createShaders();
             createMatrixTransformShaders();
+            createGizmoShaders(); // Dedicated gizmo shaders
             createFramebuffer();
             createTestCube();
             createGrid();
@@ -182,6 +198,12 @@ public class OpenMason3DViewport {
             // Initialize texture atlas
             textureAtlas = new TextureAtlas("Viewport_CowAtlas");
             textureAtlas.initialize();
+            
+            // Initialize transform gizmo
+            transformGizmo.initialize();
+            
+            // Connect gizmo to input handler
+            inputHandler.setTransformGizmo(transformGizmo);
             
             // Validate all resources were created
             validateResources();
@@ -366,6 +388,63 @@ public class OpenMason3DViewport {
         matrixUseTextureLocation = glGetUniformLocation(matrixShaderProgram, "uUseTexture");
         
         // logger.info("Matrix transformation shaders created successfully");
+    }
+    
+    /**
+     * Create dedicated shaders for gizmo rendering (completely isolated from model pipeline).
+     */
+    private void createGizmoShaders() {
+        // Simple vertex shader for gizmo rendering
+        String gizmoVertexShaderSource = """
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            
+            uniform mat4 uMVPMatrix;
+            uniform vec3 uColor;
+            
+            out vec3 vertexColor;
+            
+            void main() {
+                gl_Position = uMVPMatrix * vec4(aPos, 1.0);
+                vertexColor = uColor;
+            }
+            """;
+        
+        // Simple fragment shader for gizmo rendering
+        String gizmoFragmentShaderSource = """
+            #version 330 core
+            in vec3 vertexColor;
+            out vec4 FragColor;
+            
+            void main() {
+                FragColor = vec4(vertexColor, 1.0);
+            }
+            """;
+        
+        // Create and compile gizmo vertex shader
+        gizmoVertexShader = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(gizmoVertexShader, gizmoVertexShaderSource);
+        glCompileShader(gizmoVertexShader);
+        checkShaderCompilation(gizmoVertexShader, "GIZMO_VERTEX");
+        
+        // Create and compile gizmo fragment shader
+        gizmoFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(gizmoFragmentShader, gizmoFragmentShaderSource);
+        glCompileShader(gizmoFragmentShader);
+        checkShaderCompilation(gizmoFragmentShader, "GIZMO_FRAGMENT");
+        
+        // Create and link gizmo shader program
+        gizmoShaderProgram = glCreateProgram();
+        glAttachShader(gizmoShaderProgram, gizmoVertexShader);
+        glAttachShader(gizmoShaderProgram, gizmoFragmentShader);
+        glLinkProgram(gizmoShaderProgram);
+        checkProgramLinking(gizmoShaderProgram);
+        
+        // Get gizmo shader uniform locations
+        gizmoMvpMatrixLocation = glGetUniformLocation(gizmoShaderProgram, "uMVPMatrix");
+        gizmoColorLocation = glGetUniformLocation(gizmoShaderProgram, "uColor");
+        
+        logger.debug("Dedicated gizmo shaders created successfully");
     }
     
     /**
@@ -781,16 +860,22 @@ public class OpenMason3DViewport {
             renderTestCube();
         }
         
-        // Unbind
+        // Unbind all model rendering state FIRST
         glBindVertexArray(0);
         glUseProgram(0);
         
-        // Restore polygon mode to fill after rendering
+        // Restore polygon mode to fill after model rendering
         if (wireframeMode) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
         
-        // Unbind framebuffer
+        // NOW render transform gizmo in completely clean context
+        // This happens AFTER all model rendering is complete
+        if (gizmoEnabled && transformGizmo != null && transformGizmo.isVisible()) {
+            renderTransformGizmo();
+        }
+        
+        // Final cleanup - unbind framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     
@@ -1049,10 +1134,32 @@ public class OpenMason3DViewport {
             matrixFragmentShader = -1;
         }
         
+        // Cleanup dedicated gizmo shaders
+        if (gizmoShaderProgram != -1) {
+            glDeleteProgram(gizmoShaderProgram);
+            gizmoShaderProgram = -1;
+        }
+        
+        if (gizmoVertexShader != -1) {
+            glDeleteShader(gizmoVertexShader);
+            gizmoVertexShader = -1;
+        }
+        
+        if (gizmoFragmentShader != -1) {
+            glDeleteShader(gizmoFragmentShader);
+            gizmoFragmentShader = -1;
+        }
+        
         // Cleanup texture atlas
         if (textureAtlas != null) {
             textureAtlas.close();
             textureAtlas = null;
+        }
+        
+        // Cleanup transform gizmo
+        if (transformGizmo != null) {
+            transformGizmo.cleanup();
+            transformGizmo = null;
         }
         
         initialized = false;
@@ -1135,10 +1242,22 @@ public class OpenMason3DViewport {
     }
     
     public void setModelTransform(float rotX, float rotY, float rotZ, float scale) {
+        setModelTransform(modelPositionX, modelPositionY, modelPositionZ, rotX, rotY, rotZ, scale);
+    }
+    
+    public void setModelTransform(float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float scale) {
         // Apply grid constraints
         float constrainedScale = clampScale(scale);
         
+        // Apply position constraints
+        posX = Math.max(-10.0f, Math.min(10.0f, posX));
+        posY = Math.max(-10.0f, Math.min(10.0f, posY));
+        posZ = Math.max(-10.0f, Math.min(10.0f, posZ));
+        
         // Update transform state
+        this.modelPositionX = posX;
+        this.modelPositionY = posY;
+        this.modelPositionZ = posZ;
         this.modelRotationX = rotX;
         this.modelRotationY = rotY;
         this.modelRotationZ = rotZ;
@@ -1148,7 +1267,8 @@ public class OpenMason3DViewport {
         // Update the user transform matrix
         updateUserTransformMatrix();
         
-        logger.trace("Model transform set: rotation=({},{},{}), scale={}", 
+        logger.trace("Model transform set: position=({},{},{}), rotation=({},{},{}), scale={}", 
+                    String.format("%.1f", posX), String.format("%.1f", posY), String.format("%.1f", posZ),
                     String.format("%.1f", rotX), String.format("%.1f", rotY), String.format("%.1f", rotZ), 
                     String.format("%.2f", constrainedScale));
     }
@@ -1222,6 +1342,9 @@ public class OpenMason3DViewport {
      */
     public void setCurrentModel(StonebreakModel model) {
         this.currentModel = model;
+        
+        // Reset position when switching models to avoid interference
+        resetPositionOnModelSwitch();
         
         // Update model name if model is provided
         if (model != null) {
@@ -1303,6 +1426,9 @@ public class OpenMason3DViewport {
             return;
         }
         
+        // Reset position when loading new models to avoid interference
+        resetPositionOnModelSwitch();
+        
         // logger.error("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: {} ===", modelName);
         // System.err.println("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: " + modelName + " ===");
         
@@ -1358,6 +1484,74 @@ public class OpenMason3DViewport {
         glDrawArrays(GL_TRIANGLES, 0, 36);
         
         // logger.debug("Test cube render commands issued");
+    }
+    
+    /**
+     * Render the transform gizmo with completely isolated context.
+     * This method ensures zero interference with model rendering.
+     */
+    private void renderTransformGizmo() {
+        if (!gizmoEnabled || transformGizmo == null || gizmoShaderProgram == -1) {
+            return;
+        }
+        
+        try {
+            // COMPLETE STATE ISOLATION - Save ALL OpenGL state
+            int previousProgram = glGetInteger(GL_CURRENT_PROGRAM);
+            int previousVAO = glGetInteger(GL_VERTEX_ARRAY_BINDING);
+            int previousArrayBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING);
+            
+            // Validate OpenGL context before gizmo operations
+            int glError = glGetError();
+            if (glError != GL_NO_ERROR) {
+                logger.warn("OpenGL error detected before gizmo rendering: {}", glError);
+                return; // Skip gizmo rendering if context is invalid
+            }
+            
+            // Use DEDICATED gizmo shaders (completely separate from model pipeline)
+            glUseProgram(gizmoShaderProgram);
+            
+            // Calculate gizmo position independently (NO interference with model transforms)
+            float gizmoX = gizmoEnabled ? modelPositionX : 0.0f;
+            float gizmoY = gizmoEnabled ? modelPositionY : 0.0f; 
+            float gizmoZ = gizmoEnabled ? modelPositionZ : 0.0f;
+            
+            // Set gizmo position without affecting any model state
+            transformGizmo.setPosition(gizmoX, gizmoY, gizmoZ);
+            
+            // Create INDEPENDENT view-projection matrix for gizmo
+            Matrix4f gizmoViewProjectionMatrix = new Matrix4f();
+            camera.getProjectionMatrix().mul(camera.getViewMatrix(), gizmoViewProjectionMatrix);
+            
+            // Create clean identity matrix (gizmo handles its own positioning)
+            Matrix4f gizmoIdentityMatrix = new Matrix4f().identity();
+            
+            // Render gizmo with DEDICATED shaders and uniforms
+            transformGizmo.render(gizmoShaderProgram, gizmoMvpMatrixLocation, gizmoColorLocation,
+                                gizmoViewProjectionMatrix, gizmoIdentityMatrix);
+            
+            // COMPLETE STATE RESTORATION - Restore ALL OpenGL state
+            glUseProgram(previousProgram);
+            glBindVertexArray(previousVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer);
+            
+            // Verify no OpenGL errors occurred during gizmo rendering
+            glError = glGetError();
+            if (glError != GL_NO_ERROR) {
+                logger.warn("OpenGL error during gizmo rendering: {}", glError);
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error in isolated gizmo rendering", e);
+            // Emergency state cleanup - ensure model rendering can continue
+            try {
+                glUseProgram(0);
+                glBindVertexArray(0);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            } catch (Exception cleanupError) {
+                logger.error("Error during emergency gizmo state cleanup", cleanupError);
+            }
+        }
     }
     
     /**
@@ -1548,9 +1742,17 @@ public class OpenMason3DViewport {
     
     /**
      * Updates the user transform matrix based on current rotation and scale values.
+     * Position is only applied when gizmo is enabled to preserve existing model behavior.
      */
     private void updateUserTransformMatrix() {
-        userTransformMatrix.identity()
+        userTransformMatrix.identity();
+        
+        // Only apply position transforms when gizmo is enabled
+        if (gizmoEnabled) {
+            userTransformMatrix.translate(modelPositionX, modelPositionY, modelPositionZ);
+        }
+        
+        userTransformMatrix
             .rotateXYZ(
                 (float) Math.toRadians(modelRotationX),
                 (float) Math.toRadians(modelRotationY),
@@ -1560,10 +1762,18 @@ public class OpenMason3DViewport {
         userTransformDirty = false;
         
         // Debug logging to verify the transform matrix (reduced to TRACE level)
-        logger.trace("Updated user transform matrix: rot=({},{},{}), scale={}, matrix determinant={}", 
-                    String.format("%.1f", modelRotationX), String.format("%.1f", modelRotationY), 
-                    String.format("%.1f", modelRotationZ), String.format("%.2f", modelScale),
-                    String.format("%.3f", userTransformMatrix.determinant()));
+        if (gizmoEnabled) {
+            logger.trace("Updated user transform matrix (gizmo enabled): pos=({},{},{}), rot=({},{},{}), scale={}, matrix determinant={}", 
+                        String.format("%.1f", modelPositionX), String.format("%.1f", modelPositionY), String.format("%.1f", modelPositionZ),
+                        String.format("%.1f", modelRotationX), String.format("%.1f", modelRotationY), 
+                        String.format("%.1f", modelRotationZ), String.format("%.2f", modelScale),
+                        String.format("%.3f", userTransformMatrix.determinant()));
+        } else {
+            logger.trace("Updated user transform matrix (gizmo disabled): rot=({},{},{}), scale={}, matrix determinant={}", 
+                        String.format("%.1f", modelRotationX), String.format("%.1f", modelRotationY), 
+                        String.format("%.1f", modelRotationZ), String.format("%.2f", modelScale),
+                        String.format("%.3f", userTransformMatrix.determinant()));
+        }
     }
     
     /**
@@ -1580,17 +1790,54 @@ public class OpenMason3DViewport {
      * Reset model transform to defaults.
      */
     public void resetModelTransform() {
-        setModelTransform(0.0f, 0.0f, 0.0f, 1.0f);
+        setModelTransform(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    
+    /**
+     * Reset position to origin when switching models.
+     * This prevents position state from interfering with new models.
+     */
+    private void resetPositionOnModelSwitch() {
+        // Only reset position, preserve rotation and scale
+        modelPositionX = 0.0f;
+        modelPositionY = 0.0f;
+        modelPositionZ = 0.0f;
+        userTransformDirty = true;
+        
+        // Reset gizmo position as well
+        if (transformGizmo != null) {
+            transformGizmo.reset();
+        }
+        
+        logger.debug("Position reset to origin for model switch");
     }
     
     /**
      * Get current model transform values for UI display.
      */
+    public float getModelPositionX() { return modelPositionX; }
+    public float getModelPositionY() { return modelPositionY; }
+    public float getModelPositionZ() { return modelPositionZ; }
     public float getModelRotationX() { return modelRotationX; }
     public float getModelRotationY() { return modelRotationY; }
     public float getModelRotationZ() { return modelRotationZ; }
     public float getModelScale() { return modelScale; }
     public float getMinScale() { return MIN_SCALE; }
     public float getMaxScale() { return MAX_SCALE; }
+    
+    /**
+     * Transform gizmo control methods.
+     */
+    public void setGizmoEnabled(boolean enabled) { 
+        this.gizmoEnabled = enabled;
+    }
+    
+    public boolean isGizmoEnabled() { 
+        return gizmoEnabled; 
+    }
+    
+    public TransformGizmo getTransformGizmo() { 
+        return transformGizmo; 
+    }
     
 }

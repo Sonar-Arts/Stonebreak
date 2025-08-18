@@ -27,8 +27,12 @@ public class ViewportInputHandler {
     // Camera reference for input handling
     private final Camera camera;
     
+    // Transform gizmo reference for interaction
+    private TransformGizmo transformGizmo = null;
+    
     // Mouse interaction state
     private boolean isDragging = false;
+    private boolean isDraggingGizmo = false;
     
     // Mouse capture state for endless dragging
     private boolean isMouseCaptured = false;
@@ -53,6 +57,22 @@ public class ViewportInputHandler {
             this.rawMouseMotionSupported = GLFW.glfwRawMouseMotionSupported();
             // logger.info("Window handle set. Raw mouse motion supported: {}", rawMouseMotionSupported);
         }
+    }
+    
+    /**
+     * Set the transform gizmo reference for interaction handling.
+     */
+    public void setTransformGizmo(TransformGizmo gizmo) {
+        this.transformGizmo = gizmo;
+    }
+    
+    /**
+     * Check if gizmo input should be processed.
+     * This prevents gizmo input from interfering with existing functionality.
+     */
+    private boolean isGizmoInputEnabled() {
+        // Only allow gizmo input when explicitly enabled and not already dragging camera
+        return transformGizmo != null && !isDragging;
     }
     
     /**
@@ -166,20 +186,35 @@ public class ViewportInputHandler {
             logger.warn("  yInBounds: {} ({} >= {} && {} < {})", yInBounds, mousePos.y, imagePos.y, mousePos.y, imagePos.y + imageHeight);
         }
         
-        // Start dragging when left mouse button is pressed within viewport bounds
-        if (mouseInBounds && mouseClicked) {
+        // Handle gizmo interaction first (higher priority than camera)
+        // Only process gizmo input when it's enabled, visible, and initialized
+        if (transformGizmo != null && transformGizmo.isVisible() && mouseInBounds && isGizmoInputEnabled()) {
+            handleGizmoInteraction(mousePos, imagePos, mouseClicked);
+        }
+        
+        // Start camera dragging when left mouse button is pressed within viewport bounds
+        // (only if not dragging gizmo)
+        if (mouseInBounds && mouseClicked && !isDraggingGizmo) {
             startDragging();
         }
         
         // Continue dragging with unlimited mouse movement (mouse is now captured)
-        if (isDragging && ImGui.isMouseDown(0)) {
+        if (isDragging && ImGui.isMouseDown(0) && !isDraggingGizmo) {
             processDragging();
+        }
+        
+        // Continue gizmo dragging
+        if (isDraggingGizmo && ImGui.isMouseDown(0)) {
+            processGizmoDragging(mousePos, imagePos);
         }
         
         // Stop dragging when mouse button is released
         if (ImGui.isMouseReleased(0)) {
             if (isDragging) {
                 stopDragging();
+            }
+            if (isDraggingGizmo) {
+                stopGizmoDragging();
             }
         }
         
@@ -330,5 +365,76 @@ public class ViewportInputHandler {
     
     public long getWindowHandle() { 
         return windowHandle; 
+    }
+    
+    /**
+     * Handle gizmo interaction for transform manipulation.
+     */
+    private void handleGizmoInteraction(ImVec2 mousePos, ImVec2 imagePos, boolean mouseClicked) {
+        if (transformGizmo == null) {
+            return;
+        }
+        
+        try {
+            // Convert screen coordinates to viewport-relative coordinates
+            float relativeX = mousePos.x - imagePos.x;
+            float relativeY = mousePos.y - imagePos.y;
+            
+            if (mouseClicked) {
+                // Try to start gizmo interaction
+                boolean gizmoHandled = transformGizmo.handleMousePress(relativeX, relativeY, camera);
+                if (gizmoHandled) {
+                    isDraggingGizmo = true;
+                    logger.debug("Started gizmo interaction");
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error handling gizmo interaction", e);
+        }
+    }
+    
+    /**
+     * Process ongoing gizmo dragging.
+     */
+    private void processGizmoDragging(ImVec2 mousePos, ImVec2 imagePos) {
+        if (transformGizmo == null || !isDraggingGizmo) {
+            return;
+        }
+        
+        try {
+            // Convert screen coordinates to viewport-relative coordinates
+            float relativeX = mousePos.x - imagePos.x;
+            float relativeY = mousePos.y - imagePos.y;
+            
+            // Handle gizmo drag
+            org.joml.Vector3f deltaTranslation = transformGizmo.handleMouseDrag(relativeX, relativeY, camera);
+            
+            if (deltaTranslation != null) {
+                // Apply the translation delta to the model
+                // This would integrate with the transform system
+                logger.trace("Gizmo drag delta: ({}, {}, {})", 
+                           deltaTranslation.x, deltaTranslation.y, deltaTranslation.z);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing gizmo drag", e);
+        }
+    }
+    
+    /**
+     * Stop gizmo dragging interaction.
+     */
+    private void stopGizmoDragging() {
+        if (transformGizmo != null) {
+            transformGizmo.handleMouseRelease();
+        }
+        isDraggingGizmo = false;
+        logger.debug("Stopped gizmo interaction");
+    }
+    
+    /**
+     * Check if currently dragging gizmo.
+     */
+    public boolean isDraggingGizmo() {
+        return isDraggingGizmo;
     }
 }
