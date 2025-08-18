@@ -24,6 +24,9 @@ public class VertexArray implements AutoCloseable {
     private IndexBuffer indexBuffer;
     private final List<OpenGLBuffer> additionalBuffers;
     
+    // Texture mapping information
+    private String textureField;
+    
     // Rendering statistics
     private long lastAccessTime;
     private int renderCount;
@@ -198,7 +201,10 @@ public class VertexArray implements AutoCloseable {
     public void updateTextureVariant(CowTextureDefinition.CowVariant textureDefinition,
                                    String partName, String textureVariant) {
         if (textureCoordBuffer != null) {
-            textureCoordBuffer.updateForTextureVariant(textureDefinition, partName, textureVariant);
+            // Use stored texture field if available, otherwise fall back to part name
+            textureCoordBuffer.updateForTextureVariant(textureDefinition, textureField, partName, textureVariant);
+        } else {
+            System.err.println("[VertexArray] ERROR: No texture coordinate buffer available for " + debugName + " (part: " + partName + ")");
         }
     }
     
@@ -219,7 +225,7 @@ public class VertexArray implements AutoCloseable {
      */
     public static VertexArray fromModelPart(float[] vertices, int[] indices,
                                           CowTextureDefinition.CowVariant textureDefinition,
-                                          String partName, String debugName) {
+                                          String textureField, String partName, String debugName) {
         VertexArray vao = null;
         VertexBuffer vertexBuf = null;
         IndexBuffer indexBuf = null;
@@ -241,6 +247,9 @@ public class VertexArray implements AutoCloseable {
             texCoordBuf = TextureCoordinateBuffer.createPlaceholder(
                 vertices.length / 3, debugName + "_texcoords");
             vao.setTextureCoordinateBuffer(texCoordBuf);
+            
+            // Store texture field for proper atlas face mapping
+            vao.textureField = textureField;
             
             // All resources created successfully
             return vao;

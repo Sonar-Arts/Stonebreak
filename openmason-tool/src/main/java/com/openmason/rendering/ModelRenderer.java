@@ -174,6 +174,7 @@ public class ModelRenderer implements AutoCloseable {
                                    CowTextureDefinition.CowVariant textureDefinition,
                                    String variantName) {
         String partName = bodyPart.getName();
+        String textureField = bodyPart.getTexture();
         String vaoKey = debugPrefix + "_matrix_" + partName;
         
         // Skip if already prepared
@@ -215,7 +216,7 @@ public class ModelRenderer implements AutoCloseable {
             }
             
             // Create VAO for matrix-based rendering with proper texture coordinates
-            VertexArray vao = VertexArray.fromModelPart(vertices, indices, textureDefinition, partName, vaoKey);
+            VertexArray vao = VertexArray.fromModelPart(vertices, indices, textureDefinition, textureField, partName, vaoKey);
             
             modelPartVAOs.put(partName, vao);
             currentTextureVariants.put(partName, "default");
@@ -354,11 +355,17 @@ public class ModelRenderer implements AutoCloseable {
             if (useTextureUniformLocation != -1) {
                 glUniform1i(useTextureUniformLocation, 1); // true
             }
+            
+            // Debug: Log texture rendering setup
+            System.out.println("[ModelRenderer] Texture rendering enabled for variant: " + textureVariant + 
+                             " (Atlas ID: " + textureAtlas.getTextureId() + ")");
         } else {
             // Disable texture rendering, use solid colors
             if (useTextureUniformLocation != -1) {
                 glUniform1i(useTextureUniformLocation, 0); // false
             }
+            
+            System.out.println("[ModelRenderer] Using solid color rendering (no texture atlas available)");
         }
         
         // Set vertex color uniform (white for proper texture display, orange for solid color)
@@ -521,15 +528,44 @@ public class ModelRenderer implements AutoCloseable {
      * @param textureVariant The new texture variant
      */
     private void updateTextureVariants(StonebreakModel model, String textureVariant) {
+        // Load the current texture variant definition dynamically
+        com.stonebreak.textures.CowTextureDefinition.CowVariant variantDefinition = 
+            com.stonebreak.textures.CowTextureLoader.getCowVariant(textureVariant);
+            
+        if (variantDefinition == null) {
+            System.err.println("[ModelRenderer] ERROR: Failed to load texture variant: " + textureVariant);
+            return;
+        }
+        
+        // Only log when there are actual updates
+        boolean hasUpdates = false;
         for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             String partName = bodyPart.getName();
             String currentVariant = currentTextureVariants.get(partName);
+            if (!textureVariant.equals(currentVariant)) {
+                hasUpdates = true;
+                break;
+            }
+        }
+        
+        if (hasUpdates) {
+            System.out.println("[ModelRenderer] Updating texture coordinates for variant: " + textureVariant + " (" + variantDefinition.getDisplayName() + ")");
+        }
+        
+        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+            String partName = bodyPart.getName();
+            String currentVariant = currentTextureVariants.get(partName);
+            String textureField = bodyPart.getModelPart().getTexture();
             
             if (!textureVariant.equals(currentVariant)) {
                 VertexArray vao = modelPartVAOs.get(partName);
                 if (vao != null) {
-                    vao.updateTextureVariant(model.getTextureDefinition(), partName, textureVariant);
+                    System.out.println("[ModelRenderer] Updating " + partName + " (texture: " + textureField + ") to variant: " + textureVariant);
+                    // Use the dynamically loaded variant definition instead of model's fixed definition
+                    vao.updateTextureVariant(variantDefinition, partName, textureVariant);
                     currentTextureVariants.put(partName, textureVariant);
+                } else {
+                    System.err.println("[ModelRenderer] ERROR: No VAO found for part: " + partName);
                 }
             }
         }
