@@ -41,9 +41,9 @@ public class TextureVariantManager {
      * Initialize the variant manager.
      */
     public void initialize() {
-        logger.info("Initializing TextureVariantManager...");
+        // logger.info("Initializing TextureVariantManager...");
         TextureManager.initialize();
-        logger.info("TextureVariantManager initialization complete");
+        // logger.info("TextureVariantManager initialization complete");
     }
     
     /**
@@ -84,7 +84,7 @@ public class TextureVariantManager {
             lastSwitchTime = System.currentTimeMillis() - startTime;
             
             loadingStatus = "Switched to " + variantName + " (" + lastSwitchTime + "ms)";
-            logger.info("Successfully switched to variant '{}' in {}ms", variantName, lastSwitchTime);
+            // logger.info("Successfully switched to variant '{}' in {}ms", variantName, lastSwitchTime);
             
             return true;
             
@@ -160,7 +160,7 @@ public class TextureVariantManager {
     public void resetPerformanceCounters() {
         switchCount = 0;
         lastSwitchTime = 0;
-        logger.debug("Performance counters reset");
+        // logger.debug("Performance counters reset");
     }
     
     /**
@@ -173,6 +173,6 @@ public class TextureVariantManager {
         lastSwitchTime = 0;
         loadingInProgress = false;
         loadingStatus = "";
-        logger.info("TextureVariantManager cache cleared");
+        // logger.info("TextureVariantManager cache cleared");
     }
 }

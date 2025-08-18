@@ -59,7 +59,7 @@ public class OpenMasonApp {
      * Initialize and run the Dear ImGui application.This
      */
     public void run() {
-        logger.info("Starting OpenMason application...");
+        // logger.info("Starting OpenMason application...");
         
         try {
             // Initialize application configuration
@@ -79,7 +79,7 @@ public class OpenMasonApp {
             // Initialize application lifecycle
             appLifecycle.onApplicationStarted();
             
-            logger.info("OpenMason application started successfully");
+            // logger.info("OpenMason application started successfully");
             
             // Run main application loop
             runMainLoop();
@@ -98,7 +98,7 @@ public class OpenMasonApp {
      * Initialize GLFW library.
      */
     private void initializeGLFW() {
-        logger.debug("Initializing GLFW...");
+        // logger.debug("Initializing GLFW...");
         
         // Setup error callback
         GLFWErrorCallback.createPrint(System.err).set();
@@ -108,14 +108,14 @@ public class OpenMasonApp {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
         
-        logger.debug("GLFW initialized successfully");
+        // logger.debug("GLFW initialized successfully");
     }
     
     /**
      * Create GLFW window.
      */
     private void createWindow() {
-        logger.debug("Creating GLFW window...");
+        // logger.debug("Creating GLFW window...");
         
         // Configure window hints
         glfwDefaultWindowHints();
@@ -161,7 +161,7 @@ public class OpenMasonApp {
         // Show window
         glfwShowWindow(window);
         
-        logger.debug("GLFW window created successfully");
+        // logger.debug("GLFW window created successfully");
     }
     
     /**
@@ -213,7 +213,7 @@ public class OpenMasonApp {
      * Initialize Dear ImGui context and rendering.
      */
     private void initializeImGui() {
-        logger.debug("Initializing Dear ImGui...");
+        // logger.debug("Initializing Dear ImGui...");
         
         // Initialize ImGui context
         ImGui.createContext();
@@ -236,14 +236,14 @@ public class OpenMasonApp {
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
         
-        logger.debug("Dear ImGui initialized successfully");
+        // logger.debug("Dear ImGui initialized successfully");
     }
     
     /**
      * Main application render loop.
      */
     private void runMainLoop() {
-        logger.debug("Starting main render loop...");
+        // logger.debug("Starting main render loop...");
         
         // Main loop
         while (!shouldClose && !glfwWindowShouldClose(window)) {
@@ -279,14 +279,14 @@ public class OpenMasonApp {
             glfwSwapBuffers(window);
         }
         
-        logger.debug("Main render loop ended");
+        // logger.debug("Main render loop ended");
     }
     
     /**
      * Initialize UI interfaces.
      */
     private void initializeUI() {
-        logger.debug("Initializing UI interfaces...");
+        // logger.debug("Initializing UI interfaces...");
         
         try {
             // Initialize main interface
@@ -299,12 +299,12 @@ public class OpenMasonApp {
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
                 viewportInterface.setWindowHandle(window);
-                logger.info("Window handle passed to viewport interface for mouse capture");
+                // logger.info("Window handle passed to viewport interface for mouse capture");
             } else {
                 logger.error("Cannot set window handle - window not created");
             }
             
-            logger.debug("UI interfaces initialized successfully");
+            // logger.debug("UI interfaces initialized successfully");
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);
             throw new RuntimeException("UI initialization failed", e);
@@ -343,7 +343,7 @@ public class OpenMasonApp {
      * Cleanup application resources.
      */
     private void cleanup() {
-        logger.info("Cleaning up OpenMason application...");
+        // logger.info("Cleaning up OpenMason application...");
         
         try {
             // Cleanup UI interfaces
@@ -381,7 +381,7 @@ public class OpenMasonApp {
             logger.error("Error during cleanup", e);
         }
         
-        logger.info("OpenMason application cleanup completed");
+        // logger.info("OpenMason application cleanup completed");
     }
     
     /**
@@ -466,7 +466,7 @@ public class OpenMasonApp {
             java.nio.file.Files.writeString(java.nio.file.Paths.get("openmason-tool/imgui.ini"), 
                                           defaultIniContent, 
                                           java.nio.charset.StandardCharsets.UTF_8);
-            logger.info("Created default ImGui layout configuration");
+            // logger.info("Created default ImGui layout configuration");
         } catch (Exception e) {
             logger.warn("Could not write default ImGui layout: " + e.getMessage());
         }
@@ -482,7 +482,7 @@ public class OpenMasonApp {
             return;
         }
         
-        logger.info("Launching OpenMason with args: {}", String.join(" ", args));
+        // logger.info("Launching OpenMason with args: {}", String.join(" ", args));
         
         try {
             // Create and run application

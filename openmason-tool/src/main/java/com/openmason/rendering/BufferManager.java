@@ -234,8 +234,8 @@ public class BufferManager {
      * Should be called before application shutdown.
      */
     public void cleanup() {
-        System.out.println("BufferManager: Cleaning up " + activeBuffers.size() + 
-                          " buffers and " + activeVertexArrays.size() + " vertex arrays");
+        // System.out.println("BufferManager: Cleaning up " + activeBuffers.size() + 
+        //                   " buffers and " + activeVertexArrays.size() + " vertex arrays");
         
         // Clean up vertex arrays first (they may reference buffers)
         List<VertexArray> vaos = new ArrayList<>(activeVertexArrays.values());
@@ -270,13 +270,13 @@ public class BufferManager {
      * Prints final statistics when the manager is being cleaned up.
      */
     private void printFinalStatistics() {
-        System.out.println("=== BufferManager Final Statistics ===");
-        System.out.println("Total buffers created: " + totalBuffersCreated.get());
-        System.out.println("Total vertex arrays created: " + totalVertexArraysCreated.get());
-        System.out.println("Total memory allocated: " + formatBytes(totalMemoryAllocated.get()));
-        System.out.println("Total memory deallocated: " + formatBytes(totalMemoryDeallocated.get()));
-        System.out.println("Memory leak potential: " + formatBytes(totalMemoryAllocated.get() - totalMemoryDeallocated.get()));
-        System.out.println("======================================");
+        // System.out.println("=== BufferManager Final Statistics ===");
+        // System.out.println("Total buffers created: " + totalBuffersCreated.get());
+        // System.out.println("Total vertex arrays created: " + totalVertexArraysCreated.get());
+        // System.out.println("Total memory allocated: " + formatBytes(totalMemoryAllocated.get()));
+        // System.out.println("Total memory deallocated: " + formatBytes(totalMemoryDeallocated.get()));
+        // System.out.println("Memory leak potential: " + formatBytes(totalMemoryAllocated.get() - totalMemoryDeallocated.get()));
+        // System.out.println("======================================");
     }
     
     /**

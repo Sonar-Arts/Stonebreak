@@ -87,7 +87,7 @@ public class Camera {
     private static final float DEFAULT_MOUSE_SENSITIVITY = 3.0f;
     
     public Camera() {
-        logger.info("Initializing professional 3D camera system (default: arc-ball mode)");
+        // logger.info("Initializing professional 3D camera system (default: arc-ball mode)");
         updateMatrices();
     }
     
@@ -203,7 +203,7 @@ public class Camera {
         lastUserInputTime = System.currentTimeMillis();
         viewMatrixDirty = true;
         
-        logger.info("Camera reset to default position (mode: {})", cameraMode);
+        // logger.info("Camera reset to default position (mode: {})", cameraMode);
     }
     
     /**
@@ -333,14 +333,14 @@ public class Camera {
     public void setTarget(Vector3f target) { 
         this.target.set(target);
         viewMatrixDirty = true;
-        logger.debug("Camera target set to: ({}, {}, {})", target.x, target.y, target.z);
+        // logger.debug("Camera target set to: ({}, {}, {})", target.x, target.y, target.z);
     }
     
     public float getFov() { return fov; }
     public void setFov(float fov) { 
         this.fov = clamp(fov, 10.0f, 120.0f); // Professional FOV range
         projectionMatrixDirty = true;
-        logger.debug("Camera FOV set to: {}°", this.fov);
+        // logger.debug("Camera FOV set to: {}°", this.fov);
     }
     
     public float getAspectRatio() { return aspectRatio; }
@@ -427,7 +427,7 @@ public class Camera {
         }
         
         if (wasAnimating && !isAnimating) {
-            logger.debug("Camera animation completed (mode: {})", cameraMode);
+            // logger.debug("Camera animation completed (mode: {})", cameraMode);
         }
     }
     
@@ -477,7 +477,7 @@ public class Camera {
      */
     public void applyPreset(CameraPreset preset) {
         setOrientationSmooth(preset.azimuth, preset.elevation);
-        logger.info("Applied camera preset: {}", preset.displayName);
+        // logger.info("Applied camera preset: {}", preset.displayName);
     }
     
     /**
@@ -505,7 +505,7 @@ public class Camera {
     public void frameOrigin(float modelSize) {
         float optimalDistance = modelSize * 3.0f; // Professional viewing distance
         setDistanceSmooth(clamp(optimalDistance, MIN_DISTANCE, MAX_DISTANCE));
-        logger.info("Camera framed origin with model size: {}, distance: {}", modelSize, targetDistance);
+        // logger.info("Camera framed origin with model size: {}, distance: {}", modelSize, targetDistance);
     }
     
     /**
@@ -531,7 +531,7 @@ public class Camera {
      */
     public void setMouseSensitivity(float sensitivity) {
         this.mouseSensitivity = clamp(sensitivity, 0.1f, 5.0f);
-        logger.debug("Mouse sensitivity set to: {}", this.mouseSensitivity);
+        // logger.debug("Mouse sensitivity set to: {}", this.mouseSensitivity);
     }
     
     /**
@@ -609,7 +609,7 @@ public class Camera {
      */
     public void setCameraMode(CameraMode mode) {
         if (this.cameraMode != mode) {
-            logger.info("Switching camera mode from {} to {}", this.cameraMode, mode);
+            // logger.info("Switching camera mode from {} to {}", this.cameraMode, mode);
             
             if (mode == CameraMode.FIRST_PERSON && this.cameraMode == CameraMode.ARCBALL) {
                 // Transition from arc-ball to first-person

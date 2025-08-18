@@ -107,7 +107,7 @@ public class OpenMason3DViewport {
         this.camera = new Camera();
         this.inputHandler = new ViewportInputHandler(camera);
         this.modelRenderer = new ModelRenderer("Viewport");
-        logger.info("OpenMason 3D Viewport created with input handler and model renderer");
+        // logger.info("OpenMason 3D Viewport created with input handler and model renderer");
     }
     
     /**
@@ -117,7 +117,7 @@ public class OpenMason3DViewport {
     public void setWindowHandle(long windowHandle) {
         if (inputHandler != null) {
             inputHandler.setWindowHandle(windowHandle);
-            logger.info("Window handle set on input handler");
+            // logger.info("Window handle set on input handler");
         } else {
             logger.warn("Cannot set window handle - input handler is null");
         }
@@ -129,12 +129,12 @@ public class OpenMason3DViewport {
      */
     public void initialize() {
         if (initialized) {
-            logger.debug("Viewport already initialized");
+            // logger.debug("Viewport already initialized");
             return;
         }
         
         try {
-            logger.info("Initializing OpenMason 3D Viewport...");
+            // logger.info("Initializing OpenMason 3D Viewport...");
             
             // Validate OpenGL context
             validateOpenGLContext();
@@ -156,7 +156,7 @@ public class OpenMason3DViewport {
             validateResources();
             
             initialized = true;
-            logger.info("OpenMason 3D Viewport initialized successfully");
+            // logger.info("OpenMason 3D Viewport initialized successfully");
             
         } catch (Exception e) {
             logger.error("Failed to initialize viewport", e);
@@ -172,7 +172,7 @@ public class OpenMason3DViewport {
         try {
             // Try a simple OpenGL call to validate context
             int maxTextureSize = glGetInteger(GL_MAX_TEXTURE_SIZE);
-            logger.debug("OpenGL context validated - Max texture size: {}", maxTextureSize);
+            // logger.debug("OpenGL context validated - Max texture size: {}", maxTextureSize);
         } catch (Exception e) {
             throw new RuntimeException("Invalid OpenGL context", e);
         }
@@ -198,7 +198,7 @@ public class OpenMason3DViewport {
             throw new RuntimeException("Grid geometry creation failed");
         }
         
-        logger.debug("All OpenGL resources validated successfully");
+        // logger.debug("All OpenGL resources validated successfully");
     }
     
     /**
@@ -256,7 +256,7 @@ public class OpenMason3DViewport {
         modelMatrixLocation = glGetUniformLocation(shaderProgram, "uModelMatrix");
         colorLocation = glGetUniformLocation(shaderProgram, "uColor");
         
-        logger.info("Shaders created successfully");
+        // logger.info("Shaders created successfully");
     }
     
     /**
@@ -318,7 +318,7 @@ public class OpenMason3DViewport {
         matrixModelLocation = glGetUniformLocation(matrixShaderProgram, "uModelMatrix");
         matrixColorLocation = glGetUniformLocation(matrixShaderProgram, "uColor");
         
-        logger.info("Matrix transformation shaders created successfully");
+        // logger.info("Matrix transformation shaders created successfully");
     }
     
     /**
@@ -363,7 +363,7 @@ public class OpenMason3DViewport {
             // Unbind framebuffer
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             
-            logger.info("Framebuffer created successfully: {}x{}", viewportWidth, viewportHeight);
+            // logger.info("Framebuffer created successfully: {}x{}", viewportWidth, viewportHeight);
             
         } catch (Exception e) {
             logger.error("Failed to create framebuffer", e);
@@ -434,7 +434,7 @@ public class OpenMason3DViewport {
         
         glBindVertexArray(0);
         
-        logger.info("Test cube geometry created (36 vertices, 12 triangles)");
+        // logger.info("Test cube geometry created (36 vertices, 12 triangles)");
     }
     
     /**
@@ -499,7 +499,7 @@ public class OpenMason3DViewport {
         
         glBindVertexArray(0);
         
-        logger.info("Grid geometry created");
+        // logger.info("Grid geometry created");
     }
     
     /**
@@ -523,14 +523,14 @@ public class OpenMason3DViewport {
         
         camera.setAspectRatio((float) width / height);
         
-        logger.debug("Viewport resized to {}x{}", width, height);
+        // logger.debug("Viewport resized to {}x{}", width, height);
     }
     
     /**
      * Recreate framebuffer with new dimensions with proper error handling.
      */
     private void recreateFramebuffer() {
-        logger.debug("Recreating framebuffer with dimensions: {}x{}", viewportWidth, viewportHeight);
+        // logger.debug("Recreating framebuffer with dimensions: {}x{}", viewportWidth, viewportHeight);
         
         try {
             // Delete old resources safely
@@ -539,7 +539,7 @@ public class OpenMason3DViewport {
             // Create new framebuffer
             createFramebuffer();
             
-            logger.debug("Framebuffer recreated successfully");
+            // logger.debug("Framebuffer recreated successfully");
         } catch (Exception e) {
             logger.error("Failed to recreate framebuffer", e);
             throw new RuntimeException("Framebuffer recreation failed", e);
@@ -573,7 +573,7 @@ public class OpenMason3DViewport {
         //             initialized, framebuffer, viewportWidth, viewportHeight);
         
         if (!initialized) {
-            logger.info("Viewport not initialized, initializing now...");
+            // logger.info("Viewport not initialized, initializing now...");
             initialize();
         }
         
@@ -617,22 +617,22 @@ public class OpenMason3DViewport {
         
         if (shouldLog) {
             lastDiagnosticLogTime = currentTime;
-            logger.info("RENDER DIAGNOSTIC (viewport instance: {}) - currentModel: {}, currentModelName: {}, modelRenderingEnabled: {}", 
-                       System.identityHashCode(this), (currentModel != null), currentModelName, modelRenderingEnabled);
+            // logger.info("RENDER DIAGNOSTIC (viewport instance: {}) - currentModel: {}, currentModelName: {}, modelRenderingEnabled: {}", 
+            //            System.identityHashCode(this), (currentModel != null), currentModelName, modelRenderingEnabled);
             
             if (currentModel != null) {
-                logger.info("RENDER DIAGNOSTIC - model variant: {}, body parts: {}", 
-                           currentModel.getVariantName(), 
-                           (currentModel.getBodyParts() != null ? currentModel.getBodyParts().size() : "null"));
+                // logger.info("RENDER DIAGNOSTIC - model variant: {}, body parts: {}", 
+                //            currentModel.getVariantName(), 
+                //            (currentModel.getBodyParts() != null ? currentModel.getBodyParts().size() : "null"));
                 
                 // Check model preparation status
                 boolean isPrepared = modelRenderer.isModelPrepared(currentModel);
-                logger.info("RENDER DIAGNOSTIC - model prepared: {}", isPrepared);
+                // logger.info("RENDER DIAGNOSTIC - model prepared: {}", isPrepared);
                 
                 if (!isPrepared) {
                     // Get detailed preparation status
                     var status = modelRenderer.getModelPreparationStatus(currentModel);
-                    logger.info("RENDER DIAGNOSTIC - preparation status: {}", status.toString());
+                    // logger.info("RENDER DIAGNOSTIC - preparation status: {}", status.toString());
                 }
             }
         }
@@ -640,9 +640,9 @@ public class OpenMason3DViewport {
         // Prepare loaded model for rendering if needed (must be done on main thread with OpenGL context)
         if (currentModel != null && !modelRenderer.isModelPrepared(currentModel)) {
             try {
-                logger.info("Preparing model for rendering: {}", currentModelName);
+                // logger.info("Preparing model for rendering: {}", currentModelName);
                 boolean prepared = modelRenderer.prepareModel(currentModel);
-                logger.info("RENDER DIAGNOSTIC - model preparation result: {}", prepared);
+                // logger.info("RENDER DIAGNOSTIC - model preparation result: {}", prepared);
                 if (!prepared) {
                     logger.error("Failed to prepare model for rendering: {}", currentModelName);
                     // Get detailed diagnostic info
@@ -657,9 +657,9 @@ public class OpenMason3DViewport {
         // DIAGNOSTIC: Check render conditions (throttled)
         boolean canRender = modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
         if (shouldLog) {
-            logger.info("RENDER DIAGNOSTIC - can render model: {} (enabled: {}, model: {}, prepared: {})", 
-                       canRender, modelRenderingEnabled, (currentModel != null), 
-                       (currentModel != null ? modelRenderer.isModelPrepared(currentModel) : "N/A"));
+            // logger.info("RENDER DIAGNOSTIC - can render model: {} (enabled: {}, model: {}, prepared: {})", 
+            //            canRender, modelRenderingEnabled, (currentModel != null), 
+            //            (currentModel != null ? modelRenderer.isModelPrepared(currentModel) : "N/A"));
         }
         
         // Render current model if available, otherwise render test cube
@@ -667,8 +667,8 @@ public class OpenMason3DViewport {
             // Render the loaded model with shader context
             try {
                 if (shouldLog) {
-                    logger.info("RENDER DIAGNOSTIC - Attempting to render model: {}", currentModelName);
-                    logger.info("RENDER DIAGNOSTIC - Shader program: {}, MVP location: {}", shaderProgram, mvpMatrixLocation);
+                    // logger.info("RENDER DIAGNOSTIC - Attempting to render model: {}", currentModelName);
+                    // logger.info("RENDER DIAGNOSTIC - Shader program: {}, MVP location: {}", shaderProgram, mvpMatrixLocation);
                 }
                 
                 // Get MVP matrix as float array
@@ -678,10 +678,10 @@ public class OpenMason3DViewport {
                 modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, matrixMvpLocation, matrixModelLocation, mvpArray);
                 
                 if (shouldLog) {
-                    logger.info("RENDER DIAGNOSTIC - Successfully rendered model: {}", currentModelName);
+                    // logger.info("RENDER DIAGNOSTIC - Successfully rendered model: {}", currentModelName);
                 }
             } catch (Exception e) {
-                logger.error("RENDER DIAGNOSTIC - Error rendering model: " + e.getMessage(), e);
+                // logger.error("RENDER DIAGNOSTIC - Error rendering model: " + e.getMessage(), e);
                 e.printStackTrace();
                 // Fall back to test cube on error
                 renderTestCube();
@@ -689,15 +689,15 @@ public class OpenMason3DViewport {
         } else {
             // Render test cube as fallback
             if (shouldLog) {
-                logger.info("RENDER DIAGNOSTIC - Rendering test cube fallback");
+                // logger.info("RENDER DIAGNOSTIC - Rendering test cube fallback");
                 
                 if (currentModel != null) {
-                    logger.warn("RENDER DIAGNOSTIC - Model '{}' loaded but not prepared - model: {}, renderer prepared: {}", 
-                               currentModelName, (currentModel != null), modelRenderer.isModelPrepared(currentModel));
+                    // logger.warn("RENDER DIAGNOSTIC - Model '{}' loaded but not prepared - model: {}, renderer prepared: {}", 
+                    //            currentModelName, (currentModel != null), modelRenderer.isModelPrepared(currentModel));
                 } else if (currentModelName != null) {
-                    logger.warn("RENDER DIAGNOSTIC - Model name '{}' set but currentModel is null - async loading may have failed", currentModelName);
+                    // logger.warn("RENDER DIAGNOSTIC - Model name '{}' set but currentModel is null - async loading may have failed", currentModelName);
                 } else {
-                    logger.info("RENDER DIAGNOSTIC - No model loaded, using test cube");
+                    // logger.info("RENDER DIAGNOSTIC - No model loaded, using test cube");
                 }
             }
             renderTestCube();
@@ -725,7 +725,7 @@ public class OpenMason3DViewport {
         
         // Ensure window can capture mouse input
         if (ImGui.isWindowFocused()) {
-            logger.debug("3D Viewport window has focus");
+            // logger.debug("3D Viewport window has focus");
         }
         
         // Get available content region
@@ -770,14 +770,14 @@ public class OpenMason3DViewport {
         
         // Grid controls
         if (ImGui.checkbox("Show Grid", showGrid)) {
-            logger.debug("Grid visibility changed to: {}", showGrid);
+            // logger.debug("Grid visibility changed to: {}", showGrid);
         }
         
         // Camera controls
         if (ImGui.button("Reset Camera")) {
             if (camera != null) {
                 camera.reset();
-                logger.info("Camera reset to default position");
+                // logger.info("Camera reset to default position");
             }
         }
         
@@ -799,7 +799,7 @@ public class OpenMason3DViewport {
         
         // Model rendering controls
         if (ImGui.checkbox("Enable Model Rendering", modelRenderingEnabled)) {
-            logger.debug("Model rendering toggled to: {}", modelRenderingEnabled);
+            // logger.debug("Model rendering toggled to: {}", modelRenderingEnabled);
         }
         
         // Show input handler status
@@ -884,7 +884,7 @@ public class OpenMason3DViewport {
      * Cleanup OpenGL resources safely.
      */
     public void cleanup() {
-        logger.info("Cleaning up viewport resources");
+        // logger.info("Cleaning up viewport resources");
         
         // Cleanup input handler
         if (inputHandler != null) {
@@ -967,7 +967,7 @@ public class OpenMason3DViewport {
         }
         
         initialized = false;
-        logger.info("Viewport resources cleaned up");
+        // logger.info("Viewport resources cleaned up");
     }
     
     // Getters with null-safety
@@ -976,7 +976,7 @@ public class OpenMason3DViewport {
     public boolean isShowGrid() { return showGrid; }
     public void setShowGrid(boolean showGrid) { 
         this.showGrid = showGrid; 
-        logger.debug("Grid visibility set to: {}", showGrid);
+        // logger.debug("Grid visibility set to: {}", showGrid);
     }
     public int getColorTexture() { return colorTexture; }
     public boolean isInitialized() { return initialized; }
@@ -1003,7 +1003,7 @@ public class OpenMason3DViewport {
     public void forceReleaseMouse() {
         if (inputHandler != null) {
             inputHandler.forceReleaseMouse();
-            logger.info("Forced release of mouse capture via input handler");
+            // logger.info("Forced release of mouse capture via input handler");
         } else {
             logger.warn("Cannot force release mouse - input handler is null");
         }
@@ -1023,13 +1023,13 @@ public class OpenMason3DViewport {
     public void setAxesVisible(boolean visible) {
         this.axesVisible = visible;
         // TODO: Implement axes visibility rendering
-        logger.debug("Axes visibility set to: {}", visible);
+        // logger.debug("Axes visibility set to: {}", visible);
     }
     
     public void setWireframeMode(boolean wireframe) {
         this.wireframeMode = wireframe;
         // TODO: Implement wireframe mode rendering
-        logger.debug("Wireframe mode set to: {}", wireframe);
+        // logger.debug("Wireframe mode set to: {}", wireframe);
     }
     
     public float getCurrentFPS() {
@@ -1043,12 +1043,12 @@ public class OpenMason3DViewport {
     
     public void requestRender() {
         // Rendering happens automatically when displayInImGui() is called
-        logger.debug("Render requested (handled automatically by ImGui integration)");
+        // logger.debug("Render requested (handled automatically by ImGui integration)");
     }
     
     public void setModelTransform(float rotX, float rotY, float rotZ, float scale) {
         // TODO: Implement model transformation
-        logger.debug("Model transform set: rotation=({},{},{}), scale={}", rotX, rotY, rotZ, scale);
+        // logger.debug("Model transform set: rotation=({},{},{}), scale={}", rotX, rotY, rotZ, scale);
     }
     
     /**
@@ -1071,7 +1071,7 @@ public class OpenMason3DViewport {
             // Perform the render
             render();
             
-            logger.debug("Rendered to framebuffer at {}x{}", width, height);
+            // logger.debug("Rendered to framebuffer at {}x{}", width, height);
             
         } finally {
             // Restore original dimensions
@@ -1091,7 +1091,7 @@ public class OpenMason3DViewport {
      */
     public void setCurrentModelName(String modelName) {
         this.currentModelName = modelName;
-        logger.debug("Current model name set to: {}", modelName);
+        // logger.debug("Current model name set to: {}", modelName);
     }
     
     /**
@@ -1127,10 +1127,10 @@ public class OpenMason3DViewport {
             // For now, use a generic name - in full implementation this would
             // extract the actual model name from the StonebreakModel
             setCurrentModelName("stonebreak_model");
-            logger.info("Current StonebreakModel set: {}", model.getClass().getSimpleName());
+            // logger.info("Current StonebreakModel set: {}", model.getClass().getSimpleName());
         } else {
             setCurrentModelName(null);
-            logger.info("Current StonebreakModel cleared");
+            // logger.info("Current StonebreakModel cleared");
         }
         
         // TODO: Implement actual model rendering using StonebreakModel data
@@ -1154,7 +1154,7 @@ public class OpenMason3DViewport {
     public void setCurrentTextureVariant(String variant) {
         this.currentTextureVariant = variant;
         // TODO: Implement texture variant switching
-        logger.debug("Current texture variant set to: {}", variant);
+        // logger.debug("Current texture variant set to: {}", variant);
     }
     
     /**
@@ -1187,8 +1187,8 @@ public class OpenMason3DViewport {
             return;
         }
         
-        logger.error("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: {} ===", modelName);
-        System.err.println("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: " + modelName + " ===");
+        // logger.error("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: {} ===", modelName);
+        // System.err.println("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: " + modelName + " ===");
         
         // Load the model asynchronously
         loadModelAsync(modelName);
@@ -1250,7 +1250,7 @@ public class OpenMason3DViewport {
                 if (ImGui.radioButton(variant, currentTextureVariant.equals(variant))) {
                     if (!currentTextureVariant.equals(variant)) {
                         setCurrentTextureVariant(variant);
-                        logger.info("Switched to texture variant: {}", variant);
+                        // logger.info("Switched to texture variant: {}", variant);
                     }
                 }
             }
@@ -1294,18 +1294,18 @@ public class OpenMason3DViewport {
      */
     private void loadModelAsync(String modelName) {
         if (currentModelLoadingFuture != null && !currentModelLoadingFuture.isDone()) {
-            logger.warn("Model loading already in progress, ignoring request for: {}", modelName);
+            // logger.warn("Model loading already in progress, ignoring request for: {}", modelName);
             return;
         }
         
-        logger.warn("=== STARTING ASYNC MODEL LOAD: {} ===", modelName);
+        // logger.warn("=== STARTING ASYNC MODEL LOAD: {} ===", modelName);
         setCurrentModelName(modelName);
         
         // Create progress callback
         ModelManager.ProgressCallback progressCallback = new ModelManager.ProgressCallback() {
             @Override
             public void onProgress(String operation, int current, int total, String details) {
-                logger.debug("Model loading progress: {}% - {}", (current * 100 / total), details);
+                // logger.debug("Model loading progress: {}% - {}", (current * 100 / total), details);
             }
             
             @Override
@@ -1315,57 +1315,57 @@ public class OpenMason3DViewport {
             
             @Override
             public void onComplete(String operation, Object result) {
-                logger.info("Model loading operation complete: {}", operation);
+                // logger.info("Model loading operation complete: {}", operation);
             }
         };
         
         // Load model info asynchronously
-        logger.error("=== STEP 1: Starting ModelManager.loadModelInfoAsync for: {} ===", modelName);
+        // logger.error("=== STEP 1: Starting ModelManager.loadModelInfoAsync for: {} ===", modelName);
         currentModelLoadingFuture = ModelManager.loadModelInfoAsync(modelName, 
                 ModelManager.LoadingPriority.HIGH, progressCallback)
             .thenCompose(modelInfo -> {
-                logger.error("=== STEP 2: thenCompose called with modelInfo: {} ===", 
-                           modelInfo != null ? "NOT NULL" : "NULL");
+                // logger.error("=== STEP 2: thenCompose called with modelInfo: {} ===", 
+                //            modelInfo != null ? "NOT NULL" : "NULL");
                 
                 if (modelInfo == null) {
-                    logger.error("=== STEP 2 ERROR: modelInfo is null, throwing exception ===");
+                    // logger.error("=== STEP 2 ERROR: modelInfo is null, throwing exception ===");
                     throw new RuntimeException("Failed to load model info for: " + modelName);
                 }
                 
-                logger.error("=== STEP 2: Model info loaded successfully: {} ===", modelInfo);
+                // logger.error("=== STEP 2: Model info loaded successfully: {} ===", modelInfo);
                 
                 // Create StonebreakModel from ModelInfo
-                logger.error("=== STEP 3: Creating StonebreakModel from ModelInfo ===");
+                // logger.error("=== STEP 3: Creating StonebreakModel from ModelInfo ===");
                 StonebreakModel model = new StonebreakModel(modelInfo, 
                     ModelManager.getStaticModelParts(modelName));
                 
-                logger.error("=== STEP 3: StonebreakModel created successfully ===");
+                // logger.error("=== STEP 3: StonebreakModel created successfully ===");
                 return CompletableFuture.completedFuture(model);
             })
             .thenAccept(model -> {
                 // This runs on background thread, so we need to be careful with OpenGL calls
-                logger.error("=== STEP 4: thenAccept called with model: {} ===", 
-                           model != null ? "NOT NULL" : "NULL");
-                logger.info("Model loaded successfully: {}", modelName);
+                // logger.error("=== STEP 4: thenAccept called with model: {} ===", 
+                //            model != null ? "NOT NULL" : "NULL");
+                // logger.info("Model loaded successfully: {}", modelName);
                 
                 // Store the model (main thread will prepare it for rendering)
-                logger.error("=== STEP 4: Setting this.currentModel (viewport instance: {}) ===", 
-                           System.identityHashCode(OpenMason3DViewport.this));
+                // logger.error("=== STEP 4: Setting this.currentModel (viewport instance: {}) ===", 
+                //            System.identityHashCode(OpenMason3DViewport.this));
                 this.currentModel = model;
                 
-                logger.error("=== STEP 4: currentModelName should be: {} ===", modelName);
-                logger.error("=== STEP 4: Actual currentModelName value: {} ===", this.currentModelName);
+                // logger.error("=== STEP 4: currentModelName should be: {} ===", modelName);
+                // logger.error("=== STEP 4: Actual currentModelName value: {} ===", this.currentModelName);
                 
                 // Clear the loading future to allow new loads
-                logger.error("=== STEP 4: Clearing currentModelLoadingFuture ===");
+                // logger.error("=== STEP 4: Clearing currentModelLoadingFuture ===");
                 this.currentModelLoadingFuture = null;
                 
-                logger.error("=== STEP 4: Model loading completed successfully ===");
+                // logger.error("=== STEP 4: Model loading completed successfully ===");
                 // Prepare model for rendering (this needs to be done on main thread)
                 // We'll do this in the render loop when OpenGL context is active
             })
             .exceptionally(throwable -> {
-                logger.error("=== STEP ERROR: Exception in model loading chain for {} ===", modelName);
+                // logger.error("=== STEP ERROR: Exception in model loading chain for {} ===", modelName);
                 logger.error("Failed to load model {}: {}", modelName, throwable.getMessage());
                 throwable.printStackTrace();
                 this.currentModel = null;
@@ -1378,7 +1378,7 @@ public class OpenMason3DViewport {
      * Unload the current model and clean up resources.
      */
     private void unloadCurrentModel() {
-        logger.info("Unloading current model: {}", currentModelName);
+        // logger.info("Unloading current model: {}", currentModelName);
         
         // Cancel any pending loading
         if (currentModelLoadingFuture != null && !currentModelLoadingFuture.isDone()) {
@@ -1391,7 +1391,7 @@ public class OpenMason3DViewport {
         setCurrentModelName(null);
         setCurrentTextureVariant("default");
         
-        logger.info("Model unloaded successfully");
+        // logger.info("Model unloaded successfully");
     }
     
 }

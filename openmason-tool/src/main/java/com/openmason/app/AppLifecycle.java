@@ -66,7 +66,7 @@ public class AppLifecycle {
         // Register shutdown hook for graceful shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (!isShuttingDown) {
-                logger.info("Shutdown hook triggered");
+                // logger.info("Shutdown hook triggered");
                 performShutdown();
             }
         }, "OpenMason-Shutdown"));
@@ -78,7 +78,7 @@ public class AppLifecycle {
     public void addListener(LifecycleListener listener) {
         if (listener != null) {
             listeners.add(listener);
-            logger.debug("Added lifecycle listener: {}", listener.getClass().getSimpleName());
+            // logger.debug("Added lifecycle listener: {}", listener.getClass().getSimpleName());
         }
     }
     
@@ -87,7 +87,7 @@ public class AppLifecycle {
      */
     public void removeListener(LifecycleListener listener) {
         if (listeners.remove(listener)) {
-            logger.debug("Removed lifecycle listener: {}", listener.getClass().getSimpleName());
+            // logger.debug("Removed lifecycle listener: {}", listener.getClass().getSimpleName());
         }
     }
     
@@ -101,7 +101,7 @@ public class AppLifecycle {
         }
         
         isStarted = true;
-        logger.info("Application lifecycle started");
+        // logger.info("Application lifecycle started");
         
         // Notify listeners of startup
         notifyListeners(LifecycleListener::onStartup);
@@ -109,7 +109,7 @@ public class AppLifecycle {
         // Perform background initialization
         CompletableFuture.runAsync(this::performBackgroundInitialization, backgroundExecutor)
             .thenRun(() -> {
-                logger.info("Application ready");
+                // logger.info("Application ready");
                 notifyListeners(LifecycleListener::onReady);
             })
             .exceptionally(throwable -> {
@@ -135,7 +135,7 @@ public class AppLifecycle {
      */
     private void performShutdown() {
         isShuttingDown = true;
-        logger.info("Beginning application shutdown sequence");
+        // logger.info("Beginning application shutdown sequence");
         
         try {
             // Notify listeners that shutdown is starting
@@ -147,7 +147,7 @@ public class AppLifecycle {
             // Notify listeners that shutdown is complete
             notifyListeners(LifecycleListener::onShutdownComplete);
             
-            logger.info("Application shutdown sequence completed");
+            // logger.info("Application shutdown sequence completed");
             
         } catch (Exception e) {
             logger.error("Error during shutdown sequence", e);
@@ -159,7 +159,7 @@ public class AppLifecycle {
      */
     private void performBackgroundInitialization() {
         try {
-            logger.debug("Starting background initialization...");
+            // logger.debug("Starting background initialization...");
             
             // Initialize memory management
             initializeMemoryManagement();
@@ -170,7 +170,7 @@ public class AppLifecycle {
             // Initialize performance monitoring
             initializePerformanceMonitoring();
             
-            logger.debug("Background initialization completed");
+            // logger.debug("Background initialization completed");
             
         } catch (Exception e) {
             logger.error("Background initialization failed", e);
@@ -182,50 +182,50 @@ public class AppLifecycle {
      * Initialize memory management and monitoring.
      */
     private void initializeMemoryManagement() {
-        logger.debug("Initializing memory management...");
+        // logger.debug("Initializing memory management...");
         
         // Set up memory monitoring
         long maxMemory = Runtime.getRuntime().maxMemory();
         long totalMemory = Runtime.getRuntime().totalMemory();
         long freeMemory = Runtime.getRuntime().freeMemory();
         
-        logger.info("Memory initialized - Max: {}MB, Total: {}MB, Free: {}MB",
-            maxMemory / (1024 * 1024),
-            totalMemory / (1024 * 1024),
-            freeMemory / (1024 * 1024));
+        // logger.info("Memory initialized - Max: {}MB, Total: {}MB, Free: {}MB",
+        //     maxMemory / (1024 * 1024),
+        //     totalMemory / (1024 * 1024),
+        //     freeMemory / (1024 * 1024));
     }
     
     /**
      * Pre-load critical application resources.
      */
     private void preloadCriticalResources() {
-        logger.debug("Pre-loading critical resources...");
+        // logger.debug("Pre-loading critical resources...");
         
         // TODO: Pre-load essential models and textures
         // TODO: Initialize texture and model caches
         // TODO: Validate Stonebreak integration paths
         
-        logger.debug("Critical resources pre-loaded");
+        // logger.debug("Critical resources pre-loaded");
     }
     
     /**
      * Initialize performance monitoring systems.
      */
     private void initializePerformanceMonitoring() {
-        logger.debug("Initializing performance monitoring...");
+        // logger.debug("Initializing performance monitoring...");
         
         // TODO: Set up frame rate monitoring
         // TODO: Initialize memory usage tracking
         // TODO: Set up GPU performance monitoring
         
-        logger.debug("Performance monitoring initialized");
+        // logger.debug("Performance monitoring initialized");
     }
     
     /**
      * Shutdown the background executor service.
      */
     private void shutdownExecutor() {
-        logger.debug("Shutting down background executor...");
+        // logger.debug("Shutting down background executor...");
         
         backgroundExecutor.shutdown();
         
@@ -244,7 +244,7 @@ public class AppLifecycle {
             Thread.currentThread().interrupt();
         }
         
-        logger.debug("Background executor shutdown completed");
+        // logger.debug("Background executor shutdown completed");
     }
     
     /**

@@ -39,7 +39,7 @@ public class ViewportInputHandler {
     
     public ViewportInputHandler(Camera camera) {
         this.camera = camera;
-        logger.info("ViewportInputHandler initialized");
+        // logger.info("ViewportInputHandler initialized");
     }
     
     /**
@@ -51,7 +51,7 @@ public class ViewportInputHandler {
         if (windowHandle != 0L) {
             // Check if raw mouse motion is supported
             this.rawMouseMotionSupported = GLFW.glfwRawMouseMotionSupported();
-            logger.info("Window handle set. Raw mouse motion supported: {}", rawMouseMotionSupported);
+            // logger.info("Window handle set. Raw mouse motion supported: {}", rawMouseMotionSupported);
         }
     }
     
@@ -81,7 +81,7 @@ public class ViewportInputHandler {
             }
             
             isMouseCaptured = true;
-            logger.info("Mouse captured for endless dragging at position: ({}, {})", savedCursorX, savedCursorY);
+            // logger.info("Mouse captured for endless dragging at position: ({}, {})", savedCursorX, savedCursorY);
             
         } catch (Exception e) {
             logger.error("Failed to capture mouse", e);
@@ -109,7 +109,7 @@ public class ViewportInputHandler {
             GLFW.glfwSetCursorPos(windowHandle, savedCursorX, savedCursorY);
             
             isMouseCaptured = false;
-            logger.info("Mouse released and cursor restored to position: ({}, {})", savedCursorX, savedCursorY);
+            // logger.info("Mouse released and cursor restored to position: ({}, {})", savedCursorX, savedCursorY);
             
         } catch (Exception e) {
             logger.error("Failed to release mouse", e);
@@ -133,9 +133,9 @@ public class ViewportInputHandler {
         // Always log when mouse is clicked to reduce noise
         boolean mouseClicked = ImGui.isMouseClicked(0);
         if (mouseClicked) {
-            logger.info("CLICK EVENT - mouse: ({}, {}), imageBounds: ({}, {}) to ({}, {})", 
-                mousePos.x, mousePos.y, imagePos.x, imagePos.y, 
-                imagePos.x + imageWidth, imagePos.y + imageHeight);
+            // logger.info("CLICK EVENT - mouse: ({}, {}), imageBounds: ({}, {}) to ({}, {})", 
+            //     mousePos.x, mousePos.y, imagePos.x, imagePos.y, 
+            //     imagePos.x + imageWidth, imagePos.y + imageHeight);
         }
         
         // Check if mouse is within viewport bounds
@@ -148,7 +148,7 @@ public class ViewportInputHandler {
         if (wantCapture && !mouseInBounds && !isDragging) {
             // If ImGui wants mouse input and mouse is outside viewport, stop any ongoing drag operation
             if (isDragging) {
-                logger.info("ImGui captured mouse outside viewport - stopping drag operation");
+                // logger.info("ImGui captured mouse outside viewport - stopping drag operation");
                 stopDragging();
             }
             return; // Don't process camera input when ImGui wants mouse control outside viewport
@@ -195,7 +195,7 @@ public class ViewportInputHandler {
     private void startDragging() {
         isDragging = true;
         captureMouse(); // Enable endless dragging with mouse capture
-        logger.info("Started endless dragging in 3D viewport - mouse captured");
+        // logger.info("Started endless dragging in 3D viewport - mouse captured");
     }
     
     /**
@@ -220,7 +220,7 @@ public class ViewportInputHandler {
      * Stop the current drag operation.
      */
     private void stopDragging() {
-        logger.info("Stopped endless dragging in 3D viewport - mouse released");
+        // logger.info("Stopped endless dragging in 3D viewport - mouse released");
         isDragging = false;
         releaseMouse(); // Restore cursor visibility and position
     }
@@ -232,7 +232,7 @@ public class ViewportInputHandler {
         float wheel = ImGui.getIO().getMouseWheel();
         if (wheel != 0) {
             camera.zoom(wheel * 0.5f);
-            logger.debug("Camera zoomed by: {}", wheel * 0.5f);
+            // logger.debug("Camera zoomed by: {}", wheel * 0.5f);
         }
     }
     
@@ -242,7 +242,7 @@ public class ViewportInputHandler {
     public void forceReleaseMouse() {
         if (isDragging) {
             isDragging = false;
-            logger.info("Forced release of mouse capture");
+            // logger.info("Forced release of mouse capture");
         }
         releaseMouse();
     }
@@ -296,7 +296,7 @@ public class ViewportInputHandler {
         if (isDragging) {
             stopDragging();
         }
-        logger.debug("ViewportInputHandler reset");
+        // logger.debug("ViewportInputHandler reset");
     }
     
     /**
@@ -304,7 +304,7 @@ public class ViewportInputHandler {
      */
     public void cleanup() {
         reset();
-        logger.info("ViewportInputHandler cleaned up");
+        // logger.info("ViewportInputHandler cleaned up");
     }
     
     // Getters for state information

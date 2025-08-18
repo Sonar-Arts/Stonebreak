@@ -82,7 +82,7 @@ public class PropertyPanelImGui {
             
             initialized = true;
             statusMessage = "Ready";
-            logger.info("PropertyPanelImGui initialized successfully");
+            // logger.info("PropertyPanelImGui initialized successfully");
             
         } catch (Exception e) {
             logger.error("Failed to initialize PropertyPanelImGui", e);
@@ -329,7 +329,7 @@ public class PropertyPanelImGui {
                 
                 if (ImGui.button("Refresh Diagnostics")) {
                     // Diagnostics are automatically updated on each render
-                    logger.info("Diagnostic data refreshed from renderer");
+                    // logger.info("Diagnostic data refreshed from renderer");
                 }
                 
             } else {
@@ -396,7 +396,7 @@ public class PropertyPanelImGui {
         
         // Prevent repeated loading of the same model
         if (loadingInProgress) {
-            logger.debug("Loading already in progress, ignoring request for model: {}", modelName);
+            // logger.debug("Loading already in progress, ignoring request for model: {}", modelName);
             return;
         }
         
@@ -405,7 +405,7 @@ public class PropertyPanelImGui {
             // Only check viewport status once per model, not every frame
             String modelFileName = modelName.toLowerCase().replace(" ", "_");
             if (!modelFileName.equals(lastViewportModelCheck)) {
-                logger.debug("Model {} already loaded with {} variants, ensuring viewport has model", modelName, availableVariants.length);
+                // logger.debug("Model {} already loaded with {} variants, ensuring viewport has model", modelName, availableVariants.length);
                 
                 // Even if already loaded, make sure viewport has the model
                 if (viewport3D != null) {
@@ -413,11 +413,11 @@ public class PropertyPanelImGui {
                     boolean hasActualModel = viewport3D.getCurrentModel() != null;
                     
                     if (!modelFileName.equals(currentViewportModel) || !hasActualModel) {
-                        logger.info("Viewport needs model: name='{}' vs '{}', hasModel={} - loading '{}' (file: '{}') into 3D viewport", 
-                                   currentViewportModel, modelFileName, hasActualModel, modelName, modelFileName);
+                        // logger.info("Viewport needs model: name='{}' vs '{}', hasModel={} - loading '{}' (file: '{}') into 3D viewport", 
+                        //            currentViewportModel, modelFileName, hasActualModel, modelName, modelFileName);
                         viewport3D.loadModel(modelFileName);
                     } else {
-                        logger.debug("Viewport already has model: {}", modelFileName);
+                        // logger.debug("Viewport already has model: {}", modelFileName);
                     }
                 }
                 lastViewportModelCheck = modelFileName;
@@ -425,7 +425,7 @@ public class PropertyPanelImGui {
             return;
         }
         
-        logger.info("Loading texture variants for model: {}", modelName);
+        // logger.info("Loading texture variants for model: {}", modelName);
         this.currentModelName = modelName;
         lastViewportModelCheck = null; // Reset for new model
         
@@ -438,10 +438,10 @@ public class PropertyPanelImGui {
             // For cow models, load all 4 variants
             if (modelName.toLowerCase().contains("cow")) {
                 variantsToLoad = Arrays.asList("Default", "Angus", "Highland", "Jersey");
-                logger.info("Loading cow variants: {}", variantsToLoad);
+                // logger.info("Loading cow variants: {}", variantsToLoad);
             } else {
                 variantsToLoad = Arrays.asList("Default");
-                logger.info("Loading default variant for non-cow model: {}", modelName);
+                // logger.info("Loading default variant for non-cow model: {}", modelName);
             }
             
             // Update available variants
@@ -456,7 +456,7 @@ public class PropertyPanelImGui {
             if (viewport3D != null) {
                 // Convert display name to model file name (e.g., "Standard Cow" -> "standard_cow")
                 String modelFileName = modelName.toLowerCase().replace(" ", "_");
-                logger.info("Loading model '{}' (file: '{}') into 3D viewport", modelName, modelFileName);
+                // logger.info("Loading model '{}' (file: '{}') into 3D viewport", modelName, modelFileName);
                 viewport3D.loadModel(modelFileName);
             }
             
@@ -483,7 +483,7 @@ public class PropertyPanelImGui {
         long startTime = System.currentTimeMillis();
         switchCount++;
         
-        logger.info("Switching to texture variant: {} (switch #{})", variantName, switchCount);
+        // logger.info("Switching to texture variant: {} (switch #{})", variantName, switchCount);
         
         loadingInProgress = true;
         statusMessage = "Switching to " + variantName + " variant...";
@@ -509,7 +509,7 @@ public class PropertyPanelImGui {
                 loadingInProgress = false;
                 statusMessage = String.format("Switched to %s variant (%dms)", variantName, switchTime);
                 
-                logger.info("Successfully switched to variant '{}' in {}ms", variantName, switchTime);
+                // logger.info("Successfully switched to variant '{}' in {}ms", variantName, switchTime);
                 
                 if (switchTime > 200) {
                     logger.warn("Texture variant switch took {}ms (target: <200ms)", switchTime);
@@ -529,8 +529,8 @@ public class PropertyPanelImGui {
     }
     
     private void updateModelTransform() {
-        logger.debug("Updating model transform: rot=({}, {}, {}), scale={}", 
-                    rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
+        // logger.debug("Updating model transform: rot=({}, {}, {}), scale={}", 
+        //             rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
         
         try {
             if (viewport3D != null) {
@@ -549,11 +549,11 @@ public class PropertyPanelImGui {
         scale.set(1.0f);
         updateModelTransform();
         statusMessage = "Transform reset to defaults";
-        logger.info("Transform reset to default values");
+        // logger.info("Transform reset to default values");
     }
     
     private void setAnimation(String animationName, float time) {
-        logger.debug("Setting animation: name='{}', time={}", animationName, time);
+        // logger.debug("Setting animation: name='{}', time={}", animationName, time);
         
         try {
             if (animationName == null || animationName.trim().isEmpty()) {
@@ -566,7 +566,7 @@ public class PropertyPanelImGui {
             
             // Apply animation to 3D viewport
             if (viewport3D != null) {
-                logger.info("Applied animation '{}' at time {} to viewport", animationName, clampedTime);
+                // logger.info("Applied animation '{}' at time {} to viewport", animationName, clampedTime);
                 viewport3D.requestRender();
             }
             
@@ -576,31 +576,31 @@ public class PropertyPanelImGui {
     }
     
     private void playAnimation() {
-        logger.info("Starting animation playback...");
+        // logger.info("Starting animation playback...");
         
         animationPlaying = true;
         animationPaused = false;
         
         String currentAnimationName = animationTypes[currentAnimation.get()];
         
-        logger.info("Started animation playback for: {}", currentAnimationName);
+        // logger.info("Started animation playback for: {}", currentAnimationName);
         statusMessage = "Playing animation: " + currentAnimationName;
         
         setAnimation(currentAnimationName, 0.0f);
     }
     
     private void pauseAnimation() {
-        logger.info("Pausing animation playback...");
+        // logger.info("Pausing animation playback...");
         
         animationPlaying = false;
         animationPaused = true;
         
         statusMessage = "Animation paused";
-        logger.info("Animation playback paused");
+        // logger.info("Animation playback paused");
     }
     
     private void stopAnimation() {
-        logger.info("Stopping animation playback...");
+        // logger.info("Stopping animation playback...");
         
         animationPlaying = false;
         animationPaused = false;
@@ -611,11 +611,11 @@ public class PropertyPanelImGui {
         
         setAnimation("IDLE", 0.0f);
         
-        logger.info("Animation playback stopped and reset to IDLE");
+        // logger.info("Animation playback stopped and reset to IDLE");
     }
     
     private void setAnimationTime(float time) {
-        logger.debug("Setting animation time: {}", time);
+        // logger.debug("Setting animation time: {}", time);
         
         try {
             float clampedTime = Math.max(0.0f, Math.min(1.0f, time));
@@ -654,8 +654,8 @@ public class PropertyPanelImGui {
                 triangleCount = partCount * 12;
                 
                 if (!statisticsLogged) {
-                    logger.debug("Updated model statistics: parts={}, vertices={}, triangles={}, variants={}", 
-                                partCount, vertexCount, triangleCount, variantCount);
+                    // logger.debug("Updated model statistics: parts={}, vertices={}, triangles={}, variants={}", 
+                    //             partCount, vertexCount, triangleCount, variantCount);
                     statisticsLogged = true;
                 }
             } else {
@@ -670,7 +670,7 @@ public class PropertyPanelImGui {
     }
     
     private void validateModel() {
-        logger.info("Validating model properties...");
+        // logger.info("Validating model properties...");
         
         if (currentModelName == null || currentModelName.trim().isEmpty()) {
             statusMessage = "No model selected for validation";
@@ -726,7 +726,7 @@ public class PropertyPanelImGui {
     }
     
     private void resetProperties() {
-        logger.info("Resetting properties to defaults...");
+        // logger.info("Resetting properties to defaults...");
         
         try {
             // Reset transform
@@ -742,7 +742,7 @@ public class PropertyPanelImGui {
             }
             
             statusMessage = "Properties reset to defaults";
-            logger.info("All properties reset to default values");
+            // logger.info("All properties reset to default values");
             
         } catch (Exception e) {
             logger.error("Error resetting properties", e);
@@ -758,7 +758,7 @@ public class PropertyPanelImGui {
         }
         
         statusMessage = "Exporting model diagnostics...";
-        logger.info("Exporting model diagnostics for: {}", currentModelName);
+        // logger.info("Exporting model diagnostics for: {}", currentModelName);
         
         CompletableFuture.runAsync(() -> {
             try {
@@ -766,7 +766,7 @@ public class PropertyPanelImGui {
                 Thread.sleep(500);
                 
                 statusMessage = "Diagnostics exported successfully";
-                logger.info("Model diagnostics exported successfully");
+                // logger.info("Model diagnostics exported successfully");
                 
             } catch (Exception e) {
                 logger.error("Failed to export model diagnostics", e);
@@ -780,8 +780,8 @@ public class PropertyPanelImGui {
     public void setViewport3D(OpenMason3DViewport viewport) {
         if (this.viewport3D != viewport) {
             this.viewport3D = viewport;
-            logger.error("=== PropertyPanelImGui: viewport3D set to instance: {} ===", 
-                        viewport != null ? System.identityHashCode(viewport) : "NULL");
+            // logger.error("=== PropertyPanelImGui: viewport3D set to instance: {} ===", 
+            //             viewport != null ? System.identityHashCode(viewport) : "NULL");
         }
     }
     

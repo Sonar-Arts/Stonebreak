@@ -63,13 +63,13 @@ public class ViewportImGuiInterface {
     private final ImVec2 viewportPos = new ImVec2();
     
     public ViewportImGuiInterface() {
-        logger.info("Initializing ViewportImGuiInterface...");
+        // logger.info("Initializing ViewportImGuiInterface...");
         
         // Initialize UI state synchronization
         syncBooleanStates();
         
         initialize();
-        logger.info("ViewportImGuiInterface initialized successfully");
+        // logger.info("ViewportImGuiInterface initialized successfully");
     }
     
     /**
@@ -77,7 +77,7 @@ public class ViewportImGuiInterface {
      */
     public void initialize() {
         setupViewport();
-        logger.info("ViewportImGuiInterface initialized successfully");
+        // logger.info("ViewportImGuiInterface initialized successfully");
     }
     
     /**
@@ -467,13 +467,13 @@ public class ViewportImGuiInterface {
     // Action Methods
     
     private void setupViewport() {
-        logger.info("Setting up 3D viewport...");
+        // logger.info("Setting up 3D viewport...");
         // Don't create a new viewport - it should be injected via setViewport3D()
         if (viewport3D == null) {
-            logger.warn("No viewport3D instance provided - ViewportImGuiInterface requires external viewport injection");
+            // logger.warn("No viewport3D instance provided - ViewportImGuiInterface requires external viewport injection");
         } else {
             viewportInitialized = true;
-            logger.info("3D viewport initialized successfully using injected instance: {}", System.identityHashCode(viewport3D));
+            // logger.info("3D viewport initialized successfully using injected instance: {}", System.identityHashCode(viewport3D));
         }
     }
     
@@ -494,7 +494,7 @@ public class ViewportImGuiInterface {
     public void setWindowHandle(long windowHandle) {
         if (viewport3D != null) {
             viewport3D.setWindowHandle(windowHandle);
-            logger.info("Window handle set on viewport for mouse capture");
+            // logger.info("Window handle set on viewport for mouse capture");
         } else {
             logger.warn("Cannot set window handle - viewport not initialized");
         }
@@ -503,7 +503,7 @@ public class ViewportImGuiInterface {
     
     private void updateViewMode() {
         String viewMode = viewModes[currentViewModeIndex.get()];
-        logger.info("Updating view mode to: {}", viewMode);
+        // logger.info("Updating view mode to: {}", viewMode);
         
         var camera = viewport3D.getCamera();
         
@@ -536,7 +536,7 @@ public class ViewportImGuiInterface {
     
     private void updateRenderMode() {
         String renderMode = renderModes[currentRenderModeIndex.get()];
-        logger.info("Updating render mode to: {}", renderMode);
+        // logger.info("Updating render mode to: {}", renderMode);
         
         switch (renderMode.toLowerCase()) {
             case "wireframe":

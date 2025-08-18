@@ -128,7 +128,7 @@ public class ModelLoader {
             
             // Cache and return
             cachedModels.put(modelName, model);
-            System.out.println("[ModelLoader] Successfully loaded and cached model: " + modelName);
+            // System.out.println("[ModelLoader] Successfully loaded and cached model: " + modelName);
             return model;
             
         } finally {
@@ -212,7 +212,7 @@ public class ModelLoader {
                         progressCallback.accept("Successfully loaded model: " + finalModelName);
                     }
                     
-                    System.out.println("[ModelLoader] Async: Successfully loaded and cached model: " + finalModelName);
+                    // System.out.println("[ModelLoader] Async: Successfully loaded and cached model: " + finalModelName);
                     return model;
                     
                 } finally {
@@ -264,10 +264,10 @@ public class ModelLoader {
             // Initialize scale from size for all model parts after JSON deserialization
             initializeModelPartsScale(model);
             
-            System.out.println("[ModelLoader] Successfully loaded cow model '" + modelName + "' (" + 
-                (model.getDisplayName() != null ? model.getDisplayName() : "unknown") + ") with " + 
-                countTotalParts(model) + " parts and " + 
-                (model.getAnimations() != null ? model.getAnimations().size() : 0) + " animations");
+            // System.out.println("[ModelLoader] Successfully loaded cow model '" + modelName + "' (" + 
+            //     (model.getDisplayName() != null ? model.getDisplayName() : "unknown") + ") with " + 
+            //     countTotalParts(model) + " parts and " + 
+            //     (model.getAnimations() != null ? model.getAnimations().size() : 0) + " animations");
             
             return model;
             
@@ -692,7 +692,7 @@ public class ModelLoader {
             }
         }
         
-        System.out.println("[ModelLoader] Model '" + modelName + "' passed strict validation");
+        // System.out.println("[ModelLoader] Model '" + modelName + "' passed strict validation");
     }
     
     /**
@@ -816,8 +816,8 @@ public class ModelLoader {
             }
         }
         
-        System.out.println("[ModelLoader] Part '" + partName + "' vertex generation validated: " +
-                          (vertices.length / 3) + " vertices, " + (indices.length / 3) + " triangles");
+        // System.out.println("[ModelLoader] Part '" + partName + "' vertex generation validated: " +
+        //                   (vertices.length / 3) + " vertices, " + (indices.length / 3) + " triangles");
     }
     
     /**
@@ -826,7 +826,7 @@ public class ModelLoader {
     public static void clearCache() {
         cacheLock.writeLock().lock();
         try {
-            System.out.println("[ModelLoader] Clearing model cache. Current cached models: " + cachedModels.keySet());
+            // System.out.println("[ModelLoader] Clearing model cache. Current cached models: " + cachedModels.keySet());
             cachedModels.clear();
         } finally {
             cacheLock.writeLock().unlock();
@@ -923,42 +923,42 @@ public class ModelLoader {
         if (!firstCowCoordinatesShown && modelName.contains("cow")) {
             firstCowCoordinatesShown = true;
             
-            System.out.println("=====================================");
-            System.out.println("DEBUG: FIRST COW MODEL PART COORDINATES");
-            System.out.println("Model: " + model.getDisplayName() + " (" + modelName + ")");
+            // System.out.println("=====================================");
+            // System.out.println("DEBUG: FIRST COW MODEL PART COORDINATES");
+            // System.out.println("Model: " + model.getDisplayName() + " (" + modelName + ")");
             if (modelName.contains("baked")) {
-                System.out.println("*** USING BAKED TRANSFORMATIONS - NO Y-OFFSET NEEDED ***");
+                // System.out.println("*** USING BAKED TRANSFORMATIONS - NO Y-OFFSET NEEDED ***");
             }
-            System.out.println("=====================================");
+            // System.out.println("=====================================");
             
             ModelParts parts = model.getParts();
             
             // Body
             if (parts.getBody() != null) {
                 ModelPart body = parts.getBody();
-                System.out.println("BODY:");
-                System.out.println("  Position: x=" + body.getPosition().getX() + ", y=" + body.getPosition().getY() + ", z=" + body.getPosition().getZ());
-                System.out.println("  Size: x=" + body.getSize().getX() + ", y=" + body.getSize().getY() + ", z=" + body.getSize().getZ());
-                System.out.println("  Texture: " + body.getTexture());
+                // System.out.println("BODY:");
+                // System.out.println("  Position: x=" + body.getPosition().getX() + ", y=" + body.getPosition().getY() + ", z=" + body.getPosition().getZ());
+                // System.out.println("  Size: x=" + body.getSize().getX() + ", y=" + body.getSize().getY() + ", z=" + body.getSize().getZ());
+                // System.out.println("  Texture: " + body.getTexture());
             }
             
             // Head
             if (parts.getHead() != null) {
                 ModelPart head = parts.getHead();
-                System.out.println("HEAD:");
-                System.out.println("  Position: x=" + head.getPosition().getX() + ", y=" + head.getPosition().getY() + ", z=" + head.getPosition().getZ());
-                System.out.println("  Size: x=" + head.getSize().getX() + ", y=" + head.getSize().getY() + ", z=" + head.getSize().getZ());
-                System.out.println("  Texture: " + head.getTexture());
+                // System.out.println("HEAD:");
+                // System.out.println("  Position: x=" + head.getPosition().getX() + ", y=" + head.getPosition().getY() + ", z=" + head.getPosition().getZ());
+                // System.out.println("  Size: x=" + head.getSize().getX() + ", y=" + head.getSize().getY() + ", z=" + head.getSize().getZ());
+                // System.out.println("  Texture: " + head.getTexture());
             }
             
             // Legs
             if (parts.getLegs() != null) {
                 for (int i = 0; i < parts.getLegs().size(); i++) {
                     ModelPart leg = parts.getLegs().get(i);
-                    System.out.println("LEG " + (i + 1) + " (" + leg.getName().toUpperCase() + "):");
-                    System.out.println("  Position: x=" + leg.getPosition().getX() + ", y=" + leg.getPosition().getY() + ", z=" + leg.getPosition().getZ());
-                    System.out.println("  Size: x=" + leg.getSize().getX() + ", y=" + leg.getSize().getY() + ", z=" + leg.getSize().getZ());
-                    System.out.println("  Texture: " + leg.getTexture());
+                    // System.out.println("LEG " + (i + 1) + " (" + leg.getName().toUpperCase() + "):");
+                    // System.out.println("  Position: x=" + leg.getPosition().getX() + ", y=" + leg.getPosition().getY() + ", z=" + leg.getPosition().getZ());
+                    // System.out.println("  Size: x=" + leg.getSize().getX() + ", y=" + leg.getSize().getY() + ", z=" + leg.getSize().getZ());
+                    // System.out.println("  Texture: " + leg.getTexture());
                 }
             }
             
@@ -966,34 +966,34 @@ public class ModelLoader {
             if (parts.getHorns() != null) {
                 for (int i = 0; i < parts.getHorns().size(); i++) {
                     ModelPart horn = parts.getHorns().get(i);
-                    System.out.println("HORN " + (i + 1) + " (" + horn.getName().toUpperCase() + "):");
-                    System.out.println("  Position: x=" + horn.getPosition().getX() + ", y=" + horn.getPosition().getY() + ", z=" + horn.getPosition().getZ());
-                    System.out.println("  Size: x=" + horn.getSize().getX() + ", y=" + horn.getSize().getY() + ", z=" + horn.getSize().getZ());
-                    System.out.println("  Texture: " + horn.getTexture());
+                    // System.out.println("HORN " + (i + 1) + " (" + horn.getName().toUpperCase() + "):");
+                    // System.out.println("  Position: x=" + horn.getPosition().getX() + ", y=" + horn.getPosition().getY() + ", z=" + horn.getPosition().getZ());
+                    // System.out.println("  Size: x=" + horn.getSize().getX() + ", y=" + horn.getSize().getY() + ", z=" + horn.getSize().getZ());
+                    // System.out.println("  Texture: " + horn.getTexture());
                 }
             }
             
             // Udder
             if (parts.getUdder() != null) {
                 ModelPart udder = parts.getUdder();
-                System.out.println("UDDER:");
-                System.out.println("  Position: x=" + udder.getPosition().getX() + ", y=" + udder.getPosition().getY() + ", z=" + udder.getPosition().getZ());
-                System.out.println("  Size: x=" + udder.getSize().getX() + ", y=" + udder.getSize().getY() + ", z=" + udder.getSize().getZ());
-                System.out.println("  Texture: " + udder.getTexture());
+                // System.out.println("UDDER:");
+                // System.out.println("  Position: x=" + udder.getPosition().getX() + ", y=" + udder.getPosition().getY() + ", z=" + udder.getPosition().getZ());
+                // System.out.println("  Size: x=" + udder.getSize().getX() + ", y=" + udder.getSize().getY() + ", z=" + udder.getSize().getZ());
+                // System.out.println("  Texture: " + udder.getTexture());
             }
             
             // Tail
             if (parts.getTail() != null) {
                 ModelPart tail = parts.getTail();
-                System.out.println("TAIL:");
-                System.out.println("  Position: x=" + tail.getPosition().getX() + ", y=" + tail.getPosition().getY() + ", z=" + tail.getPosition().getZ());
-                System.out.println("  Size: x=" + tail.getSize().getX() + ", y=" + tail.getSize().getY() + ", z=" + tail.getSize().getZ());
-                System.out.println("  Texture: " + tail.getTexture());
+                // System.out.println("TAIL:");
+                // System.out.println("  Position: x=" + tail.getPosition().getX() + ", y=" + tail.getPosition().getY() + ", z=" + tail.getPosition().getZ());
+                // System.out.println("  Size: x=" + tail.getSize().getX() + ", y=" + tail.getSize().getY() + ", z=" + tail.getSize().getZ());
+                // System.out.println("  Texture: " + tail.getTexture());
             }
             
-            System.out.println("=====================================");
-            System.out.println("DEBUG: First cow model coordinates displayed above");
-            System.out.println("=====================================");
+            // System.out.println("=====================================");
+            // System.out.println("DEBUG: First cow model coordinates displayed above");
+            // System.out.println("=====================================");
         }
     }
     
@@ -1003,10 +1003,10 @@ public class ModelLoader {
     public static void printCacheStatus() {
         cacheLock.readLock().lock();
         try {
-            System.out.println("[ModelLoader] Cache Status:");
-            System.out.println("  Available models: " + MODEL_FILE_PATHS.keySet());
-            System.out.println("  Cached models: " + cachedModels.keySet());
-            System.out.println("  Cache utilization: " + cachedModels.size() + "/" + MODEL_FILE_PATHS.size());
+            // System.out.println("[ModelLoader] Cache Status:");
+            // System.out.println("  Available models: " + MODEL_FILE_PATHS.keySet());
+            // System.out.println("  Cached models: " + cachedModels.keySet());
+            // System.out.println("  Cache utilization: " + cachedModels.size() + "/" + MODEL_FILE_PATHS.size());
             
             for (Map.Entry<String, CowModelDefinition> entry : cachedModels.entrySet()) {
                 String modelName = entry.getKey();
@@ -1014,8 +1014,8 @@ public class ModelLoader {
                 String displayName = model != null ? model.getDisplayName() : "null";
                 int partCount = countTotalParts(model);
                 int animationCount = model != null && model.getAnimations() != null ? model.getAnimations().size() : 0;
-                System.out.println("    " + modelName + " -> " + displayName + 
-                    " (" + partCount + " parts, " + animationCount + " animations)");
+                // System.out.println("    " + modelName + " -> " + displayName + 
+                //     " (" + partCount + " parts, " + animationCount + " animations)");
             }
         } finally {
             cacheLock.readLock().unlock();
@@ -1026,7 +1026,7 @@ public class ModelLoader {
      * Shutdown the async executor (call when application is shutting down).
      */
     public static void shutdown() {
-        System.out.println("[ModelLoader] Shutting down async executor");
+        // System.out.println("[ModelLoader] Shutting down async executor");
         asyncExecutor.shutdown();
         try {
             if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {

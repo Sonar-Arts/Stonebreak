@@ -61,7 +61,7 @@ public class TextureManager {
             return;
         }
         
-        System.out.println("[TextureManager] Initializing texture management system...");
+        // System.out.println("[TextureManager] Initializing texture management system...");
         
         // Get available variants and pre-load them
         String[] availableVariants = CowTextureLoader.getAvailableVariants();
@@ -74,7 +74,7 @@ public class TextureManager {
         }
         
         initialized = true;
-        System.out.println("[TextureManager] Initialization complete. Loaded " + variantInfoCache.size() + " variants");
+        // System.out.println("[TextureManager] Initialization complete. Loaded " + variantInfoCache.size() + " variants");
     }
     
     /**
@@ -276,7 +276,7 @@ public class TextureManager {
      * Test UV coordinate generation for a specific variant and face.
      */
     public static void testUVGeneration(String variantName, String faceName) {
-        System.out.println("[TextureManager] Testing UV generation for " + variantName + ":" + faceName);
+        // System.out.println("[TextureManager] Testing UV generation for " + variantName + ":" + faceName);
         
         // Get atlas coordinate
         CowTextureDefinition.AtlasCoordinate coord = getAtlasCoordinate(variantName, faceName);
@@ -285,11 +285,11 @@ public class TextureManager {
             return;
         }
         
-        System.out.println("  Atlas Coordinate: (" + coord.getAtlasX() + "," + coord.getAtlasY() + ")");
+        // System.out.println("  Atlas Coordinate: (" + coord.getAtlasX() + "," + coord.getAtlasY() + ")");
         
         // Get UV coordinates
         float[] uv = getNormalizedUVCoordinates(variantName, faceName);
-        System.out.println("  UV Coordinates: [" + uv[0] + ", " + uv[1] + ", " + uv[2] + ", " + uv[3] + "]");
+        // System.out.println("  UV Coordinates: [" + uv[0] + ", " + uv[1] + ", " + uv[2] + ", " + uv[3] + "]");
         
         // Test mathematical consistency
         float expectedU1 = coord.getAtlasX() / 16.0f;
@@ -302,9 +302,9 @@ public class TextureManager {
                          Math.abs(uv[2] - expectedU2) < 0.001f &&
                          Math.abs(uv[3] - expectedV2) < 0.001f;
         
-        System.out.println("  Mathematical Consistency: " + (uvValid ? "✓" : "✗"));
+        // System.out.println("  Mathematical Consistency: " + (uvValid ? "✓" : "✗"));
         if (!uvValid) {
-            System.out.println("    Expected: [" + expectedU1 + ", " + expectedV1 + ", " + expectedU2 + ", " + expectedV2 + "]");
+            // System.out.println("    Expected: [" + expectedU1 + ", " + expectedV1 + ", " + expectedU2 + ", " + expectedV2 + "]");
         }
     }
     
@@ -312,7 +312,7 @@ public class TextureManager {
      * Test method to validate all texture variants can be loaded correctly.
      */
     public static boolean testAllVariants() {
-        System.out.println("[TextureManager] Testing all texture variants...");
+        // System.out.println("[TextureManager] Testing all texture variants...");
         boolean allValid = true;
         
         for (String variantName : getAvailableVariants()) {
@@ -327,7 +327,7 @@ public class TextureManager {
             }
         }
         
-        System.out.println("[TextureManager] Texture variant testing complete. Result: " + (allValid ? "ALL PASS" : "SOME FAILED"));
+        // System.out.println("[TextureManager] Texture variant testing complete. Result: " + (allValid ? "ALL PASS" : "SOME FAILED"));
         return allValid;
     }
     
@@ -335,13 +335,13 @@ public class TextureManager {
      * Clear all cached texture data and reset initialization state.
      */
     public static synchronized void clearCache() {
-        System.out.println("[TextureManager] Clearing texture cache...");
+        // System.out.println("[TextureManager] Clearing texture cache...");
         
         variantInfoCache.clear();
         CowTextureLoader.clearCache();
         initialized = false;
         
-        System.out.println("[TextureManager] Cache cleared and system reset");
+        // System.out.println("[TextureManager] Cache cleared and system reset");
     }
     
     /**
@@ -349,18 +349,18 @@ public class TextureManager {
      */
     public static void printAllVariantInfo() {
         if (!initialized) {
-            System.out.println("[TextureManager] System not initialized. Call initialize() first.");
+            // System.out.println("[TextureManager] System not initialized. Call initialize() first.");
             return;
         }
         
-        System.out.println("[TextureManager] === Texture Management System Status ===");
-        System.out.println("  Initialized: " + initialized);
-        System.out.println("  Cached variants: " + variantInfoCache.size());
-        System.out.println();
+        // System.out.println("[TextureManager] === Texture Management System Status ===");
+        // System.out.println("  Initialized: " + initialized);
+        // System.out.println("  Cached variants: " + variantInfoCache.size());
+        // System.out.println();
         
         for (TextureVariantInfo info : variantInfoCache.values()) {
-            System.out.println(getVariantStatistics(info.getVariantName()));
-            System.out.println("---");
+            // System.out.println(getVariantStatistics(info.getVariantName()));
+            // System.out.println("---");
         }
         
         CowTextureLoader.printCacheStatus();

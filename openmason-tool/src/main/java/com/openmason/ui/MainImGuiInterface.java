@@ -118,7 +118,7 @@ public class MainImGuiInterface {
     };
     
     public MainImGuiInterface() {
-        logger.info("Initializing MainImGuiInterface...");
+        // logger.info("Initializing MainImGuiInterface...");
         initializeComponents();
         updateUIState();
     }
@@ -132,7 +132,7 @@ public class MainImGuiInterface {
             setupModelBrowser();
             setupPropertiesPanel();
             loadInitialData();
-            logger.info("MainImGuiInterface initialized successfully");
+            // logger.info("MainImGuiInterface initialized successfully");
         } catch (Exception e) {
             logger.error("Failed to initialize MainImGuiInterface", e);
         }
@@ -665,7 +665,7 @@ public class MainImGuiInterface {
     // Action Methods Implementation
     
     private void newModel() {
-        logger.info("New model action triggered");
+        // logger.info("New model action triggered");
         updateStatus("Creating new model...");
         modelLoaded = false;
         currentModelPath = "Untitled Model";
@@ -674,7 +674,7 @@ public class MainImGuiInterface {
     }
     
     public void createNewModel() {
-        logger.info("Create new model action triggered");
+        // logger.info("Create new model action triggered");
         updateStatus("Creating new model...");
         
         // Reset current state
@@ -688,7 +688,7 @@ public class MainImGuiInterface {
     }
     
     public void openModel() {
-        logger.info("Open model action triggered");
+        // logger.info("Open model action triggered");
         updateStatus("Opening model...");
         
         try {
@@ -741,13 +741,13 @@ public class MainImGuiInterface {
     }
     
     private void openProject() {
-        logger.info("Open project action triggered");
+        // logger.info("Open project action triggered");
         updateStatus("Opening Stonebreak project...");
         // Implementation would show directory dialog
     }
     
     public void saveModel() {
-        logger.info("Save model action triggered");
+        // logger.info("Save model action triggered");
         updateStatus("Saving model...");
         unsavedChanges = false;
         updateUIState();
@@ -755,7 +755,7 @@ public class MainImGuiInterface {
     }
     
     public void saveModelAs() {
-        logger.info("Save model as action triggered");
+        // logger.info("Save model as action triggered");
         updateStatus("Saving model as...");
         
         try {
@@ -796,7 +796,7 @@ public class MainImGuiInterface {
     }
     
     public void exportModel() {
-        logger.info("Export model action triggered");
+        // logger.info("Export model action triggered");
         updateStatus("Exporting model...");
         
         if (!modelLoaded) {
@@ -848,7 +848,7 @@ public class MainImGuiInterface {
     }
     
     private void loadRecentFile(String filename) {
-        logger.info("Loading recent file: {}", filename);
+        // logger.info("Loading recent file: {}", filename);
         updateStatus("Loading " + filename + "...");
         modelLoaded = true;
         currentModelPath = filename;
@@ -858,7 +858,7 @@ public class MainImGuiInterface {
     }
     
     private void exitApplication() {
-        logger.info("Exit application action triggered");
+        // logger.info("Exit application action triggered");
         // Cleanup and exit
         if (viewport3D != null) {
             viewport3D.dispose();
@@ -867,22 +867,22 @@ public class MainImGuiInterface {
     }
     
     private void undo() {
-        logger.info("Undo action triggered");
+        // logger.info("Undo action triggered");
         updateStatus("Undo performed");
     }
     
     private void redo() {
-        logger.info("Redo action triggered");
+        // logger.info("Redo action triggered");
         updateStatus("Redo performed");
     }
     
     private void showPreferences() {
-        logger.info("Show preferences action triggered");
+        // logger.info("Show preferences action triggered");
         // Implementation would show preferences dialog
     }
     
     public void resetView() {
-        logger.info("Reset view action triggered");
+        // logger.info("Reset view action triggered");
         if (viewport3D != null) {
             viewport3D.resetCamera();
         }
@@ -890,7 +890,7 @@ public class MainImGuiInterface {
     }
     
     public void fitToView() {
-        logger.info("Fit to view action triggered");
+        // logger.info("Fit to view action triggered");
         updateStatus("Fitted to view");
     }
     
@@ -898,7 +898,7 @@ public class MainImGuiInterface {
     
     public void toggleGrid() {
         showGrid = !showGrid;
-        logger.info("Toggle grid: {}", showGrid);
+        // logger.info("Toggle grid: {}", showGrid);
         if (viewport3D != null) {
             viewport3D.setGridVisible(showGrid);
         }
@@ -906,7 +906,7 @@ public class MainImGuiInterface {
     
     private void toggleAxes() {
         showAxes = !showAxes;
-        logger.info("Toggle axes: {}", showAxes);
+        // logger.info("Toggle axes: {}", showAxes);
         if (viewport3D != null) {
             viewport3D.setAxesVisible(showAxes);
         }
@@ -914,7 +914,7 @@ public class MainImGuiInterface {
     
     public void toggleWireframe() {
         wireframeMode = !wireframeMode;
-        logger.info("Toggle wireframe: {}", wireframeMode);
+        // logger.info("Toggle wireframe: {}", wireframeMode);
         if (viewport3D != null) {
             viewport3D.setWireframeMode(wireframeMode);
         }
@@ -922,7 +922,7 @@ public class MainImGuiInterface {
     }
     
     public void switchToVariant(String variantName) {
-        logger.info("Switch to texture variant: {}", variantName);
+        // logger.info("Switch to texture variant: {}", variantName);
         
         // Find the variant index
         for (int i = 0; i < textureVariants.length; i++) {
@@ -945,34 +945,34 @@ public class MainImGuiInterface {
     
     private void toggleModelBrowser() {
         showModelBrowser.set(!showModelBrowser.get());
-        logger.info("Toggle model browser: {}", showModelBrowser.get());
+        // logger.info("Toggle model browser: {}", showModelBrowser.get());
     }
     
     private void togglePropertyPanel() {
         showPropertyPanel.set(!showPropertyPanel.get());
-        logger.info("Toggle property panel: {}", showPropertyPanel.get());
+        // logger.info("Toggle property panel: {}", showPropertyPanel.get());
     }
     
     
     private void toggleToolbar() {
         showToolbar.set(!showToolbar.get());
-        logger.info("Toggle toolbar: {}", showToolbar.get());
+        // logger.info("Toggle toolbar: {}", showToolbar.get());
     }
     
     private void showViewport() {
-        logger.info("Show 3D viewport action triggered");
+        // logger.info("Show 3D viewport action triggered");
         // Viewport is always shown in current implementation
         updateStatus("3D Viewport is visible");
     }
     
     private void showViewportControls() {
-        logger.info("Show viewport controls action triggered");
+        // logger.info("Show viewport controls action triggered");
         // Viewport controls are always shown in current implementation
         updateStatus("Viewport controls are visible");
     }
     
     private void resetToDefaultLayout() {
-        logger.info("Reset to default layout action triggered");
+        // logger.info("Reset to default layout action triggered");
         updateStatus("Resetting to default layout...");
         
         // Reset panel visibility to defaults
@@ -985,7 +985,7 @@ public class MainImGuiInterface {
             java.nio.file.Path iniPath = java.nio.file.Paths.get("openmason-tool/imgui.ini");
             if (java.nio.file.Files.exists(iniPath)) {
                 java.nio.file.Files.delete(iniPath);
-                logger.info("Deleted ImGui layout configuration for reset");
+                // logger.info("Deleted ImGui layout configuration for reset");
             }
             updateStatus("Layout reset - restart application to see changes");
         } catch (Exception e) {
@@ -995,7 +995,7 @@ public class MainImGuiInterface {
     }
     
     private void toggleFullScreenViewport() {
-        logger.info("Toggle full screen viewport action triggered");
+        // logger.info("Toggle full screen viewport action triggered");
         updateStatus("Full screen viewport mode toggled");
         
         // Hide/show other panels for full screen effect
@@ -1013,7 +1013,7 @@ public class MainImGuiInterface {
     }
     
     private void applyModelingLayout() {
-        logger.info("Apply modeling layout action triggered");
+        // logger.info("Apply modeling layout action triggered");
         updateStatus("Applying modeling layout...");
         
         // Configure panels for modeling workflow
@@ -1035,7 +1035,7 @@ public class MainImGuiInterface {
     }
     
     private void applyTexturingLayout() {
-        logger.info("Apply texturing layout action triggered");
+        // logger.info("Apply texturing layout action triggered");
         updateStatus("Applying texturing layout...");
         
         // Configure panels for texturing workflow
@@ -1057,7 +1057,7 @@ public class MainImGuiInterface {
     }
     
     private void validateModel() {
-        logger.info("Validate model action triggered");
+        // logger.info("Validate model action triggered");
         updateStatus("Validating model...");
         // Implementation would perform model validation
         updateStatus("Model validation complete");
@@ -1065,17 +1065,17 @@ public class MainImGuiInterface {
     
     
     private void showAbout() {
-        logger.info("Show about action triggered");
+        // logger.info("Show about action triggered");
         // Implementation would show about dialog
     }
     
     private void filterModels(String filter) {
-        logger.debug("Filtering models with: {}", filter);
+        // logger.debug("Filtering models with: {}", filter);
         // Implementation would filter the model browser
     }
     
     private void selectModel(String modelName, String variant) {
-        logger.info("Selected model: {} with variant: {}", modelName, variant);
+        // logger.info("Selected model: {} with variant: {}", modelName, variant);
         selectedModelInfo = "Selected: " + modelName + " (" + variant + " variant)";
         
         // Load model
@@ -1095,13 +1095,13 @@ public class MainImGuiInterface {
     
     private void changeViewMode() {
         String viewMode = viewModes[currentViewModeIndex.get()];
-        logger.info("Changed view mode to: {}", viewMode);
+        // logger.info("Changed view mode to: {}", viewMode);
         // Implementation would update viewport camera
     }
     
     private void changeRenderMode() {
         String renderMode = renderModes[currentRenderModeIndex.get()];
-        logger.info("Changed render mode to: {}", renderMode);
+        // logger.info("Changed render mode to: {}", renderMode);
         
         if (viewport3D != null) {
             switch (renderMode.toLowerCase()) {
@@ -1120,7 +1120,7 @@ public class MainImGuiInterface {
     
     private void changeTextureVariant() {
         String variant = textureVariants[currentTextureVariantIndex];
-        logger.info("Changed texture variant to: {}", variant);
+        // logger.info("Changed texture variant to: {}", variant);
         
         if (viewport3D != null) {
             viewport3D.setCurrentTextureVariant(variant.toLowerCase());
@@ -1132,25 +1132,25 @@ public class MainImGuiInterface {
     
     private void changeAnimation() {
         String animation = animations[currentAnimationIndex.get()];
-        logger.info("Changed animation to: {}", animation);
+        // logger.info("Changed animation to: {}", animation);
         // Implementation would change animation
     }
     
     private void playAnimation() {
-        logger.info("Play animation action triggered");
+        // logger.info("Play animation action triggered");
         animationPlaying = true;
         animationPaused = false;
         // Implementation would start animation playback
     }
     
     private void pauseAnimation() {
-        logger.info("Pause animation action triggered");
+        // logger.info("Pause animation action triggered");
         animationPaused = true;
         // Implementation would pause animation
     }
     
     private void stopAnimation() {
-        logger.info("Stop animation action triggered");
+        // logger.info("Stop animation action triggered");
         animationPlaying = false;
         animationPaused = false;
         animationTime.set(0.0f);
@@ -1162,7 +1162,7 @@ public class MainImGuiInterface {
     }
     
     private void resetProperties() {
-        logger.info("Reset properties action triggered");
+        // logger.info("Reset properties action triggered");
         rotationX.set(0.0f);
         rotationY.set(0.0f);
         rotationZ.set(0.0f);
@@ -1172,25 +1172,25 @@ public class MainImGuiInterface {
     }
     
     private void exportDiagnostics() {
-        logger.info("Export diagnostics action triggered");
+        // logger.info("Export diagnostics action triggered");
         updateStatus("Exporting diagnostics...");
         // Implementation would export diagnostic information
     }
     
     private void updateModelTransform() {
         // Implementation would update 3D model transform
-        logger.debug("Transform updated - Rotation: ({}, {}, {}), Scale: {}", 
-                    rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
+        // logger.debug("Transform updated - Rotation: ({}, {}, {}), Scale: {}", 
+        //             rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
     }
     
     // Utility Methods
     
     private void setupViewport() {
         try {
-            logger.info("Setting up 3D viewport...");
+            // logger.info("Setting up 3D viewport...");
             viewport3D = new OpenMason3DViewport();
             // OpenMason3DViewport initializes itself in constructor
-            logger.info("3D viewport setup complete");
+            // logger.info("3D viewport setup complete");
         } catch (Exception e) {
             logger.error("Failed to setup 3D viewport", e);
         }
@@ -1199,7 +1199,7 @@ public class MainImGuiInterface {
     private void setupModelBrowser() {
         try {
             modelManager = new ModelManager();
-            logger.info("Model manager setup complete");
+            // logger.info("Model manager setup complete");
         } catch (Exception e) {
             logger.error("Failed to setup model manager", e);
         }
@@ -1209,7 +1209,7 @@ public class MainImGuiInterface {
         try {
             // Initialize property panel ImGui
             propertyPanelImGui = new PropertyPanelImGui();
-            logger.info("Properties panel setup complete");
+            // logger.info("Properties panel setup complete");
         } catch (Exception e) {
             logger.error("Failed to setup properties panel", e);
         }
@@ -1228,7 +1228,7 @@ public class MainImGuiInterface {
     
     private void updateStatus(String message) {
         statusMessage = message;
-        logger.debug("Status updated: {}", message);
+        // logger.debug("Status updated: {}", message);
     }
     
     private void updateMemoryUsage() {
@@ -1277,7 +1277,7 @@ public class MainImGuiInterface {
      */
     private void saveModelToFile(File file) {
         try {
-            logger.info("Saving model to: {}", file.getAbsolutePath());
+            // logger.info("Saving model to: {}", file.getAbsolutePath());
             updateStatus("Saving model to " + file.getName() + "...");
             
             // TODO: Implement actual model saving using Stonebreak model system
@@ -1300,7 +1300,7 @@ public class MainImGuiInterface {
      */
     private void exportModelToFile(File file, String format) {
         try {
-            logger.info("Exporting model to {} format: {}", format.toUpperCase(), file.getAbsolutePath());
+            // logger.info("Exporting model to {} format: {}", format.toUpperCase(), file.getAbsolutePath());
             updateStatus("Exporting to " + format.toUpperCase() + "...");
             
             // TODO: Implement actual model export using appropriate exporter
@@ -1328,19 +1328,19 @@ public class MainImGuiInterface {
     
     private void exportToOBJ(File file) throws Exception {
         // TODO: Implement OBJ export
-        logger.debug("OBJ export placeholder for: {}", file.getName());
+        // logger.debug("OBJ export placeholder for: {}", file.getName());
         Thread.sleep(200); // Simulate export time
     }
     
     private void exportToGLTF(File file) throws Exception {
         // TODO: Implement glTF export
-        logger.debug("glTF export placeholder for: {}", file.getName());
+        // logger.debug("glTF export placeholder for: {}", file.getName());
         Thread.sleep(300); // Simulate export time
     }
     
     private void exportToJSON(File file) throws Exception {
         // TODO: Implement JSON export using Stonebreak model system
-        logger.debug("JSON export placeholder for: {}", file.getName());
+        // logger.debug("JSON export placeholder for: {}", file.getName());
         Thread.sleep(150); // Simulate export time
     }
     

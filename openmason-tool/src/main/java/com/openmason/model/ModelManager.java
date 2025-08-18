@@ -233,7 +233,7 @@ public class ModelManager {
                         progressCallback.onProgress("initializeAsync", 0, 100, "Starting ModelManager initialization");
                     }
                     
-                    System.out.println("[ModelManager] Initializing async model management system...");
+                    // System.out.println("[ModelManager] Initializing async model management system...");
                     
                     // Get available models
                     String[] availableModels = ModelLoader.getAvailableModels();
@@ -293,8 +293,8 @@ public class ModelManager {
                             "ModelManager initialized with " + successCount + " models");
                     }
                     
-                    System.out.println("[ModelManager] Async initialization complete. Loaded " + 
-                        successCount + "/" + totalModels + " model(s)");
+                    // System.out.println("[ModelManager] Async initialization complete. Loaded " + 
+                    //     successCount + "/" + totalModels + " model(s)");
                     
                     return null;
                     
@@ -393,7 +393,7 @@ public class ModelManager {
             String timestamp = String.format("[%tH:%tM:%tS.%tL]", 
                 System.currentTimeMillis(), System.currentTimeMillis(),
                 System.currentTimeMillis(), System.currentTimeMillis());
-            System.out.println(timestamp + " [DEBUG][" + component + "] " + message);
+            // System.out.println(timestamp + " [DEBUG][" + component + "] " + message);
         }
     }
     
@@ -489,7 +489,7 @@ public class ModelManager {
                                         "Model info loaded successfully");
                                     request.callback.onComplete("loadModelInfoAsync", info);
                                 }
-                                System.out.println("[ModelManager] Loaded model info asynchronously: " + info);
+                                // System.out.println("[ModelManager] Loaded model info asynchronously: " + info);
                             } else {
                                 debugLog("ProcessRequest", "Request #" + request.requestId + " future was already completed by another thread");
                             }
@@ -895,20 +895,20 @@ public class ModelManager {
      * Test method to validate all models can be loaded correctly.
      */
     public static boolean testAllModels() {
-        System.out.println("[ModelManager] Testing all models...");
+        // System.out.println("[ModelManager] Testing all models...");
         boolean allValid = true;
         
         for (String modelName : getAvailableModels()) {
             boolean valid = validateModel(modelName);
             String status = valid ? "✓" : "✗";
-            System.out.println("  " + status + " " + modelName + (valid ? " -> " + getModelInfo(modelName).getDisplayName() : " -> FAILED"));
+            // System.out.println("  " + status + " " + modelName + (valid ? " -> " + getModelInfo(modelName).getDisplayName() : " -> FAILED"));
             
             if (!valid) {
                 allValid = false;
             }
         }
         
-        System.out.println("[ModelManager] Model testing complete. Result: " + (allValid ? "ALL PASS" : "SOME FAILED"));
+        // System.out.println("[ModelManager] Model testing complete. Result: " + (allValid ? "ALL PASS" : "SOME FAILED"));
         return allValid;
     }
     
@@ -918,7 +918,7 @@ public class ModelManager {
      * @return Number of requests cancelled
      */
     public static int cancelAllPendingLoads() {
-        System.out.println("[ModelManager] Cancelling all pending loads...");
+        // System.out.println("[ModelManager] Cancelling all pending loads...");
         
         int cancelledCount = 0;
         LoadRequest request;
@@ -932,7 +932,7 @@ public class ModelManager {
             // The processing thread will check cancellation status and exit gracefully
         }
         
-        System.out.println("[ModelManager] Cancelled " + cancelledCount + " pending load requests");
+        // System.out.println("[ModelManager] Cancelled " + cancelledCount + " pending load requests");
         return cancelledCount;
     }
     
@@ -995,7 +995,7 @@ public class ModelManager {
      * This should be called when the application is shutting down.
      */
     public static void shutdown() {
-        System.out.println("[ModelManager] Shutting down async model management system...");
+        // System.out.println("[ModelManager] Shutting down async model management system...");
         
         shutdownRequested.set(true);
         

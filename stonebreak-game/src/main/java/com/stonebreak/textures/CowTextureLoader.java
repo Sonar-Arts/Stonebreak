@@ -32,7 +32,7 @@ public class CowTextureLoader {
             CowTextureDefinition.CowVariant variant = loadIndividualVariant(variantName);
             if (variant != null) {
                 cachedVariants.put(variantName, variant);
-                System.out.println("[CowTextureLoader] Successfully cached variant: " + variantName);
+                // System.out.println("[CowTextureLoader] Successfully cached variant: " + variantName);
                 return variant;
             }
         } catch (IOException e) {
@@ -88,12 +88,12 @@ public class CowTextureLoader {
             // Validate the loaded variant
             validateCowVariant(variant, variantName);
             
-            System.out.println("[CowTextureLoader] Successfully loaded cow variant '" + variantName + "' (" + 
-                variant.getDisplayName() + ") with " + variant.getFaceMappings().size() + " face mappings");
+            // System.out.println("[CowTextureLoader] Successfully loaded cow variant '" + variantName + "' (" + 
+            //     variant.getDisplayName() + ") with " + variant.getFaceMappings().size() + " face mappings");
             
             // Log drawing instructions if present
             if (variant.getDrawingInstructions() != null) {
-                System.out.println("  Drawing instructions loaded for " + variant.getDrawingInstructions().size() + " body parts");
+                // System.out.println("  Drawing instructions loaded for " + variant.getDrawingInstructions().size() + " body parts");
             }
             
             return variant;
@@ -239,7 +239,7 @@ public class CowTextureLoader {
     }
     
     public static void clearCache() {
-        System.out.println("[CowTextureLoader] Clearing texture cache. Current cached variants: " + cachedVariants.keySet());
+        // System.out.println("[CowTextureLoader] Clearing texture cache. Current cached variants: " + cachedVariants.keySet());
         cachedVariants.clear();
     }
     
@@ -258,14 +258,14 @@ public class CowTextureLoader {
      * Debug method to get current cache status.
      */
     public static void printCacheStatus() {
-        System.out.println("[CowTextureLoader] Cache Status:");
-        System.out.println("  Available variants: " + VARIANT_FILE_PATHS.keySet());
-        System.out.println("  Cached variants: " + cachedVariants.keySet());
+        // System.out.println("[CowTextureLoader] Cache Status:");
+        // System.out.println("  Available variants: " + VARIANT_FILE_PATHS.keySet());
+        // System.out.println("  Cached variants: " + cachedVariants.keySet());
         for (Map.Entry<String, CowTextureDefinition.CowVariant> entry : cachedVariants.entrySet()) {
             String variantName = entry.getKey();
             CowTextureDefinition.CowVariant variant = entry.getValue();
             String displayName = variant != null ? variant.getDisplayName() : "null";
-            System.out.println("    " + variantName + " -> " + displayName);
+            // System.out.println("    " + variantName + " -> " + displayName);
         }
     }
     
@@ -274,17 +274,17 @@ public class CowTextureLoader {
      * Useful for debugging texture loading issues.
      */
     public static void testAllVariants() {
-        System.out.println("[CowTextureLoader] Testing all variants...");
+        // System.out.println("[CowTextureLoader] Testing all variants...");
         for (String variantName : VARIANT_FILE_PATHS.keySet()) {
             try {
                 CowTextureDefinition.CowVariant variant = getCowVariant(variantName);
                 if (variant != null) {
-                    System.out.println("  ✓ " + variantName + " -> " + variant.getDisplayName());
+                    // System.out.println("  ✓ " + variantName + " -> " + variant.getDisplayName());
                     
                     // Test drawing instructions for each face mapping
                     int faceMappingCount = variant.getFaceMappings().size();
                     int drawingInstructionCount = variant.getDrawingInstructions() != null ? variant.getDrawingInstructions().size() : 0;
-                    System.out.println("    Face mappings: " + faceMappingCount + ", Drawing instructions: " + drawingInstructionCount);
+                    // System.out.println("    Face mappings: " + faceMappingCount + ", Drawing instructions: " + drawingInstructionCount);
                     
                     if (faceMappingCount != drawingInstructionCount) {
                         System.err.println("    WARNING: Mismatch between face mappings and drawing instructions!");
@@ -386,7 +386,7 @@ public class CowTextureLoader {
             }
         }
         
-        System.out.println("[CowTextureLoader] Variant '" + variantName + "' validation passed");
+        // System.out.println("[CowTextureLoader] Variant '" + variantName + "' validation passed");
     }
     
     /**

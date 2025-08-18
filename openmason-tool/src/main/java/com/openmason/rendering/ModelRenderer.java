@@ -67,7 +67,7 @@ public class ModelRenderer implements AutoCloseable {
         }
         
         initialized = true;
-        System.out.println("ModelRenderer initialized: " + debugPrefix);
+        // System.out.println("ModelRenderer initialized: " + debugPrefix);
     }
     
     /**
@@ -87,22 +87,22 @@ public class ModelRenderer implements AutoCloseable {
         ModelManager.CoordinateSpace coordinateSpace = ModelManager.CoordinateSpaceManager.getCoordinateSpace(modelVariant);
         modelCoordinateSpaces.put(modelVariant, coordinateSpace);
         
-        System.out.println("Preparing model '" + modelVariant + "' in coordinate space: " + 
-                          coordinateSpace.getDisplayName() + " (" + coordinateSpace.getDescription() + ")");
+        // System.out.println("Preparing model '" + modelVariant + "' in coordinate space: " + 
+        //                   coordinateSpace.getDisplayName() + " (" + coordinateSpace.getDescription() + ")");
         
         // Validate OpenGL context before model preparation
         if (contextValidationEnabled) {
             // First check if we have any OpenGL context at all
             if (!OpenGLValidator.hasValidOpenGLContext()) {
-                System.err.println("ModelRenderer.prepareModel: No valid OpenGL context available");
+                // System.err.println("ModelRenderer.prepareModel: No valid OpenGL context available");
                 return false; // Return false instead of throwing exception
             }
             
             List<String> contextIssues = OpenGLValidator.validateContext("prepareModel");
             if (!contextIssues.isEmpty()) {
-                System.err.println("OpenGL context validation failed in prepareModel:");
+                // System.err.println("OpenGL context validation failed in prepareModel:");
                 for (String issue : contextIssues) {
-                    System.err.println("  - " + issue);
+                    // System.err.println("  - " + issue);
                 }
                 // Return false instead of throwing exception - let caller handle gracefully
                 return false;
@@ -115,46 +115,46 @@ public class ModelRenderer implements AutoCloseable {
             int successfulParts = 0;
             int startingVAOCount = modelPartVAOs.size();
             
-            System.out.println("Preparing model '" + model.getVariantName() + "' with " + 
-                              model.getBodyParts().size() + " parts...");
+            // System.out.println("Preparing model '" + model.getVariantName() + "' with " + 
+            //                   model.getBodyParts().size() + " parts...");
             
             for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
                 totalParts++;
                 String partName = bodyPart.getName();
                 int preVAOCount = modelPartVAOs.size();
                 
-                System.out.println("  Preparing part " + totalParts + "/" + model.getBodyParts().size() + 
-                                  ": '" + partName + "'");
+                // System.out.println("  Preparing part " + totalParts + "/" + model.getBodyParts().size() + 
+                //                   ": '" + partName + "'");
                 
                 // Prepare model part with matrix transformation
                 if (prepareModelPart(bodyPart.getModelPart(), model.getTextureDefinition(), model.getVariantName())) {
                     successfulParts++;
-                    System.out.println("    ✓ Part '" + partName + "' prepared successfully");
+                    // System.out.println("    ✓ Part '" + partName + "' prepared successfully");
                 } else {
-                    System.err.println("    ✗ Part '" + partName + "' failed to prepare");
+                    // System.err.println("    ✗ Part '" + partName + "' failed to prepare");
                 }
             }
             
             int newVAOs = modelPartVAOs.size() - startingVAOCount;
-            System.out.println("Model preparation completed: " + model.getVariantName() + 
-                              " - " + successfulParts + "/" + totalParts + " parts successful" +
-                              " (" + newVAOs + " new VAOs created)");
+            // System.out.println("Model preparation completed: " + model.getVariantName() + 
+            //                   " - " + successfulParts + "/" + totalParts + " parts successful" +
+            //                   " (" + newVAOs + " new VAOs created)");
             
             if (successfulParts == 0) {
-                System.err.println("ERROR: No model parts were successfully prepared for " + model.getVariantName());
+                // System.err.println("ERROR: No model parts were successfully prepared for " + model.getVariantName());
                 return false;
             }
             
             if (successfulParts < totalParts) {
-                System.err.println("WARNING: Only " + successfulParts + " out of " + totalParts + 
-                                  " parts were successfully prepared for " + model.getVariantName());
+                // System.err.println("WARNING: Only " + successfulParts + " out of " + totalParts + 
+                //                   " parts were successfully prepared for " + model.getVariantName());
                 // Return true for partial success - some parts can still be rendered
             }
             
             return true;
             
         } catch (Exception e) {
-            System.err.println("Failed to prepare model " + model.getVariantName() + ": " + e.getMessage());
+            // System.err.println("Failed to prepare model " + model.getVariantName() + ": " + e.getMessage());
             e.printStackTrace();
             return false;
         }
@@ -194,16 +194,16 @@ public class ModelRenderer implements AutoCloseable {
                 // Use coordinate system integration for proper Stonebreak compatibility
                 vertices = integratedData.getVertices();
                 indices = integratedData.getIndices();
-                System.out.println("Using coordinate system integration for part: " + partName);
+                // System.out.println("Using coordinate system integration for part: " + partName);
             } else {
                 // Fallback to direct model part data
                 vertices = bodyPart.getVertices(); 
                 indices = bodyPart.getIndices();
-                System.out.println("Fallback to direct model data for part: " + partName);
+                // System.out.println("Fallback to direct model data for part: " + partName);
             }
             
             if (vertices == null || indices == null || vertices.length == 0 || indices.length == 0) {
-                System.err.println("Model part '" + partName + "' has invalid matrix transform vertex data");
+                // System.err.println("Model part '" + partName + "' has invalid matrix transform vertex data");
                 return false;
             }
             
@@ -211,7 +211,7 @@ public class ModelRenderer implements AutoCloseable {
             float[] textureCoordinates = null;
             if (integratedData != null && integratedData.isValid()) {
                 textureCoordinates = integratedData.getTextureCoordinates();
-                System.out.println("Using integrated texture coordinates for part: " + partName);
+                // System.out.println("Using integrated texture coordinates for part: " + partName);
             }
             
             // Create VAO for matrix-based rendering with proper texture coordinates
@@ -223,7 +223,7 @@ public class ModelRenderer implements AutoCloseable {
             return true;
             
         } catch (Exception e) {
-            System.err.println("Failed to prepare model part '" + partName + "' for matrix transforms: " + e.getMessage());
+            // System.err.println("Failed to prepare model part '" + partName + "' for matrix transforms: " + e.getMessage());
             return false;
         }
     }
@@ -289,9 +289,9 @@ public class ModelRenderer implements AutoCloseable {
         if (contextValidationEnabled) {
             List<String> contextIssues = OpenGLValidator.validateContext("renderModel");
             if (!contextIssues.isEmpty()) {
-                System.err.println("OpenGL context validation failed in renderModel:");
+                // System.err.println("OpenGL context validation failed in renderModel:");
                 for (String issue : contextIssues) {
-                    System.err.println("  - " + issue);
+                    // System.err.println("  - " + issue);
                 }
                 throw new RuntimeException("Cannot render model due to invalid OpenGL context");
             }
@@ -299,9 +299,9 @@ public class ModelRenderer implements AutoCloseable {
             // Also validate rendering state for optimal performance
             List<String> stateIssues = OpenGLValidator.validateRenderingState();
             if (!stateIssues.isEmpty()) {
-                System.err.println("OpenGL rendering state validation issues in renderModel:");
+                // System.err.println("OpenGL rendering state validation issues in renderModel:");
                 for (String issue : stateIssues) {
-                    System.err.println("  - WARNING: " + issue);
+                    // System.err.println("  - WARNING: " + issue);
                 }
                 // Note: These are warnings, not fatal errors, so we continue rendering
             }
@@ -330,8 +330,8 @@ public class ModelRenderer implements AutoCloseable {
      */
     @Deprecated
     public void renderModel(StonebreakModel model, String textureVariant) {
-        System.err.println("WARNING: renderModel() called without shader context. Models will not render properly.");
-        System.err.println("Please update your code to use renderModel(model, variant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix)");
+        // System.err.println("WARNING: renderModel() called without shader context. Models will not render properly.");
+        // System.err.println("Please update your code to use renderModel(model, variant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix)");
         // Don't actually render anything to avoid OpenGL errors
     }
     
@@ -349,9 +349,9 @@ public class ModelRenderer implements AutoCloseable {
         if (contextValidationEnabled) {
             List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
             if (!contextIssues.isEmpty()) {
-                System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
+                // System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
                 for (String issue : contextIssues) {
-                    System.err.println("  - " + issue);
+                    // System.err.println("  - " + issue);
                 }
                 throw new RuntimeException("Cannot render model part '" + partName + "' due to invalid OpenGL context");
             }
@@ -363,9 +363,9 @@ public class ModelRenderer implements AutoCloseable {
             if (contextValidationEnabled) {
                 List<String> vaoIssues = OpenGLValidator.validateVertexArray(vao);
                 if (!vaoIssues.isEmpty()) {
-                    System.err.println("VAO validation issues for part " + partName + ":");
+                    // System.err.println("VAO validation issues for part " + partName + ":");
                     for (String issue : vaoIssues) {
-                        System.err.println("  - WARNING: " + issue);
+                        // System.err.println("  - WARNING: " + issue);
                     }
                     // Continue rendering despite warnings, but the user is informed
                 }
@@ -406,15 +406,15 @@ public class ModelRenderer implements AutoCloseable {
                 if (vao.getIndexBuffer() != null) {
                     vao.getIndexBuffer().drawTriangles();
                 } else {
-                    System.err.println("Cannot render part '" + partName + "': no index buffer");
+                    // System.err.println("Cannot render part '" + partName + "': no index buffer");
                 }
                 
                 vao.unbind();
             } else {
-                System.err.println("Cannot render part '" + partName + "' with matrix transforms: body part data is null");
+                // System.err.println("Cannot render part '" + partName + "' with matrix transforms: body part data is null");
             }
         } else {
-            System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
+            // System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
         }
     }
     
@@ -429,9 +429,9 @@ public class ModelRenderer implements AutoCloseable {
         if (contextValidationEnabled) {
             List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
             if (!contextIssues.isEmpty()) {
-                System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
+                // System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
                 for (String issue : contextIssues) {
-                    System.err.println("  - " + issue);
+                    // System.err.println("  - " + issue);
                 }
                 throw new RuntimeException("Cannot render model part '" + partName + "' due to invalid OpenGL context");
             }
@@ -443,9 +443,9 @@ public class ModelRenderer implements AutoCloseable {
             if (contextValidationEnabled) {
                 List<String> vaoIssues = OpenGLValidator.validateVertexArray(vao);
                 if (!vaoIssues.isEmpty()) {
-                    System.err.println("VAO validation issues for part " + partName + ":");
+                    // System.err.println("VAO validation issues for part " + partName + ":");
                     for (String issue : vaoIssues) {
-                        System.err.println("  - WARNING: " + issue);
+                        // System.err.println("  - WARNING: " + issue);
                     }
                     // Continue rendering despite warnings, but the user is informed
                 }
@@ -454,7 +454,7 @@ public class ModelRenderer implements AutoCloseable {
             // Render the VAO (transformations are already baked into vertices during preparation)
             vao.renderTriangles();
         } else {
-            System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
+            // System.err.println("Cannot render part '" + partName + "': VAO not found or invalid");
         }
     }
     
@@ -525,49 +525,49 @@ public class ModelRenderer implements AutoCloseable {
      * of the ModelRenderer and all prepared models.
      */
     public void logDiagnosticInfo() {
-        System.out.println("=== ModelRenderer Diagnostic Report ===");
-        System.out.println("Renderer: " + debugPrefix);
-        System.out.println("Initialized: " + initialized);
-        System.out.println("Total VAOs: " + modelPartVAOs.size());
-        System.out.println("Total Texture Variants: " + currentTextureVariants.size());
-        System.out.println("Total Render Calls: " + totalRenderCalls);
-        System.out.println("Last Render Time: " + lastRenderTime);
-        System.out.println("Context Validation: " + (contextValidationEnabled ? "ENABLED" : "DISABLED"));
-        System.out.println("Matrix Transformation Mode: " + (matrixTransformationMode ? "ENABLED" : "DISABLED"));
-        System.out.println("Tracked Coordinate Spaces: " + modelCoordinateSpaces.size());
+        // System.out.println("=== ModelRenderer Diagnostic Report ===");
+        // System.out.println("Renderer: " + debugPrefix);
+        // System.out.println("Initialized: " + initialized);
+        // System.out.println("Total VAOs: " + modelPartVAOs.size());
+        // System.out.println("Total Texture Variants: " + currentTextureVariants.size());
+        // System.out.println("Total Render Calls: " + totalRenderCalls);
+        // System.out.println("Last Render Time: " + lastRenderTime);
+        // System.out.println("Context Validation: " + (contextValidationEnabled ? "ENABLED" : "DISABLED"));
+        // System.out.println("Matrix Transformation Mode: " + (matrixTransformationMode ? "ENABLED" : "DISABLED"));
+        // System.out.println("Tracked Coordinate Spaces: " + modelCoordinateSpaces.size());
         
         if (!modelPartVAOs.isEmpty()) {
-            System.out.println("\nPrepared Model Parts:");
+            // System.out.println("\nPrepared Model Parts:");
             for (Map.Entry<String, VertexArray> entry : modelPartVAOs.entrySet()) {
                 String partName = entry.getKey();
                 VertexArray vao = entry.getValue();
                 String status = vao.isValid() ? "VALID" : "INVALID";
                 String textureVariant = currentTextureVariants.getOrDefault(partName, "unknown");
-                System.out.println("  - " + partName + ": " + status + " (variant: " + textureVariant + ")");
+                // System.out.println("  - " + partName + ": " + status + " (variant: " + textureVariant + ")");
             }
         }
         
         if (!modelCoordinateSpaces.isEmpty()) {
-            System.out.println("\nModel Coordinate Spaces:");
+            // System.out.println("\nModel Coordinate Spaces:");
             for (Map.Entry<String, ModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
                 String modelVariant = entry.getKey();
                 ModelManager.CoordinateSpace space = entry.getValue();
                 String status = (space == ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) ? "✓ COMPATIBLE" : "⚠ INCOMPATIBLE";
-                System.out.println("  - " + modelVariant + ": " + space.getDisplayName() + " " + status);
+                // System.out.println("  - " + modelVariant + ": " + space.getDisplayName() + " " + status);
             }
         }
         
         if (!lastRenderedTransforms.isEmpty()) {
-            System.out.println("\nLast Rendered Transformations:");
+            // System.out.println("\nLast Rendered Transformations:");
             for (String partName : lastRenderedTransforms.keySet()) {
                 DiagnosticData data = getPartDiagnostics(partName);
                 if (data != null) {
-                    System.out.println("  - " + data.toString());
+                    // System.out.println("  - " + data.toString());
                 }
             }
         }
         
-        System.out.println("======================================");
+        // System.out.println("======================================");
     }
     
     /**
@@ -576,7 +576,7 @@ public class ModelRenderer implements AutoCloseable {
      */
     public void setMatrixTransformationMode(boolean enabled) {
         this.matrixTransformationMode = enabled;
-        System.out.println("Matrix transformation mode " + (enabled ? "ENABLED" : "DISABLED") + " for ModelRenderer: " + debugPrefix);
+        // System.out.println("Matrix transformation mode " + (enabled ? "ENABLED" : "DISABLED") + " for ModelRenderer: " + debugPrefix);
     }
     
     /**
@@ -622,14 +622,14 @@ public class ModelRenderer implements AutoCloseable {
      */
     @Override
     public void close() {
-        System.out.println("Cleaning up ModelRenderer: " + debugPrefix + 
-                          " (" + modelPartVAOs.size() + " VAOs)");
+        // System.out.println("Cleaning up ModelRenderer: " + debugPrefix + 
+        //                   " (" + modelPartVAOs.size() + " VAOs)");
         
         for (VertexArray vao : modelPartVAOs.values()) {
             try {
                 vao.close();
             } catch (Exception e) {
-                System.err.println("Error cleaning up VAO: " + e.getMessage());
+                // System.err.println("Error cleaning up VAO: " + e.getMessage());
             }
         }
         
@@ -647,9 +647,9 @@ public class ModelRenderer implements AutoCloseable {
     public void setContextValidationEnabled(boolean enabled) {
         this.contextValidationEnabled = enabled;
         if (enabled) {
-            System.out.println("OpenGL context validation enabled for ModelRenderer: " + debugPrefix);
+            // System.out.println("OpenGL context validation enabled for ModelRenderer: " + debugPrefix);
         } else {
-            System.out.println("OpenGL context validation disabled for ModelRenderer: " + debugPrefix);
+            // System.out.println("OpenGL context validation disabled for ModelRenderer: " + debugPrefix);
         }
     }
     
