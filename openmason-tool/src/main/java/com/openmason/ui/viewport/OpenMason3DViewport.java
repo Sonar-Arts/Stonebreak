@@ -24,6 +24,7 @@ import static org.lwjgl.opengl.GL30.*;
 import com.openmason.model.ModelManager;
 import com.openmason.model.StonebreakModel;
 import com.openmason.rendering.ModelRenderer;
+import com.openmason.rendering.TextureAtlas;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -66,6 +67,8 @@ public class OpenMason3DViewport {
     private int matrixMvpLocation = -1;
     private int matrixModelLocation = -1;
     private int matrixColorLocation = -1;
+    private int matrixTextureLocation = -1;
+    private int matrixUseTextureLocation = -1;
     
     // Test cube data
     private int cubeVAO = -1;
@@ -89,6 +92,9 @@ public class OpenMason3DViewport {
     private volatile StonebreakModel currentModel = null;
     private boolean modelRenderingEnabled = true;
     private volatile CompletableFuture<Void> currentModelLoadingFuture = null;
+    
+    // Texture system
+    private TextureAtlas textureAtlas;
     
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
@@ -151,6 +157,10 @@ public class OpenMason3DViewport {
             
             // Enable matrix transformation mode for proper Stonebreak coordinate system support
             modelRenderer.setMatrixTransformationMode(true);
+            
+            // Initialize texture atlas
+            textureAtlas = new TextureAtlas("Viewport_CowAtlas");
+            textureAtlas.initialize();
             
             // Validate all resources were created
             validateResources();
@@ -265,32 +275,46 @@ public class OpenMason3DViewport {
      * instead of baked vertex coordinates.
      */
     private void createMatrixTransformShaders() {
-        // Advanced vertex shader with model matrix support
+        // Advanced vertex shader with model matrix and texture support
         String matrixVertexShaderSource = """
             #version 330 core
             layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec2 aTexCoord;
             
             uniform mat4 uMVPMatrix;     // View-Projection matrix (camera)
             uniform mat4 uModelMatrix;   // Model transformation matrix (per-part positioning)
             uniform vec3 uColor;
+            uniform bool uUseTexture;    // Whether to use texture or solid color
             
             out vec3 vertexColor;
+            out vec2 TexCoord;
             
             void main() {
                 // Apply model transformation first, then MVP
                 gl_Position = uMVPMatrix * uModelMatrix * vec4(aPos, 1.0);
                 vertexColor = uColor;
+                TexCoord = aTexCoord;
             }
             """;
         
-        // Fragment shader remains the same
+        // Fragment shader with texture sampling support
         String matrixFragmentShaderSource = """
             #version 330 core
             in vec3 vertexColor;
+            in vec2 TexCoord;
             out vec4 FragColor;
             
+            uniform sampler2D uTexture;
+            uniform bool uUseTexture;
+            
             void main() {
-                FragColor = vec4(vertexColor, 1.0);
+                if (uUseTexture) {
+                    // Use texture color directly for proper cow texture display
+                    FragColor = texture(uTexture, TexCoord);
+                } else {
+                    // Use solid color only
+                    FragColor = vec4(vertexColor, 1.0);
+                }
             }
             """;
         
@@ -317,6 +341,8 @@ public class OpenMason3DViewport {
         matrixMvpLocation = glGetUniformLocation(matrixShaderProgram, "uMVPMatrix");
         matrixModelLocation = glGetUniformLocation(matrixShaderProgram, "uModelMatrix");
         matrixColorLocation = glGetUniformLocation(matrixShaderProgram, "uColor");
+        matrixTextureLocation = glGetUniformLocation(matrixShaderProgram, "uTexture");
+        matrixUseTextureLocation = glGetUniformLocation(matrixShaderProgram, "uUseTexture");
         
         // logger.info("Matrix transformation shaders created successfully");
     }
@@ -675,7 +701,10 @@ public class OpenMason3DViewport {
                 float[] mvpArray = new float[16];
                 mvpMatrix.get(mvpArray);
                 
-                modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, matrixMvpLocation, matrixModelLocation, mvpArray);
+                modelRenderer.renderModel(currentModel, currentTextureVariant, matrixShaderProgram, 
+                                         matrixMvpLocation, matrixModelLocation, mvpArray,
+                                         textureAtlas, matrixTextureLocation, matrixUseTextureLocation,
+                                         matrixColorLocation);
                 
                 if (shouldLog) {
                     // logger.info("RENDER DIAGNOSTIC - Successfully rendered model: {}", currentModelName);
@@ -964,6 +993,12 @@ public class OpenMason3DViewport {
         if (matrixFragmentShader != -1) {
             glDeleteShader(matrixFragmentShader);
             matrixFragmentShader = -1;
+        }
+        
+        // Cleanup texture atlas
+        if (textureAtlas != null) {
+            textureAtlas.close();
+            textureAtlas = null;
         }
         
         initialized = false;

@@ -88,9 +88,14 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
             return;
         }
         
-        float[] texCoords = generateTextureCoordinates(cowVariant, partName);
+        // Generate texture coordinates matching the current vertex count
+        float[] texCoords = generateTextureCoordinates(cowVariant, partName, vertexCount);
         
         if (texCoords.length > 0) {
+            // Debug: Log UV coordinate generation
+            System.out.println("[TextureCoordinateBuffer] Generated UV coords for " + partName + 
+                             " (variant: " + textureVariant + ", vertices: " + vertexCount + ", UV count: " + texCoords.length + ")");
+            
             // Use dynamic draw for texture coordinates since they may change frequently
             uploadTextureCoords(texCoords, GL15.GL_DYNAMIC_DRAW);
             currentTextureVariant = textureVariant;
@@ -103,33 +108,50 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * 
      * @param cowVariant The cow variant containing face mappings
      * @param partName The model part name
-     * @return Float array containing texture coordinates (48 values for 6 faces × 4 vertices × 2 coords)
+     * @param vertexCount The actual number of vertices in the model part
+     * @return Float array containing texture coordinates (vertexCount * 2 values)
      */
-    private float[] generateTextureCoordinates(CowTextureDefinition.CowVariant cowVariant, String partName) {
+    private float[] generateTextureCoordinates(CowTextureDefinition.CowVariant cowVariant, String partName, int vertexCount) {
         Map<String, CowTextureDefinition.AtlasCoordinate> faceMappings = cowVariant.getFaceMappings();
         String partType = partName.toUpperCase();
         
-        // Define face names for a cuboid (6 faces)
-        String[] faceNames = {
-            partType + "_FRONT",
-            partType + "_BACK", 
-            partType + "_LEFT",
-            partType + "_RIGHT",
-            partType + "_TOP",
-            partType + "_BOTTOM"
-        };
+        // Calculate expected UV coordinates based on vertex count
+        int expectedUVCount = vertexCount * 2; // 2 UV coordinates per vertex
+        float[] result = new float[expectedUVCount];
         
-        // Build texture coordinate array (48 values: 6 faces × 4 vertices × 2 coordinates)
-        float[] result = new float[48];
-        int index = 0;
+        // Get default texture coordinates for this part type
+        String defaultFaceName = partType + "_FRONT"; // Use front face as default
+        float[] defaultFaceCoords = getFaceTextureCoordinates(faceMappings, defaultFaceName);
         
-        // Process each face
-        for (String faceName : faceNames) {
-            float[] faceCoords = getFaceTextureCoordinates(faceMappings, faceName);
+        // If we have a standard cuboid (36 vertices = 6 faces × 6 vertices per face)
+        if (vertexCount == 36) {
+            // Standard cuboid UV mapping
+            String[] faceNames = {
+                partType + "_FRONT", partType + "_BACK", partType + "_LEFT",
+                partType + "_RIGHT", partType + "_TOP", partType + "_BOTTOM"
+            };
             
-            // Add UV coordinates for this face (4 vertices × 2 coordinates = 8 values)
-            System.arraycopy(faceCoords, 0, result, index, 8);
-            index += 8;
+            int index = 0;
+            for (String faceName : faceNames) {
+                float[] faceCoords = getFaceTextureCoordinates(faceMappings, faceName);
+                
+                // Each face has 6 vertices (2 triangles), we need 6 UV coordinates
+                for (int i = 0; i < 6 && index + 1 < result.length; i++) {
+                    int coordIndex = (i % 4) * 2; // Map to quad vertices (0,1,2,3,2,1)
+                    if (i == 4) coordIndex = 4; // Third vertex of second triangle
+                    if (i == 5) coordIndex = 2; // Second vertex of second triangle
+                    
+                    result[index++] = faceCoords[coordIndex];     // u
+                    result[index++] = faceCoords[coordIndex + 1]; // v
+                }
+            }
+        } else {
+            // For non-standard vertex counts, repeat the default face coordinates
+            for (int i = 0; i < vertexCount && i * 2 + 1 < result.length; i++) {
+                int coordIndex = (i % 4) * 2; // Cycle through the 4 quad vertices
+                result[i * 2] = defaultFaceCoords[coordIndex];         // u
+                result[i * 2 + 1] = defaultFaceCoords[coordIndex + 1]; // v
+            }
         }
         
         return result;

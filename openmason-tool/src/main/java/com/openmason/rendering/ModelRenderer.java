@@ -269,18 +269,47 @@ public class ModelRenderer implements AutoCloseable {
      * @param mvpUniformLocation The uniform location for MVP matrix
      * @param modelMatrixLocation The uniform location for individual model matrices
      * @param viewProjectionMatrix The view-projection matrix
+     * @param textureAtlas The texture atlas to bind (null for solid color rendering)
+     * @param textureUniformLocation The texture sampler uniform location
+     * @param useTextureUniformLocation The useTexture boolean uniform location
+     * @param colorUniformLocation The color uniform location
+     */
+    public void renderModel(StonebreakModel model, String textureVariant, 
+                           int shaderProgram, int mvpUniformLocation, 
+                           int modelMatrixLocation, float[] viewProjectionMatrix,
+                           com.openmason.rendering.TextureAtlas textureAtlas,
+                           int textureUniformLocation, int useTextureUniformLocation,
+                           int colorUniformLocation) {
+        renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, 
+                           modelMatrixLocation, viewProjectionMatrix, textureAtlas,
+                           textureUniformLocation, useTextureUniformLocation, colorUniformLocation);
+    }
+    
+    /**
+     * Legacy renderModel method for backward compatibility.
+     * Renders with solid colors only (no textures).
+     * 
+     * @param model The model to render
+     * @param textureVariant The texture variant to use (ignored in solid color mode)
+     * @param shaderProgram The shader program
+     * @param mvpUniformLocation The uniform location for MVP matrix
+     * @param modelMatrixLocation The uniform location for individual model matrices
+     * @param viewProjectionMatrix The view-projection matrix
      */
     public void renderModel(StonebreakModel model, String textureVariant, 
                            int shaderProgram, int mvpUniformLocation, 
                            int modelMatrixLocation, float[] viewProjectionMatrix) {
-        renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix);
+        renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, 
+                           modelMatrixLocation, viewProjectionMatrix, null, -1, -1, -1);
     }
     
     /**
      * Internal rendering method using matrix transformations.
      */
     private void renderModelInternal(StonebreakModel model, String textureVariant, int shaderProgram, 
-                                   int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix) {
+                                   int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
+                                   com.openmason.rendering.TextureAtlas textureAtlas,
+                                   int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
@@ -313,6 +342,33 @@ public class ModelRenderer implements AutoCloseable {
         // Bind shader program and set uniforms
         glUseProgram(shaderProgram);
         glUniformMatrix4fv(mvpUniformLocation, false, viewProjectionMatrix);
+        
+        // Setup texture rendering
+        boolean useTextures = (textureAtlas != null && textureAtlas.isReady());
+        if (useTextures) {
+            // Bind texture atlas
+            textureAtlas.bind(0); // Use texture unit 0
+            textureAtlas.setTextureUniform(shaderProgram, "uTexture", 0);
+            
+            // Enable texture rendering
+            if (useTextureUniformLocation != -1) {
+                glUniform1i(useTextureUniformLocation, 1); // true
+            }
+        } else {
+            // Disable texture rendering, use solid colors
+            if (useTextureUniformLocation != -1) {
+                glUniform1i(useTextureUniformLocation, 0); // false
+            }
+        }
+        
+        // Set vertex color uniform (white for proper texture display, orange for solid color)
+        if (colorUniformLocation != -1) {
+            if (useTextures) {
+                glUniform3f(colorUniformLocation, 1.0f, 1.0f, 1.0f); // White for textures
+            } else {
+                glUniform3f(colorUniformLocation, 1.0f, 0.5f, 0.2f); // Orange for solid color
+            }
+        }
         
         // Render each model part with matrix transformations
         for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
