@@ -185,28 +185,25 @@ public class ModelManager {
         private final String modelName;
         private final String displayName;
         private final int partCount;
-        private final int animationCount;
         private final ModelDefinition.CowModelDefinition modelDefinition;
         
-        public ModelInfo(String modelName, String displayName, int partCount, int animationCount, 
+        public ModelInfo(String modelName, String displayName, int partCount, 
                         ModelDefinition.CowModelDefinition modelDefinition) {
             this.modelName = modelName;
             this.displayName = displayName;
             this.partCount = partCount;
-            this.animationCount = animationCount;
             this.modelDefinition = modelDefinition;
         }
         
         public String getModelName() { return modelName; }
         public String getDisplayName() { return displayName; }
         public int getPartCount() { return partCount; }
-        public int getAnimationCount() { return animationCount; }
         public ModelDefinition.CowModelDefinition getModelDefinition() { return modelDefinition; }
         
         @Override
         public String toString() {
-            return String.format("ModelInfo{name='%s', display='%s', parts=%d, animations=%d}", 
-                modelName, displayName, partCount, animationCount);
+            return String.format("ModelInfo{name='%s', display='%s', parts=%d}", 
+                modelName, displayName, partCount);
         }
     }
     
@@ -544,9 +541,8 @@ public class ModelManager {
      */
     private static ModelInfo createModelInfo(String modelName, ModelDefinition.CowModelDefinition model) {
         int partCount = countModelParts(model);
-        int animationCount = model.getAnimations() != null ? model.getAnimations().size() : 0;
         // Use original model name for API consistency, but model contains baked variant data
-        return new ModelInfo(modelName, model.getDisplayName(), partCount, animationCount, model);
+        return new ModelInfo(modelName, model.getDisplayName(), partCount, model);
     }
     
     /**
@@ -821,17 +817,6 @@ public class ModelManager {
         return Arrays.asList(ModelLoader.getAvailableModels());
     }
     
-    /**
-     * Get list of all available animations for a model.
-     */
-    public static List<String> getAvailableAnimations(String modelName) {
-        ModelInfo info = getModelInfo(modelName);
-        if (info == null || info.getModelDefinition().getAnimations() == null) {
-            return List.of();
-        }
-        
-        return List.copyOf(info.getModelDefinition().getAnimations().keySet());
-    }
     
     /**
      * Validate that a model can be loaded successfully.
@@ -877,14 +862,12 @@ public class ModelManager {
         
         int vertexCount = calculateVertexCount(modelName);
         int triangleCount = calculateTriangleCount(modelName);
-        List<String> animations = getAvailableAnimations(modelName);
         
         StringBuilder stats = new StringBuilder();
         stats.append(String.format("Model: %s (%s)\n", info.getModelName(), info.getDisplayName()));
         stats.append(String.format("Parts: %d\n", info.getPartCount()));
         stats.append(String.format("Vertices: %d\n", vertexCount));
         stats.append(String.format("Triangles: %d\n", triangleCount));
-        stats.append(String.format("Animations: %d [%s]\n", info.getAnimationCount(), String.join(", ", animations)));
         
         return stats.toString();
     }
@@ -1081,7 +1064,6 @@ public class ModelManager {
                 testResults.append("  ✓ ModelLoader.getCowModel() succeeded in ").append(test2Time).append("ms\n");
                 testResults.append("  ✓ Model display name: ").append(model.getDisplayName()).append("\n");
                 testResults.append("  ✓ Model parts: ").append(model.getParts() != null ? "present" : "null").append("\n");
-                testResults.append("  ✓ Model animations: ").append(model.getAnimations() != null ? model.getAnimations().size() : 0).append("\n");
             } catch (Exception e) {
                 allTestsPassed = false;
                 testResults.append("  ✗ ModelLoader.getCowModel() failed: ").append(e.getMessage()).append("\n");
@@ -1431,7 +1413,7 @@ public class ModelManager {
                 diagnosis.append("   Model loading: SUCCESS (").append(loadTime).append("ms)\n");
                 diagnosis.append("   Model display name: ").append(model.getDisplayName()).append("\n");
                 diagnosis.append("   Model parts: ").append(model.getParts() != null ? "present" : "null").append("\n");
-                diagnosis.append("   Model animations: ").append(model.getAnimations() != null ? model.getAnimations().size() : 0).append("\n\n");
+                diagnosis.append("\n");
             } catch (Exception e) {
                 diagnosis.append("   Model loading: FAILED - ").append(e.getMessage()).append("\n\n");
             }

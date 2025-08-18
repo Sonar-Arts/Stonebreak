@@ -270,21 +270,6 @@
     fill: #45a049;
 }
 
-/* Animation icons */
-.icon.animation-play,
-.icon.animation-pause,
-.icon.animation-stop {
-    fill: #9b59b6;
-}
-
-.icon.animation-play:hover {
-    fill: #8e44ad;
-}
-
-.icon.animation-pause:hover,
-.icon.animation-stop:hover {
-    fill: #8e44ad;
-}
 
 /* ===== LOADING STATE ===== */
 .icon.loading {

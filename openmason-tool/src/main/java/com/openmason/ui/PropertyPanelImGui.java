@@ -33,11 +33,6 @@ public class PropertyPanelImGui {
     private final ImFloat rotationZ = new ImFloat(0.0f);
     private final ImFloat scale = new ImFloat(1.0f);
     
-    // Animation Controls
-    private final ImInt currentAnimation = new ImInt(0);
-    private final ImFloat animationTime = new ImFloat(0.0f);
-    private boolean animationPlaying = false;
-    private boolean animationPaused = false;
     
     // Texture Variants
     private String[] availableVariants = new String[0];
@@ -65,8 +60,6 @@ public class PropertyPanelImGui {
     private long lastUserInteractionTime = 0;
     private static final long USER_INTERACTION_TIMEOUT = 100; // ms
     
-    // Animation types
-    private final String[] animationTypes = {"IDLE", "WALKING", "GRAZING"};
     
     public PropertyPanelImGui() {
         try {
@@ -104,8 +97,6 @@ public class PropertyPanelImGui {
             renderTextureVariantSection();
             ImGui.separator();
             renderTransformSection();
-            ImGui.separator();
-            renderAnimationSection();
             ImGui.separator();
             renderDiagnosticsSection();
             ImGui.separator();
@@ -231,42 +222,6 @@ public class PropertyPanelImGui {
         }
     }
     
-    private void renderAnimationSection() {
-        if (ImGui.collapsingHeader("Animation", ImGuiTreeNodeFlags.DefaultOpen)) {
-            ImGui.indent();
-            
-            ImGui.text("Animation Type:");
-            if (ImGui.combo("##animation", currentAnimation, animationTypes)) {
-                setAnimation(animationTypes[currentAnimation.get()], animationTime.get());
-            }
-            
-            ImGui.text("Animation Controls:");
-            
-            if (ImGui.button("Play")) {
-                playAnimation();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Pause")) {
-                pauseAnimation();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Stop")) {
-                stopAnimation();
-            }
-            
-            ImGui.text("Timeline:");
-            if (ImGui.sliderFloat("##timeline", animationTime.getData(), 0.0f, 1.0f, "%.2f")) {
-                setAnimationTime(animationTime.get());
-            }
-            
-            // Animation status
-            ImGui.text("Status: " + getAnimationStatus());
-            
-            ImGui.unindent();
-        }
-    }
     
     
     private void renderDiagnosticsSection() {
@@ -551,94 +506,11 @@ public class PropertyPanelImGui {
         // logger.info("Transform reset to default values");
     }
     
-    private void setAnimation(String animationName, float time) {
-        // logger.debug("Setting animation: name='{}', time={}", animationName, time);
-        
-        try {
-            if (animationName == null || animationName.trim().isEmpty()) {
-                logger.warn("Cannot set animation - invalid animation name");
-                return;
-            }
-            
-            float clampedTime = Math.max(0.0f, Math.min(1.0f, time));
-            animationTime.set(clampedTime);
-            
-            // Apply animation to 3D viewport
-            if (viewport3D != null) {
-                // logger.info("Applied animation '{}' at time {} to viewport", animationName, clampedTime);
-                viewport3D.requestRender();
-            }
-            
-        } catch (Exception e) {
-            logger.error("Error setting animation: {}", animationName, e);
-        }
-    }
     
-    private void playAnimation() {
-        // logger.info("Starting animation playback...");
-        
-        animationPlaying = true;
-        animationPaused = false;
-        
-        String currentAnimationName = animationTypes[currentAnimation.get()];
-        
-        // logger.info("Started animation playback for: {}", currentAnimationName);
-        statusMessage = "Playing animation: " + currentAnimationName;
-        
-        setAnimation(currentAnimationName, 0.0f);
-    }
     
-    private void pauseAnimation() {
-        // logger.info("Pausing animation playback...");
-        
-        animationPlaying = false;
-        animationPaused = true;
-        
-        statusMessage = "Animation paused";
-        // logger.info("Animation playback paused");
-    }
     
-    private void stopAnimation() {
-        // logger.info("Stopping animation playback...");
-        
-        animationPlaying = false;
-        animationPaused = false;
-        animationTime.set(0.0f);
-        currentAnimation.set(0); // Reset to IDLE
-        
-        statusMessage = "Animation stopped";
-        
-        setAnimation("IDLE", 0.0f);
-        
-        // logger.info("Animation playback stopped and reset to IDLE");
-    }
     
-    private void setAnimationTime(float time) {
-        // logger.debug("Setting animation time: {}", time);
-        
-        try {
-            float clampedTime = Math.max(0.0f, Math.min(1.0f, time));
-            animationTime.set(clampedTime);
-            
-            String currentAnimationName = animationTypes[currentAnimation.get()];
-            setAnimation(currentAnimationName, clampedTime);
-            
-            statusMessage = String.format("Animation: %s at %.1f%%", currentAnimationName, clampedTime * 100);
-            
-        } catch (Exception e) {
-            logger.error("Error setting animation time: {}", time, e);
-        }
-    }
     
-    private String getAnimationStatus() {
-        if (animationPlaying) {
-            return "Playing";
-        } else if (animationPaused) {
-            return "Paused";
-        } else {
-            return "Stopped";
-        }
-    }
     
     private void updateModelStatistics() {
         if (currentModelName == null) {
@@ -730,9 +602,6 @@ public class PropertyPanelImGui {
         try {
             // Reset transform
             resetTransform();
-            
-            // Stop animation
-            stopAnimation();
             
             // Reset texture variant to default
             if (availableVariants.length > 0) {

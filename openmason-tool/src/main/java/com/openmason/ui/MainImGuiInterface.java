@@ -64,13 +64,6 @@ public class MainImGuiInterface {
     private final ImFloat rotationZ = new ImFloat(0.0f);
     private final ImFloat scale = new ImFloat(1.0f);
     
-    // Animation State
-    private final ImString animation = new ImString("IDLE", 256);
-    private final String[] animations = {"IDLE", "WALKING", "GRAZING"};
-    private final ImInt currentAnimationIndex = new ImInt(0);
-    private final ImFloat animationTime = new ImFloat(0.0f);
-    private boolean animationPlaying = false;
-    private boolean animationPaused = false;
     
     // View Mode State  
     private final String[] viewModes = {"Perspective", "Orthographic", "Front", "Side", "Top"};
@@ -1197,36 +1190,10 @@ public class MainImGuiInterface {
     }
     
     
-    private void changeAnimation() {
-        String animation = animations[currentAnimationIndex.get()];
-        // logger.info("Changed animation to: {}", animation);
-        // Implementation would change animation
-    }
     
-    private void playAnimation() {
-        // logger.info("Play animation action triggered");
-        animationPlaying = true;
-        animationPaused = false;
-        // Implementation would start animation playback
-    }
     
-    private void pauseAnimation() {
-        // logger.info("Pause animation action triggered");
-        animationPaused = true;
-        // Implementation would pause animation
-    }
     
-    private void stopAnimation() {
-        // logger.info("Stop animation action triggered");
-        animationPlaying = false;
-        animationPaused = false;
-        animationTime.set(0.0f);
-        // Implementation would stop animation
-    }
     
-    private void updateAnimationTime() {
-        // Implementation would update animation time
-    }
     
     private void resetProperties() {
         // logger.info("Reset properties action triggered");
@@ -1424,15 +1391,6 @@ public class MainImGuiInterface {
     public void update(float deltaTime) {
         updateMemoryUsage();
         updateFrameRate();
-        
-        // Update animation time if playing
-        if (animationPlaying && !animationPaused) {
-            float currentTime = animationTime.get() + deltaTime * 0.5f; // Animation speed
-            if (currentTime > 1.0f) {
-                currentTime = 0.0f; // Loop animation
-            }
-            animationTime.set(currentTime);
-        }
     }
     
     /**

@@ -196,9 +196,6 @@ public class DockingSystemImGui {
         LayoutPreset modelingLayout = new LayoutPreset("Modeling", "Layout optimized for 3D modeling");
         layoutPresets.put("Modeling", modelingLayout);
         
-        // Animation layout
-        LayoutPreset animationLayout = new LayoutPreset("Animation", "Layout for animation workflow");
-        layoutPresets.put("Animation", animationLayout);
         
         logger.info("Initialized {} layout presets", layoutPresets.size());
     }
