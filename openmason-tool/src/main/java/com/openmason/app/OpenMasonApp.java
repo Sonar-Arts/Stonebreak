@@ -54,6 +54,8 @@ public class OpenMasonApp {
     // Application state
     private boolean shouldClose = false;
     private boolean shouldApplyDefaultLayout = false;
+    private boolean imguiInitialized = false;
+    private boolean openglContextCreated = false;
     
     /**
      * Initialize and run the Dear ImGui application.This
@@ -72,6 +74,7 @@ public class OpenMasonApp {
             
             // Initialize Dear ImGui
             initializeImGui();
+            imguiInitialized = true;
             
             // Initialize UI interfaces
             initializeUI();
@@ -130,10 +133,22 @@ public class OpenMasonApp {
         int width = appConfig.getLastWindowWidth();
         int height = appConfig.getLastWindowHeight();
         
+        logger.info("Attempting to create GLFW window with dimensions: {}x{}", width, height);
+        
         // Create window
         window = glfwCreateWindow(width, height, APP_TITLE, NULL, NULL);
         if (window == NULL) {
-            throw new RuntimeException("Failed to create GLFW window");
+            logger.error("Failed to create GLFW window with dimensions {}x{}, trying default size", width, height);
+            
+            // Try with default dimensions as fallback
+            window = glfwCreateWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, APP_TITLE, NULL, NULL);
+            if (window == NULL) {
+                throw new RuntimeException("Failed to create GLFW window even with default dimensions " + DEFAULT_WIDTH + "x" + DEFAULT_HEIGHT);
+            }
+            
+            logger.info("Successfully created GLFW window with default dimensions: {}x{}", DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        } else {
+            logger.info("Successfully created GLFW window with dimensions: {}x{}", width, height);
         }
         
         // Set minimum window size
@@ -157,6 +172,7 @@ public class OpenMasonApp {
         
         // Create OpenGL context
         GL.createCapabilities();
+        openglContextCreated = true;
         
         // Show window
         glfwShowWindow(window);
@@ -346,9 +362,34 @@ public class OpenMasonApp {
         // logger.info("Cleaning up OpenMason application...");
         
         try {
-            // Cleanup UI interfaces
-            if (viewportInterface != null) {
-                viewportInterface.dispose();
+            // Only attempt OpenGL cleanup if we have a valid context
+            if (openglContextCreated && window != NULL) {
+                // CRITICAL: Ensure OpenGL context is current before any OpenGL cleanup
+                glfwMakeContextCurrent(window);
+                
+                // Cleanup UI interfaces first (while OpenGL context is still valid)
+                if (viewportInterface != null) {
+                    viewportInterface.dispose();
+                }
+                
+                // Cleanup ImGui OpenGL resources (while context is still valid)
+                if (imguiInitialized) {
+                    if (imGuiGl3 != null) {
+                        imGuiGl3.dispose();
+                    }
+                    if (imGuiGlfw != null) {
+                        imGuiGlfw.dispose();
+                    }
+                    ImGui.destroyContext();
+                }
+            } else {
+                // If no OpenGL context, only cleanup non-OpenGL ImGui resources
+                if (imguiInitialized) {
+                    if (imGuiGlfw != null) {
+                        imGuiGlfw.dispose();
+                    }
+                    ImGui.destroyContext();
+                }
             }
             
             // Shutdown application lifecycle
@@ -356,16 +397,7 @@ public class OpenMasonApp {
                 appLifecycle.onApplicationShutdown();
             }
             
-            // Cleanup ImGui
-            if (imGuiGl3 != null) {
-                imGuiGl3.dispose();
-            }
-            if (imGuiGlfw != null) {
-                imGuiGlfw.dispose();
-            }
-            ImGui.destroyContext();
-            
-            // Cleanup GLFW
+            // Now cleanup GLFW (this destroys the OpenGL context)
             if (window != NULL) {
                 glfwFreeCallbacks(window);
                 glfwDestroyWindow(window);

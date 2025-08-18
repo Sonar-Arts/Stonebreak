@@ -23,7 +23,6 @@ public class ViewportImGuiInterface {
     private boolean axesVisible = true;
     private boolean wireframeMode = false;
     private boolean viewportInitialized = false;
-    private boolean showViewportControls = true;
     private boolean showCameraControls = false;
     private boolean showRenderingOptions = false;
     private boolean showTransformationControls = false;
@@ -37,7 +36,6 @@ public class ViewportImGuiInterface {
     private final ImInt currentRenderModeIndex = new ImInt(0);
     
     // UI State Management
-    private final ImBoolean showViewportControlsRef = new ImBoolean(true);
     private final ImBoolean showCameraControlsRef = new ImBoolean(false);
     private final ImBoolean showRenderingOptionsRef = new ImBoolean(false);
     private final ImBoolean showTransformationControlsRef = new ImBoolean(false);
@@ -88,7 +86,6 @@ public class ViewportImGuiInterface {
      */
     private void syncBooleanStates() {
         try {
-            showViewportControlsRef.set(showViewportControls);
             showCameraControlsRef.set(showCameraControls);
             showRenderingOptionsRef.set(showRenderingOptions);
             showTransformationControlsRef.set(showTransformationControls);
@@ -106,7 +103,6 @@ public class ViewportImGuiInterface {
      */
     private void updateBooleanStates() {
         try {
-            showViewportControls = showViewportControlsRef.get();
             showCameraControls = showCameraControlsRef.get();
             showTransformationControls = showTransformationControlsRef.get();
             
@@ -129,9 +125,6 @@ public class ViewportImGuiInterface {
             renderViewportWindow();
             
             // Render optional windows based on state
-            if (showViewportControls) {
-                renderViewportControls();
-            }
             
             if (showCameraControls) {
                 renderCameraControls();
@@ -213,43 +206,21 @@ public class ViewportImGuiInterface {
         ImGui.sameLine();
         
         // Toggle buttons
-        if (ImGui.checkbox("Grid##viewport", gridVisible)) {
+        if (ImGui.checkbox("Grid##viewport", gridVisibleRef)) {
+            gridVisible = gridVisibleRef.get();
             toggleGrid();
         }
         
         ImGui.sameLine();
         
-        if (ImGui.checkbox("Axes##viewport", axesVisible)) {
+        if (ImGui.checkbox("Axes##viewport", axesVisibleRef)) {
+            axesVisible = axesVisibleRef.get();
             toggleAxes();
-        }
-        
-        ImGui.sameLine();
-        
-        if (ImGui.checkbox("Wireframe##viewport", wireframeModeRef)) {
-            wireframeMode = wireframeModeRef.get();
-            
-            // Update viewport wireframe mode
-            if (viewport3D != null) {
-                viewport3D.setWireframeMode(wireframeMode);
-            }
-            
-            // Update render mode combo to match
-            if (wireframeMode) {
-                currentRenderModeIndex.set(1); // Wireframe
-            } else {
-                currentRenderModeIndex.set(0); // Solid
-            }
         }
         
         // Additional controls toggle
         ImGui.sameLine();
         ImGui.separator();
-        ImGui.sameLine();
-        
-        if (ImGui.button("Controls##viewport")) {
-            showViewportControls = !showViewportControls;
-        }
-        
         ImGui.sameLine();
         
         if (ImGui.button("Camera##viewport")) {
@@ -353,73 +324,6 @@ public class ViewportImGuiInterface {
     }
     
     
-    /**
-     * Render viewport controls window.
-     */
-    private void renderViewportControls() {
-        if (ImGui.begin("Viewport Controls", showViewportControlsRef)) {
-            
-            ImGui.text("Display Options:");
-            
-            if (ImGui.checkbox("Show Grid", gridVisible)) {
-                toggleGrid();
-            }
-            
-            if (ImGui.checkbox("Show Axes", axesVisible)) {
-                toggleAxes();
-            }
-            
-            if (ImGui.checkbox("Wireframe Mode", wireframeModeRef)) {
-                wireframeMode = wireframeModeRef.get();
-                
-                // Update viewport wireframe mode
-                if (viewport3D != null) {
-                    viewport3D.setWireframeMode(wireframeMode);
-                }
-                
-                // Update render mode combo to match
-                if (wireframeMode) {
-                    currentRenderModeIndex.set(1); // Wireframe
-                } else {
-                    currentRenderModeIndex.set(0); // Solid
-                }
-            }
-            
-            ImGui.separator();
-            
-            ImGui.text("View Presets:");
-            
-            if (ImGui.button("Front View")) {
-                setViewPreset("Front");
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Side View")) {
-                setViewPreset("Side");
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Top View")) {
-                setViewPreset("Top");
-            }
-            
-            if (ImGui.button("Isometric")) {
-                setViewPreset("Isometric");
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Reset View")) {
-                resetView();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Fit to View")) {
-                fitToView();
-            }
-            
-        }
-        ImGui.end();
-    }
     
     /**
      * Render camera controls window.
@@ -620,15 +524,22 @@ public class ViewportImGuiInterface {
     }
     
     private void toggleGrid() {
-        gridVisible = !gridVisible;
         logger.info("Grid visibility: {}", gridVisible);
-        viewport3D.setShowGrid(gridVisible);
+        if (viewport3D != null) {
+            viewport3D.setShowGrid(gridVisible);
+        }
+        // Sync the ImBoolean reference with the updated state
+        gridVisibleRef.set(gridVisible);
     }
     
     private void toggleAxes() {
-        axesVisible = !axesVisible;
         logger.info("Axes visibility: {}", axesVisible);
         // TODO: Add axes visibility to viewport
+        if (viewport3D != null) {
+            viewport3D.setAxesVisible(axesVisible);
+        }
+        // Sync the ImBoolean reference with the updated state
+        axesVisibleRef.set(axesVisible);
     }
     
     private void toggleWireframe() {

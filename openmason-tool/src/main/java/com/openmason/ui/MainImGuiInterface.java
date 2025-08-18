@@ -2,6 +2,7 @@ package com.openmason.ui;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.ui.PropertyPanelImGui;
+import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.model.StonebreakModel;
 import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
@@ -42,6 +43,7 @@ public class MainImGuiInterface {
     private final ImBoolean showModelBrowser = new ImBoolean(true);
     private final ImBoolean showPropertyPanel = new ImBoolean(true);
     private final ImBoolean showToolbar = new ImBoolean(true);
+    private final ImBoolean showPreferencesWindow = new ImBoolean(false);
     private boolean showGrid = true;
     private boolean showAxes = true;
     private boolean wireframeMode = false;
@@ -110,6 +112,10 @@ public class MainImGuiInterface {
     // Performance Metrics
     private Map<String, Object> performanceMetrics = new HashMap<>();
     
+    // Preferences Management
+    private PreferencesManager preferencesManager;
+    private final ImFloat cameraMouseSensitivity = new ImFloat(3.0f);
+    
     // Recent Files
     private final String[] recentFiles = {
         "standard_cow.json",
@@ -118,6 +124,7 @@ public class MainImGuiInterface {
     
     public MainImGuiInterface() {
         // logger.info("Initializing MainImGuiInterface...");
+        initializePreferences();
         initializeComponents();
         updateUIState();
     }
@@ -159,6 +166,10 @@ public class MainImGuiInterface {
         
         if (showPropertyPanel.get()) {
             renderPropertyPanel();
+        }
+        
+        if (showPreferencesWindow.get()) {
+            renderPreferencesWindow();
         }
         
         renderDialogs();
@@ -350,9 +361,6 @@ public class MainImGuiInterface {
                 togglePropertyPanel();
             }
             
-            if (ImGui.menuItem("Show Viewport Controls", "Ctrl+4", true)) {
-                showViewportControls();
-            }
             
             if (ImGui.menuItem("Show Toolbar", "Ctrl+5", showToolbar.get())) {
                 toggleToolbar();
@@ -634,6 +642,92 @@ public class MainImGuiInterface {
     
     
     /**
+     * Render preferences window with camera settings.
+     */
+    private void renderPreferencesWindow() {
+        if (ImGui.begin("Preferences", showPreferencesWindow, ImGuiWindowFlags.AlwaysAutoResize)) {
+            ImGui.text("Camera Settings");
+            ImGui.separator();
+            
+            // Camera drag speed setting with manual input
+            ImGui.text("Camera Drag Speed:");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(100.0f);
+            if (ImGui.inputFloat("##cameraDragSpeed", cameraMouseSensitivity, 0.1f, 1.0f, "%.1f")) {
+                // Clamp the value to reasonable range
+                float newValue = Math.max(0.1f, Math.min(10.0f, cameraMouseSensitivity.get()));
+                cameraMouseSensitivity.set(newValue);
+                
+                // Apply the setting to the camera immediately
+                applyCameraMouseSensitivity(newValue);
+            }
+            
+            ImGui.spacing();
+            ImGui.separator();
+            ImGui.spacing();
+            
+            // Buttons
+            if (ImGui.button("Reset to Default")) {
+                if (preferencesManager != null) {
+                    preferencesManager.resetCameraToDefaults();
+                    float defaultSensitivity = preferencesManager.getCameraMouseSensitivity();
+                    cameraMouseSensitivity.set(defaultSensitivity);
+                    applyCameraMouseSensitivity(defaultSensitivity);
+                } else {
+                    cameraMouseSensitivity.set(3.0f);
+                    applyCameraMouseSensitivity(3.0f);
+                }
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Apply")) {
+                applyCameraMouseSensitivity(cameraMouseSensitivity.get());
+            }
+            ImGui.sameLine();
+            
+            if (ImGui.button("Close")) {
+                showPreferencesWindow.set(false);
+            }
+        }
+        ImGui.end();
+    }
+    
+    /**
+     * Initialize preferences system and load saved settings.
+     */
+    private void initializePreferences() {
+        try {
+            preferencesManager = new PreferencesManager();
+            
+            // Load saved camera mouse sensitivity
+            float savedSensitivity = preferencesManager.getCameraMouseSensitivity();
+            cameraMouseSensitivity.set(savedSensitivity);
+            
+            // logger.info("Loaded preferences - Camera sensitivity: {}", savedSensitivity);
+        } catch (Exception e) {
+            logger.error("Failed to initialize preferences", e);
+            // Use default values
+            cameraMouseSensitivity.set(3.0f);
+        }
+    }
+    
+    /**
+     * Apply camera mouse sensitivity setting to the camera and save the preference.
+     */
+    private void applyCameraMouseSensitivity(float sensitivity) {
+        // Apply to camera
+        if (viewport3D != null && viewport3D.getCamera() != null) {
+            viewport3D.getCamera().setMouseSensitivity(sensitivity);
+            // logger.info("Applied camera mouse sensitivity: {}", sensitivity);
+        }
+        
+        // Save preference to configuration file for persistence
+        if (preferencesManager != null) {
+            preferencesManager.setCameraMouseSensitivity(sensitivity);
+        }
+    }
+    
+    /**
      * Render any modal dialogs.
      */
     private void renderDialogs() {
@@ -856,7 +950,7 @@ public class MainImGuiInterface {
     
     private void showPreferences() {
         // logger.info("Show preferences action triggered");
-        // Implementation would show preferences dialog
+        showPreferencesWindow.set(true);
     }
     
     public void resetView() {
@@ -943,11 +1037,6 @@ public class MainImGuiInterface {
         updateStatus("3D Viewport is visible");
     }
     
-    private void showViewportControls() {
-        // logger.info("Show viewport controls action triggered");
-        // Viewport controls are always shown in current implementation
-        updateStatus("Viewport controls are visible");
-    }
     
     private void resetToDefaultLayout() {
         // logger.info("Reset to default layout action triggered");
@@ -1168,6 +1257,13 @@ public class MainImGuiInterface {
             // logger.info("Setting up 3D viewport...");
             viewport3D = new OpenMason3DViewport();
             // OpenMason3DViewport initializes itself in constructor
+            
+            // Synchronize camera sensitivity with saved preferences
+            if (viewport3D.getCamera() != null) {
+                // Apply saved preference to camera (loaded in initializePreferences)
+                applyCameraMouseSensitivity(cameraMouseSensitivity.get());
+            }
+            
             // logger.info("3D viewport setup complete");
         } catch (Exception e) {
             logger.error("Failed to setup 3D viewport", e);

@@ -107,11 +107,7 @@ public class PropertyPanelImGui {
             ImGui.separator();
             renderAnimationSection();
             ImGui.separator();
-            renderStatisticsSection();
-            ImGui.separator();
             renderDiagnosticsSection();
-            ImGui.separator();
-            renderActionsSection();
             ImGui.separator();
             renderStatusSection();
         }
@@ -178,7 +174,6 @@ public class PropertyPanelImGui {
             }
             
             ImGui.text("Rotation:");
-            ImGui.text("(Full 360° rotation allowed)");
             
             boolean rotationChanged = false;
             if (ImGui.sliderFloat("X##rotX", rotationX.getData(), -180.0f, 180.0f, "%.1f°")) {
@@ -198,7 +193,6 @@ public class PropertyPanelImGui {
             
             ImGui.separator();
             ImGui.text("Scale:");
-            ImGui.text(String.format("(Constrained to %.1fx - %.1fx for grid bounds)", minScale, maxScale));
             
             // Check if scale is at boundaries for visual feedback
             float currentScale = scale.get();
@@ -274,32 +268,6 @@ public class PropertyPanelImGui {
         }
     }
     
-    private void renderStatisticsSection() {
-        if (ImGui.collapsingHeader("Statistics")) {
-            ImGui.indent();
-            
-            ImGui.text("Model Statistics:");
-            ImGui.bulletText("Parts: " + partCount);
-            ImGui.bulletText("Vertices: " + vertexCount);
-            ImGui.bulletText("Triangles: " + triangleCount);
-            ImGui.bulletText("Texture Variants: " + variantCount);
-            
-            if (switchCount > 0) {
-                ImGui.separator();
-                ImGui.text("Performance:");
-                ImGui.bulletText("Texture switches: " + switchCount);
-                ImGui.bulletText("Last switch time: " + lastSwitchTime + "ms");
-                
-                if (lastSwitchTime > 200) {
-                    ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange
-                    ImGui.bulletText("Performance warning: > 200ms");
-                    ImGui.popStyleColor();
-                }
-            }
-            
-            ImGui.unindent();
-        }
-    }
     
     private void renderDiagnosticsSection() {
         if (ImGui.collapsingHeader("Diagnostics")) {
@@ -360,6 +328,11 @@ public class PropertyPanelImGui {
                     // Diagnostics are automatically updated on each render
                     // logger.info("Diagnostic data refreshed from renderer");
                 }
+                ImGui.sameLine();
+                
+                if (ImGui.button("Export Diagnostics")) {
+                    exportModelDiagnostics();
+                }
                 
             } else {
                 ImGui.textColored(1.0f, 0.6f, 0.6f, 1.0f, "Viewport not available");
@@ -370,26 +343,6 @@ public class PropertyPanelImGui {
         }
     }
     
-    private void renderActionsSection() {
-        if (ImGui.collapsingHeader("Actions")) {
-            ImGui.indent();
-            
-            if (ImGui.button("Validate Properties")) {
-                validateModel();
-            }
-            ImGui.sameLine();
-            
-            if (ImGui.button("Reset All")) {
-                resetProperties();
-            }
-            
-            if (ImGui.button("Export Diagnostics")) {
-                exportModelDiagnostics();
-            }
-            
-            ImGui.unindent();
-        }
-    }
     
     private void renderStatusSection() {
         ImGui.separator();
@@ -411,7 +364,7 @@ public class PropertyPanelImGui {
             ImGui.text("✅ " + statusMessage);
             ImGui.popStyleColor();
         } else {
-            ImGui.text("ℹ️ " + statusMessage);
+            ImGui.text(statusMessage);
         }
     }
     

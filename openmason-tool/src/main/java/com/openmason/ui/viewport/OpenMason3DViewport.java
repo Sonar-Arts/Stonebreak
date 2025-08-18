@@ -1332,6 +1332,21 @@ public class OpenMason3DViewport {
             logger.warn("Color uniform location is -1, cube may not be colored correctly");
         }
         
+        // Apply user transform to test cube
+        if (userTransformDirty) {
+            updateUserTransformMatrix();
+        }
+        
+        // Calculate MVP matrix with user transform applied
+        Matrix4f mvpWithTransform = new Matrix4f();
+        camera.getProjectionMatrix().mul(camera.getViewMatrix(), mvpWithTransform);
+        mvpWithTransform.mul(userTransformMatrix);
+        
+        // Upload transformed MVP matrix to shader
+        FloatBuffer transformedMatrixBuffer = BufferUtils.createFloatBuffer(16);
+        mvpWithTransform.get(transformedMatrixBuffer);
+        glUniformMatrix4fv(mvpMatrixLocation, false, transformedMatrixBuffer);
+        
         if (wireframeMode) {
             glUniform3f(colorLocation, 1.0f, 1.0f, 1.0f); // White wireframe
         } else {
