@@ -3,6 +3,7 @@ package com.openmason.ui;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.ui.PropertyPanelImGui;
 import com.openmason.ui.preferences.PreferencesManager;
+import com.openmason.ui.LogoManager;
 import com.openmason.model.StonebreakModel;
 import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
@@ -44,6 +45,7 @@ public class MainImGuiInterface {
     private final ImBoolean showPropertyPanel = new ImBoolean(true);
     private final ImBoolean showToolbar = new ImBoolean(true);
     private final ImBoolean showPreferencesWindow = new ImBoolean(false);
+    private final ImBoolean showAboutWindow = new ImBoolean(false);
     private boolean showGrid = true;
     private boolean showAxes = true;
     private boolean wireframeMode = false;
@@ -109,6 +111,9 @@ public class MainImGuiInterface {
     private PreferencesManager preferencesManager;
     private final ImFloat cameraMouseSensitivity = new ImFloat(3.0f);
     
+    // Logo Management
+    private LogoManager logoManager;
+    
     // Recent Files
     private final String[] recentFiles = {
         "standard_cow.json",
@@ -118,6 +123,7 @@ public class MainImGuiInterface {
     public MainImGuiInterface() {
         // logger.info("Initializing MainImGuiInterface...");
         initializePreferences();
+        initializeLogo();
         initializeComponents();
         updateUIState();
     }
@@ -163,6 +169,10 @@ public class MainImGuiInterface {
         
         if (showPreferencesWindow.get()) {
             renderPreferencesWindow();
+        }
+        
+        if (showAboutWindow.get()) {
+            renderAboutWindow();
         }
         
         renderDialogs();
@@ -215,6 +225,14 @@ public class MainImGuiInterface {
      */
     private void renderMainMenuBar() {
         if (ImGui.beginMainMenuBar()) {
+            // Add Open Mason logo at the beginning of the menu bar
+            if (logoManager != null) {
+                logoManager.renderMenuBarLogo();
+                ImGui.sameLine();
+                ImGui.separator();
+                ImGui.sameLine();
+            }
+            
             renderFileMenu();
             renderEditMenu();
             renderViewMenu();
@@ -692,6 +710,67 @@ public class MainImGuiInterface {
     }
     
     /**
+     * Render About window with Open Mason logo and information.
+     */
+    private void renderAboutWindow() {
+        if (ImGui.begin("About OpenMason", showAboutWindow, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse)) {
+            
+            // Render large logo at the top
+            if (logoManager != null) {
+                logoManager.renderAboutLogo();
+            }
+            
+            // Application title and version
+            ImGui.textColored(0.2f, 0.6f, 1.0f, 1.0f, "OpenMason");
+            ImGui.sameLine();
+            ImGui.text("v0.0.1");
+            
+            ImGui.text("Professional 3D Model Development Tool");
+            ImGui.spacing();
+            
+            // Description
+            ImGui.separator();
+            ImGui.spacing();
+            ImGui.textWrapped("OpenMason is a professional 3D model and texture development tool designed for " +
+                             "creating and editing Stonebreak game assets. Built with ImGui and LWJGL for " +
+                             "high-performance rendering and intuitive user experience.");
+            ImGui.spacing();
+            
+            // Features
+            ImGui.text("Features:");
+            ImGui.bulletText("Real-time 3D model visualization");
+            ImGui.bulletText("Texture variant management");
+            ImGui.bulletText("Professional camera controls");
+            ImGui.bulletText("Transform gizmos and wireframe modes");
+            ImGui.bulletText("Direct integration with Stonebreak model system");
+            ImGui.spacing();
+            
+            // Technical information
+            ImGui.separator();
+            ImGui.spacing();
+            ImGui.text("Built with:");
+            ImGui.bulletText("Java 17");
+            ImGui.bulletText("LWJGL 3.3.2 (OpenGL, GLFW)");
+            ImGui.bulletText("Dear ImGui");
+            ImGui.bulletText("JOML Math Library");
+            ImGui.spacing();
+            
+            // Close button
+            ImGui.separator();
+            ImGui.spacing();
+            float windowWidth = ImGui.getWindowSize().x;
+            float buttonWidth = 80.0f;
+            ImGui.setCursorPosX((windowWidth - buttonWidth) * 0.5f);
+            
+            if (ImGui.button("Close", buttonWidth, 0)) {
+                showAboutWindow.set(false);
+            }
+            
+        }
+        ImGui.end();
+    }
+    
+    /**
      * Initialize preferences system and load saved settings.
      */
     private void initializePreferences() {
@@ -707,6 +786,18 @@ public class MainImGuiInterface {
             logger.error("Failed to initialize preferences", e);
             // Use default values
             cameraMouseSensitivity.set(3.0f);
+        }
+    }
+    
+    /**
+     * Initialize logo manager for displaying Open Mason logo throughout the UI.
+     */
+    private void initializeLogo() {
+        try {
+            logoManager = LogoManager.getInstance();
+            // logger.info("Logo manager initialized successfully");
+        } catch (Exception e) {
+            logger.error("Failed to initialize logo manager", e);
         }
     }
     
@@ -934,6 +1025,9 @@ public class MainImGuiInterface {
         if (viewport3D != null) {
             viewport3D.dispose();
         }
+        if (logoManager != null) {
+            logoManager.dispose();
+        }
         System.exit(0);
     }
     
@@ -1144,7 +1238,7 @@ public class MainImGuiInterface {
     
     private void showAbout() {
         // logger.info("Show about action triggered");
-        // Implementation would show about dialog
+        showAboutWindow.set(true);
     }
     
     private void filterModels(String filter) {
