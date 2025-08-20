@@ -56,6 +56,9 @@ public class ViewportImGuiInterface {
     // Core Components
     private OpenMason3DViewport viewport3D;
     
+    // Theme system integration
+    private boolean themeSystemAvailable = false;
+    
     // Viewport Dimensions
     private final ImVec2 viewportSize = new ImVec2();
     private final ImVec2 viewportPos = new ImVec2();
@@ -390,6 +393,11 @@ public class ViewportImGuiInterface {
             
         }
         ImGui.end();
+        
+        // Restore styling
+        if (themeSystemAvailable) {
+            restoreControlWindowStyling();
+        }
     }
     
     // Action Methods
@@ -710,6 +718,11 @@ public class ViewportImGuiInterface {
      * Render transformation controls for individual model part positioning.
      */
     private void renderTransformationControls() {
+        // Apply theme-consistent styling for transformation controls
+        if (themeSystemAvailable) {
+            applyControlWindowStyling();
+        }
+        
         if (ImGui.begin("Matrix Transformations", showTransformationControlsRef)) {
             
             // Matrix transformation mode (always enabled)
@@ -737,6 +750,11 @@ public class ViewportImGuiInterface {
                 
         }
         ImGui.end();
+        
+        // Restore styling
+        if (themeSystemAvailable) {
+            restoreControlWindowStyling();
+        }
     }
     
     
@@ -763,5 +781,41 @@ public class ViewportImGuiInterface {
         gridVisible = true;
         axesVisible = true;
         syncBooleanStates();
+    }
+    
+    // Theme system integration methods
+    
+    /**
+     * Apply theme-aware styling for control windows
+     */
+    private void applyControlWindowStyling() {
+        if (!themeSystemAvailable) {
+            return;
+        }
+        
+        try {
+            // Apply subtle styling for control windows
+            ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8.0f, 8.0f);
+            ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 4.0f, 6.0f);
+            ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 2.0f);
+        } catch (Exception e) {
+            logger.debug("Error applying control window styling", e);
+        }
+    }
+    
+    /**
+     * Restore default styling after control window rendering
+     */
+    private void restoreControlWindowStyling() {
+        if (!themeSystemAvailable) {
+            return;
+        }
+        
+        try {
+            // Pop the style variables that were pushed in applyControlWindowStyling
+            ImGui.popStyleVar(3); // 3 style variables were pushed
+        } catch (Exception e) {
+            logger.debug("Error restoring control window styling", e);
+        }
     }
 }

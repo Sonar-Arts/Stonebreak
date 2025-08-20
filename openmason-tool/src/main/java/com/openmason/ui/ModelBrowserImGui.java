@@ -3,6 +3,9 @@ package com.openmason.ui;
 import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
 import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.themes.ThemeDefinition;
+import com.openmason.ui.themes.DensityManager;
+import com.openmason.ui.themes.ThemeManager;
 import imgui.ImGui;
 import imgui.flag.*;
 import imgui.type.ImBoolean;
@@ -182,6 +185,10 @@ public class ModelBrowserImGui {
     private int totalModelsDiscovered = 0;
     private int totalVariantsDiscovered = 0;
     
+    // Theme system integration
+    private ThemeManager themeManager;
+    private boolean themeSystemAvailable = false;
+    
     public ModelBrowserImGui() {
         logger.error("=== ModelBrowserImGui CONSTRUCTOR CALLED ===");
         logger.error("Stack trace:", new RuntimeException("ModelBrowserImGui instantiation trace"));
@@ -203,6 +210,9 @@ public class ModelBrowserImGui {
             // Initialize expanded nodes
             expandedNodes.add("Cow Models");
             expandedNodes.add("Mobs");
+            
+            // Initialize theme system
+            initializeThemeSystem();
             
             // Initialize asynchronously with proper error handling
             CompletableFuture.runAsync(() -> {
@@ -513,6 +523,114 @@ public class ModelBrowserImGui {
             
             ImGui.unindent();
         }
+    }
+    
+    // Theme system integration methods
+    
+    /**
+     * Initialize the theme system integration.
+     */
+    private void initializeThemeSystem() {
+        try {
+            themeManager = ThemeManager.getInstance();
+            themeSystemAvailable = (themeManager != null);
+            if (themeSystemAvailable) {
+                logger.debug("Theme system initialized successfully for ModelBrowserImGui");
+            } else {
+                logger.warn("Theme system not available for ModelBrowserImGui");
+            }
+        } catch (Exception e) {
+            logger.error("Failed to initialize theme system for ModelBrowserImGui", e);
+            themeManager = null;
+            themeSystemAvailable = false;
+        }
+    }
+    
+    /**
+     * Apply theme-aware styling for the model browser.
+     */
+    private void applyThemeAwareStyles() {
+        if (!themeSystemAvailable || themeManager == null) {
+            return;
+        }
+        
+        try {
+            // Apply subtle styling enhancements based on current theme
+            ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+            if (currentTheme != null) {
+                // Apply theme-consistent window styling
+                ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8.0f, 8.0f);
+                ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 4.0f, 6.0f);
+                ImGui.pushStyleVar(ImGuiStyleVar.IndentSpacing, 16.0f);
+            }
+        } catch (Exception e) {
+            logger.debug("Error applying theme-aware styles to model browser", e);
+        }
+    }
+    
+    /**
+     * Restore default styling after theme-aware rendering.
+     */
+    private void restoreDefaultStyles() {
+        if (!themeSystemAvailable) {
+            return;
+        }
+        
+        try {
+            // Pop the style variables we pushed
+            ImGui.popStyleVar(3); // WindowPadding, ItemSpacing, and IndentSpacing
+        } catch (Exception e) {
+            logger.debug("Error restoring default styles in model browser", e);
+        }
+    }
+    
+    /**
+     * Render theme debug information (only shown when debug logging is enabled).
+     */
+    private void renderThemeDebugSection() {
+        if (ImGui.collapsingHeader("Theme Debug Info")) {
+            ImGui.indent();
+            
+            try {
+                ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+                if (currentTheme != null) {
+                    ImGui.text("Current Theme: " + currentTheme.getName());
+                    ImGui.text("Theme Type: " + currentTheme.getType().getDisplayName());
+                }
+                
+                DensityManager.UIDensity density = themeManager.getCurrentDensity();
+                if (density != null) {
+                    ImGui.text("UI Density: " + density.getDisplayName());
+                }
+                
+                ImGui.text("Theme System: " + (themeSystemAvailable ? "Available" : "Unavailable"));
+                ImGui.text("Preview Mode: " + (themeManager.isPreviewMode() ? "Active" : "Inactive"));
+                
+                if (ImGui.button("Refresh Theme Info")) {
+                    String stats = themeManager.getThemeStatistics();
+                    logger.debug("Theme Statistics: {}", stats);
+                }
+                
+            } catch (Exception e) {
+                ImGui.text("Error getting theme info: " + e.getMessage());
+            }
+            
+            ImGui.unindent();
+        }
+    }
+    
+    /**
+     * Get theme manager instance (for external components).
+     */
+    public ThemeManager getThemeManager() {
+        return themeManager;
+    }
+    
+    /**
+     * Check if theme system is available.
+     */
+    public boolean isThemeSystemAvailable() {
+        return themeSystemAvailable;
     }
     
     // Filtering methods
@@ -1193,6 +1311,10 @@ public class ModelBrowserImGui {
             // Reset scan state
             scanInProgress = false;
             scanStatus = "Disposed";
+            
+            // Clear theme system reference
+            themeManager = null;
+            themeSystemAvailable = false;
             
             logger.info("ModelBrowserImGui resources disposed successfully");
             

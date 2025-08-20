@@ -34,10 +34,12 @@ module com.openmason {
     // Open packages for Jackson JSON processing
     opens com.openmason.model to com.fasterxml.jackson.databind;
     opens com.openmason.texture to com.fasterxml.jackson.databind;
+    opens com.openmason.ui.themes to com.fasterxml.jackson.databind;
     
     // Export packages for potential future extensions
     exports com.openmason.app;
     exports com.openmason.ui;
+    exports com.openmason.ui.themes;
     exports com.openmason.model;
     exports com.openmason.texture;
 }

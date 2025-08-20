@@ -257,7 +257,7 @@ public class AdvancedUIManager {
     private void initializeThemeSystem() {
         // Apply current ImGui theme
         if (themeManager.getCurrentTheme() != null) {
-            themeManager.applyImGuiTheme(themeManager.getCurrentTheme());
+            themeManager.applyTheme(themeManager.getCurrentTheme());
         }
         
         logger.info("ImGui theme system initialized");

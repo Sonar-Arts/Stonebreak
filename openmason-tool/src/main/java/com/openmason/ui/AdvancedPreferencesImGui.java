@@ -1,6 +1,10 @@
 package com.openmason.ui;
 
 import com.openmason.ui.themes.ThemeManager;
+import com.openmason.ui.themes.ThemeDefinition;
+import com.openmason.ui.themes.DensityManager;
+import com.openmason.ui.themes.ThemePreview;
+import com.openmason.ui.themes.StyleApplicator;
 import imgui.ImGui;
 import imgui.flag.*;
 import imgui.type.ImBoolean;
@@ -75,14 +79,17 @@ public class AdvancedPreferencesImGui {
     
     private final String[] themeOptions = {
         "Dark Theme",
-        "Light Theme", 
+        "Light Theme",
+        "High Contrast Theme",
+        "Blue Theme",
         "Custom Theme"
     };
     
     private final String[] densityOptions = {
         "Compact",
-        "Standard",
-        "Comfortable"
+        "Normal",
+        "Comfortable",
+        "Spacious"
     };
     
     public AdvancedPreferencesImGui() {
@@ -96,17 +103,34 @@ public class AdvancedPreferencesImGui {
     private void loadCurrentSettings() {
         try {
             // Load current theme
-            ThemeManager.ImGuiTheme current = themeManager.getCurrentTheme();
-            for (int i = 0; i < themeOptions.length; i++) {
-                if (current != null && themeOptions[i].toLowerCase().contains(current.getName().toLowerCase())) {
-                    currentTheme.set(i);
-                    break;
+            ThemeDefinition current = themeManager.getCurrentTheme();
+            if (current != null) {
+                String themeName = current.getName().toLowerCase();
+                // Map theme names to indices
+                if (themeName.contains("dark")) {
+                    currentTheme.set(0);
+                } else if (themeName.contains("light")) {
+                    currentTheme.set(1);
+                } else if (themeName.contains("high") || themeName.contains("contrast")) {
+                    currentTheme.set(2);
+                } else if (themeName.contains("blue")) {
+                    currentTheme.set(3);
+                } else {
+                    currentTheme.set(4); // Custom
                 }
             }
             
-            // Load current density
-            ThemeManager.UIDensity density = themeManager.getCurrentDensity();
-            uiDensity.set(density.ordinal());
+            // Load current density using new DensityManager types
+            DensityManager.UIDensity density = themeManager.getCurrentDensity();
+            if (density != null) {
+                switch (density) {
+                    case COMPACT -> uiDensity.set(0);
+                    case NORMAL -> uiDensity.set(1);
+                    case COMFORTABLE -> uiDensity.set(2);
+                    case SPACIOUS -> uiDensity.set(3);
+                    default -> uiDensity.set(1); // Default to Normal
+                }
+            }
             
             // Load current shortcut preset (stub implementation)
             shortcutPreset.set(0); // Default preset
@@ -261,7 +285,25 @@ public class AdvancedPreferencesImGui {
                 }
                 
                 if (ImGui.button("Customize Theme...")) {
-                    uiManager.showThemeCustomization();
+                    showThemeCustomizationDialog();
+                }
+                
+                ImGui.sameLine();
+                if (ImGui.button("Preview")) {
+                    previewSelectedTheme();
+                }
+                
+                if (themeManager.isPreviewMode()) {
+                    ImGui.spacing();
+                    ImGui.textColored(0.0f, 1.0f, 1.0f, 1.0f, "Theme preview active");
+                    if (ImGui.button("Apply Preview")) {
+                        themeManager.commitPreviewTheme();
+                        hasUnsavedChanges = true;
+                    }
+                    ImGui.sameLine();
+                    if (ImGui.button("Cancel Preview")) {
+                        themeManager.exitPreviewMode();
+                    }
                 }
                 
                 ImGui.spacing();
@@ -563,8 +605,8 @@ public class AdvancedPreferencesImGui {
         recentFileCount.set(10);
         memoryUsage.set(2048.0f);
         
-        currentTheme.set(0);
-        uiDensity.set(1);
+        currentTheme.set(0); // Dark theme
+        uiDensity.set(1); // Normal density
         interfaceFontSize.set(12.0f);
         
         shortcutPreset.set(0);
@@ -587,6 +629,15 @@ public class AdvancedPreferencesImGui {
         enableVerboseLogging.set(false);
         showDebugInfo.set(false);
         
+        // Reset theme system to defaults
+        try {
+            themeManager.applyTheme("dark");
+            themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
+            logger.info("Theme system reset to defaults");
+        } catch (Exception e) {
+            logger.error("Error resetting theme system to defaults", e);
+        }
+        
         hasUnsavedChanges = true;
         
         logger.info("Reset all preferences to defaults");
@@ -594,21 +645,39 @@ public class AdvancedPreferencesImGui {
     
     private void applyChanges() {
         try {
-            // Apply theme changes
+            // Apply theme changes using new ThemeManager system
             String selectedTheme = themeOptions[currentTheme.get()];
+            String themeId = null;
             if (selectedTheme.toLowerCase().contains("dark")) {
-                themeManager.applyTheme("dark");
+                themeId = "dark";
             } else if (selectedTheme.toLowerCase().contains("light")) {
-                themeManager.applyTheme("light");
+                themeId = "light";
+            } else if (selectedTheme.toLowerCase().contains("high") || selectedTheme.toLowerCase().contains("contrast")) {
+                themeId = "high-contrast";
+            } else if (selectedTheme.toLowerCase().contains("blue")) {
+                themeId = "blue";
             }
             
-            // Apply UI density
-            ThemeManager.UIDensity[] densities = ThemeManager.UIDensity.values();
-            if (uiDensity.get() >= 0 && uiDensity.get() < densities.length) {
-                themeManager.setUIDensity(densities[uiDensity.get()]);
+            if (themeId != null) {
+                themeManager.applyTheme(themeId);
+                logger.info("Applied theme: {}", themeId);
             }
             
-            // Apply shortcut preset
+            // Apply UI density using new DensityManager types
+            DensityManager.UIDensity newDensity = null;
+            switch (uiDensity.get()) {
+                case 0 -> newDensity = DensityManager.UIDensity.COMPACT;
+                case 1 -> newDensity = DensityManager.UIDensity.NORMAL;
+                case 2 -> newDensity = DensityManager.UIDensity.COMFORTABLE;
+                case 3 -> newDensity = DensityManager.UIDensity.SPACIOUS;
+            }
+            
+            if (newDensity != null) {
+                // Convert to legacy UIDensity for ThemeManager compatibility
+                themeManager.setUIDensity(newDensity);
+                logger.info("Applied UI density: {}", newDensity);
+            }
+            
             // Apply shortcut preset (stub implementation)
             if (shortcutPreset.get() >= 0 && shortcutPreset.get() < 3) {
                 logger.info("Shortcut preset {} applied (stub)", shortcutPreset.get());
@@ -619,6 +688,57 @@ public class AdvancedPreferencesImGui {
             
         } catch (Exception e) {
             logger.error("Error applying preference changes", e);
+        }
+    }
+    
+    // Removed legacy conversion method
+    
+    /**
+     * Show theme customization dialog using new theme system.
+     */
+    private void showThemeCustomizationDialog() {
+        try {
+            // This could open a dedicated theme editor window
+            // For now, just show information about available themes
+            logger.info("Theme customization requested - showing available themes");
+            
+            // Get theme statistics from ThemeManager
+            String stats = themeManager.getThemeStatistics();
+            logger.info("Available themes: {}", stats);
+            
+        } catch (Exception e) {
+            logger.error("Error showing theme customization", e);
+        }
+    }
+    
+    /**
+     * Preview the currently selected theme.
+     */
+    private void previewSelectedTheme() {
+        try {
+            String selectedTheme = themeOptions[currentTheme.get()];
+            String themeId = null;
+            
+            if (selectedTheme.toLowerCase().contains("dark")) {
+                themeId = "dark";
+            } else if (selectedTheme.toLowerCase().contains("light")) {
+                themeId = "light";
+            } else if (selectedTheme.toLowerCase().contains("high") || selectedTheme.toLowerCase().contains("contrast")) {
+                themeId = "high-contrast";
+            } else if (selectedTheme.toLowerCase().contains("blue")) {
+                themeId = "blue";
+            }
+            
+            if (themeId != null) {
+                ThemeDefinition theme = themeManager.getTheme(themeId);
+                if (theme != null) {
+                    themeManager.previewTheme(theme);
+                    logger.info("Started preview for theme: {}", themeId);
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error previewing theme", e);
         }
     }
     
@@ -657,6 +777,20 @@ public class AdvancedPreferencesImGui {
         // Appearance settings
         values.put("currentTheme", currentTheme.get());
         values.put("uiDensity", uiDensity.get());
+        
+        // Add theme system values
+        try {
+            ThemeDefinition current = themeManager.getCurrentTheme();
+            values.put("currentThemeName", current != null ? current.getName() : "Unknown");
+            
+            DensityManager.UIDensity density = themeManager.getCurrentDensity();
+            values.put("currentDensityName", density != null ? density.name() : "Unknown");
+            
+            values.put("themePreviewMode", themeManager.isPreviewMode());
+            values.put("themeStatistics", themeManager.getThemeStatistics());
+        } catch (Exception e) {
+            values.put("themeSystemError", e.getMessage());
+        }
         values.put("interfaceFontSize", interfaceFontSize.get());
         
         // Interface settings

@@ -1,9 +1,15 @@
 package com.openmason.ui;
 
+import com.openmason.ui.config.WindowConfig;
+import com.openmason.ui.themes.ImGuiHelpers;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.ui.PropertyPanelImGui;
 import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.LogoManager;
+import com.openmason.ui.themes.ThemeManager;
+import com.openmason.ui.themes.ThemeDefinition;
+import com.openmason.ui.themes.DensityManager;
+import com.openmason.ui.themes.ThemePreview;
 import com.openmason.model.StonebreakModel;
 import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
@@ -49,6 +55,12 @@ public class MainImGuiInterface {
     private boolean showGrid = true;
     private boolean showAxes = true;
     private boolean wireframeMode = false;
+    
+    // Window Configurations (from plan section 1.3)
+    private final WindowConfig viewportConfig = WindowConfig.forViewport();
+    private final WindowConfig propertiesConfig = WindowConfig.forProperties();
+    private final WindowConfig modelBrowserConfig = WindowConfig.forModelBrowser();
+    private final WindowConfig preferencesConfig = WindowConfig.forAdvancedPreferences();
     
     // Model State
     private boolean modelLoaded = false;
@@ -114,6 +126,13 @@ public class MainImGuiInterface {
     // Logo Management
     private LogoManager logoManager;
     
+    // Theme Management
+    private ThemeManager themeManager;
+    private final ImBoolean showThemeMenu = new ImBoolean(false);
+    private final ImInt selectedThemeIndex = new ImInt(0);
+    private final ImInt selectedDensityIndex = new ImInt(1); // Normal by default
+    private boolean themeSystemInitialized = false;
+    
     // Recent Files
     private final String[] recentFiles = {
         "standard_cow.json",
@@ -124,6 +143,7 @@ public class MainImGuiInterface {
         // logger.info("Initializing MainImGuiInterface...");
         initializePreferences();
         initializeLogo();
+        initializeThemeSystem();
         initializeComponents();
         updateUIState();
     }
@@ -237,6 +257,7 @@ public class MainImGuiInterface {
             renderEditMenu();
             renderViewMenu();
             renderToolsMenu();
+            renderThemeMenu(); // Added as per plan section 2.4
             renderHelpMenu();
             
             // Show toolbar restore button when toolbar is hidden (right side of menu bar)
@@ -436,6 +457,45 @@ public class MainImGuiInterface {
     }
     
     /**
+     * Render Theme menu (from plan section 2.4).
+     */
+    private void renderThemeMenu() {
+        if (ImGui.beginMenu("Theme")) {
+            // Quick theme switching
+            for (ThemeDefinition theme : themeManager.getAvailableThemes()) {
+                boolean isCurrentTheme = theme == themeManager.getCurrentTheme();
+                if (ImGui.menuItem(theme.getName(), "", isCurrentTheme)) {
+                    themeManager.applyTheme(theme);
+                }
+            }
+            
+            ImGui.separator();
+            
+            // Density controls
+            if (ImGui.beginMenu("UI Density")) {
+                for (DensityManager.UIDensity density : DensityManager.UIDensity.values()) {
+                    boolean isCurrentDensity = density == themeManager.getCurrentDensity();
+                    if (ImGui.menuItem(density.getDisplayName(), "", isCurrentDensity)) {
+                        themeManager.setUIDensity(density);
+                    }
+                }
+                ImGui.endMenu();
+            }
+            
+            ImGui.separator();
+            if (ImGui.menuItem("Advanced Theme Settings...")) {
+                showPreferencesWindow.set(true);
+            }
+            if (ImGui.menuItem("Reset to Defaults")) {
+                themeManager.applyTheme("dark");
+                themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
+            }
+            
+            ImGui.endMenu();
+        }
+    }
+    
+    /**
      * Render Help menu.
      */
     private void renderHelpMenu() {
@@ -576,7 +636,13 @@ public class MainImGuiInterface {
      * Render model browser panel.
      */
     private void renderModelBrowser() {
+        // Apply window configuration before creating window (from plan section 2.4)
+        ImGuiHelpers.configureWindowConstraints(modelBrowserConfig);
+        
         if (ImGui.begin("Model Browser", showModelBrowser)) {
+            // Configure window size and position inside window
+            ImGuiHelpers.configureWindowSize(modelBrowserConfig);
+            ImGuiHelpers.configureWindowPosition(modelBrowserConfig);
             
             // Search and filter
             ImGui.text("Search:");
@@ -645,7 +711,13 @@ public class MainImGuiInterface {
             propertyPanelImGui.render();
         } else {
             // Fallback rendering if PropertyPanelImGui is not available
+            // Apply window configuration before creating window (from plan section 2.4)
+            ImGuiHelpers.configureWindowConstraints(propertiesConfig);
+            
             if (ImGui.begin("Properties", showPropertyPanel)) {
+                // Configure window size and position inside window
+                ImGuiHelpers.configureWindowSize(propertiesConfig);
+                ImGuiHelpers.configureWindowPosition(propertiesConfig);
                 ImGui.textDisabled("Property panel not initialized");
                 ImGui.text("Model: " + (modelLoaded ? currentModelPath : "No model loaded"));
                 
@@ -662,7 +734,13 @@ public class MainImGuiInterface {
      * Render preferences window with camera settings.
      */
     private void renderPreferencesWindow() {
+        // Apply window configuration before creating window (from plan section 2.4)
+        ImGuiHelpers.configureWindowConstraints(preferencesConfig);
+        
         if (ImGui.begin("Preferences", showPreferencesWindow, ImGuiWindowFlags.AlwaysAutoResize)) {
+            // Configure window size and position inside window
+            ImGuiHelpers.configureWindowSize(preferencesConfig);
+            ImGuiHelpers.configureWindowPosition(preferencesConfig);
             ImGui.text("Camera Settings");
             ImGui.separator();
             
@@ -1027,6 +1105,9 @@ public class MainImGuiInterface {
         }
         if (logoManager != null) {
             logoManager.dispose();
+        }
+        if (themeManager != null) {
+            themeManager.dispose();
         }
         System.exit(0);
     }
@@ -1495,6 +1576,136 @@ public class MainImGuiInterface {
         // TODO: Implement JSON export using Stonebreak model system
         // logger.debug("JSON export placeholder for: {}", file.getName());
         Thread.sleep(150); // Simulate export time
+    }
+    
+    // Theme system methods
+    
+    /**
+     * Initialize the theme system.
+     */
+    private void initializeThemeSystem() {
+        try {
+            themeManager = ThemeManager.getInstance();
+            themeSystemInitialized = (themeManager != null);
+            
+            if (themeSystemInitialized) {
+                logger.info("Theme system initialized successfully");
+                
+                // Apply default theme if available
+                if (themeManager.getCurrentTheme() == null) {
+                    themeManager.applyTheme("dark"); // Default to dark theme
+                }
+            } else {
+                logger.warn("Theme system failed to initialize - ThemeManager is null");
+            }
+        } catch (Exception e) {
+            logger.error("Failed to initialize theme system", e);
+            themeManager = null;
+            themeSystemInitialized = false;
+        }
+    }
+    
+    /**
+     * Switch to a specific theme.
+     */
+    private void switchTheme(String themeId, int themeIndex) {
+        if (!themeSystemInitialized || themeManager == null) {
+            logger.warn("Theme system not initialized, cannot switch theme");
+            return;
+        }
+        
+        try {
+            themeManager.applyTheme(themeId);
+            selectedThemeIndex.set(themeIndex);
+            updateStatus("Switched to " + themeId + " theme");
+            logger.info("Theme switched to: {}", themeId);
+        } catch (Exception e) {
+            logger.error("Failed to switch theme to: {}", themeId, e);
+            updateStatus("Failed to switch theme: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Switch UI density.
+     */
+    private void switchDensity(DensityManager.UIDensity density, int densityIndex) {
+        if (!themeSystemInitialized || themeManager == null) {
+            logger.warn("Theme system not initialized, cannot switch density");
+            return;
+        }
+        
+        try {
+            themeManager.setUIDensity(density);
+            selectedDensityIndex.set(densityIndex);
+            updateStatus("UI density changed to: " + density.getDisplayName());
+            logger.info("UI density changed to: {}", density.getDisplayName());
+        } catch (Exception e) {
+            logger.error("Failed to change UI density to: {}", density.getDisplayName(), e);
+            updateStatus("Failed to change density: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Preview a theme without applying it permanently.
+     */
+    private void previewTheme(String themeId) {
+        if (!themeSystemInitialized || themeManager == null) {
+            return;
+        }
+        
+        try {
+            ThemeDefinition theme = themeManager.getTheme(themeId);
+            if (theme != null) {
+                themeManager.previewTheme(theme);
+                updateStatus("Previewing theme: " + theme.getName());
+                logger.info("Theme preview started: {}", theme.getName());
+            }
+        } catch (Exception e) {
+            logger.error("Failed to preview theme: {}", themeId, e);
+            updateStatus("Failed to preview theme: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Show advanced theme settings dialog.
+     */
+    private void showAdvancedThemeSettings() {
+        showThemeMenu.set(true);
+    }
+    
+    /**
+     * Reset theme to default settings.
+     */
+    private void resetToDefaultTheme() {
+        if (!themeSystemInitialized || themeManager == null) {
+            return;
+        }
+        
+        try {
+            themeManager.applyTheme("dark"); // Dark is the default
+            themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
+            selectedThemeIndex.set(0);
+            selectedDensityIndex.set(1);
+            updateStatus("Theme reset to default");
+            logger.info("Theme reset to default settings");
+        } catch (Exception e) {
+            logger.error("Failed to reset theme to default", e);
+            updateStatus("Failed to reset theme: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get theme manager instance for other components.
+     */
+    public ThemeManager getThemeManager() {
+        return themeManager;
+    }
+    
+    /**
+     * Check if theme system is initialized.
+     */
+    public boolean isThemeSystemInitialized() {
+        return themeSystemInitialized;
     }
     
     /**

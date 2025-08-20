@@ -2,6 +2,10 @@ package com.openmason.ui;
 
 import com.openmason.texture.TextureVariantManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.themes.ThemeManager;
+import com.openmason.ui.themes.ThemeDefinition;
+import com.openmason.ui.themes.DensityManager;
+import com.openmason.ui.themes.StyleApplicator;
 import imgui.ImGui;
 import imgui.flag.*;
 import imgui.type.ImFloat;
@@ -26,6 +30,10 @@ public class PropertyPanelImGui {
     private OpenMason3DViewport viewport3D;
     private String currentModelName = null;
     private boolean initialized = false;
+    
+    // Theme Management
+    private ThemeManager themeManager;
+    private boolean themeSystemAvailable = false;
     
     // Transform Controls
     private final ImFloat positionX = new ImFloat(0.0f);
@@ -69,9 +77,29 @@ public class PropertyPanelImGui {
     public PropertyPanelImGui() {
         try {
             this.textureManager = TextureVariantManager.getInstance();
+            initializeThemeSystem();
             initialize();
         } catch (Exception e) {
             logger.error("Error initializing PropertyPanelImGui", e);
+        }
+    }
+    
+    /**
+     * Initialize theme system integration.
+     */
+    private void initializeThemeSystem() {
+        try {
+            themeManager = ThemeManager.getInstance();
+            themeSystemAvailable = (themeManager != null);
+            
+            if (themeSystemAvailable) {
+                logger.debug("Theme system integration enabled for PropertyPanel");
+            } else {
+                logger.warn("Theme system not available for PropertyPanel");
+            }
+        } catch (Exception e) {
+            logger.error("Failed to initialize theme system for PropertyPanel", e);
+            themeSystemAvailable = false;
         }
     }
     
@@ -96,6 +124,11 @@ public class PropertyPanelImGui {
      * Render the properties panel using Dear ImGui
      */
     public void render() {
+        // Apply theme-aware styling if available
+        if (themeSystemAvailable) {
+            applyThemeAwareStyles();
+        }
+        
         if (ImGui.begin("Properties", ImGuiWindowFlags.AlwaysAutoResize)) {
             renderModelSection();
             ImGui.separator();
@@ -106,8 +139,18 @@ public class PropertyPanelImGui {
             renderDiagnosticsSection();
             ImGui.separator();
             renderStatusSection();
+            
+            // Optional theme info section for debugging
+            if (themeSystemAvailable && logger.isDebugEnabled()) {
+                renderThemeDebugSection();
+            }
         }
         ImGui.end();
+        
+        // Restore default styling
+        if (themeSystemAvailable) {
+            restoreDefaultStyles();
+        }
     }
     
     private void renderModelSection() {
@@ -341,6 +384,46 @@ public class PropertyPanelImGui {
     private void renderStatusSection() {
         ImGui.separator();
         
+        // Use theme-aware colors if available
+        if (themeSystemAvailable) {
+            renderStatusWithThemeColors();
+        } else {
+            renderStatusWithDefaultColors();
+        }
+    }
+    
+    /**
+     * Render status with theme-aware colors.
+     */
+    private void renderStatusWithThemeColors() {
+        // Get current theme for color consistency
+        ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+        
+        if (loadingInProgress) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
+            ImGui.text("⏳ " + statusMessage);
+            ImGui.popStyleColor();
+        } else if (validationInProgress) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+            ImGui.text("🔍 " + statusMessage);
+            ImGui.popStyleColor();
+        } else if (statusMessage.toLowerCase().contains("error") || statusMessage.toLowerCase().contains("failed")) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.2f, 0.2f, 1.0f); // Theme-aware red
+            ImGui.text("❌ " + statusMessage);
+            ImGui.popStyleColor();
+        } else if (statusMessage.toLowerCase().contains("success") || statusMessage.toLowerCase().contains("completed")) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 0.2f, 1.0f, 0.2f, 1.0f); // Theme-aware green
+            ImGui.text("✅ " + statusMessage);
+            ImGui.popStyleColor();
+        } else {
+            ImGui.text(statusMessage);
+        }
+    }
+    
+    /**
+     * Render status with default colors (fallback).
+     */
+    private void renderStatusWithDefaultColors() {
         if (loadingInProgress) {
             ImGui.pushStyleColor(ImGuiCol.Text, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
             ImGui.text("⏳ " + statusMessage);
@@ -753,5 +836,92 @@ public class PropertyPanelImGui {
         }
         
         return metrics;
+    }
+    
+    // Theme system integration methods
+    
+    /**
+     * Apply theme-aware styling for the property panel.
+     */
+    private void applyThemeAwareStyles() {
+        if (!themeSystemAvailable || themeManager == null) {
+            return;
+        }
+        
+        try {
+            // Apply subtle styling enhancements based on current theme
+            ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+            if (currentTheme != null) {
+                // Example: Apply theme-consistent window padding
+                ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8.0f, 8.0f);
+                ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 4.0f, 6.0f);
+            }
+        } catch (Exception e) {
+            logger.debug("Error applying theme-aware styles", e);
+        }
+    }
+    
+    /**
+     * Restore default styling after theme-aware rendering.
+     */
+    private void restoreDefaultStyles() {
+        if (!themeSystemAvailable) {
+            return;
+        }
+        
+        try {
+            // Pop the style variables we pushed
+            ImGui.popStyleVar(2); // WindowPadding and ItemSpacing
+        } catch (Exception e) {
+            logger.debug("Error restoring default styles", e);
+        }
+    }
+    
+    /**
+     * Render theme debug information (only shown when debug logging is enabled).
+     */
+    private void renderThemeDebugSection() {
+        if (ImGui.collapsingHeader("Theme Debug Info")) {
+            ImGui.indent();
+            
+            try {
+                ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+                if (currentTheme != null) {
+                    ImGui.text("Current Theme: " + currentTheme.getName());
+                    ImGui.text("Theme Type: " + currentTheme.getType().getDisplayName());
+                }
+                
+                DensityManager.UIDensity density = themeManager.getCurrentDensity();
+                if (density != null) {
+                    ImGui.text("UI Density: " + density.getDisplayName());
+                }
+                
+                ImGui.text("Preview Mode: " + (themeManager.isPreviewMode() ? "Active" : "Inactive"));
+                
+                if (ImGui.button("Refresh Theme Stats")) {
+                    String stats = themeManager.getThemeStatistics();
+                    logger.debug("Theme Statistics: {}", stats);
+                }
+                
+            } catch (Exception e) {
+                ImGui.text("Error getting theme info: " + e.getMessage());
+            }
+            
+            ImGui.unindent();
+        }
+    }
+    
+    /**
+     * Get theme manager instance (for external components).
+     */
+    public ThemeManager getThemeManager() {
+        return themeManager;
+    }
+    
+    /**
+     * Check if theme system is available.
+     */
+    public boolean isThemeSystemAvailable() {
+        return themeSystemAvailable;
     }
 }
