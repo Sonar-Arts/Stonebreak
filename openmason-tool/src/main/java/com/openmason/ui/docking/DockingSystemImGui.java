@@ -515,7 +515,7 @@ public class DockingSystemImGui {
      */
     public DockableWindowImGui createModelBrowserWindow(String id, String title) {
         return createWindow(id, title, () -> {
-            if (ImGui.collapsingHeader("Models")) {
+            if (ImGui.collapsingHeader("Blocks/Textures/Models")) {
                 ImGui.text("Model tree would go here");
                 ImGui.separator();
                 ImGui.text("Hierarchical model browser");

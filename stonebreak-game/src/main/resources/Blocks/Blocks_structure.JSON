@@ -1,0 +1,15 @@
+{
+  "name": "Blocks Folder Structure",
+  "blockIds": {
+    "file": "Block_ids.JSON"
+  },
+  "models": {
+    "directory": "Models/"
+  },
+  "textures": {
+    "directory": "Textures/"
+  },
+  "sounds": {
+    "directory": "sounds/Blocks/"
+  }
+}

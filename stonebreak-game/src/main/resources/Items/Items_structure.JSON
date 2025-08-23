@@ -1,0 +1,15 @@
+{
+  "name": "Items Folder Structure",
+  "itemIds": {
+    "file": "Item_ids.JSON"
+  },
+  "models": {
+    "directory": "Models/"
+  },
+  "textures": {
+    "directory": "Textures/"
+  },
+  "sounds": {
+    "directory": "sounds/Items/"
+  }
+}

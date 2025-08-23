@@ -20,7 +20,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 /**
  * Model node data structure for tree display
@@ -270,7 +269,7 @@ public class ModelBrowserImGui {
             
             // Filter options
             ImGui.text("Show:");
-            ImGui.checkbox("Models", filterModels);
+            ImGui.checkbox("Blocks/Textures/Models", filterModels);
             ImGui.sameLine();
             ImGui.checkbox("Variants", filterVariants);
             ImGui.sameLine();
@@ -296,7 +295,7 @@ public class ModelBrowserImGui {
     }
     
     private void renderModelTree() {
-        if (ImGui.collapsingHeader("Models", ImGuiTreeNodeFlags.DefaultOpen)) {
+        if (ImGui.collapsingHeader("Blocks/Textures/Models", ImGuiTreeNodeFlags.DefaultOpen)) {
             ImGui.indent();
             
             if (discoveredModels.isEmpty()) {
@@ -636,7 +635,7 @@ public class ModelBrowserImGui {
     // Filtering methods
     
     private boolean shouldShowCategory(String categoryName, List<ModelNode> models) {
-        if (!filterModels.get() && categoryName.contains("Models")) {
+        if (!filterModels.get() && categoryName.contains("Blocks/Textures/Models")) {
             return false;
         }
         if (!filterMobs.get() && categoryName.equals("Mobs")) {
