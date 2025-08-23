@@ -16,8 +16,8 @@ public class SimpleValidationTest {
             for (String variant : variants) {
                 System.out.println("Testing " + variant + "...");
                 
-                String modelPath = "/stonebreak/models/cow/standard_cow.json";
-                String texturePath = "/stonebreak/textures/mobs/cow/" + variant + ".json";
+                String modelPath = "/stonebreak/mobs/cow/standard_cow.json";
+                String texturePath = "/stonebreak/mobs/cow/" + variant + ".json";
                 
                 StonebreakModel model = StonebreakModel.loadFromResources(modelPath, texturePath, variant);
                 StonebreakModel.ValidationResult result = model.validate();

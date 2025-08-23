@@ -116,7 +116,7 @@ public class LivePreviewSystem {
      */
     private void watchTextureDirectories() throws IOException {
         // Watch main texture directory
-        Path textureDir = Paths.get("stonebreak-game/src/main/resources/textures/mobs/cow");
+        Path textureDir = Paths.get("stonebreak-game/src/main/resources/mobs/cow");
         if (Files.exists(textureDir)) {
             WatchKey watchKey = textureDir.register(watchService, 
                 StandardWatchEventKinds.ENTRY_MODIFY,
@@ -127,7 +127,7 @@ public class LivePreviewSystem {
         }
         
         // Watch model directory
-        Path modelDir = Paths.get("stonebreak-game/src/main/resources/models/cow");
+        Path modelDir = Paths.get("stonebreak-game/src/main/resources/mobs/cow");
         if (Files.exists(modelDir)) {
             WatchKey watchKey = modelDir.register(watchService, 
                 StandardWatchEventKinds.ENTRY_MODIFY,

@@ -40,14 +40,14 @@ public class RenderingIntegrationExample {
             
             // Step 3: Load cow models with different texture variants
             StonebreakModel defaultCow = StonebreakModel.loadFromResources(
-                "/stonebreak/models/cow/standard_cow.json",
-                "/stonebreak/textures/mobs/cow/default_cow.json",
+                "/stonebreak/mobs/cow/standard_cow.json",
+                "/stonebreak/mobs/cow/default_cow.json",
                 "default"
             );
             
             StonebreakModel angusCow = StonebreakModel.loadFromResources(
-                "/stonebreak/models/cow/standard_cow.json",
-                "/stonebreak/textures/mobs/cow/angus_cow.json",
+                "/stonebreak/mobs/cow/standard_cow.json",
+                "/stonebreak/mobs/cow/angus_cow.json",
                 "angus"
             );
             

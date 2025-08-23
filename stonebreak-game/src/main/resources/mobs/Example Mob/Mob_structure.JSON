@@ -1,0 +1,13 @@
+{
+  "name": "Example Mob",
+  "id": "example_mob",
+  "model": {
+    "directory": "models/example_mob/"
+  },
+  "textures": {
+    "directory": "textures/mobs/example_mob/"
+  },
+  "sounds": {
+    "directory": "sounds/mobs/example_mob/"
+  }
+}

@@ -1,6 +1,7 @@
 package com.stonebreak.textures;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stonebreak.mobs.MobStructure;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
@@ -11,13 +12,21 @@ public class CowTextureLoader {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Map<String, CowTextureDefinition.CowVariant> cachedVariants = new ConcurrentHashMap<>();
     
-    // Paths to individual cow variant JSON files
-    private static final Map<String, String> VARIANT_FILE_PATHS = Map.of(
-        "default", "textures/mobs/cow/default_cow.json",
-        "angus", "textures/mobs/cow/angus_cow.json",
-        "highland", "textures/mobs/cow/highland_cow.json",
-        "jersey", "textures/mobs/cow/jersey_cow.json"
-    );
+    // Get texture directory from mob structure
+    private static String getTextureDirectory() {
+        return MobStructure.getTextureDirectory("cow");
+    }
+    
+    // Build variant file paths dynamically from mob structure
+    private static Map<String, String> getVariantFilePaths() {
+        String textureDir = getTextureDirectory();
+        return Map.of(
+            "default", textureDir + "default_cow.json",
+            "angus", textureDir + "angus_cow.json",
+            "highland", textureDir + "highland_cow.json",
+            "jersey", textureDir + "jersey_cow.json"
+        );
+    }
     
     
     public static CowTextureDefinition.CowVariant getCowVariant(String variantName) {
@@ -57,9 +66,10 @@ public class CowTextureLoader {
      * Load an individual cow variant from its JSON file.
      */
     public static CowTextureDefinition.CowVariant loadIndividualVariant(String variantName) throws IOException {
-        String filePath = VARIANT_FILE_PATHS.get(variantName);
+        Map<String, String> variantFilePaths = getVariantFilePaths();
+        String filePath = variantFilePaths.get(variantName);
         if (filePath == null) {
-            throw new IOException("Unknown cow variant: " + variantName + ". Available variants: " + VARIANT_FILE_PATHS.keySet());
+            throw new IOException("Unknown cow variant: " + variantName + ". Available variants: " + variantFilePaths.keySet());
         }
         
         // Try different approaches for module compatibility
@@ -244,14 +254,14 @@ public class CowTextureLoader {
     }
     
     public static boolean isValidVariant(String variantName) {
-        return VARIANT_FILE_PATHS.containsKey(variantName);
+        return getVariantFilePaths().containsKey(variantName);
     }
     
     /**
      * Get all available cow variant names.
      */
     public static String[] getAvailableVariants() {
-        return VARIANT_FILE_PATHS.keySet().toArray(new String[0]);
+        return getVariantFilePaths().keySet().toArray(new String[0]);
     }
     
     /**
@@ -259,7 +269,7 @@ public class CowTextureLoader {
      */
     public static void printCacheStatus() {
         // System.out.println("[CowTextureLoader] Cache Status:");
-        // System.out.println("  Available variants: " + VARIANT_FILE_PATHS.keySet());
+        // System.out.println("  Available variants: " + getVariantFilePaths().keySet());
         // System.out.println("  Cached variants: " + cachedVariants.keySet());
         for (Map.Entry<String, CowTextureDefinition.CowVariant> entry : cachedVariants.entrySet()) {
             String variantName = entry.getKey();
@@ -275,7 +285,7 @@ public class CowTextureLoader {
      */
     public static void testAllVariants() {
         // System.out.println("[CowTextureLoader] Testing all variants...");
-        for (String variantName : VARIANT_FILE_PATHS.keySet()) {
+        for (String variantName : getVariantFilePaths().keySet()) {
             try {
                 CowTextureDefinition.CowVariant variant = getCowVariant(variantName);
                 if (variant != null) {

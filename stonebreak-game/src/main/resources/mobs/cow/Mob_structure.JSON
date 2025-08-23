@@ -1,0 +1,13 @@
+{
+  "name": "Cow",
+  "id": "cow",
+  "model": {
+    "directory": "mobs/cow/Models/"
+  },
+  "textures": {
+    "directory": "mobs/cow/Textures/"
+  },
+  "sounds": {
+    "directory": "mobs/cow/Sounds/"
+  }
+}

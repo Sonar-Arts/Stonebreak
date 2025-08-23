@@ -14,7 +14,7 @@ import java.util.Map;
  */
 public class StonebreakValidationTest {
     
-    private static final String MODEL_PATH = "/stonebreak/models/cow/standard_cow.json";
+    private static final String MODEL_PATH = "/stonebreak/mobs/cow/standard_cow.json";
     private static final String[] COW_VARIANTS = {
         "default_cow",
         "angus_cow", 
@@ -53,10 +53,10 @@ public class StonebreakValidationTest {
         
         try {
             // Load just the model first to ensure it works independently
-            String modelPath = "/stonebreak/models/cow/standard_cow.json";
+            String modelPath = "/stonebreak/mobs/cow/standard_cow.json";
             StonebreakModel testModel = StonebreakModel.loadFromResources(
                 modelPath,
-                "/stonebreak/textures/mobs/cow/default_cow.json",
+                "/stonebreak/mobs/cow/default_cow.json",
                 "test_model"
             );
             
@@ -81,7 +81,7 @@ public class StonebreakValidationTest {
         System.out.println("🐄 Testing Cow Variant: " + variantName);
         
         try {
-            String texturePath = "/stonebreak/textures/mobs/cow/" + variantName + ".json";
+            String texturePath = "/stonebreak/mobs/cow/" + variantName + ".json";
             StonebreakModel model = StonebreakModel.loadFromResources(MODEL_PATH, texturePath, variantName);
             
             // Validate the model
@@ -132,7 +132,7 @@ public class StonebreakValidationTest {
             // Load a model to test coordinate calculations
             StonebreakModel model = StonebreakModel.loadFromResources(
                 MODEL_PATH,
-                "/stonebreak/textures/mobs/cow/default_cow.json",
+                "/stonebreak/mobs/cow/default_cow.json",
                 "coordinate_test"
             );
             

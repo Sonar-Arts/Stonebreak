@@ -55,8 +55,8 @@ public class AssetPipelineIntegration {
             stonebreakProjectRoot = detectStonebreakProjectRoot();
             
             if (stonebreakProjectRoot != null) {
-                gameTextureDirectory = stonebreakProjectRoot.resolve("stonebreak-game/src/main/resources/textures/mobs/cow");
-                gameModelDirectory = stonebreakProjectRoot.resolve("stonebreak-game/src/main/resources/models/cow");
+                gameTextureDirectory = stonebreakProjectRoot.resolve("stonebreak-game/src/main/resources/mobs/cow");
+                gameModelDirectory = stonebreakProjectRoot.resolve("stonebreak-game/src/main/resources/mobs/cow");
                 backupDirectory = stonebreakProjectRoot.resolve("openmason-tool/backups");
                 
                 // Create directories if they don't exist

@@ -2,6 +2,7 @@ package com.stonebreak.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.model.ModelDefinition.*;
+import com.stonebreak.mobs.MobStructure;
 import org.joml.Vector3f;
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,7 +40,15 @@ public class ModelLoader {
     
     public static class ModelNotFoundException extends ModelException {
         public ModelNotFoundException(String modelName) {
-            super("Model not found: '" + modelName + "'. Available models: " + Arrays.toString(getAvailableModels()));
+            super("Model not found: '" + modelName + "'. Available models: " + getAvailableModelsString());
+        }
+        
+        private static String getAvailableModelsString() {
+            try {
+                return Arrays.toString(getAvailableModels());
+            } catch (Exception e) {
+                return "[unable to load available models]";
+            }
         }
     }
     
@@ -71,12 +80,20 @@ public class ModelLoader {
     // Debug flag to show coordinates only once for first cow loaded
     private static boolean firstCowCoordinatesShown = false;
     
-    // Paths to model definition JSON files
-    private static final Map<String, String> MODEL_FILE_PATHS = Map.of(
-        "standard_cow", "models/cow/standard_cow.json",
-        "standard_cow_baked", "models/cow/standard_cow_baked.json"
-        // Future cow variants can be added here
-    );
+    // Get model directory from mob structure
+    private static String getModelDirectory(String mobType) {
+        return MobStructure.getModelDirectory(mobType);
+    }
+    
+    // Build model file paths dynamically from mob structure
+    private static Map<String, String> getModelFilePaths() {
+        String cowModelDir = getModelDirectory("cow");
+        return Map.of(
+            "standard_cow", cowModelDir + "standard_cow.json",
+            "standard_cow_baked", cowModelDir + "standard_cow_baked.json"
+            // Future cow variants can be added here
+        );
+    }
     
     /**
      * Gets a cow model definition synchronously, loading and caching it if necessary.
@@ -115,7 +132,7 @@ public class ModelLoader {
             }
             
             // Validate model name exists
-            if (!MODEL_FILE_PATHS.containsKey(modelName)) {
+            if (!getModelFilePaths().containsKey(modelName)) {
                 throw new ModelNotFoundException(modelName);
             }
             
@@ -152,7 +169,7 @@ public class ModelLoader {
         final String finalModelName = modelName.trim();
         
         // Validate model name exists immediately
-        if (!MODEL_FILE_PATHS.containsKey(finalModelName)) {
+        if (!getModelFilePaths().containsKey(finalModelName)) {
             return CompletableFuture.failedFuture(new ModelNotFoundException(finalModelName));
         }
         
@@ -233,7 +250,8 @@ public class ModelLoader {
      * Used by both sync and async APIs.
      */
     private static CowModelDefinition loadModelInternal(String modelName) {
-        String filePath = MODEL_FILE_PATHS.get(modelName);
+        Map<String, String> modelFilePaths = getModelFilePaths();
+        String filePath = modelFilePaths.get(modelName);
         if (filePath == null) {
             throw new ModelNotFoundException(modelName);
         }
@@ -844,7 +862,7 @@ public class ModelLoader {
             return false;
         }
         
-        return MODEL_FILE_PATHS.containsKey(modelName.trim());
+        return getModelFilePaths().containsKey(modelName.trim());
     }
     
     /**
@@ -870,7 +888,7 @@ public class ModelLoader {
      * Get all available model names.
      */
     public static String[] getAvailableModels() {
-        return MODEL_FILE_PATHS.keySet().toArray(new String[0]);
+        return getModelFilePaths().keySet().toArray(new String[0]);
     }
     
     /**
@@ -896,10 +914,11 @@ public class ModelLoader {
         cacheLock.readLock().lock();
         try {
             Map<String, Object> status = new HashMap<>();
-            status.put("availableModels", new ArrayList<>(MODEL_FILE_PATHS.keySet()));
+            Map<String, String> modelFilePaths = getModelFilePaths();
+            status.put("availableModels", new ArrayList<>(modelFilePaths.keySet()));
             status.put("cachedModels", new ArrayList<>(cachedModels.keySet()));
             status.put("cacheSize", cachedModels.size());
-            status.put("totalAvailable", MODEL_FILE_PATHS.size());
+            status.put("totalAvailable", modelFilePaths.size());
             
             Map<String, String> modelInfo = new HashMap<>();
             for (Map.Entry<String, CowModelDefinition> entry : cachedModels.entrySet()) {
@@ -1004,9 +1023,10 @@ public class ModelLoader {
         cacheLock.readLock().lock();
         try {
             // System.out.println("[ModelLoader] Cache Status:");
-            // System.out.println("  Available models: " + MODEL_FILE_PATHS.keySet());
+            Map<String, String> modelFilePaths = getModelFilePaths();
+            // System.out.println("  Available models: " + modelFilePaths.keySet());
             // System.out.println("  Cached models: " + cachedModels.keySet());
-            // System.out.println("  Cache utilization: " + cachedModels.size() + "/" + MODEL_FILE_PATHS.size());
+            // System.out.println("  Cache utilization: " + cachedModels.size() + "/" + modelFilePaths.size());
             
             for (Map.Entry<String, CowModelDefinition> entry : cachedModels.entrySet()) {
                 String modelName = entry.getKey();
