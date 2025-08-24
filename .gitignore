@@ -111,3 +111,6 @@ fonts/
 
 # XML inspection parser
 XMLInspectionParser.java
+
+# Dev Test Folder
+DevTests/

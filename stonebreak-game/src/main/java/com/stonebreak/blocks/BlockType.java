@@ -198,9 +198,9 @@ public enum BlockType implements Item {
             case STONE -> new float[]{3, 0};
             case BEDROCK -> new float[]{4, 0};
             case WOOD -> {
-                if (face == Face.TOP) yield new float[]{5, 1}; // Top
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - using DIRT texture for now
-                yield new float[]{5, 0}; // Sides
+                if (face == Face.TOP) yield new float[]{6, 0}; // Top - wood top texture (concentric rings)
+                if (face == Face.BOTTOM) yield new float[]{6, 0}; // Bottom - same as top (tree rings)
+                yield new float[]{5, 0}; // Sides - wood side texture (vertical grain)
             }
             case LEAVES -> new float[]{7, 0}; // Atlas X changed from 6 to 7
             case SAND -> new float[]{8, 0}; // Atlas X changed from 7 to 8
