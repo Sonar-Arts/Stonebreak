@@ -1,0 +1,117 @@
+{
+  "block_type": "SANDSTONE",
+  "texture_name": "sandstone",
+  "description": "Sandstone texture with layered face algorithms - top has subtle speckling, side has horizontal banding",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "face_mappings": {
+    "top": {
+      "atlas_coordinates": [5, 1],
+      "texture_type": "sandstone_top",
+      "description": "Light beige top face with subtle speckling"
+    },
+    "bottom": {
+      "atlas_coordinates": [5, 1], 
+      "texture_type": "sandstone_top",
+      "description": "Same as top face"
+    },
+    "sides": {
+      "atlas_coordinates": [7, 1],
+      "texture_type": "sandstone_side", 
+      "description": "Horizontal banded sides with inclusions"
+    }
+  },
+  "texture_algorithms": {
+    "sandstone_top": {
+      "algorithm_type": "continuous_noise",
+      "base_colors": {
+        "r_base": 235,
+        "g_base": 225,
+        "b_base": 190,
+        "r_variance": 25,
+        "g_variance": 25,
+        "b_variance": 20,
+        "note": "Light beige/yellowish sandstone base colors (TextureAtlas.java:1302-1304)"
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "x_frequency": 0.7,
+          "x_phase_y": 1.2,
+          "y_frequency": 0.4,
+          "y_phase_x": -0.9,
+          "weight": 1.0,
+          "note": "Combined noise from TextureAtlas.java:1307-1309"
+        }
+      }
+    },
+    "sandstone_side": {
+      "algorithm_type": "horizontal_banding_with_inclusions",
+      "base_colors": {
+        "r_base": 220,
+        "g_base": 200,
+        "b_base": 160,
+        "r_variance": 35,
+        "g_variance": 35,
+        "b_variance": 24.5,
+        "note": "More saturated than top, b_variance reduced by 0.7 factor"
+      },
+      "horizontal_banding": {
+        "band_height": 4,
+        "waviness": {
+          "frequency": 0.3,
+          "amplitude": 1.5,
+          "tile_x_offset": 0.5
+        },
+        "band_shading": {
+          "band_0": 0.0,
+          "band_1": -0.08,
+          "band_2": 0.05,
+          "band_3": -0.05
+        },
+        "shading_factors": {
+          "g_factor": 0.9,
+          "b_factor": 0.8
+        }
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "x_frequency": 0.6,
+          "x_phase_y": 1.1,
+          "y_frequency": 0.3,
+          "y_phase_x": -0.8,
+          "weight": 1.0,
+          "note": "Combined sine/cosine for overall roughness"
+        }
+      },
+      "inclusions": {
+        "threshold": 0.12,
+        "inclusion_color": {
+          "r": 180,
+          "g": 150,
+          "b": 110,
+          "description": "Darker, slightly desaturated orangey-brown inclusions"
+        }
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate primary noise: sandstoneX = sin(x * 0.7 + y * 1.2) * 0.5 + 0.5",
+    "step2": "Generate primary noise: sandstoneY = cos(x * 0.4 - y * 0.9) * 0.5 + 0.5",
+    "step3": "Combine: sandstoneNoise = (sandstoneX + sandstoneY) * 0.5",
+    "step4": "Apply base colors: r = 235 + sandstoneNoise * 25, g = 225 + sandstoneNoise * 25, b = 190 + sandstoneNoise * 20",
+    "step5": "Clamp all color values to [0, 255] range",
+    "note": "Algorithm matches TextureAtlas.java:1307-1315 for sandstone top face"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java sandstone texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1297-1320 (top), 1358-1407 (side)",
+    "purpose": "JSON conversion of hardcoded sandstone algorithms",
+    "version": "1.0",
+    "conversion_status": "Complete - ready for universal generator",
+    "complexity": "Advanced multi-face with banding and inclusions"
+  }
+}

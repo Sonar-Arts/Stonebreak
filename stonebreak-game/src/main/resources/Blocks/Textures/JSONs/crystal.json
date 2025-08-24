@@ -1,0 +1,162 @@
+{
+  "block_type": "CRYSTAL",
+  "texture_name": "crystal",
+  "description": "Crystalline mineral block with prismatic facets, bright reflections, and translucent appearance - placeholder implementation",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 180,
+    "g_base": 200,
+    "b_base": 240,
+    "r_variance": 40,
+    "g_variance": 30,
+    "b_variance": 15,
+    "note": "Light blue-white crystal base with subtle color variation for prismatic effect"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise_generation",
+    "primary_noise": {
+      "x_frequency": 0.9,
+      "x_phase_y": 0.7,
+      "weight": 0.3,
+      "note": "Medium frequency for crystal facet patterns: Math.sin(globalX * 0.9 + globalY * 0.7) * 0.3"
+    },
+    "secondary_noise": {
+      "x_frequency": 1.4,
+      "y_frequency": 0.8,
+      "weight": 0.4,
+      "note": "Higher frequency for fine crystal structure: Math.cos(globalX * 1.4 + globalY * 0.8) * 0.4"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 0.5,
+      "weight": 0.3,
+      "note": "Low frequency for large crystal formations: Math.sin((globalX + globalY) * 0.5) * 0.3"
+    }
+  },
+  "texture_features": {
+    "light_specks": {
+      "description": "Bright crystalline reflections and prismatic light spots",
+      "patterns": [
+        {
+          "x_modulo": 4,
+          "y_modulo": 4,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Primary reflection pattern - regular grid for crystal facets"
+        },
+        {
+          "x_modulo": 4,
+          "y_modulo": 4,
+          "offset_x": 2,
+          "offset_y": 2,
+          "note": "Secondary reflection pattern - offset grid for prismatic effect"
+        },
+        {
+          "x_modulo": 6,
+          "y_modulo": 5,
+          "offset_x": 1,
+          "offset_y": 3,
+          "note": "Tertiary sparkle pattern - irregular for natural crystal variation"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 75,
+        "g_delta": 55,
+        "b_delta": 15,
+        "note": "Brighten to pure white for crystal reflections and light refraction"
+      }
+    },
+    "dark_spots": {
+      "description": "Crystal inclusions and internal fractures",
+      "patterns": [
+        {
+          "x_modulo": 7,
+          "y_modulo": 8,
+          "offset_x": 3,
+          "offset_y": 1,
+          "note": "Crystal inclusion pattern"
+        },
+        {
+          "x_modulo": 9,
+          "y_modulo": 7,
+          "offset_x": 2,
+          "offset_y": 4,
+          "note": "Internal fracture pattern"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -30,
+        "g_delta": -25,
+        "b_delta": -20,
+        "note": "Darken for crystal impurities and internal structures"
+      }
+    }
+  },
+  "crystal_properties": {
+    "optical_effects": {
+      "refraction": "Light specks simulate light refraction through crystal facets",
+      "reflection": "Bright spots represent surface reflections from crystal faces",
+      "transparency": "Base color suggests translucent crystalline material"
+    },
+    "geological_features": {
+      "facets": "Triple noise creates natural crystal face patterns",
+      "inclusions": "Dark spots represent mineral inclusions and impurities",
+      "structure": "Pattern combination simulates hexagonal/cubic crystal systems"
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate crystal structure noise: sin(x*0.9 + y*0.7)*0.3 + cos(x*1.4 + y*0.8)*0.4 + sin((x+y)*0.5)*0.3",
+    "step2": "Normalize noise: crystalNoise = (tripleNoise) * 0.5 + 0.5",
+    "step3": "Apply crystal base colors: r = 180 + noise*40, g = 200 + noise*30, b = 240 + noise*15",
+    "step4": "Add bright reflections at regular grid patterns (+75R, +55G, +15B)",
+    "step5": "Add dark inclusions at irregular patterns (-30R, -25G, -20B)",
+    "step6": "Clamp all color values to [0, 255] range",
+    "note": "Creates prismatic crystal appearance with realistic optical effects"
+  },
+  "metadata": {
+    "created_from": "No existing hardcoded implementation - placeholder design",
+    "original_location": "com.stonebreak.rendering.TextureAtlas default case (magenta placeholder)",
+    "purpose": "JSON implementation for CRYSTAL texture - filling missing placeholder",
+    "version": "1.0",
+    "conversion_status": "new_design",
+    "atlas_coordinates": {
+      "x": 4,
+      "y": 1,
+      "note": "CRYSTAL atlas coordinates from BlockType.java - marked as placeholder"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Triple noise crystal structure with dual pattern system (bright/dark features)",
+    "coordinate_system": "Uses global coordinates for consistent crystal formations",
+    "special_features": [
+      "Light blue-white base suggesting translucent crystal material",
+      "Bright white reflections simulating light refraction and surface reflections",
+      "Dark inclusions representing mineral impurities and internal fractures",
+      "Regular grid patterns mimicking natural crystal facet geometry",
+      "Triple noise for realistic geological crystal structure",
+      "High contrast between bright reflections and darker inclusions",
+      "No existing hardcoded implementation - new design"
+    ],
+    "design_rationale": [
+      "Base colors chosen to represent clear/translucent quartz-like crystal",
+      "Light specks create prismatic light refraction effects",
+      "Dark spots add realism with natural crystal imperfections",
+      "Regular grid patterns simulate hexagonal/cubic crystal systems",
+      "High frequency noise creates detailed crystal surface texture"
+    ],
+    "color_ranges": {
+      "base_crystal": "R:180-220, G:200-230, B:240-255 (light blue-white)",
+      "bright_reflections": "R:255, G:255, B:255 (pure white light)",
+      "dark_inclusions": "R:150-190, G:175-205, B:220-240 (slightly darker)"
+    },
+    "optical_simulation": {
+      "refraction": "Light specks at regular intervals simulate light bending through crystal",
+      "reflection": "Bright white spots represent surface light reflection",
+      "translucency": "High base color values suggest light transmission"
+    }
+  }
+}

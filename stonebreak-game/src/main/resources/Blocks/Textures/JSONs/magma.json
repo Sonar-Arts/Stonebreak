@@ -1,0 +1,157 @@
+{
+  "block_type": "MAGMA",
+  "texture_name": "magma",
+  "description": "Volcanic magma block with glowing lava veins, cracks, and hot spots - placeholder implementation",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 80,
+    "g_base": 40,
+    "b_base": 35,
+    "r_variance": 45,
+    "g_variance": 30,
+    "b_variance": 25,
+    "note": "Dark volcanic rock base with reddish tint: cooled magma appearance"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise_generation",
+    "primary_noise": {
+      "x_frequency": 1.2,
+      "x_phase_y": 0.8,
+      "weight": 0.4,
+      "note": "High frequency for detailed cracks: Math.sin(globalX * 1.2 + globalY * 0.8) * 0.4"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.6,
+      "y_frequency": 1.1,
+      "weight": 0.3,
+      "note": "Medium frequency for flow patterns: Math.cos(globalX * 0.6 + globalY * 1.1) * 0.3"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 0.4,
+      "weight": 0.3,
+      "note": "Low frequency for large formations: Math.sin((globalX + globalY) * 0.4) * 0.3"
+    }
+  },
+  "texture_features": {
+    "light_specks": {
+      "description": "Glowing lava veins and hot spots in magma",
+      "patterns": [
+        {
+          "x_modulo": 6,
+          "y_modulo": 7,
+          "offset_x": 2,
+          "offset_y": 1,
+          "note": "Primary lava vein pattern"
+        },
+        {
+          "x_modulo": 8,
+          "y_modulo": 5,
+          "offset_x": 1,
+          "offset_y": 3,
+          "note": "Secondary hot spot pattern"
+        },
+        {
+          "x_modulo": 9,
+          "y_modulo": 6,
+          "offset_x": 4,
+          "offset_y": 2,
+          "note": "Tertiary lava crack pattern"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 150,
+        "g_delta": 80,
+        "b_delta": 20,
+        "note": "Transform dark rock to bright lava glow (orange-red hot spots)"
+      }
+    },
+    "dark_spots": {
+      "description": "Cooled lava patches and deeper cracks",
+      "patterns": [
+        {
+          "x_modulo": 7,
+          "y_modulo": 8,
+          "offset_x": 3,
+          "offset_y": 4,
+          "note": "Cooled lava patches"
+        },
+        {
+          "x_modulo": 5,
+          "y_modulo": 9,
+          "offset_x": 1,
+          "offset_y": 2,
+          "note": "Deep volcanic cracks"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -25,
+        "g_delta": -15,
+        "b_delta": -10,
+        "note": "Darken for cooled/hardened areas"
+      }
+    }
+  },
+  "magma_characteristics": {
+    "temperature_zones": {
+      "hot_spots": "Light specks represent molten lava at ~1200°C",
+      "warm_base": "Base texture represents cooling magma at ~800°C", 
+      "cool_spots": "Dark spots represent solidified rock at ~400°C"
+    },
+    "visual_effects": {
+      "glow": "Light specks create glowing lava vein appearance",
+      "contrast": "High contrast between hot and cool areas",
+      "texture": "Triple noise creates realistic volcanic rock texture"
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate volcanic rock base noise: sin(x*1.2 + y*0.8)*0.4 + cos(x*0.6 + y*1.1)*0.3 + sin((x+y)*0.4)*0.3",
+    "step2": "Normalize noise: magmaNoise = (tripleNoise) * 0.5 + 0.5",
+    "step3": "Apply dark volcanic base: r = 80 + noise*45, g = 40 + noise*30, b = 35 + noise*25",
+    "step4": "Add glowing lava veins at pattern coordinates (+150R, +80G, +20B)",
+    "step5": "Add cooled patches at different pattern coordinates (-25R, -15G, -10B)",
+    "step6": "Clamp all color values to [0, 255] range",
+    "note": "Creates realistic magma appearance with temperature variation"
+  },
+  "metadata": {
+    "created_from": "No existing hardcoded implementation - placeholder design",
+    "original_location": "com.stonebreak.rendering.TextureAtlas default case (magenta placeholder)",
+    "purpose": "JSON implementation for MAGMA texture - filling missing placeholder",
+    "version": "1.0",
+    "conversion_status": "new_design",
+    "atlas_coordinates": {
+      "x": 3,
+      "y": 1,
+      "note": "MAGMA atlas coordinates from BlockType.java - marked as placeholder"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Triple noise volcanic base with dual pattern system (hot/cool zones)",
+    "coordinate_system": "Uses global coordinates for consistent volcanic formations",
+    "special_features": [
+      "Dark volcanic rock base with reddish volcanic tint",
+      "Glowing orange-red lava veins using light specks",
+      "Cooled/hardened areas using dark spots", 
+      "High frequency noise for detailed crack patterns",
+      "Temperature-based color zoning (hot=bright, cool=dark)",
+      "Realistic magma block appearance for volcanic environments",
+      "No existing hardcoded implementation - new design"
+    ],
+    "design_rationale": [
+      "Base colors chosen to represent cooled volcanic rock",
+      "Light specks represent active lava flows and hot spots",
+      "Dark spots represent solidified/cooled lava patches",
+      "Triple noise creates realistic geological texture",
+      "Color deltas create strong temperature contrast"
+    ],
+    "color_ranges": {
+      "base_rock": "R:80-125, G:40-70, B:35-60 (dark volcanic)",
+      "lava_veins": "R:230-275, G:120-150, B:55-80 (bright orange)",
+      "cooled_areas": "R:55-100, G:25-55, B:25-50 (very dark)"
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "block_type": "PINE_WOOD",
+  "texture_name": "pine_wood",
+  "description": "Multi-face pine wood log texture - concentric rings for top/bottom, vertical grain for sides",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 multi-face wood texture with darker pine coloring"
+  },
+  "face_mappings": {
+    "top": {
+      "atlas_coordinates": [2, 2],
+      "texture_type": "pine_wood_top",
+      "description": "Concentric ring pattern for top face (tree rings)"
+    },
+    "bottom": {
+      "atlas_coordinates": [2, 2],
+      "texture_type": "pine_wood_top", 
+      "description": "Same ring pattern as top face"
+    },
+    "sides": {
+      "atlas_coordinates": [2, 2],
+      "texture_type": "pine_wood_side",
+      "description": "Vertical grain pattern for side faces (bark)"
+    }
+  },
+  "texture_algorithms": {
+    "pine_wood_side": {
+      "algorithm_type": "vertical_grain_with_knots",
+      "vertical_grain": {
+        "y_frequency": 1.5,
+        "amplitude": 0.5,
+        "offset": 0.5,
+        "note": "sin(globalY * 1.5) * 0.5 + 0.5"
+      },
+      "ring_effect": {
+        "x_frequency": 0.7,
+        "amplitude": 0.4,
+        "offset": 0.6,
+        "coordinate_system": "x_modulo_tile_size",
+        "note": "sin(ringX * 0.7) * 0.4 + 0.6 where ringX = globalX % texturePixelSize"
+      },
+      "knot_pattern": {
+        "radius": 3.0,
+        "tile_condition": "coordinate_sum_modulo",
+        "tile_frequency": 3,
+        "color_adjustment": {
+          "r_delta": -15,
+          "g_delta": -10,
+          "b_delta": -5
+        },
+        "note": "Knots at distance < 3 when (tileX + tileY) % 3 == 0"
+      }
+    },
+    "pine_wood_top": {
+      "algorithm_type": "concentric_rings",
+      "ring_pattern": {
+        "center_calculation": "distance_from_center",
+        "frequency": 1.2,
+        "amplitude": 0.5,
+        "offset": 0.5,
+        "coordinate_system": "tile_relative",
+        "note": "sin(distFromCenter * 1.2) * 0.5 + 0.5 - tree rings"
+      }
+    }
+  },
+  "color_palettes": {
+    "pine_wood_side": {
+      "base_colors": {
+        "r_base": 80,
+        "g_base": 50,
+        "b_base": 20,
+        "r_multiplier": 40,
+        "g_multiplier": 25,
+        "b_multiplier": 15,
+        "note": "Dark pine colors for sides: r = 80 + woodGrain * 40 * ringEffect"
+      }
+    },
+    "pine_wood_top": {
+      "base_colors": {
+        "r_base": 90,
+        "g_base": 60,
+        "b_base": 30,
+        "r_variance": 35,
+        "g_variance": 20,
+        "b_variance": 10,
+        "note": "Slightly lighter pine colors for top rings: r = 90 + ringPattern * 35"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "steps": [
+      "1. Calculate vertical wood grain: woodGrain = sin(globalY * 1.5) * 0.5 + 0.5",
+      "2. Calculate ring effect: ringX = globalX % texturePixelSize, ringEffect = sin(ringX * 0.7) * 0.4 + 0.6",
+      "3. Apply base colors with grain and ring effects:",
+      "   - r = 80 + woodGrain * 40 * ringEffect",
+      "   - g = 50 + woodGrain * 25 * ringEffect", 
+      "   - b = 20 + woodGrain * 15 * ringEffect",
+      "4. Check for knots: if distance to center < 3 AND (tileX + tileY) % 3 == 0:",
+      "   - Apply knot color adjustments: r-=15, g-=10, b-=5",
+      "5. Clamp all values to [0, 255]"
+    ],
+    "note": "Algorithm matches TextureAtlas.java:1574-1598"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java pine wood texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1574-1599 (case 2, tileY == 2)",
+    "purpose": "JSON conversion of hardcoded pine wood log texture",
+    "version": "1.0",
+    "conversion_status": "Complete - uses existing vertical_grain_with_knots algorithm",
+    "complexity": "Wood grain pattern with darker pine coloring and knot placement",
+    "atlas_coordinates": [2, 2],
+    "differences_from_regular_wood": {
+      "colors": "Much darker base colors (80,50,20) vs regular wood (~120,80,40)",
+      "appearance": "Darker, more realistic pine wood look",
+      "algorithm": "Same vertical grain with knots pattern but different color parameters"
+    }
+  }
+}

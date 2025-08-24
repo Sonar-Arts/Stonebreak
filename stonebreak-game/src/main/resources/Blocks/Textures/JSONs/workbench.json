@@ -1,0 +1,270 @@
+{
+  "block_type": "WORKBENCH",
+  "texture_name": "workbench",
+  "description": "Traditional craftsman workbench with premium hardwood surfaces and detailed tool designs",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"]
+  },
+  "face_mappings": {
+    "top": {"texture_type": "workbench_top", "atlas_coordinates": [6, 2]},
+    "sides": {"texture_type": "workbench_sides", "atlas_coordinates": [7, 2]},
+    "bottom": {"texture_type": "dirt", "atlas_coordinates": [2, 0]}
+  },
+  "texture_algorithms": {
+    "workbench_top": {
+      "algorithm_type": "continuous_noise",
+      "base_colors": {
+        "r_base": 180,
+        "g_base": 140,
+        "b_base": 100,
+        "r_variance": 15,
+        "g_variance": 15,
+        "b_variance": 15
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "x_frequency": 0.8,
+          "x_phase_y": 0.3,
+          "y_frequency": 0.5,
+          "y_phase_x": 0.8,
+          "weight": 1.0
+        },
+        "secondary_noise": {
+          "x_frequency": 0.6,
+          "y_frequency": 0.6,
+          "amplitude": 0.25,
+          "offset": 0.5,
+          "weight": 0.3
+        }
+      },
+      "texture_features": {
+        "dark_spots": {
+          "description": "Crafting grid lines and corner features",
+          "patterns": [
+            {
+              "x_modulo": 16,
+              "y_modulo": 16,
+              "offset_x": 5,
+              "offset_y": 0,
+              "note": "Vertical grid line at x=5"
+            },
+            {
+              "x_modulo": 16,
+              "y_modulo": 16,
+              "offset_x": 10,
+              "offset_y": 0,
+              "note": "Vertical grid line at x=10"
+            },
+            {
+              "x_modulo": 16,
+              "y_modulo": 16,
+              "offset_x": 0,
+              "offset_y": 5,
+              "note": "Horizontal grid line at y=5"
+            },
+            {
+              "x_modulo": 16,
+              "y_modulo": 16,
+              "offset_x": 0,
+              "offset_y": 10,
+              "note": "Horizontal grid line at y=10"
+            }
+          ],
+          "color_adjustment": {
+            "r_delta": -22,
+            "g_delta": -18,
+            "b_delta": -14
+          }
+        }
+      },
+      "crafting_grid": {
+        "grid_lines": {
+          "x_positions": [5, 10],
+          "y_positions": [5, 10],
+          "color_adjustment": {
+            "r_delta": -22,
+            "g_delta": -18,
+            "b_delta": -14
+          }
+        },
+        "corner_dovetails": {
+          "positions": [
+            {"x_range": [0, 2], "y_range": [0, 2]},
+            {"x_range": [13, 15], "y_range": [0, 2]},
+            {"x_range": [0, 2], "y_range": [13, 15]},
+            {"x_range": [13, 15], "y_range": [13, 15]}
+          ],
+          "pattern_check": "checkerboard",
+          "color_adjustment": {
+            "r_delta": -15,
+            "g_delta": -12,
+            "b_delta": -9
+          }
+        },
+        "vise_holes": {
+          "positions": [{"x": 2, "y": 7}, {"x": 13, "y": 7}],
+          "color_adjustment": {
+            "r_delta": -30,
+            "g_delta": -25,
+            "b_delta": -20
+          }
+        },
+        "wear_area": {
+          "x_range": [6, 9],
+          "y_range": [6, 9],
+          "color_adjustment": {
+            "r_delta": 12,
+            "g_delta": 10,
+            "b_delta": 7
+          }
+        },
+        "tool_marks": {
+          "pattern": "pseudo_random",
+          "formula": "(pixelX_wbtop * 3 + pixelY_wbtop * 7) % 13 < 2",
+          "color_adjustment": {
+            "r_delta": 6,
+            "g_delta": 5,
+            "b_delta": 3
+          }
+        }
+      }
+    },
+    "workbench_sides": {
+      "algorithm_type": "continuous_noise",
+      "base_colors": {
+        "r_base": 172,
+        "g_base": 138,
+        "b_base": 102,
+        "r_variance": 12,
+        "g_variance": 12,
+        "b_variance": 12
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "x_frequency": 0.8,
+          "x_phase_y": 0.3,
+          "y_frequency": 0.4,
+          "y_phase_x": 0.7,
+          "weight": 1.0
+        }
+      },
+      "texture_features": {
+        "dark_spots": {
+          "description": "Horizontal plank separation lines",
+          "patterns": [
+            {
+              "x_modulo": 16,
+              "y_modulo": 4,
+              "offset_x": 0,
+              "offset_y": 0,
+              "note": "Horizontal plank lines every 4 pixels"
+            }
+          ],
+          "color_adjustment": {
+            "r_delta": -18,
+            "g_delta": -15,
+            "b_delta": -12
+          }
+        }
+      },
+      "plank_construction": {
+        "horizontal_planks": {
+          "separation_lines": {
+            "y_modulo": 4,
+            "line_color_adjustment": {
+              "r_delta": -18,
+              "g_delta": -15,
+              "b_delta": -12
+            }
+          },
+          "plank_highlight": {
+            "y_offset": 1,
+            "color_adjustment": {
+              "r_delta": 6,
+              "g_delta": 5,
+              "b_delta": 3
+            }
+          }
+        }
+      },
+      "face_variations": {
+        "face_count": 4,
+        "variation_formula": "(tileX + tileY) % 4",
+        "note": "Each face type has unique detailed features - simplified for JSON"
+      }
+    }
+  },
+  "color_palettes": {
+    "workbench_top": {
+      "base_colors": {
+        "r_base": 180,
+        "g_base": 140,
+        "b_base": 100,
+        "r_variance": 15,
+        "g_variance": 15,
+        "b_variance": 15
+      }
+    },
+    "workbench_sides": {
+      "base_colors": {
+        "r_base": 172,
+        "g_base": 138,
+        "b_base": 102,
+        "r_variance": 12,
+        "g_variance": 12,
+        "b_variance": 12
+      }
+    }
+  },
+  "generation_algorithm": {
+    "workbench_top": {
+      "step1": "Generate triple grain noise: primaryGrain + secondaryGrain + figureGrain",
+      "step2": "Apply base premium hardwood colors with grain adjustment",
+      "step3": "Apply crafting grid lines at x=5,10 and y=5,10",
+      "step4": "Add dovetail corner patterns with checkerboard check",
+      "step5": "Place vise screw holes at (2,7) and (13,7)",
+      "step6": "Apply wear patterns in center work area (6-9, 6-9)",
+      "step7": "Add subtle tool marks using pseudo-random pattern",
+      "step8": "Clamp values to premium hardwood range [90-220, 75-185, 55-145]"
+    },
+    "workbench_sides": {
+      "step1": "Generate dual grain noise: primaryGrain + secondaryGrain",
+      "step2": "Apply base hardwood colors with grain adjustment",
+      "step3": "Add horizontal plank construction with separation lines",
+      "step4": "Apply plank highlights on y_offset=1 lines",
+      "step5": "Apply face variation based on tile position formula",
+      "step6": "Clamp values to hardwood color range"
+    }
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java workbench texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1682-1764 (top) and 1765+ (sides)",
+    "purpose": "JSON conversion of hardcoded workbench texture algorithms",
+    "version": "1.0",
+    "conversion_status": "converted_simplified",
+    "pattern_type": "Multi-face continuous noise with complex overlay systems",
+    "coordinate_system": "local_pixel_coordinates"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "Extremely complex multi-face texture with detailed pixel art features",
+    "simplification_notes": [
+      "Original has intricate pixel-by-pixel tool designs on sides",
+      "JSON captures core algorithms: triple noise grain, crafting grid, plank construction", 
+      "Face variations simplified from 4 detailed designs to formula-based variation",
+      "Tool marks and wear patterns converted to mathematical patterns",
+      "Maintains premium hardwood color palette and grain structure"
+    ],
+    "unique_features": [
+      "Multi-face texture with different algorithms for top and sides",
+      "Triple grain noise system for realistic wood appearance",
+      "Traditional crafting grid with mortise and tenon joint lines",
+      "Dovetail corner reinforcements with checkerboard pattern",
+      "Functional vise screw holes and wear patterns",
+      "Horizontal plank construction with separation lines",
+      "Face-specific variations for authenticity"
+    ],
+    "validation_required": "Generated texture must show clear crafting grid on top and plank construction on sides"
+  }
+}

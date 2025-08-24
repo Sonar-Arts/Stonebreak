@@ -1,0 +1,133 @@
+{
+  "block_type": "LEAVES",
+  "texture_name": "leaves",
+  "description": "Standard green leaves texture with natural variation",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 30,
+    "g_base": 100,
+    "b_base": 20,
+    "r_variance": 60,
+    "g_variance": 80,
+    "b_variance": 40,
+    "note": "Exact colors from TextureAtlas.java case 7: r = 30 + leafNoise * 60, g = 100 + leafNoise * 80, b = 20 + leafNoise * 40"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise_generation",
+    "primary_noise": {
+      "x_frequency": 0.9,
+      "x_phase_y": 0.6,
+      "weight": 0.25,
+      "note": "First sine component: Math.sin(globalX * 0.9 + globalY * 0.6) * 0.25"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.7,
+      "y_frequency": 0.9,
+      "weight": 0.25,
+      "note": "Cosine component: Math.cos(globalX * 0.7 + globalY * 0.9) * 0.25"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 0.8,
+      "weight": 0.5,
+      "note": "Combined sine: Math.sin((globalX + globalY) * 0.8) * 0.5"
+    }
+  },
+  "texture_features": {
+    "dark_spots": {
+      "description": "Natural leaf shadows and darker areas",
+      "patterns": [
+        {
+          "x_modulo": 7,
+          "y_modulo": 5,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Primary shadow pattern"
+        },
+        {
+          "x_modulo": 5,
+          "y_modulo": 8,
+          "offset_x": 2,
+          "offset_y": 1,
+          "note": "Secondary shadow pattern"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -15,
+        "g_delta": -20,
+        "b_delta": -10,
+        "note": "Subtle darkening for natural leaf shadows"
+      }
+    },
+    "light_specks": {
+      "description": "Red berries/flowers from actual game implementation",
+      "patterns": [
+        {
+          "x_modulo": 8,
+          "y_modulo": 8,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Primary berry pattern: (globalX % 8 == 0 && globalY % 8 == 0)"
+        },
+        {
+          "x_modulo": 8,
+          "y_modulo": 8,
+          "offset_x": 4,
+          "offset_y": 4,
+          "note": "Secondary berry pattern: ((globalX+4) % 8 == 0 && (globalY+4) % 8 == 0)"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 160,
+        "g_delta": -150,
+        "b_delta": -30,
+        "note": "Transform to exact berry colors RGB(220,30,30) from TextureAtlas.java case 7"
+      }
+    }
+  },
+  "transparency_effects": {
+    "edge_transparency": {
+      "description": "Edge transparency from actual game implementation",
+      "edge_width": 2,
+      "base_alpha": 200,
+      "noise_alpha_variance": 55,
+      "note": "From TextureAtlas.java case 7: a = (byte) (200 + (leafNoise * 55))"
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate triple noise: sin(x*0.9 + y*0.6)*0.25 + cos(x*0.7 + y*0.9)*0.25 + sin((x+y)*0.8)*0.5",
+    "step2": "Normalize noise: leafNoise = (tripleNoise) * 0.5 + 0.5",
+    "step3": "Apply base colors: r = 30 + leafNoise * 45, g = 100 + leafNoise * 70, b = 20 + leafNoise * 35",
+    "step4": "Apply dark spots at pattern coordinates (subtract deltas)",
+    "step5": "Apply edge transparency for pixels within 2 pixels of edge",
+    "step6": "Clamp all color values to [0, 255] range",
+    "note": "Triple noise generation similar to snowy leaves but with brighter base colors"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java regular leaves texture generation - inferred from snowy leaves",
+    "original_location": "com.stonebreak.rendering.TextureAtlas - coordinates (7,0)",
+    "purpose": "JSON conversion of standard LEAVES texture algorithm",
+    "version": "1.0",
+    "conversion_status": "complete",
+    "atlas_coordinates": {
+      "x": 7,
+      "y": 0,
+      "note": "LEAVES atlas coordinates from BlockType.java"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Triple noise generation with natural shadow patterns",
+    "coordinate_system": "Uses global coordinates for seamless tiling",
+    "special_features": [
+      "Standard bright green leaf coloration",
+      "Natural shadow patterns for depth",
+      "Edge transparency for realistic appearance",
+      "RGBA format with alpha channel variations",
+      "No special features like seeds - pure leaf texture"
+    ]
+  }
+}

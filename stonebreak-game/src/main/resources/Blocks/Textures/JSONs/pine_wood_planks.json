@@ -1,0 +1,146 @@
+{
+  "block_type": "PINE_WOOD_PLANKS",
+  "texture_name": "pine_wood_planks",
+  "description": "Pine wood planks with horizontal plank construction and pronounced vertical wood grain",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"]
+  },
+  "base_colors": {
+    "r_base": 80,
+    "g_base": 50,
+    "b_base": 20,
+    "r_variance": 15,
+    "g_variance": 15,
+    "b_variance": 15,
+    "note": "Pine plank base colors - darker than oak with stronger variation range"
+  },
+  "plank_construction": {
+    "plank_height": 4,
+    "alternating_variation": {
+      "enabled": true,
+      "condition": "plankY % 2 == 1",
+      "color_adjustment": {
+        "r_delta": 15,
+        "g_delta": 10,
+        "b_delta": 5
+      },
+      "note": "Stronger plank variation than oak (+15,+10,+5 vs +10,+8,+5)"
+    },
+    "separation_lines": {
+      "condition": "pY_wp % 4 == 0 && pY_wp > 0",
+      "color_adjustment": {
+        "r_delta": -25,
+        "g_delta": -20,
+        "b_delta": -10
+      },
+      "note": "Stronger separation lines than oak (-25,-20,-10 vs -20,-18,-12)"
+    }
+  },
+  "wood_grain": {
+    "algorithm_type": "dual_noise_vertical_grain",
+    "primary_component": {
+      "function": "sin",
+      "x_frequency": 0.7,
+      "plank_phase": 0.3,
+      "amplitude": 0.5,
+      "note": "Math.sin(pX_wp * 0.7 + plankY * 0.3) * 0.5"
+    },
+    "secondary_component": {
+      "function": "cos", 
+      "x_frequency": 0.4,
+      "amplitude": 0.3,
+      "note": "Math.cos(pX_wp * 0.4) * 0.3"
+    },
+    "grain_intensity": 15,
+    "note": "More pronounced grain variation than oak (15 vs 12)",
+    "blue_stability": {
+      "enabled": true,
+      "formula": "Math.max(-3, grainAdjust - 2)",
+      "note": "Different blue stability than oak (max(-3, adj-2) vs max(-5, adj-3))"
+    }
+  },
+  "texture_features": {
+    "dark_spots": {
+      "description": "Horizontal plank separation lines - stronger than oak",
+      "patterns": [
+        {
+          "x_modulo": 16,
+          "y_modulo": 4,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Horizontal separation lines every 4 pixels"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -25,
+        "g_delta": -20,
+        "b_delta": -10
+      }
+    },
+    "light_specks": {
+      "description": "Plank-to-plank variation on alternating planks - stronger than oak",
+      "patterns": [
+        {
+          "x_modulo": 16,
+          "y_modulo": 8,
+          "offset_x": 0,
+          "offset_y": 4,
+          "note": "Every other plank (plankY % 2 == 1) approximation"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 15,
+        "g_delta": 10,
+        "b_delta": 5
+      }
+    }
+  },
+  "color_clamping": {
+    "r_min": 40, "r_max": 150,
+    "g_min": 25, "g_max": 100,
+    "b_min": 10, "b_max": 60,
+    "note": "Dark brown range for pine wood (darker than oak's 80-200, 60-170, 40-130)"
+  },
+  "generation_algorithm": {
+    "step1": "Calculate local pixel coordinates: pX_wp = globalX % 16, pY_wp = globalY % 16",
+    "step2": "Start with pine base colors: finalR = 80, finalG = 50, finalB = 20",
+    "step3": "Determine plank number: plankY = pY_wp / 4",
+    "step4": "Apply alternating plank variation: if plankY % 2 == 1, add (15,10,5)",
+    "step5": "Generate wood grain: grainNoise = sin(pX_wp * 0.7 + plankY * 0.3) * 0.5 + cos(pX_wp * 0.4) * 0.3",
+    "step6": "Apply grain adjustment with pine blue stability: grainAdjust = grainNoise * 15",
+    "step7": "Apply horizontal plank separation lines: if pY_wp % 4 == 0 && pY_wp > 0, subtract (25,20,10)",
+    "step8": "Clamp colors to dark brown range: r[40-150], g[25-100], b[10-60]"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java pine wood planks texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:588-637",
+    "purpose": "JSON conversion of hardcoded pine wood planks texture algorithm",
+    "version": "1.0",
+    "conversion_status": "converted",
+    "pattern_type": "Horizontal plank construction with pronounced vertical wood grain",
+    "coordinate_system": "local_pixel_coordinates"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "Moderate - plank construction with enhanced dual noise wood grain",
+    "unique_features": [
+      "Horizontal plank system with 4-pixel height (same as oak)",
+      "Stronger alternating plank-to-plank variation (+15,+10,+5 vs oak's +10,+8,+5)",
+      "More pronounced dual noise wood grain (15 vs oak's 12 intensity)",
+      "Vertical grain pattern with plank-specific phase (same pattern as oak)",
+      "Different blue channel stability (max(-3, adj-2) vs oak's max(-5, adj-3))",
+      "Stronger horizontal separation lines (-25,-20,-10 vs oak's -20,-18,-12)",
+      "Dark brown color range clamping for pine wood (darker than oak)",
+      "Pine-specific color palette (80,50,20 vs oak's 160,130,95)"
+    ],
+    "oak_comparison": [
+      "Base colors: Pine (80,50,20) vs Oak (160,130,95) - much darker",
+      "Plank variation: Pine (+15,+10,+5) vs Oak (+10,+8,+5) - stronger",
+      "Grain intensity: Pine (15) vs Oak (12) - more pronounced",
+      "Separation lines: Pine (-25,-20,-10) vs Oak (-20,-18,-12) - stronger",
+      "Color clamping: Pine [40-150,25-100,10-60] vs Oak [80-200,60-170,40-130] - darker range"
+    ],
+    "validation_required": "Generated texture must show clear horizontal plank divisions with pronounced wood grain and dark pine appearance"
+  }
+}

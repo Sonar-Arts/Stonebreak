@@ -1,0 +1,191 @@
+{
+  "block_type": "GRASS",
+  "texture_name": "grass_block",
+  "description": "Complete grass block texture system with top, side, and bottom faces",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "face_mappings": {
+    "top": {
+      "atlas_coordinates": [0, 0],
+      "texture_type": "grass_top",
+      "description": "Pure grass texture for top face"
+    },
+    "sides": {
+      "atlas_coordinates": [1, 0], 
+      "texture_type": "grass_side",
+      "description": "Grass-dirt transition for side faces"
+    },
+    "bottom": {
+      "atlas_coordinates": [2, 0],
+      "texture_type": "dirt",
+      "description": "Pure dirt texture for bottom face"
+    }
+  },
+  "texture_algorithms": {
+    "grass_top": {
+      "algorithm_type": "discrete_selection",
+      "pseudo_random_noise": {
+        "x_multiplier": 13,
+        "y_multiplier": 29,
+        "tile_x_multiplier": 11,
+        "tile_y_multiplier": 17,
+        "modulo": 21,
+        "note": "Formula: (pixelX * 13 + pixelY * 29 + tileX * 11 + tileY * 17) % 21"
+      }
+    },
+    "grass_side": {
+      "algorithm_type": "layered_discrete_selection",
+      "grass_layer": {
+        "height": 3,
+        "position": "top",
+        "pseudo_random_noise": {
+          "x_multiplier": 17,
+          "y_multiplier": 23,
+          "tile_x_multiplier": 7,
+          "tile_y_multiplier": 13,
+          "modulo": 21,
+          "note": "Formula: (pixelX * 17 + pixelY * 23 + tileX * 7 + tileY * 13) % 21"
+        }
+      },
+      "dirt_layer": {
+        "height": 13,
+        "position": "bottom",
+        "algorithm_type": "continuous_noise",
+        "primary_noise": {
+          "x_frequency": 0.7,
+          "x_phase_y": 0.3,
+          "y_frequency": 0.4,
+          "y_phase_x": 0.8,
+          "weight": 1.0,
+          "note": "Uses exact same algorithm as dirt texture"
+        }
+      }
+    }
+  },
+  "color_palettes": {
+    "grass_top": {
+      "dark_green": {
+        "threshold_min": 0,
+        "threshold_max": 6,
+        "r": 80,
+        "g": 120,
+        "b": 50,
+        "description": "Darkest green shade for grass top (noiseVal < 7)"
+      },
+      "medium_green": {
+        "threshold_min": 7,
+        "threshold_max": 13,
+        "r": 95,
+        "g": 150,
+        "b": 60,
+        "description": "Medium green shade for grass top (7 <= noiseVal < 14)"
+      },
+      "light_green": {
+        "threshold_min": 14,
+        "threshold_max": 20,
+        "r": 120,
+        "g": 180,
+        "b": 80,
+        "description": "Lightest green shade for grass top (noiseVal >= 14)"
+      }
+    },
+    "grass_side_grass_layer": {
+      "dark_green": {
+        "threshold_min": 0,
+        "threshold_max": 6,
+        "r": 75,
+        "g": 115,
+        "b": 45,
+        "description": "Darkest green shade for grass side layer (noiseVal < 7)"
+      },
+      "medium_green": {
+        "threshold_min": 7,
+        "threshold_max": 13,
+        "r": 90,
+        "g": 145,
+        "b": 55,
+        "description": "Medium green shade for grass side layer (7 <= noiseVal < 14)"
+      },
+      "light_green": {
+        "threshold_min": 14,
+        "threshold_max": 20,
+        "r": 115,
+        "g": 175,
+        "b": 75,
+        "description": "Lightest green shade for grass side layer (noiseVal >= 14)"
+      }
+    },
+    "dirt_layer": {
+      "base_colors": {
+        "r_base": 135,
+        "g_base": 95,
+        "b_base": 70,
+        "r_variance": 40,
+        "g_variance": 35,
+        "b_variance": 25,
+        "note": "Same as dirt texture"
+      },
+      "dark_spots": {
+        "patterns": [
+          {
+            "x_modulo": 5,
+            "y_modulo": 5,
+            "offset_x": 0,
+            "offset_y": 0
+          },
+          {
+            "x_modulo": 7,
+            "y_modulo": 6,
+            "offset_x": 2,
+            "offset_y": 3
+          }
+        ],
+        "color_adjustment": {
+          "r_delta": -30,
+          "g_delta": -25,
+          "b_delta": -20
+        }
+      }
+    }
+  },
+  "generation_algorithms": {
+    "grass_top": {
+      "step1": "Calculate pseudo-random noise: (pixelX * 13 + pixelY * 29 + tileX * 11 + tileY * 17) % 21",
+      "step2": "Select color based on noise thresholds (case 0 - TextureAtlas.java:2048-2063)",
+      "step3": "Apply selected grass top color with full alpha (255)"
+    },
+    "grass_side": {
+      "step1": "Check pixel Y coordinate against grass layer height (3 pixels)",
+      "step2": "If pixelY < 3: Apply grass layer algorithm (case 1 - TextureAtlas.java:2071-2079)",
+      "step3": "- Calculate noise: (pixelX * 17 + pixelY * 23 + tileX * 7 + tileY * 13) % 21",
+      "step4": "- Select from darker grass side colors",
+      "step5": "If pixelY >= 3: Apply dirt layer algorithm (case 1 - TextureAtlas.java:2080-2097)",
+      "step6": "- Use exact same dirt generation as dirt texture",
+      "step7": "- Apply dirt base colors and dark spot patterns"
+    },
+    "dirt_bottom": {
+      "note": "Uses dirt.json algorithm - references dirt texture generation"
+    }
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java complete grass block system",
+    "original_locations": {
+      "grass_top": "com.stonebreak.rendering.TextureAtlas:2048-2063 (case 0)",
+      "grass_side": "com.stonebreak.rendering.TextureAtlas:2064-2098 (case 1)",
+      "dirt_bottom": "References dirt.json - TextureAtlas:2099-2116 (case 2)"
+    },
+    "purpose": "Complete JSON conversion of grass block with all face textures",
+    "version": "2.0",
+    "atlas_coordinates": {
+      "top": [0, 0],
+      "sides": [1, 0], 
+      "bottom": [2, 0]
+    },
+    "block_faces": "Complete grass block - top (grass), sides (grass+dirt), bottom (dirt)",
+    "previous_version": "1.0 only included grass top texture"
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "block_type": "SNOWY_LEAVES",
+  "texture_name": "snowy_leaves",
+  "description": "Dark green leaves with white snow patches and edge transparency",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "transparency": {
+      "enabled": true,
+      "variable_alpha": true,
+      "note": "Variable transparency at edges, solid at center"
+    }
+  },
+  "base_colors": {
+    "r_base": 20,
+    "g_base": 80,
+    "b_base": 15,
+    "r_variance": 40,
+    "g_variance": 60,
+    "b_variance": 30,
+    "note": "Dark green base colors, slightly darker than normal leaves"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise",
+    "primary_noise": {
+      "function": "sin",
+      "x_frequency": 0.9,
+      "x_phase_y": 0.6,
+      "weight": 0.25,
+      "note": "Math.sin(globalX * 0.9 + globalY * 0.6) * 0.25"
+    },
+    "secondary_noise": {
+      "function": "cos",
+      "x_frequency": 0.7,
+      "y_frequency": 0.9,
+      "weight": 0.25,
+      "note": "Math.cos(globalX * 0.7 + globalY * 0.9) * 0.25"
+    },
+    "tertiary_noise": {
+      "function": "sin",
+      "combined_frequency": 0.8,
+      "weight": 0.5,
+      "note": "Math.sin((globalX + globalY) * 0.8) * 0.5"
+    },
+    "final_processing": {
+      "amplitude": 0.5,
+      "offset": 0.5,
+      "note": "Combined noise * 0.5f + 0.5f"
+    }
+  },
+  "texture_features": {
+    "light_specks": {
+      "description": "Snow patches and particles - large patches and small particles combined",
+      "patterns": [
+        {
+          "x_modulo": 3,
+          "y_modulo": 4,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Large snow patches: pixelX_snowyleaves % 3 == 0 && pixelY_snowyleaves % 4 == 0"
+        },
+        {
+          "x_modulo": 5,
+          "y_modulo": 3,
+          "offset_x": 2,
+          "offset_y": 1,
+          "note": "Large snow patches: (pixelX_snowyleaves + 2) % 5 == 0 && (pixelY_snowyleaves + 1) % 3 == 0"
+        },
+        {
+          "x_modulo": 7,
+          "y_modulo": 8,
+          "offset_x": 1,
+          "offset_y": 3,
+          "note": "Fine snow particles pattern 1"
+        },
+        {
+          "x_modulo": 11,
+          "y_modulo": 6,
+          "offset_x": 4,
+          "offset_y": 1,
+          "note": "Fine snow particles pattern 2"
+        },
+        {
+          "x_modulo": 9,
+          "y_modulo": 5,
+          "offset_x": 2,
+          "offset_y": 4,
+          "note": "Fine snow particles pattern 3"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 220,
+        "g_delta": 170,
+        "b_delta": 240,
+        "note": "Add white/blue snow coloring over dark green leaves (250-20=230, 250-80=170, 255-15=240)"
+      }
+    },
+    "edge_transparency": {
+      "description": "Variable transparency at texture edges",
+      "edge_definition": {
+        "edge_width": 2,
+        "note": "Edges are pixels within 1 pixel of border (edgeX <= 1 || edgeX >= texturePixelSize-2)"
+      },
+      "alpha_values": {
+        "edge_base": 200,
+        "edge_noise_multiplier": 55,
+        "center_alpha": 255,
+        "formula": "edge: 200 + leafNoise * 55, center: 255"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate triple noise: leafNoise = (sin(globalX * 0.9 + globalY * 0.6) * 0.25 + cos(globalX * 0.7 + globalY * 0.9) * 0.25 + sin((globalX + globalY) * 0.8) * 0.5) * 0.5 + 0.5",
+    "step2": "Apply base leaf colors: r = 20 + leafNoise * 40, g = 80 + leafNoise * 60, b = 15 + leafNoise * 30",
+    "step3": "Calculate local pixel coordinates for snow patches: pixelX_snowyleaves = globalX % 16, pixelY_snowyleaves = globalY % 16",
+    "step4": "Apply snow patches and particles using light_specks patterns (add white/blue coloring)",
+    "step5": "Calculate edge transparency: edges get alpha = 200 + leafNoise * 55, center gets alpha = 255",
+    "step6": "Clamp all color values to [0, 255] range"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java snowy leaves texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1627-1663",
+    "purpose": "JSON conversion of hardcoded snowy leaves texture algorithm",
+    "version": "1.0",
+    "conversion_status": "converted",
+    "pattern_type": "Pattern 4 - Triple noise generation with snow patch overlay and edge transparency",
+    "coordinate_system": "global_coordinates"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "Advanced triple noise with dual overlay systems",
+    "unique_features": [
+      "Triple noise: sin/cos/sin combination with different weights (0.25/0.25/0.5)",
+      "Combined snow system: 5 different modulo patterns for large patches and small particles",
+      "Variable edge transparency system with noise-based alpha variation",
+      "Dark green leaf base with high contrast white/blue snow effects",
+      "Unified light_specks system combining original snow patches and new particle patterns"
+    ],
+    "validation_required": "Generated texture must match snowy leaves blocks with proper snow distribution and edge transparency"
+  }
+}

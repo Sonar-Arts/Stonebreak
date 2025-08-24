@@ -1,0 +1,139 @@
+{
+  "block_type": "WOOD",
+  "texture_name": "wood_log",
+  "description": "Complete wood log texture system with side grain and top/bottom rings",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "face_mappings": {
+    "top": {
+      "atlas_coordinates": [6, 0],
+      "texture_type": "wood_top",
+      "description": "Concentric ring pattern for top/bottom faces"
+    },
+    "sides": {
+      "atlas_coordinates": [5, 0], 
+      "texture_type": "wood_side",
+      "description": "Vertical grain pattern for side faces"
+    },
+    "bottom": {
+      "atlas_coordinates": [6, 0],
+      "texture_type": "wood_top",
+      "description": "Same ring pattern as top face"
+    }
+  },
+  "texture_algorithms": {
+    "wood_side": {
+      "algorithm_type": "vertical_grain_with_knots",
+      "vertical_grain": {
+        "y_frequency": 1.5,
+        "amplitude": 0.5,
+        "offset": 0.5,
+        "note": "Math.sin(globalY * 1.5) * 0.5f + 0.5f"
+      },
+      "ring_effect": {
+        "x_frequency": 0.7,
+        "amplitude": 0.4,
+        "offset": 0.6,
+        "coordinate_system": "x_modulo_tile_size",
+        "note": "Math.sin((globalX % texturePixelSize) * 0.7) * 0.4f + 0.6f"
+      },
+      "knot_pattern": {
+        "radius": 3.0,
+        "tile_condition": "coordinate_sum_modulo",
+        "tile_frequency": 3,
+        "color_adjustment": {
+          "r_delta": -20,
+          "g_delta": -15,
+          "b_delta": -10
+        },
+        "note": "distToCenter < 3 && (globalX/texturePixelSize + globalY/texturePixelSize) % 3 == 0"
+      }
+    },
+    "wood_top": {
+      "algorithm_type": "concentric_rings",
+      "ring_pattern": {
+        "center_calculation": "distance_from_center",
+        "frequency": 1.2,
+        "amplitude": 0.5,
+        "offset": 0.5,
+        "coordinate_system": "tile_relative",
+        "note": "Math.sin(distFromCenter * 1.2) * 0.5f + 0.5f"
+      }
+    }
+  },
+  "color_palettes": {
+    "wood_side": {
+      "base_colors": {
+        "r_base": 120,
+        "g_base": 80,
+        "b_base": 40,
+        "r_multiplier": 60,
+        "g_multiplier": 40,
+        "b_multiplier": 25,
+        "note": "r = 120 + woodGrain * 60 * ringEffect"
+      }
+    },
+    "wood_top": {
+      "base_colors": {
+        "r_base": 150,
+        "g_base": 95,
+        "b_base": 45,
+        "r_variance": 50,
+        "g_variance": 35,
+        "b_variance": 20,
+        "note": "r = 150 + ringPattern * 50"
+      }
+    }
+  },
+  "generation_algorithms": {
+    "wood_side": {
+      "step1": "Generate vertical grain: Math.sin(globalY * 1.5) * 0.5 + 0.5",
+      "step2": "Calculate local ring position: ringX = globalX % texturePixelSize",
+      "step3": "Generate ring effect: Math.sin(ringX * 0.7) * 0.4 + 0.6",
+      "step4": "Apply combined colors: r = 120 + woodGrain * 60 * ringEffect",
+      "step5": "Calculate distance to tile center for knot detection",
+      "step6": "Apply knot darkening if distance < 3 and tile frequency matches",
+      "step7": "Clamp color values to [0, 255] range",
+      "note": "Combines vertical grain with horizontal ring effects and occasional knots"
+    },
+    "wood_top": {
+      "step1": "Calculate tile-relative coordinates: dx = (globalX % size) - size/2",
+      "step2": "Calculate distance from center: sqrt(dx² + dy²)",
+      "step3": "Generate ring pattern: Math.sin(distFromCenter * 1.2) * 0.5 + 0.5",
+      "step4": "Apply ring colors: r = 150 + ringPattern * 50",
+      "step5": "Clamp color values to [0, 255] range",
+      "note": "Creates concentric tree rings radiating from tile center"
+    }
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java wood texture generation",
+    "original_locations": {
+      "wood_side": "com.stonebreak.rendering.TextureAtlas:2133-2155 (case 5)",
+      "wood_top": "com.stonebreak.rendering.TextureAtlas:2156-2166 (case 6)"
+    },
+    "purpose": "Complete JSON conversion of wood log with side and top/bottom faces",
+    "version": "1.0",
+    "atlas_coordinates": {
+      "top": [6, 0],
+      "sides": [5, 0], 
+      "bottom": [6, 0]
+    },
+    "block_faces": "Complete wood log - sides (vertical grain), top/bottom (concentric rings)"
+  },
+  "technical_notes": {
+    "complexity": "Advanced multi-algorithm system with coordinate transformations",
+    "unique_features": [
+      "Vertical grain generation using globalY coordinates",
+      "Horizontal ring effects using modulo coordinates", 
+      "Distance-based knot patterns with tile frequency",
+      "Concentric rings using radial distance calculation",
+      "Different base colors for side vs top faces"
+    ],
+    "implementation_challenge": "Universal generator needs support for coordinate transformations and distance calculations",
+    "wood_characteristics": "Realistic wood grain with side texture showing vertical growth and top showing tree rings"
+  }
+}

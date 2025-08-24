@@ -1,0 +1,140 @@
+{
+  "block_type": "DANDELION",
+  "texture_name": "dandelion",
+  "description": "Dandelion flower pixel art texture with yellow/orange petals and green stem",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 pixel art sprite with 7x13 flower positioned with offsets"
+  },
+  "base_colors": {
+    "r_base": 255,
+    "g_base": 217,
+    "b_base": 26,
+    "r_variance": 0,
+    "g_variance": 0,
+    "b_variance": 0,
+    "note": "Placeholder - dandelion uses pixel art not noise-based colors"
+  },
+  "texture_algorithms": {
+    "dandelion": {
+      "algorithm_type": "pixel_art_sprite",
+      "sprite_properties": {
+        "sprite_width": 7,
+        "sprite_height": 13,
+        "horizontal_offset": 4,
+        "vertical_offset": 3,
+        "background_color": {
+          "r": 255, "g": 255, "b": 255, "a": 0,
+          "description": "Transparent white background (different from rose)"
+        }
+      },
+      "color_palette": {
+        "yellow_petals": {
+          "r": 255, "g": 217, "b": 26, "a": 255,
+          "description": "Bright yellow dandelion petals"
+        },
+        "orange_petals": {
+          "r": 255, "g": 175, "b": 23, "a": 255,
+          "description": "Orange center petals"
+        },
+        "stem": {
+          "r": 0, "g": 154, "b": 23, "a": 255,
+          "description": "Green stem color"
+        }
+      },
+      "pixel_map": [
+        {"y": 0, "pixels": [
+          {"x": 2, "color": "yellow_petals"},
+          {"x": 3, "color": "yellow_petals"},
+          {"x": 4, "color": "yellow_petals"}
+        ]},
+        {"y": 1, "pixels": [
+          {"x": 1, "color": "yellow_petals"},
+          {"x": 2, "color": "yellow_petals"},
+          {"x": 3, "color": "yellow_petals"},
+          {"x": 4, "color": "yellow_petals"},
+          {"x": 5, "color": "yellow_petals"}
+        ]},
+        {"y": 2, "pixels": [
+          {"x": 0, "color": "yellow_petals"},
+          {"x": 1, "color": "yellow_petals"},
+          {"x": 2, "color": "yellow_petals"},
+          {"x": 3, "color": "orange_petals"},
+          {"x": 4, "color": "yellow_petals"},
+          {"x": 5, "color": "yellow_petals"},
+          {"x": 6, "color": "yellow_petals"}
+        ]},
+        {"y": 3, "pixels": [
+          {"x": 0, "color": "yellow_petals"},
+          {"x": 1, "color": "yellow_petals"},
+          {"x": 2, "color": "orange_petals"},
+          {"x": 4, "color": "orange_petals"},
+          {"x": 5, "color": "yellow_petals"},
+          {"x": 6, "color": "yellow_petals"}
+        ]},
+        {"y": 4, "pixels": [
+          {"x": 1, "color": "yellow_petals"},
+          {"x": 2, "color": "orange_petals"},
+          {"x": 3, "color": "orange_petals"},
+          {"x": 4, "color": "orange_petals"},
+          {"x": 5, "color": "yellow_petals"}
+        ]},
+        {"y": 5, "pixels": [
+          {"x": 2, "color": "yellow_petals"},
+          {"x": 3, "color": "yellow_petals"},
+          {"x": 4, "color": "yellow_petals"}
+        ]},
+        {"y": 6, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]},
+        {"y": 7, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]},
+        {"y": 8, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]},
+        {"y": 9, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]},
+        {"y": 10, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]},
+        {"y": 11, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]},
+        {"y": 12, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]}
+      ]
+    }
+  },
+  "generation_algorithm": {
+    "steps": [
+      "1. Initialize 16x16 texture with transparent white background (255,255,255,0)",
+      "2. Apply offsets: horizontal=4, vertical=3 to position 7x13 sprite",
+      "3. For each row (y), place colored pixels at specified x coordinates",
+      "4. Rows 0-5: Flower petals with yellow and orange colors",
+      "5. Rows 6-12: Green stem as single vertical line at x=3",
+      "6. Use color palette to map color names to RGBA values",
+      "7. All non-specified pixels remain transparent"
+    ],
+    "note": "Direct pixel mapping from TextureAtlas.java:1445-1466"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java dandelion texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1434-1470",
+    "purpose": "JSON conversion of hardcoded dandelion pixel art sprite",
+    "version": "1.0",
+    "conversion_status": "Complete - uses existing pixel_art_sprite algorithm",
+    "complexity": "Pixel art sprite pattern with yellow/orange flower and green stem",
+    "sprite_dimensions": "7x13 pixels positioned at offset (4,3) on 16x16 tile",
+    "differences_from_rose": {
+      "background": "Transparent white (255,255,255,0) vs transparent black (0,0,0,0)",
+      "colors": "Yellow/orange petals vs red petals",
+      "size": "7x13 sprite vs 8x16 sprite",
+      "layout": "Flower head with straight stem vs rose with thorns"
+    }
+  }
+}

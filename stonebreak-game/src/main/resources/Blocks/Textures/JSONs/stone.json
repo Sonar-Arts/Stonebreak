@@ -1,0 +1,74 @@
+{
+  "block_type": "STONE",
+  "texture_name": "stone",
+  "description": "Procedurally generated stone texture with gray tones and natural depth variations",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 120,
+    "g_base": 120,
+    "b_base": 125,
+    "r_variance": 30,
+    "g_variance": 30,
+    "b_variance": 30,
+    "note": "Exact values from TextureAtlas.java:2124-2126"
+  },
+  "noise_generation": {
+    "primary_noise": {
+      "x_frequency": 0.8,
+      "x_phase_y": 0.2,
+      "y_frequency": 0.3,
+      "y_phase_x": 0.7,
+      "weight": 0.3,
+      "note": "First sine component: Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.3,
+      "y_frequency": 0.7,
+      "amplitude": 0.3,
+      "offset": 0.5,
+      "weight": 0.3,
+      "note": "Second cosine component: Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 0.5,
+      "amplitude": 0.4,
+      "offset": 0.5,
+      "weight": 0.4,
+      "note": "Third sine component: Math.sin((globalX+globalY) * 0.5) * 0.4"
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate first noise: Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3",
+    "step2": "Generate second noise: Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3",
+    "step3": "Generate third noise: Math.sin((globalX+globalY) * 0.5) * 0.4",
+    "step4": "Combine all three: (noise1 + noise2 + noise3) * 0.5 + 0.5",
+    "step5": "Apply base colors: r = 120 + stoneNoise * 30, g = 120 + stoneNoise * 30, b = 125 + stoneNoise * 30",
+    "step6": "No pattern features applied - pure continuous noise",
+    "step7": "Clamp all color values to [0, 255] range",
+    "note": "Algorithm matches TextureAtlas.java:2119-2126 exactly"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java stone texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2117-2127 (case 3)",
+    "purpose": "JSON conversion of actual in-game stone block texture",
+    "version": "1.0",
+    "conversion_status": "Complete - matches hardcoded algorithm",
+    "algorithm_type": "triple_sine_cosine_noise"
+  },
+  "technical_notes": {
+    "complexity": "Most complex noise algorithm so far - uses 3 overlapping noise functions",
+    "unique_features": [
+      "Triple noise generation (sin + cos + combined sin)",
+      "Mixed coordinate systems (X+Y, X*Y, separate X and Y)",
+      "Different amplitudes for each noise layer (0.3, 0.3, 0.4)",
+      "Final normalization: * 0.5 + 0.5"
+    ],
+    "implementation_challenge": "Universal generator needs to support triple noise generation",
+    "stone_characteristics": "Creates natural stone variation with depth and cracks"
+  }
+}

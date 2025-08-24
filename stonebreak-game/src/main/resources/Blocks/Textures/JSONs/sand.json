@@ -1,0 +1,71 @@
+{
+  "block_type": "SAND",
+  "texture_name": "sand",
+  "description": "Light yellowish-tan sand texture with speckled noise effect, inspired by Minecraft sand",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 220,
+    "g_base": 205,
+    "b_base": 160,
+    "r_variance": 30,
+    "g_variance": 30,
+    "b_variance": 24,
+    "note": "Exact colors from TextureAtlas.java case 8: baseR = 220, baseG = 205, baseB = 160. Blue varies 80% as much (30 * 0.8 = 24)"
+  },
+  "noise_generation": {
+    "primary_noise": {
+      "x_frequency": 0.8,
+      "x_phase_y": 1.1,
+      "y_frequency": 0.5,
+      "y_phase_x": -0.9,
+      "weight": 1.0,
+      "note": "Adapted to universal generator format: sin(x*0.8 + y*1.1) and cos(x*0.5 + y*(-0.9))"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.8,
+      "y_frequency": 1.1,
+      "amplitude": 0.25,
+      "offset": 0.5,
+      "weight": 1.0,
+      "note": "Secondary noise to match sand's dual noise pattern"
+    }
+  },
+  "texture_features": {},
+  "generation_algorithm": {
+    "step1": "Generate dual noise: noise1 = sin(x * 0.8 + y * 1.1), noise2 = cos(x * 0.5 - y * 0.9)",
+    "step2": "Combine noise: combinedNoise = ((noise1 + noise2) / 4.0 + 0.5)",
+    "step3": "Calculate variation: variation = (combinedNoise - 0.5f) * 30 (range: -15 to +15)",
+    "step4": "Apply base colors with variation: r = 220 + variation, g = 205 + variation, b = 160 + (variation * 0.8)",
+    "step5": "Clamp all color values to [0, 255] range using Math.max(0, Math.min(255, value))",
+    "note": "Uses per-tile coordinates for noise to ensure each sand tile is self-contained"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java sand texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas case 8 (Minecraft-like sand)",
+    "purpose": "JSON conversion of hardcoded SAND texture algorithm",
+    "version": "1.0",
+    "conversion_status": "complete",
+    "atlas_coordinates": {
+      "x": 8,
+      "y": 0,
+      "note": "SAND atlas coordinates from BlockType.java"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Dual sine/cosine noise generation with subtle speckled variations",
+    "coordinate_system": "Uses per-tile coordinates (globalX % texturePixelSize) for self-contained tiles",
+    "special_features": [
+      "Light yellowish-tan base color inspired by Minecraft sand",
+      "Speckled effect from dual noise combination",
+      "Blue channel varies 20% less than red/green for warmer appearance",
+      "Self-contained per-tile noise ensures consistent texture tiling",
+      "No special patterns - pure noise-based texture"
+    ],
+    "noise_range": "Combined noise: 0.0 to 1.0, Variation: -15 to +15"
+  }
+}

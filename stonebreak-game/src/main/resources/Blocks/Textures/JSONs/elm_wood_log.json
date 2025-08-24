@@ -1,0 +1,180 @@
+{
+  "block_type": "ELM_WOOD_LOG",
+  "texture_name": "elm_wood_log",
+  "description": "Elm wood log with radial ring pattern on top/bottom faces and bark texture on side faces",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"]
+  },
+  "face_mappings": {
+    "top": {"texture_type": "elm_log_top", "atlas_coordinates": [4, 3]},
+    "bottom": {"texture_type": "elm_log_top", "atlas_coordinates": [4, 3]},
+    "sides": {"texture_type": "elm_log_sides", "atlas_coordinates": [7, 3]}
+  },
+  "texture_algorithms": {
+    "elm_log_top": {
+      "algorithm_type": "continuous_noise",
+      "base_colors": {
+        "r_base": 160,
+        "g_base": 100,
+        "b_base": 70,
+        "r_variance": 40,
+        "g_variance": 30,
+        "b_variance": 20
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "type": "radial_rings",
+          "center_x": 8,
+          "center_y": 8,
+          "frequency": 1.4,
+          "amplitude": 0.4,
+          "offset": 0.6,
+          "note": "Math.sin(distFromCenter * 1.4) * 0.4 + 0.6"
+        },
+        "secondary_noise": {
+          "type": "zigzag_pattern",
+          "x_frequency": 0.9,
+          "x_phase_y": 0.7,
+          "y_frequency": 1.2,
+          "y_phase_x": -0.8,
+          "amplitude": 0.3,
+          "note": "Math.sin(x*0.9 + y*0.7) * Math.cos(x*1.2 - y*0.8) * 0.3"
+        }
+      },
+      "color_clamping": {
+        "r_min": 90, "r_max": 200,
+        "g_min": 60, "g_max": 140,
+        "b_min": 40, "b_max": 100
+      }
+    },
+    "elm_log_sides": {
+      "algorithm_type": "continuous_noise",
+      "base_colors": {
+        "r_base": 120,
+        "g_base": 80,
+        "b_base": 50,
+        "r_variance": 40,
+        "g_variance": 30,
+        "b_variance": 20
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "type": "vertical_grain",
+          "y_frequency": 1.5,
+          "amplitude": 0.5,
+          "offset": 0.5,
+          "note": "Math.sin(y * 1.5) * 0.5 + 0.5"
+        },
+        "secondary_noise": {
+          "type": "horizontal_bark",
+          "x_frequency": 0.7,
+          "amplitude": 0.4,
+          "offset": 0.6,
+          "note": "Math.sin(x * 0.7) * 0.4 + 0.6"
+        },
+        "tertiary_noise": {
+          "type": "interlocked_grain",
+          "component_1": {
+            "x_frequency": 0.8,
+            "x_phase_y": 0.6,
+            "amplitude": 0.3
+          },
+          "component_2": {
+            "x_frequency": 0.5,
+            "x_phase_y": -0.9,
+            "amplitude": 0.2
+          },
+          "note": "Math.sin(x*0.8 + y*0.6)*0.3 + Math.cos(x*0.5 - y*0.9)*0.2"
+        }
+      },
+      "color_clamping": {
+        "r_min": 70, "r_max": 170,
+        "g_min": 50, "g_max": 120,
+        "b_min": 30, "b_max": 80
+      }
+    }
+  },
+  "texture_features": {
+    "light_specks": {
+      "description": "Ring patterns and grain highlights",
+      "patterns": [
+        {
+          "x_modulo": 8,
+          "y_modulo": 8,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Radial pattern approximation for universal generator"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 25,
+        "g_delta": 20,
+        "b_delta": 15
+      }
+    },
+    "dark_spots": {
+      "description": "Deep ring lines and bark texture",
+      "patterns": [
+        {
+          "x_modulo": 6,
+          "y_modulo": 6,
+          "offset_x": 3,
+          "offset_y": 3,
+          "note": "Ring shadows and bark depth"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -20,
+        "g_delta": -15,
+        "b_delta": -10
+      }
+    }
+  },
+  "generation_algorithm": {
+    "elm_log_top": {
+      "step1": "Calculate distance from center: distFromCenter = sqrt((x-8)² + (y-8)²)",
+      "step2": "Generate radial ring pattern: ringPattern = sin(distFromCenter * 1.4) * 0.4 + 0.6",
+      "step3": "Generate zig-zag grain: zigzagPattern = sin(x*0.9 + y*0.7) * cos(x*1.2 - y*0.8) * 0.3",
+      "step4": "Apply base colors with ring and zigzag adjustments",
+      "step5": "Clamp to reddish-brown heartwood range"
+    },
+    "elm_log_sides": {
+      "step1": "Generate vertical wood grain: woodGrain = sin(y * 1.5) * 0.5 + 0.5",
+      "step2": "Generate horizontal bark texture: barkTexture = sin(x * 0.7) * 0.4 + 0.6",
+      "step3": "Generate interlocked grain: grainNoise = sin(x*0.8 + y*0.6)*0.3 + cos(x*0.5 - y*0.9)*0.2",
+      "step4": "Combine all patterns with base bark colors",
+      "step5": "Clamp to darker reddish-brown bark range"
+    }
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java elm wood log texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1112-1169",
+    "purpose": "JSON conversion of hardcoded elm wood log texture algorithms",
+    "version": "1.0",
+    "conversion_status": "converted",
+    "pattern_type": "Multi-face log texture with radial rings and bark patterns",
+    "coordinate_system": "local_pixel_coordinates"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "High - radial ring calculations and complex multi-component grain patterns",
+    "unique_features": [
+      "Multi-face log texture with different algorithms for top/sides",
+      "Radial ring pattern from center point for authentic log cross-section",
+      "Elm-characteristic zig-zag grain pattern (ulmiform pattern)",
+      "Vertical wood grain on sides for realistic log appearance",
+      "Horizontal bark texture overlay on sides",
+      "Interlocked grain pattern simulating elm's complex wood structure",
+      "Reddish-brown color palette distinctive to elm wood",
+      "Different color ranges for heartwood (top) vs bark (sides)"
+    ],
+    "universal_generator_adaptation": [
+      "Radial patterns approximated using light_specks with center-focused modulo",
+      "Zig-zag and interlocked grain simplified to supported noise types",
+      "Multi-component patterns combined through feature overlays",
+      "Color clamping handled through base color variance ranges"
+    ],
+    "validation_required": "Generated texture must show radial rings on top faces and vertical bark grain on side faces"
+  }
+}

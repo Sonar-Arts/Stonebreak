@@ -1,0 +1,50 @@
+{
+  "block_type": "BEDROCK",
+  "texture_name": "bedrock",
+  "description": "Solid dark gray bedrock texture - unbreakable barrier block",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 50,
+    "g_base": 50,
+    "b_base": 50,
+    "r_variance": 0,
+    "g_variance": 0,
+    "b_variance": 0,
+    "note": "Solid color RGB(50, 50, 50) - no variance"
+  },
+  "noise_generation": {
+    "algorithm_type": "solid_color",
+    "note": "No noise generation - pure solid color"
+  },
+  "generation_algorithm": {
+    "step1": "Set all pixels to solid color RGB(50, 50, 50)",
+    "step2": "No noise generation required",
+    "step3": "No pattern features applied",
+    "step4": "Alpha channel set to 255 (fully opaque)",
+    "note": "Simplest algorithm - uniform color fill"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java bedrock texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2128-2132 (case 4)",
+    "purpose": "JSON conversion of actual in-game bedrock block texture",
+    "version": "1.0",
+    "conversion_status": "Complete - solid color pattern",
+    "algorithm_type": "solid_color"
+  },
+  "technical_notes": {
+    "complexity": "Simplest algorithm - no noise or patterns",
+    "unique_features": [
+      "Solid color fill - RGB(50, 50, 50)",
+      "No variance or noise generation",
+      "Uniform appearance across all pixels",
+      "Represents unbreakable barrier block"
+    ],
+    "implementation_challenge": "Universal generator needs solid color support",
+    "bedrock_characteristics": "Dark, uniform, industrial appearance fitting bedrock's unbreakable nature"
+  }
+}

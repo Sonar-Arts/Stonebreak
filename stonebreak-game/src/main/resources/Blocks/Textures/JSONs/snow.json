@@ -1,0 +1,75 @@
+{
+  "block_type": "SNOW",
+  "texture_name": "snow",
+  "description": "White snow with subtle variations and light blue tinting",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"]
+  },
+  "texture_algorithms": {
+    "snow_top": {
+      "algorithm_type": "discrete_selection",
+      "pseudo_random_noise": {
+        "x_multiplier": 13,
+        "y_multiplier": 29,
+        "tile_x_multiplier": 11,
+        "tile_y_multiplier": 17,
+        "modulo": 21,
+        "note": "(pixelX_snow * 13 + pixelY_snow * 29 + tileX * 11 + tileY * 17) % 21"
+      }
+    }
+  },
+  "color_palettes": {
+    "snow_top": {
+      "pure_white": {
+        "threshold_max": 6,
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "note": "Pure white snow for noise < 7"
+      },
+      "off_white": {
+        "threshold_max": 13,
+        "r": 250,
+        "g": 250,
+        "b": 252,
+        "note": "Slightly off-white for noise 7-13"
+      },
+      "light_blue_tint": {
+        "threshold_max": 21,
+        "r": 248,
+        "g": 250,
+        "b": 255,
+        "note": "Very light blue tint for noise >= 14"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Calculate local pixel coordinates: pixelX_snow = globalX % 16, pixelY_snow = globalY % 16",
+    "step2": "Generate pseudo-random noise: noiseVal_snow = (pixelX_snow * 13 + pixelY_snow * 29 + tileX * 11 + tileY * 17) % 21",
+    "step3": "Select color based on noise threshold: < 7 = pure white, 7-13 = off-white, >= 14 = light blue tint",
+    "step4": "Set solid alpha: a = 255",
+    "step5": "Apply selected color values"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java snow top texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1518-1535",
+    "purpose": "JSON conversion of hardcoded snow texture algorithm",
+    "version": "1.0",
+    "conversion_status": "converted",
+    "pattern_type": "Pattern 2 - Discrete color selection with pseudo-random noise",
+    "coordinate_system": "local_pixel_coordinates"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "Simple discrete selection with three snow color variants",
+    "unique_features": [
+      "Pseudo-random noise using pixel coordinates and tile position",
+      "Three-tier color system: pure white, off-white, light blue tint",
+      "Threshold-based color selection (< 7, 7-13, >= 14)",
+      "Subtle color variations for realistic snow appearance",
+      "Tile-aware noise generation including tileX and tileY multipliers"
+    ],
+    "validation_required": "Generated texture must match snow blocks with proper white/blue color distribution"
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "block_type": "COAL_ORE",
+  "texture_name": "coal_ore",
+  "description": "Stone base texture with organic-looking coal veins and deposits",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 110,
+    "g_base": 110,
+    "b_base": 115,
+    "r_variance": 25,
+    "g_variance": 25,
+    "b_variance": 25,
+    "note": "Stone base color same as stone block but slightly darker: r = 110 + coalStoneBase * 25"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise_generation",
+    "primary_noise": {
+      "x_frequency": 0.8,
+      "x_phase_y": 0.2,
+      "weight": 0.3,
+      "note": "First sine component: Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.3,
+      "y_frequency": 0.7,
+      "weight": 0.3,
+      "note": "Cosine component: Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 0.5,
+      "weight": 0.4,
+      "note": "Combined sine: Math.sin((globalX + globalY) * 0.5) * 0.4"
+    }
+  },
+  "coal_vein_system": {
+    "vein_detection": {
+      "x_frequency": 1.5,
+      "y_frequency": 1.7,
+      "threshold": 0.7,
+      "formula": "veinFactor = sin(globalX * 1.5 + globalY * 1.7) * 0.5f + 0.5f",
+      "note": "Coal veins appear when veinFactor > 0.7 for more organic looking distribution"
+    },
+    "vein_size_calculation": {
+      "combined_frequency": 0.8,
+      "amplitude": 0.3,
+      "offset": 0.7,
+      "threshold": 0.6,
+      "formula": "veinSize = sin((globalX + globalY) * 0.8) * 0.3f + 0.7f",
+      "note": "Vein appears when veinSize > 0.6, controls size and shape of coal deposits"
+    },
+    "coal_colors": {
+      "r_base": 40,
+      "g_base": 40,
+      "b_base": 40,
+      "r_variance": 20,
+      "g_variance": 20,
+      "b_variance": 20,
+      "formula": "r = 40 + veinSize * 20 (range: 40-60)",
+      "note": "Dark coal color with slight variation based on vein size"
+    }
+  },
+  "texture_features": {
+    "dark_spots": {
+      "description": "Dark coal veins approximating organic distribution",
+      "patterns": [
+        {
+          "x_modulo": 5,
+          "y_modulo": 4,
+          "offset_x": 1,
+          "offset_y": 2,
+          "note": "Primary coal vein pattern"
+        },
+        {
+          "x_modulo": 7,
+          "y_modulo": 6,
+          "offset_x": 3,
+          "offset_y": 1,
+          "note": "Secondary coal vein pattern"
+        },
+        {
+          "x_modulo": 8,
+          "y_modulo": 5,
+          "offset_x": 2,
+          "offset_y": 4,
+          "note": "Tertiary coal vein pattern for organic appearance"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -70,
+        "g_delta": -70,
+        "b_delta": -75,
+        "note": "Transform stone color to dark coal (stone ~135 -> coal ~50)"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate stone base noise: sin(x*0.8 + y*0.2)*0.3 + cos(x*0.3 + y*0.7)*0.3 + sin((x+y)*0.5)*0.4",
+    "step2": "Normalize stone noise: coalStoneBase = (tripleNoise) * 0.5 + 0.5",
+    "step3": "Apply stone base colors: r = 110 + coalStoneBase * 25, g = 110 + coalStoneBase * 25, b = 115 + coalStoneBase * 25",
+    "step4": "Calculate vein factor: veinFactor = sin(x * 1.5 + y * 1.7) * 0.5 + 0.5",
+    "step5": "If veinFactor > 0.7, calculate vein size: veinSize = sin((x + y) * 0.8) * 0.3 + 0.7",
+    "step6": "If veinSize > 0.6, replace with coal colors: r = 40 + veinSize * 20, g = 40 + veinSize * 20, b = 40 + veinSize * 20",
+    "step7": "Clamp all color values to [0, 255] range",
+    "note": "Two-stage generation: stone base + organic coal vein overlay"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java coal ore texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas case 10 (Coal Ore)",
+    "purpose": "JSON conversion of hardcoded COAL_ORE texture algorithm",
+    "version": "1.0",
+    "conversion_status": "complete",
+    "atlas_coordinates": {
+      "x": 0,
+      "y": 1,
+      "note": "COAL_ORE atlas coordinates from BlockType.java"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Triple noise stone base with dual-condition coal vein system",
+    "coordinate_system": "Uses global coordinates for consistent mineral distribution",
+    "special_features": [
+      "Stone base texture identical to stone block but darker",
+      "Organic coal vein distribution using dual sine wave detection",
+      "Two-threshold system for realistic mineral formation",
+      "Complete color replacement in coal areas (not additive)",
+      "Dark coal deposits with size-based color variation",
+      "More organic looking than simple grid patterns"
+    ],
+    "technical_notes": [
+      "veinFactor threshold: 0.7 (determines vein likelihood)",
+      "veinSize threshold: 0.6 (determines final vein appearance)",
+      "Coal color range: RGB 40-60 (dark with subtle variation)",
+      "Stone base uses same triple noise as regular stone texture"
+    ]
+  }
+}

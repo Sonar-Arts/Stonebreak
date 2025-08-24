@@ -1,0 +1,107 @@
+{
+  "block_type": "ICE",
+  "texture_name": "ice",
+  "description": "Light blue ice with crystalline patterns and crystal-like reflections",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "transparency": {
+      "enabled": true,
+      "alpha_value": 200,
+      "note": "Semi-transparent ice block"
+    }
+  },
+  "base_colors": {
+    "r_base": 200,
+    "g_base": 230,
+    "b_base": 255,
+    "r_variance": 30,
+    "g_variance": 20,
+    "b_variance": 0,
+    "note": "Light blue ice colors with blue value fixed at 255"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise",
+    "primary_noise": {
+      "function": "sin",
+      "x_frequency": 0.8,
+      "x_phase_y": 0.6,
+      "weight": 0.3,
+      "note": "Math.sin(pixelX_ice * 0.8 + pixelY_ice * 0.6) * 0.3"
+    },
+    "secondary_noise": {
+      "function": "cos", 
+      "x_frequency": 0.4,
+      "y_frequency": 0.9,
+      "weight": 0.3,
+      "note": "Math.cos(pixelX_ice * 0.4 + pixelY_ice * 0.9) * 0.3"
+    },
+    "tertiary_noise": {
+      "function": "sin",
+      "combined_frequency": 0.7,
+      "weight": 0.4,
+      "note": "Math.sin((pixelX_ice + pixelY_ice) * 0.7) * 0.4"
+    },
+    "final_processing": {
+      "amplitude": 0.5,
+      "offset": 0.5,
+      "note": "Combined noise * 0.5f + 0.5f"
+    }
+  },
+  "texture_features": {
+    "crystal_reflections": {
+      "description": "Bright white crystal-like reflections",
+      "patterns": [
+        {
+          "x_modulo": 4,
+          "y_modulo": 4,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "pixelX_ice % 4 == 0 && pixelY_ice % 4 == 0"
+        },
+        {
+          "x_modulo": 4,
+          "y_modulo": 4,
+          "offset_x": 2,
+          "offset_y": 2,
+          "note": "(pixelX_ice + 2) % 4 == 0 && (pixelY_ice + 2) % 4 == 0"
+        }
+      ],
+      "color_override": {
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "note": "Complete white override for crystal reflections"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Calculate local pixel coordinates: pixelX_ice = globalX % 16, pixelY_ice = globalY % 16",
+    "step2": "Generate triple noise: iceNoise = (sin(pixelX_ice * 0.8 + pixelY_ice * 0.6) * 0.3 + cos(pixelX_ice * 0.4 + pixelY_ice * 0.9) * 0.3 + sin((pixelX_ice + pixelY_ice) * 0.7) * 0.4) * 0.5 + 0.5",
+    "step3": "Apply base colors: r = 200 + iceNoise * 30, g = 230 + iceNoise * 20, b = 255",
+    "step4": "Apply crystal reflections at pattern coordinates (override with white)",
+    "step5": "Set semi-transparent alpha: a = 200",
+    "step6": "Clamp all color values to [0, 255] range"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java ice texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1600-1624",
+    "purpose": "JSON conversion of hardcoded ice texture algorithm",
+    "version": "1.0",
+    "conversion_status": "converted",
+    "pattern_type": "Pattern 4 - Triple noise generation with special crystal reflections",
+    "coordinate_system": "local_pixel_modulo"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "Advanced triple noise generation with crystal reflection overlay",
+    "unique_features": [
+      "Triple noise: sin/cos/sin combination",
+      "Fixed blue channel at 255",
+      "Semi-transparent with alpha = 200", 
+      "Crystal reflections using modulo patterns",
+      "Color override system for reflections"
+    ],
+    "validation_required": "Generated texture must match semi-transparent ice blocks in-game"
+  }
+}

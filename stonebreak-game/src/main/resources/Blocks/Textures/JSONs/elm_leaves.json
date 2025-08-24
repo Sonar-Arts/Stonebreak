@@ -1,0 +1,107 @@
+{
+  "block_type": "ELM_LEAVES",
+  "texture_name": "elm_leaves",
+  "description": "Elm leaves texture with distinctive yellower green color and characteristic elm seed clusters",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 45,
+    "g_base": 120,
+    "b_base": 35,
+    "r_variance": 50,
+    "g_variance": 70,
+    "b_variance": 30,
+    "note": "Yellower green than standard leaves with warmer tone"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise_generation",
+    "primary_noise": {
+      "x_frequency": 1.1,
+      "x_phase_y": 0.8,
+      "weight": 0.3,
+      "note": "First sine component: Math.sin(pX_elm_leaves * 1.1 + pY_elm_leaves * 0.8) * 0.3"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.9,
+      "y_frequency": 1.2,
+      "weight": 0.2,
+      "note": "Cosine component: Math.cos(pX_elm_leaves * 0.9 + pY_elm_leaves * 1.2) * 0.2"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 0.6,
+      "weight": 0.4,
+      "note": "Combined sine: Math.sin((pX_elm_leaves + pY_elm_leaves) * 0.6) * 0.4"
+    }
+  },
+  "texture_features": {
+    "light_specks": {
+      "description": "Light brown elm seed clusters characteristic of elm trees",
+      "patterns": [
+        {
+          "x_modulo": 6,
+          "y_modulo": 6,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Primary elm seed pattern"
+        },
+        {
+          "x_modulo": 6,
+          "y_modulo": 6,
+          "offset_x": 3,
+          "offset_y": 3,
+          "note": "Secondary elm seed pattern"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 110,
+        "g_delta": 5,
+        "b_delta": 70,
+        "note": "Transform leaf color to light brown elm seeds"
+      }
+    }
+  },
+  "transparency_effects": {
+    "edge_transparency": {
+      "description": "Natural transparency at leaf edges",
+      "edge_width": 2,
+      "base_alpha": 180,
+      "noise_alpha_variance": 65,
+      "note": "Adds natural look with alpha = 180 + (leafNoise * 65)"
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate triple noise: sin(x*1.1 + y*0.8)*0.3 + cos(x*0.9 + y*1.2)*0.2 + sin((x+y)*0.6)*0.4",
+    "step2": "Normalize noise: leafNoise = (tripleNoise) * 0.5 + 0.5",
+    "step3": "Apply base colors: r = 45 + leafNoise * 50, g = 120 + leafNoise * 70, b = 35 + leafNoise * 30",
+    "step4": "Apply elm seeds at pattern coordinates (replace with fixed colors)",
+    "step5": "Apply edge transparency for pixels within 2 pixels of edge",
+    "step6": "Clamp all color values to [0, 255] range",
+    "note": "Triple noise generation similar to stone texture but with leaf-specific parameters"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java elm leaves texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2168-2202",
+    "purpose": "JSON conversion of hardcoded ELM_LEAVES texture algorithm",
+    "version": "1.0",
+    "conversion_status": "complete",
+    "atlas_coordinates": {
+      "x": 6,
+      "y": 3,
+      "note": "ELM_LEAVES_ATLAS_X = 6, ELM_LEAVES_ATLAS_Y = 3"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Triple noise generation with seed patterns and edge transparency",
+    "coordinate_system": "Uses local tile coordinates (pX_elm_leaves, pY_elm_leaves)",
+    "special_features": [
+      "Yellower green base color distinctive from other leaves",
+      "Elm seed clusters at 6x6 modulo pattern",
+      "Edge transparency for natural appearance",
+      "RGBA format with alpha channel variations"
+    ]
+  }
+}

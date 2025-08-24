@@ -1,0 +1,93 @@
+{
+  "block_type": "RED_SAND",
+  "texture_name": "red_sand",
+  "description": "Orangish-red sand texture using sand pattern with warm desert coloration",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 200,
+    "g_base": 100,
+    "b_base": 50,
+    "r_variance": 30,
+    "g_variance": 24,
+    "b_variance": 18,
+    "note": "Orangish-red base colors: baseR = 200, baseG = 100, baseB = 50. Green varies 80% (30*0.8=24), blue varies 60% (30*0.6=18)"
+  },
+  "noise_generation": {
+    "algorithm_type": "dual_noise_generation",
+    "primary_noise": {
+      "x_frequency": 0.8,
+      "x_phase_y": 1.1,
+      "y_frequency": 0.5,
+      "y_phase_x": -0.9,
+      "weight": 1.0,
+      "note": "Same sand pattern as regular sand: sin(x * 0.8 + y * 1.1) and cos(x * 0.5 - y * 0.9)"
+    },
+    "secondary_noise": {
+      "x_frequency": 0.8,
+      "y_frequency": 1.1,
+      "amplitude": 0.25,
+      "offset": 0.5,
+      "weight": 1.0,
+      "note": "Secondary noise to match sand's dual noise pattern"
+    }
+  },
+  "texture_features": {},
+  "red_sand_algorithm": {
+    "noise_formula": "((noise1_rs + noise2_rs) / 4.0 + 0.5)",
+    "variation_formula": "(combinedNoise_rs - 0.5f) * 30",
+    "variation_range": "±15",
+    "green_reduction": "variation_rs * 0.8f",
+    "blue_reduction": "variation_rs * 0.6f",
+    "note": "Green and blue channels vary less to maintain redness"
+  },
+  "generation_algorithm": {
+    "step1": "Generate dual noise: noise1_rs = sin(x * 0.8 + y * 1.1), noise2_rs = cos(x * 0.5 - y * 0.9)",
+    "step2": "Combine noise: combinedNoise_rs = ((noise1_rs + noise2_rs) / 4.0 + 0.5)",
+    "step3": "Calculate variation: variation_rs = (combinedNoise_rs - 0.5f) * 30 (range: -15 to +15)",
+    "step4": "Apply base colors with reduced variation: r = 200 + variation_rs, g = 100 + (variation_rs * 0.8), b = 50 + (variation_rs * 0.6)",
+    "step5": "Clamp all color values to [0, 255] range using Math.max(0, Math.min(255, value))",
+    "note": "Uses identical sand noise pattern but with orangish-red coloration and reduced green/blue variation"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java red sand texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas RED_SAND special handling",
+    "purpose": "JSON conversion of hardcoded RED_SAND texture algorithm",
+    "version": "1.0",
+    "conversion_status": "complete",
+    "atlas_coordinates": {
+      "x": 2,
+      "y": 1,
+      "note": "RED_SAND atlas coordinates from BlockType.java - was obsidian coords"
+    }
+  },
+  "validation_notes": {
+    "pattern_complexity": "Dual sine/cosine noise generation identical to regular sand",
+    "coordinate_system": "Uses per-tile coordinates (globalX % texturePixelSize) for self-contained tiles",
+    "special_features": [
+      "Orangish-red base color for desert sand appearance",
+      "Same speckled noise pattern as regular sand",
+      "Reduced green/blue variation to maintain warm red tones",
+      "Green channel varies 20% less than red (0.8f multiplier)",
+      "Blue channel varies 40% less than red (0.6f multiplier)",
+      "Self-contained per-tile noise for consistent texture tiling",
+      "No special patterns - pure noise-based texture like regular sand"
+    ],
+    "color_comparison": {
+      "regular_sand": "Light yellowish-tan RGB(220, 205, 160)",
+      "red_sand": "Orangish-red RGB(200, 100, 50)",
+      "variation_range": "±15 for red, ±12 for green, ±9 for blue"
+    },
+    "technical_notes": [
+      "Identical noise algorithm to regular sand (frequencies 0.8, 1.1, 0.5, -0.9)",
+      "Same variation multiplier (30) but different channel scaling",
+      "Maintains sand texture feel with desert coloration",
+      "Per-tile coordinates ensure seamless tiling",
+      "Fully opaque (alpha = 255)"
+    ]
+  }
+}

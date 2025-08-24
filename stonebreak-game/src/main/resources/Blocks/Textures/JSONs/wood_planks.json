@@ -1,0 +1,135 @@
+{
+  "block_type": "WOOD_PLANKS",
+  "texture_name": "wood_planks",
+  "description": "Oak wood planks with horizontal plank construction and vertical wood grain",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"]
+  },
+  "base_colors": {
+    "r_base": 160,
+    "g_base": 130,
+    "b_base": 95,
+    "r_variance": 12,
+    "g_variance": 12,
+    "b_variance": 12,
+    "note": "Oak plank base colors with grain variation range"
+  },
+  "plank_construction": {
+    "plank_height": 4,
+    "alternating_variation": {
+      "enabled": true,
+      "condition": "plankY % 2 == 1",
+      "color_adjustment": {
+        "r_delta": 10,
+        "g_delta": 8,
+        "b_delta": 5
+      }
+    },
+    "separation_lines": {
+      "condition": "pY_wp % 4 == 0 && pY_wp > 0",
+      "color_adjustment": {
+        "r_delta": -20,
+        "g_delta": -18,
+        "b_delta": -12
+      }
+    }
+  },
+  "wood_grain": {
+    "algorithm_type": "dual_noise_vertical_grain",
+    "primary_component": {
+      "function": "sin",
+      "x_frequency": 0.7,
+      "plank_phase": 0.3,
+      "amplitude": 0.5,
+      "note": "Math.sin(pX_wp * 0.7 + plankY * 0.3) * 0.5"
+    },
+    "secondary_component": {
+      "function": "cos", 
+      "x_frequency": 0.4,
+      "amplitude": 0.3,
+      "note": "Math.cos(pX_wp * 0.4) * 0.3"
+    },
+    "grain_intensity": 12,
+    "blue_stability": {
+      "enabled": true,
+      "formula": "Math.max(-5, grainAdjust - 3)",
+      "note": "Keep blue component more stable"
+    }
+  },
+  "texture_features": {
+    "dark_spots": {
+      "description": "Horizontal plank separation lines",
+      "patterns": [
+        {
+          "x_modulo": 16,
+          "y_modulo": 4,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Horizontal separation lines every 4 pixels"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -20,
+        "g_delta": -18,
+        "b_delta": -12
+      }
+    },
+    "light_specks": {
+      "description": "Plank-to-plank variation on alternating planks",
+      "patterns": [
+        {
+          "x_modulo": 16,
+          "y_modulo": 8,
+          "offset_x": 0,
+          "offset_y": 4,
+          "note": "Every other plank (plankY % 2 == 1) approximation"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 10,
+        "g_delta": 8,
+        "b_delta": 5
+      }
+    }
+  },
+  "color_clamping": {
+    "r_min": 80, "r_max": 200,
+    "g_min": 60, "g_max": 170,
+    "b_min": 40, "b_max": 130,
+    "note": "Ensure colors stay in valid brown range"
+  },
+  "generation_algorithm": {
+    "step1": "Calculate local pixel coordinates: pX_wp = globalX % 16, pY_wp = globalY % 16",
+    "step2": "Start with oak base colors: finalR = 160, finalG = 130, finalB = 95",
+    "step3": "Determine plank number: plankY = pY_wp / 4",
+    "step4": "Apply alternating plank variation: if plankY % 2 == 1, add (10,8,5)",
+    "step5": "Generate wood grain: grainNoise = sin(pX_wp * 0.7 + plankY * 0.3) * 0.5 + cos(pX_wp * 0.4) * 0.3",
+    "step6": "Apply grain adjustment with blue stability: grainAdjust = grainNoise * 12",
+    "step7": "Apply horizontal plank separation lines: if pY_wp % 4 == 0 && pY_wp > 0, subtract (20,18,12)",
+    "step8": "Clamp colors to brown range: r[80-200], g[60-170], b[40-130]"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java wood planks texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:538-587",
+    "purpose": "JSON conversion of hardcoded wood planks texture algorithm",
+    "version": "1.0",
+    "conversion_status": "converted",
+    "pattern_type": "Horizontal plank construction with vertical wood grain",
+    "coordinate_system": "local_pixel_coordinates"
+  },
+  "conversion_notes": {
+    "algorithm_complexity": "Moderate - plank construction with dual noise wood grain",
+    "unique_features": [
+      "Horizontal plank system with 4-pixel height",
+      "Alternating plank-to-plank color variation",
+      "Dual noise wood grain (sin + cos components)",
+      "Vertical grain pattern with plank-specific phase",
+      "Blue channel stability for realistic wood appearance",
+      "Horizontal separation lines between planks",
+      "Brown color range clamping for oak wood consistency"
+    ],
+    "validation_required": "Generated texture must show clear horizontal plank divisions with realistic wood grain"
+  }
+}

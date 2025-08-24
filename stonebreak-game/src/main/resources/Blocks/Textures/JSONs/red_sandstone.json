@@ -1,0 +1,136 @@
+{
+  "block_type": "RED_SANDSTONE",
+  "texture_name": "red_sandstone",
+  "description": "Red sandstone texture with red sand palette - top has subtle speckling, side has horizontal banding",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "face_mappings": {
+    "top": {
+      "atlas_coordinates": [6, 1],
+      "texture_type": "red_sandstone_top",
+      "description": "Red sand colored top face with subtle speckling"
+    },
+    "bottom": {
+      "atlas_coordinates": [6, 1], 
+      "texture_type": "red_sandstone_top",
+      "description": "Same as top face"
+    },
+    "sides": {
+      "atlas_coordinates": [8, 1],
+      "texture_type": "red_sandstone_side", 
+      "description": "Horizontal banded sides with red inclusions"
+    }
+  },
+  "texture_algorithms": {
+    "red_sandstone_top": {
+      "algorithm_type": "continuous_noise",
+      "base_colors": {
+        "r_base": 200,
+        "g_base": 100,
+        "b_base": 50,
+        "r_variance": 25,
+        "g_variance": 20,
+        "b_variance": 15,
+        "note": "Red sand palette (TextureAtlas.java:1414-1416) with reduced variance for G (0.8) and B (0.6)"
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "x_frequency": 0.7,
+          "x_phase_y": 1.2,
+          "y_frequency": 0.4,
+          "y_phase_x": -0.9,
+          "weight": 1.0,
+          "note": "Same noise as sandstone top from TextureAtlas.java:1419-1421"
+        }
+      }
+    },
+    "red_sandstone_side": {
+      "algorithm_type": "horizontal_banding_with_inclusions",
+      "base_colors": {
+        "r_base": 200,
+        "g_base": 100,
+        "b_base": 50,
+        "r_variance": 35,
+        "g_variance": 28,
+        "b_variance": 21,
+        "note": "Red sand palette (TextureAtlas.java:1477-1479) with G variance * 0.8 and B variance * 0.6"
+      },
+      "horizontal_banding": {
+        "band_height": 4,
+        "waviness": {
+          "frequency": 0.3,
+          "amplitude": 1.5,
+          "tile_x_offset": 0.5
+        },
+        "band_shading": {
+          "band_0": 0.0,
+          "band_1": -0.08,
+          "band_2": 0.05,
+          "band_3": -0.05
+        },
+        "shading_factors": {
+          "g_factor": 0.9,
+          "b_factor": 0.8
+        }
+      },
+      "noise_generation": {
+        "primary_noise": {
+          "x_frequency": 0.6,
+          "x_phase_y": 1.1,
+          "y_frequency": 0.3,
+          "y_phase_x": -0.8,
+          "weight": 1.0,
+          "note": "Same noise as sandstone side from TextureAtlas.java:1495-1497"
+        }
+      },
+      "inclusions": {
+        "threshold": 0.12,
+        "inclusion_color": {
+          "r": 160,
+          "g": 70,
+          "b": 30,
+          "description": "Darker red-tinted inclusions (TextureAtlas.java:1507-1509)"
+        }
+      }
+    }
+  },
+  "generation_algorithm": {
+    "red_sandstone_top_steps": [
+      "1. Calculate local coordinates: pX = globalX % 16, pY = globalY % 16",
+      "2. Generate noise1 = sin(pX * 0.7 + pY * 1.2 + tileX * 0.3)",
+      "3. Generate noise2 = cos(pX * 0.4 - pY * 0.9 + tileY * 0.2)",
+      "4. Combine: combinedNoise = (noise1 + noise2) / 4.0 + 0.5",
+      "5. Calculate variation = (combinedNoise - 0.5) * 25",
+      "6. Apply colors: r = 200 + variation, g = 100 + variation * 0.8, b = 50 + variation * 0.6",
+      "7. Clamp all values to [0, 255]"
+    ],
+    "red_sandstone_side_steps": [
+      "1. Calculate local coordinates: pX = globalX % 16, pY = globalY % 16",
+      "2. Calculate wavy band: wavyPY = pY + sin(pX * 0.3 + tileX * 0.5) * 1.5",
+      "3. Determine band: band = (wavyPY / 4) % 4",
+      "4. Apply band shading factor based on band number",
+      "5. Generate noise: combinedNoise = (sin(...) + cos(...)) / 4.0 + 0.5",
+      "6. Calculate variation = (combinedNoise - 0.5) * 35",
+      "7. Apply base colors with band shading and variance reduction",
+      "8. Check for inclusions: if combinedNoise < 0.12, set to red inclusion color",
+      "9. Clamp all values to [0, 255]"
+    ]
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java red sandstone texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1409-1432 (top), 1472-1515 (side)",
+    "purpose": "JSON conversion of hardcoded red sandstone algorithms",
+    "version": "1.0",
+    "conversion_status": "Complete - ready for universal generator",
+    "complexity": "Advanced multi-face with red palette and banding",
+    "differences_from_sandstone": {
+      "colors": "Red sand palette (200,100,50) instead of beige (235,225,190)",
+      "variance_reduction": "Green and blue variances reduced to maintain red tint",
+      "inclusions": "Red-tinted inclusions (160,70,30) instead of brown (180,150,110)"
+    }
+  }
+}

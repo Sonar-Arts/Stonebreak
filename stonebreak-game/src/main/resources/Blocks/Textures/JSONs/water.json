@@ -1,0 +1,142 @@
+{
+  "block_type": "WATER",
+  "texture_name": "water",
+  "description": "Animated water texture with multi-layer waves, caustic effects, and foam - static frame at time=0",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 40,
+    "g_base": 110,
+    "b_base": 200,
+    "r_variance": 70,
+    "g_variance": 75,
+    "b_variance": 45,
+    "note": "Base water colors with wave and caustic influences: r = 40 + effects, g = 110 + effects, b = 200 + effects"
+  },
+  "noise_generation": {
+    "algorithm_type": "triple_noise_generation",
+    "primary_noise": {
+      "x_frequency": 2.0,
+      "x_phase_y": 1.6,
+      "weight": 1.0,
+      "note": "Approximates primary wave: sin(nx * seamlessFreq1) * cos(ny * seamlessFreq1 * 0.8f) at time=0"
+    },
+    "secondary_noise": {
+      "x_frequency": 4.0,
+      "y_frequency": 6.0,
+      "weight": 0.3,
+      "note": "Approximates secondary wave: simplified version of complex wave interaction"
+    },
+    "tertiary_noise": {
+      "combined_frequency": 8.0,
+      "weight": 0.1,
+      "note": "Approximates tertiary wave: high frequency detail wave"
+    }
+  },
+  "texture_features": {
+    "light_specks": {
+      "description": "Caustic-like shimmer effects and foam patterns in water",
+      "patterns": [
+        {
+          "x_modulo": 4,
+          "y_modulo": 5,
+          "offset_x": 1,
+          "offset_y": 2,
+          "note": "Foam pattern simulating wave peaks"
+        },
+        {
+          "x_modulo": 6,
+          "y_modulo": 4,
+          "offset_x": 3,
+          "offset_y": 1,
+          "note": "Caustic shimmer pattern"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 25,
+        "g_delta": 15,
+        "b_delta": 10,
+        "note": "Brighten water for foam and caustic effects"
+      }
+    }
+  },
+  "water_effects": {
+    "foam_intensity": {
+      "formula": "Math.max(0, waveHeight * 2.0f)",
+      "color_influence": {
+        "r_delta": 60,
+        "g_delta": 0,
+        "b_delta": 0
+      }
+    },
+    "brightness": {
+      "formula": "0.8f + waveHeight * 0.5f",
+      "color_influence": {
+        "g_delta": 20,
+        "b_delta": 15
+      }
+    },
+    "water_depth": {
+      "formula": "0.7f + waveHeight * 0.3f",
+      "color_influence": {
+        "g_delta": 40,
+        "b_delta": 30
+      }
+    },
+    "alpha_variation": {
+      "base_alpha": 150,
+      "wave_influence": 40,
+      "foam_influence": 30,
+      "formula": "150 + waveHeight * 40 + foamIntensity * 30"
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Normalize coordinates: nx = x / texturePixelSize, ny = y / texturePixelSize",
+    "step2": "Calculate primary wave: sin(nx * 12.566) * cos(ny * 10.053) at time=0",
+    "step3": "Calculate secondary wave: sin(nx * 25.133 + ny * 18.850) * 0.3f at time=0",
+    "step4": "Calculate tertiary wave: sin(nx * 50.265) * cos(ny * 37.699) * 0.1f at time=0",
+    "step5": "Combine waves: waveHeight = (primary + secondary + tertiary) * WAVE_AMPLITUDE(0.15)",
+    "step6": "Calculate foam intensity: Math.max(0, waveHeight * 2.0f)",
+    "step7": "Calculate caustic pattern: sin(nx * 75.398) * cos(ny * 60.319) * 0.15f at time=0",
+    "step8": "Apply color formulas with wave influences",
+    "step9": "Calculate alpha with wave height and foam influences",
+    "note": "Static frame generation with time=0, seamless tiling frequencies ensure perfect texture repetition"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java generateWaterTileData method",
+    "original_location": "com.stonebreak.rendering.TextureAtlas case 9 and generateWaterTileData",
+    "purpose": "JSON conversion of animated water texture algorithm - static frame",
+    "version": "1.0",
+    "conversion_status": "complete - static version of animated texture",
+    "atlas_coordinates": {
+      "x": 9,
+      "y": 0,
+      "note": "WATER atlas coordinates from BlockType.java"
+    },
+    "animation_note": "Original texture is animated with updateAnimatedWater(), this JSON represents time=0 frame"
+  },
+  "validation_notes": {
+    "pattern_complexity": "Multi-layer wave system with caustic effects and foam generation",
+    "coordinate_system": "Uses normalized coordinates (0-1) for seamless tiling",
+    "special_features": [
+      "Three-layer wave system (primary, secondary, tertiary)",
+      "Caustic shimmer effects for underwater light patterns",
+      "Foam intensity based on wave peaks",
+      "Variable transparency based on wave height",
+      "Seamless tiling with 2π-based frequencies",
+      "Time-based animation support (static at time=0)",
+      "Complex color mixing with multiple influences"
+    ],
+    "technical_notes": [
+      "WAVE_SPEED = 1.5f controls animation speed",
+      "WAVE_AMPLITUDE = 0.15f controls overall wave intensity", 
+      "Frequencies are exact multiples of 2π for seamless tiling",
+      "Alpha varies from ~150-220 based on wave effects",
+      "Colors blend foam, depth, brightness, and caustic effects"
+    ]
+  }
+}

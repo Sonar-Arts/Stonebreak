@@ -1,0 +1,143 @@
+{
+  "block_type": "ROSE",
+  "texture_name": "rose",
+  "description": "Rose flower pixel art texture with red petals, green stem, and brown thorns",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 pixel art sprite centered with transparency"
+  },
+  "base_colors": {
+    "r_base": 204,
+    "g_base": 0,
+    "b_base": 0,
+    "r_variance": 0,
+    "g_variance": 0,
+    "b_variance": 0,
+    "note": "Placeholder - rose uses pixel art not noise-based colors"
+  },
+  "texture_algorithms": {
+    "rose": {
+      "algorithm_type": "pixel_art_sprite",
+      "sprite_properties": {
+        "sprite_width": 8,
+        "sprite_height": 16,
+        "horizontal_offset": 4,
+        "vertical_offset": 0,
+        "background_color": {
+          "r": 0, "g": 0, "b": 0, "a": 0,
+          "description": "Transparent background"
+        }
+      },
+      "color_palette": {
+        "rose_petals": {
+          "r": 204, "g": 0, "b": 0, "a": 255,
+          "description": "Bright red rose petals"
+        },
+        "stem": {
+          "r": 34, "g": 177, "b": 76, "a": 255,
+          "description": "Green stem color"
+        },
+        "thorns": {
+          "r": 136, "g": 68, "b": 0, "a": 255,
+          "description": "Brown thorn color"
+        }
+      },
+      "pixel_map": [
+        {"y": 0, "pixels": [
+          {"x": 3, "color": "rose_petals"}
+        ]},
+        {"y": 1, "pixels": [
+          {"x": 2, "color": "rose_petals"},
+          {"x": 3, "color": "rose_petals"}
+        ]},
+        {"y": 2, "pixels": [
+          {"x": 0, "color": "rose_petals"},
+          {"x": 2, "color": "rose_petals"},
+          {"x": 3, "color": "rose_petals"},
+          {"x": 4, "color": "rose_petals"},
+          {"x": 5, "color": "rose_petals"}
+        ]},
+        {"y": 3, "pixels": [
+          {"x": 1, "color": "rose_petals"},
+          {"x": 2, "color": "rose_petals"},
+          {"x": 3, "color": "rose_petals"},
+          {"x": 4, "color": "rose_petals"},
+          {"x": 5, "color": "rose_petals"}
+        ]},
+        {"y": 4, "pixels": [
+          {"x": 2, "color": "rose_petals"},
+          {"x": 4, "color": "rose_petals"}
+        ]},
+        {"y": 5, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 6, "pixels": [
+          {"x": 2, "color": "thorns"},
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 7, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"},
+          {"x": 5, "color": "thorns"}
+        ]},
+        {"y": 8, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 9, "pixels": [
+          {"x": 2, "color": "thorns"},
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 10, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"},
+          {"x": 5, "color": "thorns"}
+        ]},
+        {"y": 11, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 12, "pixels": [
+          {"x": 2, "color": "thorns"},
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 13, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 14, "pixels": [
+          {"x": 3, "color": "stem"},
+          {"x": 4, "color": "stem"}
+        ]},
+        {"y": 15, "pixels": [
+          {"x": 3, "color": "stem"}
+        ]}
+      ]
+    }
+  },
+  "generation_algorithm": {
+    "steps": [
+      "1. Initialize 16x16 texture with transparent background (0,0,0,0)",
+      "2. Apply horizontal offset of 4 pixels to center 8-pixel wide sprite",
+      "3. For each row (y), place colored pixels at specified x coordinates",
+      "4. Use color palette to map color names to RGBA values",
+      "5. All non-specified pixels remain transparent"
+    ],
+    "note": "Direct pixel mapping from TextureAtlas.java:1330-1352"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java rose texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1322-1355",
+    "purpose": "JSON conversion of hardcoded rose pixel art sprite",
+    "version": "1.0",
+    "conversion_status": "Complete - requires new pixel_art_sprite algorithm",
+    "complexity": "Pixel art sprite pattern - completely different from noise-based textures",
+    "sprite_dimensions": "8x16 pixels centered on 16x16 tile"
+  }
+}

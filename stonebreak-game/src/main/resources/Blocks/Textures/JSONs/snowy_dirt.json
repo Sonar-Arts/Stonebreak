@@ -1,0 +1,184 @@
+{
+  "block_type": "SNOWY_DIRT", 
+  "texture_name": "snowy_dirt",
+  "description": "Multi-face snowy dirt texture - snow top, dirt bottom, layered sides",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA", 
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 multi-face texture with different algorithms per face"
+  },
+  "face_mappings": {
+    "top": {
+      "atlas_coordinates": [0, 2],
+      "texture_type": "snow_top",
+      "description": "Full snow texture for top face"
+    },
+    "bottom": {
+      "atlas_coordinates": [2, 0],
+      "texture_type": "dirt",
+      "description": "Plain dirt texture for bottom face"
+    },
+    "sides": {
+      "atlas_coordinates": [1, 2],
+      "texture_type": "snowy_dirt_side",
+      "description": "Layered snow+dirt for side faces"
+    }
+  },
+  "texture_algorithms": {
+    "snow_top": {
+      "algorithm_type": "discrete_selection",
+      "pseudo_random_noise": {
+        "x_multiplier": 13,
+        "y_multiplier": 29,
+        "tile_x_multiplier": 11,
+        "tile_y_multiplier": 17,
+        "modulo": 21,
+        "note": "Formula: (pixelX * 13 + pixelY * 29 + tileX * 11 + tileY * 17) % 21"
+      }
+    },
+    "snowy_dirt_side": {
+      "algorithm_type": "layered_discrete_selection",
+      "snow_layer": {
+        "height": 3,
+        "position": "top",
+        "pseudo_random_noise": {
+          "x_multiplier": 17,
+          "y_multiplier": 23,
+          "modulo": 21,
+          "note": "Formula: (pixelX * 17 + pixelY * 23) % 21"
+        }
+      },
+      "dirt_layer": {
+        "height": 13,
+        "position": "bottom",
+        "algorithm_type": "continuous_noise",
+        "primary_noise": {
+          "x_frequency": 0.7,
+          "x_phase_y": 0.3,
+          "y_frequency": 0.4,
+          "y_phase_x": 0.8,
+          "weight": 1.0,
+          "note": "Uses exact same algorithm as dirt texture"
+        }
+      }
+    }
+  },
+  "color_palettes": {
+    "snow_top": {
+      "pure_white": {
+        "threshold_min": 0,
+        "threshold_max": 6,
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "description": "Pure white snow (noiseVal < 7)"
+      },
+      "off_white": {
+        "threshold_min": 7,
+        "threshold_max": 13,
+        "r": 250,
+        "g": 250,
+        "b": 252,
+        "description": "Slightly off-white snow (7 <= noiseVal < 14)"
+      },
+      "light_blue": {
+        "threshold_min": 14,
+        "threshold_max": 20,
+        "r": 248,
+        "g": 250,
+        "b": 255,
+        "description": "Very light blue tint snow (noiseVal >= 14)"
+      }
+    },
+    "snowy_dirt_side_snow_layer": {
+      "pure_white": {
+        "threshold_min": 0,
+        "threshold_max": 6,
+        "r": 250,
+        "g": 250,
+        "b": 252,
+        "description": "Pure white snow side layer (noiseVal < 7)"
+      },
+      "off_white": {
+        "threshold_min": 7,
+        "threshold_max": 13,
+        "r": 245,
+        "g": 248,
+        "b": 250,
+        "description": "Slightly off-white snow side layer (7 <= noiseVal < 14)"
+      },
+      "light_gray": {
+        "threshold_min": 14,
+        "threshold_max": 20,
+        "r": 240,
+        "g": 245,
+        "b": 248,
+        "description": "Light gray snow side layer (noiseVal >= 14)"
+      }
+    },
+    "dirt_layer": {
+      "base_colors": {
+        "r_base": 135,
+        "g_base": 95,
+        "b_base": 70,
+        "r_variance": 40,
+        "g_variance": 35,
+        "b_variance": 25,
+        "note": "Same as dirt texture"
+      },
+      "dark_spots": {
+        "patterns": [
+          {
+            "x_modulo": 5,
+            "y_modulo": 5,
+            "offset_x": 0,
+            "offset_y": 0
+          },
+          {
+            "x_modulo": 7,
+            "y_modulo": 6,
+            "offset_x": 2,
+            "offset_y": 3
+          }
+        ],
+        "color_adjustment": {
+          "r_delta": -30,
+          "g_delta": -25,
+          "b_delta": -20
+        }
+      }
+    }
+  },
+  "generation_algorithm": {
+    "snow_layer_steps": [
+      "1. For pixels with Y < 3 (top 3 rows):",
+      "2. Calculate pseudo-random noise: (pixelX * 17 + pixelY * 23) % 21",
+      "3. Select color based on noise thresholds:",
+      "   - noiseVal < 7: Pure white (250,250,252)",
+      "   - 7 <= noiseVal < 14: Off-white (245,248,250)",
+      "   - noiseVal >= 14: Light gray (240,245,248)"
+    ],
+    "dirt_layer_steps": [
+      "1. For pixels with Y >= 3 (bottom 13 rows):",
+      "2. Use exact same dirt generation algorithm:",
+      "3. Generate noise: sin(globalX * 0.7 + globalY * 0.3) and cos(globalX * 0.4 + globalY * 0.8)",
+      "4. Apply base colors (135,95,70) with variance (40,35,25)",
+      "5. Apply dark spots at modulo patterns (5x5 and 7x6)",
+      "6. Subtract deltas (-30,-25,-20) for dark spots"
+    ]
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java snowy dirt texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:1536-1573 (case 1, tileY == 2)",
+    "purpose": "JSON conversion of hardcoded snowy dirt layered algorithm",
+    "version": "1.0",
+    "conversion_status": "Complete - uses existing layered_discrete_selection algorithm",
+    "complexity": "Layered texture with discrete snow top + continuous dirt bottom",
+    "layer_structure": {
+      "snow_layer": "Top 3 pixels with discrete color selection",
+      "dirt_layer": "Bottom 13 pixels with exact dirt algorithm"
+    },
+    "atlas_coordinates": [1, 2]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "block_type": "DIRT",
+  "texture_name": "dirt",
+  "description": "Procedurally generated dirt texture with brown tones and natural variations",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 135,
+    "g_base": 95,
+    "b_base": 70,
+    "r_variance": 40,
+    "g_variance": 35,
+    "b_variance": 25,
+    "note": "Updated to match TextureAtlas.java:2105-2107 for actual game blocks"
+  },
+  "noise_generation": {
+    "primary_noise": {
+      "x_frequency": 0.7,
+      "x_phase_y": 0.3,
+      "y_frequency": 0.4,
+      "y_phase_x": 0.8,
+      "weight": 1.0,
+      "note": "Direct frequencies from TextureAtlas.java:2101-2103 - no secondary noise used"
+    }
+  },
+  "texture_features": {
+    "dark_spots": {
+      "description": "Rocks and roots - darker patches",
+      "patterns": [
+        {
+          "x_modulo": 5,
+          "y_modulo": 5,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Exact match for TextureAtlas.java:2110 (globalX % 5 == 0 && globalY % 5 == 0)"
+        },
+        {
+          "x_modulo": 7,
+          "y_modulo": 6,
+          "offset_x": 2,
+          "offset_y": 3,
+          "note": "Exact match for TextureAtlas.java:2111 ((globalX+2) % 7 == 0 && (globalY+3) % 6 == 0)"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -30,
+        "g_delta": -25,
+        "b_delta": -20,
+        "note": "Updated to match TextureAtlas.java:2112-2114"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate primary noise: dirtX = sin(x * 0.7 + y * 0.3) * 0.5 + 0.5",
+    "step2": "Generate primary noise: dirtY = cos(x * 0.4 + y * 0.8) * 0.5 + 0.5", 
+    "step3": "Combine: dirtNoise = (dirtX + dirtY) * 0.5",
+    "step4": "Apply base colors: r = 135 + dirtNoise * 40, g = 95 + dirtNoise * 35, b = 70 + dirtNoise * 25",
+    "step5": "Apply dark spots at 5x5 and 7x6 pattern coordinates (subtract 30, 25, 20)",
+    "step6": "Clamp all color values to [0, 255] range",
+    "note": "Algorithm matches TextureAtlas.java:2101-2115 exactly"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java dirt texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2099-2116",
+    "purpose": "JSON conversion of actual in-game dirt block texture (not UI background)",
+    "version": "2.0",
+    "previous_version": "1.0 was based on UIRenderer (incorrect for game blocks)"
+  }
+}
