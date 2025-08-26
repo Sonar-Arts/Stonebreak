@@ -1345,9 +1345,19 @@ public class UIRenderer {
     /**
      * Renders the world selection screen with NanoVG
      */
-    public void renderWorldSelectScreen(int windowWidth, int windowHeight, List<String> worldList, int selectedIndex, boolean showCreateDialog) {
+    public void renderWorldSelectScreen(int windowWidth, int windowHeight, List<String> worldList, int selectedIndex, boolean showDialog, int scrollOffset, int visibleItems) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
+        
+        // Dim the screen if a dialog is shown
+        if (showDialog) {
+            try (MemoryStack stack = stackPush()) {
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 100, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
         
         // Draw dirt background (same as main menu)
         if (dirtTextureImage != -1) {
@@ -1377,13 +1387,26 @@ public class UIRenderer {
         float spacing = 10f;
         float startY = 200f;
         
-        // "Create New World" button
-        drawMinecraftButton("Create New World", centerX - buttonWidth/2, startY, buttonWidth, buttonHeight, selectedIndex == 0);
+        // Calculate visible items range
+        int totalItems = worldList.size() + 1; // +1 for "Create New World"
+        float currentY = startY;
         
-        // World list items
-        float currentY = startY + buttonHeight + spacing;
-        for (int i = 0; i < worldList.size(); i++) {
-            boolean selected = (selectedIndex == i + 1);
+        // "Create New World" button (show if not scrolled past)
+        if (scrollOffset == 0) {
+            drawMinecraftButton("Create New World", centerX - buttonWidth/2, currentY, buttonWidth, buttonHeight, selectedIndex == 0);
+            currentY += buttonHeight + spacing;
+        }
+        
+        // World list items (with scrolling)
+        int startIndex = Math.max(0, scrollOffset - (scrollOffset > 0 ? 1 : 0)); // Adjust for "Create New World"
+        int endIndex = Math.min(worldList.size(), startIndex + visibleItems);
+        int renderedItems = (scrollOffset == 0) ? 1 : 0; // Count "Create New World" if visible
+        
+        for (int i = startIndex; i < endIndex && renderedItems < visibleItems; i++) {
+            int displayIndex = (scrollOffset == 0) ? i + 1 : (i - scrollOffset + 1);
+            if (displayIndex < 0) continue;
+            
+            boolean selected = (selectedIndex == displayIndex);
             String worldName = worldList.get(i);
             
             // Truncate long world names
@@ -1393,6 +1416,13 @@ public class UIRenderer {
             
             drawMinecraftButton(worldName, centerX - buttonWidth/2, currentY, buttonWidth, buttonHeight, selected);
             currentY += buttonHeight + spacing;
+            renderedItems++;
+        }
+        
+        // Draw scroll indicators if needed
+        if (totalItems > visibleItems) {
+            drawScrollIndicators(centerX, startY, buttonHeight * visibleItems + spacing * (visibleItems - 1), 
+                               scrollOffset, totalItems, visibleItems);
         }
         
         // Draw instructions at the bottom
@@ -1402,7 +1432,7 @@ public class UIRenderer {
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
             
-            String instructions = "Arrow Keys: Navigate | Enter: Select | Escape: Back to Main Menu";
+            String instructions = "↑↓: Navigate | PgUp/PgDn: Fast Scroll | Enter: Select | F2: Edit | Right-Click: Edit | Esc: Back";
             nvgText(vg, centerX, windowHeight - 50, instructions);
         }
     }
@@ -1505,15 +1535,16 @@ public class UIRenderer {
         }
         nvgFill(vg);
         
-        // Input border
+        // Input border - enhanced for mouse interaction feedback
         nvgBeginPath(vg);
         nvgRect(vg, x, y, width, height);
         if (active) {
             nvgStrokeColor(vg, nvgRGBA(100, 150, 255, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 2); // Thicker border when active
         } else {
             nvgStrokeColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 1);
         }
-        nvgStrokeWidth(vg, 1);
         nvgStroke(vg);
         
         // Input text
@@ -1527,7 +1558,7 @@ public class UIRenderer {
         
         // Cursor (blinking effect would need time-based logic)
         if (active) {
-            float cursorX = x + 10 + (text.length() * 8); // Approximate character width
+            float cursorX = x + 10 + getApproximateTextWidth(text, 14); // More accurate character width
             nvgBeginPath(vg);
             nvgMoveTo(vg, cursorX, y + 5);
             nvgLineTo(vg, cursorX, y + height - 5);
@@ -1535,5 +1566,212 @@ public class UIRenderer {
             nvgStrokeWidth(vg, 1);
             nvgStroke(vg);
         }
+    }
+    
+    /**
+     * Draws scroll indicators to show current position in a scrollable list
+     */
+    private void drawScrollIndicators(float centerX, float startY, float listHeight, int scrollOffset, int totalItems, int visibleItems) {
+        try (MemoryStack stack = stackPush()) {
+            float indicatorX = centerX + 260; // Right side of buttons
+            float indicatorWidth = 20;
+            float indicatorHeight = listHeight;
+            
+            // Background track
+            nvgBeginPath(vg);
+            nvgRect(vg, indicatorX, startY, indicatorWidth, indicatorHeight);
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 200, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Scrollbar thumb
+            float thumbHeight = (float) visibleItems / totalItems * indicatorHeight;
+            float thumbY = startY + (float) scrollOffset / totalItems * indicatorHeight;
+            
+            nvgBeginPath(vg);
+            nvgRect(vg, indicatorX + 2, thumbY, indicatorWidth - 4, thumbHeight);
+            nvgFillColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Up/Down arrows if needed
+            if (scrollOffset > 0) {
+                // Up arrow
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, centerX + 270, startY - 15);
+                nvgLineTo(vg, centerX + 265, startY - 5);
+                nvgLineTo(vg, centerX + 275, startY - 5);
+                nvgClosePath(vg);
+                nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+            
+            if (scrollOffset + visibleItems < totalItems) {
+                // Down arrow
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, centerX + 270, startY + indicatorHeight + 15);
+                nvgLineTo(vg, centerX + 265, startY + indicatorHeight + 5);
+                nvgLineTo(vg, centerX + 275, startY + indicatorHeight + 5);
+                nvgClosePath(vg);
+                nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+    }
+    
+    /**
+     * Renders the edit world dialog with NanoVG
+     */
+    public void renderEditWorldDialog(int windowWidth, int windowHeight, String originalName, String worldName, String seedInput, int activeField, String errorMessage, boolean isEditingWorld) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        float dialogWidth = 600f;
+        float dialogHeight = 450f; // Slightly taller than create dialog
+        
+        try (MemoryStack stack = stackPush()) {
+            // Semi-transparent overlay
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, windowWidth, windowHeight);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Dialog background
+            float dialogX = centerX - dialogWidth/2;
+            float dialogY = centerY - dialogHeight/2;
+            
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX, dialogY, dialogWidth, dialogHeight);
+            nvgFillColor(vg, nvgRGBA(60, 60, 60, 240, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Border
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX, dialogY, dialogWidth, dialogHeight);
+            nvgStrokeColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 2);
+            nvgStroke(vg);
+            
+            // Title
+            nvgFontSize(vg, 24);
+            nvgFontFace(vg, fontBold != -1 ? "sans-bold" : "default");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX, dialogY + 40, "Edit World: " + originalName);
+            
+            // World name label
+            nvgFontSize(vg, 16);
+            nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+            nvgText(vg, dialogX + 50, dialogY + 100, "World Name:");
+            
+            // World name input field
+            float inputWidth = 400f;
+            float inputHeight = 30f;
+            float inputX = dialogX + 50;
+            float inputY = dialogY + 130;
+            
+            drawTextInput(inputX, inputY, inputWidth, inputHeight, worldName, activeField == 0, stack);
+            
+            // Seed label
+            nvgText(vg, dialogX + 50, dialogY + 180, "Seed (optional):");
+            
+            // Seed input field
+            float seedInputY = dialogY + 200;
+            drawTextInput(inputX, seedInputY, inputWidth, inputHeight, seedInput, activeField == 1, stack);
+            
+            // Instructions
+            nvgFontSize(vg, 12);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX, dialogY + 260, "Tab: Switch fields | Enter: Save changes | Escape: Cancel");
+            
+            // Error message
+            if (!errorMessage.isEmpty()) {
+                nvgFontSize(vg, 14);
+                nvgFillColor(vg, nvgRGBA(255, 100, 100, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, dialogY + 290, errorMessage);
+            }
+            
+            // Status message
+            if (isEditingWorld) {
+                nvgFontSize(vg, 14);
+                nvgFillColor(vg, nvgRGBA(100, 255, 100, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, dialogY + dialogHeight - 50, "Saving changes...");
+            }
+            
+            // Buttons
+            float buttonWidth = 120;
+            float buttonHeight = 35;
+            float buttonY = dialogY + dialogHeight - 90;
+            
+            // Save button
+            drawMinecraftButton("Save", centerX - buttonWidth - 10, buttonY, buttonWidth, buttonHeight, false);
+            
+            // Cancel button
+            drawMinecraftButton("Cancel", centerX + 10, buttonY, buttonWidth, buttonHeight, false);
+        }
+    }
+    
+    /**
+     * Helper method to get approximate text width for cursor positioning
+     */
+    private float getApproximateTextWidth(String text, float fontSize) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        // Use existing getTextWidth method if available, otherwise approximate
+        try {
+            String fontName = fontRegular != -1 ? "sans" : "default";
+            return getTextWidth(text, fontSize, fontName);
+        } catch (Exception e) {
+            // Fallback to rough approximation if getTextWidth fails
+            return text.length() * fontSize * 0.6f; // Rough character width estimate
+        }
+    }
+    
+    /**
+     * Checks if a mouse click is within the bounds of a text input field
+     */
+    public boolean isClickWithinTextInput(float mouseX, float mouseY, float inputX, float inputY, float inputWidth, float inputHeight) {
+        return mouseX >= inputX && mouseX <= inputX + inputWidth &&
+               mouseY >= inputY && mouseY <= inputY + inputHeight;
+    }
+    
+    /**
+     * Gets the approximate cursor position within a text field based on mouse click
+     */
+    public int getCursorPositionFromMouse(float mouseX, float inputX, String text, float fontSize) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        
+        float clickOffsetX = mouseX - (inputX + 10); // 10 is the left padding
+        if (clickOffsetX <= 0) {
+            return 0; // Click at beginning
+        }
+        
+        String fontName = fontRegular != -1 ? "sans" : "default";
+        
+        // Find the character position closest to the click
+        for (int i = 0; i < text.length(); i++) {
+            String substring = text.substring(0, i + 1);
+            float textWidth = getApproximateTextWidth(substring, fontSize);
+            
+            if (textWidth >= clickOffsetX) {
+                // Check if we're closer to this character or the previous one
+                if (i > 0) {
+                    String prevSubstring = text.substring(0, i);
+                    float prevWidth = getApproximateTextWidth(prevSubstring, fontSize);
+                    float distToPrev = Math.abs(clickOffsetX - prevWidth);
+                    float distToCurrent = Math.abs(clickOffsetX - textWidth);
+                    
+                    if (distToPrev < distToCurrent) {
+                        return i; // Previous position is closer
+                    }
+                }
+                return i + 1; // Current position is closer or this is the first character
+            }
+        }
+        
+        return text.length(); // Click was after all text
     }
 }

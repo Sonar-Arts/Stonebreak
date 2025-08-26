@@ -22,6 +22,7 @@ import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.SettingsMenu;
 import com.stonebreak.ui.UIRenderer;
 import com.stonebreak.ui.WorkbenchScreen;
+import com.stonebreak.ui.WorldSelectScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 
@@ -722,6 +723,13 @@ public class InputHandler {
             return;
         }
         
+        // Handle world select screen input
+        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
+        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+            worldSelectScreen.handleCharacterInput(character);
+            return;
+        }
+        
         // Handle recipe book search input
         RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
         if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
@@ -754,6 +762,13 @@ public class InputHandler {
             return; // Block all other key processing when chat is open
         }
         
+        // Handle world select screen input
+        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
+        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+            worldSelectScreen.handleKeyInput(key, action);
+            return;
+        }
+        
         // Handle recipe book search input
         RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
         if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
@@ -763,7 +778,7 @@ public class InputHandler {
             }
         }
         
-        // If chat and recipe book are not handling input, allow normal input handling to continue
+        // If chat, world select, and recipe book are not handling input, allow normal input handling to continue
     }
 
     /**

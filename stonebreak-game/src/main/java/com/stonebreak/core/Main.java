@@ -143,6 +143,20 @@ public class Main {
                         }
                     }
                 }
+            } else if (game != null && game.getState() == GameState.WORLD_SELECT) {
+                // Handle world select screen clicks
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getWorldSelectScreen() != null) {
+                        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                            game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height);
+                        } else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+                            game.getWorldSelectScreen().handleMouseRightClick(xpos.get(), ypos.get(), width, height);
+                        }
+                    }
+                }
             } else if (game != null && game.getState() == GameState.SETTINGS) {
                 // Handle settings menu clicks
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -176,6 +190,20 @@ public class Main {
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
             }
+            
+            // Handle world select screen hover events
+            if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                game.getWorldSelectScreen().handleMouseMove(xpos, ypos, width, height);
+            }
+        });
+        
+        // Setup mouse scroll callback
+        glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
+            Game game = Game.getInstance();
+            if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            }
+            // TODO: Handle scroll events for other UI elements as needed
         });
         
         // Setup window focus callback to handle mouse capture on focus changes
