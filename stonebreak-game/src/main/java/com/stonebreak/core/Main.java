@@ -315,6 +315,12 @@ public class Main {
                         game.getMainMenu().handleInput(window);
                     }
                 }
+                case WORLD_SELECT -> {
+                    // Handle world select screen input
+                    if (game.getWorldSelectScreen() != null) {
+                        game.getWorldSelectScreen().handleInput(window);
+                    }
+                }
                 case LOADING -> {
                     // Loading screen - no input handling needed
                     // User should wait for world generation to complete
@@ -388,6 +394,14 @@ public class Main {
                 if (uiRenderer != null && game.getMainMenu() != null) {
                     uiRenderer.beginFrame(width, height, 1.0f);
                     game.getMainMenu().render(width, height);
+                    uiRenderer.endFrame();
+                }
+            }
+            case WORLD_SELECT -> {
+                // Render world select screen using NanoVG
+                if (uiRenderer != null && game.getWorldSelectScreen() != null) {
+                    uiRenderer.beginFrame(width, height, 1.0f);
+                    game.getWorldSelectScreen().render(width, height);
                     uiRenderer.endFrame();
                 }
             }

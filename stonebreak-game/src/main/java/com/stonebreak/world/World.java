@@ -29,11 +29,11 @@ public class World {
     public static final int SEA_LEVEL = 64;
     private static final int RENDER_DISTANCE = 8;
       // Seed for terrain generation
-    private final long seed;
-    private final Random random;
-    private final NoiseGenerator terrainNoise;
-    private final NoiseGenerator temperatureNoise; // For biome determination
-    private final NoiseGenerator continentalnessNoise;
+    private long seed;
+    private Random random;
+    private NoiseGenerator terrainNoise;
+    private NoiseGenerator temperatureNoise; // For biome determination
+    private NoiseGenerator continentalnessNoise;
     private final SplineInterpolator terrainSpline;
     private final Object randomLock = new Object(); // Lock for synchronizing random access
     
@@ -1474,6 +1474,26 @@ public class World {
         if (cleaned > 10) {
             System.out.println("Cleaned up GPU resources for " + cleaned + " chunks");
         }
+    }
+    
+    /**
+     * Sets the seed for world generation and reinitializes the noise generators.
+     * This will affect future chunk generation but won't regenerate existing chunks.
+     */
+    public void setSeed(long seed) {
+        this.seed = seed;
+        this.random = new Random(seed);
+        this.terrainNoise = new NoiseGenerator(seed);
+        this.temperatureNoise = new NoiseGenerator(seed + 1);
+        this.continentalnessNoise = new NoiseGenerator(seed + 2);
+        System.out.println("World seed updated to: " + seed);
+    }
+    
+    /**
+     * Gets the current world seed.
+     */
+    public long getSeed() {
+        return seed;
     }
     
     /**

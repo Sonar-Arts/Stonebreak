@@ -35,6 +35,7 @@ public class Game {
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
+    private WorldSelectScreen worldSelectScreen; // Added WorldSelectScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
@@ -169,6 +170,7 @@ public class Game {
         this.mainMenu = new MainMenu(this.uiRenderer);
         this.settingsMenu = new SettingsMenu(this.uiRenderer);
         this.loadingScreen = new LoadingScreen(this.uiRenderer);
+        this.worldSelectScreen = new WorldSelectScreen(this.uiRenderer);
 
         // Initialize CraftingManager
         this.craftingManager = new CraftingManager();
@@ -479,6 +481,13 @@ public class Game {
                 // Main menu updates (if any)
                 if (mainMenu != null) {
                     // mainMenu.update(deltaTime); // If main menu needs updates
+                }
+                return; // Don't update game world
+            }
+            case WORLD_SELECT -> {
+                // World select screen updates (if any)
+                if (worldSelectScreen != null) {
+                    // worldSelectScreen.update(deltaTime); // If world select needs updates
                 }
                 return; // Don't update game world
             }
@@ -794,7 +803,7 @@ public class Game {
      */
     private void updatePauseState(GameState state) {
         switch (state) {
-            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
+            case MAIN_MENU, WORLD_SELECT, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
                 paused = true;
             }
             case PLAYING -> {
@@ -840,6 +849,13 @@ public class Game {
      */
     public SettingsMenu getSettingsMenu() {
         return settingsMenu;
+    }
+    
+    /**
+     * Gets the world select screen.
+     */
+    public WorldSelectScreen getWorldSelectScreen() {
+        return worldSelectScreen;
     }
     
     /**
@@ -1204,6 +1220,20 @@ public class Game {
     }
     
     /**
+     * Starts world generation with a specific world name and seed.
+     * This method should be called when creating or loading a specific world.
+     */
+    public void startWorldGeneration(String worldName, long seed) {
+        if (loadingScreen != null) {
+            loadingScreen.show(); // This sets state to LOADING
+            System.out.println("Started world generation for world: " + worldName + " with seed: " + seed);
+            
+            // Trigger world generation with custom seed in a separate thread
+            new Thread(() -> performInitialWorldGeneration(worldName, seed)).start();
+        }
+    }
+    
+    /**
      * Performs initial world generation with progress updates.
      * This runs in a background thread while the loading screen is displayed.
      */
@@ -1216,6 +1246,96 @@ public class Game {
             
             // Give a brief moment for the loading screen to render
             Thread.sleep(100);
+            
+            // Generate initial chunks around spawn point (0, 0)
+            if (world != null && player != null) {
+                // Set player position first
+                player.setPosition(0, 100, 0);
+                
+                // Generate chunks around spawn
+                int playerChunkX = 0;
+                int playerChunkZ = 0;
+                int renderDistance = 4; // Smaller initial area
+                
+                if (loadingScreen != null) {
+                    loadingScreen.updateProgress("Generating Base Terrain Shape");
+                }
+                
+                // Generate chunks in expanding rings
+                long lastProgressUpdate = System.currentTimeMillis();
+                int chunksGenerated = 0;
+                
+                for (int ring = 0; ring <= renderDistance; ring++) {
+                    for (int x = playerChunkX - ring; x <= playerChunkX + ring; x++) {
+                        for (int z = playerChunkZ - ring; z <= playerChunkZ + ring; z++) {
+                            // Only generate chunks on the edge of the current ring
+                            if (ring == 0 || x == playerChunkX - ring || x == playerChunkX + ring ||
+                                z == playerChunkZ - ring || z == playerChunkZ + ring) {
+                                
+                                world.getChunkAt(x, z); // This generates the chunk
+                                chunksGenerated++;
+                                
+                                // Rate limiting: pause every few chunks to prevent excessive CPU usage
+                                if (chunksGenerated % 3 == 0) {
+                                    long currentTime = System.currentTimeMillis();
+                                    // Rate limit progress updates to 50ms intervals
+                                    if (currentTime - lastProgressUpdate < 50) {
+                                        continue;
+                                    }
+                                    lastProgressUpdate = System.currentTimeMillis();
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Update progress based on ring completion
+                    if (loadingScreen != null) {
+                        switch (ring) {
+                            case 1 -> loadingScreen.updateProgress("Determining Biomes");
+                            case 2 -> loadingScreen.updateProgress("Applying Biome Materials");
+                            case 3 -> loadingScreen.updateProgress("Adding Surface Decorations & Details");
+                            case 4 -> loadingScreen.updateProgress("Meshing Chunk");
+                        }
+                    }
+                }
+                
+                // Give time for all chunks to finish processing
+                Thread.sleep(500);
+                
+                // Complete world generation
+                completeWorldGeneration();
+                
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("World generation interrupted: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Error during world generation: " + e.getMessage());
+            System.err.println("World generation error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            // Still complete the generation to avoid being stuck
+            completeWorldGeneration();
+        }
+    }
+    
+    /**
+     * Performs initial world generation with custom world name and seed.
+     * This runs in a background thread while the loading screen is displayed.
+     */
+    private void performInitialWorldGeneration(String worldName, long seed) {
+        try {
+            // Update progress through the loading screen
+            if (loadingScreen != null) {
+                loadingScreen.updateProgress("Initializing World: " + worldName);
+            }
+            
+            // Give a brief moment for the loading screen to render
+            Thread.sleep(100);
+            
+            // Set up world generation with custom seed
+            if (world != null) {
+                // Set custom seed for world generation
+                world.setSeed(seed);
+            }
             
             // Generate initial chunks around spawn point (0, 0)
             if (world != null && player != null) {

@@ -1341,4 +1341,199 @@ public class UIRenderer {
         buffer.flip();
         return buffer;
     }
+    
+    /**
+     * Renders the world selection screen with NanoVG
+     */
+    public void renderWorldSelectScreen(int windowWidth, int windowHeight, List<String> worldList, int selectedIndex, boolean showCreateDialog) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        
+        // Draw dirt background (same as main menu)
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+                
+                // Dark overlay for better text contrast
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 80, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+        
+        // Draw title
+        drawMinecraftTitle(centerX, 100, "SELECT WORLD");
+        
+        // Draw world list
+        float buttonWidth = 500f;
+        float buttonHeight = 50f;
+        float spacing = 10f;
+        float startY = 200f;
+        
+        // "Create New World" button
+        drawMinecraftButton("Create New World", centerX - buttonWidth/2, startY, buttonWidth, buttonHeight, selectedIndex == 0);
+        
+        // World list items
+        float currentY = startY + buttonHeight + spacing;
+        for (int i = 0; i < worldList.size(); i++) {
+            boolean selected = (selectedIndex == i + 1);
+            String worldName = worldList.get(i);
+            
+            // Truncate long world names
+            if (worldName.length() > 30) {
+                worldName = worldName.substring(0, 27) + "...";
+            }
+            
+            drawMinecraftButton(worldName, centerX - buttonWidth/2, currentY, buttonWidth, buttonHeight, selected);
+            currentY += buttonHeight + spacing;
+        }
+        
+        // Draw instructions at the bottom
+        try (MemoryStack stack = stackPush()) {
+            nvgFontSize(vg, 14);
+            nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+            
+            String instructions = "Arrow Keys: Navigate | Enter: Select | Escape: Back to Main Menu";
+            nvgText(vg, centerX, windowHeight - 50, instructions);
+        }
+    }
+    
+    /**
+     * Renders the create world dialog with NanoVG
+     */
+    public void renderCreateWorldDialog(int windowWidth, int windowHeight, String worldName, String seedInput, int activeField, String errorMessage, boolean isCreatingWorld) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        float dialogWidth = 600f;
+        float dialogHeight = 400f;
+        
+        try (MemoryStack stack = stackPush()) {
+            // Semi-transparent overlay
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, windowWidth, windowHeight);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 150, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Dialog background
+            float dialogX = centerX - dialogWidth/2;
+            float dialogY = centerY - dialogHeight/2;
+            
+            // Dark stone-like background
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX, dialogY, dialogWidth, dialogHeight);
+            nvgFillColor(vg, nvgRGBA(60, 60, 60, 240, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Border
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX, dialogY, dialogWidth, dialogHeight);
+            nvgStrokeColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 2);
+            nvgStroke(vg);
+            
+            // Title
+            nvgFontSize(vg, 24);
+            nvgFontFace(vg, fontBold != -1 ? "sans-bold" : "sans");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX, dialogY + 50, "Create New World");
+            
+            // World name label and input
+            nvgFontSize(vg, 16);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgText(vg, dialogX + 50, dialogY + 120, "World Name:");
+            
+            // World name input field
+            float inputWidth = 400f;
+            float inputHeight = 30f;
+            float inputX = dialogX + 50;
+            float inputY = dialogY + 140;
+            
+            drawTextInput(inputX, inputY, inputWidth, inputHeight, worldName, activeField == 0, stack);
+            
+            // Seed label and input
+            nvgText(vg, dialogX + 50, dialogY + 200, "Seed (optional):");
+            
+            // Seed input field
+            float seedInputY = dialogY + 220;
+            drawTextInput(inputX, seedInputY, inputWidth, inputHeight, seedInput, activeField == 1, stack);
+            
+            // Error message
+            if (!errorMessage.isEmpty()) {
+                nvgFontSize(vg, 14);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, nvgRGBA(255, 100, 100, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, dialogY + 280, errorMessage);
+            }
+            
+            // Creating world status
+            if (isCreatingWorld) {
+                nvgFontSize(vg, 14);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, nvgRGBA(100, 255, 100, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, dialogY + 300, "Creating world...");
+            }
+            
+            // Instructions
+            nvgFontSize(vg, 12);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX, dialogY + 350, "Tab: Switch Field | Enter: Create World | Escape: Cancel");
+        }
+    }
+    
+    /**
+     * Helper method to draw a text input field
+     */
+    private void drawTextInput(float x, float y, float width, float height, String text, boolean active, MemoryStack stack) {
+        // Input background
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+        if (active) {
+            nvgFillColor(vg, nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
+        } else {
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+        }
+        nvgFill(vg);
+        
+        // Input border
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+        if (active) {
+            nvgStrokeColor(vg, nvgRGBA(100, 150, 255, 255, NVGColor.malloc(stack)));
+        } else {
+            nvgStrokeColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+        }
+        nvgStrokeWidth(vg, 1);
+        nvgStroke(vg);
+        
+        // Input text
+        if (!text.isEmpty()) {
+            nvgFontSize(vg, 14);
+            nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, x + 10, y + height/2, text);
+        }
+        
+        // Cursor (blinking effect would need time-based logic)
+        if (active) {
+            float cursorX = x + 10 + (text.length() * 8); // Approximate character width
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, cursorX, y + 5);
+            nvgLineTo(vg, cursorX, y + height - 5);
+            nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 1);
+            nvgStroke(vg);
+        }
+    }
 }
