@@ -86,10 +86,7 @@ public class InputHandler {
             // If not, Main.java needs to be modified to call:
             // Game.getInstance().getInputHandler().processMouseButton(button, action, mods);
             
-            // Setup scroll callback for block selection
-            glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
-                handleScroll(yoffset);
-            });
+            // Note: Scroll callback is now handled in Main.java to route to appropriate handlers
         } catch (Exception e) {
             System.err.println("Error setting up input handlers: " + e.getMessage());
         }
@@ -591,7 +588,7 @@ public class InputHandler {
     // Renamed from handleMouseClick to avoid confusion, as this is the GLFW callback receiver
     // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
 
-    private void handleScroll(double yOffset) {
+    public void handleScroll(double yOffset) {
         // Store scroll offset for UI screens that need it (like RecipeBookScreen)
         this.scrollYOffset = yOffset;
         

@@ -200,10 +200,15 @@ public class Main {
         // Setup mouse scroll callback
         glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
             Game game = Game.getInstance();
-            if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            if (game != null) {
+                if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                    // Route scroll to WorldSelectScreen
+                    game.getWorldSelectScreen().handleMouseWheel(yoffset);
+                } else if (game.getInputHandler() != null) {
+                    // Route scroll to InputHandler for hotbar selection and other game scroll events
+                    game.getInputHandler().handleScroll(yoffset);
+                }
             }
-            // TODO: Handle scroll events for other UI elements as needed
         });
         
         // Setup window focus callback to handle mouse capture on focus changes
