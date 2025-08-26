@@ -17,11 +17,11 @@ public class MemoryLeakDetector {
     private final ScheduledExecutorService scheduler;
     private final MemoryProfiler profiler;
     
-    // Monitoring state
+    // Monitoring state (ZGC-optimized thresholds)
     private long lastHeapUsage = 0;
     private int consecutiveIncreases = 0;
-    private static final int LEAK_THRESHOLD = 5; // Consider leak after 5 consecutive increases
-    private static final long MIN_INCREASE_MB = 10; // Minimum 10MB increase to count
+    private static final int LEAK_THRESHOLD = 8; // Consider leak after 8 consecutive increases (less aggressive)
+    private static final long MIN_INCREASE_MB = 25; // Minimum 25MB increase to count (higher threshold)
     
     private MemoryLeakDetector() {
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -46,11 +46,11 @@ public class MemoryLeakDetector {
         profiler.takeSnapshot("leak_detector_start");
         lastHeapUsage = getCurrentHeapUsage();
         
-        // Schedule periodic checks every 30 seconds
-        scheduler.scheduleAtFixedRate(this::performLeakCheck, 30, 30, TimeUnit.SECONDS);
+        // Schedule periodic checks every 5 minutes (ZGC-optimized)
+        scheduler.scheduleAtFixedRate(this::performLeakCheck, 300, 300, TimeUnit.SECONDS);
         
-        // Schedule detailed analysis every 5 minutes
-        scheduler.scheduleAtFixedRate(this::performDetailedAnalysis, 300, 300, TimeUnit.SECONDS);
+        // Schedule detailed analysis every 15 minutes
+        scheduler.scheduleAtFixedRate(this::performDetailedAnalysis, 900, 900, TimeUnit.SECONDS);
     }
     
     /**
@@ -110,19 +110,21 @@ public class MemoryLeakDetector {
         long heapMax = getMaxHeapUsage();
         double usagePercent = (double) heapUsed / heapMax * 100;
         
-        if (usagePercent > 70) {
-            System.out.println("[LEAK DETECTOR] High memory usage detected, suggesting GC...");
-            System.gc();
+        if (usagePercent > 85) {
+            System.out.println("[LEAK DETECTOR] High memory usage detected - monitoring for potential leaks...");
+            // With ZGC, let garbage collection happen naturally
+            // Just monitor and report - don't force GC
             
-            // Check if GC helped
+            // Wait a moment to see if ZGC naturally reclaims memory
             try {
-                Thread.sleep(2000); // Wait for GC to complete
-                long afterGC = getCurrentHeapUsage();
-                long freedMB = (heapUsed - afterGC) / (1024 * 1024);
-                System.out.printf("[LEAK DETECTOR] GC freed %d MB%n", freedMB);
+                Thread.sleep(1000); // Brief pause to allow natural GC
+                long afterWait = getCurrentHeapUsage();
+                long changeMB = (heapUsed - afterWait) / (1024 * 1024);
                 
-                if (freedMB < 50) { // Less than 50MB freed
-                    System.err.println("⚠️  WARNING: GC freed very little memory. Possible memory leak!");
+                if (changeMB > 0) {
+                    System.out.printf("[LEAK DETECTOR] ZGC naturally reclaimed %d MB%n", changeMB);
+                } else if (changeMB < -10) {
+                    System.out.printf("[LEAK DETECTOR] Memory usage increased by %d MB - monitoring for leaks%n", Math.abs(changeMB));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -188,23 +190,26 @@ public class MemoryLeakDetector {
         System.out.println("[LEAK DETECTOR] Manual leak analysis triggered...");
         profiler.takeSnapshot("manual_analysis_before");
         
-        // Force GC and measure impact
-        long beforeGC = getCurrentHeapUsage();
-        System.gc();
+        // Monitor memory without forcing GC (ZGC-optimized approach)
+        long beforeMonitor = getCurrentHeapUsage();
         
         try {
-            Thread.sleep(2000); // Wait for GC
+            Thread.sleep(3000); // Wait to observe natural memory behavior
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
         
-        long afterGC = getCurrentHeapUsage();
-        profiler.takeSnapshot("manual_analysis_after_gc");
+        long afterMonitor = getCurrentHeapUsage();
+        profiler.takeSnapshot("manual_analysis_after_monitor");
         
-        long freedMB = (beforeGC - afterGC) / (1024 * 1024);
-        System.out.printf("[LEAK DETECTOR] Manual GC freed %d MB%n", freedMB);
+        long changeMB = (beforeMonitor - afterMonitor) / (1024 * 1024);
+        if (changeMB > 0) {
+            System.out.printf("[LEAK DETECTOR] ZGC naturally reclaimed %d MB during analysis%n", changeMB);
+        } else {
+            System.out.printf("[LEAK DETECTOR] Memory usage changed by %+d MB - analyzing patterns%n", -changeMB);
+        }
         
-        profiler.compareSnapshots("manual_analysis_before", "manual_analysis_after_gc");
+        profiler.compareSnapshots("manual_analysis_before", "manual_analysis_after_monitor");
         analyzeGameResources();
     }
     

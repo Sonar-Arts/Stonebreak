@@ -142,25 +142,27 @@
                         <option>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</option>
                         <option>--add-exports=java.base/sun.security.util=ALL-UNNAMED</option>
                         
-                        <!-- Use G1GC for better multi-threaded performance -->
-                        <option>-XX:+UseG1GC</option>
-                        <!-- Reduce GC pause times for smoother gameplay -->
-                        <option>-XX:MaxGCPauseMillis=50</option>
+                        <!-- Use ZGC for ultra-low latency gaming performance -->
+                        <option>-XX:+UseZGC</option>
+                        <option>-XX:+UnlockExperimentalVMOptions</option>
+                        <!-- Enable generational ZGC for better allocation patterns -->
+                        <option>-XX:+UseZGenerationalGC</option>
                         <!-- Increase heap size for better performance -->
                         <option>-Xms2g</option>
                         <option>-Xmx4g</option>
-                        <!-- Enable parallel GC threads -->
-                        <option>-XX:ParallelGCThreads=4</option>
-                        <!-- Tune G1 for concurrent processing -->
-                        <option>-XX:ConcGCThreads=2</option>
-                        <!-- Reduce allocation rate impact -->
-                        <option>-XX:G1NewSizePercent=20</option>
-                        <option>-XX:G1MaxNewSizePercent=40</option>
-                        <!-- Optimize for throughput -->
-                        <option>-XX:+UnlockExperimentalVMOptions</option>
+                        <!-- Optimize for consistent low-latency performance -->
+                        <option>-XX:+UseLargePages</option>
+                        <option>-XX:+UseTransparentHugePages</option>
+                        <!-- Reduce allocation overhead -->
                         <option>-XX:+UseStringDeduplication</option>
-                        <!-- Reduce GC overhead -->
-                        <option>-XX:G1HeapRegionSize=16m</option>
+                        <!-- Enable advanced JIT optimizations -->
+                        <option>-XX:+UseCompressedOops</option>
+                        <option>-XX:+UseCompressedClassPointers</option>
+                        <!-- Optimize thread local allocation -->
+                        <option>-XX:+UseTLAB</option>
+                        <option>-XX:+ResizeTLAB</option>
+                        <!-- Enable biased locking for better synchronization -->
+                        <option>-XX:+UseBiasedLocking</option>
                         
                         <!-- Additional stability flags for native library interaction -->
                         <option>-Djava.library.path=.</option>
