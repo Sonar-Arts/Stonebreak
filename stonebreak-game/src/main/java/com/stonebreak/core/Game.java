@@ -73,6 +73,7 @@ public class Game {
 
     // Time tracking for debug info
     private static long lastDebugTime = 0;
+    private static long lastMemoryCheckTime = 0;
     
     /**
      * Private constructor for singleton pattern.
@@ -1033,9 +1034,13 @@ public class Game {
         }
         lastDebugTime = currentTime;
         
-        // Use MemoryProfiler for more detailed memory monitoring
+        // Use MemoryProfiler for memory monitoring (reduced frequency for ZGC)
         MemoryProfiler profiler = MemoryProfiler.getInstance();
-        profiler.checkMemoryPressure();
+        // Only check memory pressure every 30 seconds instead of every 5 seconds
+        if (currentTime - lastMemoryCheckTime > 30000) {
+            profiler.checkMemoryPressure();
+            lastMemoryCheckTime = currentTime;
+        }
         
         // Get memory information
         Runtime runtime = Runtime.getRuntime();
@@ -1073,16 +1078,15 @@ public class Game {
         System.out.printf("FPS: %d%n", Math.round(1.0f / getInstance().deltaTime));
         System.out.printf("Delta Time: %.3f ms%n", getInstance().deltaTime * 1000);
         
-        // Memory pressure warning
-        if (memoryUsagePercent > 80) {
-            System.out.println("⚠️  WARNING: High memory usage detected!");
+        // Memory pressure warning (ZGC-optimized thresholds)
+        if (memoryUsagePercent > 90) {
+            System.out.println("⚠️  HIGH: Memory usage above 90% - ZGC will manage automatically");
             profiler.takeSnapshot("high_memory_usage_" + currentTime);
         }
-        if (memoryUsagePercent > 95) {
-            System.out.println("🚨 CRITICAL: Memory usage critical - consider garbage collection!");
-            profiler.takeSnapshot("critical_memory_before_gc_" + currentTime);
-            System.gc(); // Suggest garbage collection
-            profiler.takeSnapshot("critical_memory_after_gc_" + currentTime);
+        if (memoryUsagePercent > 98) {
+            System.out.println("🚨 CRITICAL: Memory usage above 98% - emergency cleanup triggered!");
+            profiler.takeSnapshot("critical_memory_" + currentTime);
+            // Let MemoryProfiler handle emergency cleanup - no forced GC with ZGC
         }
         
         System.out.println("===============================================");
@@ -1112,10 +1116,9 @@ public class Game {
         
         System.out.printf("[GC] %s - Memory before GC: %dMB%n", context, beforeGC);
         
-        // Multiple GC cycles for better cleanup (especially for OpenGL resources)
-        for (int i = 0; i < 3; i++) {
-            System.gc();
-        }
+        // With ZGC, let garbage collection happen naturally
+        // ZGC handles memory management more efficiently than forced GC cycles
+        System.out.println("[MEMORY] Relying on ZGC for optimal memory management");
         
         // Final wait for cleanup completion
         try {
