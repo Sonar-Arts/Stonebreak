@@ -23,6 +23,7 @@ import static org.lwjgl.nanovg.NanoVG.nvgFillPaint;
 import static org.lwjgl.nanovg.NanoVG.nvgFontFace;
 import static org.lwjgl.nanovg.NanoVG.nvgFontSize;
 import static org.lwjgl.nanovg.NanoVG.nvgImagePattern;
+import static org.lwjgl.nanovg.NanoVG.nvgLinearGradient;
 import static org.lwjgl.nanovg.NanoVG.nvgLineTo;
 import static org.lwjgl.nanovg.NanoVG.nvgMoveTo;
 import static org.lwjgl.nanovg.NanoVG.nvgRect;
@@ -59,6 +60,7 @@ public class UIRenderer {
     private int fontBold = -1;
     private int fontMinecraft = -1;
     private int dirtTextureImage = -1;
+    private int stoneTextureImage = -1;
     
     private static final int UI_FONT_SIZE = 18;
     private static final int UI_TITLE_SIZE = 48;
@@ -73,6 +75,7 @@ public class UIRenderer {
         
         loadFonts();
         createDirtTexture();
+        createStoneTexture();
     }
     
     private void loadFonts() {
@@ -199,6 +202,54 @@ public class UIRenderer {
             dirtTextureImage = nvgCreateImageRGBA(vg, textureSize, textureSize, NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY, dirtData);
             if (dirtTextureImage == -1) {
                 System.err.println("Warning: Could not create dirt texture");
+            }
+        }
+    }
+    
+    private void createStoneTexture() {
+        // Create stone texture using triple noise generation algorithm from stone.json
+        int textureSize = 64; // 64x64 stone texture
+        
+        try (MemoryStack stack = stackPush()) {
+            java.nio.ByteBuffer stoneData = stack.malloc(textureSize * textureSize * 4); // RGBA
+            
+            for (int y = 0; y < textureSize; y++) {
+                for (int x = 0; x < textureSize; x++) {
+                    // Triple noise generation based on stone.json algorithm
+                    // Primary noise: Math.sin(globalX * 0.8 + globalY * 0.2) * 0.3
+                    float noise1 = (float) Math.sin(x * 0.8 + y * 0.2) * 0.3f;
+                    
+                    // Secondary noise: Math.cos(globalX * 0.3 + globalY * 0.7) * 0.3
+                    float noise2 = (float) Math.cos(x * 0.3 + y * 0.7) * 0.3f;
+                    
+                    // Tertiary noise: Math.sin((globalX+globalY) * 0.5) * 0.4
+                    float noise3 = (float) Math.sin((x + y) * 0.5) * 0.4f;
+                    
+                    // Combine all three: (noise1 + noise2 + noise3) * 0.5 + 0.5
+                    float stoneNoise = (noise1 + noise2 + noise3) * 0.5f + 0.5f;
+                    
+                    // Apply base colors with variance - medium dark stone
+                    int r = (int) (90 + stoneNoise * 28);
+                    int g = (int) (90 + stoneNoise * 28);
+                    int b = (int) (95 + stoneNoise * 28);
+                    
+                    // Clamp color values to [0, 255] range
+                    r = Math.min(255, Math.max(0, r));
+                    g = Math.min(255, Math.max(0, g));
+                    b = Math.min(255, Math.max(0, b));
+                    
+                    stoneData.put((byte) r);
+                    stoneData.put((byte) g);
+                    stoneData.put((byte) b);
+                    stoneData.put((byte) 255); // Alpha
+                }
+            }
+            
+            stoneData.flip(); // Prepare buffer for reading
+            
+            stoneTextureImage = nvgCreateImageRGBA(vg, textureSize, textureSize, NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY, stoneData);
+            if (stoneTextureImage == -1) {
+                System.err.println("Warning: Could not create stone texture");
             }
         }
     }
@@ -1343,11 +1394,15 @@ public class UIRenderer {
     }
     
     /**
-     * Renders the world selection screen with NanoVG
+     * Renders the world selection screen with NanoVG using three-section layout
      */
     public void renderWorldSelectScreen(int windowWidth, int windowHeight, List<String> worldList, int selectedIndex, boolean showDialog, int scrollOffset, int visibleItems) {
         float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
+        
+        // Define section heights
+        float headerHeight = 150f;
+        float footerHeight = 80f;
+        float footerStart = windowHeight - footerHeight;
         
         // Dim the screen if a dialog is shown
         if (showDialog) {
@@ -1359,33 +1414,106 @@ public class UIRenderer {
             }
         }
         
-        // Draw dirt background (same as main menu)
+        // HEADER SECTION - Dirt background
         if (dirtTextureImage != -1) {
             try (MemoryStack stack = stackPush()) {
                 NVGPaint dirtPattern = NVGPaint.malloc(stack);
                 nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
                 
+                // Header dirt background
                 nvgBeginPath(vg);
-                nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgRect(vg, 0, 0, windowWidth, headerHeight);
                 nvgFillPaint(vg, dirtPattern);
                 nvgFill(vg);
                 
-                // Dark overlay for better text contrast
+                // Header dark overlay for text contrast
                 nvgBeginPath(vg);
-                nvgRect(vg, 0, 0, windowWidth, windowHeight);
-                nvgFillColor(vg, nvgRGBA(0, 0, 0, 80, NVGColor.malloc(stack)));
+                nvgRect(vg, 0, 0, windowWidth, headerHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)));
                 nvgFill(vg);
             }
         }
         
-        // Draw title
-        drawMinecraftTitle(centerX, 100, "SELECT WORLD");
+        // MIDDLE SECTION - Stone background
+        if (stoneTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint stonePattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, 0, 96, 96, 0, stoneTextureImage, 1.0f, stonePattern);
+                
+                // Middle stone background
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, headerHeight, windowWidth, footerStart - headerHeight);
+                nvgFillPaint(vg, stonePattern);
+                nvgFill(vg);
+                
+                // Create shadow gradient from dirt above
+                float shadowHeight = 150f; // How far down the shadow extends - bigger shadow
+                NVGPaint shadowGradient = NVGPaint.malloc(stack);
+                nvgLinearGradient(vg, 0, headerHeight, 0, headerHeight + shadowHeight, 
+                                 nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)), // Dark at top
+                                 nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)),   // Transparent at bottom
+                                 shadowGradient);
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, headerHeight, windowWidth, shadowHeight);
+                nvgFillPaint(vg, shadowGradient);
+                nvgFill(vg);
+                
+                // Middle darker overlay for better button contrast (lighter than before since we have shadow)
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, headerHeight, windowWidth, footerStart - headerHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 20, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
         
-        // Draw world list
+        // FOOTER SECTION - Dirt background
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                
+                // Footer dirt background
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, footerStart, windowWidth, footerHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+                
+                // Footer dark overlay for text contrast
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, footerStart, windowWidth, footerHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+        
+        // Draw subtle borders between sections
+        try (MemoryStack stack = stackPush()) {
+            // Header-Middle border
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, 0, headerHeight);
+            nvgLineTo(vg, windowWidth, headerHeight);
+            nvgStrokeWidth(vg, 2f);
+            nvgStrokeColor(vg, nvgRGBA(80, 80, 80, 180, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Middle-Footer border
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, 0, footerStart);
+            nvgLineTo(vg, windowWidth, footerStart);
+            nvgStrokeWidth(vg, 2f);
+            nvgStrokeColor(vg, nvgRGBA(80, 80, 80, 180, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+        }
+        
+        // Draw title in header section
+        drawMinecraftTitle(centerX, headerHeight * 0.6f, "SELECT WORLD");
+        
+        // Draw world list in middle section
         float buttonWidth = 500f;
         float buttonHeight = 50f;
         float spacing = 10f;
-        float startY = 200f;
+        float startY = headerHeight + 30f; // Start below header with some padding
         
         // Calculate visible items range
         int totalItems = worldList.size() + 1; // +1 for "Create New World"
@@ -1406,6 +1534,9 @@ public class UIRenderer {
             int displayIndex = (scrollOffset == 0) ? i + 1 : (i - scrollOffset + 1);
             if (displayIndex < 0) continue;
             
+            // Make sure we don't draw buttons into the footer area
+            if (currentY + buttonHeight > footerStart - 10) break;
+            
             boolean selected = (selectedIndex == displayIndex);
             String worldName = worldList.get(i);
             
@@ -1419,21 +1550,21 @@ public class UIRenderer {
             renderedItems++;
         }
         
-        // Draw scroll indicators if needed
+        // Draw scroll indicators if needed (in middle section)
         if (totalItems > visibleItems) {
-            drawScrollIndicators(centerX, startY, buttonHeight * visibleItems + spacing * (visibleItems - 1), 
+            drawScrollIndicators(centerX, startY, Math.min(footerStart - startY - 20, buttonHeight * visibleItems + spacing * (visibleItems - 1)), 
                                scrollOffset, totalItems, visibleItems);
         }
         
-        // Draw instructions at the bottom
+        // Draw instructions in footer section
         try (MemoryStack stack = stackPush()) {
             nvgFontSize(vg, 14);
             nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGBA(200, 200, 200, 255, NVGColor.malloc(stack)));
+            nvgFillColor(vg, nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
             
             String instructions = "↑↓: Navigate | PgUp/PgDn: Fast Scroll | Enter: Select | F2: Edit | Right-Click: Edit | Esc: Back";
-            nvgText(vg, centerX, windowHeight - 50, instructions);
+            nvgText(vg, centerX, footerStart + footerHeight * 0.5f, instructions);
         }
     }
     
