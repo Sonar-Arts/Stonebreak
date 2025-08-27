@@ -1396,7 +1396,7 @@ public class UIRenderer {
     /**
      * Renders the world selection screen with NanoVG using three-section layout
      */
-    public void renderWorldSelectScreen(int windowWidth, int windowHeight, List<String> worldList, int selectedIndex, boolean showDialog, int scrollOffset, int visibleItems) {
+    public void renderWorldSelectScreen(int windowWidth, int windowHeight, List<String> worldList, int selectedIndex, boolean showDialog, int scrollOffset, int visibleItems, boolean createButtonSelected) {
         float centerX = windowWidth / 2.0f;
         
         // Define section heights
@@ -1509,35 +1509,26 @@ public class UIRenderer {
         // Draw title in header section
         drawMinecraftTitle(centerX, headerHeight * 0.6f, "SELECT WORLD");
         
-        // Draw world list in middle section
+        // Draw world list in middle section (only existing worlds)
         float buttonWidth = 500f;
         float buttonHeight = 50f;
         float spacing = 10f;
         float startY = headerHeight + 30f; // Start below header with some padding
         
-        // Calculate visible items range
-        int totalItems = worldList.size() + 1; // +1 for "Create New World"
+        // Calculate visible items range (only world list, no "Create New World")
+        int totalItems = worldList.size(); // Only existing worlds
         float currentY = startY;
         
-        // "Create New World" button (show if not scrolled past)
-        if (scrollOffset == 0) {
-            drawMinecraftButton("Create New World", centerX - buttonWidth/2, currentY, buttonWidth, buttonHeight, selectedIndex == 0);
-            currentY += buttonHeight + spacing;
-        }
-        
         // World list items (with scrolling)
-        int startIndex = Math.max(0, scrollOffset - (scrollOffset > 0 ? 1 : 0)); // Adjust for "Create New World"
+        int startIndex = Math.max(0, scrollOffset);
         int endIndex = Math.min(worldList.size(), startIndex + visibleItems);
-        int renderedItems = (scrollOffset == 0) ? 1 : 0; // Count "Create New World" if visible
+        int renderedItems = 0;
         
         for (int i = startIndex; i < endIndex && renderedItems < visibleItems; i++) {
-            int displayIndex = (scrollOffset == 0) ? i + 1 : (i - scrollOffset + 1);
-            if (displayIndex < 0) continue;
-            
             // Make sure we don't draw buttons into the footer area
             if (currentY + buttonHeight > footerStart - 10) break;
             
-            boolean selected = (selectedIndex == displayIndex);
+            boolean selected = (selectedIndex == i);
             String worldName = worldList.get(i);
             
             // Truncate long world names
@@ -1556,15 +1547,22 @@ public class UIRenderer {
                                scrollOffset, totalItems, visibleItems);
         }
         
-        // Draw instructions in footer section
+        // Draw "Create New World" button in footer section
+        float footerButtonWidth = 300f;
+        float footerButtonHeight = 40f;
+        float footerButtonY = footerStart + 15f; // Position near top of footer
+        
+        drawMinecraftButton("Create New World", centerX - footerButtonWidth/2, footerButtonY, footerButtonWidth, footerButtonHeight, createButtonSelected);
+        
+        // Draw condensed instructions below the button
         try (MemoryStack stack = stackPush()) {
-            nvgFontSize(vg, 14);
+            nvgFontSize(vg, 12);
             nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
+            nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
             
-            String instructions = "↑↓: Navigate | PgUp/PgDn: Fast Scroll | Enter: Select | F2: Edit | Right-Click: Edit | Esc: Back";
-            nvgText(vg, centerX, footerStart + footerHeight * 0.5f, instructions);
+            String instructions = "↑↓: Navigate | Enter: Select | Tab: Create World | F2: Edit | Esc: Back";
+            nvgText(vg, centerX, footerStart + footerHeight - 15f, instructions);
         }
     }
     
