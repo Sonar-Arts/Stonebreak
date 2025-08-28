@@ -176,6 +176,10 @@ public class Main {
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
             }
+            // Handle settings menu hover events
+            else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
+                game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
+            }
         });
         
         // Setup window focus callback to handle mouse capture on focus changes
