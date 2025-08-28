@@ -1,0 +1,121 @@
+{
+  "item_type": "WOODEN_AXE",
+  "texture_name": "wooden_axe",
+  "description": "Authentic Minecraft-style wooden axe with diagonal handle from bottom-left to top-right and L-shaped axe head",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["TOOL_TEXTURE", "ITEM_ICON"],
+    "atlas_coordinates": {"x": 8, "y": 3}
+  },
+  "color_palette": {
+    "outline": {
+      "color": {"r": 60, "g": 35, "b": 15},
+      "description": "Very dark brown outlines/borders"
+    },
+    "handle": {
+      "color": {"r": 101, "g": 57, "b": 25},
+      "description": "Dark brown handle main color"
+    },
+    "head_base": {
+      "color": {"r": 139, "g": 96, "b": 67},
+      "description": "Medium brown axe head base"
+    },
+    "highlight": {
+      "color": {"r": 171, "g": 128, "b": 97},
+      "description": "Light brown highlights"
+    },
+    "bright_highlight": {
+      "color": {"r": 190, "g": 145, "b": 115},
+      "description": "Lighter brown bright highlights"
+    },
+    "transparent": {
+      "color": {"r": 0, "g": 0, "b": 0, "a": 0},
+      "description": "Transparent background"
+    }
+  },
+  "tool_shape": {
+    "type": "AXE",
+    "orientation": "diagonal_handle_l_shaped_head",
+    "description": "Diagonal handle from bottom-left to top-right with L-shaped axe head in top-right corner",
+    "pixel_map": {
+      "row_0": {
+        "6": "outline", "7": "highlight", "8": "head_base", "9": "outline"
+      },
+      "row_1": {
+        "5": "outline", "6": "head_base", "7": "highlight", "8": "head_base", "9": "highlight", "10": "handle", "11": "outline"
+      },
+      "row_2": {
+        "4": "outline", "5": "head_base", "6": "highlight", "7": "bright_highlight", "8": "head_base", "9": "head_base", "10": "highlight", "11": "highlight", "12": "handle", "13": "outline"
+      },
+      "row_3": {
+        "3": "outline", "4": "head_base", "5": "highlight", "6": "bright_highlight", "7": "bright_highlight", "8": "highlight", "9": "head_base", "10": "head_base", "11": "highlight", "12": "highlight", "13": "handle", "14": "outline"
+      },
+      "row_4": {
+        "4": "outline", "5": "head_base", "6": "highlight", "7": "bright_highlight", "8": "head_base", "9": "head_base", "10": "highlight", "11": "highlight", "12": "handle", "13": "outline"
+      },
+      "row_5": {
+        "5": "outline", "6": "head_base", "7": "highlight", "8": "head_base", "9": "highlight", "10": "highlight", "11": "handle", "12": "outline"
+      },
+      "row_6": {
+        "6": "outline", "7": "head_base", "8": "handle", "9": "highlight", "10": "handle", "11": "outline"
+      },
+      "row_7": {
+        "7": "outline", "8": "handle", "9": "highlight", "10": "outline"
+      },
+      "row_8": {
+        "6": "outline", "7": "handle", "8": "highlight", "9": "outline"
+      },
+      "row_9": {
+        "5": "outline", "6": "handle", "7": "highlight", "8": "outline"
+      },
+      "row_10": {
+        "4": "outline", "5": "handle", "6": "highlight", "7": "outline"
+      },
+      "row_11": {
+        "3": "outline", "4": "handle", "5": "highlight", "6": "outline"
+      },
+      "row_12": {
+        "2": "outline", "3": "handle", "4": "highlight", "5": "outline"
+      },
+      "row_13": {
+        "1": "outline", "2": "handle", "3": "highlight", "4": "outline"
+      },
+      "row_14": {
+        "0": "outline", "1": "handle", "2": "highlight", "3": "outline"
+      },
+      "row_15": {
+        "1": "handle", "2": "outline"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "coordinate_system": "Local tile coordinates: pX_axe = globalX % 16, pY_axe = globalY % 16",
+    "pixel_classification": {
+      "method": "switch_case_pattern",
+      "description": "Uses switch-case statements for each row (pY_axe) and column (pX_axe) to determine exact pixel colors",
+      "algorithm_type": "explicit_pixel_mapping"
+    },
+    "color_application": {
+      "method": "direct_color_assignment",
+      "description": "Each pixel gets exact RGB values based on its role in the tool design",
+      "no_grain_effects": "Unlike pickaxe, wooden axe uses fixed colors without mathematical grain patterns"
+    },
+    "tool_design": {
+      "handle_pattern": "Diagonal from bottom-left (row 15, col 1) to top-right (row 1, col 10-12)",
+      "axe_head_pattern": "L-shaped cutting head in top-right corner with widest part at rows 3-4",
+      "outline_pattern": "Dark brown borders surrounding both handle and head components"
+    },
+    "final_processing": "Set transparent background for all non-tool pixels"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java wooden axe texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2340-2520",
+    "atlas_coordinates": {"x": 8, "y": 3},
+    "purpose": "JSON conversion of hardcoded wooden axe texture algorithm",
+    "version": "1.0",
+    "conversion_status": "Complete - exact algorithm conversion",
+    "validation": "Pixel-perfect match with original TextureAtlas generation",
+    "design_notes": "Flipped across Y-axis compared to some reference designs, diagonal handle distinctive from pickaxe"
+  }
+}
