@@ -105,7 +105,7 @@ public class Main {
         glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
             // Pass key events to InputHandler for chat handling
             if (inputHandler != null) {
-                inputHandler.handleKeyInput(key, action);
+                inputHandler.handleKeyInput(key, action, mods);
             }
         });
         

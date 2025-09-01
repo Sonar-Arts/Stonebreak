@@ -11,6 +11,7 @@ import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_RIGHT;
 import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATX;
 import static org.lwjgl.nanovg.NanoVG.NVG_IMAGE_REPEATY;
 import static org.lwjgl.nanovg.NanoVG.nvgBeginFrame;
+import static org.lwjgl.nanovg.NanoVG.nvgArc;
 import static org.lwjgl.nanovg.NanoVG.nvgBeginPath;
 import static org.lwjgl.nanovg.NanoVG.nvgClosePath;
 import static org.lwjgl.nanovg.NanoVG.nvgCreateFont;
@@ -27,6 +28,7 @@ import static org.lwjgl.nanovg.NanoVG.nvgLinearGradient;
 import static org.lwjgl.nanovg.NanoVG.nvgLineTo;
 import static org.lwjgl.nanovg.NanoVG.nvgMoveTo;
 import static org.lwjgl.nanovg.NanoVG.nvgRect;
+import static org.lwjgl.nanovg.NanoVG.nvgRoundedRect;
 import static org.lwjgl.nanovg.NanoVG.nvgStroke;
 import static org.lwjgl.nanovg.NanoVG.nvgStrokeColor;
 import static org.lwjgl.nanovg.NanoVG.nvgStrokeWidth;
@@ -1698,6 +1700,320 @@ public class UIRenderer {
     }
     
     /**
+     * Draws the background of a text input field with Minecraft-style beveled texture
+     */
+    public void drawTextInputBackground(float x, float y, float width, float height, boolean focused, MemoryStack stack) {
+        float bevelSize = 3.0f;
+        
+        // Main input field body - dark stone for text fields (inverted from buttons)
+        nvgBeginPath(vg);
+        nvgRect(vg, x + bevelSize, y + bevelSize, width - 2 * bevelSize, height - 2 * bevelSize);
+        if (focused) {
+            // Focused state - slightly lighter with subtle blue tint
+            nvgFillColor(vg, nvgRGBA(75, 75, 85, 255, NVGColor.malloc(stack)));
+        } else {
+            // Normal state - dark stone for text input background
+            nvgFillColor(vg, nvgRGBA(55, 55, 55, 255, NVGColor.malloc(stack)));
+        }
+        nvgFill(vg);
+        
+        // Add subtle texture pattern for depth (less prominent than buttons)
+        int textureCount = Math.min(6, (int)((width * height) / 2000)); // Adaptive texture density
+        for (int i = 0; i < textureCount; i++) {
+            float px = x + bevelSize + (i % 3) * (width - 2 * bevelSize) / 3 + 2;
+            float py = y + bevelSize + (i / 3) * (height - 2 * bevelSize) / 2 + 1;
+            float size = 3;
+            
+            nvgBeginPath(vg);
+            nvgRect(vg, px, py, size, size);
+            if (focused) {
+                nvgFillColor(vg, nvgRGBA(85, 85, 95, 80, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, nvgRGBA(45, 45, 45, 80, NVGColor.malloc(stack)));
+            }
+            nvgFill(vg);
+        }
+    }
+    
+    /**
+     * Draws the border of a text input field with Minecraft-style beveled edges
+     */
+    public void drawTextInputBorder(float x, float y, float width, float height, boolean focused, MemoryStack stack) {
+        float bevelSize = 3.0f;
+        
+        // Top bevel - dark shadow (inverted from buttons for inset effect)
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x, y);
+        nvgLineTo(vg, x + width, y);
+        nvgLineTo(vg, x + width - bevelSize, y + bevelSize);
+        nvgLineTo(vg, x + bevelSize, y + bevelSize);
+        nvgClosePath(vg);
+        nvgFillColor(vg, nvgRGBA(25, 25, 25, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Left bevel - dark shadow
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x, y);
+        nvgLineTo(vg, x + bevelSize, y + bevelSize);
+        nvgLineTo(vg, x + bevelSize, y + height - bevelSize);
+        nvgLineTo(vg, x, y + height);
+        nvgClosePath(vg);
+        nvgFillColor(vg, nvgRGBA(35, 35, 35, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Bottom bevel - light highlight (for inset effect)
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x, y + height);
+        nvgLineTo(vg, x + bevelSize, y + height - bevelSize);
+        nvgLineTo(vg, x + width - bevelSize, y + height - bevelSize);
+        nvgLineTo(vg, x + width, y + height);
+        nvgClosePath(vg);
+        nvgFillColor(vg, nvgRGBA(140, 140, 140, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Right bevel - light highlight
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x + width, y);
+        nvgLineTo(vg, x + width, y + height);
+        nvgLineTo(vg, x + width - bevelSize, y + height - bevelSize);
+        nvgLineTo(vg, x + width - bevelSize, y + bevelSize);
+        nvgClosePath(vg);
+        nvgFillColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Outer border for definition
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+        nvgStrokeWidth(vg, 2.0f);
+        nvgStrokeColor(vg, nvgRGBA(15, 15, 15, 255, NVGColor.malloc(stack)));
+        nvgStroke(vg);
+        
+        // Enhanced focus border with glowing effect
+        if (focused) {
+            // Outer glow
+            nvgBeginPath(vg);
+            nvgRect(vg, x - 2, y - 2, width + 4, height + 4);
+            nvgStrokeWidth(vg, 3.0f);
+            nvgStrokeColor(vg, nvgRGBA(100, 150, 255, 120, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+            
+            // Inner bright border
+            nvgBeginPath(vg);
+            nvgRect(vg, x + 1, y + 1, width - 2, height - 2);
+            nvgStrokeWidth(vg, 1.5f);
+            nvgStrokeColor(vg, nvgRGBA(140, 180, 255, 200, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+        }
+    }
+    
+    /**
+     * Draws text in a text input field with Minecraft-style font and shadow
+     */
+    public void drawTextInputText(float x, float y, String text, boolean isPlaceholder, MemoryStack stack) {
+        // Use Minecraft font if available, with proper fallbacks
+        String fontName;
+        if (fontMinecraft != -1) {
+            fontName = "minecraft";
+        } else if (fontRegular != -1) {
+            fontName = "sans";
+        } else {
+            fontName = "default";
+        }
+        
+        nvgFontSize(vg, 16); // Slightly larger for better readability
+        nvgFontFace(vg, fontName);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        
+        if (isPlaceholder) {
+            // Enhanced placeholder with subtle shadow for depth
+            // Shadow
+            nvgFillColor(vg, nvgRGBA(30, 30, 30, 180, NVGColor.malloc(stack)));
+            nvgText(vg, x + 1, y + 1, text);
+            // Main text
+            nvgFillColor(vg, nvgRGBA(140, 140, 140, 255, NVGColor.malloc(stack)));
+            nvgText(vg, x, y, text);
+        } else {
+            // Enhanced regular text with shadow for Minecraft feel
+            // Shadow
+            nvgFillColor(vg, nvgRGBA(20, 20, 20, 200, NVGColor.malloc(stack)));
+            nvgText(vg, x + 1, y + 1, text);
+            // Main text
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, x, y, text);
+        }
+    }
+    
+    /**
+     * Draws the cursor in a text input field with enhanced visibility
+     */
+    public void drawTextInputCursor(float x, float y1, float y2, MemoryStack stack) {
+        // Enhanced cursor with shadow for better visibility
+        float cursorWidth = 2.0f;
+        
+        // Shadow
+        nvgBeginPath(vg);
+        nvgRect(vg, x + 1, y1 + 1, cursorWidth, y2 - y1);
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Main cursor
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y1, cursorWidth, y2 - y1);
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+    }
+    
+    /**
+     * Draws text selection highlight with Minecraft-style colors
+     */
+    public void drawTextInputSelection(float x, float y, float width, float height, MemoryStack stack) {
+        // Selection background with subtle gradient effect
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+        // Use Minecraft-style blue selection color
+        nvgFillColor(vg, nvgRGBA(70, 120, 200, 160, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Subtle border for definition
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStrokeColor(vg, nvgRGBA(90, 140, 220, 200, NVGColor.malloc(stack)));
+        nvgStroke(vg);
+    }
+    
+    /**
+     * Draws a contextual icon for text input fields (world icon, dice icon, etc.)
+     */
+    public void drawTextInputIcon(float x, float y, float size, String iconType, MemoryStack stack) {
+        if ("world".equals(iconType)) {
+            drawWorldIcon(x, y, size, stack);
+        } else if ("seed".equals(iconType)) {
+            drawSeedIcon(x, y, size, stack);
+        }
+    }
+    
+    /**
+     * Draws a world icon (simple block representation)
+     */
+    private void drawWorldIcon(float x, float y, float size, MemoryStack stack) {
+        float blockSize = size / 3;
+        
+        // Draw a simple 3x3 grid representing a world
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 3; col++) {
+                float blockX = x + col * blockSize;
+                float blockY = y + row * blockSize;
+                
+                // Vary colors for different "blocks"
+                if ((row + col) % 2 == 0) {
+                    // Grass blocks
+                    nvgBeginPath(vg);
+                    nvgRect(vg, blockX, blockY, blockSize, blockSize);
+                    nvgFillColor(vg, nvgRGBA(80, 120, 40, 255, NVGColor.malloc(stack)));
+                    nvgFill(vg);
+                } else {
+                    // Stone blocks
+                    nvgBeginPath(vg);
+                    nvgRect(vg, blockX, blockY, blockSize, blockSize);
+                    nvgFillColor(vg, nvgRGBA(120, 120, 120, 255, NVGColor.malloc(stack)));
+                    nvgFill(vg);
+                }
+                
+                // Block outlines
+                nvgBeginPath(vg);
+                nvgRect(vg, blockX, blockY, blockSize, blockSize);
+                nvgStrokeWidth(vg, 1);
+                nvgStrokeColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+                nvgStroke(vg);
+            }
+        }
+    }
+    
+    /**
+     * Draws a seed icon (dice/random symbol)
+     */
+    private void drawSeedIcon(float x, float y, float size, MemoryStack stack) {
+        float dotSize = size / 6;
+        
+        // Draw dice background
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, size, size);
+        nvgFillColor(vg, nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+        
+        // Draw dice border
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, size, size);
+        nvgStrokeWidth(vg, 2);
+        nvgStrokeColor(vg, nvgRGBA(60, 60, 60, 255, NVGColor.malloc(stack)));
+        nvgStroke(vg);
+        
+        // Draw dice dots (random pattern)
+        float[] dotPositions = {
+            x + size * 0.25f, y + size * 0.25f,
+            x + size * 0.75f, y + size * 0.25f,
+            x + size * 0.5f, y + size * 0.5f,
+            x + size * 0.25f, y + size * 0.75f,
+            x + size * 0.75f, y + size * 0.75f
+        };
+        
+        for (int i = 0; i < dotPositions.length; i += 2) {
+            nvgBeginPath(vg);
+            nvgArc(vg, dotPositions[i], dotPositions[i + 1], dotSize, 0, (float)(2 * Math.PI), 1);
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+    }
+    
+    /**
+     * Draws input validation indicator (checkmark or X)
+     */
+    public void drawValidationIndicator(float x, float y, float size, boolean isValid, MemoryStack stack) {
+        float thickness = 3.0f;
+        
+        if (isValid) {
+            // Draw checkmark
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + size * 0.2f, y + size * 0.5f);
+            nvgLineTo(vg, x + size * 0.45f, y + size * 0.75f);
+            nvgLineTo(vg, x + size * 0.8f, y + size * 0.25f);
+            nvgStrokeWidth(vg, thickness);
+            nvgStrokeColor(vg, nvgRGBA(60, 180, 60, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+        } else {
+            // Draw X mark
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + size * 0.25f, y + size * 0.25f);
+            nvgLineTo(vg, x + size * 0.75f, y + size * 0.75f);
+            nvgMoveTo(vg, x + size * 0.75f, y + size * 0.25f);
+            nvgLineTo(vg, x + size * 0.25f, y + size * 0.75f);
+            nvgStrokeWidth(vg, thickness);
+            nvgStrokeColor(vg, nvgRGBA(200, 60, 60, 255, NVGColor.malloc(stack)));
+            nvgStroke(vg);
+        }
+    }
+    
+    /**
+     * Draws enhanced field labels with Minecraft-style text shadow
+     */
+    public void drawFieldLabel(float x, float y, String label, MemoryStack stack) {
+        // Use Minecraft font if available
+        String fontName = (fontMinecraft != -1) ? "minecraft" : ((fontRegular != -1) ? "sans" : "default");
+        nvgFontSize(vg, 14);
+        nvgFontFace(vg, fontName);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        
+        // Text shadow for depth
+        nvgFillColor(vg, nvgRGBA(20, 20, 20, 200, NVGColor.malloc(stack)));
+        nvgText(vg, x + 1, y + 1, label);
+        
+        // Main label text
+        nvgFillColor(vg, nvgRGBA(240, 240, 240, 255, NVGColor.malloc(stack)));
+        nvgText(vg, x, y, label);
+    }
+    
+    /**
      * Draws scroll indicators to show current position in a scrollable list
      */
     private void drawScrollIndicators(float centerX, float startY, float listHeight, int scrollOffset, int totalItems, int visibleItems) {
@@ -1902,5 +2218,93 @@ public class UIRenderer {
         }
         
         return text.length(); // Click was after all text
+    }
+    
+    /**
+     * Renders a visual container around the TextInputField components in the create dialog
+     */
+    public void renderCreateDialogContainer(float width, float height) {
+        // Calculate dialog dimensions (matching setupCreateDialog in WorldSelectScreen)
+        float dialogWidth = 450f;
+        float dialogHeight = 320f;
+        float dialogX = (width - dialogWidth) / 2;
+        float dialogY = (height - dialogHeight) / 2;
+        
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            // Semi-transparent overlay backdrop
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, width, height);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)));
+            nvgFill(vg);
+            
+            // Main dialog container with Minecraft-style dirt/stone theme
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX, dialogY, dialogWidth, dialogHeight);
+            
+            // Create a subtle gradient background from darker to lighter stone
+            NVGPaint backgroundPaint = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, dialogX, dialogY, dialogX, dialogY + dialogHeight, 
+                             nvgRGBA(45, 40, 35, 240, NVGColor.malloc(stack)), // Darker stone color at top
+                             nvgRGBA(60, 55, 50, 240, NVGColor.malloc(stack)), // Lighter stone color at bottom
+                             backgroundPaint);
+            nvgFillPaint(vg, backgroundPaint);
+            nvgFill(vg);
+            
+            // Main border - thicker stone-like border
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX, dialogY, dialogWidth, dialogHeight);
+            nvgStrokeColor(vg, nvgRGBA(120, 110, 100, 255, NVGColor.malloc(stack))); // Stone border color
+            nvgStrokeWidth(vg, 3);
+            nvgStroke(vg);
+            
+            // Inner highlight border for depth
+            nvgBeginPath(vg);
+            nvgRect(vg, dialogX + 2, dialogY + 2, dialogWidth - 4, dialogHeight - 4);
+            nvgStrokeColor(vg, nvgRGBA(80, 75, 70, 180, NVGColor.malloc(stack))); // Darker inner border
+            nvgStrokeWidth(vg, 1);
+            nvgStroke(vg);
+            
+            // Dialog title
+            nvgFontSize(vg, 24);
+            nvgFontFace(vg, fontBold != -1 ? "sans-bold" : "default");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, dialogX + dialogWidth / 2, dialogY + 35, "Create New World");
+            
+            // Container box around the input fields
+            float containerPadding = 15f;
+            float containerX = dialogX + containerPadding;
+            float containerY = dialogY + 60f; // Below title
+            float containerWidth = dialogWidth - (containerPadding * 2);
+            float containerHeight = 180f; // Enough height for both input fields plus spacing
+            
+            // Input container background - slightly darker for contrast
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, containerX, containerY, containerWidth, containerHeight, 8);
+            nvgFillColor(vg, nvgRGBA(35, 30, 25, 200, NVGColor.malloc(stack))); // Darker inset area
+            nvgFill(vg);
+            
+            // Input container border with inset effect
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, containerX, containerY, containerWidth, containerHeight, 8);
+            nvgStrokeColor(vg, nvgRGBA(25, 20, 15, 255, NVGColor.malloc(stack))); // Dark inset border
+            nvgStrokeWidth(vg, 2);
+            nvgStroke(vg);
+            
+            // Inner highlight for inset effect
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, containerX + 1, containerY + 1, containerWidth - 2, containerHeight - 2, 7);
+            nvgStrokeColor(vg, nvgRGBA(70, 65, 60, 120, NVGColor.malloc(stack))); // Subtle highlight
+            nvgStrokeWidth(vg, 1);
+            nvgStroke(vg);
+            
+            // Footer instructions
+            nvgFontSize(vg, 14);
+            nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+            nvgText(vg, dialogX + dialogWidth / 2, dialogY + dialogHeight - 25, 
+                    "Tab: Switch Field | Enter: Create World | Esc: Cancel");
+        }
     }
 }

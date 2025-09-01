@@ -347,6 +347,28 @@ public class Inventory {
     public boolean hasItem(int blockTypeId) {
         return getItemCount(blockTypeId) > 0;
     }
+    
+    /**
+     * Resets the inventory to starting items for a new world.
+     * This clears all existing items and restores the default starting inventory.
+     */
+    public void resetToStartingItems() {
+        // Clear all existing items
+        for (int i = 0; i < HOTBAR_SIZE; i++) {
+            hotbarSlots[i].clear();
+        }
+        for (int i = 0; i < MAIN_INVENTORY_SIZE; i++) {
+            mainInventorySlots[i].clear();
+        }
+        
+        // Reset to starting position
+        selectedHotbarSlotIndex = 0;
+        
+        // Re-initialize with starting items
+        initializeStartingItems();
+        
+        System.out.println("Inventory reset to starting items for new world");
+    }
 
     /**
      * Gets all ItemStacks in the main inventory.

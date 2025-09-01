@@ -26,6 +26,8 @@ public class LoadingScreen {
     private boolean visible = false;
     private String currentStageName = "Initializing...";
     private int currentStageIndex = 0;
+    private String errorMessage = null;
+    private boolean hasError = false;
     private final List<String> stages = Arrays.asList(
             "Initializing Noise System",
             "Generating Base Terrain Shape", // or "Calculating Terrain Density"
@@ -47,6 +49,8 @@ public class LoadingScreen {
     public void show() {
         this.visible = true;
         this.currentStageIndex = 0;
+        this.errorMessage = null;
+        this.hasError = false;
         if (!stages.isEmpty()) {
             this.currentStageName = stages.get(0);
         } else {
@@ -90,6 +94,29 @@ public class LoadingScreen {
 
     public boolean isVisible() {
         return visible;
+    }
+
+    /**
+     * Reports an error during world loading and displays it on the loading screen.
+     */
+    public void reportError(String error) {
+        this.errorMessage = error;
+        this.hasError = true;
+        System.err.println("LoadingScreen: Reported error - " + error);
+    }
+
+    /**
+     * Checks if there is currently an error being displayed.
+     */
+    public boolean hasError() {
+        return hasError;
+    }
+
+    /**
+     * Gets the current error message, if any.
+     */
+    public String getErrorMessage() {
+        return errorMessage;
     }
 
     public void render(int windowWidth, int windowHeight) {
@@ -170,6 +197,43 @@ public class LoadingScreen {
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, uiRenderer.nvgRGBA(220, 220, 220, 255, NVGColor.malloc(stack)));
             nvgText(vg, centerX, barY + barHeight / 2, progressText);
+
+            // Error message display (if there's an error)
+            if (hasError && errorMessage != null) {
+                float errorFontSize = 18;
+                String errorFont = (uiRenderer.getTextWidth("Test", errorFontSize, "sans") > 0) ? "sans" : "minecraft";
+                
+                nvgFontSize(vg, errorFontSize);
+                nvgFontFace(vg, errorFont);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                
+                // Red error background
+                float errorBoxWidth = Math.min(600, windowWidth - 100);
+                float errorBoxHeight = 80;
+                float errorBoxX = centerX - errorBoxWidth / 2;
+                float errorBoxY = centerY + 120;
+                
+                nvgBeginPath(vg);
+                nvgRect(vg, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight);
+                nvgFillColor(vg, uiRenderer.nvgRGBA(120, 20, 20, 200, NVGColor.malloc(stack))); // Dark red background
+                nvgFill(vg);
+                
+                // Error border
+                nvgBeginPath(vg);
+                nvgRect(vg, errorBoxX, errorBoxY, errorBoxWidth, errorBoxHeight);
+                nvgStrokeWidth(vg, 2.0f);
+                nvgStrokeColor(vg, uiRenderer.nvgRGBA(200, 50, 50, 255, NVGColor.malloc(stack))); // Red border
+                nvgStroke(vg);
+                
+                // Error text
+                nvgFillColor(vg, uiRenderer.nvgRGBA(255, 200, 200, 255, NVGColor.malloc(stack))); // Light red text
+                nvgText(vg, centerX, errorBoxY + errorBoxHeight / 2, errorMessage);
+                
+                // "Press ESC to return to menu" instruction
+                nvgFontSize(vg, 14);
+                nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, errorBoxY + errorBoxHeight + 25, "Press ESC to return to main menu");
+            }
 
         } catch (Exception e) {
             System.err.println("Error rendering loading screen: " + e.getMessage());

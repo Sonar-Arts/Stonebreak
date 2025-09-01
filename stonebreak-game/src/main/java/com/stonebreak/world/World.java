@@ -61,6 +61,10 @@ public class World {
     
     // Block drop management
     private final BlockDropManager blockDropManager;
+    
+    // Loading state management for memory optimization
+    private volatile boolean isWorldLoading = true; // Start as true for initial generation
+    private volatile long worldLoadingStartTime = System.currentTimeMillis();
 
     public World() {
         this.seed = System.currentTimeMillis();
@@ -148,23 +152,38 @@ public class World {
         // Use the new chunk loader to manage loading/unloading
         chunkManager.update(Game.getPlayer());
 
-        // CRITICAL: Proactive memory management with multiple thresholds
+        // CRITICAL: Proactive memory management with different thresholds for loading vs runtime
         int loadedChunks = getLoadedChunkCount();
-        if (loadedChunks > 800) { // Critical emergency - extreme chunk overload
-            System.out.println("CRITICAL EMERGENCY: " + loadedChunks + " chunks loaded, triggering massive unloading");
-            forceUnloadDistantChunks(400); // Unload up to 400 chunks
-        } else if (loadedChunks > 500) { // Emergency threshold - well above normal 361 chunk max
-            System.out.println("EMERGENCY: " + loadedChunks + " chunks loaded, triggering emergency unloading");
-            forceUnloadDistantChunks(200); // Unload up to 200 chunks
-        } else if (loadedChunks > 400) { // Warning threshold - above expected maximum
-            // Clean up position cache proactively
-            if (chunkPositionCache.size() > loadedChunks * 2) {
-                cleanupChunkPositionCache();
-                System.out.println("WARNING: " + loadedChunks + " chunks loaded, cleaned position cache");
+        
+        if (isWorldLoading) {
+            // During world loading, be more tolerant of chunk accumulation
+            // but still protect against extreme memory usage
+            if (loadedChunks > 1200) { // Much higher threshold during loading
+                System.out.println("LOADING CRITICAL: " + loadedChunks + " chunks during world loading, triggering emergency cleanup");
+                forceUnloadDistantChunks(600); // More aggressive cleanup
+            } else if (loadedChunks > 800) { 
+                System.out.println("LOADING WARNING: " + loadedChunks + " chunks during world loading, light cleanup");
+                forceUnloadDistantChunks(200); // Light cleanup
             }
-            // Force GC on high chunk count (less frequent logging)
-            if (loadedChunks % 50 == 0) {
-                Game.forceGCAndReport("Proactive GC at " + loadedChunks + " chunks");
+            // Don't do routine cleanup during loading - let initial generation complete
+        } else {
+            // Runtime memory management - original aggressive thresholds
+            if (loadedChunks > 800) { // Critical emergency - extreme chunk overload
+                System.out.println("CRITICAL EMERGENCY: " + loadedChunks + " chunks loaded, triggering massive unloading");
+                forceUnloadDistantChunks(400); // Unload up to 400 chunks
+            } else if (loadedChunks > 500) { // Emergency threshold - well above normal 361 chunk max
+                System.out.println("EMERGENCY: " + loadedChunks + " chunks loaded, triggering emergency unloading");
+                forceUnloadDistantChunks(200); // Unload up to 200 chunks
+            } else if (loadedChunks > 400) { // Warning threshold - above expected maximum
+                // Clean up position cache proactively
+                if (chunkPositionCache.size() > loadedChunks * 2) {
+                    cleanupChunkPositionCache();
+                    System.out.println("WARNING: " + loadedChunks + " chunks loaded, cleaned position cache");
+                }
+                // Force GC on high chunk count (less frequent logging)
+                if (loadedChunks % 50 == 0) {
+                    Game.forceGCAndReport("Proactive GC at " + loadedChunks + " chunks");
+                }
             }
         }
 
@@ -234,14 +253,22 @@ public class World {
     /**
      * Gets the chunk at the specified position.
      * If the chunk doesn't exist, it will be generated.
+     * Returns null if chunk generation fails critically.
      */
     public Chunk getChunkAt(int x, int z) {
         ChunkPosition position = getCachedChunkPosition(x, z);
         Chunk chunk = chunks.get(position);
         
         if (chunk == null) {
-            // Use the new safe method for generation, registration, and queueing
-            chunk = safelyGenerateAndRegisterChunk(x, z);
+            try {
+                // Use the new safe method for generation, registration, and queueing
+                chunk = safelyGenerateAndRegisterChunk(x, z);
+            } catch (ChunkGenerationException e) {
+                // Log the detailed error but return null to indicate failure
+                System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + "): " + e.getMessage());
+                // During world loading, this failure should be detected and handled by loading validation
+                return null;
+            }
         }
         
         return chunk;
@@ -941,8 +968,9 @@ public class World {
 /**
      * Safely generates a new chunk, registers it, and queues it for mesh building.
      * Handles exceptions during generation/registration and prevents adding null to collections.
+     * Now throws ChunkGenerationException to propagate critical errors up the call stack.
      */
-    private Chunk safelyGenerateAndRegisterChunk(int chunkX, int chunkZ) {
+    private Chunk safelyGenerateAndRegisterChunk(int chunkX, int chunkZ) throws ChunkGenerationException {
         ChunkPosition position = getCachedChunkPosition(chunkX, chunkZ);
         // This check is a safeguard; callers (getChunkAt, getChunksAroundPlayer) 
         // usually check if the chunk exists before calling a generation path.
@@ -959,8 +987,9 @@ public class World {
             if (newGeneratedChunk == null) {
                 // This indicates a problem in generateChunk if it's designed to return null on error
                 // instead of throwing. ConcurrentHashMap cannot store null values.
-                System.err.println("CRITICAL: generateChunk returned null for position (" + chunkX + ", " + chunkZ + ")");
-                return null; // Cannot register null
+                String errorMsg = "CRITICAL: generateBareChunk returned null for position (" + chunkX + ", " + chunkZ + ")";
+                System.err.println(errorMsg);
+                throw new ChunkGenerationException(errorMsg, chunkX, chunkZ);
             }
             
             // Attempt to add the new chunk to the map.
@@ -991,15 +1020,21 @@ public class World {
                 conditionallyScheduleMeshBuild(newGeneratedChunk);
             }
             return newGeneratedChunk;
+        } catch (ChunkGenerationException e) {
+            // Re-throw our custom exception to preserve the error context
+            chunks.remove(position); // Clean up if put happened before another error
+            throw e;
         } catch (Exception e) {
-            // Catch any exception from generateChunk or map operations (e.g., if generateChunk throws)
+            // Catch any other exception from generateChunk or map operations
             System.err.println("Exception during chunk generation or registration at (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
             System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
             // Ensure the potentially problematic position is not left in an inconsistent state in 'chunks'
             // if 'put' partially succeeded before an error, though 'put' on CHM is atomic.
             // If an error occurred, the chunk is not considered successfully registered.
             chunks.remove(position); // Clean up if put happened before another error
-            return null; // Indicate failure
+            
+            // Throw ChunkGenerationException to propagate the error properly
+            throw new ChunkGenerationException("Chunk generation failed: " + e.getMessage(), chunkX, chunkZ, e);
         }
     }
     /**
@@ -1063,6 +1098,7 @@ public class World {
     /**
      * Conditionally schedules a chunk for mesh data building if it's not already
      * built, being built, or scheduled. Manages the 'meshDataGenerationScheduledOrInProgress' flag.
+     * Now includes enhanced race condition protection.
      */
     private void conditionallyScheduleMeshBuild(Chunk chunkToBuild) {
         if (chunkToBuild == null) {
@@ -1087,7 +1123,14 @@ public class World {
 
             // If we reach here, the chunk needs its mesh data generated.
             chunkToBuild.setMeshDataGenerationScheduledOrInProgress(true);
-            chunksToBuildMesh.add(chunkToBuild); // Add to the set for the worker pool to pick up
+            
+            // Additional safety: ensure thread-safe addition to the concurrent collection
+            boolean addedSuccessfully = chunksToBuildMesh.add(chunkToBuild);
+            if (!addedSuccessfully) {
+                // This shouldn't happen with a Set, but if it does, reset the flag
+                System.err.println("WARNING: Failed to add chunk to mesh build queue (already present?) - resetting flag");
+                chunkToBuild.setMeshDataGenerationScheduledOrInProgress(false);
+            }
         }
     }
 
@@ -1220,9 +1263,11 @@ public class World {
     }
       /**
      * Returns chunks around the specified position within render distance.
+     * Now includes loading state validation to detect critical chunk generation failures.
      */
     public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
         Map<ChunkPosition, Chunk> visibleChunks = new HashMap<>();
+        java.util.List<String> failedChunks = new java.util.ArrayList<>();
         
         // First pass: Generate all chunks that should be visible
         // First pass: Ensure chunks within render distance are loaded and populated
@@ -1242,6 +1287,26 @@ public class World {
                         conditionallyScheduleMeshBuild(chunk);
                     }
                     visibleChunks.put(position, chunk); // Add to visible map
+                } else {
+                    // Critical chunk generation failure - record it for validation
+                    failedChunks.add("(" + x + ", " + z + ")");
+                }
+            }
+        }
+        
+        // Validate critical chunk loading - fail fast if too many chunks failed
+        if (!failedChunks.isEmpty()) {
+            String errorMsg = "CRITICAL: Failed to generate " + failedChunks.size() + " chunks during world loading: " + failedChunks;
+            System.err.println(errorMsg);
+            
+            // If more than 25% of chunks failed, this indicates a serious world loading problem
+            int totalChunks = (RENDER_DISTANCE * 2 + 1) * (RENDER_DISTANCE * 2 + 1);
+            if (failedChunks.size() > totalChunks * 0.25) {
+                System.err.println("FATAL: Too many chunks failed to generate (" + failedChunks.size() + "/" + totalChunks + "). World loading has been compromised.");
+                // Notify loading screen of critical failure
+                Game game = Game.getInstance();
+                if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
+                    game.getLoadingScreen().reportError("Critical world generation failure - too many chunks failed");
                 }
             }
         }
@@ -1477,6 +1542,64 @@ public class World {
     }
     
     /**
+     * Clears world data for switching between worlds without shutting down thread pools.
+     * This preserves the rendering system while clearing chunk data.
+     */
+    public void clearWorldData() {
+        System.out.println("Clearing world data for world switching...");
+        
+        // Clear GPU resources for existing chunks before clearing the map
+        for (Chunk chunk : chunks.values()) {
+            if (chunk != null) {
+                chunk.cleanupGpuResources();
+            }
+        }
+        
+        // Clear all chunk-related maps and queues
+        chunks.clear();
+        chunkPositionCache.clear();
+        chunksToBuildMesh.clear();
+        chunksReadyForGLUpload.clear();
+        chunksFailedToBuildMesh.clear();
+        chunkRetryCount.clear();
+        chunksPendingGpuCleanup.clear();
+        
+        // Reset loading state
+        this.isWorldLoading = true;
+        this.worldLoadingStartTime = System.currentTimeMillis();
+        
+        // Reset any managers
+        if (snowLayerManager != null) {
+            snowLayerManager.clear();
+        }
+        if (blockDropManager != null) {
+            blockDropManager.clearAllDrops();
+        }
+        
+        System.out.println("World data cleared successfully");
+    }
+    
+    /**
+     * Completely resets the world state for switching between different worlds.
+     * This clears all chunks, caches, and reinitializes with a new seed.
+     */
+    public void reset(long newSeed) {
+        System.out.println("Resetting world state with new seed: " + newSeed);
+        
+        // Clear world data without shutting down threads
+        clearWorldData();
+        
+        // Reset world state with new seed
+        this.seed = newSeed;
+        this.random = new Random(newSeed);
+        this.terrainNoise = new NoiseGenerator(newSeed);
+        this.temperatureNoise = new NoiseGenerator(newSeed + 1);
+        this.continentalnessNoise = new NoiseGenerator(newSeed + 2);
+        
+        System.out.println("World state reset completed with seed: " + newSeed);
+    }
+    
+    /**
      * Sets the seed for world generation and reinitializes the noise generators.
      * This will affect future chunk generation but won't regenerate existing chunks.
      */
@@ -1494,6 +1617,29 @@ public class World {
      */
     public long getSeed() {
         return seed;
+    }
+    
+    /**
+     * Marks the world as finished loading to switch to runtime memory management.
+     */
+    public void setWorldLoadingComplete() {
+        this.isWorldLoading = false;
+        long loadingTime = System.currentTimeMillis() - worldLoadingStartTime;
+        System.out.println("World loading completed in " + loadingTime + "ms. Switching to runtime memory management.");
+    }
+    
+    /**
+     * Checks if the world is currently in the loading phase.
+     */
+    public boolean isWorldLoading() {
+        return isWorldLoading;
+    }
+    
+    /**
+     * Gets the time when world loading started.
+     */
+    public long getWorldLoadingStartTime() {
+        return worldLoadingStartTime;
     }
     
     /**

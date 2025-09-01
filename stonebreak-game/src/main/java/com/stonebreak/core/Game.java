@@ -992,6 +992,36 @@ public class Game {
     }
     
     /**
+     * Resets and cleans up world state when switching between worlds.
+     * This ensures no residual data from previous worlds persists while keeping rendering intact.
+     */
+    public void resetWorld() {
+        System.out.println("Resetting world state for world switching...");
+        
+        // Clear world data without shutting down thread pools
+        if (world != null) {
+            world.clearWorldData();
+        }
+        
+        // Clean up entity system and recreate it
+        if (entityManager != null) {
+            entityManager.cleanup();
+            // Recreate entity manager for the same world instance
+            entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        }
+        
+        // Reset all player data (position, inventory, state) for the new world
+        if (player != null) {
+            player.resetPlayerData();
+        }
+        
+        // Clear any cached world-related state
+        hasInitializedMouseCaptureAfterLoading = false;
+        
+        System.out.println("World state reset completed.");
+    }
+    
+    /**
      * Cleanup game resources.
      */
     public void cleanup() {
@@ -1213,6 +1243,16 @@ public class Game {
      * This method should be called when transitioning from main menu to game.
      */
     public void startWorldGeneration() {
+        // Create world instance if it doesn't exist, otherwise just clear its data
+        if (world == null) {
+            this.world = new World();
+            // Initialize entity system for the new world
+            this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        } else {
+            // Reset existing world state while preserving thread pools
+            resetWorld();
+        }
+        
         if (loadingScreen != null) {
             loadingScreen.show(); // This sets state to LOADING
             System.out.println("Started world generation with loading screen");
@@ -1227,6 +1267,18 @@ public class Game {
      * This method should be called when creating or loading a specific world.
      */
     public void startWorldGeneration(String worldName, long seed) {
+        // Create world instance if it doesn't exist, otherwise reset and set seed
+        if (world == null) {
+            this.world = new World();
+            this.world.setSeed(seed);
+            // Initialize entity system for the new world
+            this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        } else {
+            // Reset existing world state and apply new seed
+            resetWorld();
+            this.world.setSeed(seed);
+        }
+        
         if (loadingScreen != null) {
             loadingScreen.show(); // This sets state to LOADING
             System.out.println("Started world generation for world: " + worldName + " with seed: " + seed);
@@ -1237,10 +1289,14 @@ public class Game {
     }
     
     /**
-     * Performs initial world generation with progress updates.
+     * Performs initial world generation with progress updates and timeout protection.
      * This runs in a background thread while the loading screen is displayed.
      */
     private void performInitialWorldGeneration() {
+        final long WORLD_GENERATION_TIMEOUT = 120000; // 2 minutes timeout
+        final long CHUNK_GENERATION_TIMEOUT = 10000;  // 10 seconds per chunk timeout
+        final long startTime = System.currentTimeMillis();
+        
         try {
             // Update progress through the loading screen
             if (loadingScreen != null) {
@@ -1264,35 +1320,59 @@ public class Game {
                     loadingScreen.updateProgress("Generating Base Terrain Shape");
                 }
                 
-                // Generate chunks in expanding rings
+                // Generate chunks in expanding rings with timeout protection
                 long lastProgressUpdate = System.currentTimeMillis();
                 int chunksGenerated = 0;
+                boolean timedOut = false;
                 
-                for (int ring = 0; ring <= renderDistance; ring++) {
-                    for (int x = playerChunkX - ring; x <= playerChunkX + ring; x++) {
-                        for (int z = playerChunkZ - ring; z <= playerChunkZ + ring; z++) {
+                for (int ring = 0; ring <= renderDistance && !timedOut; ring++) {
+                    for (int x = playerChunkX - ring; x <= playerChunkX + ring && !timedOut; x++) {
+                        for (int z = playerChunkZ - ring; z <= playerChunkZ + ring && !timedOut; z++) {
+                            // Check overall timeout
+                            long currentTime = System.currentTimeMillis();
+                            if (currentTime - startTime > WORLD_GENERATION_TIMEOUT) {
+                                timedOut = true;
+                                System.err.println("TIMEOUT: World generation exceeded " + (WORLD_GENERATION_TIMEOUT/1000) + " seconds");
+                                if (loadingScreen != null) {
+                                    loadingScreen.reportError("World generation timed out - please try again");
+                                }
+                                break;
+                            }
+                            
                             // Only generate chunks on the edge of the current ring
                             if (ring == 0 || x == playerChunkX - ring || x == playerChunkX + ring ||
                                 z == playerChunkZ - ring || z == playerChunkZ + ring) {
                                 
-                                world.getChunkAt(x, z); // This generates the chunk
+                                long chunkStartTime = System.currentTimeMillis();
+                                com.stonebreak.world.Chunk chunk = world.getChunkAt(x, z); // This generates the chunk
+                                long chunkEndTime = System.currentTimeMillis();
+                                
+                                // Check individual chunk timeout
+                                if (chunkEndTime - chunkStartTime > CHUNK_GENERATION_TIMEOUT) {
+                                    System.err.println("WARNING: Chunk (" + x + ", " + z + ") took " + (chunkEndTime - chunkStartTime) + "ms to generate (timeout threshold: " + CHUNK_GENERATION_TIMEOUT + "ms)");
+                                }
+                                
+                                // Check if chunk generation failed
+                                if (chunk == null) {
+                                    System.err.println("ERROR: Failed to generate critical spawn chunk at (" + x + ", " + z + ")");
+                                }
+                                
                                 chunksGenerated++;
                                 
                                 // Rate limiting: pause every few chunks to prevent excessive CPU usage
                                 if (chunksGenerated % 3 == 0) {
-                                    long currentTime = System.currentTimeMillis();
+                                    currentTime = System.currentTimeMillis();
                                     // Rate limit progress updates to 50ms intervals
-                                    if (currentTime - lastProgressUpdate < 50) {
-                                        continue;
+                                    if (currentTime - lastProgressUpdate >= 50) {
+                                        lastProgressUpdate = currentTime;
                                     }
-                                    lastProgressUpdate = System.currentTimeMillis();
                                 }
                             }
                         }
                     }
                     
-                    // Update progress based on ring completion
-                    if (loadingScreen != null) {
+                    // Update progress based on ring completion (if not timed out)
+                    if (!timedOut && loadingScreen != null) {
                         switch (ring) {
                             case 1 -> loadingScreen.updateProgress("Determining Biomes");
                             case 2 -> loadingScreen.updateProgress("Applying Biome Materials");
@@ -1302,11 +1382,28 @@ public class Game {
                     }
                 }
                 
-                // Give time for all chunks to finish processing
-                Thread.sleep(500);
-                
-                // Complete world generation
-                completeWorldGeneration();
+                // Only proceed if we didn't time out
+                if (!timedOut) {
+                    // Give time for all chunks to finish processing
+                    Thread.sleep(500);
+                    
+                    // Validate loading progress before completion
+                    if (validateWorldLoadingComplete()) {
+                        // Complete world generation
+                        completeWorldGeneration();
+                    } else {
+                        // Loading validation failed
+                        System.err.println("World loading validation failed - staying on loading screen");
+                        if (loadingScreen != null) {
+                            loadingScreen.reportError("World loading validation failed - not enough chunks generated successfully");
+                        }
+                        return; // Stay on loading screen with error message
+                    }
+                } else {
+                    // World generation timed out - don't complete, stay on loading screen
+                    System.err.println("World generation was aborted due to timeout");
+                    return; // Stay on loading screen with error message
+                }
                 
             }
         } catch (InterruptedException e) {
@@ -1411,12 +1508,61 @@ public class Game {
     }
     
     /**
+     * Validates that world loading has completed successfully before transitioning to playing.
+     * Checks that critical spawn chunks are loaded and valid.
+     */
+    private boolean validateWorldLoadingComplete() {
+        if (world == null || player == null) {
+            System.err.println("VALIDATION FAILED: World or player is null");
+            return false;
+        }
+        
+        int playerChunkX = (int) Math.floor(player.getPosition().x / com.stonebreak.world.World.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(player.getPosition().z / com.stonebreak.world.World.CHUNK_SIZE);
+        int criticalRadius = 2; // Must have at least 2 chunks around spawn
+        
+        int validChunks = 0;
+        int totalCriticalChunks = 0;
+        
+        for (int x = playerChunkX - criticalRadius; x <= playerChunkX + criticalRadius; x++) {
+            for (int z = playerChunkZ - criticalRadius; z <= playerChunkZ + criticalRadius; z++) {
+                totalCriticalChunks++;
+                com.stonebreak.world.Chunk chunk = world.getChunkAt(x, z);
+                if (chunk != null && chunk.areFeaturesPopulated()) {
+                    validChunks++;
+                } else {
+                    System.err.println("VALIDATION: Critical chunk (" + x + ", " + z + ") is " + 
+                        (chunk == null ? "null" : "not populated"));
+                }
+            }
+        }
+        
+        double successRate = (double) validChunks / totalCriticalChunks;
+        System.out.println("VALIDATION: " + validChunks + "/" + totalCriticalChunks + " critical chunks valid (" + 
+            String.format("%.1f%%", successRate * 100) + ")");
+        
+        // Require at least 80% of critical chunks to be valid
+        if (successRate >= 0.8) {
+            System.out.println("VALIDATION: World loading validation passed");
+            return true;
+        } else {
+            System.err.println("VALIDATION: World loading validation failed - insufficient valid chunks");
+            return false;
+        }
+    }
+    
+    /**
      * Completes world generation and transitions to playing.
      * This method should be called when initial world generation is complete.
      */
     public void completeWorldGeneration() {
         if (loadingScreen != null) {
             loadingScreen.hide(); // This sets state to PLAYING
+            
+            // Mark world as finished loading for memory management optimization
+            if (world != null) {
+                world.setWorldLoadingComplete();
+            }
             
             // Force mouse capture update after loading screen completion
             if (mouseCaptureManager != null) {

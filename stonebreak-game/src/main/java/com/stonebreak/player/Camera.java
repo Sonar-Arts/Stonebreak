@@ -133,4 +133,14 @@ public class Camera {
     public Vector3f getRight() {
         return right;
     }
+    
+    /**
+     * Resets the camera to default orientation for a new world.
+     */
+    public void reset() {
+        this.yaw = YAW;
+        this.pitch = PITCH;
+        this.front.set(0.0f, 0.0f, -1.0f);
+        updateCameraVectors();
+    }
 }

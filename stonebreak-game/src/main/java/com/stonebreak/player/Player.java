@@ -1584,4 +1584,44 @@ public class Player {      // Player settings
             }
         }        return false;
     }
+    
+    /**
+     * Resets player data for switching to a new world.
+     * This resets position, velocity, state, and inventory while preserving world-specific data.
+     */
+    public void resetPlayerData() {
+        System.out.println("Resetting player data for new world...");
+        
+        // Reset position to default spawn
+        this.position.set(0, 100, 0);
+        
+        // Reset velocity and physics state  
+        this.velocity.set(0, 0, 0);
+        this.onGround = false;
+        this.physicallyInWater = false;
+        this.wasInWaterLastFrame = false;
+        this.justExitedWaterThisFrame = false;
+        this.waterExitTime = 0.0f;
+        
+        // Reset attack/animation state
+        this.isAttacking = false;
+        this.attackAnimationTime = 0.0f;
+        
+        // Reset block breaking state
+        this.breakingBlock = null;
+        this.breakingProgress = 0.0f;
+        this.breakingTime = 0.0f;
+        
+        // Reset inventory to starting items (world-specific inventory)
+        if (inventory != null) {
+            inventory.resetToStartingItems();
+        }
+        
+        // Reset camera to default position (looking forward)
+        if (camera != null) {
+            camera.reset();
+        }
+        
+        System.out.println("Player data reset completed for new world");
+    }
 }

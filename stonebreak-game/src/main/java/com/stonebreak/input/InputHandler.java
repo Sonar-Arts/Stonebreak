@@ -543,6 +543,8 @@ public class InputHandler {
                     }
                     // Check quit button
                     else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
+                        // Clean up world state before returning to main menu
+                        Game.getInstance().resetWorld();
                         // Return to main menu
                         Game.getInstance().setState(GameState.MAIN_MENU);
                         Game.getInstance().getPauseMenu().setVisible(false);
@@ -714,16 +716,16 @@ public class InputHandler {
      * Handle character input for chat and recipe book search
      */
     public void handleCharacterInput(char character) {
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
-        if (chatSystem != null && chatSystem.isOpen()) {
-            chatSystem.handleCharInput(character);
-            return;
-        }
-        
-        // Handle world select screen input
+        // Handle world select screen input FIRST - highest priority for input fields
         WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
         if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
             worldSelectScreen.handleCharacterInput(character);
+            return;
+        }
+        
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            chatSystem.handleCharInput(character);
             return;
         }
         
@@ -738,7 +740,14 @@ public class InputHandler {
     /**
      * Handle keyboard input for chat and recipe book (backspace, enter, etc.)
      */
-    public void handleKeyInput(int key, int action) {
+    public void handleKeyInput(int key, int action, int mods) {
+        // Handle world select screen input FIRST - highest priority for input fields
+        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
+        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+            worldSelectScreen.handleKeyInput(key, action, mods);
+            return;
+        }
+        
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             // When chat is open, only process chat-related keys
@@ -757,13 +766,6 @@ public class InputHandler {
                 }
             }
             return; // Block all other key processing when chat is open
-        }
-        
-        // Handle world select screen input
-        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
-        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
-            worldSelectScreen.handleKeyInput(key, action);
-            return;
         }
         
         // Handle recipe book search input
