@@ -469,9 +469,7 @@ public class TextureAtlas {
      * @return Array of texture coordinates [u1, v1, u2, v2]
      */
     public float[] getTextureCoordinatesForBlock(BlockType blockType) {
-        System.out.println("[TextureAtlas] getTextureCoordinatesForBlock called for: " + (blockType != null ? blockType.name() : "null"));
         if (!metadataLoaded || atlasMetadata == null) {
-            System.out.println("[TextureAtlas] Metadata not loaded (metadataLoaded=" + metadataLoaded + ", atlasMetadata=" + (atlasMetadata != null ? "present" : "null") + ")");
             return getFallbackCoordinates();
         }
         
@@ -489,8 +487,6 @@ public class TextureAtlas {
         
         if (texture != null) {
             float[] coords = texture.getUVCoordinates(actualAtlasWidth, actualAtlasHeight);
-            System.out.println("[TextureAtlas] Found texture for " + blockType.name() + " -> " + blockName + ": " + 
-                              "(" + texture.getX() + "," + texture.getY() + ") UV=[" + coords[0] + "," + coords[1] + "," + coords[2] + "," + coords[3] + "]");
             metadataCache.put("block_" + blockType.name(), 
                 new AtlasMetadataCache.TextureCoordinates(
                     blockName, coords[0], coords[1], coords[2], coords[3],
@@ -500,7 +496,6 @@ public class TextureAtlas {
             return coords;
         }
         
-        System.out.println("[TextureAtlas] No texture found for " + blockType.name() + " -> " + blockName + ", using error texture");
         return getErrorTextureCoordinates();
     }
     
@@ -556,12 +551,10 @@ public class TextureAtlas {
             }
             if (errorTexture != null) {
                 float[] coords = errorTexture.getUVCoordinates(actualAtlasWidth, actualAtlasHeight);
-                System.out.println("[TextureAtlas] Using error texture: " + errorTexture.getX() + "," + errorTexture.getY() + " UV=[" + coords[0] + "," + coords[1] + "," + coords[2] + "," + coords[3] + "]");
                 return coords;
             }
         }
         // Fallback to default coordinates
-        System.out.println("[TextureAtlas] No error texture found, using fallback coordinates");
         return getFallbackCoordinates();
     }
     
@@ -599,8 +592,6 @@ public class TextureAtlas {
         AtlasMetadata.TextureEntry texture = atlasMetadata.findBlockTexture(blockName, face);
         if (texture != null) {
             float[] coords = texture.getUVCoordinates(actualAtlasWidth, actualAtlasHeight);
-            System.out.println("[TextureAtlas] Found face texture for " + blockType.name() + "_" + face + " -> " + blockName + "_" + face + ": " + 
-                              "(" + texture.getX() + "," + texture.getY() + ") UV=[" + coords[0] + "," + coords[1] + "," + coords[2] + "," + coords[3] + "]");
             metadataCache.put(cacheKey, 
                 new AtlasMetadataCache.TextureCoordinates(
                     blockName + "_" + face, coords[0], coords[1], coords[2], coords[3],
@@ -610,7 +601,6 @@ public class TextureAtlas {
             return coords;
         }
         
-        System.out.println("[TextureAtlas] No face texture found for " + blockType.name() + "_" + face + " -> " + blockName + "_" + face + ", using error texture");
         return getErrorTextureCoordinates();
     }
     
@@ -668,6 +658,7 @@ public class TextureAtlas {
         switch (itemType) {
             case STICK: return "stick";
             case WOODEN_PICKAXE: return "wooden_pickaxe";
+            case WOODEN_AXE: return "wooden_axe";
             default: return itemType.name().toLowerCase();
         }
     }
@@ -680,7 +671,6 @@ public class TextureAtlas {
      * @return Array of UV coordinates [u1, v1, u2, v2]
      */
     public float[] getUVCoordinates(int atlasX, int atlasY) {
-        System.out.println("[TextureAtlas] getUVCoordinates called for position: (" + atlasX + "," + atlasY + ")");
         if (metadataLoaded && actualAtlasWidth > 0 && actualAtlasHeight > 0) {
             // Use actual atlas dimensions for precise calculation
             float pixelX = atlasX * texturePixelSize;
@@ -690,18 +680,15 @@ public class TextureAtlas {
             float u2 = (pixelX + texturePixelSize) / actualAtlasWidth;
             float v2 = (pixelY + texturePixelSize) / actualAtlasHeight;
             
-            System.out.println("[TextureAtlas] Using metadata-based coordinates: UV=[" + u1 + "," + v1 + "," + u2 + "," + v2 + "]");
             return new float[]{u1, v1, u2, v2};
         } else {
             // Fallback to grid-based calculation
-            System.out.println("[TextureAtlas] Using fallback grid-based calculation");
             float tileSize = 1.0f / textureSize;
             float u1 = atlasX * tileSize;
             float v1 = atlasY * tileSize;
             float u2 = u1 + tileSize;
             float v2 = v1 + tileSize;
             
-            System.out.println("[TextureAtlas] Fallback coordinates: UV=[" + u1 + "," + v1 + "," + u2 + "," + v2 + "]");
             return new float[]{u1, v1, u2, v2};
         }
     }
@@ -714,8 +701,6 @@ public class TextureAtlas {
      * @return Array of UV coordinates [u1, v1, u2, v2]
      */
     public float[] getBlockFaceUVs(BlockType blockType, BlockType.Face face) {
-        System.out.println("[TextureAtlas] getBlockFaceUVs called for: " + (blockType != null ? blockType.name() : "null") + 
-                          " face: " + (face != null ? face.name() : "null"));
         if (face == null) {
             return getTextureCoordinatesForBlock(blockType);
         }

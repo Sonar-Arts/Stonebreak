@@ -154,10 +154,18 @@ public class BlockDropRenderer {
             Map<Item, List<BlockDrop>> dropsByType = new HashMap<>();
             for (BlockDrop drop : sortedDrops) {
                 int itemId = drop.getBlockTypeId();
-                Item item = BlockType.getById(itemId);
+                Item item = null;
+                
+                // First try ItemType since tools/sticks are items, not blocks
+                item = ItemType.getById(itemId);
                 if (item == null) {
-                    item = ItemType.getById(itemId);
+                    // If not found in ItemType, try BlockType (but exclude AIR as it's a fallback)
+                    BlockType blockType = BlockType.getById(itemId);
+                    if (blockType != null && blockType != BlockType.AIR) {
+                        item = blockType;
+                    }
                 }
+                
                 if (item != null) {
                     dropsByType.computeIfAbsent(item, k -> new ArrayList<>()).add(drop);
                 }
@@ -216,7 +224,62 @@ public class BlockDropRenderer {
             return;
         }
         
-        // Get or create cached VAO for this item type
+        // Determine if this is an item (tools, sticks) or a block
+        boolean isItem = item instanceof ItemType;
+        
+        
+        if (isItem) {
+            // Render items as flat 2D sprites
+            renderItem2DDropsBatch((ItemType) item, drops);
+        } else {
+            // Render blocks as 3D cubes
+            renderBlock3DDropsBatch(item, drops);
+        }
+    }
+    
+    /**
+     * Render items (tools, sticks) as flat 2D sprites when dropped.
+     */
+    private void renderItem2DDropsBatch(ItemType itemType, List<BlockDrop> drops) {
+        // Get or create cached VAO for this item type (2D sprite)
+        int vao = dropCubeVaoCache.computeIfAbsent(itemType, item -> createItem2DSpriteVaoIsolated((ItemType) item));
+        
+        // Set up OpenGL state for transparent 2D sprites
+        boolean cullFaceWasEnabled = glIsEnabled(GL_CULL_FACE);
+        glDisable(GL_CULL_FACE); // Disable culling so sprites are visible from both sides
+        
+        GL30.glBindVertexArray(vao);
+        
+        for (BlockDrop drop : drops) {
+            // Create model matrix for this drop
+            Matrix4f modelMatrix = new Matrix4f();
+            modelMatrix.translate(drop.getPosition());
+            // For 2D items, make them spin around Y-axis and add some bobbing
+            modelMatrix.rotateY((float) java.lang.Math.toRadians(drop.getRotationY()));
+            // Add slight upward tilt to make the item more visible
+            modelMatrix.rotateX((float) java.lang.Math.toRadians(-15.0f)); // Tilt back slightly 
+            modelMatrix.scale(0.6f); // Make items more visible
+            
+            // Set model matrix for this drop
+            isolatedShaderProgram.setUniform("modelMatrix", modelMatrix);
+            
+            // Draw the 2D sprite (single quad - 6 indices)
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }
+        
+        GL30.glBindVertexArray(0);
+        
+        // Restore face culling state
+        if (cullFaceWasEnabled) {
+            glEnable(GL_CULL_FACE);
+        }
+    }
+    
+    /**
+     * Render blocks as traditional 3D cubes when dropped.
+     */
+    private void renderBlock3DDropsBatch(Item item, List<BlockDrop> drops) {
+        // Get or create cached VAO for this block type (3D cube)
         int vao = dropCubeVaoCache.computeIfAbsent(item, this::createDropCubeVaoIsolated);
         
         GL30.glBindVertexArray(vao);
@@ -231,11 +294,77 @@ public class BlockDropRenderer {
             // Set model matrix for this drop
             isolatedShaderProgram.setUniform("modelMatrix", modelMatrix);
             
-            // Draw the drop
+            // Draw the 3D cube (36 indices)
             glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
         }
         
         GL30.glBindVertexArray(0);
+    }
+    
+    /**
+     * Create a 2D sprite VAO for isolated rendering of items (tools, sticks).
+     */
+    private int createItem2DSpriteVaoIsolated(ItemType itemType) {
+        // Get texture coordinates using modern atlas system
+        float[] uvCoords = {0.0f, 0.0f, 1.0f, 1.0f}; // Default fallback
+        
+        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+        if (game != null && game.getTextureAtlas() != null) {
+            uvCoords = game.getTextureAtlas().getTextureCoordinatesForItem(itemType.getId());
+            
+        }
+        
+        // Create a vertical billboard quad facing forward (like Minecraft item drops)
+        float size = 0.4f;
+        
+        // Vertical quad vertices: position (3), UV (2), normal (3), isWater (1), isAlphaTested (1) = 10 floats
+        float[] vertices = {
+            // Vertical quad facing forward (Z+) - Enable alpha testing for transparency
+            -size, -size, 0.0f,  uvCoords[0], uvCoords[3],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Bottom-left
+             size, -size, 0.0f,  uvCoords[2], uvCoords[3],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Bottom-right  
+             size,  size, 0.0f,  uvCoords[2], uvCoords[1],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Top-right
+            -size,  size, 0.0f,  uvCoords[0], uvCoords[1],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f  // Top-left
+        };
+        
+        // Single quad indices (2 triangles)
+        int[] indices = {
+            0, 1, 2, 2, 3, 0
+        };
+        
+        // Create VAO and upload data
+        int vao = GL30.glGenVertexArrays();
+        int vbo = GL30.glGenBuffers();
+        int ebo = GL30.glGenBuffers();
+        
+        GL30.glBindVertexArray(vao);
+        
+        // Upload vertex data
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
+        java.nio.FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, vertexBuffer, GL30.GL_STATIC_DRAW);
+        
+        // Upload index data
+        GL30.glBindBuffer(GL30.GL_ELEMENT_ARRAY_BUFFER, ebo);
+        java.nio.IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL30.glBufferData(GL30.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL30.GL_STATIC_DRAW);
+        
+        // Set up vertex attributes (same as original)
+        GL30.glVertexAttribPointer(0, 3, GL_FLOAT, false, 10 * Float.BYTES, 0);
+        GL30.glEnableVertexAttribArray(0);
+        GL30.glVertexAttribPointer(1, 2, GL_FLOAT, false, 10 * Float.BYTES, 3 * Float.BYTES);
+        GL30.glEnableVertexAttribArray(1);
+        GL30.glVertexAttribPointer(2, 3, GL_FLOAT, false, 10 * Float.BYTES, 5 * Float.BYTES);
+        GL30.glEnableVertexAttribArray(2);
+        GL30.glVertexAttribPointer(3, 1, GL_FLOAT, false, 10 * Float.BYTES, 8 * Float.BYTES);
+        GL30.glEnableVertexAttribArray(3);
+        GL30.glVertexAttribPointer(4, 1, GL_FLOAT, false, 10 * Float.BYTES, 9 * Float.BYTES);
+        GL30.glEnableVertexAttribArray(4);
+        
+        GL30.glBindVertexArray(0);
+        
+        return vao;
     }
     
     /**
@@ -249,51 +378,106 @@ public class BlockDropRenderer {
         // Create cube vertices at origin with standard size
         float halfSize = 0.5f;
         
-        // Get texture coordinates for this item type
-        float[][] faceTexCoords = new float[6][];
+        // Get texture coordinates using modern atlas system
+        float[][] faceUVs = new float[6][8]; // UV coordinates for each face [u1, v1, u2, v2] stored as [u_tl, v_tl, u_bl, v_bl, u_br, v_br, u_tr, v_tr]
+        
         if (item instanceof BlockType blockType) {
-            // For blocks, get face-specific texture coordinates
-            for (int faceValue = 0; faceValue < 6; faceValue++) {
-                BlockType.Face faceEnum = BlockType.Face.values()[faceValue];
-                faceTexCoords[faceValue] = blockType.getTextureCoords(faceEnum);
+            // For blocks, get face-specific texture coordinates from modern atlas
+            com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+            if (game != null && game.getTextureAtlas() != null) {
+                for (int faceValue = 0; faceValue < 6; faceValue++) {
+                    BlockType.Face faceEnum = BlockType.Face.values()[faceValue];
+                    float[] uvCoords = game.getTextureAtlas().getBlockFaceUVs(blockType, faceEnum);
+                    
+                    // Convert [u1, v1, u2, v2] to face vertices: [u_tl, v_tl, u_bl, v_bl, u_br, v_br, u_tr, v_tr]
+                    faceUVs[faceValue][0] = uvCoords[0]; // u_topLeft
+                    faceUVs[faceValue][1] = uvCoords[1]; // v_topLeft
+                    faceUVs[faceValue][2] = uvCoords[0]; // u_bottomLeft
+                    faceUVs[faceValue][3] = uvCoords[3]; // v_bottomLeft
+                    faceUVs[faceValue][4] = uvCoords[2]; // u_bottomRight
+                    faceUVs[faceValue][5] = uvCoords[3]; // v_bottomRight
+                    faceUVs[faceValue][6] = uvCoords[2]; // u_topRight
+                    faceUVs[faceValue][7] = uvCoords[1]; // v_topRight
+                }
+            } else {
+                // Fallback to legacy system
+                for (int faceValue = 0; faceValue < 6; faceValue++) {
+                    BlockType.Face faceEnum = BlockType.Face.values()[faceValue];
+                    float[] texCoords = blockType.getTextureCoords(faceEnum);
+                    float texX = texCoords[0] / 16.0f;
+                    float texY = texCoords[1] / 16.0f;
+                    float texSize = 1.0f / 16.0f;
+                    
+                    faceUVs[faceValue][0] = texX;
+                    faceUVs[faceValue][1] = texY;
+                    faceUVs[faceValue][2] = texX;
+                    faceUVs[faceValue][3] = texY + texSize;
+                    faceUVs[faceValue][4] = texX + texSize;
+                    faceUVs[faceValue][5] = texY + texSize;
+                    faceUVs[faceValue][6] = texX + texSize;
+                    faceUVs[faceValue][7] = texY;
+                }
             }
         } else if (item != null) {
             // For items (like tools), use the same texture for all faces
-            float[] itemTexCoords = {item.getAtlasX(), item.getAtlasY()};
-            for (int faceValue = 0; faceValue < 6; faceValue++) {
-                faceTexCoords[faceValue] = itemTexCoords;
+            com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+            if (game != null && game.getTextureAtlas() != null && item instanceof ItemType itemType) {
+                float[] uvCoords = game.getTextureAtlas().getTextureCoordinatesForItem(itemType.getId());
+                for (int faceValue = 0; faceValue < 6; faceValue++) {
+                    faceUVs[faceValue][0] = uvCoords[0]; // u_topLeft
+                    faceUVs[faceValue][1] = uvCoords[1]; // v_topLeft
+                    faceUVs[faceValue][2] = uvCoords[0]; // u_bottomLeft
+                    faceUVs[faceValue][3] = uvCoords[3]; // v_bottomLeft
+                    faceUVs[faceValue][4] = uvCoords[2]; // u_bottomRight
+                    faceUVs[faceValue][5] = uvCoords[3]; // v_bottomRight
+                    faceUVs[faceValue][6] = uvCoords[2]; // u_topRight
+                    faceUVs[faceValue][7] = uvCoords[1]; // v_topRight
+                }
+            } else {
+                // Fallback to legacy system
+                float texX = item.getAtlasX() / 16.0f;
+                float texY = item.getAtlasY() / 16.0f;
+                float texSize = 1.0f / 16.0f;
+                
+                for (int faceValue = 0; faceValue < 6; faceValue++) {
+                    faceUVs[faceValue][0] = texX;
+                    faceUVs[faceValue][1] = texY;
+                    faceUVs[faceValue][2] = texX;
+                    faceUVs[faceValue][3] = texY + texSize;
+                    faceUVs[faceValue][4] = texX + texSize;
+                    faceUVs[faceValue][5] = texY + texSize;
+                    faceUVs[faceValue][6] = texX + texSize;
+                    faceUVs[faceValue][7] = texY;
+                }
             }
         } else {
-            // Default texture coordinates if item is null
-            float[] defaultTexCoords = {0.0f, 0.0f};
-            for (int faceValue = 0; faceValue < 6; faceValue++) {
-                faceTexCoords[faceValue] = defaultTexCoords;
+            // Default texture coordinates if item is null (use error texture)
+            com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+            if (game != null && game.getTextureAtlas() != null) {
+                float[] uvCoords = {0.0f, 0.0f, 1.0f, 1.0f}; // Full atlas as fallback
+                for (int faceValue = 0; faceValue < 6; faceValue++) {
+                    faceUVs[faceValue][0] = uvCoords[0];
+                    faceUVs[faceValue][1] = uvCoords[1];
+                    faceUVs[faceValue][2] = uvCoords[0];
+                    faceUVs[faceValue][3] = uvCoords[3];
+                    faceUVs[faceValue][4] = uvCoords[2];
+                    faceUVs[faceValue][5] = uvCoords[3];
+                    faceUVs[faceValue][6] = uvCoords[2];
+                    faceUVs[faceValue][7] = uvCoords[1];
+                }
+            } else {
+                // Ultimate fallback
+                for (int faceValue = 0; faceValue < 6; faceValue++) {
+                    faceUVs[faceValue][0] = 0.0f;
+                    faceUVs[faceValue][1] = 0.0f;
+                    faceUVs[faceValue][2] = 0.0f;
+                    faceUVs[faceValue][3] = 1.0f;
+                    faceUVs[faceValue][4] = 1.0f;
+                    faceUVs[faceValue][5] = 1.0f;
+                    faceUVs[faceValue][6] = 1.0f;
+                    faceUVs[faceValue][7] = 0.0f;
+                }
             }
-        }
-        
-        // Convert atlas coordinates to UV coordinates
-        float atlasSize = 16.0f;
-        float uvSize = 1.0f / atlasSize;
-        
-        // Calculate UV corners for each face
-        float[][] faceUVs = new float[6][8];
-        for (int face = 0; face < 6; face++) {
-            float texX = faceTexCoords[face][0] / atlasSize;
-            float texY = faceTexCoords[face][1] / atlasSize;
-            
-            float u_topLeft = texX;
-            float v_topLeft = texY;
-            float u_bottomLeft = texX;
-            float v_bottomLeft = texY + uvSize;
-            float u_bottomRight = texX + uvSize;
-            float v_bottomRight = texY + uvSize;
-            float u_topRight = texX + uvSize;
-            float v_topRight = texY;
-            
-            faceUVs[face][0] = u_topLeft;     faceUVs[face][1] = v_topLeft;
-            faceUVs[face][2] = u_bottomLeft;  faceUVs[face][3] = v_bottomLeft;
-            faceUVs[face][4] = u_bottomRight; faceUVs[face][5] = v_bottomRight;
-            faceUVs[face][6] = u_topRight;    faceUVs[face][7] = v_topRight;
         }
         
         // Determine isAlphaTested flag

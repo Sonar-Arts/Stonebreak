@@ -1175,19 +1175,27 @@ public class UIRenderer {
             float texX = item.getAtlasX() / atlasSize;
             float texY = item.getAtlasY() / atlasSize;
             
-            // Create UV coordinates array like BlockType would provide
+            // Create UV coordinates array in [u1, v1, u2, v2] format to match modern system
             texCoords = new float[]{
-                texX, texY,                    // Top-left
-                texX + uvSize, texY,          // Top-right
-                texX + uvSize, texY + uvSize, // Bottom-right
-                texX, texY + uvSize           // Bottom-left
+                texX,                          // u1 (left)
+                texY,                          // v1 (top)
+                texX + uvSize,                 // u2 (right)
+                texY + uvSize                  // v2 (bottom)
             };
         }
 
-        if (texCoords == null) {
-            // Fallback or error, maybe render a placeholder color
+        if (texCoords == null || texCoords.length < 4) {
+            // Fallback or error, render a placeholder color
             renderQuad(x, y, w, h, 0.5f, 0.2f, 0.8f, 1f); // Purple placeholder
+            System.err.println("UIRenderer: Invalid texCoords for item " + (item != null ? item.getClass().getSimpleName() : "null"));
             return;
+        }
+        
+        // Validate UV coordinates are reasonable (0-1 range)
+        if (texCoords[0] < 0 || texCoords[0] > 1 || texCoords[1] < 0 || texCoords[1] > 1 ||
+            texCoords[2] < 0 || texCoords[2] > 1 || texCoords[3] < 0 || texCoords[3] > 1) {
+            System.err.println("UIRenderer: Warning - UV coordinates out of range for item " + (item != null ? item.getClass().getSimpleName() : "null") + 
+                              ": [" + texCoords[0] + ", " + texCoords[1] + ", " + texCoords[2] + ", " + texCoords[3] + "]");
         }
 
         // TextureAtlas typically binds its own texture. Here, we need to draw a sub-region of it
@@ -1196,47 +1204,64 @@ public class UIRenderer {
         try {
             atlasImageId = textureAtlas.getNanoVGImageId(vg); // This method needs to exist in TextureAtlas
         } catch (Exception e) {
-            System.err.println("Warning: Failed to get NanoVG image ID from texture atlas: " + e.getMessage());
+            System.err.println("UIRenderer: Failed to get NanoVG image ID from texture atlas: " + e.getMessage());
+            renderQuad(x, y, w, h, 0.8f, 0.2f, 0.2f, 1f); // Red placeholder for NanoVG error
             return;
         }
-        if (atlasImageId == -1) return;
+        if (atlasImageId == -1) {
+            System.err.println("UIRenderer: NanoVG image ID is -1, cannot render item icon");
+            renderQuad(x, y, w, h, 0.2f, 0.8f, 0.2f, 1f); // Green placeholder for invalid image ID
+            return;
+        }
 
         try (MemoryStack stack = stackPush()) {
             NVGPaint paint = NVGPaint.malloc(stack);
-            // sX, sY, sW, sH are the sub-region in the atlas texture.
-            // Angle and alpha are for the pattern itself.
-            // The x,y for imagePattern should be where the top-left of the rendered quad is.
-            // The w,h for imagePattern should be the size of one tile of the texture on screen.
-            // Here, we are scaling the texture snippet to fit the w,h of the icon slot.
-            // So we need to use the UV coordinates to map the sub-image.
             
-            float uv_x = texCoords[0];
-            float uv_y = texCoords[1];
-            float uv_w = texCoords[4] - texCoords[0]; // Assuming UVs are: x1,y1, x2,y1, x2,y2, x1,y2 ... so texCoords[4] is x2 of the first triangle for a quad.
-            float uv_h = texCoords[5] - texCoords[1]; // Assuming texCoords[5] is y2 of the first triangle for a quad.
-                                                    // This will likely need careful adjustment based on actual texCoord layout.
-            // A simpler TextureAtlas might offer: getSpriteX(blockTypeId), getSpriteY(blockTypeId), getSpriteWidth(), getSpriteHeight() in pixels.
-
-            // If textureAtlas.getTextureWidth() and getHeight() provide dimensions of the atlas texture in pixels:
-            // float atlasTexW = textureAtlas.getTextureWidth(); // Unused
-            // float atlasTexH = textureAtlas.getTextureHeight(); // Unused
-
-            // Top-left of the pattern fill starts at (x,y)
-            // The image sub-region: (uv_x * atlasTexW, uv_y * atlasTexH) of size (uv_w * atlasTexW, uv_h * atlasTexH)
-            // Displayed as an icon of size (w, h)
+            // texCoords format from modern atlas: [u1, v1, u2, v2] 
+            float u1 = texCoords[0];  // Left UV coordinate
+            float v1 = texCoords[1];  // Top UV coordinate  
+            float u2 = texCoords[2];  // Right UV coordinate
+            float v2 = texCoords[3];  // Bottom UV coordinate
             
-            // Setup paint to use only the specific part of the texture atlas
-            // The x, y for nvgImagePattern here are the origin of the pattern IF it were to tile.
-            // Since we want a specific sub-image to be drawn at (x,y) with size (w,h),
-            // we effectively translate the pattern origin.
+            float uv_w = u2 - u1;    // UV width
+            float uv_h = v2 - v1;    // UV height
+            
+            // Get atlas dimensions in pixels
+            float atlasWidth = textureAtlas.getTextureWidth();
+            float atlasHeight = textureAtlas.getTextureHeight();
+            
+            // Validate atlas dimensions
+            if (atlasWidth <= 0 || atlasHeight <= 0) {
+                System.err.println("UIRenderer: Invalid atlas dimensions: " + atlasWidth + "x" + atlasHeight);
+                renderQuad(x, y, w, h, 0.8f, 0.8f, 0.2f, 1f); // Yellow placeholder for invalid dimensions
+                return;
+            }
+            
+            // Validate UV dimensions
+            if (uv_w <= 0 || uv_h <= 0) {
+                System.err.println("UIRenderer: Invalid UV dimensions: " + uv_w + "x" + uv_h + " for item " + 
+                                  (item != null ? item.getClass().getSimpleName() : "null"));
+                renderQuad(x, y, w, h, 0.2f, 0.2f, 0.8f, 1f); // Blue placeholder for invalid UV dimensions
+                return;
+            }
+            
+            // Calculate the size of the full atlas when displayed at the icon size
+            // If the UV region is uv_w wide, then the full atlas would be w/uv_w wide when displayed
+            float fullAtlasDisplayWidth = w / uv_w;
+            float fullAtlasDisplayHeight = h / uv_h;
+            
+            // Calculate pattern origin to position the UV region at (x,y)
+            float patternX = x - (u1 * fullAtlasDisplayWidth);
+            float patternY = y - (v1 * fullAtlasDisplayHeight);
+            
             nvgImagePattern(vg,
-                x - uv_x * w / uv_w,  // Adjusted origin X to align the sub-image
-                y - uv_y * h / uv_h,  // Adjusted origin Y to align the sub-image
-                w / uv_w,           // Scaled width of the repeating unit (effective size of full texture if sub-image were 1x1 unit)
-                h / uv_h,           // Scaled height of the repeating unit
-                0,                  // Angle
-                atlasImageId,       // Texture atlas NanoVG image ID
-                1.0f,               // Alpha
+                patternX,                    // Pattern origin X
+                patternY,                    // Pattern origin Y  
+                fullAtlasDisplayWidth,       // Pattern width (full atlas display width)
+                fullAtlasDisplayHeight,      // Pattern height (full atlas display height)
+                0,                          // Angle
+                atlasImageId,               // Texture atlas NanoVG image ID
+                1.0f,                       // Alpha
                 paint);
 
             nvgBeginPath(vg);

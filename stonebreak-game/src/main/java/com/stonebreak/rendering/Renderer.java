@@ -132,6 +132,7 @@ public class Renderer {
     // Isolated block drop renderer
     private final BlockDropRenderer blockDropRenderer;
     
+    
     // Matrices
     private final Matrix4f projectionMatrix;
     
@@ -1042,13 +1043,8 @@ public class Renderer {
                 }
             }
         } else if (isDisplayingTool && selectedItemType != null) {
-            // Handle tool rendering
-            switch (selectedItemType) {
-                case STICK -> renderMinecraftStyleItemInHand(selectedItemType);
-                case WOODEN_PICKAXE -> renderPickaxeInHand(selectedItemType, player);
-                case WOODEN_AXE -> renderAxeInHand(selectedItemType, player);
-                default -> renderMinecraftStyleItemInHand(selectedItemType);
-            }
+            // Handle tool rendering - render 2D sprite in hand position
+            renderToolInHand(selectedItemType);
         }
         } else {
             // Fallback to the default arm texture
@@ -1333,7 +1329,9 @@ public class Renderer {
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
-    }    public void draw3DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
+    }
+
+    public void draw3DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
         if (type == null || type.getAtlasX() == -1) {
             return; // Nothing to draw
         }
@@ -1345,7 +1343,6 @@ public class Renderer {
             return;
         }
 
-        // --- Save current GL state ---
         // --- Save current GL state ---
         boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
@@ -1567,8 +1564,8 @@ public class Renderer {
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("texture_sampler", 0);
 
-        // Get texture coordinates for the flower
-        float[] uvCoords = textureAtlas.getUVCoordinates(type.getAtlasX(), type.getAtlasY());
+        // Get texture coordinates for the flower using modern atlas system
+        float[] uvCoords = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP);
         
         // Add padding to center the flower texture within the slot
         int padding = 6;
@@ -1772,8 +1769,8 @@ public class Renderer {
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
-        // Get UV coordinates for the flower
-        float[] uvCoords = textureAtlas.getUVCoordinates(flowerType.getAtlasX(), flowerType.getAtlasY());
+        // Get UV coordinates for the flower using modern texture atlas system
+        float[] uvCoords = textureAtlas.getBlockFaceUVs(flowerType, BlockType.Face.TOP);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -3217,291 +3214,91 @@ public class Renderer {
     }
     
     /**
-     * Renders a 2D item texture as a 3D object using simplified approach.
-     * Creates a single flat quad that appears 3D through proper positioning and rotation.
+     * Renders a tool item in the player's hand as a 2D sprite.
+     * This method is called from within renderPlayerArm() when the proper
+     * shader state and transformations are already set up.
      */
-    private void renderMinecraftStyleItemInHand(ItemType itemType) {
-        // Set up shader for item rendering
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+    private void renderToolInHand(ItemType itemType) {
         // Get UV coordinates for the item
-        float[] uvCoords = textureAtlas.getUVCoordinates(itemType.getAtlasX(), itemType.getAtlasY());
+        float[] uvCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
+        
+        // Set up shader uniforms (keeping existing projection/view matrices)
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false); 
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
         shaderProgram.setUniform("texture_sampler", 0);
         
-        // Enable blending for transparency
+        // Set up OpenGL state for item rendering
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
         
-        // No tint - use pure white
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Create simple flat item quad (like flower but single quad)
-        createAndRenderFlatItem(uvCoords);
-    }
-    
-    /**
-     * Creates and renders a flat item quad similar to flowers but optimized for 2D items like sticks.
-     * Uses the same scale as flowers for consistency.
-     */
-    private void createAndRenderFlatItem(float[] uvCoords) {
-        // Use the same scale as flowers but narrower width for stick-like items
-        // Create a single flat quad, slightly angled to give 3D appearance
+        // Create a simple 2D quad for the item - positioned higher up in the hand
+        float size = 0.3f;
+        float yOffset = 0.4f; // Move the item up in the hand
         float[] vertices = {
-            // Single flat quad, slightly angled and narrower than flowers
-            // Raised by 0.3f so grip point (around Y=-0.2f to 0.0f) is at center
-            -0.2f, -0.2f, 0.1f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left (raised)
-             0.2f, -0.2f, -0.1f, 0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right (raised)
-             0.2f,  0.8f, -0.1f, 0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right (raised)
-            -0.2f,  0.8f, 0.1f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left (raised)
+            // Position                        UV coordinates
+            -size, -size + yOffset, 0.0f,   uvCoords[0], uvCoords[3], // Bottom-left
+             size, -size + yOffset, 0.0f,   uvCoords[2], uvCoords[3], // Bottom-right
+             size,  size + yOffset, 0.0f,   uvCoords[2], uvCoords[1], // Top-right
+            -size,  size + yOffset, 0.0f,   uvCoords[0], uvCoords[1]  // Top-left
         };
         
-        int[] indices = {
-            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
-        };
+        int[] indices = { 0, 1, 2, 0, 2, 3 };
         
-        // Render the flat item quad using the same method as flowers
-        renderFlowerQuad(vertices, indices);
+        // Create temporary VAO for the item quad
+        renderSimpleQuad(vertices, indices);
+        
+        // Restore OpenGL state
+        glEnable(GL_CULL_FACE);
     }
     
     /**
-     * Renders a pickaxe in the player's hand with Minecraft-style diagonal positioning.
-     * Applies additional rotation to make the pickaxe appear held diagonally like in Minecraft.
+     * Renders a simple quad with position and UV data.
      */
-    private void renderPickaxeInHand(ItemType itemType, Player player) {
-        // Create a temporary matrix for pickaxe-specific transformations
-        Matrix4f pickaxeMatrix = new Matrix4f(reusableArmViewModel);
+    private void renderSimpleQuad(float[] vertices, int[] indices) {
+        // Create temporary buffers and VAO
+        int vao = GL30.glGenVertexArrays();
+        int vbo = GL20.glGenBuffers(); 
+        int ebo = GL20.glGenBuffers();
         
-        // Scale the pickaxe (slightly smaller than before)
-        pickaxeMatrix.scale(1.5f, 1.5f, 1.5f);
-        
-        // Position the pickaxe in the hand (lower grip position)
-        pickaxeMatrix.translate(0.0f, 0.25f, 0.0f);
-        
-        // Apply Minecraft-style diagonal pickaxe rotation
-        // These rotations make the pickaxe point diagonally to the right and down
-        pickaxeMatrix.rotate((float) Math.toRadians(15.0f), 0.0f, 0.0f, 1.0f);  // Roll: rotate around Z-axis for diagonal angle
-        pickaxeMatrix.rotate((float) Math.toRadians(-25.0f), 0.0f, 1.0f, 0.0f); // Yaw: turn more to the right
-        pickaxeMatrix.rotate((float) Math.toRadians(10.0f), 1.0f, 0.0f, 0.0f);  // Pitch: tilt downward slightly
-        
-        // Apply pickaxe-specific attack animation that works with diagonal orientation
-        if (player.isAttacking()) {
-            float progress = 1.0f - player.getAttackAnimationProgress();
+        try {
+            GL30.glBindVertexArray(vao);
             
-            // Diagonal pickaxe swing motion - follows the diagonal orientation
-            float diagonalSwingAngle = (float) (Math.sin(progress * Math.PI) * 45.0f);
-            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.15f);
+            // Upload vertex data
+            GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+            FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+            vertexBuffer.put(vertices).flip();
+            GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
             
-            // Apply diagonal swing that follows the pickaxe's natural orientation
-            pickaxeMatrix.rotate((float) Math.toRadians(-diagonalSwingAngle * 0.8f), 1.0f, 0.0f, 0.0f); // Primary diagonal swing
-            pickaxeMatrix.rotate((float) Math.toRadians(diagonalSwingAngle * 0.4f), 0.0f, 0.0f, 1.0f);  // Secondary roll motion
-            pickaxeMatrix.rotate((float) Math.toRadians(-diagonalSwingAngle * 0.2f), 0.0f, 1.0f, 0.0f); // Slight yaw adjustment
+            // Upload index data
+            GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
+            IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+            indexBuffer.put(indices).flip();
+            GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
             
-            // Move pickaxe during swing to simulate the striking motion
-            pickaxeMatrix.translate(progress * 0.08f, swingLift, progress * -0.12f);
-        }
-        
-        // Fine-tune position after rotation and animation
-        pickaxeMatrix.translate(0.1f, -0.1f, 0.0f);
-        
-        // Set the modified matrix for rendering
-        shaderProgram.setUniform("viewMatrix", pickaxeMatrix);
-        
-        // Set up shader for item rendering
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        
-        // Get UV coordinates for the item
-        float[] uvCoords = textureAtlas.getUVCoordinates(itemType.getAtlasX(), itemType.getAtlasY());
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        shaderProgram.setUniform("texture_sampler", 0);
-        
-        // Enable blending for transparency
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // No tint - use pure white
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Create layered 3D pickaxe with depth
-        createAndRenderLayered3DPickaxe(uvCoords);
-        
-        // Restore the original matrix for subsequent rendering
-        shaderProgram.setUniform("viewMatrix", reusableArmViewModel);
-    }
-    
-    /**
-     * Creates and renders a layered 3D pickaxe using multiple depth layers.
-     * Uses the existing rendering system but creates depth by rendering multiple parallel quads.
-     */
-    private void createAndRenderLayered3DPickaxe(float[] uvCoords) {
-        int numLayers = 3; // Number of layers to create depth
-        float totalDepth = 0.12f; // Total depth of the 3D effect
-        float layerSpacing = totalDepth / (numLayers - 1);
-        
-        // Create the pickaxe shape vertices (same as before but simpler)
-        float[] baseVertices = {
-            // Diagonal quad oriented like Minecraft pickaxe
-            -0.25f, -0.2f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Handle bottom
-             0.25f,  0.1f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Handle top  
-             0.4f,   0.9f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Pickaxe head
-            -0.1f,   0.6f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Pickaxe mid
-        };
-        
-        int[] indices = {
-            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
-        };
-        
-        // Render multiple layers at different Z depths to create 3D volume
-        for (int layer = 0; layer < numLayers; layer++) {
-            // Calculate Z offset for this layer
-            float zOffset = -totalDepth / 2 + (layer * layerSpacing);
+            // Set up vertex attributes - position at 0, UV at 1 (matching shader)
+            GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 5 * Float.BYTES, 0);
+            GL20.glEnableVertexAttribArray(0);
+            GL20.glVertexAttribPointer(1, 2, GL_FLOAT, false, 5 * Float.BYTES, 3 * Float.BYTES);
+            GL20.glEnableVertexAttribArray(1);
             
-            // Create vertices for this layer by copying base vertices and adjusting Z
-            float[] layerVertices = new float[baseVertices.length];
-            for (int i = 0; i < baseVertices.length; i += 8) {
-                // Copy all vertex data
-                System.arraycopy(baseVertices, i, layerVertices, i, 8);
-                // Adjust Z coordinate
-                layerVertices[i + 2] = zOffset;
-                
-                // Slightly darken back layers for depth effect
-                float darkenFactor = 1.0f - (layer * 0.15f);
-                if (darkenFactor < 0.7f) darkenFactor = 0.7f;
-                
-                // Apply darkening by modifying the normal (shader will handle this)
-                layerVertices[i + 5] = darkenFactor; // Use Z normal for darkening
-            }
+            // Draw the quad
+            GL20.glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
             
-            // Render this layer using the existing flower quad system
-            renderFlowerQuad(layerVertices, indices);
-        }
-    }
-    
-    /**
-     * Renders an axe in the player's hand with Minecraft-style diagonal positioning.
-     * Similar to pickaxe but with slightly different orientation for axe-specific feel.
-     */
-    private void renderAxeInHand(ItemType itemType, Player player) {
-        // Create a temporary matrix for axe-specific transformations
-        Matrix4f axeMatrix = new Matrix4f(reusableArmViewModel);
-        
-        // Scale the axe (slightly larger than pickaxe for more imposing feel)
-        axeMatrix.scale(1.6f, 1.6f, 1.6f);
-        
-        // Position the axe in the hand (similar to pickaxe but slightly adjusted)
-        axeMatrix.translate(0.0f, 0.2f, 0.0f);
-        
-        // Apply Minecraft-style axe rotation optimized for face visibility
-        // Adjusted to show the trapezoid axe head face more clearly
-        axeMatrix.rotate((float) Math.toRadians(45.0f), 0.0f, 0.0f, 1.0f);  // Roll: increased to show face better
-        axeMatrix.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Yaw: reduced to face more forward
-        axeMatrix.rotate((float) Math.toRadians(-5.0f), 1.0f, 0.0f, 0.0f);   // Pitch: tilted up slightly for better view
-        
-        // Apply axe-specific attack animation that works with diagonal orientation
-        if (player.isAttacking()) {
-            float progress = 1.0f - player.getAttackAnimationProgress();
-            
-            // Axe swing motion - more powerful chopping motion than pickaxe
-            float swingAngle = (float) (Math.sin(progress * Math.PI) * 50.0f); // Larger swing than pickaxe
-            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.2f); // More lift than pickaxe
-            
-            // Apply powerful chopping swing that emphasizes the axe's weight
-            axeMatrix.rotate((float) Math.toRadians(-swingAngle * 0.9f), 1.0f, 0.0f, 0.0f); // Primary chopping motion
-            axeMatrix.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 0.0f, 1.0f);  // Roll motion for weight
-            axeMatrix.rotate((float) Math.toRadians(-swingAngle * 0.15f), 0.0f, 1.0f, 0.0f); // Slight yaw
-            
-            // Move axe during swing with more dramatic motion than pickaxe
-            axeMatrix.translate(progress * 0.1f, swingLift, progress * -0.15f);
-        }
-        
-        // Fine-tune position after rotation and animation
-        axeMatrix.translate(0.08f, -0.08f, 0.0f);
-        
-        // Set the modified matrix for rendering
-        shaderProgram.setUniform("viewMatrix", axeMatrix);
-        
-        // Set up shader for item rendering
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        
-        // Get UV coordinates for the item
-        float[] uvCoords = textureAtlas.getUVCoordinates(itemType.getAtlasX(), itemType.getAtlasY());
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        shaderProgram.setUniform("texture_sampler", 0);
-        
-        // Enable blending for transparency
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // No tint - use pure white
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Create layered 3D axe with depth
-        createAndRenderLayered3DAxe(uvCoords);
-        
-        // Restore the original matrix for subsequent rendering
-        shaderProgram.setUniform("viewMatrix", reusableArmViewModel);
-    }
-    
-    /**
-     * Creates and renders a layered 3D axe using multiple depth layers.
-     * Similar to pickaxe but with axe-specific proportions.
-     */
-    private void createAndRenderLayered3DAxe(float[] uvCoords) {
-        int numLayers = 8; // More layers for thicker, more solid appearance
-        float totalDepth = 0.22f; // Significantly thicker for better handle visibility
-        float layerSpacing = totalDepth / (numLayers - 1);
-        
-        // Create the axe shape vertices - broader head and thicker handle
-        float[] baseVertices = {
-            // Axe shape with thicker handle and broader head
-            -0.25f, -0.3f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Handle bottom (wider)
-             0.25f,  0.0f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Handle top (wider)
-             0.5f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Axe head (broader)
-            -0.1f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Axe mid
-        };
-        
-        int[] indices = {
-            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
-        };
-        
-        // Render multiple layers at different Z depths to create 3D volume
-        for (int layer = 0; layer < numLayers; layer++) {
-            // Calculate Z offset for this layer
-            float zOffset = -totalDepth / 2 + (layer * layerSpacing);
-            
-            // Create vertices for this layer by copying base vertices and adjusting Z
-            float[] layerVertices = new float[baseVertices.length];
-            for (int i = 0; i < baseVertices.length; i += 8) {
-                // Copy all vertex data
-                System.arraycopy(baseVertices, i, layerVertices, i, 8);
-                // Adjust Z coordinate
-                layerVertices[i + 2] = zOffset;
-                
-                // Slightly darken back layers for depth effect
-                float darkenFactor = 1.0f - (layer * 0.08f); // Less darkening than pickaxe
-                if (darkenFactor < 0.75f) darkenFactor = 0.75f;
-                
-                // Apply darkening by modifying the normal
-                layerVertices[i + 5] = darkenFactor;
-            }
-            
-            // Render this layer using the existing flower quad system
-            renderFlowerQuad(layerVertices, indices);
+        } finally {
+            // Cleanup
+            GL30.glBindVertexArray(0);
+            GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+            GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, 0);
+            GL20.glDeleteBuffers(vbo);
+            GL20.glDeleteBuffers(ebo);
+            GL30.glDeleteVertexArrays(vao);
         }
     }
     

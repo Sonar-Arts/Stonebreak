@@ -465,11 +465,6 @@ public class EntityRenderer {
             // Use the cow's animation controller time for consistent timing
             animationTime = cow.getAnimationController().getTotalAnimationTime();
             textureVariant = cow.getTextureVariant();
-            // Debug: Log texture variant being rendered (only occasionally to avoid spam)
-            if (System.currentTimeMillis() % 5000 < 100) { // Log every ~5 seconds
-                System.out.println("DEBUG: Rendering cow with variant: " + textureVariant + " at position " + cow.getPosition());
-                System.out.println("DEBUG: Cow entity class: " + cow.getClass().getSimpleName());
-            }
         }
         
         // Get animated cow model parts from JSON model system (using baked coordinates)
