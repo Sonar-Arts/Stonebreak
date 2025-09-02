@@ -13,8 +13,11 @@ public class TextureFormatValidator {
     // Standard texture dimensions
     public static final int ITEM_TEXTURE_SIZE = 16;           // 16x16 for items
     public static final int BLOCK_UNIFORM_SIZE = 16;          // 16x16 for uniform blocks
-    public static final int BLOCK_CUBE_CROSS_WIDTH = 16;      // 16 pixels wide
-    public static final int BLOCK_CUBE_CROSS_HEIGHT = 96;     // 96 pixels tall (6 faces * 16)
+    
+    // Cube cross format (64x48 grid format)
+    public static final int BLOCK_CUBE_CROSS_WIDTH = 64;   // 64x48 format (6 faces in 4x3 grid)
+    public static final int BLOCK_CUBE_CROSS_HEIGHT = 48;
+    
     public static final int ERROCKSON_SIZE = 16;              // 16x16 for error texture
     
     /**
@@ -160,7 +163,9 @@ public class TextureFormatValidator {
             }
             
             // Additional validation for cube cross format
-            validateCubeCrossLayout(image, fileName, result);
+            if (image.getWidth() == BLOCK_CUBE_CROSS_WIDTH && image.getHeight() == BLOCK_CUBE_CROSS_HEIGHT) {
+                validateCubeCrossLayout(image, fileName, result);
+            }
         }
         
         // Validate image format
@@ -242,37 +247,55 @@ public class TextureFormatValidator {
     }
     
     /**
-     * Validates cube cross layout for 16x96 block textures.
-     * Ensures the 6 faces are properly arranged vertically.
+     * Validates cube cross layout for 64x48 block textures.
+     * Ensures the 6 faces are properly arranged in a 4x3 grid.
      * @param image The cube cross image
      * @param fileName The filename for error reporting
      * @param result The validation result to add errors/warnings to
      */
     private static void validateCubeCrossLayout(BufferedImage image, String fileName, ValidationResult result) {
-        int faceSize = BLOCK_UNIFORM_SIZE;
-        int expectedFaces = 6;
-        
-        if (image.getHeight() != faceSize * expectedFaces) {
-            result.addError("Cube cross height mismatch: " + image.getHeight() + 
-                          ", expected: " + (faceSize * expectedFaces) + " (6 faces * 16px)");
+        // Validate dimensions match expected cube cross format
+        if (image.getWidth() != BLOCK_CUBE_CROSS_WIDTH) {
+            result.addError("Cube cross width mismatch: " + image.getWidth() + 
+                          ", expected: " + BLOCK_CUBE_CROSS_WIDTH);
             return;
         }
         
-        // Check that each face region is accessible
+        if (image.getHeight() != BLOCK_CUBE_CROSS_HEIGHT) {
+            result.addError("Cube cross height mismatch: " + image.getHeight() + 
+                          ", expected: " + BLOCK_CUBE_CROSS_HEIGHT);
+            return;
+        }
+        
+        // Check that each face region (16x16) is accessible within the 64x48 grid
+        int faceSize = BLOCK_UNIFORM_SIZE; // 16x16 per face
         try {
-            for (int face = 0; face < expectedFaces; face++) {
-                int faceY = face * faceSize;
-                // Sample a few pixels from each face to ensure they're readable
-                image.getRGB(0, faceY);
-                image.getRGB(faceSize - 1, faceY + faceSize - 1);
+            // Test accessibility of the 6 face regions in 4x3 grid
+            // Layout: TOP(0,0), BOTTOM(16,0), NORTH(32,0), SOUTH(0,16), EAST(16,16), WEST(32,16)
+            int[][] faceCoords = {
+                {0, 0},    // TOP
+                {16, 0},   // BOTTOM  
+                {32, 0},   // NORTH
+                {0, 16},   // SOUTH
+                {16, 16},  // EAST
+                {32, 16}   // WEST
+            };
+            
+            for (int i = 0; i < faceCoords.length; i++) {
+                int x = faceCoords[i][0];
+                int y = faceCoords[i][1];
+                
+                // Try to read corners of each face region
+                image.getRGB(x, y);  // Top-left
+                image.getRGB(x + faceSize - 1, y + faceSize - 1);  // Bottom-right
             }
         } catch (Exception e) {
-            result.addError("Cannot access cube cross face data: " + e.getMessage());
+            result.addError("Unable to access face regions in 64x48 cube cross texture: " + e.getMessage());
         }
         
         // Additional validation could include:
-        // - Check for consistent face content
-        // - Validate face ordering (TOP, BOTTOM, NORTH, SOUTH, EAST, WEST)
+        // - Check for consistent face content within each 16x16 region
+        // - Validate proper 4x3 grid alignment
         // - Ensure faces are not duplicated
     }
     
@@ -343,5 +366,51 @@ public class TextureFormatValidator {
                 System.out.println(result);
             }
         }
+    }
+    
+    /**
+     * Validate a single loaded texture.
+     * @param texture The loaded texture to validate
+     * @return true if valid, false otherwise
+     */
+    public boolean validateTexture(TextureResourceLoader.LoadedTexture texture) {
+        if (texture == null) {
+            return false;
+        }
+        
+        ValidationResult result;
+        
+        // Validate based on texture type
+        switch (texture.type) {
+            case ITEM:
+                result = validateItemTexture(texture.image, texture.fileName);
+                break;
+            case BLOCK_UNIFORM:
+            case BLOCK_CUBE_CROSS:
+                result = validateBlockTexture(texture.image, texture.fileName);
+                break;
+            case ERROR:
+                result = validateErrocksonTexture(texture.image, texture.fileName);
+                break;
+            default:
+                System.err.println("Unknown texture type: " + texture.type);
+                return false;
+        }
+        
+        // Print warnings if any
+        if (result.hasWarnings()) {
+            for (String warning : result.warnings) {
+                System.out.println("WARNING: " + texture.fileName + " - " + warning);
+            }
+        }
+        
+        // Print errors if any
+        if (result.hasErrors()) {
+            for (String error : result.errors) {
+                System.err.println("ERROR: " + texture.fileName + " - " + error);
+            }
+        }
+        
+        return result.isValid;
     }
 }

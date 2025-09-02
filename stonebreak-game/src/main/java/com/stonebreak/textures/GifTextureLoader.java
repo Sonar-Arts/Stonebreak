@@ -46,11 +46,15 @@ public class GifTextureLoader {
             // Read the first frame
             BufferedImage firstFrame = reader.read(0);
             
-            // Validate dimensions
+            // Check if scaling is needed
+            BufferedImage finalImage = firstFrame;
             if (firstFrame.getWidth() != EXPECTED_SIZE || firstFrame.getHeight() != EXPECTED_SIZE) {
-                System.err.println("GifTextureLoader: Errockson.gif has invalid dimensions: " + 
+                System.out.println("GifTextureLoader: Errockson.gif dimensions: " + 
                                  firstFrame.getWidth() + "x" + firstFrame.getHeight() + 
-                                 ", expected: " + EXPECTED_SIZE + "x" + EXPECTED_SIZE);
+                                 ", scaling to: " + EXPECTED_SIZE + "x" + EXPECTED_SIZE);
+                
+                // Scale the image to 16x16
+                finalImage = scaleImage(firstFrame, EXPECTED_SIZE, EXPECTED_SIZE);
             }
             
             // Clean up resources
@@ -59,9 +63,9 @@ public class GifTextureLoader {
             inputStream.close();
             
             System.out.println("GifTextureLoader: Successfully loaded Errockson.gif first frame (" + 
-                             firstFrame.getWidth() + "x" + firstFrame.getHeight() + ")");
+                             finalImage.getWidth() + "x" + finalImage.getHeight() + ")");
             
-            return firstFrame;
+            return finalImage;
             
         } catch (IOException e) {
             System.err.println("GifTextureLoader: Failed to load Errockson.gif: " + e.getMessage());
@@ -178,11 +182,43 @@ public class GifTextureLoader {
             return false;
         }
         
+        // After scaling, the image should always be the expected size
         boolean validDimensions = (image.getWidth() == EXPECTED_SIZE && image.getHeight() == EXPECTED_SIZE);
         if (!validDimensions) {
-            System.err.println("GifTextureLoader: Errockson.gif validation failed - incorrect dimensions");
+            System.err.println("GifTextureLoader: Errockson.gif validation failed - dimensions after scaling: " +
+                             image.getWidth() + "x" + image.getHeight());
         }
         
         return validDimensions;
+    }
+    
+    /**
+     * Scale a BufferedImage to the specified dimensions.
+     * @param original The original image
+     * @param targetWidth Target width
+     * @param targetHeight Target height
+     * @return Scaled BufferedImage
+     */
+    private static BufferedImage scaleImage(BufferedImage original, int targetWidth, int targetHeight) {
+        BufferedImage scaledImage = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D graphics = scaledImage.createGraphics();
+        
+        try {
+            // Use high-quality scaling
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, 
+                                    java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, 
+                                    java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, 
+                                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                                    
+            // Scale and draw the image
+            graphics.drawImage(original, 0, 0, targetWidth, targetHeight, null);
+            
+        } finally {
+            graphics.dispose();
+        }
+        
+        return scaledImage;
     }
 }

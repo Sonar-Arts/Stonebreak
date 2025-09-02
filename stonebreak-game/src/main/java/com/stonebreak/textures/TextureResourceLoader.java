@@ -66,7 +66,13 @@ public class TextureResourceLoader {
             return null;
         }
         
-        return loadTextureFromPath(BLOCKS_TEXTURE_PATH + fileName, fileName, detectBlockTextureType(fileName));
+        LoadedTexture texture = loadTextureFromPath(BLOCKS_TEXTURE_PATH + fileName, fileName, TextureType.BLOCK_UNIFORM);
+        if (texture != null) {
+            // Update the type based on actual image dimensions
+            TextureType actualType = detectBlockTextureType(texture.image);
+            return new LoadedTexture(texture.image, texture.fileName, actualType);
+        }
+        return null;
     }
     
     /**
@@ -125,16 +131,26 @@ public class TextureResourceLoader {
     }
     
     /**
-     * Detects the texture type based on filename and expected dimensions.
-     * @param fileName The texture filename
+     * Detects the texture type based on loaded image dimensions.
+     * @param image The loaded BufferedImage
      * @return TextureType enum value
      */
-    private static TextureType detectBlockTextureType(String fileName) {
-        // For now, assume most block textures are uniform unless they follow cube cross naming
-        if (fileName.contains("_cube") || fileName.contains("_cross")) {
+    private static TextureType detectBlockTextureType(BufferedImage image) {
+        if (image == null) return TextureType.BLOCK_UNIFORM;
+        
+        int width = image.getWidth();
+        int height = image.getHeight();
+        
+        // Detect based on actual image dimensions
+        if (width == 16 && height == 16) {
+            return TextureType.BLOCK_UNIFORM;
+        } else if (width == 64 && height == 48) {
             return TextureType.BLOCK_CUBE_CROSS;
+        } else {
+            // Default to uniform for unknown dimensions
+            System.out.println("Unknown block texture dimensions: " + width + "x" + height + ", treating as uniform");
+            return TextureType.BLOCK_UNIFORM;
         }
-        return TextureType.BLOCK_UNIFORM;
     }
     
     /**

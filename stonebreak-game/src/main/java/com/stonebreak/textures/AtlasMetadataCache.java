@@ -34,10 +34,10 @@ public class AtlasMetadataCache {
         public final int atlasX, atlasY;     // Pixel coordinates in atlas
         public final int width, height;     // Texture dimensions
         public final String textureName;    // Name/ID of texture
-        public final TextureType type;      // Type of texture
+        public final TextureResourceLoader.TextureType type;      // Type of texture
         
         public TextureCoordinates(String textureName, float u1, float v1, float u2, float v2,
-                                 int atlasX, int atlasY, int width, int height, TextureType type) {
+                                 int atlasX, int atlasY, int width, int height, TextureResourceLoader.TextureType type) {
             this.textureName = textureName;
             this.u1 = u1;
             this.v1 = v1;
@@ -61,12 +61,7 @@ public class AtlasMetadataCache {
         }
     }
     
-    public enum TextureType {
-        BLOCK_FACE,    // Individual face of a block
-        BLOCK_UNIFORM, // Uniform block texture
-        ITEM,          // Item texture
-        ERROR          // Error/fallback texture
-    }
+    // TextureType enum is now defined in TextureResourceLoader
     
     /**
      * Internal cache entry with timestamp for TTL management.
@@ -416,5 +411,37 @@ public class AtlasMetadataCache {
         }
         
         System.out.println("=================================");
+    }
+    
+    /**
+     * Convenience method for invalidating cache (alias for invalidateAll).
+     */
+    public void invalidateCache() {
+        invalidateAll();
+    }
+    
+    /**
+     * Get texture metadata as a map (for backward compatibility).
+     * @param textureName The texture name to look up
+     * @return Map containing texture metadata, or null if not found
+     */
+    public Map<String, Object> getTextureMetadata(String textureName) {
+        TextureCoordinates coords = get(textureName);
+        if (coords == null) {
+            return null;
+        }
+        
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("x", coords.atlasX);
+        metadata.put("y", coords.atlasY);
+        metadata.put("width", coords.width);
+        metadata.put("height", coords.height);
+        metadata.put("u1", coords.u1);
+        metadata.put("v1", coords.v1);
+        metadata.put("u2", coords.u2);
+        metadata.put("v2", coords.v2);
+        metadata.put("type", coords.type.toString());
+        
+        return metadata;
     }
 }

@@ -404,4 +404,141 @@ public class TextureChecksumManager {
         
         System.out.println("=======================================");
     }
+    
+    /**
+     * Check if textures have changed by comparing current checksums with stored ones.
+     * @param textures Map of texture name to loaded texture
+     * @return true if any texture has changed or new textures exist
+     */
+    public boolean hasTexturesChanged(Map<String, TextureResourceLoader.LoadedTexture> textures) {
+        try {
+            loadChecksums();
+            
+            // If no stored checksums exist, consider it changed
+            if (isEmpty()) {
+                return true;
+            }
+            
+            // Check each current texture against stored checksum
+            for (Map.Entry<String, TextureResourceLoader.LoadedTexture> entry : textures.entrySet()) {
+                String fileName = entry.getKey();
+                TextureResourceLoader.LoadedTexture texture = entry.getValue();
+                
+                // Get stored checksum
+                TextureChecksum storedChecksum = getChecksum(fileName);
+                if (storedChecksum == null) {
+                    // New texture file
+                    System.out.println("New texture detected: " + fileName);
+                    return true;
+                }
+                
+                // Calculate current checksum and compare
+                String currentMd5 = calculateImageChecksum(texture.image);
+                if (!storedChecksum.md5Hash.equals(currentMd5)) {
+                    System.out.println("Texture changed: " + fileName);
+                    return true;
+                }
+            }
+            
+            // Check if any stored textures no longer exist
+            JsonNode texturesNode = checksumData.get("textures");
+            if (texturesNode != null) {
+                Iterator<String> fieldNames = texturesNode.fieldNames();
+                while (fieldNames.hasNext()) {
+                    String storedFileName = fieldNames.next();
+                    if (!textures.containsKey(storedFileName)) {
+                        System.out.println("Texture removed: " + storedFileName);
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+            
+        } catch (Exception e) {
+            System.err.println("Error checking texture changes: " + e.getMessage());
+            // If we can't determine changes, assume they changed
+            return true;
+        }
+    }
+    
+    /**
+     * Update checksums for the given textures.
+     * @param textures Map of texture name to loaded texture
+     */
+    public void updateChecksums(Map<String, TextureResourceLoader.LoadedTexture> textures) {
+        try {
+            // Create new checksum data
+            checksumData = objectMapper.createObjectNode();
+            checksumData.put("version", "1.0");
+            checksumData.put("generatedAt", Instant.now().toString());
+            checksumData.put("textureCount", textures.size());
+            
+            ObjectNode texturesNode = objectMapper.createObjectNode();
+            
+            // Calculate checksum for each texture
+            for (Map.Entry<String, TextureResourceLoader.LoadedTexture> entry : textures.entrySet()) {
+                String fileName = entry.getKey();
+                TextureResourceLoader.LoadedTexture texture = entry.getValue();
+                
+                try {
+                    String md5Hash = calculateImageChecksum(texture.image);
+                    TextureChecksum checksum = new TextureChecksum(
+                        fileName,
+                        "runtime", // Not from file system
+                        md5Hash,
+                        texture.image.getWidth() * texture.image.getHeight() * 4, // Estimated size
+                        System.currentTimeMillis(),
+                        Instant.now().toString()
+                    );
+                    
+                    texturesNode.set(fileName, checksum.toJson(objectMapper));
+                    
+                } catch (Exception e) {
+                    System.err.println("Failed to calculate checksum for " + fileName + ": " + e.getMessage());
+                }
+            }
+            
+            checksumData.set("textures", texturesNode);
+            
+            // Save to file
+            saveChecksums();
+            
+            System.out.println("Updated checksums for " + textures.size() + " textures");
+            
+        } catch (Exception e) {
+            System.err.println("Error updating checksums: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Calculate MD5 checksum for a BufferedImage.
+     * @param image The image to checksum
+     * @return MD5 hash string
+     */
+    private String calculateImageChecksum(java.awt.image.BufferedImage image) throws NoSuchAlgorithmException {
+        MessageDigest md5 = MessageDigest.getInstance("MD5");
+        
+        // Convert image to byte array for consistent hashing
+        int width = image.getWidth();
+        int height = image.getHeight();
+        
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = image.getRGB(x, y);
+                md5.update((byte) (rgb >> 24));  // Alpha
+                md5.update((byte) (rgb >> 16));  // Red
+                md5.update((byte) (rgb >> 8));   // Green
+                md5.update((byte) rgb);          // Blue
+            }
+        }
+        
+        byte[] digest = md5.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        
+        return sb.toString();
+    }
 }

@@ -56,7 +56,7 @@ public class AtlasSizeOptimizer {
      */
     public static class TextureRequirements {
         public final int uniformBlockTextures;    // 16x16 block textures (1 tile each)
-        public final int cubeCrossBlockTextures;  // 16x96 block textures (6 tiles each)  
+        public final int cubeCrossBlockTextures;  // 64x48 block textures (6 tiles each)  
         public final int itemTextures;            // 16x16 item textures (1 tile each)
         public final int errorTextures;           // Error textures (1 tile each)
         public final int totalTilesNeeded;
