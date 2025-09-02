@@ -1,5 +1,6 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.validation;
 
+import com.stonebreak.textures.mobs.CowTextureDefinition;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

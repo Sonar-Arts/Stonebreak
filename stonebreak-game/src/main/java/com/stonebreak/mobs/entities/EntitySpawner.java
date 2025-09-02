@@ -87,8 +87,8 @@ public class EntitySpawner {
                     System.out.println("DEBUG: Spawning cow with variant: " + textureVariant + " at " + spawnPos);
                     
                     // Verify the variant will load correctly before spawning
-                    com.stonebreak.textures.CowTextureDefinition.CowVariant variantTest = 
-                        com.stonebreak.textures.CowTextureLoader.getCowVariant(textureVariant);
+                    com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant variantTest = 
+                        com.stonebreak.textures.mobs.CowTextureLoader.getCowVariant(textureVariant);
                     if (variantTest != null) {
                         System.out.println("DEBUG: Verified variant loads as: " + variantTest.getDisplayName());
                     } else {
@@ -290,8 +290,8 @@ public class EntitySpawner {
                     System.out.println("DEBUG: Spawning herd cow with variant: " + textureVariant + " at " + spawnPos);
                     
                     // Verify the variant will load correctly before spawning
-                    com.stonebreak.textures.CowTextureDefinition.CowVariant variantTest = 
-                        com.stonebreak.textures.CowTextureLoader.getCowVariant(textureVariant);
+                    com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant variantTest = 
+                        com.stonebreak.textures.mobs.CowTextureLoader.getCowVariant(textureVariant);
                     if (variantTest != null) {
                         System.out.println("DEBUG: Verified herd variant loads as: " + variantTest.getDisplayName());
                     } else {

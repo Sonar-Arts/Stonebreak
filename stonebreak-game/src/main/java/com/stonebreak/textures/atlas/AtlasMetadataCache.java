@@ -1,5 +1,6 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.atlas;
 
+import com.stonebreak.textures.loaders.TextureResourceLoader;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;

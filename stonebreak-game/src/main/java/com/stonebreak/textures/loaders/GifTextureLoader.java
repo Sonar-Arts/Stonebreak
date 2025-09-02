@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.loaders;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;

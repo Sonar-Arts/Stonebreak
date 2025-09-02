@@ -26,13 +26,21 @@ module stonebreak.game {
     
     // Export packages for OpenMason tool access
     exports com.stonebreak.model;
-    exports com.stonebreak.textures;
+    exports com.stonebreak.textures.atlas;
+    exports com.stonebreak.textures.loaders;
+    exports com.stonebreak.textures.mobs;
+    exports com.stonebreak.textures.utils;
+    exports com.stonebreak.textures.validation;
     exports com.stonebreak.blocks;
     exports com.stonebreak.items;
     
     // Open packages for Jackson JSON processing
     opens com.stonebreak.model to com.fasterxml.jackson.databind;
-    opens com.stonebreak.textures to com.fasterxml.jackson.databind;
+    opens com.stonebreak.textures.atlas to com.fasterxml.jackson.databind;
+    opens com.stonebreak.textures.loaders to com.fasterxml.jackson.databind;
+    opens com.stonebreak.textures.mobs to com.fasterxml.jackson.databind;
+    opens com.stonebreak.textures.utils to com.fasterxml.jackson.databind;
+    opens com.stonebreak.textures.validation to com.fasterxml.jackson.databind;
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
     opens com.stonebreak.items to com.fasterxml.jackson.databind;
     opens com.stonebreak.mobs.cow to com.fasterxml.jackson.databind;

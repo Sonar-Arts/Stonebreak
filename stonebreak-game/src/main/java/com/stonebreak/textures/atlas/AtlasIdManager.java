@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.atlas;
 
 import java.util.*;
 

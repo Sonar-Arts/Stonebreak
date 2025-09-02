@@ -19,7 +19,7 @@ import com.stonebreak.config.*;
 import com.stonebreak.input.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
-import com.stonebreak.textures.TextureAtlasBuilder;
+import com.stonebreak.textures.atlas.TextureAtlasBuilder;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;

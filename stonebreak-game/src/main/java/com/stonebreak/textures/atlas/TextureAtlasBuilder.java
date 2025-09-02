@@ -1,5 +1,7 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.atlas;
 
+import com.stonebreak.textures.loaders.TextureResourceLoader;
+import com.stonebreak.textures.validation.TextureFormatValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 

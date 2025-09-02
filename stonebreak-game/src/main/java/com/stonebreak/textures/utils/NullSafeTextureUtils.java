@@ -1,4 +1,6 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.utils;
+
+import com.stonebreak.textures.mobs.CowTextureDefinition;
 
 /**
  * Utility class for null-safe operations in texture generation.

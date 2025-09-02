@@ -1,8 +1,8 @@
 package com.stonebreak.rendering;
 
-import com.stonebreak.textures.CowTextureLoader;
-import com.stonebreak.textures.CowTextureDefinition;
-import com.stonebreak.textures.CowTextureGenerator;
+import com.stonebreak.textures.mobs.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureGenerator;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;

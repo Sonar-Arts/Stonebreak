@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.mobs;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.mobs.MobStructure;

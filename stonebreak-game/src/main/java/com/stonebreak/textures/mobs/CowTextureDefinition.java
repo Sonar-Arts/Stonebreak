@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.mobs;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;

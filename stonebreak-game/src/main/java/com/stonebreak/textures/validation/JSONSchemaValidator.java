@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.validation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

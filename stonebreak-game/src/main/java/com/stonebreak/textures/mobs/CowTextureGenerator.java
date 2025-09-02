@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.mobs;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;

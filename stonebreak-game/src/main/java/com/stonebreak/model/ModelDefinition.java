@@ -492,7 +492,7 @@ public class ModelDefinition {
         private static float[] getTextureCoordinatesSafe(String textureVariant, String faceName) {
             try {
                 // Use texture loader directly without triggering OpenGL initialization
-                return com.stonebreak.textures.CowTextureLoader.getQuadUVCoordinates(textureVariant, faceName, 16);
+                return com.stonebreak.textures.mobs.CowTextureLoader.getQuadUVCoordinates(textureVariant, faceName, 16);
             } catch (Exception e) {
                 System.err.println("[ModelDefinition] Safe texture lookup failed for " + textureVariant + ":" + faceName);
                 return null;

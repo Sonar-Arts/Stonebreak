@@ -1,5 +1,6 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.validation;
 
+import com.stonebreak.textures.loaders.TextureResourceLoader;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;

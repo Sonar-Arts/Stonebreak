@@ -1,4 +1,4 @@
-package com.stonebreak.textures;
+package com.stonebreak.textures.validation;
 
 import java.io.File;
 
