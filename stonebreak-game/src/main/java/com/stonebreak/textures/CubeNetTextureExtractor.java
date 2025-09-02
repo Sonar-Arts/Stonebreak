@@ -8,8 +8,21 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 /**
- * Handles cube cross format for block textures.
- * Extracts 6 faces from cube cross layout or handles uniform textures.
+ * Handles cube net format for block textures (64x48 pixels).
+ * 
+ * Cube Net Format Layout (64x48):
+ * 
+ *     TOP     (16x16) at (16, 0)
+ * LEFT FRONT RIGHT BACK (4x16x16) at (0,16), (16,16), (32,16), (48,16)
+ *    BOTTOM   (16x16) at (16, 32)
+ * 
+ * The layout is:
+ *   -TOP-
+ * LEFT FRONT RIGHT BACK
+ *   -BOTTOM-
+ * 
+ * Each face is 16x16 pixels. Single texture files contain the entire cube net.
+ * This extractor parses these files and extracts individual faces for atlas packing.
  */
 public class CubeNetTextureExtractor {
     

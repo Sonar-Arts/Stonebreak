@@ -1,32 +1,145 @@
 {
+  "schemaVersion": "1.1.0",
   "blockIds": {
-    "stonebreak:grass": 0,
-    "stonebreak:dirt": 1,
-    "stonebreak:stone": 2,
-    "stonebreak:bedrock": 3,
-    "stonebreak:wood": 4,
-    "stonebreak:leaves": 5,
-    "stonebreak:sand": 6,
-    "stonebreak:water": 7,
-    "stonebreak:coal_ore": 8,
-    "stonebreak:iron_ore": 9,
-    "stonebreak:red_sand": 10,
-    "stonebreak:magma": 11,
-    "stonebreak:crystal": 12,
-    "stonebreak:sandstone": 13,
-    "stonebreak:red_sandstone": 14,
-    "stonebreak:rose": 15,
-    "stonebreak:dandelion": 16,
-    "stonebreak:snowy_dirt": 17,
-    "stonebreak:pine_wood": 18,
-    "stonebreak:ice": 19,
-    "stonebreak:snowy_leaves": 20,
-    "stonebreak:snow": 21,
-    "stonebreak:workbench": 22,
-    "stonebreak:wood_planks": 23,
-    "stonebreak:pine_wood_planks": 24,
-    "stonebreak:elm_wood_log": 25,
-    "stonebreak:elm_wood_planks": 26,
-    "stonebreak:elm_leaves": 27
+    "stonebreak:grass": {
+      "id": 0,
+      "textureType": "cube_net",
+      "cubeNetTexture": "grass_block_texture"
+    },
+    "stonebreak:dirt": {
+      "id": 1,
+      "textureType": "uniform",
+      "texture": "dirt_block_texture"
+    },
+    "stonebreak:stone": {
+      "id": 2,
+      "textureType": "uniform",
+      "texture": "stone_texture"
+    },
+    "stonebreak:bedrock": {
+      "id": 3,
+      "textureType": "uniform",
+      "texture": "bedrock_texture"
+    },
+    "stonebreak:wood": {
+      "id": 4,
+      "textureType": "cube_net",
+      "cubeNetTexture": "wood_texture"
+    },
+    "stonebreak:leaves": {
+      "id": 5,
+      "textureType": "uniform",
+      "texture": "leaves_texture"
+    },
+    "stonebreak:sand": {
+      "id": 6,
+      "textureType": "uniform",
+      "texture": "sand_texture"
+    },
+    "stonebreak:water": {
+      "id": 7,
+      "textureType": "uniform",
+      "texture": "water_temp_texture"
+    },
+    "stonebreak:coal_ore": {
+      "id": 8,
+      "textureType": "uniform",
+      "texture": "coal_ore_texture"
+    },
+    "stonebreak:iron_ore": {
+      "id": 9,
+      "textureType": "uniform",
+      "texture": "iron_ore_texture"
+    },
+    "stonebreak:red_sand": {
+      "id": 10,
+      "textureType": "uniform",
+      "texture": "red_sand_texture"
+    },
+    "stonebreak:magma": {
+      "id": 11,
+      "textureType": "uniform",
+      "texture": "magma_texture"
+    },
+    "stonebreak:crystal": {
+      "id": 12,
+      "textureType": "uniform",
+      "texture": "crystal_texture"
+    },
+    "stonebreak:sandstone": {
+      "id": 13,
+      "textureType": "uniform",
+      "texture": "sandstone_texture"
+    },
+    "stonebreak:red_sandstone": {
+      "id": 14,
+      "textureType": "uniform",
+      "texture": "red_sandstone_texture"
+    },
+    "stonebreak:rose": {
+      "id": 15,
+      "textureType": "uniform",
+      "texture": "rose_texture"
+    },
+    "stonebreak:dandelion": {
+      "id": 16,
+      "textureType": "uniform",
+      "texture": "dandelion_texture"
+    },
+    "stonebreak:snowy_dirt": {
+      "id": 17,
+      "textureType": "uniform",
+      "texture": "snowy_dirt_texture"
+    },
+    "stonebreak:pine_wood": {
+      "id": 18,
+      "textureType": "cube_net",
+      "cubeNetTexture": "pine_wood_texture"
+    },
+    "stonebreak:ice": {
+      "id": 19,
+      "textureType": "uniform",
+      "texture": "ice_texture"
+    },
+    "stonebreak:snowy_leaves": {
+      "id": 20,
+      "textureType": "uniform",
+      "texture": "snowy_leaves_texture"
+    },
+    "stonebreak:snow": {
+      "id": 21,
+      "textureType": "uniform",
+      "texture": "snow_texture"
+    },
+    "stonebreak:workbench": {
+      "id": 22,
+      "textureType": "cube_net",
+      "cubeNetTexture": "workbench_custom_texture"
+    },
+    "stonebreak:wood_planks": {
+      "id": 23,
+      "textureType": "uniform",
+      "texture": "wood_planks_custom_texture"
+    },
+    "stonebreak:pine_wood_planks": {
+      "id": 24,
+      "textureType": "uniform",
+      "texture": "pine_wood_planks_custom_texture"
+    },
+    "stonebreak:elm_wood_log": {
+      "id": 25,
+      "textureType": "cube_net",
+      "cubeNetTexture": "elm_wood_log_texture"
+    },
+    "stonebreak:elm_wood_planks": {
+      "id": 26,
+      "textureType": "uniform",
+      "texture": "elm_wood_planks_custom_texture"
+    },
+    "stonebreak:elm_leaves": {
+      "id": 27,
+      "textureType": "uniform",
+      "texture": "elm_leaves_texture"
+    }
   }
 }

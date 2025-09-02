@@ -1,7 +1,23 @@
 {
+  "schemaVersion": "1.1.0",
   "itemIds": {
-    "stonebreak:stick": 0,
-    "stonebreak:wooden_pickaxe": 1,
-    "stonebreak:wooden_axe": 2
+    "stonebreak:stick": {
+      "id": 1000,
+      "legacyId": 0,
+      "textureType": "flat",
+      "texture": "stick_texture"
+    },
+    "stonebreak:wooden_pickaxe": {
+      "id": 1001,
+      "legacyId": 1,
+      "textureType": "flat",
+      "texture": "wooden_pickaxe_texture"
+    },
+    "stonebreak:wooden_axe": {
+      "id": 1002,
+      "legacyId": 2,
+      "textureType": "flat",
+      "texture": "wooden_axe_texture"
+    }
   }
 }
