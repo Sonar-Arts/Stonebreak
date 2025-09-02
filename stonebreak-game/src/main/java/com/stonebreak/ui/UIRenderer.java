@@ -1160,13 +1160,16 @@ public class UIRenderer {
 
         if (item == BlockType.AIR) return;
 
-        // Get texture coordinates using the item's atlas position
-        // For blocks, use the top face; for items, use their designated position
+        // Get texture coordinates using the new atlas system
+        // For blocks, use the top face; for items, use texture coordinate lookup
         float[] texCoords;
         if (item instanceof BlockType blockType) {
             texCoords = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
+        } else if (item instanceof ItemType itemType) {
+            // Use new atlas coordinate system for items
+            texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
         } else {
-            // For ItemType, calculate UVs from atlas coordinates
+            // Legacy fallback for other item types
             float atlasSize = 16.0f; // Assuming 16x16 atlas
             float uvSize = 1.0f / atlasSize;
             float texX = item.getAtlasX() / atlasSize;

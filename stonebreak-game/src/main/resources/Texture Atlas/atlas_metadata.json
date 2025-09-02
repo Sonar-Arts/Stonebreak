@@ -1,7 +1,7 @@
 {
   "atlasVersion" : "1.0",
   "schemaVersion" : "1.0.0",
-  "generatedAt" : "2025-09-02T00:11:00.081604700Z",
+  "generatedAt" : "2025-09-02T01:15:38.009555100Z",
   "textureSize" : 16,
   "atlasSize" : {
     "width" : 256,
@@ -18,14 +18,14 @@
       "height" : 16
     },
     "pine_wood_west" : {
-      "x" : 128,
+      "x" : 16,
       "width" : 16,
       "y" : 64,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "grass_block_east" : {
-      "x" : 0,
+      "x" : 96,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -39,21 +39,21 @@
       "height" : 16
     },
     "ice_north" : {
-      "x" : 224,
+      "x" : 80,
       "width" : 16,
-      "y" : 48,
+      "y" : 64,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "magma_bottom" : {
-      "x" : 112,
+      "x" : 16,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "magma_west" : {
-      "x" : 176,
+      "x" : 80,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -102,7 +102,7 @@
       "height" : 16
     },
     "iron_ore_bottom" : {
-      "x" : 16,
+      "x" : 112,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -116,14 +116,14 @@
       "height" : 16
     },
     "water_temp_west" : {
-      "x" : 64,
+      "x" : 160,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "ice_east" : {
-      "x" : 0,
+      "x" : 112,
       "width" : 16,
       "y" : 64,
       "type" : "block_cube_cross",
@@ -207,7 +207,7 @@
       "height" : 16
     },
     "snow_north" : {
-      "x" : 112,
+      "x" : 16,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -242,7 +242,7 @@
       "height" : 16
     },
     "dirt_block_east" : {
-      "x" : 96,
+      "x" : 0,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -263,9 +263,9 @@
       "height" : 16
     },
     "pine_wood_bottom" : {
-      "x" : 64,
+      "x" : 208,
       "width" : 16,
-      "y" : 64,
+      "y" : 48,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -277,7 +277,7 @@
       "height" : 16
     },
     "iron_ore_south" : {
-      "x" : 48,
+      "x" : 144,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -291,16 +291,16 @@
       "height" : 16
     },
     "iron_ore_east" : {
-      "x" : 64,
+      "x" : 160,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "ice_bottom" : {
-      "x" : 208,
+      "x" : 64,
       "width" : 16,
-      "y" : 48,
+      "y" : 64,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -347,9 +347,9 @@
       "height" : 16
     },
     "dirt_block_bottom" : {
-      "x" : 48,
+      "x" : 208,
       "width" : 16,
-      "y" : 16,
+      "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -368,7 +368,7 @@
       "height" : 16
     },
     "snow_west" : {
-      "x" : 160,
+      "x" : 64,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -452,9 +452,9 @@
       "height" : 16
     },
     "grass_block_bottom" : {
-      "x" : 208,
+      "x" : 48,
       "width" : 16,
-      "y" : 0,
+      "y" : 16,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -466,9 +466,9 @@
       "height" : 16
     },
     "water_temp_top" : {
-      "x" : 240,
+      "x" : 80,
       "width" : 16,
-      "y" : 112,
+      "y" : 128,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -529,7 +529,7 @@
       "height" : 16
     },
     "water_temp_north" : {
-      "x" : 16,
+      "x" : 112,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -543,7 +543,7 @@
       "height" : 16
     },
     "water_temp_bottom" : {
-      "x" : 0,
+      "x" : 96,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -557,14 +557,14 @@
       "height" : 16
     },
     "iron_ore_west" : {
-      "x" : 80,
+      "x" : 176,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "water_temp_south" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -613,9 +613,9 @@
       "height" : 16
     },
     "grass_block_north" : {
-      "x" : 224,
+      "x" : 64,
       "width" : 16,
-      "y" : 0,
+      "y" : 16,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -655,9 +655,9 @@
       "height" : 16
     },
     "dirt_block_top" : {
-      "x" : 32,
+      "x" : 192,
       "width" : 16,
-      "y" : 16,
+      "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -683,9 +683,9 @@
       "height" : 16
     },
     "grass_block_south" : {
-      "x" : 240,
+      "x" : 80,
       "width" : 16,
-      "y" : 0,
+      "y" : 16,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -711,14 +711,14 @@
       "height" : 16
     },
     "iron_ore_top" : {
-      "x" : 0,
+      "x" : 96,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "water_temp_east" : {
-      "x" : 48,
+      "x" : 144,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -753,14 +753,14 @@
       "height" : 16
     },
     "snow_top" : {
-      "x" : 80,
+      "x" : 240,
       "width" : 16,
-      "y" : 128,
+      "y" : 112,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "snow_south" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -774,7 +774,7 @@
       "height" : 16
     },
     "magma_top" : {
-      "x" : 96,
+      "x" : 0,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -788,7 +788,7 @@
       "height" : 16
     },
     "pine_wood_east" : {
-      "x" : 112,
+      "x" : 0,
       "width" : 16,
       "y" : 64,
       "type" : "block_cube_cross",
@@ -823,7 +823,7 @@
       "height" : 16
     },
     "iron_ore_north" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -865,9 +865,9 @@
       "height" : 16
     },
     "ice_south" : {
-      "x" : 240,
+      "x" : 96,
       "width" : 16,
-      "y" : 48,
+      "y" : 64,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -879,9 +879,9 @@
       "height" : 16
     },
     "ice_top" : {
-      "x" : 192,
+      "x" : 48,
       "width" : 16,
-      "y" : 48,
+      "y" : 64,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -935,7 +935,7 @@
       "height" : 16
     },
     "snow_bottom" : {
-      "x" : 96,
+      "x" : 0,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",
@@ -949,14 +949,14 @@
       "height" : 16
     },
     "dirt_block_west" : {
-      "x" : 112,
+      "x" : 16,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "magma_south" : {
-      "x" : 144,
+      "x" : 48,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
@@ -1005,14 +1005,14 @@
       "height" : 16
     },
     "dirt_block_south" : {
-      "x" : 80,
+      "x" : 240,
       "width" : 16,
-      "y" : 16,
+      "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "ice_west" : {
-      "x" : 16,
+      "x" : 128,
       "width" : 16,
       "y" : 64,
       "type" : "block_cube_cross",
@@ -1026,9 +1026,9 @@
       "height" : 16
     },
     "pine_wood_south" : {
-      "x" : 96,
+      "x" : 240,
       "width" : 16,
-      "y" : 64,
+      "y" : 48,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -1040,23 +1040,23 @@
       "height" : 16
     },
     "pine_wood_north" : {
-      "x" : 80,
+      "x" : 224,
       "width" : 16,
-      "y" : 64,
+      "y" : 48,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "magma_east" : {
-      "x" : 160,
+      "x" : 64,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "pine_wood_top" : {
-      "x" : 48,
+      "x" : 192,
       "width" : 16,
-      "y" : 64,
+      "y" : 48,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -1068,16 +1068,16 @@
       "height" : 16
     },
     "magma_north" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "grass_block_top" : {
-      "x" : 192,
+      "x" : 32,
       "width" : 16,
-      "y" : 0,
+      "y" : 16,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -1145,7 +1145,7 @@
       "height" : 16
     },
     "grass_block_west" : {
-      "x" : 16,
+      "x" : 112,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1166,9 +1166,9 @@
       "height" : 16
     },
     "dirt_block_north" : {
-      "x" : 64,
+      "x" : 224,
       "width" : 16,
-      "y" : 16,
+      "y" : 0,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -1187,7 +1187,7 @@
       "height" : 16
     },
     "snow_east" : {
-      "x" : 144,
+      "x" : 48,
       "width" : 16,
       "y" : 128,
       "type" : "block_cube_cross",

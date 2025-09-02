@@ -19,6 +19,7 @@ import com.stonebreak.config.*;
 import com.stonebreak.input.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
+import com.stonebreak.textures.TextureAtlasBuilder;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
@@ -247,6 +248,9 @@ public class Main {
       private void initializeGameComponents() {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
+          
+          // Check if texture atlas needs regeneration
+          regenerateAtlasIfNeeded();
           
           // Initialize the renderer with window dimensions
           renderer = new Renderer(width, height);
@@ -582,6 +586,40 @@ public class Main {
             }
         }
     }
+    
+    /**
+     * Check if texture atlas needs regeneration and regenerate if necessary.
+     * This ensures textures are up-to-date before rendering starts.
+     */
+    private void regenerateAtlasIfNeeded() {
+        try {
+            System.out.println("Checking if texture atlas regeneration is needed...");
+            
+            TextureAtlasBuilder atlasBuilder = new TextureAtlasBuilder();
+            
+            if (atlasBuilder.shouldRegenerateAtlas()) {
+                System.out.println("Texture atlas regeneration required - starting generation...");
+                
+                long startTime = System.currentTimeMillis();
+                boolean success = atlasBuilder.generateAtlas();
+                long endTime = System.currentTimeMillis();
+                
+                if (success) {
+                    System.out.println("Texture atlas regenerated successfully in " + (endTime - startTime) + "ms");
+                } else {
+                    System.err.println("Failed to regenerate texture atlas - game may display incorrectly");
+                }
+            } else {
+                System.out.println("Texture atlas is up-to-date, no regeneration needed");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error during atlas regeneration check: " + e.getMessage());
+            e.printStackTrace();
+            System.err.println("Continuing with existing atlas...");
+        }
+    }
+    
       private void cleanup() {
           Game.logDetailedMemoryInfo("Before cleanup");
           
