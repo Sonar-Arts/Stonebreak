@@ -7,6 +7,7 @@ import java.nio.IntBuffer;
 import java.util.*;
 
 // JOML Math Library
+import com.stonebreak.rendering.player.PlayerArmRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -100,7 +101,6 @@ import com.stonebreak.blocks.*;
 import com.stonebreak.core.Game;
 
 // Project Imports (Items)
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 
 // Project Imports (Player)
@@ -124,7 +124,6 @@ public class Renderer {
     
     // Textures
     private final TextureAtlas textureAtlas;
-    private int armTextureId; // Texture ID for the player arm
     private final Font font; // Added Font instance
     private int windowWidth;
     private int windowHeight;
@@ -139,7 +138,6 @@ public class Renderer {
     // UI elements
     private int crosshairVao;
     private int hotbarVao;
-    private int playerArmVao; // VAO for the player's arm
     private int uiQuadVao;    // VAO for drawing generic UI quads (positions and UVs)
     private int uiQuadVbo;    // VBO for drawing generic UI quads (positions and UVs)
     private int wireframeVao; // VAO for debug wireframe bounding boxes
@@ -151,14 +149,13 @@ public class Renderer {
     private int crackTextureId;
     private int blockOverlayVao;
     
-    // Cache for block-specific VAOs for hand rendering
-    private final Map<BlockType, Integer> handBlockVaoCache = new HashMap<>();
+    // Specialized renderers
+    private final PlayerArmRenderer playerArmRenderer;
     
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     
     // Reusable matrices to avoid allocations
-    private final Matrix4f reusableArmViewModel = new Matrix4f();
 
     /**
      * Creates and initializes the renderer.
@@ -198,6 +195,9 @@ public class Renderer {
         // Initialize isolated block drop renderer with the shader and texture
         blockDropRenderer.initialize(shaderProgram, textureAtlas);
 
+        // Initialize specialized renderers
+        playerArmRenderer = new PlayerArmRenderer(shaderProgram, textureAtlas, projectionMatrix);
+
         // Initialize font
         // Font loaded from stonebreak-game/src/main/resources/fonts/
         font = new Font("fonts/Roboto-VariableFont_wdth,wght.ttf", 24f);
@@ -205,8 +205,6 @@ public class Renderer {
         // Create UI elements
         createCrosshair();
         createHotbar();
-        createPlayerArm();
-        createArmTexture(); // Create the Perlin noise texture for the arm
         createUiQuadRenderer(); // Initialize UI quad rendering resources
         createCrackTexture();   // Initialize block cracking texture
         createBlockOverlayVao(); // Initialize block overlay rendering
@@ -372,155 +370,6 @@ public class Renderer {
         GL30.glBindVertexArray(0);
     }
 
-    /**
-     * Creates the VAO for rendering the player's arm with Minecraft proportions.
-     * Minecraft Steve arm dimensions: 4x12x4 pixels
-     * Using 1:3 scale ratio (4 pixels = 0.133, 12 pixels = 0.4)
-     */
-    private void createPlayerArm() {
-        // Define arm dimensions (half-extents) - Minecraft 4x12x4 pixel proportions
-        float armHalfWidth = 0.067f;  // 4 pixels width (full width 0.133)
-        float armHalfHeight = 0.2f;   // 12 pixels height (full height 0.4) 
-        float armHalfDepth = 0.067f;  // 4 pixels depth (full depth 0.133)
-
-        // 8 vertices of the cuboid arm with Minecraft proportions and UV mapping
-        // Minecraft arms use blocky, pixelated textures with specific UV layout
-        // Each face gets proper UV coordinates for Minecraft-style skin texture mapping
-        float[] vertices = {
-            // Front face (z = armHalfDepth) - Main arm front
-            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.0f, 1.0f, // 0: Front-Bottom-Left
-             armHalfWidth, -armHalfHeight,  armHalfDepth, 0.25f, 1.0f, // 1: Front-Bottom-Right
-             armHalfWidth,  armHalfHeight,  armHalfDepth, 0.25f, 0.0f, // 2: Front-Top-Right
-            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.0f, 0.0f, // 3: Front-Top-Left
-            // Back face (z = -armHalfDepth) - Arm back
-            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.5f, 1.0f, // 4: Back-Bottom-Left
-             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.25f, 1.0f, // 5: Back-Bottom-Right
-             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.25f, 0.0f, // 6: Back-Top-Right
-            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.5f, 0.0f,  // 7: Back-Top-Left
-            // Top face (y = armHalfHeight) - Arm top (shoulder area)
-            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.25f, 0.75f, // 8
-             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.5f, 0.75f, // 9
-             armHalfWidth,  armHalfHeight,  armHalfDepth, 0.5f, 1.0f, // 10
-            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.25f, 1.0f, // 11
-            // Bottom face (y = -armHalfHeight) - Arm bottom (hand area)
-            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.5f, 0.75f, // 12
-             armHalfWidth, -armHalfHeight,  armHalfDepth, 0.75f, 0.75f, // 13
-             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.75f, 1.0f, // 14
-            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.5f, 1.0f, // 15
-            // Right face (x = armHalfWidth) - Outer arm side
-             armHalfWidth, -armHalfHeight, -armHalfDepth, 0.75f, 1.0f, // 16
-             armHalfWidth, -armHalfHeight,  armHalfDepth, 1.0f, 1.0f, // 17
-             armHalfWidth,  armHalfHeight,  armHalfDepth, 1.0f, 0.0f, // 18
-             armHalfWidth,  armHalfHeight, -armHalfDepth, 0.75f, 0.0f, // 19
-            // Left face (x = -armHalfWidth) - Inner arm side  
-            -armHalfWidth, -armHalfHeight,  armHalfDepth, 0.0f, 1.0f, // 20
-            -armHalfWidth, -armHalfHeight, -armHalfDepth, 0.25f, 1.0f, // 21
-            -armHalfWidth,  armHalfHeight, -armHalfDepth, 0.25f, 0.0f, // 22
-            -armHalfWidth,  armHalfHeight,  armHalfDepth, 0.0f, 0.0f  // 23
-        };
-        // Re-index for separate face UVs
-        int[] indices = {
-            // Front face
-            0, 1, 2, 2, 3, 0,
-            // Back face
-            4, 5, 6, 6, 7, 4, // Use original back face vertices 4,5,6,7
-            // Top face
-            11, 10, 9, 9, 8, 11, // Use new top face vertices 8,9,10,11
-            // Bottom face
-            12, 13, 14, 14, 15, 12, // Use new bottom face vertices 12,13,14,15
-            // Right face
-            17, 16, 19, 19, 18, 17, // Use new right face vertices 16,17,18,19
-            // Left face
-            20, 23, 22, 22, 21, 20  // Use new left face vertices 20,21,22,23
-        };
-
-        this.playerArmVao = GL30.glGenVertexArrays(); // Assign to class member
-        GL30.glBindVertexArray(this.playerArmVao);
-
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-
-        // Position attribute
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 5 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-        // Texture coordinate attribute
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 5 * Float.BYTES, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1);
-
-        int ibo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-    }
-
-    /**
-     * Creates a Minecraft-style arm texture with pixelated skin appearance.
-     */
-    private void createArmTexture() {
-        int texWidth = 64;  // Minecraft skin texture width
-        int texHeight = 64; // Minecraft skin texture height
-        ByteBuffer buffer = BufferUtils.createByteBuffer(texWidth * texHeight * 4); // RGBA
-
-        // Minecraft Steve default skin colors
-        int skinR = 245; // Light skin tone
-        int skinG = 220;
-        int skinB = 165;
-        
-        int shirtR = 111; // Blue shirt/sleeve color  
-        int shirtG = 124;
-        int shirtB = 172;
-
-        for (int y = 0; y < texHeight; y++) {
-            for (int x = 0; x < texWidth; x++) {
-                byte r, g, b, a = (byte) 255;
-                
-                // Create Minecraft-style pixelated pattern
-                // Arm area in Minecraft skin layout: roughly x=40-48, y=16-32 for right arm
-                boolean isArmArea = (x >= 40 && x < 48 && y >= 16 && y < 32);
-                boolean isSleeveArea = (x >= 40 && x < 48 && y >= 0 && y < 16); // Sleeve overlay
-                
-                if (isSleeveArea) {
-                    // Blue shirt sleeve
-                    r = (byte) shirtR;
-                    g = (byte) shirtG;
-                    b = (byte) shirtB;
-                } else if (isArmArea) {
-                    // Skin tone with slight variation for pixelated look
-                    int variation = ((x + y) % 3) - 1; // -1, 0, or 1
-                    r = (byte) Math.max(0, Math.min(255, skinR + variation * 5));
-                    g = (byte) Math.max(0, Math.min(255, skinG + variation * 3));
-                    b = (byte) Math.max(0, Math.min(255, skinB + variation * 2));
-                } else {
-                    // Default skin tone for other areas
-                    r = (byte) skinR;
-                    g = (byte) skinG;
-                    b = (byte) skinB;
-                }
-
-                buffer.put(r);
-                buffer.put(g);
-                buffer.put(b);
-                buffer.put(a);
-            }
-        }
-        buffer.flip();
-
-        armTextureId = glGenTextures();
-        glBindTexture(GL_TEXTURE_2D, armTextureId);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // Keep pixelated look
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Keep pixelated look
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
 
     /**
      * Creates the VAO and VBO for rendering generic UI quads.
@@ -658,7 +507,7 @@ public class Renderer {
         // Render player arm (if not in pause menu, etc.)
         // Player arm needs its own shader setup, including texture
         if (!Game.getInstance().isPaused()) {
-            renderPlayerArm(player); // This method binds its own shader and texture
+            playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
         }
 
         // Render water particles
@@ -760,7 +609,7 @@ public class Renderer {
         // Render player arm (if not in pause menu, etc.)
         // Player arm needs its own shader setup, including texture
         if (!Game.getInstance().isPaused()) {
-            renderPlayerArm(player); // This method binds its own shader and texture
+            playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
         }
 
         // Render water particles
@@ -857,7 +706,7 @@ public class Renderer {
 
         // Render player arm (if not in pause menu, etc.)
         if (!Game.getInstance().isPaused()) {
-            renderPlayerArm(player); // This method binds its own shader and texture
+            playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
         }
 
         // Render water particles
@@ -874,204 +723,6 @@ public class Renderer {
         renderBlockDrops(world);
     }
     
-    /**
-     * Renders the player's arm with Minecraft-style positioning and animation.
-     */
-    private void renderPlayerArm(Player player) {
-        shaderProgram.bind(); // Ensure shader is bound
-
-        // Use a separate projection for the arm (orthographic, but could be perspective if desired)
-        // For simplicity, let's use the main projection but adjust the view.
-        // The arm should be rendered with proper depth testing to avoid visual artifacts.
-        glEnable(GL_DEPTH_TEST); // Enable depth testing for proper rendering
-        glDepthMask(true); // Enable depth writing
-
-        // Reuse matrix to avoid allocation
-        reusableArmViewModel.identity();
-        
-        // Get the selected item from the Player's Inventory
-        ItemStack selectedItem = null;
-        if (player.getInventory() != null) {
-            selectedItem = player.getInventory().getSelectedHotbarSlot();
-        }
-        
-        // Check if we should display the item (block or tool) in hand
-        boolean displayingItem = false;
-        boolean isDisplayingBlock = false;
-        boolean isDisplayingTool = false;
-        BlockType selectedBlockType = null;
-        ItemType selectedItemType = null;
-        
-        if (selectedItem != null && !selectedItem.isEmpty()) {
-            if (selectedItem.isPlaceable()) {
-                // Item is a placeable block
-                selectedBlockType = selectedItem.asBlockType();
-                isDisplayingBlock = (selectedBlockType != null && selectedBlockType != BlockType.AIR &&
-                                    selectedBlockType.getAtlasX() >= 0 && selectedBlockType.getAtlasY() >= 0);
-                displayingItem = isDisplayingBlock;
-            } else if (selectedItem.isTool() || selectedItem.isMaterial()) {
-                // Item is a tool or material
-                selectedItemType = selectedItem.asItemType();
-                isDisplayingTool = (selectedItemType != null &&
-                                   selectedItemType.getAtlasX() >= 0 && selectedItemType.getAtlasY() >= 0);
-                displayingItem = isDisplayingTool;
-            }
-        }
-        
-        // Get total time for animations
-        float totalTime = Game.getInstance().getTotalTimeElapsed();
-        
-        // Check if player is walking by examining velocity
-        org.joml.Vector3f velocity = player.getVelocity();
-        float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        boolean isWalking = horizontalSpeed > 0.5f; // Higher threshold to avoid false positives
-        
-        // Base arm position - Minecraft-style positioning (right arm only visible)
-        float baseX = 0.56f;  // Right side positioning like Minecraft
-        float baseY = -0.48f; // Slightly lower position for natural look
-        float baseZ = -0.65f; // Closer to camera for better visibility
-        
-        // Add walking animation - arm swaying while walking
-        if (isWalking) {
-            // Walking arm swing - use a consistent faster speed
-            float walkCycleTime = totalTime * 6.0f; // Fixed speed for consistent animation
-            
-            // Primary walking swing motion (up and down)
-            float walkSwayY = (float) Math.sin(walkCycleTime) * 0.02f;
-            
-            // Secondary walking motion (slight forward/back)
-            float walkSwayZ = (float) Math.cos(walkCycleTime) * 0.01f;
-            
-            // Apply walking sway
-            baseY += walkSwayY;
-            baseZ += walkSwayZ;
-        }
-        
-        // Add subtle idle sway only when not walking
-        float swayX = 0.0f;
-        float swayY = 0.0f;
-        if (!isWalking) {
-            // Gentle idle movement when standing still
-            swayX = (float) Math.sin(totalTime * 1.2f) * 0.003f;
-            swayY = (float) Math.cos(totalTime * 1.5f) * 0.002f;
-        }
-        
-        // Add breathing-like movement
-        float breatheY = (float) Math.sin(totalTime * 2.0f) * 0.008f;
-        
-        // Position the arm with Minecraft-style offset
-        reusableArmViewModel.translate(baseX + swayX, baseY + swayY + breatheY, baseZ);
-        
-        // Minecraft-style arm rotation - slight inward angle
-        reusableArmViewModel.rotate((float) Math.toRadians(-10.0f), 0.0f, 1.0f, 0.0f); // Slight inward rotation
-        reusableArmViewModel.rotate((float) Math.toRadians(5.0f), 1.0f, 0.0f, 0.0f);   // Slight downward tilt
-
-        // Adjust the model based on whether we're displaying an item or arm
-        if (displayingItem) {
-            // Position and scale for the block - Minecraft-style item positioning
-            reusableArmViewModel.scale(0.4f); // Larger scale for better visibility
-            reusableArmViewModel.translate(-0.3f, 0.15f, 0.3f); // Adjust position for item in hand
-            
-            // Apply Minecraft-style item rotation
-            reusableArmViewModel.rotate((float) Math.toRadians(20.0f), 1.0f, 0.0f, 0.0f);
-            reusableArmViewModel.rotate((float) Math.toRadians(-30.0f), 0.0f, 1.0f, 0.0f);
-            reusableArmViewModel.rotate((float) Math.toRadians(10.0f), 0.0f, 0.0f, 1.0f);
-        }
-
-        // Enhanced swinging animation - Diagonal swing towards center
-        if (player.isAttacking()) {
-            float progress = 1.0f - player.getAttackAnimationProgress(); // Reverse the progress
-            
-            // Diagonal swing motion towards center of screen
-            float swingAngle = (float) (Math.sin(progress * Math.PI) * 45.0f); // Reduced arc for diagonal motion
-            float diagonalAngle = (float) (Math.sin(progress * Math.PI) * 30.0f); // Diagonal component
-            float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.08f); // Slight lift during swing
-            
-            // Apply diagonal swing rotation - combination of X and Y axis rotation
-            reusableArmViewModel.rotate((float) Math.toRadians(-swingAngle * 0.7f), 1.0f, 0.0f, 0.0f); // Reduced downward motion
-            reusableArmViewModel.rotate((float) Math.toRadians(-diagonalAngle), 0.0f, 1.0f, 0.0f); // Swing towards center (negative for inward)
-            reusableArmViewModel.rotate((float) Math.toRadians(swingAngle * 0.2f), 0.0f, 0.0f, 1.0f); // Slight roll for natural motion
-            
-            // Translate towards center of screen during swing
-            reusableArmViewModel.translate(progress * -0.1f, swingLift, progress * -0.05f); // Move inward and slightly forward
-        }
-
-        // Set model-view matrix for the arm (combining arm's transformation with camera's view)
-        // We want the arm to be relative to the camera, not the world.
-        // So, we use an identity view matrix for the arm, and apply transformations directly.
-        shaderProgram.setUniform("projectionMatrix", projectionMatrix); // Use main projection
-        shaderProgram.setUniform("viewMatrix", reusableArmViewModel); // Use the arm's own model-view
-
-        // Check if we have a valid item to display
-        if (displayingItem) {
-            if (isDisplayingBlock) {
-            // Add a redundant check for selectedBlockType to satisfy static analyzers
-            if (selectedBlockType == null) {
-                // This path should ideally not be reached if displayingBlock is true due to its definition.
-                // Log this inconsistency.
-                System.err.println("Inconsistent state: displayingBlock is true, but selectedBlockType is null in renderPlayerArm.");
-                // Fallback or error handling: perhaps render nothing or a default.
-            } else {
-                // Check if this is a flower block - render as flat cross pattern instead of 3D cube
-                switch (selectedBlockType) {
-                    case ROSE, DANDELION -> renderFlowerInHand(selectedBlockType); // Cross pattern for flowers
-                    default -> {
-                        // Use block-specific cube for proper face texturing
-                        shaderProgram.setUniform("u_useSolidColor", false);
-                        shaderProgram.setUniform("u_isText", false);
-                        shaderProgram.setUniform("u_transformUVsForItem", false); // Disable UV transformation since we're using pre-calculated UVs
-                        
-                        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-                        shaderProgram.setUniform("texture_sampler", 0);
-                        
-                        // No tint for block texture
-                        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-                        
-                        // Disable blending to prevent transparency issues
-                        glDisable(GL_BLEND);
-                        
-                        // Get or create block-specific cube with proper face textures
-                        int blockSpecificVao = getHandBlockVao(selectedBlockType); // Method to be re-added
-                        GL30.glBindVertexArray(blockSpecificVao);
-                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
-                        
-                        // Re-enable blending for other elements
-                        glEnable(GL_BLEND);
-                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                    }
-                }
-            }
-        } else if (isDisplayingTool && selectedItemType != null) {
-            // Handle tool rendering - render 2D sprite in hand position
-            renderToolInHand(selectedItemType);
-        }
-        } else {
-            // Fallback to the default arm texture
-            shaderProgram.setUniform("u_useSolidColor", false);
-            shaderProgram.setUniform("u_isText", false);
-            shaderProgram.setUniform("u_transformUVsForItem", false);
-            
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, armTextureId);
-            shaderProgram.setUniform("texture_sampler", 0);
-            
-            // Minecraft Steve skin-tone - no tint, use texture colors
-            shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-            
-            // Use the arm model as fallback
-            GL30.glBindVertexArray(playerArmVao);
-            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-        }
-        
-        GL30.glBindVertexArray(0);
-        
-        // Reset shader state
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-        
-        // Depth testing is already enabled, so no need to re-enable
-        shaderProgram.unbind(); // Unbind shader if it's not used immediately after
-    }
 
       /**
      * Renders UI elements on top of the 3D world.
@@ -1750,18 +1401,6 @@ public class Renderer {
      * Gets or creates a cached VAO for rendering a specific block type in the player's hand.
      * This ensures proper face texturing for blocks with different textures per face.
      */
-    private int getHandBlockVao(BlockType blockType) {
-        // Check if VAO is already cached
-        Integer cachedVao = handBlockVaoCache.get(blockType);
-        if (cachedVao != null) {
-            return cachedVao;
-        }
-        
-        // Create new VAO and cache it
-        int vao = createBlockSpecificCube(blockType);
-        handBlockVaoCache.put(blockType, vao);
-        return vao;
-    }
     
     private void renderFlowerInHand(BlockType flowerType) {
         // Set up shader for flower rendering
@@ -2352,16 +1991,14 @@ public class Renderer {
         if (font != null) {
             font.cleanup();
         }
-        if (armTextureId != 0) {
-            glDeleteTextures(armTextureId);
+        // Cleanup specialized renderers
+        if (playerArmRenderer != null) {
+            playerArmRenderer.cleanup();
         }
         
         // Delete UI VAOs
         GL30.glDeleteVertexArrays(crosshairVao);
         GL30.glDeleteVertexArrays(hotbarVao);
-        if (playerArmVao != 0) {
-            GL30.glDeleteVertexArrays(playerArmVao);
-        }
         if (uiQuadVao != 0) {
             GL30.glDeleteVertexArrays(uiQuadVao);
         }
@@ -2369,13 +2006,6 @@ public class Renderer {
             GL20.glDeleteBuffers(uiQuadVbo);
         }
         
-        // Clean up hand block VAO cache
-        for (Integer vao : handBlockVaoCache.values()) {
-            if (vao != null && vao != 0) {
-                GL30.glDeleteVertexArrays(vao);
-            }
-        }
-        handBlockVaoCache.clear();
         
         
         // Cleanup pause menu
