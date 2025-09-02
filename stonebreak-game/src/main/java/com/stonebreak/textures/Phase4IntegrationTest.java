@@ -182,11 +182,11 @@ public class Phase4IntegrationTest {
         
         switch (blockType) {
             case GRASS: return "grass_block";
-            case DIRT: return "dirt";
+            case DIRT: return "dirt_block"; // Fixed: atlas has dirt_block_* textures
             case STONE: return "stone";
             case WOOD: return "wood";
             case SAND: return "sand";
-            case WATER: return "water";
+            case WATER: return "water_temp"; // Fixed: atlas has water_temp_* textures
             case COAL_ORE: return "coal_ore";
             case IRON_ORE: return "iron_ore";
             case LEAVES: return "leaves";
@@ -194,10 +194,10 @@ public class Phase4IntegrationTest {
             case ICE: return "ice";
             case SNOW: return "snow";
             case DANDELION: return "dandelion";
-            case ROSE: return "poppy"; // Rose maps to poppy texture
+            case ROSE: return "rose"; // Fixed: atlas has rose_* textures
             case ELM_WOOD_LOG: return "elm_wood_log";
             case MAGMA: return "magma";
-            case WORKBENCH: return "workbench";
+            case WORKBENCH: return "workbench_custom"; // Fixed: atlas has workbench_custom_* textures
             case PINE: return "pine_wood";
             default: return blockType.name().toLowerCase();
         }

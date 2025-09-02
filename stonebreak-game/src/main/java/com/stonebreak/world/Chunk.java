@@ -546,11 +546,25 @@ public class Chunk {
             }
         }
         
-        // Add texture coordinates
-        float[] texCoords = blockType.getTextureCoords(BlockType.Face.values()[face]);
-        float texX = texCoords[0] / 16.0f;
-        float texY = texCoords[1] / 16.0f;
-        float texSize = 1.0f / 16.0f;
+        // Add texture coordinates using modern metadata-driven texture atlas
+        float texX, texY, texSize;
+        float[] uvCoords = null;
+        
+        // Get texture coordinates from the modern atlas system
+        Game game = Game.getInstance();
+        if (game != null && game.getTextureAtlas() != null) {
+            uvCoords = game.getTextureAtlas().getBlockFaceUVs(blockType, BlockType.Face.values()[face]);
+            // For non-water blocks, use the atlas coordinates directly
+            texX = uvCoords[0]; // u1
+            texY = uvCoords[1]; // v1
+            texSize = uvCoords[2] - uvCoords[0]; // u2 - u1
+        } else {
+            // Fallback to legacy system if atlas not available
+            float[] texCoords = blockType.getTextureCoords(BlockType.Face.values()[face]);
+            texX = texCoords[0] / 16.0f;
+            texY = texCoords[1] / 16.0f;
+            texSize = 1.0f / 16.0f;
+        }
         
         float u_topLeft, v_topLeft, u_bottomLeft, v_bottomLeft;
         float u_bottomRight, v_bottomRight, u_topRight, v_topRight;
@@ -663,15 +677,28 @@ public class Chunk {
             u_topRight = texX + u_topRight * texSize;
             v_topRight = texY + v_topRight * texSize;
         } else {
-            // For non-water blocks, use regular texture coordinates
-            u_topLeft = texX;
-            v_topLeft = texY;
-            u_bottomLeft = texX;
-            v_bottomLeft = texY + texSize;
-            u_bottomRight = texX + texSize;
-            v_bottomRight = texY + texSize;
-            u_topRight = texX + texSize;
-            v_topRight = texY;
+            // For non-water blocks, use texture coordinates from atlas
+            if (uvCoords != null) {
+                // Use the modern atlas UV coordinates directly [u1, v1, u2, v2]
+                u_topLeft = uvCoords[0];
+                v_topLeft = uvCoords[1];
+                u_bottomLeft = uvCoords[0];
+                v_bottomLeft = uvCoords[3];
+                u_bottomRight = uvCoords[2];
+                v_bottomRight = uvCoords[3];
+                u_topRight = uvCoords[2];
+                v_topRight = uvCoords[1];
+            } else {
+                // Fallback to legacy calculated coordinates
+                u_topLeft = texX;
+                v_topLeft = texY;
+                u_bottomLeft = texX;
+                v_bottomLeft = texY + texSize;
+                u_bottomRight = texX + texSize;
+                v_bottomRight = texY + texSize;
+                u_topRight = texX + texSize;
+                v_topRight = texY;
+            }
         }
 
         // Apply UV mapping based on face orientation
@@ -761,16 +788,27 @@ public class Chunk {
         float centerZ = worldZ + 0.5f;
         float crossSize = 0.45f; // Slightly smaller than full block
         
-        // Get texture coordinates for the flower
-        float[] texCoords = blockType.getTextureCoords(BlockType.Face.TOP); // Use face 0 texture
-        float texX = texCoords[0] / 16.0f;
-        float texY = texCoords[1] / 16.0f;
-        float texSize = 1.0f / 16.0f;
+        // Get texture coordinates for the flower using modern atlas system
+        float u_left, v_top, u_right, v_bottom;
         
-        float u_left = texX;
-        float v_top = texY;
-        float u_right = texX + texSize;
-        float v_bottom = texY + texSize;
+        Game game = Game.getInstance();
+        if (game != null && game.getTextureAtlas() != null) {
+            float[] uvCoords = game.getTextureAtlas().getBlockFaceUVs(blockType, BlockType.Face.TOP);
+            u_left = uvCoords[0];   // u1
+            v_top = uvCoords[1];    // v1
+            u_right = uvCoords[2];  // u2
+            v_bottom = uvCoords[3]; // v2
+        } else {
+            // Fallback to legacy system
+            float[] texCoords = blockType.getTextureCoords(BlockType.Face.TOP);
+            float texX = texCoords[0] / 16.0f;
+            float texY = texCoords[1] / 16.0f;
+            float texSize = 1.0f / 16.0f;
+            u_left = texX;
+            v_top = texY;
+            u_right = texX + texSize;
+            v_bottom = texY + texSize;
+        }
         
         // Only create 2 cross planes (no duplicates for double-sided)
         // First cross plane (diagonal from NW to SE)

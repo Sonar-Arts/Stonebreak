@@ -1657,19 +1657,13 @@ public class Renderer {
     * This method is used for rendering blocks in hand and in the inventory.
     */
     private int createBlockSpecificCube(BlockType type) {
-        float[] topCoords = type.getTextureCoords(BlockType.Face.TOP);
-        float[] bottomCoords = type.getTextureCoords(BlockType.Face.BOTTOM);
-        float[] northCoords = type.getTextureCoords(BlockType.Face.SIDE_NORTH); // Front
-        float[] southCoords = type.getTextureCoords(BlockType.Face.SIDE_SOUTH); // Back
-        float[] eastCoords = type.getTextureCoords(BlockType.Face.SIDE_EAST);   // Right
-        float[] westCoords = type.getTextureCoords(BlockType.Face.SIDE_WEST);   // Left
-
-        float[] frontUVs = textureAtlas.getUVCoordinates((int)northCoords[0], (int)northCoords[1]);
-        float[] backUVs = textureAtlas.getUVCoordinates((int)southCoords[0], (int)southCoords[1]);
-        float[] topUVs = textureAtlas.getUVCoordinates((int)topCoords[0], (int)topCoords[1]);
-        float[] bottomUVs = textureAtlas.getUVCoordinates((int)bottomCoords[0], (int)bottomCoords[1]);
-        float[] rightUVs = textureAtlas.getUVCoordinates((int)eastCoords[0], (int)eastCoords[1]);
-        float[] leftUVs = textureAtlas.getUVCoordinates((int)westCoords[0], (int)westCoords[1]);
+        // Use the modern metadata-driven texture atlas system instead of legacy grid coordinates
+        float[] frontUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_NORTH);   // Front
+        float[] backUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_SOUTH);    // Back
+        float[] topUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP);            // Top
+        float[] bottomUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.BOTTOM);      // Bottom
+        float[] rightUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_EAST);    // Right
+        float[] leftUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_WEST);     // Left
 
         // Define vertices for a cube (position, normal, texCoord)
         // Each face defined separately to allow different UVs per face
