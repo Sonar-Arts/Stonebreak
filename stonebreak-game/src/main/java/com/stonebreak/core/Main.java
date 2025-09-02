@@ -69,6 +69,8 @@ public class Main {
             loop();
         } finally {
             cleanup();
+            System.out.println("Stonebreak shutdown complete.");
+            System.exit(0);
         }
     }
     
@@ -194,6 +196,12 @@ public class Main {
                     mouseCaptureManager.temporaryRelease();
                 }
             }
+        });
+        
+        // Setup window close callback to handle X button clicks
+        glfwSetWindowCloseCallback(window, win -> {
+            System.out.println("Window close requested - initiating shutdown...");
+            running = false;
         });
         
         // Get the thread stack and push a new frame

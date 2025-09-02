@@ -979,6 +979,8 @@ public class Game {
      * Cleanup game resources.
      */
     public void cleanup() {
+        System.out.println("Starting Game cleanup...");
+        
         if (world != null) {
             world.cleanup();
         }
@@ -1003,7 +1005,44 @@ public class Game {
         if (entityManager != null) {
             entityManager.cleanup();
         }
+        
+        // Shutdown world update executor with proper termination waiting
+        System.out.println("Shutting down world update executor...");
         worldUpdateExecutor.shutdownNow();
+        try {
+            if (!worldUpdateExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                System.err.println("World update executor did not terminate gracefully");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted while waiting for world update executor shutdown");
+        }
+        
+        // Cleanup static resources that may have executors
+        cleanupStaticResources();
+        
+        System.out.println("Game cleanup completed");
+    }
+    
+    /**
+     * Cleanup static resources that may have background threads.
+     */
+    private void cleanupStaticResources() {
+        try {
+            // Shutdown ModelLoader async executor
+            System.out.println("Shutting down ModelLoader executor...");
+            com.stonebreak.model.ModelLoader.shutdown();
+        } catch (Exception e) {
+            System.err.println("Error shutting down ModelLoader: " + e.getMessage());
+        }
+        
+        try {
+            // Shutdown CowTextureAtlas if it has any background resources
+            System.out.println("Cleaning up CowTextureAtlas...");
+            com.stonebreak.rendering.CowTextureAtlas.cleanup();
+        } catch (Exception e) {
+            System.err.println("Error cleaning up CowTextureAtlas: " + e.getMessage());
+        }
     }
     
     /**
