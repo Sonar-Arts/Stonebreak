@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI.menus;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.TextureAtlas;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.core.BaseRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;

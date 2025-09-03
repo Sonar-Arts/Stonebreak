@@ -13,6 +13,7 @@ import com.stonebreak.items.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
 import com.stonebreak.rendering.CowTextureAtlas;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;

@@ -1,6 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
-import com.stonebreak.rendering.TextureAtlas;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.pipeline.DepthCurtainRenderer;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;

@@ -13,6 +13,7 @@ import com.stonebreak.rendering.player.PlayerArmRenderer;
 
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;

@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI.menus;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.ShaderProgram;
-import com.stonebreak.rendering.TextureAtlas;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;

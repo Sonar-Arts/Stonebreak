@@ -10,6 +10,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.*;
 
+import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.*;
 import org.lwjgl.*;
 import org.lwjgl.opengl.*;

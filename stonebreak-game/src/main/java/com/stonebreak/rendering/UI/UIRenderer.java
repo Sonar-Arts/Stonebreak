@@ -7,7 +7,7 @@ import com.stonebreak.chat.ChatSystem;
 import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.ShaderProgram;
-import com.stonebreak.rendering.TextureAtlas;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.components.ChatRenderer;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;

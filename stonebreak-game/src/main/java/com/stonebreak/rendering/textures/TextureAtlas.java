@@ -1,6 +1,8 @@
-package com.stonebreak.rendering;
+package com.stonebreak.rendering.textures;
 
 import java.nio.ByteBuffer;
+
+import com.stonebreak.rendering.WaterEffects;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -9,16 +11,10 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.textures.atlas.AtlasMetadata;
 import com.stonebreak.textures.atlas.AtlasMetadataCache;
 import com.stonebreak.textures.loaders.TextureResourceLoader;
-import com.stonebreak.textures.loaders.GifTextureLoader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Map;
-import java.util.HashMap;
 
 /**
  * Modern texture atlas system with JSON-based texture loading.
