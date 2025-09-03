@@ -10,6 +10,7 @@ import java.util.*;
 import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
+import com.stonebreak.rendering.UI.DebugRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -142,6 +143,7 @@ public class Renderer {
     
     // Specialized renderers
     private final PlayerArmRenderer playerArmRenderer;
+    private DebugRenderer debugRenderer;
     
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -204,6 +206,9 @@ public class Renderer {
         createHotbar();
         createUiQuadRenderer(); // Initialize UI quad rendering resources
         createWireframe(); // Initialize debug wireframe bounding box rendering
+        
+        // Initialize debug renderer after wireframe setup
+        debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix, wireframeVao);
     }
     
     /**
@@ -1925,54 +1930,7 @@ public class Renderer {
      * @param color The color of the wireframe (RGB, each component 0.0-1.0)
      */
     public void renderWireframeBoundingBox(com.stonebreak.mobs.entities.Entity.BoundingBox boundingBox, Vector3f color) {
-        // Save current OpenGL state
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        
-        // Set up OpenGL state for wireframe rendering
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        
-        // Use shader program
-        shaderProgram.bind();
-        
-        // Set view and projection matrices
-        Player player = Game.getPlayer();
-        if (player != null) {
-            shaderProgram.setUniform("viewMatrix", player.getCamera().getViewMatrix());
-            shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        }
-        
-        // Calculate model matrix for the bounding box
-        Matrix4f modelMatrix = new Matrix4f();
-        float centerX = (boundingBox.minX + boundingBox.maxX) / 2.0f;
-        float centerY = (boundingBox.minY + boundingBox.maxY) / 2.0f;
-        float centerZ = (boundingBox.minZ + boundingBox.maxZ) / 2.0f;
-        float scaleX = boundingBox.maxX - boundingBox.minX;
-        float scaleY = boundingBox.maxY - boundingBox.minY;
-        float scaleZ = boundingBox.maxZ - boundingBox.minZ;
-        
-        modelMatrix.translation(centerX, centerY, centerZ);
-        modelMatrix.scale(scaleX, scaleY, scaleZ);
-        
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        
-        // Set shader uniforms for solid color rendering
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new Vector4f(color.x, color.y, color.z, 1.0f));
-        
-        // Render the wireframe
-        GL30.glBindVertexArray(wireframeVao);
-        glDrawArrays(GL_LINES, 0, 24); // 24 vertices for 12 edges
-        GL30.glBindVertexArray(0);
-        
-        // Restore OpenGL state
-        if (!depthTestEnabled) {
-            glDisable(GL_DEPTH_TEST);
-        }
-        
-        // Unbind shader
-        shaderProgram.unbind();
+        debugRenderer.renderWireframeBoundingBox(boundingBox, color);
     }
     
     /**
@@ -1981,78 +1939,7 @@ public class Renderer {
      * @param color The color of the path wireframe (RGB, each component 0.0-1.0)
      */
     public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
-        if (pathPoints == null || pathPoints.size() < 2) {
-            return; // Need at least 2 points to draw a line
-        }
-        
-        // Save current OpenGL state
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        
-        // Set up OpenGL state for wireframe rendering
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        
-        // Use shader program
-        shaderProgram.bind();
-        
-        // Set view and projection matrices
-        Player player = Game.getPlayer();
-        if (player != null) {
-            shaderProgram.setUniform("viewMatrix", player.getCamera().getViewMatrix());
-            shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        }
-        
-        // Set identity model matrix
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        
-        // Set shader uniforms for solid color rendering
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new Vector4f(color.x, color.y, color.z, 1.0f));
-        
-        // Create vertices for the path lines
-        int vertexCount = (pathPoints.size() - 1) * 2; // Each line segment needs 2 vertices
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertexCount * 3);
-        
-        for (int i = 0; i < pathPoints.size() - 1; i++) {
-            Vector3f start = pathPoints.get(i);
-            Vector3f end = pathPoints.get(i + 1);
-            
-            // Add start point
-            vertexBuffer.put(start.x).put(start.y).put(start.z);
-            // Add end point
-            vertexBuffer.put(end.x).put(end.y).put(end.z);
-        }
-        vertexBuffer.flip();
-        
-        // Create temporary VAO and VBO for path rendering
-        int vao = GL30.glGenVertexArrays();
-        int vbo = GL30.glGenBuffers();
-        
-        GL30.glBindVertexArray(vao);
-        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
-        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, vertexBuffer, GL30.GL_DYNAMIC_DRAW);
-        
-        // Set vertex attributes (position)
-        GL30.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
-        GL30.glEnableVertexAttribArray(0);
-        
-        // Render the path lines
-        glDrawArrays(GL_LINES, 0, vertexCount);
-        
-        // Cleanup
-        GL30.glBindVertexArray(0);
-        GL30.glDeleteVertexArrays(vao);
-        GL30.glDeleteBuffers(vbo);
-        
-        // Restore OpenGL state
-        if (!depthTestEnabled) {
-            glDisable(GL_DEPTH_TEST);
-        }
-        
-        // Unbind shader
-        shaderProgram.unbind();
+        debugRenderer.renderWireframePath(pathPoints, color);
     }
     
     /**
