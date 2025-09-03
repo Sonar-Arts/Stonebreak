@@ -496,6 +496,154 @@ public class BlockRenderer {
     }
     
     /**
+     * Creates a VAO for rendering cross-shaped blocks like flowers.
+     * Creates two intersecting quads that form a cross pattern.
+     */
+    public int createFlowerCross(BlockType type, TextureAtlas textureAtlas) {
+        // Get UV coordinates for the flower texture
+        float[] uvCoords = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_NORTH);
+        
+        // Create vertices for two intersecting quads forming a cross
+        // First quad (Z-aligned)
+        float[] vertices1 = {
+            // Quad 1: Front-back cross section
+            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
+            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Second quad (X-aligned, rotated 90 degrees)
+        float[] vertices2 = {
+            // Quad 2: Left-right cross section
+            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
+            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Combine both quads into single vertex array
+        float[] vertices = new float[vertices1.length + vertices2.length];
+        System.arraycopy(vertices1, 0, vertices, 0, vertices1.length);
+        System.arraycopy(vertices2, 0, vertices, vertices1.length, vertices2.length);
+        
+        // Indices for both quads (quad 1: indices 0-3, quad 2: indices 4-7)
+        int[] indices = {
+            0, 1, 2, 0, 2, 3,  // First quad
+            4, 5, 6, 4, 6, 7   // Second quad
+        };
+        
+        // Create VAO
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        
+        // Create VBO
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
+        // Position attribute (location 0)
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        // Normal attribute (location 2)
+        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+        // Texture coordinate attribute (location 1)
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        // Create IBO
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        
+        return vao;
+    }
+    
+    /**
+     * Renders a flower cross pattern immediately using provided UV coordinates.
+     * Creates temporary VAO and renders two intersecting quads, then cleans up resources.
+     * This is used for immediate rendering scenarios like held items.
+     */
+    public static void renderFlowerCross(float[] uvCoords) {
+        // Create vertices for two intersecting quads forming a cross
+        // First quad (Z-aligned)
+        float[] vertices1 = {
+            // Quad 1: Front-back cross section
+            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
+            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Second quad (X-aligned, rotated 90 degrees)
+        float[] vertices2 = {
+            // Quad 2: Left-right cross section
+            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
+            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Combine both quads into single vertex array
+        float[] vertices = new float[vertices1.length + vertices2.length];
+        System.arraycopy(vertices1, 0, vertices, 0, vertices1.length);
+        System.arraycopy(vertices2, 0, vertices, vertices1.length, vertices2.length);
+        
+        // Indices for both quads (quad 1: indices 0-3, quad 2: indices 4-7)
+        int[] indices = {
+            0, 1, 2, 0, 2, 3,  // First quad
+            4, 5, 6, 4, 6, 7   // Second quad
+        };
+        
+        // Create temporary VAO for rendering
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
+        // Position attribute (location 0)
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        // Normal attribute (location 2)
+        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+        // Texture coordinate attribute (location 1)
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        // Create IBO
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Render both quads
+        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
+        
+        // Clean up temporary buffers
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        GL30.glDeleteVertexArrays(vao);
+        GL20.glDeleteBuffers(vbo);
+        GL20.glDeleteBuffers(ibo);
+    }
+    
+    /**
      * Cleanup method to release resources.
      */
     public void cleanup() {

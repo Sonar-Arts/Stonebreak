@@ -558,38 +558,8 @@ public class PlayerArmRenderer {
         // No tint - use pure white
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         
-        // Create two intersecting quads to form a cross pattern (like flowers in Minecraft)
-        createAndRenderFlowerCross(uvCoords);
-    }
-
-    /**
-     * Creates and renders the cross pattern for flowers.
-     */
-    private void createAndRenderFlowerCross(float[] uvCoords) {
-        // Create vertices for two intersecting quads forming a cross
-        // First quad (Z-aligned)
-        float[] vertices1 = {
-            // Quad 1: Front-back cross section
-            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
-             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
-             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
-            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        // Second quad (X-aligned, rotated 90 degrees)
-        float[] vertices2 = {
-            // Quad 2: Left-right cross section  
-            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
-            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
-            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
-            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        int[] indices = { 0, 1, 2, 0, 2, 3 };
-        
-        // Render both quads
-        renderSimpleQuad(vertices1, indices);
-        renderSimpleQuad(vertices2, indices);
+        // Use BlockRenderer for cross-shaped geometry
+        com.stonebreak.rendering.models.blocks.BlockRenderer.renderFlowerCross(uvCoords);
     }
     
     /**

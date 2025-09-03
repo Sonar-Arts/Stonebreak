@@ -1321,78 +1321,8 @@ public class Renderer {
         // No tint - use pure white
         shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         
-        // Create two intersecting quads to form a cross pattern (like flowers in Minecraft)
-        createAndRenderFlowerCross(uvCoords);
-    }
-
-    private void createAndRenderFlowerCross(float[] uvCoords) {
-        // Create vertices for two intersecting quads forming a cross
-        // First quad (Z-aligned)
-        float[] vertices1 = {
-            // Quad 1: Front-back cross section
-            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
-             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
-             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
-            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        // Second quad (X-aligned, rotated 90 degrees)
-        float[] vertices2 = {
-            // Quad 2: Left-right cross section
-            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
-            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
-            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
-            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
-        };
-        
-        int[] indices = {
-            0, 1, 2, 0, 2, 3  // Two triangles forming a quad
-        };
-        
-        // Render first quad
-        renderFlowerQuad(vertices1, indices);
-        
-        // Render second quad
-        renderFlowerQuad(vertices2, indices);
-    }
-    
-    private void renderFlowerQuad(float[] vertices, int[] indices) {
-        // Create temporary VAO and buffers for this quad
-        int vao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(vao);
-        
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-        
-        int stride = 8 * Float.BYTES;
-        // Position attribute (location 0)
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
-        GL20.glEnableVertexAttribArray(0);
-        // Normal attribute (location 2)
-        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(2);
-        // Texture coordinate attribute (location 1)
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1);
-        
-        int ibo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Render the quad
-        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
-        
-        // Clean up temporary buffers
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-        GL30.glDeleteVertexArrays(vao);
-        GL20.glDeleteBuffers(vbo);
-        GL20.glDeleteBuffers(ibo);
+        // Use BlockRenderer for cross-shaped geometry
+        com.stonebreak.rendering.models.blocks.BlockRenderer.renderFlowerCross(uvCoords);
     }
     
     
