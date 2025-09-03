@@ -13,6 +13,7 @@ import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
 // LWJGL OpenGL Classes
+import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 // LWJGL OpenGL Static Imports (GL11)
@@ -33,10 +34,56 @@ public class DebugRenderer {
     private Matrix4f projectionMatrix;
     private int wireframeVao;
 
-    public DebugRenderer(ShaderProgram shaderProgram, Matrix4f projectionMatrix, int wireframeVao) {
+    public DebugRenderer(ShaderProgram shaderProgram, Matrix4f projectionMatrix) {
         this.shaderProgram = shaderProgram;
         this.projectionMatrix = projectionMatrix;
-        this.wireframeVao = wireframeVao;
+        createWireframe();
+    }
+    
+    /**
+     * Creates the wireframe VAO for debug bounding box rendering.
+     */
+    private void createWireframe() {
+        // Create vertices for a unit cube wireframe (12 edges, 24 vertices)
+        float[] vertices = {
+            // Bottom face edges
+            -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, // Front edge
+             0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f, // Right edge  
+             0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f, // Back edge
+            -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, -0.5f, // Left edge
+            
+            // Top face edges
+            -0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f, // Front edge
+             0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f, // Right edge
+             0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f, // Back edge
+            -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f, // Left edge
+            
+            // Vertical edges
+            -0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, // Front-left
+             0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f, // Front-right
+             0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f, // Back-right
+            -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f  // Back-left
+        };
+        
+        // Create VAO
+        wireframeVao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(wireframeVao);
+        
+        // Create VBO
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        
+        FloatBuffer buffer = BufferUtils.createFloatBuffer(vertices.length);
+        buffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, buffer, GL20.GL_STATIC_DRAW);
+        
+        // Define vertex attributes
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
+        GL20.glEnableVertexAttribArray(0);
+        
+        // Unbind
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
     }
 
     /**

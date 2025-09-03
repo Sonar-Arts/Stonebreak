@@ -136,7 +136,6 @@ public class Renderer {
     private int hotbarVao;
     private int uiQuadVao;    // VAO for drawing generic UI quads (positions and UVs)
     private int uiQuadVbo;    // VBO for drawing generic UI quads (positions and UVs)
-    private int wireframeVao; // VAO for debug wireframe bounding boxes
     
 
     // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
@@ -205,10 +204,9 @@ public class Renderer {
         createCrosshair();
         createHotbar();
         createUiQuadRenderer(); // Initialize UI quad rendering resources
-        createWireframe(); // Initialize debug wireframe bounding box rendering
         
-        // Initialize debug renderer after wireframe setup
-        debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix, wireframeVao);
+        // Initialize debug renderer
+        debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix);
     }
     
     /**
@@ -278,51 +276,6 @@ public class Renderer {
         GL30.glBindVertexArray(0);
     }
     
-    /**
-     * Creates the wireframe VAO for debug bounding box rendering.
-     */
-    private void createWireframe() {
-        // Create vertices for a unit cube wireframe (12 edges, 24 vertices)
-        float[] vertices = {
-            // Bottom face edges
-            -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, // Front edge
-             0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f, // Right edge  
-             0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f, // Back edge
-            -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, -0.5f, // Left edge
-            
-            // Top face edges
-            -0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f, // Front edge
-             0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f, // Right edge
-             0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f, // Back edge
-            -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f, // Left edge
-            
-            // Vertical edges
-            -0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, // Front-left
-             0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f, // Front-right
-             0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f, // Back-right
-            -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f  // Back-left
-        };
-        
-        // Create VAO
-        wireframeVao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(wireframeVao);
-        
-        // Create VBO
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        
-        FloatBuffer buffer = BufferUtils.createFloatBuffer(vertices.length);
-        buffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, buffer, GL20.GL_STATIC_DRAW);
-        
-        // Define vertex attributes
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // Unbind
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-    }
     
     /**
      * Creates the hotbar UI element.
