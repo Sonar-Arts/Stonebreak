@@ -53,6 +53,7 @@ public class InventoryScreen {
     private final UIRenderer uiRenderer;
     private final InputHandler inputHandler; // Added for mouse input
     private final CraftingManager craftingManager;
+    private final HotbarScreen hotbarScreen;
 
     // Drag and drop state
     private ItemStack draggedItemStack;
@@ -73,17 +74,12 @@ public class InventoryScreen {
     private static final int CRAFTING_OUTPUT_SLOT_INDEX = 2000; // Arbitrary large number
 
 
-    // Hotbar selection tooltip state
-    private String hotbarSelectedItemName;
-    private float hotbarSelectedItemTooltipAlpha;
-    private float hotbarSelectedItemTooltipTimer;
-    private static final float HOTBAR_TOOLTIP_DISPLAY_DURATION = 1.5f; // seconds
-    private static final float HOTBAR_TOOLTIP_FADE_DURATION = 0.5f;   // seconds
+    // Hotbar tooltip state now handled by HotbarScreen
  
  
     // UI constants
     // HOTBAR_SLOTS is now defined in Inventory.java
-    private static final int HOTBAR_Y_OFFSET = 20;
+    // Hotbar constants now in HotbarScreen
     private static final int SLOT_SIZE = 40;
     private static final int SLOT_PADDING = 5;
     // NUM_COLS is now Inventory.MAIN_INVENTORY_COLS
@@ -104,13 +100,11 @@ public class InventoryScreen {
         this.uiRenderer = uiRenderer;
         this.inputHandler = inputHandler; // Initialize InputHandler
         this.craftingManager = craftingManager;
+        this.hotbarScreen = new HotbarScreen(inventory);
         this.draggedItemStack = null;
         this.draggedItemOriginalSlotIndex = -1;
         this.dragSource = DragSource.NONE;
         this.hoveredItemStack = null;
-        this.hotbarSelectedItemName = null;
-        this.hotbarSelectedItemTooltipAlpha = 0.0f;
-        this.hotbarSelectedItemTooltipTimer = 0.0f;
 
         this.craftingInputSlots = new ItemStack[CRAFTING_INPUT_SLOTS_COUNT];
         for (int i = 0; i < CRAFTING_INPUT_SLOTS_COUNT; i++) {
@@ -134,34 +128,21 @@ public class InventoryScreen {
     }
 
     public void update(float deltaTime) {
-        if (hotbarSelectedItemTooltipTimer > 0) {
-            hotbarSelectedItemTooltipTimer -= deltaTime;
-            if (hotbarSelectedItemTooltipTimer <= 0) {
-                hotbarSelectedItemTooltipTimer = 0;
-                hotbarSelectedItemTooltipAlpha = 0;
-                hotbarSelectedItemName = null; // Clear name when timer expires
-            } else if (hotbarSelectedItemTooltipTimer <= HOTBAR_TOOLTIP_FADE_DURATION) {
-                hotbarSelectedItemTooltipAlpha = Math.max(0.0f, hotbarSelectedItemTooltipTimer / HOTBAR_TOOLTIP_FADE_DURATION);
-            } else {
-                hotbarSelectedItemTooltipAlpha = 1.0f; // Fully visible during display duration
-            }
-        }
+        hotbarScreen.update(deltaTime);
     }
 
     /**
      * Call this when a hotbar item is selected to show its name.
      */
     public void displayHotbarItemTooltip(BlockType blockType) {
-        if (blockType != null && blockType != BlockType.AIR) {
-            this.hotbarSelectedItemName = blockType.getName();
-            this.hotbarSelectedItemTooltipTimer = HOTBAR_TOOLTIP_DISPLAY_DURATION + HOTBAR_TOOLTIP_FADE_DURATION;
-            this.hotbarSelectedItemTooltipAlpha = 1.0f;
-        } else {
-            // If AIR or null is selected, effectively hide any current tooltip
-            this.hotbarSelectedItemName = null;
-            this.hotbarSelectedItemTooltipTimer = 0.0f;
-            this.hotbarSelectedItemTooltipAlpha = 0.0f;
-        }
+        hotbarScreen.displayItemTooltip(blockType);
+    }
+    
+    /**
+     * Gets the hotbar screen instance.
+     */
+    public HotbarScreen getHotbarScreen() {
+        return hotbarScreen;
     }
 
     /**
@@ -715,88 +696,8 @@ public class InventoryScreen {
         }
     }
     
-    private void drawHotbarBackground(int x, int y, int width, int height) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            nvgBeginPath(vg);
-            nvgRect(vg, x, y, width, height);
-            nvgFillColor(vg, nvgRGBA(70, 70, 70, 255, NVGColor.malloc(stack)));
-            nvgFill(vg);
-        }
-    }
     
-    private void drawHotbarTooltip(String itemName, float centerX, float y, int screenWidth, float alpha) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            float padding = 10.0f;
-            float cornerRadius = 5.0f;
-            
-            // Measure text with better font
-            nvgFontSize(vg, 15);
-            nvgFontFace(vg, "minecraft");
-            float[] bounds = new float[4];
-            nvgTextBounds(vg, 0, 0, itemName, bounds);
-            float textWidth = bounds[2] - bounds[0];
-            float textHeight = bounds[3] - bounds[1];
-            
-            float tooltipWidth = textWidth + 2 * padding;
-            float tooltipHeight = textHeight + 2 * padding;
-            
-            float tooltipX = centerX - tooltipWidth / 2.0f;
-            float tooltipY = y - tooltipHeight - 10.0f; // Add more spacing from hotbar
-            
-            // Adjust position to stay within screen bounds
-            float margin = 5.0f;
-            if (tooltipX < margin) tooltipX = margin;
-            if (tooltipX + tooltipWidth > screenWidth - margin) tooltipX = screenWidth - tooltipWidth - margin;
-            
-            // Calculate alpha-adjusted colors
-            int shadowAlpha = (int)(80 * alpha);
-            int backgroundAlpha = (int)(240 * alpha);
-            int borderAlpha = (int)(180 * alpha);
-            int textAlpha = (int)(255 * alpha);
-            
-            // Drop shadow for depth
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, tooltipX + 2, tooltipY + 2, tooltipWidth, tooltipHeight, cornerRadius);
-            nvgFillColor(vg, nvgRGBA(0, 0, 0, shadowAlpha, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Tooltip background with improved color
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, tooltipX, tooltipY, tooltipWidth, tooltipHeight, cornerRadius);
-            nvgFillColor(vg, nvgRGBA(40, 40, 50, backgroundAlpha, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Inner highlight for 3D effect
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, tooltipX + 1, tooltipY + 1, tooltipWidth - 2, tooltipHeight - 2, cornerRadius - 1);
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStrokeColor(vg, nvgRGBA(80, 80, 100, (int)(120 * alpha), NVGColor.malloc(stack)));
-            nvgStroke(vg);
-            
-            // Outer border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, tooltipX, tooltipY, tooltipWidth, tooltipHeight, cornerRadius);
-            nvgStrokeWidth(vg, 1.5f);
-            nvgStrokeColor(vg, nvgRGBA(255, 255, 255, borderAlpha, NVGColor.malloc(stack)));
-            nvgStroke(vg);
-            
-            // Tooltip text (only draw if substantially visible)
-            if (alpha > 0.1f) {
-                // Text shadow
-                nvgFontSize(vg, 15);
-                nvgFontFace(vg, "minecraft");
-                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-                nvgFillColor(vg, nvgRGBA(0, 0, 0, (int)(150 * alpha), NVGColor.malloc(stack)));
-                nvgText(vg, tooltipX + tooltipWidth / 2 + 1, tooltipY + tooltipHeight / 2 + 1, itemName);
-                
-                // Main text
-                nvgFillColor(vg, nvgRGBA(255, 255, 255, textAlpha, NVGColor.malloc(stack)));
-                nvgText(vg, tooltipX + tooltipWidth / 2, tooltipY + tooltipHeight / 2, itemName);
-            }
-        }
-    }
+    // drawHotbarTooltip method removed - now handled by HotbarRenderer
 
     // Helper method to create NVGColor
     private NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {
@@ -809,23 +710,11 @@ public class InventoryScreen {
      */
     public void renderHotbar(int screenWidth, int screenHeight) {
         if (visible) return; // Don't render separate hotbar if full inventory is open
-
-        int hotbarWidth = Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int hotbarStartX = (screenWidth - hotbarWidth) / 2;
-        int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
-
-        drawHotbarBackground(hotbarStartX, hotbarStartY - SLOT_PADDING, hotbarWidth, SLOT_SIZE + SLOT_PADDING * 2);
-
-        ItemStack[] hotbarItems = inventory.getHotbarSlots(); // Get copies
-        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-            int slotX = hotbarStartX + SLOT_PADDING + i * (SLOT_SIZE + SLOT_PADDING);
-            
-            // Removed debug logging to reduce console spam
-            
-            drawInventorySlot(hotbarItems[i], slotX, hotbarStartY, true, i);
-        }
-
-        // Tooltip rendering moved to separate method
+        
+        // Delegate to UIRenderer's hotbar rendering
+        uiRenderer.renderHotbar(hotbarScreen, screenWidth, screenHeight, 
+                              renderer.getTextureAtlas(), renderer.getShaderProgram());
+        uiRenderer.renderHotbarTooltip(hotbarScreen, screenWidth, screenHeight);
     }
     
     /**
@@ -834,18 +723,10 @@ public class InventoryScreen {
      */
     public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
         if (visible) return; // Don't render separate hotbar if full inventory is open
-
-        int hotbarWidth = Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int hotbarStartX = (screenWidth - hotbarWidth) / 2;
-        int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
-
-        drawHotbarBackground(hotbarStartX, hotbarStartY - SLOT_PADDING, hotbarWidth, SLOT_SIZE + SLOT_PADDING * 2);
-
-        ItemStack[] hotbarItems = inventory.getHotbarSlots(); // Get copies
-        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-            int slotX = hotbarStartX + SLOT_PADDING + i * (SLOT_SIZE + SLOT_PADDING);
-            drawInventorySlot(hotbarItems[i], slotX, hotbarStartY, true, i);
-        }
+        
+        // Delegate to UIRenderer's hotbar rendering (without tooltips)
+        uiRenderer.renderHotbar(hotbarScreen, screenWidth, screenHeight, 
+                              renderer.getTextureAtlas(), renderer.getShaderProgram());
     }
     
     /**
@@ -854,21 +735,9 @@ public class InventoryScreen {
      */
     public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
         if (visible) return; // Don't render separate hotbar if full inventory is open
-
-        // Render Hotbar Selection Tooltip
-        if (hotbarSelectedItemName != null && hotbarSelectedItemTooltipAlpha > 0.0f && !visible) {
-            // Recalculate hotbar positioning to match renderHotbarWithoutTooltips
-            int hotbarWidth = Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-            int hotbarStartX = (screenWidth - hotbarWidth) / 2;
-            int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
-            
-            // Position above the *selected* hotbar slot
-            int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
-            float selectedSlotX = hotbarStartX + SLOT_PADDING + selectedSlotIndex * (SLOT_SIZE + SLOT_PADDING);
-            float selectedSlotCenterX = selectedSlotX + SLOT_SIZE / 2.0f;
-            
-            drawHotbarTooltip(hotbarSelectedItemName, selectedSlotCenterX, hotbarStartY - 10, screenWidth, hotbarSelectedItemTooltipAlpha);
-        }
+        
+        // Delegate to UIRenderer's hotbar tooltip rendering
+        uiRenderer.renderHotbarTooltip(hotbarScreen, screenWidth, screenHeight);
     }
 
     // Method to handle mouse clicks for drag and drop

@@ -113,8 +113,6 @@ public class Renderer {
     // Matrices
     private final Matrix4f projectionMatrix;
     
-    // UI elements
-    private int hotbarVao;
     
 
     // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
@@ -195,9 +193,6 @@ public class Renderer {
         // Initialize font
         // Font loaded from stonebreak-game/src/main/resources/fonts/
         font = new Font("fonts/Roboto-VariableFont_wdth,wght.ttf", 24f);
-        
-        // Create UI elements
-        createHotbar();
         
         // Initialize debug renderer
         debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix);
@@ -455,51 +450,6 @@ public class Renderer {
     
     
     
-    /**
-     * Creates the hotbar UI element.
-     */
-    private void createHotbar() {
-        // Create a simple hotbar at the bottom of the screen
-        float[] vertices = {
-            -0.4f, -0.9f, 0.0f,
-            0.4f, -0.9f, 0.0f,
-            0.4f, -0.8f, 0.0f,
-            -0.4f, -0.8f, 0.0f
-        };
-        
-        int[] indices = {
-            0, 1, 2,
-            2, 3, 0
-        };
-        
-        // Create VAO
-        hotbarVao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(hotbarVao);
-        
-        // Create vertex VBO
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Define vertex attributes
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // Create index VBO
-        int ibo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
-        
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Unbind
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-    }
 
 
 
@@ -665,10 +615,6 @@ public class Renderer {
             shaderProgram.setUniform("u_useSolidColor", true); // Assuming hotbar is solid color
             shaderProgram.setUniform("u_isText", false);
             
-            // Render hotbar background (e.g., dark semi-transparent)
-            // shaderProgram.setUniform("u_color", new Vector4f(0.3f, 0.3f, 0.3f, 0.7f));
-            // GL30.glBindVertexArray(hotbarVao);
-            // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             
         }
         
@@ -1010,9 +956,6 @@ public class Renderer {
         if (playerArmRenderer != null) {
             playerArmRenderer.cleanup();
         }
-        
-        // Delete UI VAOs
-        GL30.glDeleteVertexArrays(hotbarVao);
         
         // Cleanup UI renderer
         if (uiRenderer != null) {

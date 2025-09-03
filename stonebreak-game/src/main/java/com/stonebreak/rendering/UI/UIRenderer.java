@@ -11,6 +11,7 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.components.ChatRenderer;
 import com.stonebreak.rendering.UI.components.CrosshairRenderer;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
+import com.stonebreak.rendering.UI.components.HotbarRenderer;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
 import com.stonebreak.rendering.UI.menus.MenuRenderer;
@@ -39,6 +40,7 @@ public class UIRenderer {
     private BlockIconRenderer blockIconRenderer;
     private CrosshairRenderer crosshairRenderer;
     private OpenGLQuadRenderer openGLQuadRenderer;
+    private HotbarRenderer hotbarRenderer;
     
     public UIRenderer() {
         openGLQuadRenderer = new OpenGLQuadRenderer();
@@ -56,6 +58,7 @@ public class UIRenderer {
         volumeSliderRenderer = new VolumeSliderRenderer(vg);
         itemIconRenderer = new ItemIconRenderer(vg);
         crosshairRenderer = new CrosshairRenderer(vg);
+        hotbarRenderer = new HotbarRenderer(vg);
         openGLQuadRenderer.initialize();
     }
     
@@ -269,6 +272,28 @@ public class UIRenderer {
         return crosshairRenderer;
     }
     
+    // ===== Hotbar Rendering Delegation =====
+    
+    /**
+     * Renders the complete hotbar (background, slots, items, tooltips).
+     */
+    public void renderHotbar(com.stonebreak.ui.HotbarScreen hotbarScreen, int screenWidth, int screenHeight, 
+                           TextureAtlas textureAtlas, ShaderProgram shaderProgram) {
+        if (hotbarRenderer != null) {
+            hotbarRenderer.renderHotbar(hotbarScreen, screenWidth, screenHeight, 
+                                      textureAtlas, this, shaderProgram);
+        }
+    }
+    
+    /**
+     * Renders only the hotbar tooltip (for layered rendering).
+     */
+    public void renderHotbarTooltip(com.stonebreak.ui.HotbarScreen hotbarScreen, int screenWidth, int screenHeight) {
+        if (hotbarRenderer != null) {
+            hotbarRenderer.renderHotbarTooltip(hotbarScreen, screenWidth, screenHeight);
+        }
+    }
+    
     /**
      * Draws a horizontal separator line for UI organization using NanoVG.
      * @param centerX Center X position
@@ -290,6 +315,11 @@ public class UIRenderer {
         // Cleanup OpenGL quad renderer
         if (openGLQuadRenderer != null) {
             openGLQuadRenderer.cleanup();
+        }
+        
+        // Cleanup hotbar renderer
+        if (hotbarRenderer != null) {
+            hotbarRenderer.cleanup();
         }
         
         if (vg != 0) {
