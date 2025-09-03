@@ -2,7 +2,6 @@ package com.stonebreak.core;
 
 import java.nio.*;
 
-import com.stonebreak.rendering.UI.UIRenderer;
 import org.lwjgl.*;
 import org.lwjgl.glfw.*;
 import static org.lwjgl.glfw.Callbacks.*;
@@ -398,32 +397,32 @@ public class Main {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         Game game = Game.getInstance();
-        UIRenderer uiRenderer = game.getUIRenderer(); // Get UIRenderer once
+        Renderer renderer = Game.getRenderer(); // Get Renderer once
         
         switch (game.getState()) {
             case MAIN_MENU -> {
-                if (uiRenderer != null && game.getMainMenu() != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
+                if (renderer != null && game.getMainMenu() != null) {
+                    renderer.beginUIFrame(width, height, 1.0f);
                     game.getMainMenu().render(width, height);
-                    uiRenderer.endFrame();
+                    renderer.endUIFrame();
                 }
             }
             case LOADING -> {
                 // Render loading screen using NanoVG
-                if (uiRenderer != null && game.getLoadingScreen() != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
+                if (renderer != null && game.getLoadingScreen() != null) {
+                    renderer.beginUIFrame(width, height, 1.0f);
                     game.getLoadingScreen().render(width, height);
-                    uiRenderer.endFrame();
+                    renderer.endUIFrame();
                 }
             }
             case SETTINGS -> {
                 // Render settings menu using NanoVG
-                if (uiRenderer != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
+                if (renderer != null) {
+                    renderer.beginUIFrame(width, height, 1.0f);
                     if (game.getSettingsMenu() != null) {
                         game.getSettingsMenu().render(width, height);
                     }
-                    uiRenderer.endFrame();
+                    renderer.endUIFrame();
                 }
             }
             default -> { // Covers PLAYING, PAUSED, RECIPE_BOOK_UI, WORKBENCH_UI and any other potential states
@@ -506,8 +505,8 @@ public class Main {
                     throw new RuntimeException("Render crash - see crash_log.txt", e);
                 }
                 // Step 2: Render NanoVG UIs on top
-                if (uiRenderer != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
+                if (renderer != null) {
+                    renderer.beginUIFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
                     // Inventory / Hotbar / Chat (primarily for PLAYING/PAUSED state)
                     if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
                         InventoryScreen inventoryScreen = game.getInventoryScreen();
@@ -520,14 +519,14 @@ public class Main {
                         }
                         ChatSystem chatSystem = game.getChatSystem();
                         if (chatSystem != null) {
-                            uiRenderer.renderChat(chatSystem, width, height);
+                            renderer.renderChat(chatSystem, width, height);
                         }
                     }
                     // Pause Menu (if active, and we are not in Main Menu or other full-screen UI states)
                     if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
-                        game.getPauseMenu().render(uiRenderer, width, height); // Assumes PauseMenu draws within this frame
+                        game.getPauseMenu().render(renderer.getUIRenderer(), width, height); // Assumes PauseMenu draws within this frame
                     }
-                    uiRenderer.endFrame(); // End the shared NanoVG frame for standard game overlays
+                    renderer.endUIFrame(); // End the shared NanoVG frame for standard game overlays
                 }
                 // Separate rendering for full-screen UI states that manage their own NanoVG frames
                 // and should draw AFTER the 3D world.
@@ -548,10 +547,10 @@ public class Main {
                 // Render tooltips AFTER block drops to ensure they appear above 3D block drops
                 InventoryScreen inventoryScreen = game.getInventoryScreen();
                 RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-                if (uiRenderer != null) { // Added null check for uiRenderer
+                if (renderer != null) { // Added null check for renderer
                     // Render inventory tooltips
                     if (inventoryScreen != null) {
-                        uiRenderer.beginFrame(width, height, 1.0f);
+                        renderer.beginUIFrame(width, height, 1.0f);
                         if (inventoryScreen.isVisible()) {
                             // Render only tooltips for full inventory screen
                             inventoryScreen.renderTooltipsOnly(width, height);
@@ -559,7 +558,7 @@ public class Main {
                             // Render only hotbar tooltips when inventory is not open
                             inventoryScreen.renderHotbarTooltipsOnly(width, height);
                         }
-                        uiRenderer.endFrame();
+                        renderer.endUIFrame();
                     }
                     // Render recipe book tooltips
                     if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
@@ -569,11 +568,11 @@ public class Main {
                 // Render pause menu if paused
                 PauseMenu pauseMenu = game.getPauseMenu();
                 if (pauseMenu != null && pauseMenu.isVisible()) {
-                    // UIRenderer uiRenderer = game.getUIRenderer(); // Removed duplicate, use uiRenderer from line 377
-                    if (uiRenderer != null) {
-                        uiRenderer.beginFrame(width, height, 1.0f);
-                        pauseMenu.render(uiRenderer, width, height);
-                        uiRenderer.endFrame();
+                    // UI rendering handled by renderer
+                    if (renderer != null) {
+                        renderer.beginUIFrame(width, height, 1.0f);
+                        pauseMenu.render(renderer.getUIRenderer(), width, height);
+                        renderer.endUIFrame();
                     }
                     // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
                     renderer.renderPauseMenuDepthCurtain();
@@ -588,10 +587,10 @@ public class Main {
             debugOverlay.renderWireframes(renderer);
             
             // Then render UI overlay on top
-            if (uiRenderer != null) {
-                uiRenderer.beginFrame(width, height, 1.0f);
-                debugOverlay.render(uiRenderer);
-                uiRenderer.endFrame();
+            if (renderer != null) {
+                renderer.beginUIFrame(width, height, 1.0f);
+                debugOverlay.render(renderer.getUIRenderer());
+                renderer.endUIFrame();
             }
         }
     }

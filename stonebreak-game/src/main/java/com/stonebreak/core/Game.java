@@ -13,7 +13,6 @@ import com.stonebreak.items.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
 import com.stonebreak.rendering.CowTextureAtlas;
-import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
@@ -39,7 +38,6 @@ public class Game {
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
-    private UIRenderer uiRenderer; // UI renderer for menus
     private MainMenu mainMenu; // Main menu
     private SettingsMenu settingsMenu; // Settings menu
     private SoundSystem soundSystem; // Sound system
@@ -165,12 +163,10 @@ public class Game {
             }
         }
         
-        // Initialize UI components
-        this.uiRenderer = new UIRenderer();
-        this.uiRenderer.init();
-        this.mainMenu = new MainMenu(this.uiRenderer);
-        this.settingsMenu = new SettingsMenu(this.uiRenderer);
-        this.loadingScreen = new LoadingScreen(this.uiRenderer);
+        // Initialize UI components (UI renderer is now managed by the main renderer)
+        this.mainMenu = new MainMenu(this.renderer.getUIRenderer());
+        this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
+        this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
 
         // Initialize CraftingManager
         this.craftingManager = new CraftingManager();
@@ -408,7 +404,7 @@ public class Game {
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
             // Trigger initial tooltip for the currently selected item
@@ -425,15 +421,15 @@ public class Game {
         }
 
         // Initialize WorkbenchScreen
-        if (this.uiRenderer != null) {
-            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
+        if (this.renderer.getUIRenderer() != null) {
+            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
         } else {
             System.err.println("Failed to initialize WorkbenchScreen due to null components.");
         }
 
         // Initialize RecipeBookScreen
-        if (this.uiRenderer != null && this.craftingManager != null && getFont() != null) {
-            this.recipeBookScreen = new RecipeBookScreen(this.uiRenderer, this.inputHandler, renderer);
+        if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
+            this.recipeBookScreen = new RecipeBookScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
@@ -847,8 +843,8 @@ public class Game {
     /**
      * Gets the UI renderer.
      */
-    public UIRenderer getUIRenderer() {
-        return uiRenderer;
+    public com.stonebreak.rendering.UI.UIRenderer getUIRenderer() {
+        return renderer != null ? renderer.getUIRenderer() : null;
     }
     
     /**
@@ -987,9 +983,6 @@ public class Game {
         }
         if (pauseMenu != null) {
             pauseMenu.cleanup();
-        }
-        if (uiRenderer != null) {
-            uiRenderer.cleanup();
         }
         if (soundSystem != null) {
             soundSystem.cleanup();

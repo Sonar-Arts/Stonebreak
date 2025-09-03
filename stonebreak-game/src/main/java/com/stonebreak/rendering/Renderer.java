@@ -11,6 +11,8 @@ import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.UI.DebugRenderer;
+import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.pipeline.UIQuadRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -134,8 +136,8 @@ public class Renderer {
     // UI elements
     private int crosshairVao;
     private int hotbarVao;
-    private int uiQuadVao;    // VAO for drawing generic UI quads (positions and UVs)
-    private int uiQuadVbo;    // VBO for drawing generic UI quads (positions and UVs)
+    // UI quad renderer module
+    private final UIQuadRenderer uiQuadRenderer;
     
 
     // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
@@ -143,6 +145,9 @@ public class Renderer {
     // Specialized renderers
     private final PlayerArmRenderer playerArmRenderer;
     private DebugRenderer debugRenderer;
+    
+    // UI renderer for NanoVG-based UI
+    private final UIRenderer uiRenderer;
     
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -195,6 +200,13 @@ public class Renderer {
 
         // Initialize specialized renderers
         playerArmRenderer = new PlayerArmRenderer(shaderProgram, textureAtlas, projectionMatrix);
+        
+        // Initialize UI renderer
+        uiRenderer = new UIRenderer();
+        uiRenderer.init();
+        
+        // Initialize UI quad renderer
+        uiQuadRenderer = new UIQuadRenderer();
 
         // Initialize font
         // Font loaded from stonebreak-game/src/main/resources/fonts/
@@ -203,7 +215,7 @@ public class Renderer {
         // Create UI elements
         createCrosshair();
         createHotbar();
-        createUiQuadRenderer(); // Initialize UI quad rendering resources
+        uiQuadRenderer.initialize(); // Initialize UI quad rendering resources
         
         // Initialize debug renderer
         debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix);
@@ -242,6 +254,210 @@ public class Renderer {
     public Matrix4f getProjectionMatrix() {
         return projectionMatrix;
     }
+    
+    // ============ UI RENDERER PROXY METHODS ============
+    
+    /**
+     * Get the UIRenderer instance managed by this renderer.
+     * @return UIRenderer instance
+     */
+    public UIRenderer getUIRenderer() {
+        return uiRenderer;
+    }
+    
+    /**
+     * Begin a UI frame for NanoVG rendering.
+     * @param width Window width
+     * @param height Window height
+     * @param pixelRatio Pixel ratio (typically 1.0f)
+     */
+    public void beginUIFrame(int width, int height, float pixelRatio) {
+        if (uiRenderer != null) {
+            uiRenderer.beginFrame(width, height, pixelRatio);
+        }
+    }
+    
+    /**
+     * End the current UI frame.
+     */
+    public void endUIFrame() {
+        if (uiRenderer != null) {
+            uiRenderer.endFrame();
+        }
+    }
+    
+    /**
+     * Render the main menu.
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     */
+    public void renderMainMenu(int windowWidth, int windowHeight) {
+        if (uiRenderer != null) {
+            uiRenderer.renderMainMenu(windowWidth, windowHeight);
+        }
+    }
+    
+    /**
+     * Render the pause menu.
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     * @param isQuitButtonHovered Whether quit button is hovered
+     * @param isSettingsButtonHovered Whether settings button is hovered
+     */
+    public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered, boolean isSettingsButtonHovered) {
+        if (uiRenderer != null) {
+            uiRenderer.renderPauseMenu(windowWidth, windowHeight, isQuitButtonHovered, isSettingsButtonHovered);
+        }
+    }
+    
+    /**
+     * Render the settings menu.
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     */
+    public void renderSettingsMenu(int windowWidth, int windowHeight) {
+        if (uiRenderer != null) {
+            uiRenderer.renderSettingsMenu(windowWidth, windowHeight);
+        }
+    }
+    
+    /**
+     * Render chat system.
+     * @param chatSystem Chat system instance
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     */
+    public void renderChat(com.stonebreak.chat.ChatSystem chatSystem, int windowWidth, int windowHeight) {
+        if (uiRenderer != null) {
+            uiRenderer.renderChat(chatSystem, windowWidth, windowHeight);
+        }
+    }
+    
+    /**
+     * Draw a button using the UI renderer.
+     * @param text Button text
+     * @param x X position
+     * @param y Y position
+     * @param w Width
+     * @param h Height
+     * @param highlighted Whether button is highlighted
+     */
+    public void drawButton(String text, float x, float y, float w, float h, boolean highlighted) {
+        if (uiRenderer != null) {
+            uiRenderer.drawButton(text, x, y, w, h, highlighted);
+        }
+    }
+    
+    /**
+     * Draw a dropdown button using the UI renderer.
+     * @param text Button text
+     * @param x X position
+     * @param y Y position
+     * @param w Width
+     * @param h Height
+     * @param highlighted Whether button is highlighted
+     * @param isOpen Whether dropdown is open
+     */
+    public void drawDropdownButton(String text, float x, float y, float w, float h, boolean highlighted, boolean isOpen) {
+        if (uiRenderer != null) {
+            uiRenderer.drawDropdownButton(text, x, y, w, h, highlighted, isOpen);
+        }
+    }
+    
+    /**
+     * Draw a dropdown menu using the UI renderer.
+     * @param options Menu options
+     * @param selectedIndex Selected index
+     * @param x X position
+     * @param y Y position
+     * @param w Width
+     * @param itemHeight Height per item
+     */
+    public void drawDropdownMenu(String[] options, int selectedIndex, float x, float y, float w, float itemHeight) {
+        if (uiRenderer != null) {
+            uiRenderer.drawDropdownMenu(options, selectedIndex, x, y, w, itemHeight);
+        }
+    }
+    
+    /**
+     * Draw a volume slider using the UI renderer.
+     * @param label Slider label
+     * @param centerX Center X position
+     * @param centerY Center Y position
+     * @param sliderWidth Slider width
+     * @param sliderHeight Slider height
+     * @param value Slider value (0.0-1.0)
+     * @param highlighted Whether slider is highlighted
+     */
+    public void drawVolumeSlider(String label, float centerX, float centerY, float sliderWidth, float sliderHeight, float value, boolean highlighted) {
+        if (uiRenderer != null) {
+            uiRenderer.drawVolumeSlider(label, centerX, centerY, sliderWidth, sliderHeight, value, highlighted);
+        }
+    }
+    
+    /**
+     * Check if a button was clicked using the UI renderer.
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param buttonX Button X position
+     * @param buttonY Button Y position
+     * @param buttonW Button width
+     * @param buttonH Button height
+     * @return True if button was clicked
+     */
+    public boolean isButtonClicked(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
+        if (uiRenderer != null) {
+            return uiRenderer.isButtonClicked(mouseX, mouseY, buttonX, buttonY, buttonW, buttonH);
+        }
+        return false;
+    }
+    
+    /**
+     * Check if pause resume button was clicked.
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     * @return True if resume button was clicked
+     */
+    public boolean isPauseResumeClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        if (uiRenderer != null) {
+            return uiRenderer.isPauseResumeClicked(mouseX, mouseY, windowWidth, windowHeight);
+        }
+        return false;
+    }
+    
+    /**
+     * Check if pause settings button was clicked.
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     * @return True if settings button was clicked
+     */
+    public boolean isPauseSettingsClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        if (uiRenderer != null) {
+            return uiRenderer.isPauseSettingsClicked(mouseX, mouseY, windowWidth, windowHeight);
+        }
+        return false;
+    }
+    
+    /**
+     * Check if pause quit button was clicked.
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     * @return True if quit button was clicked
+     */
+    public boolean isPauseQuitClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        if (uiRenderer != null) {
+            return uiRenderer.isPauseQuitClicked(mouseX, mouseY, windowWidth, windowHeight);
+        }
+        return false;
+    }
+    
+    // ============ END UI RENDERER PROXY METHODS ============
     
     /**
      * Creates the crosshair UI element.
@@ -324,32 +540,6 @@ public class Renderer {
     }
 
 
-    /**
-     * Creates the VAO and VBO for rendering generic UI quads.
-     */
-    private void createUiQuadRenderer() {
-        uiQuadVao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(uiQuadVao);
-
-        uiQuadVbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, uiQuadVbo);
-        // Allocate buffer for 4 vertices, each with 5 floats (x, y, z, u, v).
-        // Using GL_DYNAMIC_DRAW as vertex data will change frequently.
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, 4 * 5 * Float.BYTES, GL20.GL_DYNAMIC_DRAW);
-
-        // Vertex attribute for position (location 0)
-        // Stride is 5 floats (x,y,z,u,v)
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 5 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-
-        // Vertex attribute for texture coordinates (location 1)
-        // Stride is 5 floats, offset is 3 floats (after x,y,z)
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 5 * Float.BYTES, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1); // Enable attribute for texCoords
-
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-    }
 
     /**
      * Renders the world and UI elements.
@@ -837,11 +1027,10 @@ public class Renderer {
         FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
         vertexBuffer.put(vertices).flip();
 
-        GL30.glBindVertexArray(uiQuadVao);
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, uiQuadVbo);
+        uiQuadRenderer.bind();
 
         // Update the buffer data
-        // uiQuadVao should have attributes 0 (position) and 1 (texCoord) enabled from createUiQuadRenderer
+        // UIQuadRenderer should have attributes 0 (position) and 1 (texCoord) enabled
         GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
 
         // Blending is now assumed to be handled by the caller (e.g., InventoryScreen)
@@ -858,8 +1047,7 @@ public class Renderer {
             glEnable(GL_TEXTURE_2D); // Restore texturing state if we changed it
         }
         
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
+        uiQuadRenderer.unbind();
     }
 
     /**
@@ -913,8 +1101,7 @@ public class Renderer {
         FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
         vertexBuffer.put(vertices).flip();
 
-        GL30.glBindVertexArray(uiQuadVao);
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, uiQuadVbo);
+        uiQuadRenderer.bind();
         GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
 
         // Enable blending for textures that might have alpha (like leaves, or UI elements)
@@ -930,8 +1117,7 @@ public class Renderer {
             glDisable(GL_BLEND);
         }
 
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
+        uiQuadRenderer.unbind();
         glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
     }
 
@@ -1193,15 +1379,13 @@ public class Renderer {
         FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
         vertexBuffer.put(vertices).flip();
 
-        GL30.glBindVertexArray(uiQuadVao);
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, uiQuadVbo);
+        uiQuadRenderer.bind();
         GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
 
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
         // Restore GL state
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
+        uiQuadRenderer.unbind();
         glBindTexture(GL_TEXTURE_2D, 0);
         
         // Restore original matrices
@@ -1470,11 +1654,11 @@ public class Renderer {
         // Delete UI VAOs
         GL30.glDeleteVertexArrays(crosshairVao);
         GL30.glDeleteVertexArrays(hotbarVao);
-        if (uiQuadVao != 0) {
-            GL30.glDeleteVertexArrays(uiQuadVao);
-        }
-        if (uiQuadVbo != 0) {
-            GL20.glDeleteBuffers(uiQuadVbo);
+        uiQuadRenderer.cleanup();
+        
+        // Cleanup UI renderer
+        if (uiRenderer != null) {
+            uiRenderer.cleanup();
         }
         
         
