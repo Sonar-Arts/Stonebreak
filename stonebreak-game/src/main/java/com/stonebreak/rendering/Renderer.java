@@ -1,93 +1,26 @@
 package com.stonebreak.rendering;
 
-// Standard Library Imports
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.util.List;
 
-// JOML Math Library
+import com.stonebreak.rendering.core.OpenGLErrorHandler;
+import com.stonebreak.rendering.core.RenderingConfigurationManager;
+import com.stonebreak.rendering.core.ResourceManager;
 import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
-
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.ui.Font;
+import com.stonebreak.rendering.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 
-// LWJGL Core
-import org.lwjgl.BufferUtils;
-
-// LWJGL OpenGL Classes
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-
-// LWJGL OpenGL Static Imports (GL11)
-import static org.lwjgl.opengl.GL11.GL_ALWAYS;
-import static org.lwjgl.opengl.GL11.GL_BLEND;
-import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
-import static org.lwjgl.opengl.GL11.GL_LESS;
-import static org.lwjgl.opengl.GL11.GL_LINES;
-import static org.lwjgl.opengl.GL11.GL_NEAREST;
-import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
-import static org.lwjgl.opengl.GL11.GL_POINTS;
-import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_BINDING_2D;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
-import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
-import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
-import static org.lwjgl.opengl.GL11.glBegin;
-import static org.lwjgl.opengl.GL11.glBindTexture;
-import static org.lwjgl.opengl.GL11.glBlendFunc;
-import static org.lwjgl.opengl.GL11.glDeleteTextures;
-import static org.lwjgl.opengl.GL11.glDepthFunc;
-import static org.lwjgl.opengl.GL11.glDepthMask;
-import static org.lwjgl.opengl.GL11.glDisable;
-import static org.lwjgl.opengl.GL11.glDrawArrays;
-import static org.lwjgl.opengl.GL11.glDrawElements;
-import static org.lwjgl.opengl.GL11.glEnable;
-import static org.lwjgl.opengl.GL11.glEnd;
-import static org.lwjgl.opengl.GL11.glGenTextures;
-import static org.lwjgl.opengl.GL11.glGetIntegerv;
-import static org.lwjgl.opengl.GL11.glIsEnabled;
-import static org.lwjgl.opengl.GL11.glPointSize;
-import static org.lwjgl.opengl.GL11.glGetError;
-import static org.lwjgl.opengl.GL11.GL_NO_ERROR;
-import static org.lwjgl.opengl.GL11.glTexImage2D;
-import static org.lwjgl.opengl.GL11.glTexParameteri;
-import static org.lwjgl.opengl.GL11.glVertex3f;
-
-// LWJGL OpenGL Static Imports (GL13)
-import static org.lwjgl.opengl.GL13.GL_ACTIVE_TEXTURE;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
-
-// LWJGL OpenGL Static Imports (GL14)
-
-// LWJGL OpenGL Static Imports (GL20 & GL30)
-import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM;
-
-// Project Imports (Blocks)
-import com.stonebreak.blocks.*;
-
-// Project Imports (Core)
 import com.stonebreak.core.Game;
-
-// Project Imports (Items)
-
-// Project Imports (Player)
 import com.stonebreak.player.Player;
-
-// Project Imports (UI)
 import com.stonebreak.ui.*;
-
-// Project Imports (World)
-import com.stonebreak.world.Chunk;
 import com.stonebreak.world.World;
 
 
@@ -96,112 +29,58 @@ import com.stonebreak.world.World;
  */
 public class Renderer {
     
-    // Shader program
-    private final ShaderProgram shaderProgram;
-    
-    // Textures
-    private final TextureAtlas textureAtlas;
-    private final Font font; // Added Font instance
-    private int windowWidth;
-    private int windowHeight;
-    
-    // Isolated block drop renderer
-    private final BlockDropRenderer blockDropRenderer;
-    
-    // Specialized block renderer
-    private final BlockRenderer blockRenderer;
-    
-    // Matrices
-    private final Matrix4f projectionMatrix;
-    
-    
-
-    // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
+    // Core managers
+    private final ResourceManager resourceManager;
+    private final RenderingConfigurationManager configManager;
     
     // Specialized renderers
+    private final BlockDropRenderer blockDropRenderer;
+    private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
-    private DebugRenderer debugRenderer;
-    
-    // UI renderer for NanoVG-based UI
     private final UIRenderer uiRenderer;
+    private final DebugRenderer debugRenderer;
+    private final EntityRenderer entityRenderer;
+    private final WorldRenderer worldRenderer;
     
-    // Entity renderer (sub-renderer)
-    private EntityRenderer entityRenderer;
-    
-    // World renderer (specialized sub-renderer)
-    private WorldRenderer worldRenderer;
 
     /**
      * Creates and initializes the renderer.
      */
     public Renderer(int width, int height) {
-        this.windowWidth = width;
-        this.windowHeight = height;
-        // Create shader program
-        shaderProgram = new ShaderProgram();
-        shaderProgram.createVertexShader(loadResource("/shaders/vertex.glsl"));
-        shaderProgram.createFragmentShader(loadResource("/shaders/fragment.glsl"));
-        shaderProgram.link();
+        // Initialize core managers
+        resourceManager = new ResourceManager();
+        resourceManager.initialize(16); // 16x16 texture atlas
+        resourceManager.initializeShaderProgram();
         
-        // Initialize isolated block drop renderer
-        blockDropRenderer = new BlockDropRenderer();
+        configManager = new RenderingConfigurationManager(width, height);
         
-        // Initialize specialized block renderer
-        blockRenderer = new BlockRenderer();
-        
-        // Create projection matrix
-        float aspectRatio = (float) width / height;
-        projectionMatrix = new Matrix4f().perspective((float) Math.toRadians(70.0f), aspectRatio, 0.1f, 1000.0f);
-        
-        // Create uniforms for projection and view matrices
-        shaderProgram.createUniform("projectionMatrix");
-        shaderProgram.createUniform("viewMatrix");
-        shaderProgram.createUniform("modelMatrix");
-        shaderProgram.createUniform("texture_sampler");
-        shaderProgram.createUniform("u_color");          // Uniform for solid color / text tint
-        shaderProgram.createUniform("u_useSolidColor");  // Uniform to toggle solid color mode
-        shaderProgram.createUniform("u_isText");         // Uniform to toggle text rendering mode
-        shaderProgram.createUniform("u_transformUVsForItem"); // For 3D items in UI
-        shaderProgram.createUniform("u_atlasUVOffset");       // For 3D items in UI - vec2(u1, v1)
-        shaderProgram.createUniform("u_atlasUVScale");        // For 3D items in UI - vec2(u2-u1, v2-v1)
-        shaderProgram.createUniform("u_renderPass");          // For two-pass rendering (0 = opaque, 1 = transparent)
-        
-        // Load textures
-        textureAtlas = new TextureAtlas(16); // 16x16 texture atlas
-        
-        // Initialize isolated block drop renderer with the shader and texture
-        blockDropRenderer.initialize(shaderProgram, textureAtlas);
-
-        // Initialize specialized block renderer dependencies
-        blockRenderer.initializeDependencies(shaderProgram, textureAtlas);
-
         // Initialize specialized renderers
-        playerArmRenderer = new PlayerArmRenderer(shaderProgram, textureAtlas, projectionMatrix);
+        blockDropRenderer = new BlockDropRenderer();
+        blockDropRenderer.initialize(resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
         
-        // Initialize UI renderer
+        blockRenderer = new BlockRenderer();
+        blockRenderer.initializeDependencies(resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
+        
+        playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(), 
+                                                 resourceManager.getTextureAtlas(), 
+                                                 configManager.getProjectionMatrix());
+        
         uiRenderer = new UIRenderer();
         uiRenderer.init();
+        uiRenderer.initializeDepthCurtainRenderer(resourceManager.getShaderProgram(), 
+                                                 configManager.getWindowWidth(), 
+                                                 configManager.getWindowHeight(), 
+                                                 configManager.getProjectionMatrix());
+        uiRenderer.initializeBlockIconRenderer(blockRenderer, configManager.getWindowHeight());
         
-        // Initialize depth curtain renderer with necessary parameters
-        uiRenderer.initializeDepthCurtainRenderer(shaderProgram, windowWidth, windowHeight, projectionMatrix);
+        debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         
-        // Initialize block icon renderer with necessary dependencies
-        uiRenderer.initializeBlockIconRenderer(blockRenderer, windowHeight);
-        
-
-        // Initialize font
-        // Font loaded from stonebreak-game/src/main/resources/fonts/
-        font = new Font("fonts/Roboto-VariableFont_wdth,wght.ttf", 24f);
-        
-        // Initialize debug renderer
-        debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix);
-        
-        // Initialize entity renderer (sub-renderer)
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        // Initialize world renderer (specialized sub-renderer)
-        worldRenderer = new WorldRenderer(shaderProgram, textureAtlas, projectionMatrix,
+        worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(), 
+                                         resourceManager.getTextureAtlas(), 
+                                         configManager.getProjectionMatrix(),
                                          blockRenderer, playerArmRenderer, entityRenderer);
     }
     
@@ -209,34 +88,31 @@ public class Renderer {
      * Updates the projection matrix when the window is resized.
      */
     public void updateProjectionMatrix(int width, int height) {
-        this.windowWidth = width;
-        this.windowHeight = height;
-        float aspectRatio = (float) width / height;
-        projectionMatrix.setPerspective((float) Math.toRadians(70.0f), aspectRatio, 0.1f, 1000.0f);
+        configManager.updateWindowSize(width, height);
     }
 
     public int getWindowWidth() {
-        return windowWidth;
+        return configManager.getWindowWidth();
     }
 
     public int getWindowHeight() {
-        return windowHeight;
+        return configManager.getWindowHeight();
     }
 
     public Font getFont() {
-        return font;
+        return resourceManager.getFont();
     }
 
     public ShaderProgram getShaderProgram() {
-        return shaderProgram;
+        return resourceManager.getShaderProgram();
     }
 
     public TextureAtlas getTextureAtlas() {
-        return textureAtlas;
+        return resourceManager.getTextureAtlas();
     }
     
     public Matrix4f getProjectionMatrix() {
-        return projectionMatrix;
+        return configManager.getProjectionMatrix();
     }
     
     /**
@@ -472,7 +348,7 @@ public class Renderer {
      */
     public void renderBlockDropsDeferred(World world, Player player) {
         // This method renders block drops completely isolated from UI rendering
-        blockRenderer.renderBlockDrops(world, projectionMatrix);
+        blockRenderer.renderBlockDrops(world, configManager.getProjectionMatrix());
     }
     
 
@@ -485,100 +361,6 @@ public class Renderer {
 
     
     
-    // These methods are no longer needed as we're using TextureAtlas
-    
-    /**
-     * Loads a resource as a string.
-     */
-    private String loadResource(String path) {
-        // This is a placeholder - in a real implementation, this would load the resource from the classpath
-        
-        if (path.endsWith("vertex.glsl")) {
-            return """
-                   #version 330 core
-                   layout (location=0) in vec3 position;
-                   layout (location=1) in vec2 texCoord;
-                   layout (location=2) in vec3 normal;
-                   layout (location=3) in float isWater;
-                   layout (location=4) in float isAlphaTested; // New attribute for alpha-tested blocks
-                   out vec2 outTexCoord;
-                   out vec3 outNormal;
-                   out vec3 fragPos;
-                   out float v_isWater;
-                   out float v_isAlphaTested; // Pass isAlphaTested to fragment shader
-                   uniform mat4 projectionMatrix;
-                   uniform mat4 viewMatrix;
-                   uniform mat4 modelMatrix;
-                   uniform bool u_transformUVsForItem;      // Added
-                   uniform vec2 u_atlasUVOffset;        // Added
-                   uniform vec2 u_atlasUVScale;         // Added
-                   void main() {
-                       gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
-                       if (u_transformUVsForItem) {
-                           outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;
-                       } else {
-                           outTexCoord = texCoord;
-                       }
-                       outNormal = normal;
-                       fragPos = position;
-                       v_isWater = isWater;
-                       v_isAlphaTested = isAlphaTested; // Assign to out variable
-                   }""";
-       } else if (path.endsWith("fragment.glsl")) {
-           return """
-                   #version 330 core
-                   in vec2 outTexCoord;
-                   in vec3 outNormal;
-                   in vec3 fragPos;
-                   in float v_isWater;
-                   in float v_isAlphaTested; // Received from vertex shader
-                   out vec4 fragColor;
-                   uniform sampler2D texture_sampler;
-                   uniform vec4 u_color;            // Uniform for solid color or text tint
-                   uniform bool u_useSolidColor;    // Uniform to toggle solid color mode
-                   uniform bool u_isText;           // Uniform to toggle text rendering mode
-                   uniform int u_renderPass;        // 0 for opaque/non-water, 1 for transparent/water
-                   void main() {
-                       if (u_isText) {
-                           float alpha = texture(texture_sampler, outTexCoord).a;
-                           fragColor = vec4(u_color.rgb, u_color.a * alpha);
-                       } else if (u_useSolidColor) {
-                           fragColor = u_color;
-                       } else {
-                           vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
-                           float ambient = 0.3;
-                           float diffuse = max(dot(outNormal, lightDir), 0.0);
-                           float brightness = ambient + diffuse * 0.7;
-                           vec4 textureColor = texture(texture_sampler, outTexCoord);
-                           float sampledAlpha = textureColor.a;
-
-                           if (v_isAlphaTested > 0.5) { // Alpha-tested object (e.g., flower, leaf)
-                               if (sampledAlpha < 0.1) {
-                                   discard; // Alpha test
-                               }
-                               // Render opaque parts of alpha-tested objects
-                               fragColor = vec4(textureColor.rgb * brightness, 1.0);
-                           } else if (v_isWater > 0.5) { // Water object
-                               if (u_renderPass == 0) { // Opaque pass
-                                   discard; // Water is not drawn in opaque pass
-                               } else { // Transparent pass
-                                   fragColor = vec4(textureColor.rgb * brightness, sampledAlpha); // Use water's actual alpha for blending
-                               }
-                           } else { // Truly opaque object (e.g., stone, dirt)
-                               if (u_renderPass == 0) { // Opaque pass
-                                   fragColor = vec4(textureColor.rgb * brightness, 1.0); // Render fully opaque
-                               } else { // Transparent pass
-                                   discard; // Opaque objects already drawn in opaque pass
-                               }
-                           }
-                       }
-                   }""";
-        }
-        
-        return "";
-    }
-    
-    
     /**
      * Renders crack overlay on the block being broken.
      */
@@ -588,49 +370,32 @@ public class Renderer {
      * Cleanup method to release resources.
      */
     public void cleanup() {
-        // Delete shader program
-        if (shaderProgram != null) {
-            shaderProgram.cleanup();
+        // Cleanup core managers
+        if (resourceManager != null) {
+            resourceManager.cleanup();
         }
         
-        // Delete textures
-        if (textureAtlas != null) {
-            textureAtlas.cleanup();
-        }
-        if (font != null) {
-            font.cleanup();
-        }
         // Cleanup specialized renderers
         if (playerArmRenderer != null) {
             playerArmRenderer.cleanup();
         }
-        
-        // Cleanup UI renderer
         if (uiRenderer != null) {
             uiRenderer.cleanup();
         }
-        
-        
+        if (blockDropRenderer != null) {
+            blockDropRenderer.cleanup();
+        }
+        if (blockRenderer != null) {
+            blockRenderer.cleanup();
+        }
+        if (entityRenderer != null) {
+            entityRenderer.cleanup();
+        }
         
         // Cleanup pause menu
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null) {
             pauseMenu.cleanup();
-        }
-        
-        // Cleanup isolated block drop renderer
-        if (blockDropRenderer != null) {
-            blockDropRenderer.cleanup();
-        }
-        
-        // Cleanup specialized block renderer
-        if (blockRenderer != null) {
-            blockRenderer.cleanup();
-        }
-        
-        // Cleanup entity renderer (sub-renderer)
-        if (entityRenderer != null) {
-            entityRenderer.cleanup();
         }
     }
 
@@ -656,62 +421,8 @@ public class Renderer {
     /**
      * Checks for OpenGL errors and logs them with context information.
      */
-    private void checkGLError(String context) {
-        int error = glGetError();
-        if (error != GL_NO_ERROR) {
-            String errorString = switch (error) {
-                case 0x0500 -> "GL_INVALID_ENUM";
-                case 0x0501 -> "GL_INVALID_VALUE";
-                case 0x0502 -> "GL_INVALID_OPERATION";
-                case 0x0503 -> "GL_STACK_OVERFLOW";
-                case 0x0504 -> "GL_STACK_UNDERFLOW";
-                case 0x0505 -> "GL_OUT_OF_MEMORY";
-                case 0x0506 -> "GL_INVALID_FRAMEBUFFER_OPERATION";
-                default -> "UNKNOWN_ERROR_" + Integer.toHexString(error);
-            };
-            
-            // Get additional OpenGL state for debugging
-            try {
-                int[] currentProgram = new int[1];
-                glGetIntegerv(GL_CURRENT_PROGRAM, currentProgram);
-                int[] activeTexture = new int[1];
-                glGetIntegerv(GL_ACTIVE_TEXTURE, activeTexture);
-                int[] boundTexture = new int[1];
-                glGetIntegerv(GL_TEXTURE_BINDING_2D, boundTexture);
-                int[] viewport = new int[4];
-                glGetIntegerv(GL_VIEWPORT, viewport);
-                
-                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
-                System.err.println("Time: " + java.time.LocalDateTime.now());
-                System.err.println("Thread: " + Thread.currentThread().getName());
-                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
-                System.err.println("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0]);
-                System.err.println("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3]);
-                
-                // Log to file as well
-                try {
-                    java.io.FileWriter fw = new java.io.FileWriter("opengl_errors.txt", true);
-                    fw.write("=== OpenGL ERROR " + java.time.LocalDateTime.now() + " ===\n");
-                    fw.write("Error: " + errorString + " (0x" + Integer.toHexString(error) + ")\n");
-                    fw.write("Context: " + context + "\n");
-                    fw.write("Thread: " + Thread.currentThread().getName() + "\n");
-                    fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
-                    fw.write("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0] + "\n");
-                    fw.write("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3] + "\n\n");
-                    fw.close();
-                } catch (Exception logEx) {
-                    System.err.println("Failed to write OpenGL error log: " + logEx.getMessage());
-                }
-            } catch (Exception stateEx) {
-                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
-                System.err.println("Failed to get additional GL state: " + stateEx.getMessage());
-            }
-            
-            // For critical errors, throw exception to force crash with stack trace
-            if (error == 0x0505) { // GL_OUT_OF_MEMORY
-                throw new RuntimeException("OpenGL OUT OF MEMORY error at: " + context);
-            }
-        }
+    public void checkGLError(String context) {
+        OpenGLErrorHandler.checkGLError(context);
     }
     
     
