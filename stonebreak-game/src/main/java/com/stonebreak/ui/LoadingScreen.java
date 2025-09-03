@@ -3,6 +3,7 @@ package com.stonebreak.ui;
 import java.util.Arrays;
 import java.util.List;
 
+import com.stonebreak.rendering.UI.UIRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_MIDDLE;

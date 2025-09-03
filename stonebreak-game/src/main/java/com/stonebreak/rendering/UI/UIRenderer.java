@@ -1,7 +1,8 @@
-package com.stonebreak.ui;
+package com.stonebreak.rendering.UI;
 
 import java.util.List;
 
+import com.stonebreak.ui.MainMenu;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.nanovg.NVGPaint;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_CENTER;

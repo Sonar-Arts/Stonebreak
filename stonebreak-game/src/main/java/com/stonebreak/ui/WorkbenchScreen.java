@@ -6,6 +6,7 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;

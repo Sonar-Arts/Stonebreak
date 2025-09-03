@@ -7,6 +7,7 @@ import com.stonebreak.audio.SoundSystem;
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.Main;
+import com.stonebreak.rendering.UI.UIRenderer;
 
 public class SettingsMenu {
     private final UIRenderer uiRenderer;

@@ -10,6 +10,7 @@ import static org.lwjgl.glfw.GLFW.glfwGetKey;
 
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
+import com.stonebreak.rendering.UI.UIRenderer;
 
 public class MainMenu {
     private final UIRenderer uiRenderer;

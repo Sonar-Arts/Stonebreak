@@ -1,5 +1,6 @@
 package com.stonebreak.ui;
 
+import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.Player;
@@ -12,7 +13,6 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import java.util.List;
-import static org.lwjgl.opengl.GL11.*;
 
 public class DebugOverlay {
     private boolean visible = false;

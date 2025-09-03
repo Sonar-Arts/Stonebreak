@@ -3,6 +3,7 @@ package com.stonebreak.ui;
 import java.util.ArrayList; // Added import
 import java.util.List;    // Added import
 
+import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Vector2f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Inventory;

@@ -2,6 +2,7 @@ package com.stonebreak.core;
 
 import java.nio.*;
 
+import com.stonebreak.rendering.UI.UIRenderer;
 import org.lwjgl.*;
 import org.lwjgl.glfw.*;
 import static org.lwjgl.glfw.Callbacks.*;
