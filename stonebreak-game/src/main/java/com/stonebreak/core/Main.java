@@ -575,7 +575,7 @@ public class Main {
                         renderer.endUIFrame();
                     }
                     // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
-                    renderer.renderPauseMenuDepthCurtain();
+                    renderer.getUIRenderer().renderPauseMenuDepthCurtain();
                 }
             }
         }

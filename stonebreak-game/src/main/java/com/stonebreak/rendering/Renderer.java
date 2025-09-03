@@ -202,6 +202,9 @@ public class Renderer {
         uiRenderer = new UIRenderer();
         uiRenderer.init();
         
+        // Initialize depth curtain renderer with necessary parameters
+        uiRenderer.initializeDepthCurtainRenderer(shaderProgram, windowWidth, windowHeight, projectionMatrix);
+        
 
         // Initialize font
         // Font loaded from stonebreak-game/src/main/resources/fonts/
@@ -914,22 +917,22 @@ public class Renderer {
         
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             // Render invisible depth curtain to occlude block drops behind inventory
-            renderInventoryDepthCurtain();
+            uiRenderer.renderInventoryDepthCurtain();
         } else {
             // Handle depth curtain based on current game state
             switch (gameInstance.getState()) {
                 case RECIPE_BOOK_UI -> {
                     // Render depth curtain for recipe book screen
-                    renderRecipeBookDepthCurtain();
+                    uiRenderer.renderRecipeBookDepthCurtain();
                 }
                 case WORKBENCH_UI -> {
                     // Render depth curtain for workbench screen
-                    renderWorkbenchDepthCurtain();
+                    uiRenderer.renderWorkbenchDepthCurtain();
                 }
                 default -> {
                     // If no full-screen UI is visible, render hotbar depth curtain 
                     // (hotbar is rendered separately in Main.java via UIRenderer)
-                    renderHotbarDepthCurtain();
+                    uiRenderer.renderHotbarDepthCurtain();
                 }
             }
         }
@@ -1474,124 +1477,106 @@ public class Renderer {
         }
     }
     
+    /**
+     * Renders a tool item in the player's hand as a 2D sprite.
+     * This method is called from within renderPlayerArm() when the proper
+     * shader state and transformations are already set up.
+     */
     
     /**
-     * Renders an invisible depth curtain to occlude block drops behind inventory UI.
-     * This creates proper depth values for block drop occlusion without visual interference.
+     * Renders a wireframe bounding box for debug purposes.
+     * @param boundingBox The bounding box to render
+     * @param color The color of the wireframe (RGB, each component 0.0-1.0)
      */
-    private void renderInventoryDepthCurtain() {
-        // Save current GL state
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+    public void renderWireframeBoundingBox(com.stonebreak.mobs.entities.Entity.BoundingBox boundingBox, Vector3f color) {
+        debugRenderer.renderWireframeBoundingBox(boundingBox, color);
+    }
+    
+    /**
+     * Renders a wireframe path as connected line segments.
+     * @param pathPoints The list of points forming the path
+     * @param color The color of the path wireframe (RGB, each component 0.0-1.0)
+     */
+    public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
+        debugRenderer.renderWireframePath(pathPoints, color);
+    }
+    
+    /**
+     * Renders all entities (cows, etc.) in the world using the entity renderer.
+     */
+    private void renderEntities(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        com.stonebreak.mobs.entities.EntityRenderer entityRenderer = Game.getEntityRenderer();
         
-        // Set up depth curtain rendering state
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
-        glDepthMask(true);          // Write to depth buffer (this is key!)
-        glDisable(GL_BLEND);        // No blending needed for invisible quad
-        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Calculate inventory panel dimensions (EXACTLY match InventoryScreen calculations)
-        int SLOT_SIZE = 40;
-        int SLOT_PADDING = 5;
-        int TITLE_HEIGHT = 30;
-        int CRAFTING_GRID_SIZE = 2;
-        int MAIN_INVENTORY_COLS = 9; // Inventory.MAIN_INVENTORY_COLS
-        int MAIN_INVENTORY_ROWS = 3; // Inventory.MAIN_INVENTORY_ROWS
-        
-        // Match InventoryScreen.java calculations exactly (lines 346-355)
-        int baseInventoryPanelWidth = MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int craftingGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE - 1) * SLOT_PADDING;
-        int craftingElementsTotalWidth = craftingGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE; // grid + space + arrow + space + output
-        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE;
-        
-        int totalInventoryRows = MAIN_INVENTORY_ROWS + 1; // main rows + hotbar row
-        int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        
-        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingElementsTotalWidth + SLOT_PADDING * 2);
-        int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2;
-        
-        int panelStartX = (windowWidth - inventoryPanelWidth) / 2;
-        int panelStartY = (windowHeight - inventoryPanelHeight) / 2;
-        
-        // Create vertices for the depth curtain quad covering the inventory area
-        // Add small buffer padding to ensure complete coverage and handle any rounding errors
-        int bufferPadding = 10;
-        float left = panelStartX - bufferPadding;
-        float right = panelStartX + inventoryPanelWidth + bufferPadding;
-        float top = panelStartY - bufferPadding;
-        float bottom = panelStartY + inventoryPanelHeight + bufferPadding;
-        float nearDepth = 0.0f; // Near plane depth value
-        
-        float[] vertices = {
-            left,  top,    nearDepth,  // Top-left
-            right, top,    nearDepth,  // Top-right
-            right, bottom, nearDepth,  // Bottom-right
-            left,  bottom, nearDepth   // Bottom-left
-        };
-        
-        int[] indices = {
-            0, 1, 2,  // First triangle
-            2, 3, 0   // Second triangle
-        };
-        
-        // Create temporary VAO for the depth curtain
-        int vao = GL30.glGenVertexArrays();
-        int vbo = GL20.glGenBuffers();
-        int ebo = GL20.glGenBuffers();
-        
-        GL30.glBindVertexArray(vao);
-        
-        // Upload vertex data
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        FloatBuffer vertexBuffer = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Upload index data
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
-        IntBuffer indexBuffer = org.lwjgl.BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Set up vertex attributes (position only)
-        GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // Render the invisible depth curtain
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        
-        // Clean up temporary resources
-        GL30.glBindVertexArray(0);
-        GL20.glDeleteBuffers(vbo);
-        GL20.glDeleteBuffers(ebo);
-        GL30.glDeleteVertexArrays(vao);
-        
-        // Restore GL state
-        glColorMask(true, true, true, true);  // Re-enable color writing
-        glDepthFunc(GL_ALWAYS);               // Keep UI depth function
-        glDepthMask(false);                   // Restore UI depth mask (don't write)
-        
-        if (blendWasEnabled) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        if (entityManager != null && entityRenderer != null) {
+            // Get all entities and render them
+            for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
+                if (entity.isAlive()) {
+                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
+                }
+            }
         }
-        
-        // Unbind shader
-        shaderProgram.unbind();
+    }
+    
+    /**
+     * Checks for OpenGL errors and logs them with context information.
+     */
+    private void checkGLError(String context) {
+        int error = glGetError();
+        if (error != GL_NO_ERROR) {
+            String errorString = switch (error) {
+                case 0x0500 -> "GL_INVALID_ENUM";
+                case 0x0501 -> "GL_INVALID_VALUE";
+                case 0x0502 -> "GL_INVALID_OPERATION";
+                case 0x0503 -> "GL_STACK_OVERFLOW";
+                case 0x0504 -> "GL_STACK_UNDERFLOW";
+                case 0x0505 -> "GL_OUT_OF_MEMORY";
+                case 0x0506 -> "GL_INVALID_FRAMEBUFFER_OPERATION";
+                default -> "UNKNOWN_ERROR_" + Integer.toHexString(error);
+            };
+            
+            // Get additional OpenGL state for debugging
+            try {
+                int[] currentProgram = new int[1];
+                glGetIntegerv(GL_CURRENT_PROGRAM, currentProgram);
+                int[] activeTexture = new int[1];
+                glGetIntegerv(GL_ACTIVE_TEXTURE, activeTexture);
+                int[] boundTexture = new int[1];
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, boundTexture);
+                int[] viewport = new int[4];
+                glGetIntegerv(GL_VIEWPORT, viewport);
+                
+                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
+                System.err.println("Time: " + java.time.LocalDateTime.now());
+                System.err.println("Thread: " + Thread.currentThread().getName());
+                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                System.err.println("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0]);
+                System.err.println("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3]);
+                
+                // Log to file as well
+                try {
+                    java.io.FileWriter fw = new java.io.FileWriter("opengl_errors.txt", true);
+                    fw.write("=== OpenGL ERROR " + java.time.LocalDateTime.now() + " ===\n");
+                    fw.write("Error: " + errorString + " (0x" + Integer.toHexString(error) + ")\n");
+                    fw.write("Context: " + context + "\n");
+                    fw.write("Thread: " + Thread.currentThread().getName() + "\n");
+                    fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
+                    fw.write("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0] + "\n");
+                    fw.write("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3] + "\n\n");
+                    fw.close();
+                } catch (Exception logEx) {
+                    System.err.println("Failed to write OpenGL error log: " + logEx.getMessage());
+                }
+            } catch (Exception stateEx) {
+                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
+                System.err.println("Failed to get additional GL state: " + stateEx.getMessage());
+            }
+            
+            // For critical errors, throw exception to force crash with stack trace
+            if (error == 0x0505) { // GL_OUT_OF_MEMORY
+                throw new RuntimeException("OpenGL OUT OF MEMORY error at: " + context);
+            }
+        }
     }
     
     /**
@@ -1853,24 +1838,6 @@ public class Renderer {
         
         // Unbind shader
         shaderProgram.unbind();
-    }
-    
-    /**
-     * Renders a wireframe bounding box for debug purposes.
-     * @param boundingBox The bounding box to render
-     * @param color The color of the wireframe (RGB, each component 0.0-1.0)
-     */
-    public void renderWireframeBoundingBox(com.stonebreak.mobs.entities.Entity.BoundingBox boundingBox, Vector3f color) {
-        debugRenderer.renderWireframeBoundingBox(boundingBox, color);
-    }
-    
-    /**
-     * Renders a wireframe path as connected line segments.
-     * @param pathPoints The list of points forming the path
-     * @param color The color of the path wireframe (RGB, each component 0.0-1.0)
-     */
-    public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
-        debugRenderer.renderWireframePath(pathPoints, color);
     }
     
     /**
@@ -2154,90 +2121,5 @@ public class Renderer {
             return -0.999f; // Safe fallback
         }
     }
-    
-    /**
-     * Renders a tool item in the player's hand as a 2D sprite.
-     * This method is called from within renderPlayerArm() when the proper
-     * shader state and transformations are already set up.
-     */
-    
-    /**
-     * Renders all entities (cows, etc.) in the world using the entity renderer.
-     */
-    private void renderEntities(Player player) {
-        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        com.stonebreak.mobs.entities.EntityRenderer entityRenderer = Game.getEntityRenderer();
-        
-        if (entityManager != null && entityRenderer != null) {
-            // Get all entities and render them
-            for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
-                if (entity.isAlive()) {
-                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
-                }
-            }
-        }
-    }
-    
-    /**
-     * Checks for OpenGL errors and logs them with context information.
-     */
-    private void checkGLError(String context) {
-        int error = glGetError();
-        if (error != GL_NO_ERROR) {
-            String errorString = switch (error) {
-                case 0x0500 -> "GL_INVALID_ENUM";
-                case 0x0501 -> "GL_INVALID_VALUE";
-                case 0x0502 -> "GL_INVALID_OPERATION";
-                case 0x0503 -> "GL_STACK_OVERFLOW";
-                case 0x0504 -> "GL_STACK_UNDERFLOW";
-                case 0x0505 -> "GL_OUT_OF_MEMORY";
-                case 0x0506 -> "GL_INVALID_FRAMEBUFFER_OPERATION";
-                default -> "UNKNOWN_ERROR_" + Integer.toHexString(error);
-            };
-            
-            // Get additional OpenGL state for debugging
-            try {
-                int[] currentProgram = new int[1];
-                glGetIntegerv(GL_CURRENT_PROGRAM, currentProgram);
-                int[] activeTexture = new int[1];
-                glGetIntegerv(GL_ACTIVE_TEXTURE, activeTexture);
-                int[] boundTexture = new int[1];
-                glGetIntegerv(GL_TEXTURE_BINDING_2D, boundTexture);
-                int[] viewport = new int[4];
-                glGetIntegerv(GL_VIEWPORT, viewport);
-                
-                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
-                System.err.println("Time: " + java.time.LocalDateTime.now());
-                System.err.println("Thread: " + Thread.currentThread().getName());
-                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
-                System.err.println("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0]);
-                System.err.println("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3]);
-                
-                // Log to file as well
-                try {
-                    java.io.FileWriter fw = new java.io.FileWriter("opengl_errors.txt", true);
-                    fw.write("=== OpenGL ERROR " + java.time.LocalDateTime.now() + " ===\n");
-                    fw.write("Error: " + errorString + " (0x" + Integer.toHexString(error) + ")\n");
-                    fw.write("Context: " + context + "\n");
-                    fw.write("Thread: " + Thread.currentThread().getName() + "\n");
-                    fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
-                    fw.write("GL State - Program: " + currentProgram[0] + ", Active Texture: " + (activeTexture[0] - GL_TEXTURE0) + ", Bound Texture: " + boundTexture[0] + "\n");
-                    fw.write("Viewport: " + viewport[0] + "," + viewport[1] + "," + viewport[2] + "," + viewport[3] + "\n\n");
-                    fw.close();
-                } catch (Exception logEx) {
-                    System.err.println("Failed to write OpenGL error log: " + logEx.getMessage());
-                }
-            } catch (Exception stateEx) {
-                System.err.println("OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(error) + ") at: " + context);
-                System.err.println("Failed to get additional GL state: " + stateEx.getMessage());
-            }
-            
-            // For critical errors, throw exception to force crash with stack trace
-            if (error == 0x0505) { // GL_OUT_OF_MEMORY
-                throw new RuntimeException("OpenGL OUT OF MEMORY error at: " + context);
-            }
-        }
-    }
-    
     
 }

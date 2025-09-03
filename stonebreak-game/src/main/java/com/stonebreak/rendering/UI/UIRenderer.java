@@ -54,6 +54,7 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.TextureAtlas;
 import com.stonebreak.rendering.pipeline.UIQuadRenderer;
+import com.stonebreak.rendering.pipeline.DepthCurtainRenderer;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
@@ -74,6 +75,8 @@ public class UIRenderer {
     
     // UI quad renderer for OpenGL-based quad operations
     private final UIQuadRenderer uiQuadRenderer;
+    // Depth curtain renderer for occluding block drops behind UI elements
+    private DepthCurtainRenderer depthCurtainRenderer;
     private int windowWidth;
     private int windowHeight;
     
@@ -97,6 +100,20 @@ public class UIRenderer {
         
         loadFonts();
         createDirtTexture();
+    }
+    
+    /**
+     * Initializes the depth curtain renderer with the necessary parameters from the main renderer.
+     * This should be called after the main renderer has been set up.
+     * @param shaderProgram The main shader program
+     * @param windowWidth Current window width
+     * @param windowHeight Current window height
+     * @param projectionMatrix The 3D projection matrix
+     */
+    public void initializeDepthCurtainRenderer(com.stonebreak.rendering.ShaderProgram shaderProgram, 
+                                             int windowWidth, int windowHeight, 
+                                             org.joml.Matrix4f projectionMatrix) {
+        this.depthCurtainRenderer = new DepthCurtainRenderer(shaderProgram, windowWidth, windowHeight, projectionMatrix);
     }
     
     private void loadFonts() {
@@ -1540,6 +1557,54 @@ public class UIRenderer {
 
         uiQuadRenderer.unbind();
         glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
+    }
+    
+    // ===== Depth Curtain Rendering Methods =====
+    // These methods delegate to the DepthCurtainRenderer for occluding block drops behind UI elements
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind inventory UI.
+     */
+    public void renderInventoryDepthCurtain() {
+        if (depthCurtainRenderer != null) {
+            depthCurtainRenderer.renderInventoryDepthCurtain();
+        }
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind hotbar UI.
+     */
+    public void renderHotbarDepthCurtain() {
+        if (depthCurtainRenderer != null) {
+            depthCurtainRenderer.renderHotbarDepthCurtain();
+        }
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind pause menu UI.
+     */
+    public void renderPauseMenuDepthCurtain() {
+        if (depthCurtainRenderer != null) {
+            depthCurtainRenderer.renderPauseMenuDepthCurtain();
+        }
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind recipe book UI.
+     */
+    public void renderRecipeBookDepthCurtain() {
+        if (depthCurtainRenderer != null) {
+            depthCurtainRenderer.renderRecipeBookDepthCurtain();
+        }
+    }
+    
+    /**
+     * Renders an invisible depth curtain to occlude block drops behind workbench UI.
+     */
+    public void renderWorkbenchDepthCurtain() {
+        if (depthCurtainRenderer != null) {
+            depthCurtainRenderer.renderWorkbenchDepthCurtain();
+        }
     }
 
     /**
