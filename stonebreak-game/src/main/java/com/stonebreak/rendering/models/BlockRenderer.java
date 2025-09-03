@@ -3,9 +3,11 @@ package com.stonebreak.rendering.models;
 import com.stonebreak.blocks.BlockDrop;
 import com.stonebreak.blocks.BlockDropManager;
 import com.stonebreak.blocks.BlockDropRenderer;
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.TextureAtlas;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
@@ -32,15 +34,24 @@ public class BlockRenderer {
     private BlockDropRenderer blockDropRenderer;
     
     public BlockRenderer() {
+        // Initialize block drop renderer (will be initialized later via initializeDependencies)
+        blockDropRenderer = new BlockDropRenderer();
+        
         initialize();
     }
     
     private void initialize() {
         createCrackTexture();
         createBlockOverlayVao();
-        
-        // Initialize block drop renderer
-        blockDropRenderer = new BlockDropRenderer();
+    }
+    
+    /**
+     * Initialize dependencies that require external resources.
+     * Must be called after construction to properly initialize the BlockDropRenderer.
+     */
+    public void initializeDependencies(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
+        // Initialize the block drop renderer with required dependencies
+        blockDropRenderer.initialize(shaderProgram, textureAtlas);
     }
     
     /**
@@ -386,6 +397,103 @@ public class BlockRenderer {
         
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
+    }
+    
+    /**
+     * Creates a VAO for rendering a specific block type with proper face texturing.
+     * This ensures proper face texturing for blocks with different textures per face.
+     */
+    public int createBlockSpecificCube(BlockType type, TextureAtlas textureAtlas) {
+        // Use the modern metadata-driven texture atlas system instead of legacy grid coordinates
+        float[] frontUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_NORTH);   // Front
+        float[] backUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_SOUTH);    // Back
+        float[] topUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP);            // Top
+        float[] bottomUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.BOTTOM);      // Bottom
+        float[] rightUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_EAST);    // Right
+        float[] leftUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_WEST);     // Left
+
+        // Define vertices for a cube (position, normal, texCoord)
+        // Each face defined separately to allow different UVs per face
+        float[] vertices = {
+            // Front face (+Z)
+            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[3], // Bottom-left
+             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[3], // Bottom-right
+             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[1], // Top-right
+            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[1], // Top-left
+            
+            // Back face (-Z)
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[3], // Bottom-left (UVs might need adjustment depending on texture atlas convention for back faces)
+             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[3], // Bottom-right
+             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[1], // Top-right
+            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[1], // Top-left
+            
+            // Top face (+Y)
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[1], // Top-left (UV Y might be inverted from standard texture)
+             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[1], // Top-right
+             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[3], // Bottom-right
+            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[3], // Bottom-left
+            
+            // Bottom face (-Y)
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[0], bottomUVs[1], // Top-left
+             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[2], bottomUVs[1], // Top-right
+             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[2], bottomUVs[3], // Bottom-right
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[0], bottomUVs[3], // Bottom-left
+            
+            // Right face (+X)
+             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[3], // Bottom-left (Origin for this face's UV)
+             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[3], // Bottom-right
+             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[1], // Top-right
+             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[1], // Top-left
+            
+            // Left face (-X)
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[3], // Bottom-left
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[3], // Bottom-right
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[1], // Top-right
+            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[1]  // Top-left
+        };
+        
+        int[] indices = {
+            0,  1,  2,  0,  2,  3,  // Front
+            4,  5,  6,  4,  6,  7,  // Back
+            8,  9, 10,  8, 10, 11,  // Top
+            12, 13, 14, 12, 14, 15, // Bottom
+            16, 17, 18, 16, 18, 19, // Right
+            20, 21, 22, 20, 22, 23  // Left
+        };
+        
+        // Create VAO
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        
+        // Create VBO
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
+        // Position attribute (location 0)
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        // Normal attribute (location 2) - Make sure shader uses location 2 for normals
+        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+        // Texture coordinate attribute (location 1)
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        // Create IBO
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        
+        return vao;
     }
     
     /**
