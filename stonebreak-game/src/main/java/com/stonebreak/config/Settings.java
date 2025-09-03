@@ -13,6 +13,17 @@ public class Settings {
     private int windowHeight = 720;
     private float masterVolume = 1.0f;
     
+    // Crosshair settings
+    private String crosshairStyle = "SIMPLE_CROSS";
+    private float crosshairSize = 16.0f;
+    private float crosshairThickness = 2.0f;
+    private float crosshairGap = 4.0f;
+    private float crosshairOpacity = 1.0f;
+    private float crosshairColorR = 1.0f;
+    private float crosshairColorG = 1.0f;
+    private float crosshairColorB = 1.0f;
+    private boolean crosshairOutline = true;
+    
     // Available resolutions (ordered smallest to largest by total pixels)
     private static final int[][] RESOLUTIONS = {
         {1024, 768},     // 786,432 pixels
@@ -41,7 +52,16 @@ public class Settings {
             json.append("{\n");
             json.append("  \"windowWidth\": ").append(windowWidth).append(",\n");
             json.append("  \"windowHeight\": ").append(windowHeight).append(",\n");
-            json.append("  \"masterVolume\": ").append(masterVolume).append("\n");
+            json.append("  \"masterVolume\": ").append(masterVolume).append(",\n");
+            json.append("  \"crosshairStyle\": \"").append(crosshairStyle).append("\",\n");
+            json.append("  \"crosshairSize\": ").append(crosshairSize).append(",\n");
+            json.append("  \"crosshairThickness\": ").append(crosshairThickness).append(",\n");
+            json.append("  \"crosshairGap\": ").append(crosshairGap).append(",\n");
+            json.append("  \"crosshairOpacity\": ").append(crosshairOpacity).append(",\n");
+            json.append("  \"crosshairColorR\": ").append(crosshairColorR).append(",\n");
+            json.append("  \"crosshairColorG\": ").append(crosshairColorG).append(",\n");
+            json.append("  \"crosshairColorB\": ").append(crosshairColorB).append(",\n");
+            json.append("  \"crosshairOutline\": ").append(crosshairOutline).append("\n");
             json.append("}");
             
             Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
@@ -102,6 +122,83 @@ public class Settings {
                         System.err.println("Invalid masterVolume value: " + value);
                     }
                 }
+            } else if (line.contains("crosshairStyle")) {
+                String value = extractStringValue(line);
+                if (value != null) {
+                    crosshairStyle = value;
+                }
+            } else if (line.contains("crosshairSize")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairSize = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairSize value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairThickness")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairThickness = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairThickness value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairGap")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairGap = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairGap value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairOpacity")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairOpacity = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairOpacity value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairColorR")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairColorR = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairColorR value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairColorG")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairColorG = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairColorG value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairColorB")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairColorB = Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairColorB value: " + value);
+                    }
+                }
+            } else if (line.contains("crosshairOutline")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        crosshairOutline = Boolean.parseBoolean(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid crosshairOutline value: " + value);
+                    }
+                }
             }
         }
     }
@@ -115,10 +212,31 @@ public class Settings {
         return value;
     }
     
+    private String extractStringValue(String line) {
+        int colonIndex = line.indexOf(':');
+        if (colonIndex == -1) return null;
+        
+        String value = line.substring(colonIndex + 1).trim();
+        value = value.replaceAll("[,}]", "").trim();
+        value = value.replaceAll("\"", "").trim();
+        return value;
+    }
+    
     // Getters
     public int getWindowWidth() { return windowWidth; }
     public int getWindowHeight() { return windowHeight; }
     public float getMasterVolume() { return masterVolume; }
+    
+    // Crosshair getters
+    public String getCrosshairStyle() { return crosshairStyle; }
+    public float getCrosshairSize() { return crosshairSize; }
+    public float getCrosshairThickness() { return crosshairThickness; }
+    public float getCrosshairGap() { return crosshairGap; }
+    public float getCrosshairOpacity() { return crosshairOpacity; }
+    public float getCrosshairColorR() { return crosshairColorR; }
+    public float getCrosshairColorG() { return crosshairColorG; }
+    public float getCrosshairColorB() { return crosshairColorB; }
+    public boolean getCrosshairOutline() { return crosshairOutline; }
     
     // Setters
     public void setResolution(int width, int height) {
@@ -128,6 +246,37 @@ public class Settings {
     
     public void setMasterVolume(float volume) {
         this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
+    }
+    
+    // Crosshair setters
+    public void setCrosshairStyle(String style) {
+        this.crosshairStyle = style;
+    }
+    
+    public void setCrosshairSize(float size) {
+        this.crosshairSize = Math.max(4.0f, Math.min(64.0f, size));
+    }
+    
+    public void setCrosshairThickness(float thickness) {
+        this.crosshairThickness = Math.max(1.0f, Math.min(8.0f, thickness));
+    }
+    
+    public void setCrosshairGap(float gap) {
+        this.crosshairGap = Math.max(0.0f, Math.min(16.0f, gap));
+    }
+    
+    public void setCrosshairOpacity(float opacity) {
+        this.crosshairOpacity = Math.max(0.1f, Math.min(1.0f, opacity));
+    }
+    
+    public void setCrosshairColor(float r, float g, float b) {
+        this.crosshairColorR = Math.max(0.0f, Math.min(1.0f, r));
+        this.crosshairColorG = Math.max(0.0f, Math.min(1.0f, g));
+        this.crosshairColorB = Math.max(0.0f, Math.min(1.0f, b));
+    }
+    
+    public void setCrosshairOutline(boolean outline) {
+        this.crosshairOutline = outline;
     }
     
     // Helper methods

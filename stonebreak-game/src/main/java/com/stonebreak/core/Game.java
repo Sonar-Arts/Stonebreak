@@ -167,6 +167,9 @@ public class Game {
         this.mainMenu = new MainMenu(this.renderer.getUIRenderer());
         this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
+        
+        // Initialize crosshair with settings
+        initializeCrosshairSettings();
 
         // Initialize CraftingManager
         this.craftingManager = new CraftingManager();
@@ -450,6 +453,42 @@ public class Game {
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         System.out.println("Entity system initialized - cows can now spawn!");
+    }
+    
+    /**
+     * Initializes the crosshair renderer with settings from the config file.
+     */
+    private void initializeCrosshairSettings() {
+        if (renderer != null && renderer.getUIRenderer() != null) {
+            var crosshairRenderer = renderer.getUIRenderer().getCrosshairRenderer();
+            if (crosshairRenderer != null) {
+                Settings settings = Settings.getInstance();
+                
+                // Apply crosshair style
+                try {
+                    var styleEnum = com.stonebreak.rendering.UI.components.CrosshairRenderer.CrosshairStyle.valueOf(settings.getCrosshairStyle());
+                    crosshairRenderer.setStyle(styleEnum);
+                } catch (IllegalArgumentException e) {
+                    System.err.println("Invalid crosshair style in settings: " + settings.getCrosshairStyle() + ", using default");
+                    crosshairRenderer.setStyle(com.stonebreak.rendering.UI.components.CrosshairRenderer.CrosshairStyle.SIMPLE_CROSS);
+                }
+                
+                // Apply other crosshair properties
+                crosshairRenderer.setSize(settings.getCrosshairSize());
+                crosshairRenderer.setThickness(settings.getCrosshairThickness());
+                crosshairRenderer.setGap(settings.getCrosshairGap());
+                crosshairRenderer.setOpacity(settings.getCrosshairOpacity());
+                crosshairRenderer.setColor(settings.getCrosshairColorR(), settings.getCrosshairColorG(), settings.getCrosshairColorB());
+                crosshairRenderer.setOutline(settings.getCrosshairOutline());
+                
+                System.out.println("Crosshair settings initialized: style=" + settings.getCrosshairStyle() + 
+                                 ", size=" + settings.getCrosshairSize());
+            } else {
+                System.err.println("Warning: CrosshairRenderer not available during initialization");
+            }
+        } else {
+            System.err.println("Warning: Renderer or UIRenderer not available during crosshair initialization");
+        }
     }
     
     /**

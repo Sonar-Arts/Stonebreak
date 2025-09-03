@@ -510,6 +510,15 @@ public class Main {
                     renderer.beginUIFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
                     // Inventory / Hotbar / Chat (primarily for PLAYING/PAUSED state)
                     if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
+                        // Render crosshair first when not paused and no full-screen UI is open
+                        if (game.getState() == GameState.PLAYING) {
+                            InventoryScreen inventoryScreen = game.getInventoryScreen();
+                            if (inventoryScreen == null || !inventoryScreen.isVisible()) {
+                                renderer.getUIRenderer().renderCrosshair(width, height);
+                            }
+                        }
+                        
+                        // Render inventory/hotbar
                         InventoryScreen inventoryScreen = game.getInventoryScreen();
                         if (inventoryScreen != null) {
                             if (inventoryScreen.isVisible()) {

@@ -121,13 +121,17 @@ public class MenuRenderer extends BaseRenderer {
         
         drawDirtBackground(windowWidth, windowHeight, 80);
         
-        float panelWidth = 600;
-        float panelHeight = 400;
+        // Calculate responsive panel dimensions based on window size
+        float panelWidth = Math.min(700, windowWidth * 0.85f);  // 85% of window width, max 700px
+        float panelHeight = Math.min(550, windowHeight * 0.85f); // 85% of window height, max 550px
         float panelX = centerX - panelWidth / 2;
         float panelY = centerY - panelHeight / 2;
         
         drawMinecraftPanel(panelX, panelY, panelWidth, panelHeight);
-        drawSettingsTitle(centerX, panelY + 60, "SETTINGS");
+        
+        // Position title relative to panel, with proper spacing
+        float titleY = panelY + Math.max(40, panelHeight * 0.08f);
+        drawSettingsTitle(centerX, titleY, "SETTINGS");
     }
     
     private void drawDirtBackground(int windowWidth, int windowHeight, int overlayAlpha) {
@@ -506,5 +510,24 @@ public class MenuRenderer extends BaseRenderer {
         float quitY = centerY + 80;
         
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
+    }
+    
+    /**
+     * Draws a horizontal separator line for visual organization.
+     * @param centerX Center X position
+     * @param y Y position for the separator
+     * @param width Width of the separator line
+     */
+    public void drawSeparatorLine(float centerX, float y, float width) {
+        try (MemoryStack stack = stackPush()) {
+            float x = centerX - width / 2.0f;
+            float lineHeight = 1.5f;
+            
+            // Draw the separator line with a subtle color
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, lineHeight);
+            nvgFillColor(vg, nvgRGBA(150, 150, 150, 100, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
     }
 }

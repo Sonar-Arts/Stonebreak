@@ -9,6 +9,7 @@ import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.components.ChatRenderer;
+import com.stonebreak.rendering.UI.components.CrosshairRenderer;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
@@ -36,6 +37,7 @@ public class UIRenderer {
     private VolumeSliderRenderer volumeSliderRenderer;
     private ItemIconRenderer itemIconRenderer;
     private BlockIconRenderer blockIconRenderer;
+    private CrosshairRenderer crosshairRenderer;
     private OpenGLQuadRenderer openGLQuadRenderer;
     
     public UIRenderer() {
@@ -53,6 +55,7 @@ public class UIRenderer {
         chatRenderer = new ChatRenderer(vg);
         volumeSliderRenderer = new VolumeSliderRenderer(vg);
         itemIconRenderer = new ItemIconRenderer(vg);
+        crosshairRenderer = new CrosshairRenderer(vg);
         openGLQuadRenderer.initialize();
     }
     
@@ -243,6 +246,39 @@ public class UIRenderer {
     
     public long getVG() {
         return vg;
+    }
+    
+    // ===== Crosshair Rendering Delegation =====
+    
+    /**
+     * Renders the crosshair at the center of the screen.
+     * @param windowWidth Current window width
+     * @param windowHeight Current window height
+     */
+    public void renderCrosshair(int windowWidth, int windowHeight) {
+        if (crosshairRenderer != null) {
+            crosshairRenderer.renderCrosshair(windowWidth, windowHeight);
+        }
+    }
+    
+    /**
+     * Gets the crosshair renderer for configuration.
+     * @return CrosshairRenderer instance for customization
+     */
+    public CrosshairRenderer getCrosshairRenderer() {
+        return crosshairRenderer;
+    }
+    
+    /**
+     * Draws a horizontal separator line for UI organization using NanoVG.
+     * @param centerX Center X position
+     * @param y Y position for the line
+     * @param width Width of the separator line
+     */
+    public void drawSeparator(float centerX, float y, float width) {
+        if (menuRenderer != null) {
+            menuRenderer.drawSeparatorLine(centerX, y, width);
+        }
     }
     
     // Helper method for backward compatibility - delegates to MenuRenderer

@@ -114,7 +114,6 @@ public class Renderer {
     private final Matrix4f projectionMatrix;
     
     // UI elements
-    private int crosshairVao;
     private int hotbarVao;
     
 
@@ -198,7 +197,6 @@ public class Renderer {
         font = new Font("fonts/Roboto-VariableFont_wdth,wght.ttf", 24f);
         
         // Create UI elements
-        createCrosshair();
         createHotbar();
         
         // Initialize debug renderer
@@ -455,38 +453,6 @@ public class Renderer {
     
     // ============ END UI RENDERER PROXY METHODS ============
     
-    /**
-     * Creates the crosshair UI element.
-     */
-    private void createCrosshair() {
-        // Create a simple crosshair in the center of the screen
-        float[] vertices = {
-            -0.01f, 0.0f, 0.0f,
-            0.01f, 0.0f, 0.0f,
-            0.0f, -0.01f, 0.0f,
-            0.0f, 0.01f, 0.0f
-        };
-        
-        // Create VAO
-        crosshairVao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(crosshairVao);
-        
-        // Create VBO
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        
-        FloatBuffer buffer = BufferUtils.createFloatBuffer(vertices.length);
-        buffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, buffer, GL20.GL_STATIC_DRAW);
-        
-        // Define vertex attributes
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 0, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // Unbind
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-    }
     
     
     /**
@@ -694,15 +660,10 @@ public class Renderer {
         shaderProgram.setUniform("viewMatrix", new Matrix4f());
         shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for UI
         shaderProgram.setUniform("texture_sampler", 0); // Ensure texture unit 0 for UI textures (like font)
-          // Only show crosshair and hotbar when not paused
+          // Only show hotbar when not paused (crosshair now handled by UIRenderer)
         if (!Game.getInstance().isPaused()) {
-            shaderProgram.setUniform("u_useSolidColor", true); // Assuming crosshair/hotbar are solid colors
+            shaderProgram.setUniform("u_useSolidColor", true); // Assuming hotbar is solid color
             shaderProgram.setUniform("u_isText", false);
-
-            // Render crosshair (e.g., white)
-            shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-            GL30.glBindVertexArray(crosshairVao);
-            glDrawArrays(GL_LINES, 0, 4);
             
             // Render hotbar background (e.g., dark semi-transparent)
             // shaderProgram.setUniform("u_color", new Vector4f(0.3f, 0.3f, 0.3f, 0.7f));
@@ -712,7 +673,7 @@ public class Renderer {
         }
         
         // All complex UI (inventory, pause menu, chat) is now rendered in Main.java using UIRenderer
-        // This renderUI() method only handles simple OpenGL-based UI elements like crosshair
+        // This renderUI() method only handles simple OpenGL-based UI elements
         
         // Render debug overlay if enabled (MOVED to Main.java render loop)
         // DebugOverlay debugOverlay = Game.getDebugOverlay();
@@ -1051,7 +1012,6 @@ public class Renderer {
         }
         
         // Delete UI VAOs
-        GL30.glDeleteVertexArrays(crosshairVao);
         GL30.glDeleteVertexArrays(hotbarVao);
         
         // Cleanup UI renderer
