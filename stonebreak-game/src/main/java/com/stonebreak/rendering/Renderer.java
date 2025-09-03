@@ -12,7 +12,6 @@ import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.UI.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.rendering.pipeline.UIQuadRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -136,8 +135,6 @@ public class Renderer {
     // UI elements
     private int crosshairVao;
     private int hotbarVao;
-    // UI quad renderer module
-    private final UIQuadRenderer uiQuadRenderer;
     
 
     // 3D Item Cube for Inventory - REMOVED: Now using block-specific cubes
@@ -205,8 +202,6 @@ public class Renderer {
         uiRenderer = new UIRenderer();
         uiRenderer.init();
         
-        // Initialize UI quad renderer
-        uiQuadRenderer = new UIQuadRenderer();
 
         // Initialize font
         // Font loaded from stonebreak-game/src/main/resources/fonts/
@@ -215,7 +210,6 @@ public class Renderer {
         // Create UI elements
         createCrosshair();
         createHotbar();
-        uiQuadRenderer.initialize(); // Initialize UI quad rendering resources
         
         // Initialize debug renderer
         debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix);
@@ -1000,54 +994,8 @@ public class Renderer {
      * @param a Alpha component (0-255)
      */
     public void drawQuad(int x, int y, int width, int height, int r, int g, int b, int a) {
-        // Normalize color components
-        float red = r / 255.0f;
-        float green = g / 255.0f;
-        float blue = b / 255.0f;
-        float alpha = a / 255.0f;
-
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new Vector4f(red, green, blue, alpha));
-
-        // Vertices are now directly in pixel coordinates as expected by InventoryScreen's projection.
-        // Projection: ortho(0, screenWidth, screenHeight, 0, -1, 1) means Y=0 is top.
-        float x_pixel = (float)x;
-        float y_pixel = (float)y;
-        float x_plus_width_pixel = (float)(x + width);
-        float y_plus_height_pixel = (float)(y + height);
-
-        float[] vertices = {
-            x_pixel,             y_pixel,               0.0f, 0.0f, 0.0f, // Top-left
-            x_plus_width_pixel,  y_pixel,               0.0f, 0.0f, 0.0f, // Top-right
-            x_plus_width_pixel,  y_plus_height_pixel,   0.0f, 0.0f, 0.0f, // Bottom-right
-            x_pixel,             y_plus_height_pixel,   0.0f, 0.0f, 0.0f  // Bottom-left
-        };
-
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-
-        uiQuadRenderer.bind();
-
-        // Update the buffer data
-        // UIQuadRenderer should have attributes 0 (position) and 1 (texCoord) enabled
-        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
-
-        // Blending is now assumed to be handled by the caller (e.g., InventoryScreen)
-        // The shader will use u_useSolidColor to ignore texCoords if necessary.
-
-        boolean texture2DWasEnabled = glIsEnabled(GL_TEXTURE_2D);
-        if (texture2DWasEnabled) {
-            glDisable(GL_TEXTURE_2D); // Ensure texturing is off for solid color draw
-        }
-
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4); // TRIANGLE_FAN: 0,1,2 then 0,2,3 (quad: 0,1,2,3)
-
-        if (texture2DWasEnabled) {
-            glEnable(GL_TEXTURE_2D); // Restore texturing state if we changed it
-        }
-        
-        uiQuadRenderer.unbind();
+        // Delegate to UI renderer's quad drawing functionality
+        uiRenderer.drawQuad(shaderProgram, x, y, width, height, r, g, b, a);
     }
 
     /**
@@ -1064,61 +1012,8 @@ public class Renderer {
      * @param v2 V-coordinate of the bottom-right texture corner (often bottom of texture image)
      */
     public void drawTexturedQuadUI(int x, int y, int width, int height, int textureId, float u1, float v1, float u2, float v2) {
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("texture_sampler", 0); // Ensure texture unit 0
-
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureId);
-
-        // Convert pixel coordinates to Normalized Device Coordinates (NDC)
-        float ndcX = (x / (float)windowWidth) * 2.0f - 1.0f;
-        float ndcY = 1.0f - (y / (float)windowHeight) * 2.0f; // Invert Y for top-left origin
-        float ndcWidth = (width / (float)windowWidth) * 2.0f;
-        float ndcHeight = (height / (float)windowHeight) * 2.0f;
-
-        float x_1 = ndcX;
-        float y_1 = ndcY;           // Top-left in NDC
-        float x_2 = ndcX + ndcWidth;
-        float y_2 = ndcY - ndcHeight; // Bottom-right in NDC
-
-        // Vertices: x, y, z, u, v
-        // OpenGL UV origin is bottom-left. TextureAtlas UVs are typically top-left.
-        // Ensure UVs match the quad vertices orientation.
-        // Quad vertices: TL, TR, BR, BL (for TRIANGLE_FAN from TL)
-        // UVs should map accordingly:
-        // TL vertex -> (u1, v1)
-        // TR vertex -> (u2, v1)
-        // BR vertex -> (u2, v2)
-        // BL vertex -> (u1, v2)
-        float[] vertices = {
-            x_1, y_1, 0.0f, u1, v1,    // Top-left
-            x_2, y_1, 0.0f, u2, v1,    // Top-right
-            x_2, y_2, 0.0f, u2, v2,    // Bottom-right
-            x_1, y_2, 0.0f, u1, v2     // Bottom-left
-        };
-
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-
-        uiQuadRenderer.bind();
-        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
-
-        // Enable blending for textures that might have alpha (like leaves, or UI elements)
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        if (!blendWasEnabled) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        }
-
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-        if (!blendWasEnabled) {
-            glDisable(GL_BLEND);
-        }
-
-        uiQuadRenderer.unbind();
-        glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
+        // Delegate to UI renderer's textured quad drawing functionality
+        uiRenderer.drawTexturedQuadUI(shaderProgram, x, y, width, height, textureId, u1, v1, u2, v2);
     }
 
     public void draw3DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
@@ -1129,7 +1024,29 @@ public class Renderer {
         // Check if this is a flower block - render as flat 2D texture instead of 3D cube
         // Note: Items (STICK, WOODEN_PICKAXE) are now in ItemType enum and handled separately
         if (type == BlockType.ROSE || type == BlockType.DANDELION) {
-            drawFlat2DItemInSlot(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
+            // Get current matrices from shader for restoration after UI rendering
+            float[] projArray = new float[16];
+            float[] viewArray = new float[16];
+            
+            // Get the current matrices from the shader program uniforms
+            try {
+                shaderProgram.getUniformMatrix4fv("projectionMatrix", projArray);
+                shaderProgram.getUniformMatrix4fv("viewMatrix", viewArray);
+            } catch (Exception e) {
+                // Fallback to identity matrices if getting uniforms fails
+                new Matrix4f().identity().get(projArray);
+                new Matrix4f().identity().get(viewArray);
+            }
+            
+            // Convert arrays to FloatBuffers for the UIRenderer method
+            FloatBuffer projBuffer = BufferUtils.createFloatBuffer(16);
+            FloatBuffer viewBuffer = BufferUtils.createFloatBuffer(16);
+            projBuffer.put(projArray).flip();
+            viewBuffer.put(viewArray).flip();
+            
+            // Delegate to UI renderer's flat 2D item drawing functionality
+            uiRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, 
+                                          textureAtlas, projBuffer, viewBuffer);
             return;
         }
 
@@ -1309,129 +1226,7 @@ public class Renderer {
         // This is implicitly handled by restoring originalTextureBinding2D on GL_TEXTURE0
     }
 
-    private void drawFlat2DItemInSlot(BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
-        // Save current GL state
-        boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        int[] originalViewport = new int[4];
-        glGetIntegerv(GL_VIEWPORT, originalViewport);
-        boolean scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
-        int[] originalScissorBox = new int[4];
-        if (scissorWasEnabled) {
-            glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
-        }
-        
-        int originalBlendSrcRgb = 0, originalBlendDstRgb = 0, originalBlendSrcAlpha = 0, originalBlendDstAlpha = 0;
-        if (blendWasEnabled) {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                IntBuffer tempInt = stack.mallocInt(1);
-                glGetIntegerv(GL_BLEND_SRC_RGB, tempInt); originalBlendSrcRgb = tempInt.get(0); tempInt.clear();
-                glGetIntegerv(GL_BLEND_DST_RGB, tempInt); originalBlendDstRgb = tempInt.get(0); tempInt.clear();
-                glGetIntegerv(GL_BLEND_SRC_ALPHA, tempInt); originalBlendSrcAlpha = tempInt.get(0); tempInt.clear();
-                glGetIntegerv(GL_BLEND_DST_ALPHA, tempInt); originalBlendDstAlpha = tempInt.get(0); tempInt.clear();
-            }
-        }
-
-        // Store current matrices to restore later
-        float[] projectionMatrixBuffer = new float[16];
-        float[] viewMatrixBuffer = new float[16];
-        shaderProgram.getUniformMatrix4fv("projectionMatrix", projectionMatrixBuffer);
-        shaderProgram.getUniformMatrix4fv("viewMatrix", viewMatrixBuffer);
-
-        // Setup for 2D rendering
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // Set up orthographic projection for the slot area
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("texture_sampler", 0);
-
-        // Get texture coordinates for the flower using modern atlas system
-        float[] uvCoords = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP);
-        
-        // Add padding to center the flower texture within the slot
-        int padding = 6;
-        float textureX = screenSlotX + padding;
-        float textureY = screenSlotY + padding;
-        float textureWidth = screenSlotWidth - (padding * 2);
-        float textureHeight = screenSlotHeight - (padding * 2);
-        
-        // Bind texture
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        
-        // Create vertices for the quad in screen coordinates
-        float[] vertices = {
-            textureX,              textureY,               0.0f, uvCoords[0], uvCoords[1], // Top-left
-            textureX + textureWidth, textureY,              0.0f, uvCoords[2], uvCoords[1], // Top-right  
-            textureX + textureWidth, textureY + textureHeight, 0.0f, uvCoords[2], uvCoords[3], // Bottom-right
-            textureX,              textureY + textureHeight, 0.0f, uvCoords[0], uvCoords[3]  // Bottom-left
-        };
-
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-
-        uiQuadRenderer.bind();
-        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
-
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-        // Restore GL state
-        uiQuadRenderer.unbind();
-        glBindTexture(GL_TEXTURE_2D, 0);
-        
-        // Restore original matrices
-        Matrix4f originalProjection = new Matrix4f();
-        originalProjection.set(projectionMatrixBuffer);
-        Matrix4f originalView = new Matrix4f();
-        originalView.set(viewMatrixBuffer);
-        shaderProgram.setUniform("projectionMatrix", originalProjection);
-        shaderProgram.setUniform("viewMatrix", originalView);
-        
-        // Restore viewport
-        glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
-        if (scissorWasEnabled) {
-            glScissor(originalScissorBox[0], originalScissorBox[1], originalScissorBox[2], originalScissorBox[3]);
-        } else {
-            glDisable(GL_SCISSOR_TEST);
-        }
-
-        // Restore depth test and blend state
-        if (depthTestWasEnabled) {
-            glEnable(GL_DEPTH_TEST);
-        }
-        
-        // Restore blend state
-        if (blendWasEnabled) {
-            glEnable(GL_BLEND);
-            // glBlendFuncSeparate is now statically imported from GL14
-            // GL14.glBlendFuncSeparate uses GL constants like GL_SRC_ALPHA, which are available in GL11
-            // However, to use glBlendFuncSeparate itself, GL14 is needed, which seems to be correctly imported.
-            // Assuming these variables were intended to be fetched and used correctly if blendWasEnabled.
-            // For now, direct use if blend was enabled:
-            if (blendWasEnabled) { // This check was missing around the usage.
-                 glBlendFuncSeparate(originalBlendSrcRgb, originalBlendDstRgb, originalBlendSrcAlpha, originalBlendDstAlpha);
-            }
-        } else {
-            glDisable(GL_BLEND);
-        }
-        
-        if (depthTestWasEnabled) {
-             glEnable(GL_DEPTH_TEST); // Ensure depth test is restored if it was on
-        } else {
-            glDisable(GL_DEPTH_TEST);
-        }
-        // Unbind texture used by this specific function to avoid interference if it was on unit 0
-        // This is implicitly handled by restoring originalTextureBinding2D on GL_TEXTURE0
-    }
+    // Method moved to UIRenderer.drawFlat2DItemInSlot()
 
     // This entire duplicated method drawFlat2DItemInSlot (from 1477 to 1606) is removed.
     // Its content was the basis for createBlockSpecificCube.
@@ -1654,7 +1449,6 @@ public class Renderer {
         // Delete UI VAOs
         GL30.glDeleteVertexArrays(crosshairVao);
         GL30.glDeleteVertexArrays(hotbarVao);
-        uiQuadRenderer.cleanup();
         
         // Cleanup UI renderer
         if (uiRenderer != null) {

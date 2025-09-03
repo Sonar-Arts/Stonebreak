@@ -53,6 +53,17 @@ import com.stonebreak.core.Game;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.TextureAtlas;
+import com.stonebreak.rendering.pipeline.UIQuadRenderer;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL20;
+import org.joml.Vector4f;
+import java.nio.FloatBuffer;
+
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL13.*;
+import static org.lwjgl.opengl.GL20.*;
 
 public class UIRenderer {
     private long vg;
@@ -61,16 +72,28 @@ public class UIRenderer {
     private int fontMinecraft = -1;
     private int dirtTextureImage = -1;
     
+    // UI quad renderer for OpenGL-based quad operations
+    private final UIQuadRenderer uiQuadRenderer;
+    private int windowWidth;
+    private int windowHeight;
+    
     private static final int UI_FONT_SIZE = 18;
     private static final int UI_TITLE_SIZE = 48;
     private static final int UI_BUTTON_HEIGHT = 40;
     private static final int UI_BUTTON_WIDTH = 400;
+    
+    public UIRenderer() {
+        uiQuadRenderer = new UIQuadRenderer();
+    }
     
     public void init() {
         vg = nvgCreate(NVG_ANTIALIAS | NVG_STENCIL_STROKES);
         if (vg == 0) {
             throw new RuntimeException("Could not init NanoVG.");
         }
+        
+        // Initialize UI quad renderer
+        uiQuadRenderer.initialize();
         
         loadFonts();
         createDirtTexture();
@@ -205,6 +228,10 @@ public class UIRenderer {
     }
     
     public void beginFrame(int width, int height, float pixelRatio) {
+        // Store window dimensions for quad rendering
+        this.windowWidth = width;
+        this.windowHeight = height;
+        
         if (vg != 0) {
             nvgBeginFrame(vg, width, height, pixelRatio);
         }
@@ -712,6 +739,11 @@ public class UIRenderer {
     }
     
     public void cleanup() {
+        // Cleanup UI quad renderer
+        if (uiQuadRenderer != null) {
+            uiQuadRenderer.cleanup();
+        }
+        
         if (vg != 0) {
             try {
                 nvgDelete(vg);
@@ -1369,5 +1401,235 @@ public class UIRenderer {
         
         buffer.flip();
         return buffer;
+    }
+    
+    // ===== OpenGL Quad Rendering Methods =====
+    // These methods provide OpenGL-based quad rendering capabilities for the UI renderer
+    // They use UIQuadRenderer internally and require a shader program to be bound
+    
+    /**
+     * Draws a colored quad using OpenGL. Assumes shaderProgram is bound and orthographic projection is set.
+     * @param shaderProgram The shader program to use for rendering
+     * @param x X-coordinate in pixels
+     * @param y Y-coordinate in pixels
+     * @param width Width in pixels
+     * @param height Height in pixels
+     * @param r Red component (0-255)
+     * @param g Green component (0-255)
+     * @param b Blue component (0-255)
+     * @param a Alpha component (0-255)
+     */
+    public void drawQuad(com.stonebreak.rendering.ShaderProgram shaderProgram, int x, int y, int width, int height, int r, int g, int b, int a) {
+        // Normalize color components
+        float red = r / 255.0f;
+        float green = g / 255.0f;
+        float blue = b / 255.0f;
+        float alpha = a / 255.0f;
+
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_color", new Vector4f(red, green, blue, alpha));
+
+        // Vertices are in pixel coordinates as expected by orthographic projection
+        // Projection: ortho(0, screenWidth, screenHeight, 0, -1, 1) means Y=0 is top.
+        float x_pixel = (float)x;
+        float y_pixel = (float)y;
+        float x_plus_width_pixel = (float)(x + width);
+        float y_plus_height_pixel = (float)(y + height);
+
+        float[] vertices = {
+            x_pixel,             y_pixel,               0.0f, 0.0f, 0.0f, // Top-left
+            x_plus_width_pixel,  y_pixel,               0.0f, 0.0f, 0.0f, // Top-right
+            x_plus_width_pixel,  y_plus_height_pixel,   0.0f, 0.0f, 0.0f, // Bottom-right
+            x_pixel,             y_plus_height_pixel,   0.0f, 0.0f, 0.0f  // Bottom-left
+        };
+
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+
+        uiQuadRenderer.bind();
+
+        // Update the buffer data
+        // UIQuadRenderer should have attributes 0 (position) and 1 (texCoord) enabled
+        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
+
+        // Blending is assumed to be handled by the caller
+        // The shader will use u_useSolidColor to ignore texCoords if necessary.
+
+        boolean texture2DWasEnabled = glIsEnabled(GL_TEXTURE_2D);
+        if (texture2DWasEnabled) {
+            glDisable(GL_TEXTURE_2D); // Ensure texturing is off for solid color draw
+        }
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4); // TRIANGLE_FAN: 0,1,2 then 0,2,3 (quad: 0,1,2,3)
+
+        if (texture2DWasEnabled) {
+            glEnable(GL_TEXTURE_2D); // Restore texturing state if we changed it
+        }
+        
+        uiQuadRenderer.unbind();
+    }
+
+    /**
+     * Draws a textured quad using OpenGL. Assumes shaderProgram is bound and orthographic projection is set.
+     * Coordinates are in screen pixels (top-left origin).
+     * @param shaderProgram The shader program to use for rendering
+     * @param x X-coordinate of the top-left corner
+     * @param y Y-coordinate of the top-left corner
+     * @param width Width of the quad
+     * @param height Height of the quad
+     * @param textureId The ID of the texture to bind
+     * @param u1 U-coordinate of the top-left texture corner
+     * @param v1 V-coordinate of the top-left texture corner (often top of texture image)
+     * @param u2 U-coordinate of the bottom-right texture corner
+     * @param v2 V-coordinate of the bottom-right texture corner (often bottom of texture image)
+     */
+    public void drawTexturedQuadUI(com.stonebreak.rendering.ShaderProgram shaderProgram, int x, int y, int width, int height, int textureId, float u1, float v1, float u2, float v2) {
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("texture_sampler", 0); // Ensure texture unit 0
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureId);
+
+        // Convert pixel coordinates to Normalized Device Coordinates (NDC)
+        float ndcX = (x / (float)windowWidth) * 2.0f - 1.0f;
+        float ndcY = 1.0f - (y / (float)windowHeight) * 2.0f; // Invert Y for top-left origin
+        float ndcWidth = (width / (float)windowWidth) * 2.0f;
+        float ndcHeight = (height / (float)windowHeight) * 2.0f;
+
+        float x_1 = ndcX;
+        float y_1 = ndcY;           // Top-left in NDC
+        float x_2 = ndcX + ndcWidth;
+        float y_2 = ndcY - ndcHeight; // Bottom-right in NDC
+
+        // Vertices: x, y, z, u, v
+        // OpenGL UV origin is bottom-left. TextureAtlas UVs are typically top-left.
+        // Ensure UVs match the quad vertices orientation.
+        // Quad vertices: TL, TR, BR, BL (for TRIANGLE_FAN from TL)
+        // UVs should map accordingly:
+        // TL vertex -> (u1, v1)
+        // TR vertex -> (u2, v1)
+        // BR vertex -> (u2, v2)
+        // BL vertex -> (u1, v2)
+        float[] vertices = {
+            x_1, y_1, 0.0f, u1, v1,    // Top-left
+            x_2, y_1, 0.0f, u2, v1,    // Top-right
+            x_2, y_2, 0.0f, u2, v2,    // Bottom-right
+            x_1, y_2, 0.0f, u1, v2     // Bottom-left
+        };
+
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+
+        uiQuadRenderer.bind();
+        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
+
+        // Enable blending for textures that might have alpha (like leaves, or UI elements)
+        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        if (!blendWasEnabled) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        if (!blendWasEnabled) {
+            glDisable(GL_BLEND);
+        }
+
+        uiQuadRenderer.unbind();
+        glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture
+    }
+
+    /**
+     * Draws a flat 2D item/flower in a slot using OpenGL.
+     * @param shaderProgram The shader program to use for rendering
+     * @param type The block type to render
+     * @param screenSlotX X-coordinate of the slot
+     * @param screenSlotY Y-coordinate of the slot
+     * @param screenSlotWidth Width of the slot
+     * @param screenSlotHeight Height of the slot
+     * @param textureAtlas The texture atlas to use
+     * @param projectionMatrixBuffer Current projection matrix for restoration
+     * @param viewMatrixBuffer Current view matrix for restoration
+     */
+    public void drawFlat2DItemInSlot(com.stonebreak.rendering.ShaderProgram shaderProgram, 
+                                   com.stonebreak.blocks.BlockType type, 
+                                   int screenSlotX, int screenSlotY, 
+                                   int screenSlotWidth, int screenSlotHeight,
+                                   TextureAtlas textureAtlas,
+                                   FloatBuffer projectionMatrixBuffer,
+                                   FloatBuffer viewMatrixBuffer) {
+        
+        // Store original viewport and scissor settings
+        int[] originalViewport = new int[4];
+        int[] originalScissorBox = new int[4];
+        boolean scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
+        glGetIntegerv(GL_VIEWPORT, originalViewport);
+        if (scissorWasEnabled) {
+            glGetIntegerv(GL_SCISSOR_BOX, originalScissorBox);
+        }
+        
+        // Set up orthographic projection for UI rendering
+        org.joml.Matrix4f orthoProjection = new org.joml.Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
+        org.joml.Matrix4f identityView = new org.joml.Matrix4f().identity();
+        
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", orthoProjection);
+        shaderProgram.setUniform("viewMatrix", identityView);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("texture_sampler", 0);
+
+        // Get texture coordinates for the flower using modern atlas system
+        float[] uvCoords = textureAtlas.getBlockFaceUVs(type, com.stonebreak.blocks.BlockType.Face.TOP);
+        
+        // Add padding to center the flower texture within the slot
+        int padding = 6;
+        float textureX = screenSlotX + padding;
+        float textureY = screenSlotY + padding;
+        float textureWidth = screenSlotWidth - (padding * 2);
+        float textureHeight = screenSlotHeight - (padding * 2);
+        
+        // Bind texture
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        
+        // Create vertices for the quad in screen coordinates
+        float[] vertices = {
+            textureX,              textureY,               0.0f, uvCoords[0], uvCoords[1], // Top-left
+            textureX + textureWidth, textureY,              0.0f, uvCoords[2], uvCoords[1], // Top-right  
+            textureX + textureWidth, textureY + textureHeight, 0.0f, uvCoords[2], uvCoords[3], // Bottom-right
+            textureX,              textureY + textureHeight, 0.0f, uvCoords[0], uvCoords[3]  // Bottom-left
+        };
+
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+
+        uiQuadRenderer.bind();
+        GL20.glBufferSubData(GL20.GL_ARRAY_BUFFER, 0, vertexBuffer);
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        // Restore GL state
+        uiQuadRenderer.unbind();
+        glBindTexture(GL_TEXTURE_2D, 0);
+        
+        // Restore original matrices
+        org.joml.Matrix4f originalProjection = new org.joml.Matrix4f();
+        originalProjection.set(projectionMatrixBuffer);
+        org.joml.Matrix4f originalView = new org.joml.Matrix4f();
+        originalView.set(viewMatrixBuffer);
+        shaderProgram.setUniform("projectionMatrix", originalProjection);
+        shaderProgram.setUniform("viewMatrix", originalView);
+        
+        // Restore viewport
+        glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
+        if (scissorWasEnabled) {
+            glScissor(originalScissorBox[0], originalScissorBox[1], originalScissorBox[2], originalScissorBox[3]);
+        } else {
+            glDisable(GL_SCISSOR_TEST);
+        }
     }
 }
