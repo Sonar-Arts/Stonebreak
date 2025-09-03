@@ -2,11 +2,15 @@ package com.stonebreak.rendering.UI;
 
 import java.nio.FloatBuffer;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.chat.ChatSystem;
 import com.stonebreak.items.Item;
+import com.stonebreak.rendering.models.blocks.BlockRenderer;
+import com.stonebreak.rendering.ShaderProgram;
 import com.stonebreak.rendering.TextureAtlas;
 import com.stonebreak.rendering.UI.components.ChatRenderer;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
+import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
 import com.stonebreak.rendering.UI.menus.MenuRenderer;
 import com.stonebreak.rendering.UI.menus.VolumeSliderRenderer;
@@ -31,6 +35,7 @@ public class UIRenderer {
     private ChatRenderer chatRenderer;
     private VolumeSliderRenderer volumeSliderRenderer;
     private ItemIconRenderer itemIconRenderer;
+    private BlockIconRenderer blockIconRenderer;
     private OpenGLQuadRenderer openGLQuadRenderer;
     
     public UIRenderer() {
@@ -63,6 +68,16 @@ public class UIRenderer {
                                              int windowWidth, int windowHeight, 
                                              org.joml.Matrix4f projectionMatrix) {
         openGLQuadRenderer.initializeDepthCurtainRenderer(shaderProgram, windowWidth, windowHeight, projectionMatrix);
+    }
+    
+    /**
+     * Initializes the block icon renderer with the necessary dependencies.
+     * This should be called after the main renderer and block renderer have been set up.
+     * @param blockRenderer The block renderer for creating block geometry
+     * @param windowHeight Current window height for viewport calculations
+     */
+    public void initializeBlockIconRenderer(BlockRenderer blockRenderer, int windowHeight) {
+        this.blockIconRenderer = new BlockIconRenderer(blockRenderer, this, windowHeight);
     }
     
     public void beginFrame(int width, int height, float pixelRatio) {
@@ -180,6 +195,26 @@ public class UIRenderer {
                                    FloatBuffer projectionMatrixBuffer,
                                    FloatBuffer viewMatrixBuffer) {
         openGLQuadRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, projectionMatrixBuffer, viewMatrixBuffer);
+    }
+    
+    /**
+     * Renders a 3D block icon in the specified slot area.
+     * Handles both 3D cube blocks and flat 2D flower blocks.
+     *
+     * @param shaderProgram The shader program to use for rendering
+     * @param type The block type to render
+     * @param screenSlotX X coordinate of the slot
+     * @param screenSlotY Y coordinate of the slot
+     * @param screenSlotWidth Width of the slot
+     * @param screenSlotHeight Height of the slot
+     * @param textureAtlas The texture atlas containing block textures
+     */
+    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY, 
+                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+        if (blockIconRenderer == null) {
+            throw new IllegalStateException("BlockIconRenderer not initialized. Call initializeBlockIconRenderer() first.");
+        }
+        blockIconRenderer.draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
     }
     
     // ===== Depth Curtain Rendering Delegation =====

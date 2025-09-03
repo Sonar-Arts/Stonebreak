@@ -562,9 +562,9 @@ public class InventoryScreen {
                         // End NanoVG frame temporarily to draw 3D item
                         uiRenderer.endFrame();
                         
-                        // Draw 3D item using existing renderer - only works for BlockTypes for now
+                        // Draw 3D item using UIRenderer's BlockIconRenderer
                         if (item instanceof BlockType bt) {
-                            renderer.draw3DItemInSlot(bt, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                            uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas());
                         } else {
                             // For ItemTypes, render a 2D sprite using UIRenderer
                             uiRenderer.renderItemIcon(slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
@@ -620,9 +620,9 @@ public class InventoryScreen {
             // End NanoVG frame temporarily to draw 3D item
             uiRenderer.endFrame();
             
-            // Draw 3D item using existing renderer - only works for BlockTypes for now
+            // Draw 3D item using UIRenderer's BlockIconRenderer
             if (item instanceof BlockType bt) {
-                renderer.draw3DItemInSlot(bt, x, y, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas());
             } else {
                 // For ItemTypes, render a 2D sprite using UIRenderer
                 uiRenderer.renderItemIcon(x, y, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());

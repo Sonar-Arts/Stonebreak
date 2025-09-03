@@ -517,9 +517,9 @@ public class RecipeBookScreen {
                         // End NanoVG frame temporarily to draw 3D item
                         uiRenderer.endFrame();
                         
-                        // Draw 3D item using existing renderer - only works for BlockTypes for now
+                        // Draw 3D item using UIRenderer's BlockIconRenderer
                         if (item instanceof BlockType blockType) {
-                            renderer.draw3DItemInSlot(blockType, slotX + 2, slotY + 2, slotSize - 4, slotSize - 4);
+                            uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), blockType, slotX + 2, slotY + 2, slotSize - 4, slotSize - 4, renderer.getTextureAtlas());
                         } else {
                             // For ItemTypes, render a 2D sprite using UIRenderer
                             uiRenderer.renderItemIcon(slotX + 2, slotY + 2, slotSize - 4, slotSize - 4, item, renderer.getTextureAtlas());
@@ -1333,9 +1333,9 @@ public class RecipeBookScreen {
                     // End NanoVG frame temporarily to draw 3D item
                     uiRenderer.endFrame();
                     
-                    // Draw 3D item using existing renderer with more padding for better look - only works for BlockTypes for now
+                    // Draw 3D item using UIRenderer's BlockIconRenderer with more padding for better look
                     if (item instanceof BlockType blockType) {
-                        renderer.draw3DItemInSlot(blockType, slotX + 6, slotY + 6, slotSize - 12, slotSize - 12);
+                        uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), blockType, slotX + 6, slotY + 6, slotSize - 12, slotSize - 12, renderer.getTextureAtlas());
                     } else {
                         // For ItemTypes, render a 2D sprite using UIRenderer
                         uiRenderer.renderItemIcon(slotX + 6, slotY + 6, slotSize - 12, slotSize - 12, item, renderer.getTextureAtlas());
