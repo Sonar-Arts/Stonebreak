@@ -3,13 +3,14 @@ package com.stonebreak.rendering;
 // Standard Library Imports
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.*;
+import java.util.List;
 
 // JOML Math Library
 import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
+import com.stonebreak.rendering.gameWorld.WorldRenderer;
 
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
@@ -124,13 +125,11 @@ public class Renderer {
     // UI renderer for NanoVG-based UI
     private final UIRenderer uiRenderer;
     
-    // Reusable lists to avoid allocations during rendering
-    private final List<Chunk> reusableSortedChunks = new ArrayList<>();
-    
-    // Reusable matrices to avoid allocations
-    
     // Entity renderer (sub-renderer)
     private EntityRenderer entityRenderer;
+    
+    // World renderer (specialized sub-renderer)
+    private WorldRenderer worldRenderer;
 
     /**
      * Creates and initializes the renderer.
@@ -200,6 +199,10 @@ public class Renderer {
         // Initialize entity renderer (sub-renderer)
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
+        
+        // Initialize world renderer (specialized sub-renderer)
+        worldRenderer = new WorldRenderer(shaderProgram, textureAtlas, projectionMatrix,
+                                         blockRenderer, playerArmRenderer, entityRenderer);
     }
     
     /**
@@ -454,128 +457,12 @@ public class Renderer {
 
 
     /**
-     * Renders the world and UI elements.
+     * Renders the world using the specialized WorldRenderer sub-renderer.
+     * UI elements have been stripped from this method and should be rendered separately.
      */
-    public void renderWorld(World world, Player player, float totalTime) { // Added totalTime parameter
-        // Clear any pending OpenGL errors from previous operations
-        int pendingError;
-        while ((pendingError = glGetError()) != GL_NO_ERROR) {
-            String errorString = switch (pendingError) {
-                case 0x0500 -> "GL_INVALID_ENUM";
-                case 0x0501 -> "GL_INVALID_VALUE";
-                case 0x0502 -> "GL_INVALID_OPERATION";
-                case 0x0503 -> "GL_STACK_OVERFLOW";
-                case 0x0504 -> "GL_STACK_UNDERFLOW";
-                case 0x0505 -> "GL_OUT_OF_MEMORY";
-                case 0x0506 -> "GL_INVALID_FRAMEBUFFER_OPERATION";
-                default -> "UNKNOWN_ERROR_" + Integer.toHexString(pendingError);
-            };
-            System.err.println("PENDING OPENGL ERROR: " + errorString + " (0x" + Integer.toHexString(pendingError) + ") from previous operation");
-        }
-        
-        // Now check for errors from our operations
-        checkGLError("After clearing pending errors");
-        
-        // Use shader program
-        shaderProgram.bind();
-        checkGLError("After shader bind");
-        
-        // Set common uniforms for world rendering
-        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
-        shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
-        shaderProgram.setUniform("texture_sampler", 0);
-        shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
-        shaderProgram.setUniform("u_isText", false);        // World objects are not text
-        checkGLError("After setting uniforms");
-        
-        // Bind texture atlas once before passes
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        // Ensure texture filtering is set (NEAREST for blocky style)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        checkGLError("After texture binding");
-        
-        // Update animated textures now that atlas is properly bound
-        WaterEffects waterEffects = Game.getWaterEffects();
-        textureAtlas.updateAnimatedWater(totalTime, waterEffects, player.getPosition().x, player.getPosition().z);
-        checkGLError("After updateAnimatedWater");
-        
-        // Get player chunk position
-        int playerChunkX = (int) Math.floor(player.getPosition().x / World.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / World.CHUNK_SIZE);
-        Map<World.ChunkPosition, Chunk> visibleChunks = world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
-
-        // --- PASS 1: Opaque objects (or non-water parts of chunks) ---
-        shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
-        glDepthMask(true);  // Enable depth writing for opaque objects
-        glDisable(GL_BLEND); // Opaque objects typically don't need blending
-
-        for (Chunk chunk : visibleChunks.values()) {
-            // Texture atlas is already bound
-            chunk.render(); // Chunk.render() will be called, shader will discard water fragments
-        }
-
-        // --- PASS 2: Transparent objects (water parts of chunks) ---
-        shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
-        glDepthMask(false); // Disable depth writing for transparent objects
-        glEnable(GL_BLEND); // Enable blending
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
- 
-        // Sort chunks from back to front for transparent pass (reuse list to avoid allocation)
-        reusableSortedChunks.clear();
-        reusableSortedChunks.addAll(visibleChunks.values());
-        org.joml.Vector3f playerPos = player.getPosition();
-        Collections.sort(reusableSortedChunks, (c1, c2) -> {
-            // Calculate distance squared from player to center of each chunk
-            // Chunk's world position is (c.getX() * World.CHUNK_SIZE, c.getZ() * World.CHUNK_SIZE)
-            // Center of chunk is (c.getX() * World.CHUNK_SIZE + World.CHUNK_SIZE / 2.0f, ...)
-            float c1CenterX = c1.getWorldX(World.CHUNK_SIZE / 2);
-            float c1CenterZ = c1.getWorldZ(World.CHUNK_SIZE / 2);
-            float c2CenterX = c2.getWorldX(World.CHUNK_SIZE / 2);
-            float c2CenterZ = c2.getWorldZ(World.CHUNK_SIZE / 2);
-
-            float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
-                            (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);
-            float distSq2 = (playerPos.x - c2CenterX) * (playerPos.x - c2CenterX) +
-                            (playerPos.z - c2CenterZ) * (playerPos.z - c2CenterZ);
-            
-            // Sort in descending order of distance (farthest first)
-            return Float.compare(distSq2, distSq1);
-        });
-
-        for (Chunk chunk : reusableSortedChunks) {
-            // Texture atlas is already bound
-            chunk.render(); // Chunk.render() will be called, shader will discard non-water fragments
-        }
-        
-        glDepthMask(true);  // Restore depth writing
-        glDisable(GL_BLEND); // Restore blending state (or enable if UI needs it by default) - UI pass will set its own
-
-        // Unbind texture atlas if no longer needed by subsequent world elements (arm, particles)
-        // glBindTexture(GL_TEXTURE_2D, 0); // Or rebind as needed
-
-        // Render block crack overlay if breaking a block
-        blockRenderer.renderBlockCrackOverlay(player, shaderProgram, projectionMatrix);
-
-        // Render player arm (if not in pause menu, etc.)
-        // Player arm needs its own shader setup, including texture
-        if (!Game.getInstance().isPaused()) {
-            playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
-        }
-
-        // Render water particles
-        renderWaterParticles(); // This method binds its own shader
-
-        // Render entities (cows, etc.)
-        renderEntities(player);
-
-        // Unbind main world shader program if other things don't use it
-        // shaderProgram.unbind(); // UI pass binds it again.
-        
-        // Render UI elements
-        renderUI();
+    public void renderWorld(World world, Player player, float totalTime) {
+        // Delegate to the specialized WorldRenderer
+        worldRenderer.renderWorld(world, player, totalTime);
     }
     
     
@@ -867,69 +754,6 @@ public class Renderer {
         return "";
     }
     
-    /**
-     * Renders water particles in the 3D world.
-     * Call this after rendering the world but before the UI.
-     */
-    public void renderWaterParticles() {
-        WaterEffects waterEffects = Game.getWaterEffects();
-        if (waterEffects == null || waterEffects.getParticles().isEmpty()) {
-            return;
-        }
-        
-        // Get player's camera view matrix
-        Matrix4f viewMatrix = Game.getPlayer().getViewMatrix();
-        
-        // Use the shader program
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        shaderProgram.setUniform("viewMatrix", viewMatrix);
-        
-        // Set up for particle rendering
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        
-        // Enable blending
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // Disable depth writing but keep depth testing
-        glDepthMask(false);
-        
-        // Use point rendering for particles
-        glPointSize(5.0f);
-        
-        // Start drawing points
-        glBegin(GL_POINTS);
-        
-        // Draw each particle
-        for (WaterEffects.WaterParticle particle : waterEffects.getParticles()) {
-            float opacity = particle.getOpacity();
-            
-            // Set particle color (light blue with variable opacity)
-            shaderProgram.setUniform("u_color", new Vector4f(0.7f, 0.85f, 1.0f, opacity * 0.7f));
-            
-            // Draw particle at its position
-            glVertex3f(
-                particle.getPosition().x,
-                particle.getPosition().y,
-                particle.getPosition().z
-            );
-        }
-        
-        glEnd();
-        
-        // Reset OpenGL state
-        glPointSize(1.0f);
-        glDepthMask(true);
-        glDisable(GL_BLEND);
-        
-        // Reset shader state
-        shaderProgram.setUniform("u_useSolidColor", false);
-        
-        // Unbind shader
-        shaderProgram.unbind();
-    }
     
     /**
      * Renders crack overlay on the block being broken.
@@ -1004,21 +828,6 @@ public class Renderer {
         debugRenderer.renderWireframePath(pathPoints, color);
     }
     
-    /**
-     * Renders all entities (cows, etc.) in the world using the entity sub-renderer.
-     */
-    private void renderEntities(Player player) {
-        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        
-        if (entityManager != null && entityRenderer != null) {
-            // Get all entities and render them using the sub-renderer
-            for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
-                if (entity.isAlive()) {
-                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
-                }
-            }
-        }
-    }
     
     /**
      * Checks for OpenGL errors and logs them with context information.
