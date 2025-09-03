@@ -1,5 +1,7 @@
-package com.stonebreak.blocks;
+package com.stonebreak.rendering.models.blocks;
 
+import com.stonebreak.blocks.BlockDrop;
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.*;
 import com.stonebreak.rendering.*;
 

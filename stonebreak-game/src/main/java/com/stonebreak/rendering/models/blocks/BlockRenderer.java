@@ -1,8 +1,7 @@
-package com.stonebreak.rendering.models;
+package com.stonebreak.rendering.models.blocks;
 
 import com.stonebreak.blocks.BlockDrop;
 import com.stonebreak.blocks.BlockDropManager;
-import com.stonebreak.blocks.BlockDropRenderer;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;

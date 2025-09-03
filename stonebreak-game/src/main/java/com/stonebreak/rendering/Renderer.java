@@ -7,7 +7,8 @@ import java.nio.IntBuffer;
 import java.util.*;
 
 // JOML Math Library
-import com.stonebreak.rendering.models.BlockRenderer;
+import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
+import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
