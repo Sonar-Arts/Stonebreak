@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.pipeline;
+package com.stonebreak.rendering.UI.components;
 
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;

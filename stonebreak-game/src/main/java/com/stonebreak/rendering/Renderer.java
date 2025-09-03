@@ -10,7 +10,7 @@ import java.util.*;
 import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
-import com.stonebreak.rendering.UI.DebugRenderer;
+import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -31,7 +31,6 @@ import static org.lwjgl.opengl.GL11.GL_BLEND;
 import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK;
-import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import static org.lwjgl.opengl.GL11.GL_LESS;
 import static org.lwjgl.opengl.GL11.GL_LINES;
 import static org.lwjgl.opengl.GL11.GL_NEAREST;
@@ -45,14 +44,12 @@ import static org.lwjgl.opengl.GL11.GL_TEXTURE_BINDING_2D;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
 import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
-import static org.lwjgl.opengl.GL11.GL_TRIANGLE_FAN;
 import static org.lwjgl.opengl.GL11.GL_TRUE;
 import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
 import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
 import static org.lwjgl.opengl.GL11.glBegin;
 import static org.lwjgl.opengl.GL11.glBindTexture;
 import static org.lwjgl.opengl.GL11.glBlendFunc;
-import static org.lwjgl.opengl.GL11.glColorMask;
 import static org.lwjgl.opengl.GL11.glDeleteTextures;
 import static org.lwjgl.opengl.GL11.glDepthFunc;
 import static org.lwjgl.opengl.GL11.glDepthMask;
@@ -1476,13 +1473,7 @@ public class Renderer {
             blockRenderer.cleanup();
         }
     }
-    
-    /**
-     * Renders a tool item in the player's hand as a 2D sprite.
-     * This method is called from within renderPlayerArm() when the proper
-     * shader state and transformations are already set up.
-     */
-    
+
     /**
      * Renders a wireframe bounding box for debug purposes.
      * @param boundingBox The bounding box to render

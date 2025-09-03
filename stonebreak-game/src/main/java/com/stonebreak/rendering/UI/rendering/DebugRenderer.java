@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.UI;
+package com.stonebreak.rendering.UI.rendering;
 
 // Standard Library Imports
 import java.nio.FloatBuffer;
