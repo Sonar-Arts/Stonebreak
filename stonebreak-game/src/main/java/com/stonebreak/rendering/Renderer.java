@@ -1,7 +1,6 @@
 package com.stonebreak.rendering;
 
 // Standard Library Imports
-import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.*;
@@ -9,7 +8,9 @@ import java.util.*;
 // JOML Math Library
 import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
+import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
+
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Matrix4f;
@@ -18,7 +19,6 @@ import org.joml.Vector4f;
 
 // LWJGL Core
 import org.lwjgl.BufferUtils;
-import org.lwjgl.system.MemoryStack;
 
 // LWJGL OpenGL Classes
 import org.lwjgl.opengl.GL13;
@@ -28,24 +28,17 @@ import org.lwjgl.opengl.GL30;
 // LWJGL OpenGL Static Imports (GL11)
 import static org.lwjgl.opengl.GL11.GL_ALWAYS;
 import static org.lwjgl.opengl.GL11.GL_BLEND;
-import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
-import static org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK;
 import static org.lwjgl.opengl.GL11.GL_LESS;
 import static org.lwjgl.opengl.GL11.GL_LINES;
 import static org.lwjgl.opengl.GL11.GL_NEAREST;
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_POINTS;
-import static org.lwjgl.opengl.GL11.GL_SCISSOR_BOX;
-import static org.lwjgl.opengl.GL11.GL_SCISSOR_TEST;
 import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_BINDING_2D;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER;
-import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
-import static org.lwjgl.opengl.GL11.GL_TRUE;
-import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
 import static org.lwjgl.opengl.GL11.GL_VIEWPORT;
 import static org.lwjgl.opengl.GL11.glBegin;
 import static org.lwjgl.opengl.GL11.glBindTexture;
@@ -59,33 +52,23 @@ import static org.lwjgl.opengl.GL11.glDrawElements;
 import static org.lwjgl.opengl.GL11.glEnable;
 import static org.lwjgl.opengl.GL11.glEnd;
 import static org.lwjgl.opengl.GL11.glGenTextures;
-import static org.lwjgl.opengl.GL11.glGetBooleanv;
 import static org.lwjgl.opengl.GL11.glGetIntegerv;
 import static org.lwjgl.opengl.GL11.glIsEnabled;
 import static org.lwjgl.opengl.GL11.glPointSize;
 import static org.lwjgl.opengl.GL11.glGetError;
 import static org.lwjgl.opengl.GL11.GL_NO_ERROR;
-import static org.lwjgl.opengl.GL11.glScissor;
 import static org.lwjgl.opengl.GL11.glTexImage2D;
 import static org.lwjgl.opengl.GL11.glTexParameteri;
 import static org.lwjgl.opengl.GL11.glVertex3f;
-import static org.lwjgl.opengl.GL11.glViewport;
 
 // LWJGL OpenGL Static Imports (GL13)
 import static org.lwjgl.opengl.GL13.GL_ACTIVE_TEXTURE;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
-import static org.lwjgl.opengl.GL13.glActiveTexture;
 
 // LWJGL OpenGL Static Imports (GL14)
-import static org.lwjgl.opengl.GL14.GL_BLEND_DST_ALPHA;
-import static org.lwjgl.opengl.GL14.GL_BLEND_DST_RGB;
-import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_ALPHA;
-import static org.lwjgl.opengl.GL14.GL_BLEND_SRC_RGB;
-import static org.lwjgl.opengl.GL14.glBlendFuncSeparate;
 
 // LWJGL OpenGL Static Imports (GL20 & GL30)
 import static org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM;
-import static org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING;
 
 // Project Imports (Blocks)
 import com.stonebreak.blocks.*;
@@ -147,6 +130,9 @@ public class Renderer {
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     
     // Reusable matrices to avoid allocations
+    
+    // Entity renderer (sub-renderer)
+    private EntityRenderer entityRenderer;
 
     /**
      * Creates and initializes the renderer.
@@ -216,6 +202,10 @@ public class Renderer {
         
         // Initialize debug renderer
         debugRenderer = new DebugRenderer(shaderProgram, projectionMatrix);
+        
+        // Initialize entity renderer (sub-renderer)
+        entityRenderer = new EntityRenderer();
+        entityRenderer.initialize();
     }
     
     /**
@@ -250,6 +240,14 @@ public class Renderer {
     
     public Matrix4f getProjectionMatrix() {
         return projectionMatrix;
+    }
+    
+    /**
+     * Get the entity renderer sub-component.
+     * @return EntityRenderer instance
+     */
+    public EntityRenderer getEntityRenderer() {
+        return entityRenderer;
     }
     
     // ============ UI RENDERER PROXY METHODS ============
@@ -1267,6 +1265,11 @@ public class Renderer {
         if (blockRenderer != null) {
             blockRenderer.cleanup();
         }
+        
+        // Cleanup entity renderer (sub-renderer)
+        if (entityRenderer != null) {
+            entityRenderer.cleanup();
+        }
     }
 
     /**
@@ -1288,14 +1291,13 @@ public class Renderer {
     }
     
     /**
-     * Renders all entities (cows, etc.) in the world using the entity renderer.
+     * Renders all entities (cows, etc.) in the world using the entity sub-renderer.
      */
     private void renderEntities(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        com.stonebreak.mobs.entities.EntityRenderer entityRenderer = Game.getEntityRenderer();
         
         if (entityManager != null && entityRenderer != null) {
-            // Get all entities and render them
+            // Get all entities and render them using the sub-renderer
             for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
                 if (entity.isAlive()) {
                     entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);

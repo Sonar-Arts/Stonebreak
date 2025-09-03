@@ -50,7 +50,6 @@ public class Game {
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
-    private com.stonebreak.mobs.entities.EntityRenderer entityRenderer; // Entity rendering system
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
@@ -449,8 +448,6 @@ public class Game {
         
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        this.entityRenderer = new com.stonebreak.mobs.entities.EntityRenderer();
-        this.entityRenderer.initialize();
         System.out.println("Entity system initialized - cows can now spawn!");
     }
     
@@ -660,13 +657,6 @@ public class Game {
      */
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return getInstance().entityManager;
-    }
-    
-    /**
-     * Gets the entity renderer.
-     */
-    public static com.stonebreak.mobs.entities.EntityRenderer getEntityRenderer() {
-        return getInstance().entityRenderer;
     }
     
     /**
@@ -992,9 +982,6 @@ public class Game {
         }
         if (memoryLeakDetector != null) {
             memoryLeakDetector.stopMonitoring();
-        }
-        if (entityRenderer != null) {
-            entityRenderer.cleanup();
         }
         if (entityManager != null) {
             entityManager.cleanup();

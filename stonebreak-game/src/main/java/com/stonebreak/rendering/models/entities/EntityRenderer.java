@@ -1,5 +1,7 @@
-package com.stonebreak.mobs.entities;
+package com.stonebreak.rendering.models.entities;
 
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.EntityType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
@@ -24,12 +26,11 @@ import java.util.Map;
 import static org.lwjgl.system.MemoryUtil.*;
 
 /**
- * Universal entity renderer that renders entities using their proper 3D models.
- * Supports multi-part textured models and can handle different entity types.
+ * Specialized entity renderer that handles rendering of entities (cows, etc.).
+ * This is a sub-renderer managed by the main Renderer class.
  */
 public class EntityRenderer {
     private ShaderProgram shader;
-    // Note: Using static CowTextureAtlas instead of instance variable
     private boolean initialized = false;
     
     // VAO and VBO storage for model parts - organized by entity type
@@ -52,6 +53,9 @@ public class EntityRenderer {
     private int debugSphereVBO;
     private int debugSphereTexVBO;
     
+    /**
+     * Initialize the entity renderer. Called by the main Renderer.
+     */
     public void initialize() {
         if (initialized) return;
         
@@ -369,6 +373,9 @@ public class EntityRenderer {
         currentTextureVariants.get(entityType).put(partName, textureVariant);
     }
     
+    /**
+     * Render an entity. Called by the main Renderer.
+     */
     public void renderEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
         if (!initialized || !entity.isAlive()) return;
         
@@ -601,6 +608,9 @@ public class EntityRenderer {
         shader.unbind();
     }
     
+    /**
+     * Cleanup method called by the main Renderer.
+     */
     public void cleanup() {
         if (initialized) {
             if (shader != null) {
