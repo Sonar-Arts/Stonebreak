@@ -1,7 +1,7 @@
 package com.openmason.coordinates;
 
-import com.stonebreak.textures.CowTextureDefinition;
-import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureLoader;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Vector3f;
 

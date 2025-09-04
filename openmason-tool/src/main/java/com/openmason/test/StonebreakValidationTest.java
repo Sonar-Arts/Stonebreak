@@ -2,7 +2,7 @@ package com.openmason.test;
 
 import com.openmason.model.StonebreakModel;
 import com.stonebreak.model.ModelDefinition;
-import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
 
 import java.util.Arrays;
 import java.util.List;

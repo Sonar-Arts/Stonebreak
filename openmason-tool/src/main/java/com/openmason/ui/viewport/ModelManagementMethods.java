@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport;
 
 import com.openmason.model.StonebreakModel;
-import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -983,7 +983,7 @@ public class ModelBrowserImGui {
     
     private void loadTextureVariants() {
         try {
-            String[] availableVariants = com.stonebreak.textures.CowTextureLoader.getAvailableVariants();
+            String[] availableVariants = com.stonebreak.textures.mobs.CowTextureLoader.getAvailableVariants();
             logger.info("Found {} texture variants: {}", availableVariants.length, String.join(", ", availableVariants));
             totalVariantsDiscovered = availableVariants.length;
             

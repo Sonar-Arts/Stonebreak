@@ -2,8 +2,8 @@ package com.openmason.integration;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.texture.TextureManager;
-import com.stonebreak.textures.CowTextureDefinition;
-import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureLoader;
 
 // JavaFX imports removed - using standard Java properties
 
