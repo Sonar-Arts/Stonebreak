@@ -13,6 +13,9 @@ public class Settings {
     private int windowHeight = 720;
     private float masterVolume = 1.0f;
     
+    // Player model settings
+    private String armModelType = "REGULAR"; // "REGULAR" or "SLIM"
+    
     // Crosshair settings
     private String crosshairStyle = "SIMPLE_CROSS";
     private float crosshairSize = 16.0f;
@@ -53,6 +56,7 @@ public class Settings {
             json.append("  \"windowWidth\": ").append(windowWidth).append(",\n");
             json.append("  \"windowHeight\": ").append(windowHeight).append(",\n");
             json.append("  \"masterVolume\": ").append(masterVolume).append(",\n");
+            json.append("  \"armModelType\": \"").append(armModelType).append("\",\n");
             json.append("  \"crosshairStyle\": \"").append(crosshairStyle).append("\",\n");
             json.append("  \"crosshairSize\": ").append(crosshairSize).append(",\n");
             json.append("  \"crosshairThickness\": ").append(crosshairThickness).append(",\n");
@@ -121,6 +125,11 @@ public class Settings {
                     } catch (NumberFormatException e) {
                         System.err.println("Invalid masterVolume value: " + value);
                     }
+                }
+            } else if (line.contains("armModelType")) {
+                String value = extractStringValue(line);
+                if (value != null) {
+                    armModelType = value;
                 }
             } else if (line.contains("crosshairStyle")) {
                 String value = extractStringValue(line);
@@ -227,6 +236,10 @@ public class Settings {
     public int getWindowHeight() { return windowHeight; }
     public float getMasterVolume() { return masterVolume; }
     
+    // Player model getters
+    public String getArmModelType() { return armModelType; }
+    public boolean isSlimArms() { return "SLIM".equals(armModelType); }
+    
     // Crosshair getters
     public String getCrosshairStyle() { return crosshairStyle; }
     public float getCrosshairSize() { return crosshairSize; }
@@ -246,6 +259,20 @@ public class Settings {
     
     public void setMasterVolume(float volume) {
         this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
+    }
+    
+    // Player model setters
+    public void setArmModelType(String armModelType) {
+        if ("REGULAR".equals(armModelType) || "SLIM".equals(armModelType)) {
+            this.armModelType = armModelType;
+        } else {
+            System.err.println("Invalid arm model type: " + armModelType + ". Defaulting to REGULAR.");
+            this.armModelType = "REGULAR";
+        }
+    }
+    
+    public void setSlimArms(boolean slim) {
+        this.armModelType = slim ? "SLIM" : "REGULAR";
     }
     
     // Crosshair setters

@@ -19,10 +19,11 @@ public class SettingsMenu {
     private enum ButtonSelection {
         RESOLUTION(0),
         VOLUME(1),
-        CROSSHAIR_STYLE(2),
-        CROSSHAIR_SIZE(3),
-        APPLY(4),
-        BACK(5);
+        ARM_MODEL(2),
+        CROSSHAIR_STYLE(3),
+        CROSSHAIR_SIZE(4),
+        APPLY(5),
+        BACK(6);
         
         private final int index;
         
@@ -43,6 +44,14 @@ public class SettingsMenu {
             return null;
         }
     }
+    
+    // ===== ARM MODEL CONFIGURATION =====
+    private static final String[] ARM_MODEL_TYPES = {
+        "REGULAR", "SLIM"
+    };
+    private static final String[] ARM_MODEL_NAMES = {
+        "Regular (4px wide)", "Slim (3px wide)"
+    };
     
     // ===== CROSSHAIR CONFIGURATION =====
     private static final String[] CROSSHAIR_STYLES = {
@@ -78,8 +87,10 @@ public class SettingsMenu {
     
     // ===== DROPDOWN STATE =====
     private boolean isResolutionDropdownOpen = false;
+    private boolean isArmModelDropdownOpen = false;
     private boolean isCrosshairStyleDropdownOpen = false;
     private int selectedResolutionIndex = 0;
+    private int selectedArmModelIndex = 0;
     private int selectedCrosshairStyleIndex = 0;
     
     // ===== INTERACTION STATE =====
@@ -104,7 +115,20 @@ public class SettingsMenu {
      */
     private void initializeSettingsState() {
         this.selectedResolutionIndex = settings.getCurrentResolutionIndex();
+        this.selectedArmModelIndex = findArmModelIndex(settings.getArmModelType());
         this.selectedCrosshairStyleIndex = findCrosshairStyleIndex(settings.getCrosshairStyle());
+    }
+    
+    /**
+     * Finds the index of the specified arm model type in the available types array.
+     */
+    private int findArmModelIndex(String currentArmModel) {
+        for (int i = 0; i < ARM_MODEL_TYPES.length; i++) {
+            if (ARM_MODEL_TYPES[i].equals(currentArmModel)) {
+                return i;
+            }
+        }
+        return 0; // Default to first type if not found
     }
     
     /**
@@ -204,6 +228,7 @@ public class SettingsMenu {
         switch (button) {
             case RESOLUTION -> adjustResolutionSetting(direction);
             case VOLUME -> adjustVolumeSetting(direction);
+            case ARM_MODEL -> adjustArmModelSetting(direction);
             case CROSSHAIR_STYLE -> adjustCrosshairStyleSetting(direction);
             case CROSSHAIR_SIZE -> adjustCrosshairSizeSetting(direction);
         }
@@ -232,6 +257,18 @@ public class SettingsMenu {
         float currentVolume = settings.getMasterVolume();
         float newVolume = Math.max(MIN_VOLUME, Math.min(MAX_VOLUME, currentVolume + (direction * VOLUME_STEP)));
         settings.setMasterVolume(newVolume);
+    }
+    
+    /**
+     * Adjusts arm model setting or dropdown selection.
+     */
+    private void adjustArmModelSetting(int direction) {
+        if (isArmModelDropdownOpen) {
+            selectedArmModelIndex = Math.max(0, Math.min(ARM_MODEL_TYPES.length - 1, selectedArmModelIndex + direction));
+        } else {
+            selectedArmModelIndex = Math.max(0, Math.min(ARM_MODEL_TYPES.length - 1, selectedArmModelIndex + direction));
+            settings.setArmModelType(ARM_MODEL_TYPES[selectedArmModelIndex]);
+        }
     }
     
     /**
@@ -289,6 +326,13 @@ public class SettingsMenu {
             }
         }
         
+        if (isArmModelDropdownOpen) {
+            int dropdownItem = getArmModelDropdownItemUnderMouse((float)mouseX, (float)mouseY, centerX, centerY);
+            if (dropdownItem >= 0) {
+                selectedArmModelIndex = dropdownItem;
+            }
+        }
+        
         if (isCrosshairStyleDropdownOpen) {
             int dropdownItem = getCrosshairStyleDropdownItemUnderMouse((float)mouseX, (float)mouseY, centerX, centerY);
             if (dropdownItem >= 0) {
@@ -302,7 +346,7 @@ public class SettingsMenu {
      */
     private void updateButtonHover(double mouseX, double mouseY, float centerX, float centerY) {
         // Skip button hover when any dropdown is open
-        if (isResolutionDropdownOpen || isCrosshairStyleDropdownOpen) {
+        if (isResolutionDropdownOpen || isArmModelDropdownOpen || isCrosshairStyleDropdownOpen) {
             return;
         }
         
@@ -314,27 +358,31 @@ public class SettingsMenu {
      */
     private int determineHoveredButton(float mouseX, float mouseY, float centerX, float centerY) {
         // Check resolution button
-        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY - 140, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY - 170, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             return ButtonSelection.RESOLUTION.getIndex();
         }
         // Check volume area
-        if (isMouseOverVolumeArea(mouseX, mouseY, centerX, centerY - 80)) {
+        if (isMouseOverVolumeArea(mouseX, mouseY, centerX, centerY - 110)) {
             return ButtonSelection.VOLUME.getIndex();
         }
+        // Check arm model button
+        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY - 50, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            return ButtonSelection.ARM_MODEL.getIndex();
+        }
         // Check crosshair style button
-        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY - 20, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY + 10, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             return ButtonSelection.CROSSHAIR_STYLE.getIndex();
         }
         // Check crosshair size area
-        if (isMouseOverVolumeArea(mouseX, mouseY, centerX, centerY + 40)) {
+        if (isMouseOverVolumeArea(mouseX, mouseY, centerX, centerY + 70)) {
             return ButtonSelection.CROSSHAIR_SIZE.getIndex();
         }
         // Check apply button
-        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY + 100, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY + 130, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             return ButtonSelection.APPLY.getIndex();
         }
         // Check back button
-        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY + 160, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (isMouseOverButton(mouseX, mouseY, centerX - BUTTON_WIDTH/2, centerY + 190, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             return ButtonSelection.BACK.getIndex();
         }
         
@@ -411,6 +459,16 @@ public class SettingsMenu {
             return true;
         }
         
+        if (isArmModelDropdownOpen) {
+            int dropdownItem = getArmModelDropdownItemUnderMouse((float)mouseX, (float)mouseY, centerX, centerY);
+            if (dropdownItem >= 0) {
+                selectArmModelFromDropdown(dropdownItem);
+            } else {
+                isArmModelDropdownOpen = false; // Close dropdown when clicking outside
+            }
+            return true;
+        }
+        
         if (isCrosshairStyleDropdownOpen) {
             int dropdownItem = getCrosshairStyleDropdownItemUnderMouse((float)mouseX, (float)mouseY, centerX, centerY);
             if (dropdownItem >= 0) {
@@ -432,32 +490,37 @@ public class SettingsMenu {
         float mouseYf = (float)mouseY;
         
         // Resolution button
-        if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY - 140, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY - 170, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             selectedButton = ButtonSelection.RESOLUTION.getIndex();
             toggleResolutionDropdown();
         }
         // Volume slider
-        else if (isMouseOverVolumeArea(mouseXf, mouseYf, centerX, centerY - 80)) {
+        else if (isMouseOverVolumeArea(mouseXf, mouseYf, centerX, centerY - 110)) {
             selectedButton = ButtonSelection.VOLUME.getIndex();
             startVolumeDragging(mouseXf, centerX);
         }
+        // Arm model button
+        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY - 50, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            selectedButton = ButtonSelection.ARM_MODEL.getIndex();
+            toggleArmModelDropdown();
+        }
         // Crosshair style button
-        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY - 20, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY + 10, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             selectedButton = ButtonSelection.CROSSHAIR_STYLE.getIndex();
             executeSelectedAction();
         }
         // Crosshair size slider
-        else if (isMouseOverVolumeArea(mouseXf, mouseYf, centerX, centerY + 40)) {
+        else if (isMouseOverVolumeArea(mouseXf, mouseYf, centerX, centerY + 70)) {
             selectedButton = ButtonSelection.CROSSHAIR_SIZE.getIndex();
             startCrosshairSizeDragging(mouseXf, centerX);
         }
         // Apply button
-        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY + 100, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY + 130, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             selectedButton = ButtonSelection.APPLY.getIndex();
             executeSelectedAction();
         }
         // Back button
-        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY + 160, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        else if (isMouseOverButton(mouseXf, mouseYf, centerX - BUTTON_WIDTH/2, centerY + 190, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             selectedButton = ButtonSelection.BACK.getIndex();
             executeSelectedAction();
         }
@@ -559,6 +622,27 @@ public class SettingsMenu {
     }
     
     /**
+     * Determines which arm model dropdown menu item the mouse is currently over.
+     * @return dropdown item index, or -1 if none
+     */
+    private int getArmModelDropdownItemUnderMouse(float mouseX, float mouseY, float centerX, float centerY) {
+        if (!isArmModelDropdownOpen) {
+            return -1;
+        }
+        
+        float dropdownX = centerX - BUTTON_WIDTH/2;
+        float dropdownY = centerY - 50 + BUTTON_HEIGHT; // Below arm model button
+        
+        for (int i = 0; i < ARM_MODEL_NAMES.length; i++) {
+            float itemY = dropdownY + i * DROPDOWN_ITEM_HEIGHT;
+            if (isMouseOverButton(mouseX, mouseY, dropdownX, itemY, BUTTON_WIDTH, DROPDOWN_ITEM_HEIGHT)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    /**
      * Determines which crosshair style dropdown menu item the mouse is currently over.
      * @return dropdown item index, or -1 if none
      */
@@ -577,6 +661,22 @@ public class SettingsMenu {
             }
         }
         return -1;
+    }
+    
+    /**
+     * Selects an arm model from the dropdown menu.
+     */
+    private void selectArmModelFromDropdown(int dropdownItem) {
+        settings.setArmModelType(ARM_MODEL_TYPES[dropdownItem]);
+        selectedArmModelIndex = dropdownItem;
+        isArmModelDropdownOpen = false;
+    }
+    
+    /**
+     * Toggles the arm model dropdown menu.
+     */
+    private void toggleArmModelDropdown() {
+        isArmModelDropdownOpen = !isArmModelDropdownOpen;
     }
     
     /**
@@ -600,6 +700,7 @@ public class SettingsMenu {
         switch (button) {
             case RESOLUTION -> toggleResolutionDropdown();
             case VOLUME -> {} // Volume handled by mouse/keyboard interaction
+            case ARM_MODEL -> toggleArmModelDropdown();
             case CROSSHAIR_STYLE -> toggleCrosshairStyleDropdown();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case APPLY -> applySettings();
@@ -795,6 +896,7 @@ public class SettingsMenu {
     private void renderSettingSections(float centerX, float centerY) {
         renderDisplaySettings(centerX, centerY);
         renderAudioSettings(centerX, centerY);
+        renderArmModelSettings(centerX, centerY);
         renderCrosshairSettings(centerX, centerY);
     }
     
@@ -805,10 +907,10 @@ public class SettingsMenu {
         String resolutionText = "Resolution: " + settings.getCurrentResolutionString();
         boolean isResolutionSelected = (selectedButton == ButtonSelection.RESOLUTION.getIndex());
         
-        uiRenderer.drawDropdownButton(resolutionText, centerX - BUTTON_WIDTH/2, centerY - 140, 
+        uiRenderer.drawDropdownButton(resolutionText, centerX - BUTTON_WIDTH/2, centerY - 170, 
             BUTTON_WIDTH, BUTTON_HEIGHT, isResolutionSelected, isResolutionDropdownOpen);
         
-        uiRenderer.drawSeparator(centerX, centerY - 110, BUTTON_WIDTH * 0.8f);
+        uiRenderer.drawSeparator(centerX, centerY - 140, BUTTON_WIDTH * 0.8f);
     }
     
     /**
@@ -817,10 +919,24 @@ public class SettingsMenu {
     private void renderAudioSettings(float centerX, float centerY) {
         boolean isVolumeSelected = (selectedButton == ButtonSelection.VOLUME.getIndex());
         
-        uiRenderer.drawVolumeSlider("Master Volume", centerX, centerY - 80, 
+        uiRenderer.drawVolumeSlider("Master Volume", centerX, centerY - 110, 
             SLIDER_WIDTH, SLIDER_HEIGHT, settings.getMasterVolume(), isVolumeSelected);
         
-        uiRenderer.drawSeparator(centerX, centerY - 50, BUTTON_WIDTH * 0.8f);
+        uiRenderer.drawSeparator(centerX, centerY - 80, BUTTON_WIDTH * 0.8f);
+    }
+    
+    /**
+     * Renders arm model settings section.
+     */
+    private void renderArmModelSettings(float centerX, float centerY) {
+        String currentArmModelName = ARM_MODEL_NAMES[selectedArmModelIndex];
+        String armModelText = "Arm Model: " + currentArmModelName;
+        boolean isArmModelSelected = (selectedButton == ButtonSelection.ARM_MODEL.getIndex());
+        
+        uiRenderer.drawDropdownButton(armModelText, centerX - BUTTON_WIDTH/2, centerY - 50, 
+            BUTTON_WIDTH, BUTTON_HEIGHT, isArmModelSelected, isArmModelDropdownOpen);
+        
+        uiRenderer.drawSeparator(centerX, centerY - 20, BUTTON_WIDTH * 0.8f);
     }
     
     /**
@@ -841,7 +957,7 @@ public class SettingsMenu {
         String crosshairStyleText = "Crosshair: " + currentStyleName;
         boolean isCrosshairStyleSelected = (selectedButton == ButtonSelection.CROSSHAIR_STYLE.getIndex());
         
-        uiRenderer.drawDropdownButton(crosshairStyleText, centerX - BUTTON_WIDTH/2, centerY - 20, 
+        uiRenderer.drawDropdownButton(crosshairStyleText, centerX - BUTTON_WIDTH/2, centerY + 10, 
             BUTTON_WIDTH, BUTTON_HEIGHT, isCrosshairStyleSelected, isCrosshairStyleDropdownOpen);
     }
     
@@ -852,7 +968,7 @@ public class SettingsMenu {
         boolean isCrosshairSizeSelected = (selectedButton == ButtonSelection.CROSSHAIR_SIZE.getIndex());
         float normalizedSize = (settings.getCrosshairSize() - MIN_CROSSHAIR_SIZE) / (MAX_CROSSHAIR_SIZE - MIN_CROSSHAIR_SIZE);
         
-        uiRenderer.drawVolumeSlider("Crosshair Size", centerX, centerY + 40, 
+        uiRenderer.drawVolumeSlider("Crosshair Size", centerX, centerY + 70, 
             SLIDER_WIDTH, SLIDER_HEIGHT, normalizedSize, isCrosshairSizeSelected);
     }
     
@@ -863,10 +979,10 @@ public class SettingsMenu {
         boolean isApplySelected = (selectedButton == ButtonSelection.APPLY.getIndex());
         boolean isBackSelected = (selectedButton == ButtonSelection.BACK.getIndex());
         
-        uiRenderer.drawButton("Apply Settings", centerX - BUTTON_WIDTH/2, centerY + 100, 
+        uiRenderer.drawButton("Apply Settings", centerX - BUTTON_WIDTH/2, centerY + 130, 
             BUTTON_WIDTH, BUTTON_HEIGHT, isApplySelected);
         
-        uiRenderer.drawButton("Back", centerX - BUTTON_WIDTH/2, centerY + 160, 
+        uiRenderer.drawButton("Back", centerX - BUTTON_WIDTH/2, centerY + 190, 
             BUTTON_WIDTH, BUTTON_HEIGHT, isBackSelected);
     }
     
@@ -876,6 +992,10 @@ public class SettingsMenu {
     private void renderDropdownMenus(float centerX, float centerY) {
         if (isResolutionDropdownOpen) {
             renderResolutionDropdown(centerX, centerY);
+        }
+        
+        if (isArmModelDropdownOpen) {
+            renderArmModelDropdown(centerX, centerY);
         }
         
         if (isCrosshairStyleDropdownOpen) {
@@ -891,7 +1011,15 @@ public class SettingsMenu {
         String[] resolutionStrings = createResolutionStrings(resolutions);
         
         uiRenderer.drawDropdownMenu(resolutionStrings, selectedResolutionIndex, 
-            centerX - BUTTON_WIDTH/2, centerY - 140 + BUTTON_HEIGHT, BUTTON_WIDTH, DROPDOWN_ITEM_HEIGHT);
+            centerX - BUTTON_WIDTH/2, centerY - 170 + BUTTON_HEIGHT, BUTTON_WIDTH, DROPDOWN_ITEM_HEIGHT);
+    }
+    
+    /**
+     * Renders the arm model dropdown menu.
+     */
+    private void renderArmModelDropdown(float centerX, float centerY) {
+        uiRenderer.drawDropdownMenu(ARM_MODEL_NAMES, selectedArmModelIndex, 
+            centerX - BUTTON_WIDTH/2, centerY - 50 + BUTTON_HEIGHT, BUTTON_WIDTH, DROPDOWN_ITEM_HEIGHT);
     }
     
     /**
@@ -899,7 +1027,7 @@ public class SettingsMenu {
      */
     private void renderCrosshairStyleDropdown(float centerX, float centerY) {
         uiRenderer.drawDropdownMenu(CROSSHAIR_STYLE_NAMES, selectedCrosshairStyleIndex, 
-            centerX - BUTTON_WIDTH/2, centerY - 20 + BUTTON_HEIGHT, BUTTON_WIDTH, DROPDOWN_ITEM_HEIGHT);
+            centerX - BUTTON_WIDTH/2, centerY + 10 + BUTTON_HEIGHT, BUTTON_WIDTH, DROPDOWN_ITEM_HEIGHT);
     }
     
     /**
