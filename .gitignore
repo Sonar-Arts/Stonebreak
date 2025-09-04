@@ -114,3 +114,4 @@ XMLInspectionParser.java
 
 # Dev Test Folder
 DevTests/
+/node_modules/
