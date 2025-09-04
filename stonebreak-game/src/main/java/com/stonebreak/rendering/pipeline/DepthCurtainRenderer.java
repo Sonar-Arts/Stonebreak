@@ -1,15 +1,13 @@
 package com.stonebreak.rendering.pipeline;
 
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;

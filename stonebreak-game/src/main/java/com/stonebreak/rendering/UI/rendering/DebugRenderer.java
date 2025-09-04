@@ -23,7 +23,7 @@ import static org.lwjgl.opengl.GL11.*;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 
 /**
  * Specialized renderer for debug visualizations including wireframe bounding boxes and paths.

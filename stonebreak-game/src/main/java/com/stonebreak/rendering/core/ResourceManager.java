@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.core;
 
 import com.stonebreak.ui.Font;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 
 public class ResourceManager {

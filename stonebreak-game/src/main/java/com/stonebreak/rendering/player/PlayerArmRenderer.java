@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 // JOML Math Library
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;

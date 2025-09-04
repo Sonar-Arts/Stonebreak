@@ -5,7 +5,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Item;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;

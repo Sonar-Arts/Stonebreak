@@ -5,7 +5,7 @@ import com.stonebreak.blocks.BlockDropManager;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;

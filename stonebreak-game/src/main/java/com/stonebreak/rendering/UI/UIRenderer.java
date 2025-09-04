@@ -6,7 +6,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.chat.ChatSystem;
 import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.components.ChatRenderer;
 import com.stonebreak.rendering.UI.components.CrosshairRenderer;
@@ -70,9 +70,9 @@ public class UIRenderer {
      * @param windowHeight Current window height
      * @param projectionMatrix The 3D projection matrix
      */
-    public void initializeDepthCurtainRenderer(com.stonebreak.rendering.ShaderProgram shaderProgram, 
-                                             int windowWidth, int windowHeight, 
-                                             org.joml.Matrix4f projectionMatrix) {
+    public void initializeDepthCurtainRenderer(ShaderProgram shaderProgram,
+                                               int windowWidth, int windowHeight,
+                                               org.joml.Matrix4f projectionMatrix) {
         openGLQuadRenderer.initializeDepthCurtainRenderer(shaderProgram, windowWidth, windowHeight, projectionMatrix);
     }
     
@@ -185,21 +185,21 @@ public class UIRenderer {
     
     // ===== OpenGL Quad Rendering Delegation =====
     
-    public void drawQuad(com.stonebreak.rendering.ShaderProgram shaderProgram, int x, int y, int width, int height, int r, int g, int b, int a) {
+    public void drawQuad(ShaderProgram shaderProgram, int x, int y, int width, int height, int r, int g, int b, int a) {
         openGLQuadRenderer.drawQuad(shaderProgram, x, y, width, height, r, g, b, a);
     }
     
-    public void drawTexturedQuadUI(com.stonebreak.rendering.ShaderProgram shaderProgram, int x, int y, int width, int height, int textureId, float u1, float v1, float u2, float v2) {
+    public void drawTexturedQuadUI(ShaderProgram shaderProgram, int x, int y, int width, int height, int textureId, float u1, float v1, float u2, float v2) {
         openGLQuadRenderer.drawTexturedQuadUI(shaderProgram, x, y, width, height, textureId, u1, v1, u2, v2);
     }
     
-    public void drawFlat2DItemInSlot(com.stonebreak.rendering.ShaderProgram shaderProgram, 
-                                   com.stonebreak.blocks.BlockType type, 
-                                   int screenSlotX, int screenSlotY, 
-                                   int screenSlotWidth, int screenSlotHeight,
-                                   TextureAtlas textureAtlas,
-                                   FloatBuffer projectionMatrixBuffer,
-                                   FloatBuffer viewMatrixBuffer) {
+    public void drawFlat2DItemInSlot(ShaderProgram shaderProgram,
+                                     com.stonebreak.blocks.BlockType type,
+                                     int screenSlotX, int screenSlotY,
+                                     int screenSlotWidth, int screenSlotHeight,
+                                     TextureAtlas textureAtlas,
+                                     FloatBuffer projectionMatrixBuffer,
+                                     FloatBuffer viewMatrixBuffer) {
         openGLQuadRenderer.drawFlat2DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, projectionMatrixBuffer, viewMatrixBuffer);
     }
     

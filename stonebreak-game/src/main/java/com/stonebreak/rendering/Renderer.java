@@ -14,7 +14,7 @@ import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.Font;
-import com.stonebreak.rendering.ShaderProgram;
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 

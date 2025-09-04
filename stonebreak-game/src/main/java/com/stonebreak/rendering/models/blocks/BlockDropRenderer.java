@@ -3,13 +3,13 @@ package com.stonebreak.rendering.models.blocks;
 import com.stonebreak.blocks.BlockDrop;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.*;
-import com.stonebreak.rendering.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.*;
 
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.*;
 import org.lwjgl.*;

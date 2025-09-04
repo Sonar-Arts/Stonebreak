@@ -23,6 +23,7 @@ module stonebreak.game {
     // Java base modules
     requires java.desktop;
     requires java.management;
+    requires java.logging;
     
     // Export packages for OpenMason tool access
     exports com.stonebreak.model;

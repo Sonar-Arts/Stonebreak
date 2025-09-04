@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
+import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.pipeline.DepthCurtainRenderer;
 import org.joml.Vector4f;
@@ -25,9 +26,9 @@ public class OpenGLQuadRenderer {
         uiQuadRenderer.initialize();
     }
     
-    public void initializeDepthCurtainRenderer(com.stonebreak.rendering.ShaderProgram shaderProgram, 
-                                             int windowWidth, int windowHeight, 
-                                             org.joml.Matrix4f projectionMatrix) {
+    public void initializeDepthCurtainRenderer(ShaderProgram shaderProgram,
+                                               int windowWidth, int windowHeight,
+                                               org.joml.Matrix4f projectionMatrix) {
         this.depthCurtainRenderer = new DepthCurtainRenderer(shaderProgram, windowWidth, windowHeight, projectionMatrix);
     }
     
@@ -36,7 +37,7 @@ public class OpenGLQuadRenderer {
         this.windowHeight = height;
     }
     
-    public void drawQuad(com.stonebreak.rendering.ShaderProgram shaderProgram, int x, int y, int width, int height, int r, int g, int b, int a) {
+    public void drawQuad(ShaderProgram shaderProgram, int x, int y, int width, int height, int r, int g, int b, int a) {
         float red = r / 255.0f;
         float green = g / 255.0f;
         float blue = b / 255.0f;
@@ -78,7 +79,7 @@ public class OpenGLQuadRenderer {
         uiQuadRenderer.unbind();
     }
     
-    public void drawTexturedQuadUI(com.stonebreak.rendering.ShaderProgram shaderProgram, int x, int y, int width, int height, int textureId, float u1, float v1, float u2, float v2) {
+    public void drawTexturedQuadUI(ShaderProgram shaderProgram, int x, int y, int width, int height, int textureId, float u1, float v1, float u2, float v2) {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("texture_sampler", 0);
@@ -125,13 +126,13 @@ public class OpenGLQuadRenderer {
         glBindTexture(GL_TEXTURE_2D, 0);
     }
     
-    public void drawFlat2DItemInSlot(com.stonebreak.rendering.ShaderProgram shaderProgram, 
-                                   com.stonebreak.blocks.BlockType type, 
-                                   int screenSlotX, int screenSlotY, 
-                                   int screenSlotWidth, int screenSlotHeight,
-                                   TextureAtlas textureAtlas,
-                                   FloatBuffer projectionMatrixBuffer,
-                                   FloatBuffer viewMatrixBuffer) {
+    public void drawFlat2DItemInSlot(ShaderProgram shaderProgram,
+                                     com.stonebreak.blocks.BlockType type,
+                                     int screenSlotX, int screenSlotY,
+                                     int screenSlotWidth, int screenSlotHeight,
+                                     TextureAtlas textureAtlas,
+                                     FloatBuffer projectionMatrixBuffer,
+                                     FloatBuffer viewMatrixBuffer) {
         
         int[] originalViewport = new int[4];
         int[] originalScissorBox = new int[4];
