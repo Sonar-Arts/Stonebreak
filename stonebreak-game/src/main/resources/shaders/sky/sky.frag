@@ -50,16 +50,24 @@ vec3 getSkyColor(vec3 direction) {
     vec3 zenithColor = vec3(0.4, 0.7, 1.0);    // Deeper blue at zenith  
     vec3 groundColor = vec3(0.6, 0.8, 0.9);    // Lighter blue below horizon
     
-    // Smooth transitions
+    // Add distance-based fading to reduce hard edges
+    float horizontalDistance = length(vec2(direction.x, direction.z));
+    float edgeFade = 1.0 - smoothstep(0.85, 0.98, horizontalDistance);
+    
+    // Smooth transitions with enhanced horizon blending
     float t;
     if (elevation >= 0.0) {
         // Above horizon - blend from horizon to zenith
         t = smoothstep(0.0, 1.0, elevation);
-        return mix(horizonColor, zenithColor, t * 0.8);
+        vec3 color = mix(horizonColor, zenithColor, t * 0.8);
+        // Apply edge fading to reduce cube artifacts
+        return mix(horizonColor * 0.9, color, edgeFade);
     } else {
-        // Below horizon - blend to ground color
+        // Below horizon - blend to ground color with stronger fading
         t = smoothstep(-0.3, 0.0, elevation);
-        return mix(groundColor, horizonColor, t);
+        vec3 color = mix(groundColor, horizonColor, t);
+        // Apply stronger edge fading below horizon
+        return mix(horizonColor * 0.8, color, edgeFade * 0.7 + 0.3);
     }
 }
 
@@ -157,10 +165,16 @@ void main() {
     // Blend clouds on top with proper alpha compositing
     finalColor = mix(finalColor, cloudContribution, min(1.0, length(cloudContribution)));
     
-    // Apply atmospheric perspective (slight haze)
+    // Apply atmospheric perspective with enhanced horizon softening
     float distance = length(worldPos - cameraPos);
     float haze = exp(-distance * 0.00001);
-    finalColor = mix(vec3(0.8, 0.85, 0.9), finalColor, haze);
+    
+    // Additional horizon softening based on viewing angle
+    float horizonSoft = 1.0 - smoothstep(-0.1, 0.1, abs(direction.y));
+    float hazeAmount = mix(0.1, 0.3, horizonSoft);
+    
+    vec3 hazeColor = vec3(0.8, 0.85, 0.9);
+    finalColor = mix(hazeColor, finalColor, haze * (1.0 - hazeAmount));
     
     FragColor = vec4(finalColor, 1.0);
 }
