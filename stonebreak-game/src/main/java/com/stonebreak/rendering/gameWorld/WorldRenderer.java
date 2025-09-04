@@ -22,6 +22,7 @@ import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
 import com.stonebreak.world.Chunk;
 import com.stonebreak.world.World;
 
@@ -38,6 +39,7 @@ public class WorldRenderer {
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
     private final EntityRenderer entityRenderer;
+    private final SkyRenderer skyRenderer;
     
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -53,6 +55,7 @@ public class WorldRenderer {
         this.blockRenderer = blockRenderer;
         this.playerArmRenderer = playerArmRenderer;
         this.entityRenderer = entityRenderer;
+        this.skyRenderer = new SkyRenderer();
     }
     
     /**
@@ -62,6 +65,15 @@ public class WorldRenderer {
         // Clear any pending OpenGL errors from previous operations
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
+        
+        // Render sky first (before world geometry for proper depth testing)
+        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime);
+        checkGLError("After sky rendering");
+        
+        // Ensure proper depth function for world geometry
+        glDepthFunc(GL_LESS);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(true);
         
         // Use shader program
         shaderProgram.bind();
@@ -346,6 +358,15 @@ public class WorldRenderer {
             if (error == 0x0505) { // GL_OUT_OF_MEMORY
                 throw new RuntimeException("OpenGL OUT OF MEMORY error in WorldRenderer at: " + context);
             }
+        }
+    }
+    
+    /**
+     * Clean up OpenGL resources used by the world renderer.
+     */
+    public void cleanup() {
+        if (skyRenderer != null) {
+            skyRenderer.cleanup();
         }
     }
 }
