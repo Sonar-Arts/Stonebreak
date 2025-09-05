@@ -106,14 +106,14 @@ public class WorldRenderer {
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
 
-        // Render player arm (if not paused)
-        renderPlayerArm(player);
+        // Render entities first (before player arm to prevent transparency occlusion)
+        renderEntities(player);
 
         // Render water particles
         renderWaterParticles();
 
-        // Render entities
-        renderEntities(player);
+        // Render player arm last (if not paused) to appear in front of entities
+        renderPlayerArm(player);
     }
     
     /**
