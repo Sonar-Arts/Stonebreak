@@ -109,7 +109,7 @@ public class BlockIconRenderer {
             setupDepthAndBlending(originalState);
             
             // --- Shader setup for 3D item ---
-            configureShaderForItem(shaderProgram, textureAtlas);
+            configureShaderForItem(shaderProgram, textureAtlas, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
             
             // --- Create and draw cube with proper face textures ---
             renderBlockCube(type, textureAtlas);
@@ -183,11 +183,14 @@ public class BlockIconRenderer {
      * Sets up viewport and scissor test for the specific slot area.
      */
     private void setupViewportAndScissor(int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
-        // Calculate viewport coordinates (convert top-left to bottom-left origin)
-        int viewportX = screenSlotX;
-        int viewportY = windowHeight - (screenSlotY + screenSlotHeight);
+        // Set viewport to the slot area and use scissor for clipping
+        int currentWindowHeight = com.stonebreak.core.Game.getWindowHeight();
         
-        // Set up viewport for this item only
+        // Convert coordinates from top-left origin (NanoVG) to bottom-left origin (OpenGL)
+        int viewportX = screenSlotX;
+        int viewportY = currentWindowHeight - (screenSlotY + screenSlotHeight);
+        
+        // Set up viewport for this slot
         glViewport(viewportX, viewportY, screenSlotWidth, screenSlotHeight);
         
         // Use scissor test to restrict drawing to this slot
@@ -212,23 +215,31 @@ public class BlockIconRenderer {
     /**
      * Configures the shader program and matrices for 3D item rendering.
      */
-    private void configureShaderForItem(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
+    private void configureShaderForItem(ShaderProgram shaderProgram, TextureAtlas textureAtlas, 
+                                       int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
         shaderProgram.bind();
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
 
-        // Create projection matrix for the item - use orthographic for consistent appearance
-        Matrix4f itemProjectionMatrix = new Matrix4f().ortho(-0.6f, 0.6f, -0.6f, 0.6f, 0.1f, 10.0f);
+        // Use a small orthographic projection similar to original but aspect-correct
+        float aspect = (float) screenSlotWidth / screenSlotHeight;
+        float size = 0.6f;
+        Matrix4f itemProjectionMatrix;
+        if (aspect >= 1.0f) {
+            // Wider than tall
+            itemProjectionMatrix = new Matrix4f().ortho(-size * aspect, size * aspect, -size, size, 0.1f, 10.0f);
+        } else {
+            // Taller than wide  
+            itemProjectionMatrix = new Matrix4f().ortho(-size, size, -size / aspect, size / aspect, 0.1f, 10.0f);
+        }
         shaderProgram.setUniform("projectionMatrix", itemProjectionMatrix);
 
-        // Create view matrix for an isometric-style view
-        Matrix4f itemViewMatrix = new Matrix4f();
+        // Create view matrix with isometric view (similar to original)
+        Matrix4f itemViewMatrix = new Matrix4f().identity();
         itemViewMatrix.translate(0, 0, -1.5f);
-        // Standard isometric view angles
         itemViewMatrix.rotate((float) Math.toRadians(30.0f), 1.0f, 0.0f, 0.0f);
         itemViewMatrix.rotate((float) Math.toRadians(-45.0f), 0.0f, 1.0f, 0.0f);
-        // Adjust scale to fit nicely in the slot
         itemViewMatrix.scale(0.8f);
         shaderProgram.setUniform("viewMatrix", itemViewMatrix);
 

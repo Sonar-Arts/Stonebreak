@@ -129,10 +129,17 @@ public class HotbarRenderer {
             
             // Render selection highlight
             if (isSelected) {
+                // Scale highlight border based on slot size
+                float borderScale = HotbarScreen.SLOT_SIZE / 48.0f; // Base slot size is 48
+                int highlightPadding = Math.max(1, Math.round(2 * borderScale));
+                float strokeWidth = Math.max(1.0f, 2 * borderScale);
+                
                 nvgBeginPath(vg);
-                nvgRect(vg, slotX - 2, slotY - 2, HotbarScreen.SLOT_SIZE + 4, HotbarScreen.SLOT_SIZE + 4);
+                nvgRect(vg, slotX - highlightPadding, slotY - highlightPadding, 
+                       HotbarScreen.SLOT_SIZE + (highlightPadding * 2), 
+                       HotbarScreen.SLOT_SIZE + (highlightPadding * 2));
                 nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-                nvgStrokeWidth(vg, 2);
+                nvgStrokeWidth(vg, strokeWidth);
                 nvgStroke(vg);
             }
             
@@ -173,14 +180,19 @@ public class HotbarRenderer {
                 // End NanoVG frame temporarily to draw 3D item (same pattern as InventoryScreen)
                 uiRenderer.endFrame();
                 
+                // Calculate icon size based on actual slot size for proper scaling
+                // Use a more generous padding that maintains good icon visibility
+                int iconPadding = Math.max(2, HotbarScreen.SLOT_SIZE / 12); // More generous padding ratio
+                int iconSize = HotbarScreen.SLOT_SIZE - (iconPadding * 2);
+                
                 if (item instanceof BlockType blockType) {
-                    // Use UIRenderer's 3D item rendering (same as InventoryScreen)
+                    // Use UIRenderer's 3D item rendering with scaled dimensions
                     uiRenderer.draw3DItemInSlot(shaderProgram, blockType,
-                                              slotX + 2, slotY + 2, HotbarScreen.SLOT_SIZE - 4, HotbarScreen.SLOT_SIZE - 4,
+                                              slotX + iconPadding, slotY + iconPadding, iconSize, iconSize,
                                               textureAtlas);
                 } else {
-                    // For ItemTypes, render a 2D sprite using UIRenderer
-                    uiRenderer.renderItemIcon(slotX + 2, slotY + 2, HotbarScreen.SLOT_SIZE - 4, HotbarScreen.SLOT_SIZE - 4,
+                    // For ItemTypes, render a 2D sprite using UIRenderer with scaled dimensions
+                    uiRenderer.renderItemIcon(slotX + iconPadding, slotY + iconPadding, iconSize, iconSize,
                                             item, textureAtlas);
                 }
                 
@@ -209,11 +221,18 @@ public class HotbarRenderer {
             NVGColor color = NVGColor.malloc(stack);
             
             String countText = String.valueOf(count);
-            float textX = slotX + HotbarScreen.SLOT_SIZE - 8;
-            float textY = slotY + HotbarScreen.SLOT_SIZE - 4;
+            
+            // Scale text size and positioning based on slot size
+            float textSizeScale = HotbarScreen.SLOT_SIZE / 48.0f; // Base slot size is 48
+            float fontSize = Math.max(10, 12 * textSizeScale); // Minimum font size of 10
+            float textOffsetX = Math.max(6, 8 * textSizeScale);
+            float textOffsetY = Math.max(3, 4 * textSizeScale);
+            
+            float textX = slotX + HotbarScreen.SLOT_SIZE - textOffsetX;
+            float textY = slotY + HotbarScreen.SLOT_SIZE - textOffsetY;
             
             nvgFontFace(vg, "sans");
-            nvgFontSize(vg, 12);
+            nvgFontSize(vg, fontSize);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
             nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
             nvgText(vg, textX, textY, countText);
