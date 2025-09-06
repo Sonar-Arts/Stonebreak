@@ -431,9 +431,9 @@ public class Main {
         if (!resetOpenGLState()) return;
         
         render3DWorld(game, renderer);
+        renderDeferredElements(game, renderer);
         renderGameUI(game, renderer);
         renderFullscreenMenus(game);
-        renderDeferredElements(game, renderer);
         renderTooltips(game, renderer);
         renderPauseMenu(game, renderer);
     }
