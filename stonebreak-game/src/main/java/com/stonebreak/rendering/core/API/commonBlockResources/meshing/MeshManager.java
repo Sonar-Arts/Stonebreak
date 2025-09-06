@@ -162,6 +162,49 @@ public class MeshManager implements AutoCloseable {
     }
     
     /**
+     * Creates a cross mesh with full texture coordinates from texture atlas.
+     * Uses the complete texture height for normal flower textures.
+     * 
+     * @param name The name for the custom mesh
+     * @param u1 Left U coordinate in atlas
+     * @param v1 Top V coordinate in atlas
+     * @param u2 Right U coordinate in atlas
+     * @param v2 Bottom V coordinate in atlas
+     * @return The created cross mesh with full texture coordinates
+     */
+    public MeshResource createFullTextureCrossMesh(String name, float u1, float v1, float u2, float v2) {
+        if (disposed) {
+            throw new IllegalStateException("MeshManager has been disposed");
+        }
+        
+        // Two intersecting quads forming a cross, using the full texture
+        float[] vertices = {
+            // First quad (diagonal X from top-left to bottom-right)
+            -0.5f, -0.5f,  0.0f,  u1, v2,  // bottom-left
+             0.5f, -0.5f,  0.0f,  u2, v2,  // bottom-right
+             0.5f,  0.5f,  0.0f,  u2, v1,  // top-right
+            -0.5f,  0.5f,  0.0f,  u1, v1,  // top-left
+            
+            // Second quad (diagonal X from top-right to bottom-left)
+             0.0f, -0.5f, -0.5f,  u1, v2,  // bottom-left
+             0.0f, -0.5f,  0.5f,  u2, v2,  // bottom-right
+             0.0f,  0.5f,  0.5f,  u2, v1,  // top-right
+             0.0f,  0.5f, -0.5f,  u1, v1   // top-left
+        };
+        
+        int[] indices = {
+            // First quad (both sides for proper transparency)
+            0, 1, 2,  2, 3, 0,  // front
+            0, 3, 2,  2, 1, 0,  // back
+            // Second quad (both sides)
+            4, 5, 6,  6, 7, 4,  // front
+            4, 7, 6,  6, 5, 4   // back
+        };
+        
+        return createCustomMesh(name, vertices, indices);
+    }
+
+    /**
      * Creates a cross mesh with specific texture coordinates from texture atlas.
      * Supports the cube cross format where texture has pattern:
      * xoxx

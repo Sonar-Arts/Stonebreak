@@ -28,23 +28,27 @@ import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.system.MemoryUtil.*;
 
 /**
- * Visual test for the CBR (Common Block Resources) Framework.
+ * Comprehensive visual test for the CBR (Common Block Resources) Framework.
  * 
- * Opens a window and renders specific block types to showcase different rendering modes:
- * - Grass block (CUBE_DIRECTIONAL) - different textures per face
- * - Dirt block (CUBE_ALL) - uniform texture all faces  
- * - Sand block (CUBE_ALL) - uniform texture all faces
- * - Rose & Dandelion flowers (CROSS) - cross-shaped transparent geometry with proper alpha blending
+ * Renders ALL blocks from Block_ids.JSON in organized grid layout showcasing different rendering modes:
+ * 
+ * CUBE_DIRECTIONAL (cube_net): grass, wood logs, workbench - different textures per face
+ * CUBE_ALL opaque: terrain blocks, ores, processed materials - uniform textures  
+ * CUBE_ALL transparent: leaves, water - uniform textures with alpha cutout
+ * CROSS: rose & dandelion flowers - cross-shaped geometry with full texture transparency
+ * 
+ * Grid Layout: 6 rows × 6 columns, organized by block type and material category
+ * Total: 28 unique blocks demonstrating the complete CBR framework capabilities
  * 
  * Controls: WASD to move camera, mouse to look around, ESC to exit.
  * 
  * Features:
- * - Real-time 3D rendering showcasing CBR block types
- * - Camera controls for detailed inspection
- * - Demonstrates CUBE_DIRECTIONAL, CUBE_ALL, and CROSS render types
+ * - Complete showcase of all Block_ids.JSON entries
+ * - Real-time 3D rendering with rotating blocks for 360° inspection
+ * - Demonstrates all CBR render types and transparency modes
  * - Full transparency support with OpenGL blending and alpha cutoff
  * - Proper depth-sorted rendering (opaque first, then transparent)
- * - Clean focused layout for easy comparison
+ * - Organized grid layout for systematic comparison and testing
  */
 public class CBRVisualTest {
     
@@ -323,51 +327,86 @@ public class CBRVisualTest {
     }
     
     private void setupTestBlocks() {
-        // Add specific test blocks in a clean layout
-        float spacing = 3.0f;
+        System.out.println("Setting up comprehensive block showcase based on Block_ids.JSON:");
+        System.out.println("======================================================================");
         
-        // Primary test blocks - Main showcase
-        System.out.println("Setting up primary test blocks:");
+        float spacing = 2.5f;
+        int col = 0;
+        int row = 0;
         
-        // Grass block (directional rendering - different top/side textures)
-        // Using neutral white color (1.0, 1.0, 1.0) to show original textures without tinting
-        addTestBlock("stonebreak:grass", -spacing, 0, 0, new Vector3f(1.0f, 1.0f, 1.0f));
-        System.out.println("  - Grass block (CUBE_DIRECTIONAL): positioned at (" + (-spacing) + ", 0, 0)");
+        // CUBE_DIRECTIONAL blocks (cube_net texture type + snowy_dirt) - Row 0
+        System.out.println("\n🔶 CUBE_DIRECTIONAL blocks (different textures per face):");
+        row = 0;
+        addTestBlockInGrid("stonebreak:grass", col++, row, spacing, "Grass (grass top, dirt sides)");
+        addTestBlockInGrid("stonebreak:wood", col++, row, spacing, "Wood log (bark texture)"); 
+        addTestBlockInGrid("stonebreak:snowy_dirt", col++, row, spacing, "Snowy dirt (snow top, dirt sides)");
+        addTestBlockInGrid("stonebreak:pine_wood", col++, row, spacing, "Pine wood log");
+        addTestBlockInGrid("stonebreak:elm_wood_log", col++, row, spacing, "Elm wood log");
+        addTestBlockInGrid("stonebreak:workbench", col++, row, spacing, "Workbench (crafting table top)");
         
-        // Dirt block (uniform all-around texture)
-        addTestBlock("stonebreak:dirt", 0, 0, 0, new Vector3f(1.0f, 1.0f, 1.0f));
-        System.out.println("  - Dirt block (CUBE_ALL): positioned at (0, 0, 0)");
+        // CUBE_ALL blocks - Solid terrain blocks - Row 1
+        System.out.println("\n🟫 CUBE_ALL blocks - Basic terrain:");
+        row = 1; col = 0;
+        addTestBlockInGrid("stonebreak:dirt", col++, row, spacing, "Dirt");
+        addTestBlockInGrid("stonebreak:stone", col++, row, spacing, "Stone");
+        addTestBlockInGrid("stonebreak:bedrock", col++, row, spacing, "Bedrock");
+        addTestBlockInGrid("stonebreak:sand", col++, row, spacing, "Sand");
+        addTestBlockInGrid("stonebreak:red_sand", col++, row, spacing, "Red sand");
         
-        // Sand block (uniform all-around texture) 
-        addTestBlock("stonebreak:sand", spacing, 0, 0, new Vector3f(1.0f, 1.0f, 1.0f));
-        System.out.println("  - Sand block (CUBE_ALL): positioned at (" + spacing + ", 0, 0)");
+        // CUBE_ALL blocks - Processed blocks - Row 2
+        System.out.println("\n🧱 CUBE_ALL blocks - Processed materials:");
+        row = 2; col = 0;
+        addTestBlockInGrid("stonebreak:sandstone", col++, row, spacing, "Sandstone");
+        addTestBlockInGrid("stonebreak:red_sandstone", col++, row, spacing, "Red sandstone");
+        addTestBlockInGrid("stonebreak:wood_planks", col++, row, spacing, "Wood planks");
+        addTestBlockInGrid("stonebreak:pine_wood_planks", col++, row, spacing, "Pine wood planks");
+        addTestBlockInGrid("stonebreak:elm_wood_planks", col++, row, spacing, "Elm wood planks");
         
-        // Rose flower (cross-section rendering with cube cross texture format)
-        // The texture uses the format: xoxx/oooo/xoxx (x=transparent, o=textured)
-        // Only the middle row (oooo) will be visible on the cross geometry
-        // Now supports proper transparency with alpha blending
-        addTestBlock("stonebreak:rose", -spacing/2, 0, spacing, new Vector3f(1.0f, 1.0f, 1.0f));
-        System.out.println("  - Rose flower (CROSS): positioned at (" + (-spacing/2) + ", 0, " + spacing + ") - cube cross format with transparency");
+        // CUBE_ALL blocks - Ores and special materials - Row 3
+        System.out.println("\n💎 CUBE_ALL blocks - Ores and special materials:");
+        row = 3; col = 0;
+        addTestBlockInGrid("stonebreak:coal_ore", col++, row, spacing, "Coal ore");
+        addTestBlockInGrid("stonebreak:iron_ore", col++, row, spacing, "Iron ore");
+        addTestBlockInGrid("stonebreak:magma", col++, row, spacing, "Magma");
+        addTestBlockInGrid("stonebreak:crystal", col++, row, spacing, "Crystal");
+        addTestBlockInGrid("stonebreak:ice", col++, row, spacing, "Ice");
+        addTestBlockInGrid("stonebreak:snow", col++, row, spacing, "Snow");
         
-        // Dandelion flower (cross-section rendering with cube cross texture format)
-        addTestBlock("stonebreak:dandelion", spacing/2, 0, spacing, new Vector3f(1.0f, 1.0f, 1.0f));
-        System.out.println("  - Dandelion flower (CROSS): positioned at (" + (spacing/2) + ", 0, " + spacing + ") - cube cross format with transparency");
+        // CUBE_ALL blocks - Transparent/Cutout blocks - Row 4  
+        System.out.println("\n🍃 CUBE_ALL blocks - Transparent (CUTOUT render layer):");
+        row = 4; col = 0;
+        addTestBlockInGrid("stonebreak:leaves", col++, row, spacing, "Leaves (transparent)");
+        addTestBlockInGrid("stonebreak:snowy_leaves", col++, row, spacing, "Snowy leaves (transparent)");
+        addTestBlockInGrid("stonebreak:elm_leaves", col++, row, spacing, "Elm leaves (transparent)");
+        addTestBlockInGrid("stonebreak:water", col++, row, spacing, "Water (transparent)");
         
-        // Workbench block (directional rendering - different textures on different faces)
-        // Top: crafting table surface, Sides: wood planks, Bottom: wood planks
-        addTestBlock("stonebreak:workbench", -spacing, 0, -spacing, new Vector3f(1.0f, 1.0f, 1.0f));
-        System.out.println("  - Workbench (CUBE_DIRECTIONAL): positioned at (" + (-spacing) + ", 0, " + (-spacing) + ")");
+        // CROSS blocks - Flowers - Row 5
+        System.out.println("\n🌸 CROSS blocks - Flowers (full texture format with transparency):");
+        row = 5; col = 0;
+        addTestBlockInGrid("stonebreak:rose", col++, row, spacing, "Rose flower");
+        addTestBlockInGrid("stonebreak:dandelion", col++, row, spacing, "Dandelion flower");
         
-        System.out.println("\n✓ " + testBlocks.size() + " specialized test blocks setup for rendering");
-        System.out.println("Using neutral white color (1.0, 1.0, 1.0) to display original textures without tinting");
-        System.out.println("Block types demonstrated:");
-        System.out.println("  • CUBE_DIRECTIONAL: Grass & Workbench (different textures per face)");
-        System.out.println("  • CUBE_ALL: Dirt & Sand (same texture all faces)");
-        System.out.println("  • CROSS: Rose & Dandelion (cross-shaped transparent geometry with alpha blending)");
-        System.out.println("Transparency features:");
+        System.out.println("\n======================================================================");
+        System.out.println("✓ " + testBlocks.size() + " blocks loaded from Block_ids.JSON");
+        System.out.println("Grid layout: 6 rows × up to 6 columns, spaced " + spacing + " units apart");
+        System.out.println("\nBlock types demonstrated:");
+        System.out.println("  • CUBE_DIRECTIONAL: 6 blocks (cube_net textures with different faces)");
+        System.out.println("  • CUBE_ALL: 20 blocks (uniform textures, opaque + transparent)");
+        System.out.println("  • CROSS: 2 blocks (full texture cross-section with transparency)");
+        System.out.println("\nTransparency features:");
         System.out.println("  • OpenGL blending enabled (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)");
         System.out.println("  • Fragment shader alpha cutoff (discard pixels with alpha < 0.1)");
-        System.out.println("  • Depth-sorted rendering (opaque blocks first, then transparent)");
+        System.out.println("  • Depth-sorted rendering (opaque first, then transparent)");
+        System.out.println("  • Proper handling of leaves, water, and flower transparency");
+    }
+    
+    private void addTestBlockInGrid(String resourceId, int col, int row, float spacing, String description) {
+        float x = (col - 2.5f) * spacing; // Center the grid horizontally
+        float y = 0;
+        float z = (row - 3.0f) * spacing; // Center the grid depth-wise
+        
+        addTestBlock(resourceId, x, y, z, new Vector3f(1.0f, 1.0f, 1.0f));
+        System.out.println("  - " + description + ": positioned at (" + String.format("%.1f", x) + ", " + y + ", " + String.format("%.1f", z) + ")");
     }
     
     private void addTestBlock(String resourceId, float x, float y, float z, Vector3f color) {
@@ -479,9 +518,12 @@ public class CBRVisualTest {
     
     private boolean isOpaqueBlock(TestBlock testBlock) {
         // Check if the block uses a transparent render layer (CUTOUT)
-        // In this test, rose and dandelion are the transparent blocks
+        // Transparent blocks: flowers (rose, dandelion), leaves (all types), water
         String name = testBlock.name.toLowerCase();
-        return !name.contains("dandelion") && !name.contains("rose");
+        return !name.contains("dandelion") && 
+               !name.contains("rose") &&
+               !name.contains("leaves") && 
+               !name.contains("water");
     }
     
     private void renderTestBlock(TestBlock testBlock) {
@@ -571,15 +613,43 @@ public class CBRVisualTest {
         private final Map<Integer, BlockDefinition> definitionsById = new HashMap<>();
         
         public TestBlockDefinitionRegistry() {
-            // Create comprehensive test block definitions
+            // Create comprehensive test block definitions based on Block_ids.JSON
+            
+            // CUBE_DIRECTIONAL blocks (cube_net texture type + snowy_dirt special case)
             addTestDefinition("stonebreak:grass", 0, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:wood", 4, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:snowy_dirt", 17, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:pine_wood", 18, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:workbench", 22, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:elm_wood_log", 25, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
+            
+            // CUBE_ALL blocks (uniform texture type) - Solid blocks
             addTestDefinition("stonebreak:dirt", 1, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
             addTestDefinition("stonebreak:stone", 2, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:bedrock", 3, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
             addTestDefinition("stonebreak:sand", 6, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
-            addTestDefinition("stonebreak:rose", 16, BlockDefinition.RenderType.CROSS, BlockDefinition.RenderLayer.CUTOUT);
-            addTestDefinition("stonebreak:dandelion", 17, BlockDefinition.RenderType.CROSS, BlockDefinition.RenderLayer.CUTOUT);
-            addTestDefinition("stonebreak:workbench", 58, BlockDefinition.RenderType.CUBE_DIRECTIONAL, BlockDefinition.RenderLayer.OPAQUE);
-            addTestDefinition("stonebreak:stick", 100, BlockDefinition.RenderType.SPRITE, BlockDefinition.RenderLayer.CUTOUT);
+            addTestDefinition("stonebreak:coal_ore", 8, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:iron_ore", 9, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:red_sand", 10, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:magma", 11, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:crystal", 12, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:sandstone", 13, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:red_sandstone", 14, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:ice", 19, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:snow", 21, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:wood_planks", 23, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:pine_wood_planks", 24, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            addTestDefinition("stonebreak:elm_wood_planks", 26, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.OPAQUE);
+            
+            // CUBE_ALL blocks (uniform texture type) - Transparent/Cutout blocks  
+            addTestDefinition("stonebreak:leaves", 5, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.CUTOUT);
+            addTestDefinition("stonebreak:water", 7, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.CUTOUT);
+            addTestDefinition("stonebreak:snowy_leaves", 20, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.CUTOUT);
+            addTestDefinition("stonebreak:elm_leaves", 27, BlockDefinition.RenderType.CUBE_ALL, BlockDefinition.RenderLayer.CUTOUT);
+            
+            // CROSS blocks (flowers)
+            addTestDefinition("stonebreak:rose", 15, BlockDefinition.RenderType.CROSS, BlockDefinition.RenderLayer.CUTOUT);
+            addTestDefinition("stonebreak:dandelion", 16, BlockDefinition.RenderType.CROSS, BlockDefinition.RenderLayer.CUTOUT);
         }
         
         private void addTestDefinition(String resourceId, int numericId, BlockDefinition.RenderType renderType, BlockDefinition.RenderLayer renderLayer) {

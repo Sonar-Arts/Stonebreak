@@ -240,10 +240,10 @@ public class TextureResourceManager implements AutoCloseable {
      * This is determined by checking the atlas metadata for "block_cube_cross" type.
      */
     private boolean isCubeCrossFormat(BlockDefinition definition) {
-        // In this atlas, all textures seem to be marked as "block_cube_cross" type
-        // We can assume cube cross format is being used
-        // In a more sophisticated implementation, we could check the atlas metadata directly
-        return true; // Assume cube cross format for all cross blocks
+        // Both rose and dandelion are cross section flowers that use full texture format
+        // The cube cross format (xoxx/oooo/xoxx) is not used by either flower in this implementation
+        // All cross blocks should use the full texture height
+        return false; // No cross blocks use cube cross format currently
     }
     
     /**
@@ -268,21 +268,46 @@ public class TextureResourceManager implements AutoCloseable {
         
         // Map common block names to BlockType enum
         switch (blockName.toLowerCase()) {
+            // Basic terrain blocks
             case "grass": return BlockType.GRASS;
             case "dirt": return BlockType.DIRT;
             case "stone": return BlockType.STONE;
-            case "wood": return BlockType.WOOD;
+            case "bedrock": return BlockType.BEDROCK;
             case "sand": return BlockType.SAND;
-            case "water": return BlockType.WATER;
+            case "red_sand": return BlockType.RED_SAND;
+            case "sandstone": return BlockType.SANDSTONE;
+            case "red_sandstone": return BlockType.RED_SANDSTONE;
+            case "snowy_dirt": return BlockType.SNOWY_DIRT;
+            
+            // Ores and minerals
             case "coal_ore": return BlockType.COAL_ORE;
             case "iron_ore": return BlockType.IRON_ORE;
+            case "magma": return BlockType.MAGMA;
+            case "crystal": return BlockType.CRYSTAL;
+            
+            // Wood and plant blocks
+            case "wood": return BlockType.WOOD;
+            case "pine_wood": return BlockType.PINE;
+            case "elm_wood_log": return BlockType.ELM_WOOD_LOG;
+            case "wood_planks": return BlockType.WOOD_PLANKS;
+            case "pine_wood_planks": return BlockType.PINE_WOOD_PLANKS;
+            case "elm_wood_planks": return BlockType.ELM_WOOD_PLANKS;
             case "leaves": return BlockType.LEAVES;
-            case "bedrock": return BlockType.BEDROCK;
-            case "ice": return BlockType.ICE;
-            case "snow": return BlockType.SNOW;
+            case "snowy_leaves": return BlockType.SNOWY_LEAVES;
+            case "elm_leaves": return BlockType.ELM_LEAVES;
+            
+            // Flowers
             case "dandelion": return BlockType.DANDELION;
             case "rose": return BlockType.ROSE;
+            
+            // Utility blocks
             case "workbench": return BlockType.WORKBENCH;
+            
+            // Environmental blocks
+            case "water": return BlockType.WATER;
+            case "ice": return BlockType.ICE;
+            case "snow": return BlockType.SNOW;
+            
             // Add more mappings as needed
             default: return null;
         }

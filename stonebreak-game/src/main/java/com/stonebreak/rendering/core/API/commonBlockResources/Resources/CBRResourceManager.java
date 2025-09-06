@@ -188,11 +188,22 @@ public class CBRResourceManager implements AutoCloseable {
                 }
                 break;
             case CROSS:
-                mesh = meshManager.createCrossMeshWithTextureCoordinates(
-                    meshName,
-                    texCoords.getU1(), texCoords.getV1(),
-                    texCoords.getU2(), texCoords.getV2()
-                );
+                // Determine if this should use cube cross format or full texture format
+                if (shouldUseCubeCrossFormat(definition)) {
+                    // Use cube cross format (only middle strip of texture)
+                    mesh = meshManager.createCrossMeshWithTextureCoordinates(
+                        meshName,
+                        texCoords.getU1(), texCoords.getV1(),
+                        texCoords.getU2(), texCoords.getV2()
+                    );
+                } else {
+                    // Use full texture format (entire texture height)
+                    mesh = meshManager.createFullTextureCrossMesh(
+                        meshName,
+                        texCoords.getU1(), texCoords.getV1(),
+                        texCoords.getU2(), texCoords.getV2()
+                    );
+                }
                 break;
             default:
                 // Fallback to generic mesh
@@ -361,6 +372,21 @@ public class CBRResourceManager implements AutoCloseable {
         return resourceId.contains("workbench") || 
                resourceId.contains("crafting_table") ||
                resourceId.contains("furnace");
+    }
+    
+    /**
+     * Determines if a cross block should use the cube cross texture format (xoxx/oooo/xoxx).
+     * Some flowers use the cube cross format where only the middle strip is textured,
+     * while others use the full texture height.
+     * 
+     * @param definition The block definition to check
+     * @return true if the block should use cube cross format, false for full texture format
+     */
+    private boolean shouldUseCubeCrossFormat(BlockDefinition definition) {
+        // Both rose and dandelion are cross section flowers that use full texture format
+        // The cube cross format is not used by any flowers in this implementation
+        // All cross blocks should display their full texture height
+        return false; // No cross blocks use cube cross format currently
     }
     
     /**
