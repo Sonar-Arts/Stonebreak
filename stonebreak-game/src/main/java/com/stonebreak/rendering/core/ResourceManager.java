@@ -38,6 +38,7 @@ public class ResourceManager {
         shaderProgram.createUniform("u_atlasUVOffset");
         shaderProgram.createUniform("u_atlasUVScale");
         shaderProgram.createUniform("u_renderPass");
+        shaderProgram.createUniform("u_isUIElement");
     }
     
     private String getVertexShaderSource() {
@@ -86,6 +87,7 @@ public class ResourceManager {
                uniform vec4 u_color;
                uniform bool u_useSolidColor;
                uniform bool u_isText;
+               uniform bool u_isUIElement;
                uniform int u_renderPass;
                void main() {
                    if (u_isText) {
@@ -95,9 +97,9 @@ public class ResourceManager {
                        fragColor = u_color;
                    } else {
                        vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
-                       float ambient = 0.3;
+                       float ambient = u_isUIElement ? 0.8 : 0.3;
                        float diffuse = max(dot(outNormal, lightDir), 0.0);
-                       float brightness = ambient + diffuse * 0.7;
+                       float brightness = u_isUIElement ? 0.8 : (ambient + diffuse * 0.7);
                        vec4 textureColor = texture(texture_sampler, outTexCoord);
                        float sampledAlpha = textureColor.a;
 
