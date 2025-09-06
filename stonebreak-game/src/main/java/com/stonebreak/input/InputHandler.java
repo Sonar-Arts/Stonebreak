@@ -358,45 +358,7 @@ public class InputHandler {
     }
     
     private void dropSelectedItem(Player player) {
-        Inventory inventory = player.getInventory();
-        if (inventory == null) {
-            return;
-        }
-        
-        // Get the currently selected hotbar slot
-        int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
-        ItemStack selectedStack = inventory.getHotbarSlot(selectedSlotIndex);
-        
-        if (selectedStack.isEmpty()) {
-            return; // Nothing to drop
-        }
-        
-        // Get player position and camera direction for throwing
-        Vector3f playerPos = player.getPosition();
-        Vector3f cameraForward = player.getCamera().getFront();
-        
-        // Spawn the drop at player position (eye level)
-        float dropX = playerPos.x;
-        float dropY = playerPos.y + 1.5f; // Eye level
-        float dropZ = playerPos.z;
-        
-        // Calculate throwing velocity - forward direction with upward arc
-        float throwSpeed = 8.0f; // Throwing speed
-        Vector3f throwVelocity = new Vector3f(
-            cameraForward.x * throwSpeed,
-            Math.max(2.0f, cameraForward.y * throwSpeed + 3.0f), // Minimum upward velocity for arc
-            cameraForward.z * throwSpeed
-        );
-        
-        // Use the new velocity-based spawning method
-        World world = Game.getWorld();
-        if (world != null && world.getBlockDropManager() != null) {
-            world.getBlockDropManager().spawnDropWithVelocity(dropX, dropY, dropZ, 
-                selectedStack.getItem().getId(), 1, throwVelocity);
-            
-            // Remove one item from the inventory
-            inventory.removeItem(selectedStack.getItem(), 1);
-        }
+        // Item dropping disabled - 3D block drops have been removed
     }
  
     // private void handleRecipeBookKey() { ... } // Method removed

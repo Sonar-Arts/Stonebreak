@@ -1,7 +1,5 @@
 package com.stonebreak.rendering.models.blocks;
 
-import com.stonebreak.blocks.BlockDrop;
-import com.stonebreak.blocks.BlockDropManager;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Item;
@@ -40,8 +38,6 @@ public class BlockRenderer {
     private int crackTextureId;
     private int blockOverlayVao;
     
-    // Block drop renderer delegation
-    private BlockDropRenderer blockDropRenderer;
     
     public BlockRenderer() {
         initialize();
@@ -50,16 +46,8 @@ public class BlockRenderer {
     private void initialize() {
         createCrackTexture();
         createBlockOverlayVao();
-        this.blockDropRenderer = new BlockDropRenderer();
     }
     
-    /**
-     * Initialize dependencies that require external resources.
-     * Must be called after construction to properly initialize block drop rendering.
-     */
-    public void initializeDependencies(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
-        this.blockDropRenderer.initialize(shaderProgram, textureAtlas);
-    }
     
     /**
      * Renders block crack overlay on the block being broken by the player.
@@ -149,27 +137,6 @@ public class BlockRenderer {
         shaderProgram.unbind();
     }
     
-    /**
-     * Renders 3D block drops in the world by delegating to BlockDropRenderer.
-     */
-    public void renderBlockDrops(World world, Matrix4f projectionMatrix) {
-        BlockDropManager dropManager = world.getBlockDropManager();
-        if (dropManager == null) {
-            return;
-        }
-        
-        List<BlockDrop> drops = dropManager.getDrops();
-        if (drops.isEmpty()) {
-            return;
-        }
-        
-        // Get current view matrix from player
-        Player player = Game.getPlayer();
-        Matrix4f viewMatrix = (player != null) ? player.getViewMatrix() : new Matrix4f();
-        
-        // Delegate to the specialized block drop renderer
-        blockDropRenderer.renderBlockDrops(drops, projectionMatrix, viewMatrix);
-    }
 
     
     /**
@@ -665,9 +632,5 @@ public class BlockRenderer {
             blockOverlayVao = 0;
         }
         
-        // Delegate block drop cleanup to specialized renderer
-        if (blockDropRenderer != null) {
-            blockDropRenderer.cleanup();
-        }
     }
 }

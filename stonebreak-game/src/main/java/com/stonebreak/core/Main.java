@@ -584,7 +584,7 @@ public class Main {
     }
 
     private void renderDeferredElements(Game game, Renderer renderer) {
-        renderer.getBlockRenderer().renderBlockDrops(world, renderer.getProjectionMatrix());
+        // No deferred elements to render
     }
 
 

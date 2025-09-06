@@ -56,7 +56,6 @@ public class Renderer {
         
         // Initialize specialized renderers
         blockRenderer = new BlockRenderer();
-        blockRenderer.initializeDependencies(resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
         
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(), 
                                                  resourceManager.getTextureAtlas(), 
@@ -405,13 +404,6 @@ public class Renderer {
     
     
     
-    /**
-     * Renders block drops in a deferred pass after all UI rendering is complete.
-     */
-    public void renderBlockDropsDeferred(World world, Player player) {
-        // This method renders block drops completely isolated from UI rendering
-        blockRenderer.renderBlockDrops(world, configManager.getProjectionMatrix());
-    }
     
 
       /**

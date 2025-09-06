@@ -751,14 +751,7 @@ public class Player {      // Player settings
                         int snowLayers = world.getSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                         world.getSnowLayerManager().removeSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                         
-                        // Spawn snow drops based on layer count
-                        if (snowLayers > 0) {
-                            spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), snowLayers);
-                        }
                     } else {
-                        // For non-snow blocks, spawn one drop
-                        // Breaking block for timed breaks
-                        spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), 1);
                     }
                     
                     // Break the block
@@ -810,14 +803,7 @@ public class Player {      // Player settings
                         int snowLayers = world.getSnowLayers(blockPos.x, blockPos.y, blockPos.z);
                         world.getSnowLayerManager().removeSnowLayers(blockPos.x, blockPos.y, blockPos.z);
                         
-                        // Spawn snow drops based on layer count
-                        if (snowLayers > 0) {
-                            spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), snowLayers);
-                        }
                     } else {
-                        // For non-snow blocks, spawn one drop
-                        // Breaking block for instant breaks
-                        spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), 1);
                     }
                     
                     world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
@@ -837,16 +823,6 @@ public class Player {      // Player settings
     /**
      * Spawns a block drop at the specified location with some random velocity.
      */
-    private void spawnBlockDrop(int x, int y, int z, int blockTypeId, int quantity) {
-        if (world != null && world.getBlockDropManager() != null) {
-            // Add some offset to spawn drop at center of block
-            float dropX = x + 0.5f;
-            float dropY = y + 0.5f;
-            float dropZ = z + 0.5f;
-            
-            world.getBlockDropManager().spawnDrop(dropX, dropY, dropZ, blockTypeId, quantity);
-        }
-    }
     
     /**
      * Places the currently selected block from the inventory where the player is looking.

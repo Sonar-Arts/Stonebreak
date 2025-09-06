@@ -12,7 +12,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import com.stonebreak.blocks.BlockDropManager;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
@@ -58,9 +57,6 @@ public class World {
     
     // Snow layer management
     private final SnowLayerManager snowLayerManager;
-    
-    // Block drop management
-    private final BlockDropManager blockDropManager;
 
     public World() {
         this.seed = System.currentTimeMillis();
@@ -90,7 +86,6 @@ public class World {
         this.chunksReadyForGLUpload = new ConcurrentLinkedQueue<>();
         this.chunksFailedToBuildMesh = new ConcurrentLinkedQueue<>(); // Initialize the new queue
         this.snowLayerManager = new SnowLayerManager();
-        this.blockDropManager = new BlockDropManager(this);
         
         System.out.println("Creating world with seed: " + seed + ", using " + numThreads + " mesh builder threads.");
     }
@@ -174,8 +169,6 @@ public class World {
         // Apply mesh data to GL objects on the main thread
         
         // Process GPU resource cleanups on the main thread
-        // Update block drops
-        blockDropManager.update(Game.getDeltaTime());
     }
 
     public void updateMainThread() {
@@ -1367,12 +1360,6 @@ public class World {
         return snowLayerManager;
     }
     
-    /**
-     * Gets the block drop manager for this world
-     */
-    public BlockDropManager getBlockDropManager() {
-        return blockDropManager;
-    }
     
     /**
      * Gets the snow layer count at a specific position
