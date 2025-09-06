@@ -10,6 +10,9 @@ import org.lwjgl.system.MemoryUtil;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.WaterEffects;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
 
 /**
  * Represents a chunk of the world, storing block data and mesh information.
@@ -424,6 +427,36 @@ public class Chunk {
             return BlockType.AIR;
         }
     }
+
+    /**
+     * Maps internal face index to CBR face string.
+     * 0: up, 1: down, 2: south(+Z), 3: north(-Z), 4: east(+X), 5: west(-X)
+     */
+    private static String mapFaceIndexToName(int faceIndex) {
+        return switch (faceIndex) {
+            case 0 -> "top";
+            case 1 -> "bottom";
+            case 2 -> "south"; // +Z
+            case 3 -> "north"; // -Z
+            case 4 -> "east";  // +X
+            case 5 -> "west";  // -X
+            default -> "up";
+        };
+    }
+
+    /**
+     * Some atlas lookups may fail and return a full-atlas span (0..1,0..1) or
+     * otherwise invalid values. Detect and allow a fallback to direct atlas lookup.
+     */
+    private static boolean isSuspiciousAtlasSpan(float[] uv) {
+        if (uv == null || uv.length < 4) return true;
+        // Outside [0,1] range
+        if (uv[0] < 0f || uv[1] < 0f || uv[2] > 1f || uv[3] > 1f) return true;
+        float du = Math.abs(uv[2] - uv[0]);
+        float dv = Math.abs(uv[3] - uv[1]);
+        // Extremely large region (likely fallback or error texture)
+        return du >= 0.95f || dv >= 0.95f || du <= 0.0f || dv <= 0.0f;
+    }
     
     /**
      * Adds a face to the mesh data.
@@ -546,25 +579,50 @@ public class Chunk {
             }
         }
         
-        // Add texture coordinates using modern metadata-driven texture atlas
+        // Resolve base face texture coordinates via CBR (fallback to legacy if not initialized)
         float texX, texY, texSize;
         float[] uvCoords = null;
-        
-        // Get texture coordinates from the modern atlas system
-        Game game = Game.getInstance();
-        if (game != null && game.getTextureAtlas() != null) {
-            uvCoords = game.getTextureAtlas().getBlockFaceUVs(blockType, BlockType.Face.values()[face]);
-            // For non-water blocks, use the atlas coordinates directly
-            texX = uvCoords[0]; // u1
-            texY = uvCoords[1]; // v1
-            texSize = uvCoords[2] - uvCoords[0]; // u2 - u1
-        } else {
-            // Fallback to legacy system if atlas not available
-            float[] texCoords = blockType.getTextureCoords(BlockType.Face.values()[face]);
-            texX = texCoords[0] / 16.0f;
-            texY = texCoords[1] / 16.0f;
-            texSize = 1.0f / 16.0f;
+        if (CBRResourceManager.isInitialized()) {
+            try {
+                CBRResourceManager cbr = CBRResourceManager.getInstance();
+                TextureResourceManager textureMgr = cbr.getTextureManager();
+                BlockDefinition def = cbr.getBlockRegistry().getDefinition(blockType.ordinal()).orElse(null);
+                if (def != null) {
+                    String faceName = mapFaceIndexToName(face);
+                    TextureResourceManager.TextureCoordinates coords = textureMgr.resolveBlockFaceTexture(def, faceName);
+                    if (coords != null) {
+                        uvCoords = coords.toArray();
+                    }
+                } else {
+                    // Fallback to legacy mapping through CBR texture manager
+                    TextureResourceManager.TextureCoordinates coords = textureMgr.resolveBlockType(blockType);
+                    if (coords != null) {
+                        uvCoords = coords.toArray();
+                    }
+                }
+            } catch (Exception e) {
+                // CBR path failed, will fallback to legacy below
+            }
         }
+        if (uvCoords == null || isSuspiciousAtlasSpan(uvCoords)) {
+            // Fallback to modern TextureAtlas directly if available
+            Game game = Game.getInstance();
+            if (game != null && game.getTextureAtlas() != null) {
+                uvCoords = game.getTextureAtlas().getBlockFaceUVs(blockType, BlockType.Face.values()[face]);
+            }
+            // If still suspicious after atlas lookup, fallback to legacy grid
+            if (uvCoords == null || isSuspiciousAtlasSpan(uvCoords)) {
+                float[] texCoords = blockType.getTextureCoords(BlockType.Face.values()[face]);
+                float legacyU = texCoords[0] / 16.0f;
+                float legacyV = texCoords[1] / 16.0f;
+                float legacySize = 1.0f / 16.0f;
+                uvCoords = new float[] { legacyU, legacyV, legacyU + legacySize, legacyV + legacySize };
+            }
+        }
+        // Derive base tile origin and span
+        texX = uvCoords[0];
+        texY = uvCoords[1];
+        texSize = uvCoords[2] - uvCoords[0];
         
         float u_topLeft, v_topLeft, u_bottomLeft, v_bottomLeft;
         float u_bottomRight, v_bottomRight, u_topRight, v_topRight;
@@ -743,7 +801,22 @@ public class Chunk {
         tempIsWaterFlags[flagIndex + 3] = isWaterValue;
         
         // Add isAlphaTested flag for each of the 4 vertices of this face
-        float isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+        float isAlphaTestedValue;
+        if (CBRResourceManager.isInitialized()) {
+            try {
+                CBRResourceManager cbr = CBRResourceManager.getInstance();
+                BlockDefinition def = cbr.getBlockRegistry().getDefinition(blockType.ordinal()).orElse(null);
+                if (def != null) {
+                    isAlphaTestedValue = (def.getRenderLayer() == BlockDefinition.RenderLayer.CUTOUT) ? 1.0f : 0.0f;
+                } else {
+                    isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+                }
+            } catch (Exception e) {
+                isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+            }
+        } else {
+            isAlphaTestedValue = (blockType.isTransparent() && blockType != BlockType.WATER && blockType != BlockType.AIR) ? 1.0f : 0.0f;
+        }
         tempIsAlphaTestedFlags[flagIndex] = isAlphaTestedValue;
         tempIsAlphaTestedFlags[flagIndex + 1] = isAlphaTestedValue;
         tempIsAlphaTestedFlags[flagIndex + 2] = isAlphaTestedValue;
@@ -788,27 +861,42 @@ public class Chunk {
         float centerZ = worldZ + 0.5f;
         float crossSize = 0.45f; // Slightly smaller than full block
         
-        // Get texture coordinates for the flower using modern atlas system
+        // Get texture coordinates for the flower using CBR system (fallback to atlas)
         float u_left, v_top, u_right, v_bottom;
-        
-        Game game = Game.getInstance();
-        if (game != null && game.getTextureAtlas() != null) {
-            float[] uvCoords = game.getTextureAtlas().getBlockFaceUVs(blockType, BlockType.Face.TOP);
-            u_left = uvCoords[0];   // u1
-            v_top = uvCoords[1];    // v1
-            u_right = uvCoords[2];  // u2
-            v_bottom = uvCoords[3]; // v2
-        } else {
-            // Fallback to legacy system
-            float[] texCoords = blockType.getTextureCoords(BlockType.Face.TOP);
-            float texX = texCoords[0] / 16.0f;
-            float texY = texCoords[1] / 16.0f;
-            float texSize = 1.0f / 16.0f;
-            u_left = texX;
-            v_top = texY;
-            u_right = texX + texSize;
-            v_bottom = texY + texSize;
+        float[] uv;
+        uv = null;
+        if (CBRResourceManager.isInitialized()) {
+            try {
+                CBRResourceManager cbr = CBRResourceManager.getInstance();
+                TextureResourceManager.TextureCoordinates coords;
+                BlockDefinition def = cbr.getBlockRegistry().getDefinition(blockType.ordinal()).orElse(null);
+                if (def != null) {
+                    // For CROSS blocks, still just need full texture coords
+                    coords = cbr.getTextureManager().resolveBlockTexture(def);
+                } else {
+                    coords = cbr.getTextureManager().resolveBlockType(blockType);
+                }
+                if (coords != null) uv = coords.toArray();
+            } catch (Exception e) {
+                // Will fallback below
+            }
         }
+        if (uv == null) {
+            Game game = Game.getInstance();
+            if (game != null && game.getTextureAtlas() != null) {
+                uv = game.getTextureAtlas().getBlockFaceUVs(blockType, BlockType.Face.TOP);
+            } else {
+                float[] texCoords = blockType.getTextureCoords(BlockType.Face.TOP);
+                float tx = texCoords[0] / 16.0f;
+                float ty = texCoords[1] / 16.0f;
+                float ts = 1.0f / 16.0f;
+                uv = new float[] { tx, ty, tx + ts, ty + ts };
+            }
+        }
+        u_left = uv[0];
+        v_top = uv[1];
+        u_right = uv[2];
+        v_bottom = uv[3];
         
         // Only create 2 cross planes (no duplicates for double-sided)
         // First cross plane (diagonal from NW to SE)
