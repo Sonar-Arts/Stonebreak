@@ -5,7 +5,6 @@ import java.util.List;
 import com.stonebreak.rendering.core.OpenGLErrorHandler;
 import com.stonebreak.rendering.core.RenderingConfigurationManager;
 import com.stonebreak.rendering.core.ResourceManager;
-import com.stonebreak.rendering.models.blocks.BlockDropRenderer;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
@@ -34,7 +33,6 @@ public class Renderer {
     private final RenderingConfigurationManager configManager;
     
     // Specialized renderers
-    private final BlockDropRenderer blockDropRenderer;
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
     private final UIRenderer uiRenderer;
@@ -55,9 +53,6 @@ public class Renderer {
         configManager = new RenderingConfigurationManager(width, height);
         
         // Initialize specialized renderers
-        blockDropRenderer = new BlockDropRenderer();
-        blockDropRenderer.initialize(resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
-        
         blockRenderer = new BlockRenderer();
         blockRenderer.initializeDependencies(resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
         
@@ -121,6 +116,14 @@ public class Renderer {
      */
     public EntityRenderer getEntityRenderer() {
         return entityRenderer;
+    }
+    
+    /**
+     * Get the block renderer sub-component.
+     * @return BlockRenderer instance
+     */
+    public BlockRenderer getBlockRenderer() {
+        return blockRenderer;
     }
     
     // ============ UI RENDERER PROXY METHODS ============
@@ -381,9 +384,6 @@ public class Renderer {
         }
         if (uiRenderer != null) {
             uiRenderer.cleanup();
-        }
-        if (blockDropRenderer != null) {
-            blockDropRenderer.cleanup();
         }
         if (blockRenderer != null) {
             blockRenderer.cleanup();
