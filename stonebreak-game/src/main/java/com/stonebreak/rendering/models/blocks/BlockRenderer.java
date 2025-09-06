@@ -142,7 +142,7 @@ public class BlockRenderer {
     }
     
     /**
-     * Renders 3D block drops in the world using isolated rendering context.
+     * Renders 3D block drops in the world with proper state management.
      */
     public void renderBlockDrops(World world, Matrix4f projectionMatrix) {
         BlockDropManager dropManager = world.getBlockDropManager();
@@ -159,11 +159,8 @@ public class BlockRenderer {
         Player player = Game.getPlayer();
         Matrix4f viewMatrix = (player != null) ? player.getViewMatrix() : new Matrix4f();
         
-        // Update the isolated renderer with current data
-        blockDropRenderer.updateRenderData(drops, projectionMatrix, viewMatrix);
-        
-        // Render using isolated context (completely separated from UI state)
-        blockDropRenderer.renderBlockDrops();
+        // Render block drops using the simplified API
+        blockDropRenderer.renderBlockDrops(drops, projectionMatrix, viewMatrix);
     }
     
     /**
