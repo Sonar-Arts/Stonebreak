@@ -2,6 +2,9 @@ package com.stonebreak.rendering.player.items;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.rendering.models.blocks.BlockRenderer;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.player.geometry.ArmGeometry;
 import com.stonebreak.rendering.player.geometry.HandBlockGeometry;
 import com.stonebreak.rendering.shaders.ShaderProgram;
@@ -22,11 +25,20 @@ public class HandItemRenderer {
     private final ShaderProgram shaderProgram;
     private final TextureAtlas textureAtlas;
     private final HandBlockGeometry handBlockGeometry;
+    private final BlockRenderer blockRenderer;
     
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
         this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
+        this.blockRenderer = new BlockRenderer();
+    }
+    
+    public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
+        this.shaderProgram = shaderProgram;
+        this.textureAtlas = textureAtlas;
+        this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
+        this.blockRenderer = new BlockRenderer(textureAtlas, blockRegistry);
     }
     
     /**
@@ -78,9 +90,6 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
-        // Get UV coordinates for the flower using modern texture atlas system
-        float[] uvCoords = textureAtlas.getBlockFaceUVs(flowerType, BlockType.Face.TOP);
-        
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
@@ -93,9 +102,87 @@ public class HandItemRenderer {
         // No tint - use pure white
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         
-        // Use BlockRenderer for cross-shaped geometry
-        com.stonebreak.rendering.models.blocks.BlockRenderer.renderFlowerCross(uvCoords);
+        // Use CBR system for rendering flower cross
+        if (!blockRenderer.hasCBRSupport()) {
+            throw new IllegalStateException("HandItemRenderer requires CBR support. Use constructor with BlockDefinitionRegistry.");
+        }
+        
+        CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
+        resource.getMesh().bind();
+        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
     }
+    
+    /**
+     * Fallback method to render flower cross when CBR is not available.
+     * @deprecated CBR support is now required
+     */
+    /*
+    private void createAndRenderFlowerCross(BlockType flowerType) {
+        // Get UV coordinates for the flower using modern texture atlas system
+        float[] uvCoords = textureAtlas.getBlockFaceUVs(flowerType, BlockType.Face.TOP);
+        
+        // Create vertices for two intersecting quads forming a cross
+        float[] vertices1 = {
+            // Quad 1: Front-back cross section
+            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[2], uvCoords[1], // Top-right
+            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Second quad (X-aligned, rotated 90 degrees)
+        float[] vertices2 = {
+            0.0f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[3], // Bottom-left
+            0.0f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[3], // Bottom-right
+            0.0f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[2], uvCoords[1], // Top-right
+            0.0f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  uvCoords[0], uvCoords[1]  // Top-left
+        };
+        
+        // Combine both quads
+        float[] vertices = new float[vertices1.length + vertices2.length];
+        System.arraycopy(vertices1, 0, vertices, 0, vertices1.length);
+        System.arraycopy(vertices2, 0, vertices, vertices1.length, vertices2.length);
+        
+        int[] indices = {
+            0, 1, 2, 0, 2, 3,  // First quad
+            4, 5, 6, 4, 6, 7   // Second quad
+        };
+        
+        // Create temporary buffers and render
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        java.nio.FloatBuffer vertexBuffer = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        
+        int ibo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        java.nio.IntBuffer indexBuffer = org.lwjgl.BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
+        
+        // Render
+        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
+        
+        // Cleanup
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        GL30.glDeleteVertexArrays(vao);
+        GL20.glDeleteBuffers(vbo);
+        GL20.glDeleteBuffers(ibo);
+    }
+    */
     
     /**
      * Renders tools as 2D sprites in the player's hand.
@@ -145,5 +232,6 @@ public class HandItemRenderer {
      */
     public void cleanup() {
         handBlockGeometry.cleanup();
+        blockRenderer.cleanup();
     }
 }

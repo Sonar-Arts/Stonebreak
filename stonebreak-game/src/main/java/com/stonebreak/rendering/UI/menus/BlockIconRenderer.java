@@ -2,6 +2,8 @@ package com.stonebreak.rendering.UI.menus;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.UI.UIRenderer;
@@ -256,14 +258,117 @@ public class BlockIconRenderer {
      * Renders the actual block cube geometry.
      */
     private void renderBlockCube(BlockType type, TextureAtlas textureAtlas) {
-        int cubeVao = blockRenderer.createBlockSpecificCube(type, textureAtlas);
-        glBindVertexArray(cubeVao);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
+        // Use CBR system for rendering block cube
+        if (!blockRenderer.hasCBRSupport()) {
+            throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
+        }
         
-        // Clean up the temporary VAO and its associated buffers
-        glDeleteVertexArrays(cubeVao);
+        CBRResourceManager.BlockRenderResource resource = blockRenderer.getBlockRenderResource(type);
+        resource.getMesh().bind();
+        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+        resource.getMesh().unbind();
     }
+    
+    /**
+     * Fallback method to render block cube when CBR is not available.
+     * @deprecated CBR support is now required
+     */
+    /*
+    private void createAndRenderBlockCube(BlockType type, TextureAtlas textureAtlas) {
+        // Get face UV coordinates using modern texture atlas system
+        float[] frontUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_NORTH);
+        float[] backUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_SOUTH);
+        float[] topUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.TOP);
+        float[] bottomUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.BOTTOM);
+        float[] rightUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_EAST);
+        float[] leftUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_WEST);
+
+        // Create cube vertices with face-specific textures
+        float[] vertices = {
+            // Front face (+Z)
+            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[3],
+             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[3],
+             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[2], frontUVs[1],
+            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  frontUVs[0], frontUVs[1],
+            
+            // Back face (-Z)
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[3],
+             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[3],
+             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[2], backUVs[1],
+            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  backUVs[0], backUVs[1],
+            
+            // Top face (+Y)
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[1],
+             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[1],
+             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[2], topUVs[3],
+            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  topUVs[0], topUVs[3],
+            
+            // Bottom face (-Y)
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[0], bottomUVs[1],
+             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[2], bottomUVs[1],
+             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[2], bottomUVs[3],
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f, bottomUVs[0], bottomUVs[3],
+            
+            // Right face (+X)
+             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[3],
+             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[3],
+             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[2], rightUVs[1],
+             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  rightUVs[0], rightUVs[1],
+            
+            // Left face (-X)
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[3],
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[3],
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[2], leftUVs[1],
+            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  leftUVs[0], leftUVs[1]
+        };
+        
+        int[] indices = {
+            0,  1,  2,  0,  2,  3,  // Front
+            4,  5,  6,  4,  6,  7,  // Back
+            8,  9, 10,  8, 10, 11,  // Top
+            12, 13, 14, 12, 14, 15, // Bottom
+            16, 17, 18, 16, 18, 19, // Right
+            20, 21, 22, 20, 22, 23  // Left
+        };
+        
+        // Create temporary VAO for rendering
+        int vao = glGenVertexArrays();
+        glBindVertexArray(vao);
+        
+        int vbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
+        vertexBuffer.put(vertices).flip();
+        glBufferData(GL_ARRAY_BUFFER, vertexBuffer, GL_STATIC_DRAW);
+        
+        int stride = 8 * Float.BYTES; // 3 pos, 3 normal, 2 texCoord
+        // Position attribute (location 0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+        glEnableVertexAttribArray(0);
+        // Normal attribute (location 2)
+        glVertexAttribPointer(2, 3, GL_FLOAT, false, stride, 3 * Float.BYTES);
+        glEnableVertexAttribArray(2);
+        // Texture coordinate attribute (location 1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 6 * Float.BYTES);
+        glEnableVertexAttribArray(1);
+        
+        int ibo = glGenBuffers();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
+        indexBuffer.put(indices).flip();
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL_STATIC_DRAW);
+        
+        // Render
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        
+        // Clean up temporary resources
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+        glDeleteVertexArrays(vao);
+        glDeleteBuffers(vbo);
+        glDeleteBuffers(ibo);
+    }
+    */
     
     /**
      * Restores the OpenGL state to its original values.

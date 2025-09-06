@@ -5,8 +5,10 @@ import java.util.List;
 import com.stonebreak.rendering.core.OpenGLErrorHandler;
 import com.stonebreak.rendering.core.RenderingConfigurationManager;
 import com.stonebreak.rendering.core.ResourceManager;
+import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
@@ -32,6 +34,7 @@ public class Renderer {
     // Core managers
     private final ResourceManager resourceManager;
     private final RenderingConfigurationManager configManager;
+    private final BlockDefinitionRegistry blockRegistry;
     
     // Specialized renderers
     private final BlockRenderer blockRenderer;
@@ -54,8 +57,11 @@ public class Renderer {
         
         configManager = new RenderingConfigurationManager(width, height);
         
-        // Initialize specialized renderers
-        blockRenderer = new BlockRenderer();
+        // Initialize block definition registry for CBR support
+        blockRegistry = new GameBlockDefinitionRegistry();
+        
+        // Initialize specialized renderers with CBR support
+        blockRenderer = new BlockRenderer(resourceManager.getTextureAtlas(), blockRegistry);
         
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(), 
                                                  resourceManager.getTextureAtlas(), 
@@ -427,6 +433,9 @@ public class Renderer {
         // Cleanup core managers
         if (resourceManager != null) {
             resourceManager.cleanup();
+        }
+        if (blockRegistry != null) {
+            blockRegistry.close();
         }
         
         // Cleanup specialized renderers

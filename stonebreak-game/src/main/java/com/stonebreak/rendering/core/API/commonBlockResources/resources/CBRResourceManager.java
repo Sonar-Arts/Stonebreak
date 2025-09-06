@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.core.API.commonBlockResources.Resources;
+package com.stonebreak.rendering.core.API.commonBlockResources.resources;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;

@@ -6,9 +6,7 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWErrorCallback;
-import org.lwjgl.glfw.GLFWKeyCallback;
 import org.lwjgl.opengl.GL;
 
 import java.nio.FloatBuffer;
@@ -19,9 +17,7 @@ import java.util.HashMap;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
-import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.system.MemoryUtil.*;
 
 /**
@@ -73,7 +69,7 @@ public class CBRVisualTest {
     private List<TestBlock> testBlocks = new ArrayList<>();
     
     public static void main(String[] args) {
-        CBRVisualTest visualTest = new CBRVisualTest();
+        com.stonebreak.rendering.core.API.commonBlockResources.tests.CBRVisualTest visualTest = new com.stonebreak.rendering.core.API.commonBlockResources.tests.CBRVisualTest();
         visualTest.run();
     }
     

@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.core.API.commonBlockResources.Resources;
+package com.stonebreak.rendering.core.API.commonBlockResources.resources;
 
 /**
  * Core interface for block resources following Interface Segregation Principle.

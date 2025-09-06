@@ -7,6 +7,8 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
@@ -37,9 +39,15 @@ import static org.lwjgl.opengl.GL30.*;
 public class BlockRenderer {
     private int crackTextureId;
     private int blockOverlayVao;
+    private CBRResourceManager cbrManager;
     
     
     public BlockRenderer() {
+        initialize();
+    }
+    
+    public BlockRenderer(TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
+        this.cbrManager = CBRResourceManager.getInstance(textureAtlas, blockRegistry);
         initialize();
     }
     
@@ -135,6 +143,59 @@ public class BlockRenderer {
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
         shaderProgram.unbind();
+    }
+    
+    /**
+     * Renders a block using CBR BlockRenderResource with proper shader configuration.
+     * This method sets up texture coordinates and renders the block mesh.
+     */
+    public void renderBlock(CBRResourceManager.BlockRenderResource resource, ShaderProgram shaderProgram, Matrix4f modelMatrix) {
+        // Get texture coordinates from the resource
+        float[] texCoords = resource.getTextureCoords().toArray();
+        
+        // Set texture coordinate transformation in shader
+        shaderProgram.setUniform("u_transformUVsForItem", true);
+        shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(texCoords[0], texCoords[1])); // u1, v1
+        shaderProgram.setUniform("u_atlasUVScale", new Vector2f(texCoords[2] - texCoords[0], texCoords[3] - texCoords[1])); // width, height
+        
+        // Set model matrix
+        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        
+        // Bind mesh and render
+        resource.getMesh().bind();
+        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+        
+        // Reset shader state
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+    }
+    
+    /**
+     * Convenience method for rendering a block type directly.
+     */
+    public void renderBlockType(BlockType type, ShaderProgram shaderProgram, Matrix4f modelMatrix) {
+        if (cbrManager == null) {
+            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager.");
+        }
+        CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(type);
+        renderBlock(resource, shaderProgram, modelMatrix);
+    }
+    
+    /**
+     * Gets the CBRResourceManager instance if available.
+     * 
+     * @return The CBRResourceManager instance, or null if not initialized
+     */
+    public CBRResourceManager getCBRResourceManager() {
+        return cbrManager;
+    }
+    
+    /**
+     * Checks if this BlockRenderer has been initialized with CBRResourceManager.
+     * 
+     * @return true if CBR is available, false otherwise
+     */
+    public boolean hasCBRSupport() {
+        return cbrManager != null;
     }
     
 
@@ -372,10 +433,30 @@ public class BlockRenderer {
     }
     
     /**
-     * Creates a VAO for rendering a specific block type with proper face texturing.
+     * Gets a block render resource using CBR system with proper face texturing.
      * This ensures proper face texturing for blocks with different textures per face.
      */
+    public CBRResourceManager.BlockRenderResource getBlockRenderResource(BlockType type) {
+        if (cbrManager == null) {
+            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with TextureAtlas and BlockDefinitionRegistry.");
+        }
+        return cbrManager.getBlockTypeResource(type);
+    }
+    
+    /**
+     * Legacy method maintained for backward compatibility.
+     * @deprecated Use getBlockRenderResource(BlockType) instead
+     */
+    /*
+    @Deprecated
     public int createBlockSpecificCube(BlockType type, TextureAtlas textureAtlas) {
+        // If CBR is available, use it and return VAO from the mesh
+        if (cbrManager != null) {
+            CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(type);
+            return resource.getMesh().getVAO();
+        }
+        
+        // Fallback to original implementation for backward compatibility
         // Use the modern metadata-driven texture atlas system instead of legacy grid coordinates
         float[] frontUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_NORTH);   // Front
         float[] backUVs = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_SOUTH);    // Back
@@ -467,12 +548,31 @@ public class BlockRenderer {
         
         return vao;
     }
+    */
     
     /**
-     * Creates a VAO for rendering cross-shaped blocks like flowers.
+     * Gets a flower cross render resource using CBR system.
      * Creates two intersecting quads that form a cross pattern.
      */
+    public CBRResourceManager.BlockRenderResource getFlowerCrossResource(BlockType type) {
+        if (cbrManager == null) {
+            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with TextureAtlas and BlockDefinitionRegistry.");
+        }
+        return cbrManager.getBlockTypeResource(type);
+    }
+    
+    /**
+     * Legacy method for creating cross-shaped blocks like flowers.
+     * @deprecated Use getFlowerCrossResource(BlockType) instead
+     */
+    /*
+    @Deprecated
     public int createFlowerCross(BlockType type, TextureAtlas textureAtlas) {
+        // If CBR is available, use it and return VAO from the mesh
+        if (cbrManager != null) {
+            CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(type);
+            return resource.getMesh().getVAO();
+        }
         // Get UV coordinates for the flower texture
         float[] uvCoords = textureAtlas.getBlockFaceUVs(type, BlockType.Face.SIDE_NORTH);
         
@@ -540,12 +640,16 @@ public class BlockRenderer {
         
         return vao;
     }
+    */
     
     /**
      * Renders a flower cross pattern immediately using provided UV coordinates.
      * Creates temporary VAO and renders two intersecting quads, then cleans up resources.
      * This is used for immediate rendering scenarios like held items.
+     * @deprecated Use CBR system with renderBlock() method instead
      */
+    /*
+    @Deprecated
     public static void renderFlowerCross(float[] uvCoords) {
         // Create vertices for two intersecting quads forming a cross
         // First quad (Z-aligned)
@@ -615,6 +719,7 @@ public class BlockRenderer {
         GL20.glDeleteBuffers(vbo);
         GL20.glDeleteBuffers(ibo);
     }
+    */
     
     /**
      * Cleanup method to release resources.
@@ -632,5 +737,14 @@ public class BlockRenderer {
             blockOverlayVao = 0;
         }
         
+        // Clean up CBRResourceManager if we own it
+        if (cbrManager != null) {
+            try {
+                cbrManager.close();
+            } catch (Exception e) {
+                System.err.println("Error cleaning up CBRResourceManager: " + e.getMessage());
+            }
+            cbrManager = null;
+        }
     }
 }

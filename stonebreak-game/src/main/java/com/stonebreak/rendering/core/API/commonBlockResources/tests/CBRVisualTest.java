@@ -1,17 +1,15 @@
-package com.stonebreak.rendering.core.API.commonBlockResources;
+package com.stonebreak.rendering.core.API.commonBlockResources.tests;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.textures.TextureAtlas;
-import com.stonebreak.rendering.core.API.commonBlockResources.Resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWErrorCallback;
-import org.lwjgl.glfw.GLFWKeyCallback;
 import org.lwjgl.opengl.GL;
 
 import java.nio.FloatBuffer;
@@ -22,9 +20,7 @@ import java.util.HashMap;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
-import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.system.MemoryUtil.*;
 
 /**
