@@ -40,11 +40,8 @@ public class BlockRenderer {
     private int crackTextureId;
     private int blockOverlayVao;
     
-    // Block drop rendering resources (integrated from BlockDropRenderer)
-    private ShaderProgram shaderProgram;
-    private TextureAtlas textureAtlas;
-    private final Map<Item, Integer> blockDropVaoCache = new HashMap<>();
-    private boolean initialized = false;
+    // Block drop renderer delegation
+    private BlockDropRenderer blockDropRenderer;
     
     public BlockRenderer() {
         initialize();
@@ -53,6 +50,7 @@ public class BlockRenderer {
     private void initialize() {
         createCrackTexture();
         createBlockOverlayVao();
+        this.blockDropRenderer = new BlockDropRenderer();
     }
     
     /**
@@ -60,9 +58,7 @@ public class BlockRenderer {
      * Must be called after construction to properly initialize block drop rendering.
      */
     public void initializeDependencies(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
-        this.shaderProgram = shaderProgram;
-        this.textureAtlas = textureAtlas;
-        this.initialized = true;
+        this.blockDropRenderer.initialize(shaderProgram, textureAtlas);
     }
     
     /**
@@ -154,13 +150,9 @@ public class BlockRenderer {
     }
     
     /**
-     * Renders 3D block drops in the world using shared resources.
+     * Renders 3D block drops in the world by delegating to BlockDropRenderer.
      */
     public void renderBlockDrops(World world, Matrix4f projectionMatrix) {
-        if (!initialized) {
-            return; // Not initialized yet
-        }
-        
         BlockDropManager dropManager = world.getBlockDropManager();
         if (dropManager == null) {
             return;
@@ -175,293 +167,10 @@ public class BlockRenderer {
         Player player = Game.getPlayer();
         Matrix4f viewMatrix = (player != null) ? player.getViewMatrix() : new Matrix4f();
         
-        renderBlockDropsInternal(drops, projectionMatrix, viewMatrix);
+        // Delegate to the specialized block drop renderer
+        blockDropRenderer.renderBlockDrops(drops, projectionMatrix, viewMatrix);
     }
 
-    /**
-     * Internal method to render block drops with shared resources.
-     */
-    private void renderBlockDropsInternal(List<BlockDrop> drops, Matrix4f projectionMatrix, Matrix4f viewMatrix) {
-        // Save current OpenGL state
-        boolean blendEnabled = glIsEnabled(GL_BLEND);
-        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
-        
-        try {
-            // Configure OpenGL for block drops
-            glEnable(GL_DEPTH_TEST);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDisable(GL_CULL_FACE); // Allow seeing both sides of drops
-            
-            shaderProgram.bind();
-            setupBlockDropShaderUniforms(projectionMatrix, viewMatrix);
-            setupBlockDropTexture();
-            
-            // Sort drops by distance for proper transparency rendering
-            List<BlockDrop> sortedDrops = sortDropsByDistance(drops, viewMatrix);
-            Map<Item, List<BlockDrop>> dropsByType = groupDropsByType(sortedDrops);
-            
-            // Render each type batch
-            for (Map.Entry<Item, List<BlockDrop>> entry : dropsByType.entrySet()) {
-                renderBlockDropsBatch(entry.getKey(), entry.getValue());
-            }
-            
-        } finally {
-            resetBlockDropShaderUniforms();
-            shaderProgram.unbind();
-            
-            // Restore OpenGL state
-            if (!blendEnabled) glDisable(GL_BLEND);
-            if (!depthTestEnabled) glDisable(GL_DEPTH_TEST);
-            if (cullFaceEnabled) glEnable(GL_CULL_FACE);
-        }
-    }
-
-    private void setupBlockDropShaderUniforms(Matrix4f projectionMatrix, Matrix4f viewMatrix) {
-        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
-        shaderProgram.setUniform("viewMatrix", viewMatrix);
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("texture_sampler", 0);
-    }
-
-    private void setupBlockDropTexture() {
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    }
-
-    private void resetBlockDropShaderUniforms() {
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_renderPass", 0);
-        shaderProgram.setUniform("modelMatrix", new Matrix4f());
-    }
-
-    private List<BlockDrop> sortDropsByDistance(List<BlockDrop> drops, Matrix4f viewMatrix) {
-        Vector3f cameraPos = new Vector3f();
-        viewMatrix.invert(new Matrix4f()).getTranslation(cameraPos);
-        
-        List<BlockDrop> sortedDrops = new ArrayList<>(drops);
-        sortedDrops.sort((a, b) -> {
-            float distA = a.getPosition().distanceSquared(cameraPos);
-            float distB = b.getPosition().distanceSquared(cameraPos);
-            return Float.compare(distB, distA); // Back-to-front for transparency
-        });
-        
-        return sortedDrops;
-    }
-
-    private Map<Item, List<BlockDrop>> groupDropsByType(List<BlockDrop> drops) {
-        Map<Item, List<BlockDrop>> dropsByType = new HashMap<>();
-        
-        for (BlockDrop drop : drops) {
-            int itemId = drop.getBlockTypeId();
-            Item item = resolveItemFromId(itemId);
-            
-            if (item != null) {
-                dropsByType.computeIfAbsent(item, k -> new ArrayList<>()).add(drop);
-            }
-        }
-        
-        return dropsByType;
-    }
-
-    private Item resolveItemFromId(int itemId) {
-        Item item = ItemType.getById(itemId);
-        if (item == null) {
-            BlockType blockType = BlockType.getById(itemId);
-            if (blockType != null && blockType != BlockType.AIR) {
-                item = blockType;
-            }
-        }
-        return item;
-    }
-
-    private void renderBlockDropsBatch(Item item, List<BlockDrop> drops) {
-        if (drops.isEmpty()) {
-            return;
-        }
-        
-        // Get or create VAO for this item type, using shared BlockRenderer methods
-        int vao = blockDropVaoCache.computeIfAbsent(item, this::createBlockDropVAO);
-        
-        glBindVertexArray(vao);
-        
-        for (BlockDrop drop : drops) {
-            Matrix4f modelMatrix = createBlockDropModelMatrix(drop, item);
-            shaderProgram.setUniform("modelMatrix", modelMatrix);
-            
-            if (item instanceof ItemType) {
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // 2D sprite
-            } else {
-                glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 3D cube
-            }
-        }
-        
-        glBindVertexArray(0);
-    }
-
-    private Matrix4f createBlockDropModelMatrix(BlockDrop drop, Item item) {
-        Matrix4f modelMatrix = new Matrix4f();
-        modelMatrix.translate(drop.getPosition());
-        modelMatrix.rotateY((float) Math.toRadians(drop.getRotationY()));
-        
-        if (item instanceof ItemType) {
-            modelMatrix.rotateX((float) Math.toRadians(-15.0f)); // Tilt items
-            modelMatrix.scale(0.6f); // Make items visible
-        } else {
-            modelMatrix.scale(0.25f); // Small blocks
-        }
-        
-        return modelMatrix;
-    }
-
-    private int createBlockDropVAO(Item item) {
-        if (item instanceof ItemType itemType) {
-            return createSprite2DVAO(itemType);
-        } else {
-            return createBlockDrop3DVAO((BlockType) item);
-        }
-    }
-
-    private int createBlockDrop3DVAO(BlockType blockType) {
-        // Get face UV coordinates 
-        float[] frontUVs = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.SIDE_NORTH);
-        float[] backUVs = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.SIDE_SOUTH);
-        float[] topUVs = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.TOP);
-        float[] bottomUVs = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.BOTTOM);
-        float[] rightUVs = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.SIDE_EAST);
-        float[] leftUVs = textureAtlas.getBlockFaceUVs(blockType, BlockType.Face.SIDE_WEST);
-        
-        float halfSize = 0.5f;
-        
-        // Create vertices with 10 floats per vertex: position (3), UV (2), normal (3), isWater (1), isAlphaTested (1)
-        float[] vertices = {
-            // Front face (+Z)
-            -halfSize, -halfSize, +halfSize,  frontUVs[0], frontUVs[3],  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, // Bottom-left
-            +halfSize, -halfSize, +halfSize,  frontUVs[2], frontUVs[3],  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, // Bottom-right
-            +halfSize, +halfSize, +halfSize,  frontUVs[2], frontUVs[1],  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, // Top-right
-            -halfSize, +halfSize, +halfSize,  frontUVs[0], frontUVs[1],  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, // Top-left
-
-            // Back face (-Z)
-            -halfSize, -halfSize, -halfSize,  backUVs[0], backUVs[3],  0.0f, 0.0f, -1.0f,  0.0f, 0.0f, // Bottom-left
-            +halfSize, -halfSize, -halfSize,  backUVs[2], backUVs[3],  0.0f, 0.0f, -1.0f,  0.0f, 0.0f, // Bottom-right
-            +halfSize, +halfSize, -halfSize,  backUVs[2], backUVs[1],  0.0f, 0.0f, -1.0f,  0.0f, 0.0f, // Top-right
-            -halfSize, +halfSize, -halfSize,  backUVs[0], backUVs[1],  0.0f, 0.0f, -1.0f,  0.0f, 0.0f, // Top-left
-
-            // Top face (+Y)
-            -halfSize, +halfSize, -halfSize,  topUVs[0], topUVs[1],  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, // Top-left
-            +halfSize, +halfSize, -halfSize,  topUVs[2], topUVs[1],  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, // Top-right
-            +halfSize, +halfSize, +halfSize,  topUVs[2], topUVs[3],  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, // Bottom-right
-            -halfSize, +halfSize, +halfSize,  topUVs[0], topUVs[3],  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, // Bottom-left
-
-            // Bottom face (-Y)
-            -halfSize, -halfSize, -halfSize,  bottomUVs[0], bottomUVs[1],  0.0f, -1.0f, 0.0f,  0.0f, 0.0f, // Top-left
-            +halfSize, -halfSize, -halfSize,  bottomUVs[2], bottomUVs[1],  0.0f, -1.0f, 0.0f,  0.0f, 0.0f, // Top-right
-            +halfSize, -halfSize, +halfSize,  bottomUVs[2], bottomUVs[3],  0.0f, -1.0f, 0.0f,  0.0f, 0.0f, // Bottom-right
-            -halfSize, -halfSize, +halfSize,  bottomUVs[0], bottomUVs[3],  0.0f, -1.0f, 0.0f,  0.0f, 0.0f, // Bottom-left
-
-            // Right face (+X)
-            +halfSize, -halfSize, -halfSize,  rightUVs[0], rightUVs[3],  1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Bottom-left
-            +halfSize, -halfSize, +halfSize,  rightUVs[2], rightUVs[3],  1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Bottom-right
-            +halfSize, +halfSize, +halfSize,  rightUVs[2], rightUVs[1],  1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Top-right
-            +halfSize, +halfSize, -halfSize,  rightUVs[0], rightUVs[1],  1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Top-left
-
-            // Left face (-X)
-            -halfSize, -halfSize, -halfSize,  leftUVs[0], leftUVs[3],  -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Bottom-left
-            -halfSize, -halfSize, +halfSize,  leftUVs[2], leftUVs[3],  -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Bottom-right
-            -halfSize, +halfSize, +halfSize,  leftUVs[2], leftUVs[1],  -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, // Top-right
-            -halfSize, +halfSize, -halfSize,  leftUVs[0], leftUVs[1],  -1.0f, 0.0f, 0.0f,  0.0f, 0.0f  // Top-left
-        };
-
-        int[] indices = {
-            // Front face
-            0, 1, 2, 2, 3, 0,
-            // Back face
-            4, 5, 6, 6, 7, 4,
-            // Top face
-            8, 9, 10, 10, 11, 8,
-            // Bottom face
-            12, 13, 14, 14, 15, 12,
-            // Right face
-            16, 17, 18, 18, 19, 16,
-            // Left face
-            20, 21, 22, 22, 23, 20
-        };
-
-        return createVAO(vertices, indices, 10);
-    }
-
-    private int createSprite2DVAO(ItemType itemType) {
-        float[] uvCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
-        float size = 0.4f;
-        
-        // Vertical quad vertices for 2D sprite
-        float[] vertices = {
-            -size, -size, 0.0f,  uvCoords[0], uvCoords[3],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Bottom-left
-             size, -size, 0.0f,  uvCoords[2], uvCoords[3],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Bottom-right  
-             size,  size, 0.0f,  uvCoords[2], uvCoords[1],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Top-right
-            -size,  size, 0.0f,  uvCoords[0], uvCoords[1],  0.0f, 0.0f, 1.0f,  0.0f, 1.0f  // Top-left
-        };
-        
-        int[] indices = {0, 1, 2, 2, 3, 0};
-        
-        return createVAO(vertices, indices, 10); // 10 floats per vertex
-    }
-
-    private int createVAO(float[] vertices, int[] indices, int stride) {
-        int vao = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(vao);
-        
-        int vbo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-        
-        int ibo = GL20.glGenBuffers();
-        GL20.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-        
-        setupBlockDropVertexAttributes(stride);
-        
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
-        GL30.glBindVertexArray(0);
-        
-        return vao;
-    }
-
-    private void setupBlockDropVertexAttributes(int stride) {
-        int strideBytes = stride * Float.BYTES;
-        
-        // Position (location 0)
-        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, strideBytes, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // UV coordinates (location 1)  
-        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, strideBytes, 3 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(1);
-        
-        // Normal (location 2)
-        GL20.glVertexAttribPointer(2, 3, GL20.GL_FLOAT, false, strideBytes, 5 * Float.BYTES);
-        GL20.glEnableVertexAttribArray(2);
-        
-        if (stride >= 10) {
-            // isWater (location 3)
-            GL20.glVertexAttribPointer(3, 1, GL20.GL_FLOAT, false, strideBytes, 8 * Float.BYTES);
-            GL20.glEnableVertexAttribArray(3);
-            
-            // isAlphaTested (location 4)
-            GL20.glVertexAttribPointer(4, 1, GL20.GL_FLOAT, false, strideBytes, 9 * Float.BYTES);
-            GL20.glEnableVertexAttribArray(4);
-        }
-    }
     
     /**
      * Creates the crack texture with multiple crack stages.
@@ -956,12 +665,9 @@ public class BlockRenderer {
             blockOverlayVao = 0;
         }
         
-        // Cleanup block drop VAO cache
-        for (Integer vao : blockDropVaoCache.values()) {
-            if (vao != null && vao != 0) {
-                GL30.glDeleteVertexArrays(vao);
-            }
+        // Delegate block drop cleanup to specialized renderer
+        if (blockDropRenderer != null) {
+            blockDropRenderer.cleanup();
         }
-        blockDropVaoCache.clear();
     }
 }
