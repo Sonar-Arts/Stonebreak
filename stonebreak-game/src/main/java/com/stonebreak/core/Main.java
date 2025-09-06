@@ -434,7 +434,7 @@ public class Main {
         renderDeferredElements(game, renderer);
         renderGameUI(game, renderer);
         renderFullscreenMenus(game);
-        renderTooltips(game, renderer);
+        renderer.renderOverlay(game, width, height);
         renderPauseMenu(game, renderer);
     }
 
@@ -587,26 +587,6 @@ public class Main {
         renderer.getBlockRenderer().renderBlockDrops(world, renderer.getProjectionMatrix());
     }
 
-    private void renderTooltips(Game game, Renderer renderer) {
-        if (renderer == null) return;
-        
-        InventoryScreen inventoryScreen = game.getInventoryScreen();
-        RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-        
-        if (inventoryScreen != null) {
-            renderer.beginUIFrame(width, height, 1.0f);
-            if (inventoryScreen.isVisible()) {
-                inventoryScreen.renderTooltipsOnly(width, height);
-            } else {
-                inventoryScreen.renderHotbarTooltipsOnly(width, height);
-            }
-            renderer.endUIFrame();
-        }
-        
-        if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-            recipeBookScreen.renderTooltipsOnly();
-        }
-    }
 
     private void renderPauseMenu(Game game, Renderer renderer) {
         PauseMenu pauseMenu = game.getPauseMenu();

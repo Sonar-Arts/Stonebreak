@@ -11,6 +11,7 @@ import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
@@ -39,6 +40,7 @@ public class Renderer {
     private final DebugRenderer debugRenderer;
     private final EntityRenderer entityRenderer;
     private final WorldRenderer worldRenderer;
+    private final OverlayRenderer overlayRenderer;
     
 
     /**
@@ -77,6 +79,9 @@ public class Renderer {
                                          resourceManager.getTextureAtlas(), 
                                          configManager.getProjectionMatrix(),
                                          blockRenderer, playerArmRenderer, entityRenderer);
+        
+        overlayRenderer = new OverlayRenderer(uiRenderer.getBlockIconRenderer(), 
+                                             uiRenderer.getItemIconRenderer());
     }
     
     /**
@@ -330,6 +335,60 @@ public class Renderer {
     
     // ============ END UI RENDERER PROXY METHODS ============
     
+    // ============ OVERLAY RENDERER METHODS ============
+    
+    /**
+     * Renders all overlay UI elements that appear above other UI.
+     * This method should be called after all other UI rendering is complete.
+     */
+    public void renderOverlay(Game game, int windowWidth, int windowHeight) {
+        if (overlayRenderer != null) {
+            beginUIFrame(windowWidth, windowHeight, 1.0f);
+            overlayRenderer.renderOverlay(game, windowWidth, windowHeight);
+            endUIFrame();
+        }
+    }
+    
+    /**
+     * Get the overlay renderer instance.
+     * @return OverlayRenderer instance
+     */
+    public OverlayRenderer getOverlayRenderer() {
+        return overlayRenderer;
+    }
+    
+    /**
+     * Renders an item icon on the overlay layer (above all other UI).
+     * This should be used for icons that need to appear above other UI elements.
+     */
+    public void renderOverlayItemIcon(float x, float y, float w, float h, com.stonebreak.items.Item item) {
+        if (overlayRenderer != null) {
+            overlayRenderer.renderItemIcon(x, y, w, h, item, resourceManager.getTextureAtlas());
+        }
+    }
+    
+    /**
+     * Renders an item icon for a block type on the overlay layer (above all other UI).
+     * This should be used for icons that need to appear above other UI elements.
+     */
+    public void renderOverlayItemIcon(float x, float y, float w, float h, int blockTypeId) {
+        if (overlayRenderer != null) {
+            overlayRenderer.renderItemIcon(x, y, w, h, blockTypeId, resourceManager.getTextureAtlas());
+        }
+    }
+    
+    /**
+     * Renders a 3D block icon on the overlay layer (above all other UI).
+     * This should be used for icons that need to appear above other UI elements.
+     */
+    public void renderOverlayBlockIcon(com.stonebreak.blocks.BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
+        if (overlayRenderer != null) {
+            overlayRenderer.renderBlockIcon(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, 
+                                          resourceManager.getShaderProgram(), resourceManager.getTextureAtlas());
+        }
+    }
+    
+    // ============ END OVERLAY RENDERER METHODS ============
     
     
 
@@ -390,6 +449,9 @@ public class Renderer {
         }
         if (entityRenderer != null) {
             entityRenderer.cleanup();
+        }
+        if (overlayRenderer != null) {
+            overlayRenderer.cleanup();
         }
         
         // Cleanup pause menu

@@ -311,6 +311,20 @@ public class UIRenderer {
         return menuRenderer.nvgRGBA(r, g, b, a, color);
     }
     
+    /**
+     * Get the block icon renderer for rendering block icons in tooltip layer.
+     */
+    public BlockIconRenderer getBlockIconRenderer() {
+        return blockIconRenderer;
+    }
+    
+    /**
+     * Get the item icon renderer for rendering item icons in tooltip layer.
+     */
+    public ItemIconRenderer getItemIconRenderer() {
+        return itemIconRenderer;
+    }
+    
     public void cleanup() {
         // Cleanup OpenGL quad renderer
         if (openGLQuadRenderer != null) {
