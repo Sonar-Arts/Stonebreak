@@ -88,9 +88,6 @@ public class DropRenderer {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        // Disable depth writes for transparent objects to prevent occlusion of entities behind them
-        glDepthMask(false);
-        
         // Render each drop (skip compressed ones)
         for (Entity drop : drops) {
             if (drop.isAlive() && isDropEntity(drop)) {
@@ -110,7 +107,6 @@ public class DropRenderer {
         
         // Clean up state
         glDisable(GL_BLEND);
-        glDepthMask(true); // Re-enable depth writes for subsequent rendering
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
@@ -186,6 +182,12 @@ public class DropRenderer {
         
         CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
         
+        // Handle depth writing based on block transparency
+        // For transparent blocks (like glass), disable depth writes to prevent occlusion issues
+        // For solid blocks, enable depth writes to ensure all faces render properly
+        boolean isTransparent = isTransparentBlock(blockType);
+        glDepthMask(!isTransparent);
+        
         // Set shader uniforms for block rendering
         shaderProgram.setUniform("u_useSolidColor", false);
         
@@ -201,6 +203,9 @@ public class DropRenderer {
         // Render the block mesh
         resource.getMesh().bind();
         glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+        
+        // Restore depth writes for subsequent rendering
+        glDepthMask(true);
     }
     
     /**
@@ -322,6 +327,21 @@ public class DropRenderer {
             return itemDrop.getItemType();
         }
         return null; // No item type
+    }
+    
+    /**
+     * Determines if a block type should be considered transparent for rendering purposes.
+     * Transparent blocks need special depth handling to render properly.
+     */
+    private boolean isTransparentBlock(BlockType blockType) {
+        switch (blockType) {
+            case WATER:
+            case ROSE:
+            case DANDELION:
+                return true;
+            default:
+                return false;
+        }
     }
     
     /**
