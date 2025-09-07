@@ -143,35 +143,25 @@ public class DropRenderer {
         }
         
         // Use CBR API to get block render resource
-        if (cbrManager != null) {
-            try {
-                CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
-                
-                // Set shader uniforms for block rendering
-                shaderProgram.setUniform("u_useSolidColor", false);
-                shaderProgram.setUniform("u_transformUVsForItem", true);
-                
-                // Get texture coordinates
-                float[] texCoords = resource.getTextureCoords().toArray();
-                shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(texCoords[0], texCoords[1]));
-                shaderProgram.setUniform("u_atlasUVScale", new Vector2f(texCoords[2] - texCoords[0], texCoords[3] - texCoords[1]));
-                
-                // Set color with slight transparency for visual appeal
-                shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.95f));
-                
-                // Render the block mesh
-                resource.getMesh().bind();
-                glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
-                
-            } catch (Exception e) {
-                System.err.println("Error rendering block drop " + blockType + ": " + e.getMessage());
-                // Fall back to simple cube if CBR fails
-                renderFallbackCube(shaderProgram, blockType);
-            }
-        } else {
-            // Fallback if CBR is not available
-            renderFallbackCube(shaderProgram, blockType);
+        if (cbrManager == null) {
+            System.err.println("[DropRenderer] CBR not available for block drop " + blockType);
+            return;
         }
+        
+        CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
+        
+        // Set shader uniforms for block rendering
+        shaderProgram.setUniform("u_useSolidColor", false);
+        
+        // CBR meshes already have texture coordinates baked in, so don't transform them
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        
+        // Set color with slight transparency for visual appeal
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.95f));
+        
+        // Render the block mesh
+        resource.getMesh().bind();
+        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
     }
     
     /**
@@ -204,28 +194,6 @@ public class DropRenderer {
         glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0); // 2 triangles per quad, 2 quads (cross pattern)
     }
     
-    /**
-     * Renders a fallback cube when CBR is not available.
-     */
-    private void renderFallbackCube(ShaderProgram shaderProgram, BlockType blockType) {
-        // Set basic shader uniforms
-        shaderProgram.setUniform("u_useSolidColor", false);
-        shaderProgram.setUniform("u_transformUVsForItem", true);
-        
-        // Use block's atlas coordinates
-        float atlasU = blockType.getAtlasX() / 16.0f;
-        float atlasV = blockType.getAtlasY() / 16.0f;
-        float atlasW = 1.0f / 16.0f;
-        float atlasH = 1.0f / 16.0f;
-        
-        shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(atlasU, atlasV));
-        shaderProgram.setUniform("u_atlasUVScale", new Vector2f(atlasW, atlasH));
-        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.95f));
-        
-        // Use the item sprite VAO as a simple cube substitute
-        GL30.glBindVertexArray(itemSpriteVao);
-        glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0);
-    }
     
     /**
      * Creates VAO for rendering item sprites as 3D cross-pattern quads.
