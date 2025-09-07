@@ -423,14 +423,8 @@ public class EntityManager {
      * Cleans up dead entities and performs maintenance.
      */
     public void cleanup() {
-        // Remove all dead entities
-        Iterator<Entity> iterator = entities.iterator();
-        while (iterator.hasNext()) {
-            Entity entity = iterator.next();
-            if (!entity.isAlive()) {
-                iterator.remove();
-            }
-        }
+        // Remove all dead entities (CopyOnWriteArrayList doesn't support iterator.remove())
+        entities.removeIf(entity -> !entity.isAlive());
         
         // Clear pending lists
         synchronized (entitiesToAdd) {

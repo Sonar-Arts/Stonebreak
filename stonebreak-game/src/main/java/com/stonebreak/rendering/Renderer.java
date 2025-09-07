@@ -67,7 +67,8 @@ public class Renderer {
         
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(), 
                                                  resourceManager.getTextureAtlas(), 
-                                                 configManager.getProjectionMatrix());
+                                                 configManager.getProjectionMatrix(),
+                                                 blockRegistry);
         
         uiRenderer = new UIRenderer();
         uiRenderer.init();
