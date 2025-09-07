@@ -88,6 +88,9 @@ public class DropRenderer {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
+        // Disable depth writes for transparent objects to prevent occlusion of entities behind them
+        glDepthMask(false);
+        
         // Render each drop (skip compressed ones)
         for (Entity drop : drops) {
             if (drop.isAlive() && isDropEntity(drop)) {
@@ -107,6 +110,7 @@ public class DropRenderer {
         
         // Clean up state
         glDisable(GL_BLEND);
+        glDepthMask(true); // Re-enable depth writes for subsequent rendering
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         

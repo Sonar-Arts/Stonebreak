@@ -110,11 +110,11 @@ public class WorldRenderer {
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
 
-        // Render drops before entities (underneath everything but above world geometry)
-        renderDrops(player);
-        
-        // Render entities first (before player arm to prevent transparency occlusion)
+        // Render entities first (solid objects should render before transparent ones)
         renderEntities(player);
+        
+        // Render drops after entities (transparent objects render last)
+        renderDrops(player);
 
         // Render water particles
         renderWaterParticles();
