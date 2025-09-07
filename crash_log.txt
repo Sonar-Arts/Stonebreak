@@ -1,0 +1,16 @@
+=== CRASH LOG 2025-09-06T20:45:25.084454900 ===
+State: PLAYING
+Player: 15.332692, 71.0, -26.167637
+Chunks: 413
+Memory: 403MB
+Exception: HandItemRenderer requires CBR support. Use constructor with BlockDefinitionRegistry.
+Stack trace: [stonebreak.game/com.stonebreak.rendering.player.items.HandItemRenderer.renderFlowerInHand(HandItemRenderer.java:107), stonebreak.game/com.stonebreak.rendering.player.items.HandItemRenderer.renderBlockInHand(HandItemRenderer.java:49), stonebreak.game/com.stonebreak.rendering.player.PlayerArmRenderer.renderSelectedItem(PlayerArmRenderer.java:164), stonebreak.game/com.stonebreak.rendering.player.PlayerArmRenderer.renderPlayerArm(PlayerArmRenderer.java:112), stonebreak.game/com.stonebreak.rendering.gameWorld.WorldRenderer.renderPlayerArm(WorldRenderer.java:262), stonebreak.game/com.stonebreak.rendering.gameWorld.WorldRenderer.renderWorld(WorldRenderer.java:123), stonebreak.game/com.stonebreak.rendering.Renderer.renderWorld(Renderer.java:420), stonebreak.game/com.stonebreak.core.Main.render3DWorld(Main.java:494), stonebreak.game/com.stonebreak.core.Main.render3DGameState(Main.java:433), stonebreak.game/com.stonebreak.core.Main.render(Main.java:408), stonebreak.game/com.stonebreak.core.Main.loop(Main.java:370), stonebreak.game/com.stonebreak.core.Main.run(Main.java:70), stonebreak.game/com.stonebreak.core.Main.main(Main.java:58)]
+
+=== CRASH LOG 2025-09-06T20:45:40.486015500 ===
+State: PLAYING
+Player: -2.7980337, 72.0, -6.131454
+Chunks: 474
+Memory: 524MB
+Exception: HandItemRenderer requires CBR support. Use constructor with BlockDefinitionRegistry.
+Stack trace: [stonebreak.game/com.stonebreak.rendering.player.items.HandItemRenderer.renderFlowerInHand(HandItemRenderer.java:107), stonebreak.game/com.stonebreak.rendering.player.items.HandItemRenderer.renderBlockInHand(HandItemRenderer.java:49), stonebreak.game/com.stonebreak.rendering.player.PlayerArmRenderer.renderSelectedItem(PlayerArmRenderer.java:164), stonebreak.game/com.stonebreak.rendering.player.PlayerArmRenderer.renderPlayerArm(PlayerArmRenderer.java:112), stonebreak.game/com.stonebreak.rendering.gameWorld.WorldRenderer.renderPlayerArm(WorldRenderer.java:262), stonebreak.game/com.stonebreak.rendering.gameWorld.WorldRenderer.renderWorld(WorldRenderer.java:123), stonebreak.game/com.stonebreak.rendering.Renderer.renderWorld(Renderer.java:420), stonebreak.game/com.stonebreak.core.Main.render3DWorld(Main.java:494), stonebreak.game/com.stonebreak.core.Main.render3DGameState(Main.java:433), stonebreak.game/com.stonebreak.core.Main.render(Main.java:408), stonebreak.game/com.stonebreak.core.Main.loop(Main.java:370), stonebreak.game/com.stonebreak.core.Main.run(Main.java:70), stonebreak.game/com.stonebreak.core.Main.main(Main.java:58)]
+

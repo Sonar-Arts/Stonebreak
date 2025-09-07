@@ -492,13 +492,15 @@ public class EntityCollision {
         boolean inWater = isInWater(entity);
         entity.setInWater(inWater);
         
-        // Apply gravity
-        if (!entity.isOnGround() && !inWater) {
-            velocity.y += Entity.GRAVITY * deltaTime;
-        } else if (inWater) {
-            // Buoyancy in water
-            velocity.y += Entity.GRAVITY * 0.3f * deltaTime; // Reduced gravity in water
-            velocity.mul(0.8f); // Water resistance
+        // Apply gravity (skip for BlockDrop as it has custom physics)
+        if (!(entity instanceof BlockDrop)) {
+            if (!entity.isOnGround() && !inWater) {
+                velocity.y += Entity.GRAVITY * deltaTime;
+            } else if (inWater) {
+                // Buoyancy in water
+                velocity.y += Entity.GRAVITY * 0.3f * deltaTime; // Reduced gravity in water
+                velocity.mul(0.8f); // Water resistance
+            }
         }
         
         // Update entity velocity first

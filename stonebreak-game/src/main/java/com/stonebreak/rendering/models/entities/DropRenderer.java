@@ -88,10 +88,13 @@ public class DropRenderer {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        // Render each drop
+        // Render each drop (skip compressed ones)
         for (Entity drop : drops) {
             if (drop.isAlive() && isDropEntity(drop)) {
-                renderDrop(drop, shaderProgram, viewMatrix);
+                // Only render if it's not compressed into another drop
+                if (!(drop instanceof com.stonebreak.mobs.entities.BlockDrop blockDrop) || blockDrop.shouldRender()) {
+                    renderDrop(drop, shaderProgram, viewMatrix);
+                }
             }
         }
         

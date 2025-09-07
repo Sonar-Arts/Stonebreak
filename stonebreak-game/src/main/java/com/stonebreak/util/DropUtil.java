@@ -124,18 +124,18 @@ public class DropUtil {
             return;
         }
         
-        // Calculate drop position in front of player
+        // Calculate drop position safely in front of player
         Vector3f playerPosition = player.getPosition();
         // Get player's forward direction from camera
         Vector3f playerForward = player.getCamera().getFront();
         
         Vector3f dropPosition = new Vector3f(playerPosition)
-            .add(new Vector3f(playerForward).mul(1.0f)) // Drop 1 block in front
-            .add(0, 0.5f, 0); // Slightly above ground
+            .add(new Vector3f(playerForward).mul(2.0f)) // Drop 2 blocks in front to avoid player collision
+            .add(0, 1.0f, 0); // 1 block above ground for better visibility
         
         // Give the drop some forward velocity
         Vector3f dropVelocity = new Vector3f(playerForward)
-            .mul(3.0f) // Forward speed
+            .mul(2.0f) // Reduced forward speed since drop starts further away
             .add(0, 1.0f, 0); // Upward component
         
         // Create appropriate drop type based on item stack content
