@@ -172,8 +172,8 @@ public class ItemDrop extends Entity {
             // Try to add item(s) to player inventory
             com.stonebreak.items.Inventory inventory = player.getInventory();
             if (inventory != null) {
-                // Create ItemStack for this item (including compressed count)
-                com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(getItemType(), stackCount);
+                // Create ItemStack using the original item (preserves ItemType/BlockType distinction)
+                com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount);
                 
                 // Try to add to inventory
                 if (inventory.addItem(itemStack)) {
@@ -187,7 +187,7 @@ public class ItemDrop extends Entity {
                     // Try to add as many as possible
                     int addedCount = 0;
                     for (int i = 0; i < stackCount; i++) {
-                        com.stonebreak.items.ItemStack singleItem = new com.stonebreak.items.ItemStack(getItemType(), 1);
+                        com.stonebreak.items.ItemStack singleItem = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), 1);
                         if (inventory.addItem(singleItem)) {
                             addedCount++;
                         } else {
@@ -276,8 +276,8 @@ public class ItemDrop extends Entity {
             return false;
         }
         
-        // Create ItemStack for this item (including compressed count)
-        com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(getItemType(), stackCount);
+        // Create ItemStack using the original item (preserves ItemType/BlockType distinction)
+        com.stonebreak.items.ItemStack itemStack = new com.stonebreak.items.ItemStack(this.itemStack.getItem(), stackCount);
         
         // Try to add to inventory
         if (inventory.addItem(itemStack)) {

@@ -155,7 +155,57 @@ public class Inventory {
         if (itemStack == null || itemStack.isEmpty()) {
             return true; // Adding nothing is success
         }
-        return addItem(itemStack.getBlockTypeId(), itemStack.getCount());
+        
+        int remainingCount = itemStack.getCount();
+        Item item = itemStack.getItem();
+        
+        // First, try to stack with existing items in hotbar
+        for (ItemStack stack : hotbarSlots) {
+            if (remainingCount == 0) break;
+            if (stack.getItem().isSameType(item) && stack.getCount() < stack.getMaxStackSize()) {
+                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+                stack.incrementCount(canAdd);
+                remainingCount -= canAdd;
+            }
+        }
+        
+        // Then, try to stack with existing items in main inventory
+        for (ItemStack stack : mainInventorySlots) {
+            if (remainingCount == 0) break;
+            if (stack.getItem().isSameType(item) && stack.getCount() < stack.getMaxStackSize()) {
+                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+                stack.incrementCount(canAdd);
+                remainingCount -= canAdd;
+            }
+        }
+        
+        // If still items left, try to fill empty slots in hotbar
+        if (remainingCount > 0) {
+            for (int i = 0; i < hotbarSlots.length; i++) {
+                if (remainingCount == 0) break;
+                if (hotbarSlots[i].isEmpty()) {
+                    int canAdd = Math.min(remainingCount, itemStack.getMaxStackSize());
+                    // Replace the empty stack with a new one containing our item
+                    hotbarSlots[i] = new ItemStack(item, canAdd);
+                    remainingCount -= canAdd;
+                }
+            }
+        }
+        
+        // Then, try to fill empty slots in main inventory
+        if (remainingCount > 0) {
+            for (int i = 0; i < mainInventorySlots.length; i++) {
+                if (remainingCount == 0) break;
+                if (mainInventorySlots[i].isEmpty()) {
+                    int canAdd = Math.min(remainingCount, itemStack.getMaxStackSize());
+                    // Replace the empty stack with a new one containing our item
+                    mainInventorySlots[i] = new ItemStack(item, canAdd);
+                    remainingCount -= canAdd;
+                }
+            }
+        }
+        
+        return remainingCount == 0; // Return true if all items were added
     }
 
     /**
