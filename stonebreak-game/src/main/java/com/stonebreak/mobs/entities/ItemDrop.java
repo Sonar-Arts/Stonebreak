@@ -24,7 +24,7 @@ public class ItemDrop extends Entity {
     private ItemDrop parentDrop = null; // Parent drop if this one is hidden
     
     // Physics constants for drops (custom values independent of Entity base class)
-    private static final float DROP_GRAVITY = 9.8f; // Realistic gravity instead of inheriting -40f from Entity
+    private static final float DROP_GRAVITY = 12.0f; // Moderate gravity instead of inheriting -40f from Entity
     private static final float DROP_AIR_RESISTANCE = 0.995f; // Much less air resistance than default 0.98f
     private static final float DROP_BOUNCE = 0.4f; // Slightly more bouncy
     private static final float DROP_FRICTION = 0.9f; // Less friction when on ground
