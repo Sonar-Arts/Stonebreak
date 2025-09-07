@@ -13,6 +13,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.world.World;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.WaterEffects;
+import com.stonebreak.util.DropUtil;
 
 /**
  * Represents the player in the game world.
@@ -754,6 +755,10 @@ public class Player {      // Player settings
                     } else {
                     }
                     
+                    // Create drops before breaking the block
+                    Vector3f dropPosition = new Vector3f(breakingBlock.x + 0.5f, breakingBlock.y + 0.5f, breakingBlock.z + 0.5f);
+                    DropUtil.handleBlockBroken(world, dropPosition, blockType);
+                    
                     // Break the block
                     world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
                     resetBlockBreaking();
@@ -805,6 +810,10 @@ public class Player {      // Player settings
                         
                     } else {
                     }
+                    
+                    // Create drops before breaking the block
+                    Vector3f dropPosition = new Vector3f(blockPos.x + 0.5f, blockPos.y + 0.5f, blockPos.z + 0.5f);
+                    DropUtil.handleBlockBroken(world, dropPosition, blockType);
                     
                     world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
                     resetBlockBreaking();

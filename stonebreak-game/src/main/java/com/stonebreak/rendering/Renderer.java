@@ -8,6 +8,7 @@ import com.stonebreak.rendering.core.ResourceManager;
 import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
+import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
@@ -44,6 +45,7 @@ public class Renderer {
     private final EntityRenderer entityRenderer;
     private final WorldRenderer worldRenderer;
     private final OverlayRenderer overlayRenderer;
+    private final DropRenderer dropRenderer;
     
 
     /**
@@ -80,10 +82,12 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
+        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas());
+        
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(), 
                                          resourceManager.getTextureAtlas(), 
                                          configManager.getProjectionMatrix(),
-                                         blockRenderer, playerArmRenderer, entityRenderer);
+                                         blockRenderer, playerArmRenderer, entityRenderer, dropRenderer);
         
         overlayRenderer = new OverlayRenderer(uiRenderer.getBlockIconRenderer(), 
                                              uiRenderer.getItemIconRenderer());
@@ -134,6 +138,14 @@ public class Renderer {
      */
     public BlockRenderer getBlockRenderer() {
         return blockRenderer;
+    }
+    
+    /**
+     * Get the drop renderer sub-component.
+     * @return DropRenderer instance
+     */
+    public DropRenderer getDropRenderer() {
+        return dropRenderer;
     }
     
     // ============ UI RENDERER PROXY METHODS ============
@@ -453,6 +465,9 @@ public class Renderer {
         }
         if (overlayRenderer != null) {
             overlayRenderer.cleanup();
+        }
+        if (dropRenderer != null) {
+            dropRenderer.cleanup();
         }
         
         // Cleanup pause menu

@@ -131,6 +131,18 @@ public class EntityManager {
     }
     
     /**
+     * Adds an existing entity to the manager.
+     * This is used for entities created outside the spawn system, like drops.
+     */
+    public void addEntity(Entity entity) {
+        if (entity != null) {
+            synchronized (entitiesToAdd) {
+                entitiesToAdd.add(entity);
+            }
+        }
+    }
+    
+    /**
      * Creates an entity instance based on the entity type.
      * This method will be expanded in future phases as new entity types are added.
      */

@@ -358,7 +358,8 @@ public class InputHandler {
     }
     
     private void dropSelectedItem(Player player) {
-        // Item dropping disabled - 3D block drops have been removed
+        // Use the new drop utility to drop a single item from selected slot
+        com.stonebreak.util.DropUtil.dropSingleItemFromPlayer(player);
     }
  
     // private void handleRecipeBookKey() { ... } // Method removed

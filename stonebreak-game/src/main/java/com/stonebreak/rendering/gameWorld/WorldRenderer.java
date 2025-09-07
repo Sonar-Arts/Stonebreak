@@ -20,6 +20,7 @@ import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.WaterEffects;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
+import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
@@ -39,6 +40,7 @@ public class WorldRenderer {
     private final BlockRenderer blockRenderer;
     private final PlayerArmRenderer playerArmRenderer;
     private final EntityRenderer entityRenderer;
+    private final DropRenderer dropRenderer;
     private final SkyRenderer skyRenderer;
     
     // Reusable lists to avoid allocations during rendering
@@ -48,13 +50,15 @@ public class WorldRenderer {
      * Creates a WorldRenderer with the required dependencies.
      */
     public WorldRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, Matrix4f projectionMatrix,
-                        BlockRenderer blockRenderer, PlayerArmRenderer playerArmRenderer, EntityRenderer entityRenderer) {
+                        BlockRenderer blockRenderer, PlayerArmRenderer playerArmRenderer, EntityRenderer entityRenderer,
+                        DropRenderer dropRenderer) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
         this.projectionMatrix = projectionMatrix;
         this.blockRenderer = blockRenderer;
         this.playerArmRenderer = playerArmRenderer;
         this.entityRenderer = entityRenderer;
+        this.dropRenderer = dropRenderer;
         this.skyRenderer = new SkyRenderer();
     }
     
@@ -106,6 +110,9 @@ public class WorldRenderer {
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
 
+        // Render drops before entities (underneath everything but above world geometry)
+        renderDrops(player);
+        
         // Render entities first (before player arm to prevent transparency occlusion)
         renderEntities(player);
 
@@ -320,6 +327,40 @@ public class WorldRenderer {
     }
     
     /**
+     * Render all drops using the drop sub-renderer.
+     * Drops are rendered before entities to appear underneath everything but above world geometry.
+     */
+    private void renderDrops(Player player) {
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        
+        if (entityManager != null && dropRenderer != null) {
+            // Get all entities and filter for drops
+            List<com.stonebreak.mobs.entities.Entity> allEntities = entityManager.getAllEntities();
+            java.util.List<com.stonebreak.mobs.entities.Entity> drops = new java.util.ArrayList<>();
+            
+            for (com.stonebreak.mobs.entities.Entity entity : allEntities) {
+                if (entity.isAlive() && isDropEntity(entity)) {
+                    drops.add(entity);
+                }
+            }
+            
+            // Render all drops at once
+            if (!drops.isEmpty()) {
+                dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix());
+            }
+        }
+    }
+    
+    /**
+     * Helper method to check if an entity is a drop entity.
+     * This would need to be updated when actual drop entity classes are implemented.
+     */
+    private boolean isDropEntity(com.stonebreak.mobs.entities.Entity entity) {
+        return entity instanceof com.stonebreak.mobs.entities.BlockDrop || 
+               entity instanceof com.stonebreak.mobs.entities.ItemDrop;
+    }
+    
+    /**
      * Render all entities using the entity sub-renderer.
      */
     private void renderEntities(Player player) {
@@ -328,7 +369,7 @@ public class WorldRenderer {
         if (entityManager != null && entityRenderer != null) {
             // Get all entities and render them using the sub-renderer
             for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
-                if (entity.isAlive()) {
+                if (entity.isAlive() && !isDropEntity(entity)) { // Exclude drops as they're rendered separately
                     entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
                 }
             }
