@@ -25,8 +25,8 @@ import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
 
 /**
- * Specialized renderer for 3D block and item drops in the world.
- * Uses the CBR API and BlockRenderer for block drops, and creates 3D sprite representations for items.
+ * Specialized renderer for block and item drops in the world.
+ * Uses the CBR API and BlockRenderer for 3D block drops, and creates 2D billboard sprite representations for items.
  */
 public class DropRenderer {
     
@@ -92,7 +92,14 @@ public class DropRenderer {
         for (Entity drop : drops) {
             if (drop.isAlive() && isDropEntity(drop)) {
                 // Only render if it's not compressed into another drop
-                if (!(drop instanceof com.stonebreak.mobs.entities.BlockDrop blockDrop) || blockDrop.shouldRender()) {
+                boolean shouldRender = true;
+                if (drop instanceof com.stonebreak.mobs.entities.BlockDrop blockDrop) {
+                    shouldRender = blockDrop.shouldRender();
+                } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop itemDrop) {
+                    shouldRender = itemDrop.shouldRender();
+                }
+                
+                if (shouldRender) {
                     renderDrop(drop, shaderProgram, viewMatrix);
                 }
             }
@@ -102,6 +109,9 @@ public class DropRenderer {
         glDisable(GL_BLEND);
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
+        
+        // Reset UI element mode back to false for world rendering
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**
@@ -112,17 +122,36 @@ public class DropRenderer {
         Vector3f dropPos = drop.getPosition();
         float dropAge = drop.getAge();
         
-        // Apply bobbing animation and rotation
+        // Apply bobbing animation
         float bobOffset = (float) Math.sin(dropAge * 2.0f) * 0.1f;
-        float rotationY = dropAge * 50.0f; // Rotate 50 degrees per second
         
-        dropModelMatrix.identity()
-            .translate(dropPos.x, dropPos.y + bobOffset, dropPos.z)
-            .scale(0.25f); // Make drops smaller than full blocks
-        
-        // Apply rotation for spinning effect
-        rotationMatrix.identity().rotateY((float) Math.toRadians(rotationY));
-        dropModelMatrix.mul(rotationMatrix);
+        if (isItemDrop(drop)) {
+            // For 2D sprites, create billboard transformation (always face camera)
+            dropModelMatrix.identity()
+                .translate(dropPos.x, dropPos.y + bobOffset, dropPos.z)
+                .scale(0.3f); // Make item drops slightly larger than blocks for visibility
+            
+            // Create billboard rotation to face camera
+            // Extract camera forward vector from view matrix
+            Vector3f cameraForward = new Vector3f();
+            viewMatrix.positiveZ(cameraForward).negate();
+            
+            // Calculate billboard rotation
+            float rotationY = (float) Math.atan2(-cameraForward.x, -cameraForward.z);
+            rotationMatrix.identity().rotateY(rotationY);
+            dropModelMatrix.mul(rotationMatrix);
+        } else {
+            // For block drops, keep spinning rotation
+            float rotationY = dropAge * 50.0f; // Rotate 50 degrees per second
+            
+            dropModelMatrix.identity()
+                .translate(dropPos.x, dropPos.y + bobOffset, dropPos.z)
+                .scale(0.25f); // Make drops smaller than full blocks
+            
+            // Apply rotation for spinning effect
+            rotationMatrix.identity().rotateY((float) Math.toRadians(rotationY));
+            dropModelMatrix.mul(rotationMatrix);
+        }
         
         // Combine with view matrix
         Matrix4f modelViewMatrix = new Matrix4f(viewMatrix).mul(dropModelMatrix);
@@ -156,6 +185,9 @@ public class DropRenderer {
         // Set shader uniforms for block rendering
         shaderProgram.setUniform("u_useSolidColor", false);
         
+        // Enable UI element mode for consistent lighting with hotbar icons
+        shaderProgram.setUniform("u_isUIElement", true);
+        
         // CBR meshes already have texture coordinates baked in, so don't transform them
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
@@ -178,13 +210,25 @@ public class DropRenderer {
         
         // Set shader uniforms for item sprite rendering
         shaderProgram.setUniform("u_useSolidColor", false);
+        
+        // Enable UI element mode for consistent lighting with hotbar icons
+        shaderProgram.setUniform("u_isUIElement", true);
+        
         shaderProgram.setUniform("u_transformUVsForItem", true);
         
-        // Get texture coordinates from item type
-        float atlasU = itemType.getAtlasX() / 16.0f;
-        float atlasV = itemType.getAtlasY() / 16.0f;
-        float atlasW = 1.0f / 16.0f;
-        float atlasH = 1.0f / 16.0f;
+        // Get texture coordinates from item type using TextureAtlas
+        // This matches how the 2D item rendering works in hotbars
+        float[] texCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
+        if (texCoords == null || texCoords.length < 4) {
+            System.err.println("[DropRenderer] Failed to get texture coordinates for item: " + itemType.getName());
+            return;
+        }
+        
+        // Convert from [u1, v1, u2, v2] format to offset + scale format
+        float atlasU = texCoords[0];
+        float atlasV = texCoords[1];
+        float atlasW = texCoords[2] - texCoords[0];
+        float atlasH = texCoords[3] - texCoords[1];
         
         shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(atlasU, atlasV));
         shaderProgram.setUniform("u_atlasUVScale", new Vector2f(atlasW, atlasH));
@@ -192,38 +236,29 @@ public class DropRenderer {
         // Set color with slight transparency
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.95f));
         
-        // Render the item sprite as a 3D quad (similar to hand item rendering)
+        // Render the item sprite as a 2D billboard quad
         GL30.glBindVertexArray(itemSpriteVao);
-        glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0); // 2 triangles per quad, 2 quads (cross pattern)
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // 2 triangles per quad
     }
     
     
     /**
-     * Creates VAO for rendering item sprites as 3D cross-pattern quads.
-     * Similar to how flowers are rendered but optimized for items.
+     * Creates VAO for rendering item sprites as true 2D sprites.
+     * Creates a single billboard quad that always faces the camera.
      */
     private void createItemSpriteVao() {
-        // Create two intersecting quads forming a cross pattern
-        // This gives a 3D appearance to flat item sprites
+        // Create a single quad for 2D sprite rendering (billboard style)
         float[] vertices = {
-            // First quad (X-Z plane rotated 45 degrees)
-            -0.5f, -0.5f,  0.0f,  0.0f, 1.0f, // Bottom-left
-             0.5f, -0.5f,  0.0f,  1.0f, 1.0f, // Bottom-right
-             0.5f,  0.5f,  0.0f,  1.0f, 0.0f, // Top-right
-            -0.5f,  0.5f,  0.0f,  0.0f, 0.0f, // Top-left
-            
-            // Second quad (perpendicular to first)
-             0.0f, -0.5f, -0.5f,  0.0f, 1.0f, // Bottom-left
-             0.0f, -0.5f,  0.5f,  1.0f, 1.0f, // Bottom-right
-             0.0f,  0.5f,  0.5f,  1.0f, 0.0f, // Top-right
-             0.0f,  0.5f, -0.5f,  0.0f, 0.0f  // Top-left
+            // Quad vertices (camera-facing billboard)
+            -0.5f, -0.5f, 0.0f,  0.0f, 1.0f, // Bottom-left
+             0.5f, -0.5f, 0.0f,  1.0f, 1.0f, // Bottom-right
+             0.5f,  0.5f, 0.0f,  1.0f, 0.0f, // Top-right
+            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f  // Top-left
         };
         
         int[] indices = {
-            // First quad
-            0, 1, 2, 2, 3, 0,
-            // Second quad  
-            4, 5, 6, 6, 7, 4
+            // Single quad
+            0, 1, 2, 2, 3, 0
         };
         
         itemSpriteVao = GL30.glGenVertexArrays();
