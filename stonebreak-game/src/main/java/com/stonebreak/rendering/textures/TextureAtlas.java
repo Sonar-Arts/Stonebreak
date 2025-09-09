@@ -506,6 +506,7 @@ public class TextureAtlas {
             case GRASS: return "grass_block";
             case DIRT: return "dirt_block"; // Fixed: atlas has dirt_block_* textures
             case STONE: return "stone";
+            case COBBLESTONE: return "cobblestone";
             case WOOD: return "wood";
             case SAND: return "sand";
             case WATER: return "water_temp"; // Fixed: atlas has water_temp_* textures

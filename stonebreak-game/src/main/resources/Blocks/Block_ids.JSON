@@ -140,6 +140,11 @@
       "id": 27,
       "textureType": "uniform",
       "texture": "elm_leaves_texture"
+    },
+    "stonebreak:cobblestone": {
+      "id": 28,
+      "textureType": "uniform",
+      "texture": "cobblestone_texture"
     }
   }
 }

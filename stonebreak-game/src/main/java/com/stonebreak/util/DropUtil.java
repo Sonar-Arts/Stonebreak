@@ -240,8 +240,8 @@ public class DropUtil {
         // This can be expanded later for blocks that drop different items
         switch (brokenBlock) {
             case STONE:
-                // Stone drops stone for now (no cobblestone in current BlockType enum)
-                return BlockType.STONE;
+                // Stone drops cobblestone when mined
+                return BlockType.COBBLESTONE;
             case GRASS:
                 return BlockType.DIRT;
             case IRON_ORE:

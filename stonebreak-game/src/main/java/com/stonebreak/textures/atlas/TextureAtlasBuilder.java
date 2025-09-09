@@ -1,6 +1,7 @@
 package com.stonebreak.textures.atlas;
 
 import com.stonebreak.textures.loaders.TextureResourceLoader;
+import com.stonebreak.textures.loaders.EnhancedJSONLoader;
 import com.stonebreak.textures.validation.TextureFormatValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -30,6 +31,7 @@ public class TextureAtlasBuilder {
     // Resource paths
     private static final String BLOCKS_TEXTURE_PATH = "/Blocks/Textures/";
     private static final String ITEMS_TEXTURE_PATH = "/Items/Textures/";
+    private static final String BLOCK_IDS_PATH = "stonebreak-game/src/main/resources/Blocks/Block_ids.JSON";
     private static final String ATLAS_OUTPUT_DIR = "stonebreak-game/src/main/resources/Texture Atlas/";
     private static final String ATLAS_IMAGE_NAME = "TextureAtlas.png";
     private static final String ATLAS_METADATA_NAME = "atlas_metadata.json";
@@ -202,47 +204,87 @@ public class TextureAtlasBuilder {
     }
     
     /**
-     * Load block textures from resources.
+     * Load block textures from resources based on Block_ids.JSON.
      */
     private Map<String, TextureResourceLoader.LoadedTexture> loadBlockTextures() {
         Map<String, TextureResourceLoader.LoadedTexture> textures = new HashMap<>();
         
         try {
-            // Get list of texture files from resources directory
-            var resourceUrl = TextureAtlasBuilder.class.getResource(BLOCKS_TEXTURE_PATH);
-            if (resourceUrl == null) {
-                System.err.println("Block textures directory not found: " + BLOCKS_TEXTURE_PATH);
-                return textures;
+            // Load block definitions from Block_ids.JSON
+            File blockIdsFile = new File(BLOCK_IDS_PATH);
+            if (!blockIdsFile.exists()) {
+                System.err.println("Block_ids.JSON not found at: " + BLOCK_IDS_PATH);
+                return loadBlockTexturesFallback(); // Use fallback method
             }
             
-            // For now, load known textures based on Block_ids.JSON
-            // In a full implementation, we would scan the directory
-            String[] knownBlockTextures = {
-                "grass_block_texture.png", "dirt_block_texture.png", "stone_texture.png", 
-                "bedrock_texture.png", "wood_texture.png", "leaves_texture.png",
-                "sand_texture.png", "water_temp_texture.png", "coal_ore_texture.png",
-                "iron_ore_texture.png", "red_sand_texture.png", "magma_texture.png",
-                "crystal_texture.png", "sandstone_texture.png", "red_sandstone_texture.png",
-                "rose_texture.png", "dandelion_texture.png", "snowy_dirt_texture.png",
-                "pine_wood_texture.png", "ice_texture.png", "snowy_leaves_texture.png",
-                "snow_texture.png", "workbench_custom_texture.png", "wood_planks_custom_texture.png",
-                "pine_wood_planks_custom_texture.png", "elm_wood_log_texture.png", 
-                "elm_wood_planks_custom_texture.png", "elm_leaves_texture.png", "Errockson.gif"
-            };
+            Map<String, EnhancedJSONLoader.BlockDefinition> blockDefinitions = 
+                EnhancedJSONLoader.loadBlockDefinitions(blockIdsFile);
             
-            for (String fileName : knownBlockTextures) {
+            Set<String> textureNames = new HashSet<>();
+            
+            // Extract texture names from block definitions
+            for (EnhancedJSONLoader.BlockDefinition blockDef : blockDefinitions.values()) {
+                if (blockDef.isUniform() && blockDef.getUniformTexture() != null) {
+                    textureNames.add(blockDef.getUniformTexture() + ".png");
+                } else if (blockDef.isCubeNet() && blockDef.getCubeNetTexture() != null) {
+                    textureNames.add(blockDef.getCubeNetTexture() + ".png");
+                }
+                // Handle cube_cross textures if needed in the future
+            }
+            
+            System.out.println("Loading " + textureNames.size() + " block textures from Block_ids.JSON");
+            
+            // Load each texture
+            for (String textureName : textureNames) {
                 try {
-                    TextureResourceLoader.LoadedTexture texture = TextureResourceLoader.loadBlockTexture(fileName);
+                    TextureResourceLoader.LoadedTexture texture = TextureResourceLoader.loadBlockTexture(textureName);
                     if (texture != null) {
-                        textures.put(fileName, texture);
+                        textures.put(textureName, texture);
+                    } else {
+                        System.err.println("Warning: Texture not found: " + textureName);
                     }
                 } catch (Exception e) {
-                    System.err.println("Failed to load block texture " + fileName + ": " + e.getMessage());
+                    System.err.println("Failed to load block texture " + textureName + ": " + e.getMessage());
                 }
             }
             
         } catch (Exception e) {
-            System.err.println("Error loading block textures: " + e.getMessage());
+            System.err.println("Error loading block textures from Block_ids.JSON: " + e.getMessage());
+            return loadBlockTexturesFallback(); // Use fallback method
+        }
+        
+        return textures;
+    }
+    
+    /**
+     * Fallback method for loading block textures if Block_ids.JSON loading fails.
+     */
+    private Map<String, TextureResourceLoader.LoadedTexture> loadBlockTexturesFallback() {
+        Map<String, TextureResourceLoader.LoadedTexture> textures = new HashMap<>();
+        
+        // Fallback to hardcoded list
+        String[] knownBlockTextures = {
+            "grass_block_texture.png", "dirt_block_texture.png", "stone_texture.png", 
+            "bedrock_texture.png", "wood_texture.png", "leaves_texture.png",
+            "sand_texture.png", "water_temp_texture.png", "coal_ore_texture.png",
+            "iron_ore_texture.png", "red_sand_texture.png", "magma_texture.png",
+            "crystal_texture.png", "sandstone_texture.png", "red_sandstone_texture.png",
+            "rose_texture.png", "dandelion_texture.png", "snowy_dirt_texture.png",
+            "pine_wood_texture.png", "ice_texture.png", "snowy_leaves_texture.png",
+            "snow_texture.png", "workbench_custom_texture.png", "wood_planks_custom_texture.png",
+            "pine_wood_planks_custom_texture.png", "elm_wood_log_texture.png", 
+            "elm_wood_planks_custom_texture.png", "elm_leaves_texture.png", "cobblestone_texture.png", "Errockson.gif"
+        };
+        
+        for (String fileName : knownBlockTextures) {
+            try {
+                TextureResourceLoader.LoadedTexture texture = TextureResourceLoader.loadBlockTexture(fileName);
+                if (texture != null) {
+                    textures.put(fileName, texture);
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to load block texture " + fileName + ": " + e.getMessage());
+            }
         }
         
         return textures;
