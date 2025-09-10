@@ -1,4 +1,4 @@
-package com.stonebreak.world;
+package com.stonebreak.world.generation;
 
 import java.util.Random;
 

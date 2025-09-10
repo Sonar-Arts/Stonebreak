@@ -16,7 +16,7 @@ import org.lwjgl.BufferUtils;
 public class TextureResourceLoader {
     
     // Resource paths
-    private static final String BLOCKS_TEXTURE_PATH = "/Blocks/Textures/";
+    private static final String BLOCKS_TEXTURE_PATH = "/blocks/Textures/";
     private static final String ITEMS_TEXTURE_PATH = "/Items/Textures/";
     
     // Cache for loaded textures to avoid reloading

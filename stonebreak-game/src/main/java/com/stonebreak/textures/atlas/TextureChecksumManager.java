@@ -18,7 +18,7 @@ import java.util.*;
 public class TextureChecksumManager {
     
     private static final String CHECKSUM_FILE = "texture_checksums.json";
-    private static final String TEXTURE_ATLAS_DIR = "Texture Atlas";
+    private static final String TEXTURE_ATLAS_DIR = "texture atlas";
     
     // JSON handling
     private ObjectNode checksumData;

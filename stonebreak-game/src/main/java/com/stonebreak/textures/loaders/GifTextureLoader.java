@@ -16,7 +16,7 @@ import org.lwjgl.BufferUtils;
  */
 public class GifTextureLoader {
     
-    private static final String ERROCKSON_GIF_PATH = "/Blocks/Textures/Errockson.gif";
+    private static final String ERROCKSON_GIF_PATH = "/blocks/Textures/Errockson.gif";
     private static final int EXPECTED_SIZE = 16; // 16x16 pixels
     
     /**

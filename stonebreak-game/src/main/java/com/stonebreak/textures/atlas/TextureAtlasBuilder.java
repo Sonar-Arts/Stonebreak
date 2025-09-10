@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 public class TextureAtlasBuilder {
     
     // Resource paths
-    private static final String BLOCKS_TEXTURE_PATH = "/Blocks/Textures/";
+    private static final String BLOCKS_TEXTURE_PATH = "/blocks/Textures/";
     private static final String ITEMS_TEXTURE_PATH = "/Items/Textures/";
     private static final String BLOCK_IDS_PATH = "stonebreak-game/src/main/resources/Blocks/Block_ids.JSON";
     private static final String ATLAS_OUTPUT_DIR = "stonebreak-game/src/main/resources/Texture Atlas/";
