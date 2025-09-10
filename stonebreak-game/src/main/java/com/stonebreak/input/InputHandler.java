@@ -31,6 +31,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F7;
 
 /**
  * Handles player input for movement and interaction.
@@ -61,6 +62,7 @@ public class InputHandler {
     private boolean f4KeyPressed = false; // Added for memory leak analysis
     private boolean f5KeyPressed = false; // Added for detailed memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
+    private boolean f7KeyPressed = false; // Added for manual save
     
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
@@ -471,6 +473,44 @@ public class InputHandler {
             }
         } else if (!isF6Pressed) {
             f6KeyPressed = false;
+        }
+        
+        // F7 - Manual save
+        boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
+        if (isF7Pressed && !f7KeyPressed) {
+            f7KeyPressed = true;
+            System.out.println("[DEBUG] Manual save triggered by F7 key...");
+            Game game = Game.getInstance();
+            if (game != null) {
+                World world = game.getWorld();
+                Player player = game.getPlayer();
+                if (world != null && player != null) {
+                    try {
+                        com.stonebreak.world.save.WorldManager worldManager = com.stonebreak.world.save.WorldManager.getInstance();
+                        String currentWorldName = worldManager.getCurrentWorldName();
+                        if (currentWorldName != null) {
+                            System.out.println("[MANUAL-SAVE] Starting manual save for world: " + currentWorldName);
+                            worldManager.saveWorld(world, player)
+                                .thenRun(() -> System.out.println("[MANUAL-SAVE] Manual save completed successfully"))
+                                .exceptionally(throwable -> {
+                                    System.err.println("[MANUAL-SAVE] Manual save failed: " + throwable.getMessage());
+                                    return null;
+                                });
+                        } else {
+                            System.err.println("[MANUAL-SAVE] No current world name set - cannot save");
+                        }
+                    } catch (Exception e) {
+                        System.err.println("[MANUAL-SAVE] Error during manual save: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                } else {
+                    System.err.println("[MANUAL-SAVE] World or Player is null - cannot save");
+                }
+            } else {
+                System.err.println("[MANUAL-SAVE] Game instance is null");
+            }
+        } else if (!isF7Pressed) {
+            f7KeyPressed = false;
         }
     }
  

@@ -16,6 +16,7 @@ import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
+import com.stonebreak.world.save.*;
 
 /**
  * Central class for accessing game state and resources.
@@ -80,6 +81,10 @@ public class Game {
      */
     private Game() {
         lastFrameTime = System.nanoTime();
+        
+        // Initialize WorldManager singleton
+        WorldManager.getInstance();
+        System.out.println("Game: WorldManager initialized");
     }
     
     /**
@@ -998,6 +1003,28 @@ public class Game {
     public void resetWorld() {
         System.out.println("Resetting world state for world switching...");
         
+        // Stop auto-save and save final state before clearing world data
+        WorldManager worldManager = WorldManager.getInstance();
+        if (worldManager.getCurrentWorldName() != null) {
+            System.out.println("Stopping auto-save and performing final save...");
+            worldManager.stopAutoSave();
+            
+            // Update world-specific play time before saving
+            try {
+                worldManager.updateCurrentWorldPlayTime().join();
+            } catch (Exception e) {
+                System.err.println("Error updating play time: " + e.getMessage());
+            }
+            
+            // Perform final save before clearing world data
+            try {
+                worldManager.saveWorld(world, player).join();
+                System.out.println("Final save completed for world: " + worldManager.getCurrentWorldName());
+            } catch (Exception e) {
+                System.err.println("Error during final save: " + e.getMessage());
+            }
+        }
+        
         // Clear world data without shutting down thread pools
         if (world != null) {
             world.clearWorldData();
@@ -1025,6 +1052,31 @@ public class Game {
      * Cleanup game resources.
      */
     public void cleanup() {
+        // Perform final world save and WorldManager cleanup before other cleanup
+        WorldManager worldManager = WorldManager.getInstance();
+        if (worldManager.getCurrentWorldName() != null && world != null && player != null) {
+            System.out.println("Game exit: Performing final world save...");
+            try {
+                worldManager.stopAutoSave();
+                
+                // Update world-specific play time before saving
+                worldManager.updateCurrentWorldPlayTime().join();
+                
+                worldManager.saveWorld(world, player).join();
+                System.out.println("Final world save completed successfully");
+            } catch (Exception e) {
+                System.err.println("Error during final world save: " + e.getMessage());
+            }
+        }
+        
+        // Shutdown WorldManager
+        try {
+            worldManager.shutdown();
+            System.out.println("WorldManager shutdown completed");
+        } catch (Exception e) {
+            System.err.println("Error shutting down WorldManager: " + e.getMessage());
+        }
+        
         if (world != null) {
             world.cleanup();
         }
@@ -1267,24 +1319,86 @@ public class Game {
      * This method should be called when creating or loading a specific world.
      */
     public void startWorldGeneration(String worldName, long seed) {
-        // Create world instance if it doesn't exist, otherwise reset and set seed
+        WorldManager worldManager = WorldManager.getInstance();
+        
+        // Create world instance if it doesn't exist, otherwise reset
         if (world == null) {
             this.world = new World();
-            this.world.setSeed(seed);
             // Initialize entity system for the new world
             this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         } else {
-            // Reset existing world state and apply new seed
+            // Reset existing world state
             resetWorld();
-            this.world.setSeed(seed);
         }
         
         if (loadingScreen != null) {
             loadingScreen.show(); // This sets state to LOADING
-            System.out.println("Started world generation for world: " + worldName + " with seed: " + seed);
             
-            // Trigger world generation with custom seed in a separate thread
-            new Thread(() -> performInitialWorldGeneration(worldName, seed)).start();
+            // Check if world exists - load it or create new one
+            if (worldManager.worldExists(worldName)) {
+                System.out.println("Loading existing world: " + worldName);
+                
+                // Load existing world in a separate thread
+                new Thread(() -> {
+                    try {
+                        worldManager.setCurrentWorldName(worldName);
+                        worldManager.loadWorld(worldName, world, player).join();
+                        
+                        // Start auto-save after successful load
+                        worldManager.startAutoSave(world, player);
+                        System.out.println("AUTO-SAVE: Started auto-save after loading existing world: " + worldName);
+                        
+                        // Continue with any additional generation needed
+                        performInitialWorldGeneration(worldName, world.getSeed());
+                    } catch (Exception e) {
+                        System.err.println("Failed to load world " + worldName + ": " + e.getMessage());
+                        e.printStackTrace();
+                        // Fallback to new world generation
+                        world.setSeed(seed);
+                        worldManager.setCurrentWorldName(worldName);
+                        worldManager.startAutoSave(world, player);
+                        System.out.println("AUTO-SAVE: Started auto-save for fallback world generation: " + worldName);
+                        performInitialWorldGeneration(worldName, seed);
+                    }
+                }).start();
+            } else {
+                System.out.println("Creating new world: " + worldName + " with seed: " + seed);
+                
+                // Create new world in a separate thread
+                new Thread(() -> {
+                    try {
+                        world.setSeed(seed);
+                        
+                        // Create world metadata
+                        WorldSaveMetadata metadata = new WorldSaveMetadata();
+                        metadata.setWorldName(worldName);
+                        metadata.setSeed(seed);
+                        metadata.setSpawnX((int) player.getPosition().x);
+                        metadata.setSpawnY((int) player.getPosition().y);
+                        metadata.setSpawnZ((int) player.getPosition().z);
+                        
+                        // Create world directory structure
+                        worldManager.createWorld(metadata).join();
+                        worldManager.setCurrentWorldName(worldName);
+                        
+                        // Start auto-save for new world
+                        worldManager.startAutoSave(world, player);
+                        System.out.println("AUTO-SAVE: Started auto-save for new world: " + worldName);
+                        
+                        // Generate initial world content
+                        performInitialWorldGeneration(worldName, seed);
+                    } catch (Exception e) {
+                        System.err.println("Failed to create world " + worldName + ": " + e.getMessage());
+                        e.printStackTrace();
+                        // Fallback to basic generation
+                        world.setSeed(seed);
+                        worldManager.setCurrentWorldName(worldName);
+                        worldManager.startAutoSave(world, player);
+                        System.out.println("AUTO-SAVE: Started auto-save for fallback basic generation: " + worldName);
+                        performInitialWorldGeneration(worldName, seed);
+                    }
+                }).start();
+            }
         }
     }
     

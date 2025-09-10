@@ -577,32 +577,32 @@ public class WaterEffects {
     }
     
     /**
-     * Applies a flow update to the world.
+     * Applies a flow update to the visual water system (no chunk modification).
      */
     private void applyFlowUpdate(FlowUpdate update, World world) {
         WaterBlock source = waterBlocks.get(update.from);
         if (source == null || source.level < update.amount) return;
         
-        // Create or update target
+        // Create or update target (visual only - no chunk modification)
         WaterBlock target = waterBlocks.get(update.to);
         if (target == null) {
-            world.setBlockAt(update.to.x, update.to.y, update.to.z, BlockType.WATER);
+            // Only create visual water block - do not modify world chunks
             target = new WaterBlock();
             waterBlocks.put(update.to, target);
         }
         
-        // Transfer water
+        // Transfer water (visual only)
         if (!waterSources.contains(update.from)) {
             source.level -= update.amount;
             if (source.level <= 0) {
+                // Remove from visual system only - do not modify world chunks
                 waterBlocks.remove(update.from);
-                world.setBlockAt(update.from.x, update.from.y, update.from.z, BlockType.AIR);
             }
         }
         
         target.level = Math.min(MAX_WATER_LEVEL, target.level + update.amount);
         
-        // Queue neighbors for update
+        // Queue neighbors for visual update only
         queueNeighbors(update.to);
     }
     

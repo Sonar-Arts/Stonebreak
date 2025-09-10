@@ -1,0 +1,23 @@
+{
+  "spawnPosition" : {
+    "x" : 0.0,
+    "y" : 100.0,
+    "z" : 0.0,
+    "finite" : true
+  },
+  "creationDate" : null,
+  "worldName" : "apsdoga",
+  "seed" : 93106867,
+  "spawnX" : 0.0,
+  "spawnY" : 100.0,
+  "spawnZ" : 0.0,
+  "creationTime" : null,
+  "lastPlayed" : null,
+  "totalPlayTime" : 0,
+  "version" : null,
+  "difficulty" : null,
+  "gameMode" : null,
+  "worldType" : null,
+  "preGeneratedChunks" : 0,
+  "schemaVersion" : null
+}

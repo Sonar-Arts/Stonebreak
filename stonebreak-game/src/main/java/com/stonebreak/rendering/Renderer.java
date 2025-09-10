@@ -226,10 +226,6 @@ public class Renderer {
         return windowWidth;
     }
 
-    public int getWindowHeight() {
-        return windowHeight;
-    }
-
     public Font getFont() {
         return font;
     }

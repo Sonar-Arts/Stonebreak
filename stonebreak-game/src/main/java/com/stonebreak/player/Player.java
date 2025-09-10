@@ -761,8 +761,8 @@ public class Player {      // Player settings
                         spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), 1);
                     }
                     
-                    // Break the block
-                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+                    // Break the block (player modification)
+                    world.setBlockByPlayer(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
                     resetBlockBreaking();
                 }
             }
@@ -820,7 +820,7 @@ public class Player {      // Player settings
                         spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), 1);
                     }
                     
-                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+                    world.setBlockByPlayer(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
                     resetBlockBreaking();
                 }
             }
@@ -933,8 +933,8 @@ public class Player {      // Player settings
                     BlockType blockAbove = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
                     if (blockAbove == BlockType.AIR) {
                         if (!intersectsWithPlayer(abovePos)) {
-                            // Place new snow block above
-                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
+                            // Place new snow block above (player modification)
+                            if (world.setBlockByPlayer(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
                                 inventory.removeItem(selectedItem.getItem(), 1);
                             }
@@ -965,8 +965,8 @@ public class Player {      // Player settings
                     }
                 }
                 
-                // All checks passed, place the block.
-                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
+                // All checks passed, place the block (player modification).
+                if (world.setBlockByPlayer(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
                     
                     // If placing a water block, register it as a water source
@@ -1575,7 +1575,7 @@ public class Player {      // Player settings
                  }
             }
 
-            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
+            if (world.setBlockByPlayer(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
                 if (blockToPlace == BlockType.SNOW) {
                     world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
                 }
@@ -1583,6 +1583,41 @@ public class Player {      // Player settings
                 return true;
             }
         }        return false;
+    }
+    
+    /**
+     * Checks if the player is currently on solid ground.
+     */
+    public boolean isOnGround() {
+        return onGround;
+    }
+    
+    /**
+     * Sets the player's on-ground state (used when loading from save).
+     */
+    public void setOnGround(boolean onGround) {
+        this.onGround = onGround;
+    }
+    
+    /**
+     * Sets the player's velocity (used when loading from save).
+     */
+    public void setVelocity(Vector3f velocity) {
+        this.velocity.set(velocity);
+    }
+    
+    /**
+     * Sets the player's position (used when loading from save).
+     */
+    public void setPosition(Vector3f position) {
+        this.position.set(position);
+    }
+    
+    /**
+     * Sets the player's flying state (used when loading from save).
+     */
+    public void setFlying(boolean flying) {
+        this.isFlying = flying;
     }
     
     /**

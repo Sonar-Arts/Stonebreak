@@ -143,4 +143,34 @@ public class Camera {
         this.front.set(0.0f, 0.0f, -1.0f);
         updateCameraVectors();
     }
+    
+    /**
+     * Gets the camera's yaw angle in degrees.
+     */
+    public float getYaw() {
+        return yaw;
+    }
+    
+    /**
+     * Gets the camera's pitch angle in degrees.
+     */
+    public float getPitch() {
+        return pitch;
+    }
+    
+    /**
+     * Sets the camera's yaw angle.
+     */
+    public void setYaw(float yaw) {
+        this.yaw = yaw;
+        updateCameraVectors();
+    }
+    
+    /**
+     * Sets the camera's pitch angle.
+     */
+    public void setPitch(float pitch) {
+        this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
+        updateCameraVectors();
+    }
 }

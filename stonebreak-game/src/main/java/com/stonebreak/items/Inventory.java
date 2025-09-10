@@ -493,4 +493,74 @@ public class Inventory {
     public void setInventoryScreen(InventoryScreen screen) {
         this.inventoryScreen = screen;
     }
+    
+    // Additional methods needed for save/load system
+    
+    /**
+     * Gets the hotbar size constant.
+     */
+    public int getHotbarSize() {
+        return HOTBAR_SIZE;
+    }
+    
+    /**
+     * Gets the main inventory size constant.
+     */
+    public int getMainInventorySize() {
+        return MAIN_INVENTORY_SIZE;
+    }
+    
+    /**
+     * Gets an item from hotbar by index (alias for getHotbarSlot).
+     */
+    public ItemStack getHotbarItem(int index) {
+        return getHotbarSlot(index);
+    }
+    
+    /**
+     * Gets an item from main inventory by index (alias for getMainInventorySlot).
+     */
+    public ItemStack getMainInventoryItem(int index) {
+        return getMainInventorySlot(index);
+    }
+    
+    /**
+     * Gets the selected slot index (alias for getSelectedHotbarSlotIndex).
+     */
+    public int getSelectedSlot() {
+        return getSelectedHotbarSlotIndex();
+    }
+    
+    /**
+     * Sets the selected slot index (alias for setSelectedHotbarSlotIndex).
+     */
+    public void setSelectedSlot(int slot) {
+        setSelectedHotbarSlotIndex(slot);
+    }
+    
+    /**
+     * Sets an item in hotbar by index (alias for setHotbarSlot).
+     */
+    public void setHotbarItem(int index, ItemStack stack) {
+        setHotbarSlot(index, stack);
+    }
+    
+    /**
+     * Sets an item in main inventory by index (alias for setMainInventorySlot).
+     */
+    public void setMainInventoryItem(int index, ItemStack stack) {
+        setMainInventorySlot(index, stack);
+    }
+    
+    /**
+     * Clears all items from inventory (sets all to air).
+     */
+    public void clear() {
+        for (int i = 0; i < HOTBAR_SIZE; i++) {
+            hotbarSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+        }
+        for (int i = 0; i < MAIN_INVENTORY_SIZE; i++) {
+            mainInventorySlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+        }
+    }
 }

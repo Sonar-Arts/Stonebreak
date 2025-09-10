@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Queue;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap; // Added
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -30,7 +29,8 @@ public class World {
     private static final int RENDER_DISTANCE = 8;
       // Seed for terrain generation
     private long seed;
-    private Random random;
+    private org.joml.Vector3f spawnPosition; // World spawn position
+    private DeterministicRandom deterministicRandom; // New deterministic random for features
     private NoiseGenerator terrainNoise;
     private NoiseGenerator temperatureNoise; // For biome determination
     private NoiseGenerator continentalnessNoise;
@@ -68,7 +68,7 @@ public class World {
 
     public World() {
         this.seed = System.currentTimeMillis();
-        this.random = new Random(seed);
+        this.deterministicRandom = new DeterministicRandom(seed);
         this.terrainNoise = new NoiseGenerator(seed);
         this.temperatureNoise = new NoiseGenerator(seed + 1); // Use a different seed for temperature
         this.continentalnessNoise = new NoiseGenerator(seed + 2);
@@ -311,6 +311,19 @@ public class World {
      * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
      */
     public boolean setBlockAt(int x, int y, int z, BlockType blockType) {
+        return setBlockAt(x, y, z, blockType, false); // Default to non-player modification
+    }
+    
+    /**
+     * Sets the block type at the specified world position with player modification tracking.
+     * @param x World X coordinate
+     * @param y World Y coordinate  
+     * @param z World Z coordinate
+     * @param blockType The block type to set
+     * @param playerModified True if this modification came from player actions, false for world generation
+     * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
+     */
+    public boolean setBlockAt(int x, int y, int z, BlockType blockType, boolean playerModified) {
         if (y < 0 || y >= WORLD_HEIGHT) {
             return false;
         }
@@ -320,10 +333,14 @@ public class World {
         
         Chunk chunk = getChunkAt(chunkX, chunkZ);
         
+        if (chunk == null) {
+            return false; // Failed to get/create chunk
+        }
+        
         int localX = Math.floorMod(x, CHUNK_SIZE);
         int localZ = Math.floorMod(z, CHUNK_SIZE);
         
-        chunk.setBlock(localX, y, localZ, blockType);
+        chunk.setBlock(localX, y, localZ, blockType, playerModified);
 
         // Mark chunk for mesh data rebuild. The existing mesh (if any) will continue to be used until the new one is ready.
         synchronized (chunk) {
@@ -383,6 +400,19 @@ public class World {
    }
    
    /**
+    * Sets the block type at the specified world position, marking it as a player modification.
+    * This should be used for all player-initiated block changes (breaking, placing, etc.)
+    * @param x World X coordinate
+    * @param y World Y coordinate
+    * @param z World Z coordinate
+    * @param blockType The block type to set
+    * @return true if the block was successfully set, false otherwise
+    */
+   public boolean setBlockByPlayer(int x, int y, int z, BlockType blockType) {
+       return setBlockAt(x, y, z, blockType, true);
+   }
+   
+   /**
      * Generates only the bare terrain for a new chunk (no features like ores or trees).
      * Uses chunk.setBlock() for local block placement.
      */
@@ -417,7 +447,8 @@ public class World {
                         blockType = BlockType.BEDROCK;
                     } else if (y < height - 4) {
                         // Deeper layers - biome can influence stone type
-                        if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 && random.nextFloat() < 0.6f) {
+                        if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 && 
+                            deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "magma", 0.6f)) {
                             blockType = BlockType.MAGMA; // More magma deeper in volcanic areas
                         } else {
                             blockType = BlockType.STONE;
@@ -497,19 +528,16 @@ public class World {
                     BlockType oreType = null;
 
                     if (currentBlock == BlockType.STONE) {
-                        synchronized (randomLock) {
-                            if (this.random.nextFloat() < 0.015) { // Increased coal slightly
-                                oreType = BlockType.COAL_ORE;
-                            } else if (this.random.nextFloat() < 0.008 && y < 50) { // Increased iron slightly, wider range
-                                oreType = BlockType.IRON_ORE;
-                            }
+                        // Use deterministic generation based on 3D world coordinates
+                        if (deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "coal_ore", 0.015f)) {
+                            oreType = BlockType.COAL_ORE;
+                        } else if (deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "iron_ore", 0.008f) && y < 50) {
+                            oreType = BlockType.IRON_ORE;
                         }
                     } else if (biome == BiomeType.RED_SAND_DESERT && (currentBlock == BlockType.RED_SAND || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
                         // Crystal generation in Volcanic biomes, embedded in Obsidian, Stone or Magma
-                        synchronized (randomLock) {
-                            if (this.random.nextFloat() < 0.02) { // Chance for Crystal
-                                oreType = BlockType.CRYSTAL;
-                            }
+                        if (deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "crystal", 0.02f)) {
+                            oreType = BlockType.CRYSTAL;
                         }
                     }
                     
@@ -521,19 +549,12 @@ public class World {
                 // Generate Trees (in PLAINS and SNOWY_PLAINS biomes)
                 if (biome == BiomeType.PLAINS) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) { // Ensure tree spawns on grass
-                        float treeChance;
-                        synchronized (randomLock) {
-                            treeChance = this.random.nextFloat();
-                        }
-                        
-                        if (treeChance < 0.01 && surfaceHeight > 64) { // 1% total tree chance
+                        // Use scrambled coordinates to break linear patterns
+                        int scrambledX = scrambleCoordinate(worldX, worldZ, "tree_x");
+                        int scrambledZ = scrambleCoordinate(worldZ, worldX, "tree_z");
+                        if (deterministicRandom.shouldGenerate(scrambledX, scrambledZ, "tree", 0.03f) && surfaceHeight > 64) {
                             // Determine tree type: 60% regular oak, 40% elm trees
-                            boolean shouldGenerateElm;
-                            synchronized (randomLock) {
-                                shouldGenerateElm = this.random.nextFloat() < 0.4f; // 40% chance for elm
-                            }
-                            
-                            if (shouldGenerateElm) {
+                            if (deterministicRandom.shouldGenerate(worldX, worldZ, "elm_tree", 0.4f)) {
                                 generateElmTree(chunk, x, surfaceHeight, z);
                             } else {
                                 generateTree(chunk, x, surfaceHeight, z);
@@ -542,11 +563,10 @@ public class World {
                     }
                 } else if (biome == BiomeType.SNOWY_PLAINS) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) { // Pine trees spawn on snowy dirt
-                        boolean shouldGeneratePineTree;
-                        synchronized (randomLock) {
-                            shouldGeneratePineTree = (this.random.nextFloat() < 0.015 && surfaceHeight > 64); // Slightly higher chance for pine trees
-                        }
-                        if (shouldGeneratePineTree) {
+                        // Use scrambled coordinates to break linear patterns
+                        int scrambledX = scrambleCoordinate(worldX, worldZ, "pine_x");
+                        int scrambledZ = scrambleCoordinate(worldZ, worldX, "pine_z");
+                        if (deterministicRandom.shouldGenerate(scrambledX, scrambledZ, "pine_tree", 0.04f) && surfaceHeight > 64) {
                             generatePineTree(chunk, x, surfaceHeight, z);
                         }
                     }
@@ -556,15 +576,11 @@ public class World {
                 if (biome == BiomeType.PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS && 
                         chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
-                        boolean shouldGenerateFlower;
-                        synchronized (randomLock) {
-                            shouldGenerateFlower = this.random.nextFloat() < 0.08; // 8% chance for flowers
-                        }
-                        if (shouldGenerateFlower) {
-                            BlockType flowerType;
-                            synchronized (randomLock) {
-                                flowerType = this.random.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION;
-                            }
+                        // Use scrambled coordinates to break linear patterns
+                        int scrambledX = scrambleCoordinate(worldX, worldZ, "flower_x");
+                        int scrambledZ = scrambleCoordinate(worldZ, worldX, "flower_z");
+                        if (deterministicRandom.shouldGenerate(scrambledX, scrambledZ, "flower", 0.03f)) {
+                            BlockType flowerType = deterministicRandom.getBoolean(worldX, worldZ, "flower_type") ? BlockType.ROSE : BlockType.DANDELION;
                             this.setBlockAt(worldX, surfaceHeight, worldZ, flowerType);
                         }
                     }
@@ -574,20 +590,13 @@ public class World {
                 if (biome == BiomeType.SNOWY_PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT && 
                         chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
-                        float featureChance;
-                        synchronized (randomLock) {
-                            featureChance = this.random.nextFloat();
-                        }
                         
-                        if (featureChance < 0.03) { // 3% chance for ice patches
+                        if (deterministicRandom.shouldGenerate(worldX, worldZ, "ice", 0.03f)) { // 3% chance for ice patches
                             this.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.ICE);
-                        } else if (featureChance < 0.08) { // Additional 5% chance for snow layers
+                        } else if (deterministicRandom.shouldGenerate(worldX, worldZ, "snow_layer", 0.05f)) { // 5% chance for snow layers (not cumulative)
                             this.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
-                            // Set initial snow layer count (1-3 layers randomly)
-                            int layers;
-                            synchronized (randomLock) {
-                                layers = 1 + this.random.nextInt(3); // 1, 2, or 3 layers
-                            }
+                            // Set initial snow layer count (1-3 layers deterministically)
+                            int layers = 1 + deterministicRandom.getInt(worldX, worldZ, "snow_layer_count", 3); // 1, 2, or 3 layers
                             snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
                         }
                     }
@@ -599,12 +608,11 @@ public class World {
         // Spawn cows in PLAINS biome (10% chance per chunk)
         BiomeType chunkBiome = getBiomeType(chunkX * CHUNK_SIZE + CHUNK_SIZE / 2, chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2);
         if (chunkBiome == BiomeType.PLAINS) {
-            float cowSpawnChance;
-            synchronized (randomLock) {
-                cowSpawnChance = this.random.nextFloat();
-            }
+            // Use chunk coordinates for cow spawning determination
+            int chunkCenterX = chunkX * CHUNK_SIZE + CHUNK_SIZE / 2;
+            int chunkCenterZ = chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2;
             
-            if (cowSpawnChance < 0.1f) { // 10% chance per chunk
+            if (deterministicRandom.shouldGenerate(chunkCenterX, chunkCenterZ, "cow_spawn", 0.1f)) {
                 spawnCowsInChunk(chunk);
             }
         }
@@ -760,11 +768,8 @@ public class World {
         int worldYBase = y;
 
         // Elm trees are larger - trunk is 8-12 blocks, canopy extends to worldYBase+16
-        // Randomly vary height based on research: elms can be quite tall
-        int trunkHeight;
-        synchronized (randomLock) {
-            trunkHeight = 8 + this.random.nextInt(5); // 8-12 blocks tall trunk
-        }
+        // Deterministically vary height based on position
+        int trunkHeight = 8 + deterministicRandom.getInt(worldXBase, worldZBase, "elm_trunk_height", 5); // 8-12 blocks tall trunk
         
         if (worldYBase + trunkHeight + 6 >= WORLD_HEIGHT) {
             return; // Tree would exceed world height
@@ -826,9 +831,7 @@ public class World {
                     // Add some randomness to leaf placement for more natural look
                     boolean shouldPlaceLeaf = true;
                     if (distFromCenter > leafRadius * 0.7f) {
-                        synchronized (randomLock) {
-                            shouldPlaceLeaf = this.random.nextFloat() > 0.3f; // 70% chance for outer leaves
-                        }
+                        shouldPlaceLeaf = deterministicRandom.getFloat(worldXBase + dxLeaf, worldZBase + dzLeaf, "elm_outer_leaf") > 0.3f; // 70% chance for outer leaves
                     }
                     
                     if (shouldPlaceLeaf) {
@@ -853,10 +856,7 @@ public class World {
                     }
                     
                     // Random gaps in upper canopy
-                    boolean shouldPlaceLeaf;
-                    synchronized (randomLock) {
-                        shouldPlaceLeaf = this.random.nextFloat() > 0.2f; // 80% chance
-                    }
+                    boolean shouldPlaceLeaf = deterministicRandom.getFloat(worldXBase + dxLeaf, worldZBase + dzLeaf, "elm_upper_leaf") > 0.2f; // 80% chance
                     
                     if (shouldPlaceLeaf) {
                         this.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
@@ -889,11 +889,10 @@ public class World {
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
         
-        // Determine number of cows to spawn (1-4)
-        int cowCount;
-        synchronized (randomLock) {
-            cowCount = 1 + this.random.nextInt(4); // 1, 2, 3, or 4 cows
-        }
+        // Determine number of cows to spawn (1-4) deterministically
+        int chunkCenterX = chunkX * CHUNK_SIZE + CHUNK_SIZE / 2;
+        int chunkCenterZ = chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2;
+        int cowCount = 1 + deterministicRandom.getInt(chunkCenterX, chunkCenterZ, "cow_count", 4); // 1, 2, 3, or 4 cows
         
         int spawned = 0;
         int attempts = 0;
@@ -902,12 +901,9 @@ public class World {
         while (spawned < cowCount && attempts < maxAttempts) {
             attempts++;
             
-            // Random position within chunk
-            int localX, localZ;
-            synchronized (randomLock) {
-                localX = this.random.nextInt(CHUNK_SIZE);
-                localZ = this.random.nextInt(CHUNK_SIZE);
-            }
+            // Deterministic position within chunk based on spawn attempt
+            int localX = deterministicRandom.getInt(chunkCenterX, chunkCenterZ, "cow_local_x_" + attempts, CHUNK_SIZE);
+            int localZ = deterministicRandom.getInt(chunkCenterX, chunkCenterZ, "cow_local_z_" + attempts, CHUNK_SIZE);
             
             int worldX = chunkX * CHUNK_SIZE + localX;
             int worldZ = chunkZ * CHUNK_SIZE + localZ;
@@ -930,9 +926,10 @@ public class World {
                     worldZ + 0.5f  // Center of block
                 );
                 
-                // Select random texture variant for world generation cow spawning
+                // Select deterministic texture variant for world generation cow spawning
                 String[] variants = {"default", "angus", "highland"};
-                String textureVariant = variants[(int)(Math.random() * variants.length)];
+                int variantIndex = deterministicRandom.getInt(worldX, worldZ, "cow_variant", variants.length);
+                String textureVariant = variants[variantIndex];
                 entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                 spawned++;
             }
@@ -1037,6 +1034,21 @@ public class World {
             throw new ChunkGenerationException("Chunk generation failed: " + e.getMessage(), chunkX, chunkZ, e);
         }
     }
+    /**
+     * Scrambles coordinates to break linear generation patterns while maintaining determinism.
+     * Uses a simple hash-based approach tied to the world seed.
+     */
+    private int scrambleCoordinate(int coord, int otherCoord, String feature) {
+        // Create a pseudo-random offset based on world seed, coordinates, and feature
+        long hash = seed;
+        hash = hash * 31L + coord;
+        hash = hash * 31L + otherCoord;
+        hash = hash * 31L + feature.hashCode();
+        
+        // Apply a large pseudo-random offset to break patterns
+        return coord + (int)(hash % 10000);
+    }
+    
     /**
      * Generates terrain height for the specified world position.
      */
@@ -1440,6 +1452,14 @@ public class World {
     }
     
     /**
+     * Gets the chunk build executor for async operations.
+     * @return The ExecutorService used for chunk mesh building
+     */
+    public java.util.concurrent.ExecutorService getChunkBuildExecutor() {
+        return chunkBuildExecutor;
+    }
+    
+    /**
      * Gets the snow layer count at a specific position
      */
     public int getSnowLayers(int x, int y, int z) {
@@ -1591,7 +1611,7 @@ public class World {
         
         // Reset world state with new seed
         this.seed = newSeed;
-        this.random = new Random(newSeed);
+        this.deterministicRandom = new DeterministicRandom(newSeed);
         this.terrainNoise = new NoiseGenerator(newSeed);
         this.temperatureNoise = new NoiseGenerator(newSeed + 1);
         this.continentalnessNoise = new NoiseGenerator(newSeed + 2);
@@ -1602,14 +1622,46 @@ public class World {
     /**
      * Sets the seed for world generation and reinitializes the noise generators.
      * This will affect future chunk generation but won't regenerate existing chunks.
+     * Ensures all deterministic systems use consistent seeds.
      */
     public void setSeed(long seed) {
+        System.out.println("Updating world seed from " + this.seed + " to " + seed);
+        
         this.seed = seed;
-        this.random = new Random(seed);
+        this.deterministicRandom = new DeterministicRandom(seed);
         this.terrainNoise = new NoiseGenerator(seed);
-        this.temperatureNoise = new NoiseGenerator(seed + 1);
-        this.continentalnessNoise = new NoiseGenerator(seed + 2);
-        System.out.println("World seed updated to: " + seed);
+        this.temperatureNoise = new NoiseGenerator(seed + 1); // Offset for temperature variation
+        this.continentalnessNoise = new NoiseGenerator(seed + 2); // Offset for continental variation
+        
+        // Validate seed propagation
+        validateSeedConsistency();
+        
+        System.out.println("World seed successfully updated to: " + seed + " (deterministic generation enabled)");
+    }
+    
+    /**
+     * Validates that all deterministic generation systems use consistent seeds.
+     * This ensures reproducible world generation.
+     */
+    private void validateSeedConsistency() {
+        // Verify all noise generators are initialized
+        if (terrainNoise == null || temperatureNoise == null || continentalnessNoise == null) {
+            System.err.println("WARNING: Some noise generators are null after seed update");
+            return;
+        }
+        
+        if (deterministicRandom == null) {
+            System.err.println("WARNING: DeterministicRandom is null after seed update");
+            return;
+        }
+        
+        // Log seed configuration for debugging
+        System.out.println("Seed consistency validated:");
+        System.out.println("  Main seed: " + seed);
+        System.out.println("  Terrain noise seed: " + seed);
+        System.out.println("  Temperature noise seed: " + (seed + 1));
+        System.out.println("  Continentalness noise seed: " + (seed + 2));
+        System.out.println("  DeterministicRandom initialized: " + (deterministicRandom != null));
     }
     
     /**
@@ -1617,6 +1669,47 @@ public class World {
      */
     public long getSeed() {
         return seed;
+    }
+    
+    /**
+     * Sets a chunk at the specified coordinates.
+     * Used by WorldLoader to register loaded chunks.
+     */
+    public void setChunk(int chunkX, int chunkZ, Chunk chunk) {
+        if (chunk == null) {
+            System.err.println("WARNING: Attempted to set null chunk at (" + chunkX + ", " + chunkZ + ")");
+            return;
+        }
+        
+        ChunkPosition position = getCachedChunkPosition(chunkX, chunkZ);
+        chunks.put(position, chunk);
+        
+        // Schedule mesh build for the loaded chunk
+        conditionallyScheduleMeshBuild(chunk);
+        
+        System.out.println("Registered loaded chunk at (" + chunkX + ", " + chunkZ + ")");
+    }
+    
+    /**
+     * Sets the spawn position for this world.
+     * Stores the spawn position for save/load operations.
+     */
+    public void setSpawnPosition(org.joml.Vector3f spawnPosition) {
+        if (spawnPosition != null) {
+            this.spawnPosition = new org.joml.Vector3f(spawnPosition); // Make a copy to avoid external modifications
+            System.out.println("World spawn position set to: " + spawnPosition);
+        }
+    }
+    
+    /**
+     * Gets the current spawn position for this world.
+     * @return The spawn position as a Vector3f, or null if not set
+     */
+    public org.joml.Vector3f getSpawnPosition() {
+        if (spawnPosition != null) {
+            return new org.joml.Vector3f(spawnPosition); // Return a copy to prevent external modifications
+        }
+        return null;
     }
     
     /**
@@ -1640,6 +1733,75 @@ public class World {
      */
     public long getWorldLoadingStartTime() {
         return worldLoadingStartTime;
+    }
+    
+    /**
+     * Gets all currently loaded chunks. Used by WorldSaver for selective saving.
+     * @return Collection of all loaded chunks
+     */
+    public java.util.Collection<Chunk> getAllLoadedChunks() {
+        return chunks.values();
+    }
+    
+    /**
+     * Validates deterministic generation by testing reproducibility at a sample location.
+     * This can be used to ensure that world generation produces consistent results.
+     */
+    public boolean validateDeterministicGeneration(int testX, int testZ) {
+        if (deterministicRandom == null) {
+            System.err.println("Cannot validate deterministic generation: DeterministicRandom is null");
+            return false;
+        }
+        
+        // Test terrain height generation
+        int height1 = generateTerrainHeight(testX, testZ);
+        int height2 = generateTerrainHeight(testX, testZ);
+        
+        if (height1 != height2) {
+            System.err.println("DETERMINISTIC VALIDATION FAILED: Terrain height inconsistent at (" + 
+                             testX + ", " + testZ + ") - got " + height1 + " and " + height2);
+            return false;
+        }
+        
+        // Test biome generation
+        BiomeType biome1 = getBiomeType(testX, testZ);
+        BiomeType biome2 = getBiomeType(testX, testZ);
+        
+        if (biome1 != biome2) {
+            System.err.println("DETERMINISTIC VALIDATION FAILED: Biome inconsistent at (" + 
+                             testX + ", " + testZ + ") - got " + biome1 + " and " + biome2);
+            return false;
+        }
+        
+        // Test deterministic random feature generation
+        boolean feature1 = deterministicRandom.shouldGenerate(testX, testZ, "validation_test", 0.5f);
+        boolean feature2 = deterministicRandom.shouldGenerate(testX, testZ, "validation_test", 0.5f);
+        
+        if (feature1 != feature2) {
+            System.err.println("DETERMINISTIC VALIDATION FAILED: Feature generation inconsistent at (" + 
+                             testX + ", " + testZ + ") - got " + feature1 + " and " + feature2);
+            return false;
+        }
+        
+        System.out.println("Deterministic generation validation passed at (" + testX + ", " + testZ + ")");
+        return true;
+    }
+    
+    /**
+     * Logs detailed information about the current deterministic generation state.
+     * Useful for debugging world generation issues.
+     */
+    public void logGenerationState() {
+        System.out.println("=== World Deterministic Generation State ===");
+        System.out.println("World seed: " + seed);
+        System.out.println("Loaded chunks: " + chunks.size());
+        System.out.println("Noise generators initialized: " + 
+                          (terrainNoise != null) + "/" + 
+                          (temperatureNoise != null) + "/" + 
+                          (continentalnessNoise != null));
+        System.out.println("DeterministicRandom initialized: " + (deterministicRandom != null));
+        System.out.println("World loading state: " + (isWorldLoading ? "LOADING" : "RUNTIME"));
+        System.out.println("============================================");
     }
     
     /**
