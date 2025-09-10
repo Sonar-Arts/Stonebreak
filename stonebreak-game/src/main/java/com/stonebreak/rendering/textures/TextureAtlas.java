@@ -532,6 +532,7 @@ public class TextureAtlas {
             case SANDSTONE: return "sandstone";
             case RED_SANDSTONE: return "red_sandstone";
             case ELM_LEAVES: return "elm_leaves";
+            case GRAVEL: return "gravel";
             default: return blockType.name().toLowerCase();
         }
     }

@@ -1,0 +1,118 @@
+{
+  "block_type": "GRAVEL",
+  "texture_name": "gravel",
+  "description": "Gravel texture with scattered gray stones and rocky variations",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 matches TextureAtlas.texturePixelSize for in-game blocks"
+  },
+  "base_colors": {
+    "r_base": 130,
+    "g_base": 125,
+    "b_base": 120,
+    "r_variance": 35,
+    "g_variance": 30,
+    "b_variance": 25,
+    "note": "Medium gray base colors with variation for natural stone appearance"
+  },
+  "noise_generation": {
+    "primary_noise": {
+      "x_frequency": 0.8,
+      "x_phase_y": 0.3,
+      "y_frequency": 0.6,
+      "y_phase_x": 0.9,
+      "weight": 1.0,
+      "note": "Primary noise for rocky texture variation"
+    }
+  },
+  "texture_features": {
+    "dark_spots": {
+      "description": "Dark stone pieces and shadowed crevices",
+      "patterns": [
+        {
+          "x_modulo": 4,
+          "y_modulo": 4,
+          "offset_x": 0,
+          "offset_y": 0,
+          "note": "Regular dark spots for individual stones"
+        },
+        {
+          "x_modulo": 7,
+          "y_modulo": 5,
+          "offset_x": 2,
+          "offset_y": 3,
+          "note": "Irregular darker stones scattered throughout"
+        },
+        {
+          "x_modulo": 3,
+          "y_modulo": 6,
+          "offset_x": 1,
+          "offset_y": 1,
+          "note": "Small pebbles and debris"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": -35,
+        "g_delta": -30,
+        "b_delta": -28,
+        "note": "Darker stone pieces and shadows"
+      }
+    },
+    "light_specks": {
+      "description": "Lighter stone pieces and mineral highlights",
+      "patterns": [
+        {
+          "x_modulo": 8,
+          "y_modulo": 6,
+          "offset_x": 3,
+          "offset_y": 2,
+          "note": "Lighter colored stones"
+        },
+        {
+          "x_modulo": 5,
+          "y_modulo": 9,
+          "offset_x": 1,
+          "offset_y": 4,
+          "note": "Mineral highlights and weathered surfaces"
+        }
+      ],
+      "color_adjustment": {
+        "r_delta": 25,
+        "g_delta": 22,
+        "b_delta": 18,
+        "note": "Lighter stone highlights and mineral flecks"
+      }
+    }
+  },
+  "generation_algorithm": {
+    "step1": "Generate primary noise: gravelX = sin(x * 0.8 + y * 0.3) * 0.5 + 0.5",
+    "step2": "Generate primary noise: gravelY = cos(x * 0.6 + y * 0.9) * 0.5 + 0.5",
+    "step3": "Combine: gravelNoise = (gravelX + gravelY) * 0.5",
+    "step4": "Apply base colors: r = 130 + gravelNoise * 35, g = 125 + gravelNoise * 30, b = 120 + gravelNoise * 25",
+    "step5": "Apply dark spots at multiple pattern coordinates (subtract deltas for stone shadows)",
+    "step6": "Apply light specks at pattern coordinates (add deltas for mineral highlights)",
+    "step7": "Clamp all color values to [0, 255] range",
+    "note": "Creates natural gravel appearance with scattered stones of varying shades"
+  },
+  "metadata": {
+    "created_from": "Custom gravel texture design based on Minecraft reference materials",
+    "original_location": "Generated - no hardcoded equivalent",
+    "purpose": "Natural gravel block texture with scattered stone appearance",
+    "version": "1.0",
+    "conversion_status": "Complete - original design",
+    "reference_examples": ["dirt.json", "stone.json"]
+  },
+  "design_notes": {
+    "inspiration": "Based on 16x16 Minecraft gravel textures with gray stone variations",
+    "characteristics": [
+      "Medium gray base color representing typical gravel composition",
+      "Multiple pattern layers for realistic stone scatter",
+      "Dark spots for individual stones and shadows",
+      "Light specks for mineral highlights and weathered surfaces",
+      "Higher frequency noise for fine-grained rocky texture"
+    ],
+    "visual_goals": "Create convincing gravel appearance with natural stone variation and realistic depth"
+  }
+}

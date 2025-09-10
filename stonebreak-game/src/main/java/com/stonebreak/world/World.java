@@ -536,6 +536,36 @@ public class World {
                     }
                 }
                 
+                // Generate Gravel patches on sand surfaces in DESERT biome
+                if (biome == BiomeType.DESERT && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SAND) {
+                        boolean shouldGenerateGravel;
+                        synchronized (randomLock) {
+                            shouldGenerateGravel = this.random.nextFloat() < 0.01; // 1% chance for gravel patches
+                        }
+                        if (shouldGenerateGravel) {
+                            // Create small gravel patches (2x2 or 3x3)
+                            int patchSize;
+                            synchronized (randomLock) {
+                                patchSize = this.random.nextBoolean() ? 2 : 3; // Random patch size
+                            }
+                            
+                            for (int dx = 0; dx < patchSize; dx++) {
+                                for (int dz = 0; dz < patchSize; dz++) {
+                                    int patchWorldX = worldX + dx - patchSize/2;
+                                    int patchWorldZ = worldZ + dz - patchSize/2;
+                                    int patchY = this.generateTerrainHeight(patchWorldX, patchWorldZ) - 1;
+                                    
+                                    // Only place gravel if the spot is sand
+                                    if (this.getBlockAt(patchWorldX, patchY, patchWorldZ) == BlockType.SAND) {
+                                        this.setBlockAt(patchWorldX, patchY, patchWorldZ, BlockType.GRAVEL);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 // Generate Ice patches and Snow layers in SNOWY_PLAINS biome
                 if (biome == BiomeType.SNOWY_PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT && 

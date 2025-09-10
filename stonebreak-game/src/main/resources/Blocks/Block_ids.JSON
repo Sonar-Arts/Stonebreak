@@ -145,6 +145,11 @@
       "id": 28,
       "textureType": "uniform",
       "texture": "cobblestone_texture"
+    },
+    "stonebreak:gravel": {
+      "id": 29,
+      "textureType": "uniform",
+      "texture": "gravel_texture"
     }
   }
 }
