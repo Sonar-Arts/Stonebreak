@@ -19,6 +19,7 @@ import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.util.SplineInterpolator;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.features.TreeGenerator;
+import com.stonebreak.world.generation.mobs.MobGenerator;
 
 /**
  * Manages the game world and chunks.
@@ -594,108 +595,13 @@ public class World {
             }
         }
         
-        // Spawn cows in PLAINS biome (10% chance per chunk)
+        // Process mob spawning for this chunk
         BiomeType chunkBiome = getBiomeType(chunkX * CHUNK_SIZE + CHUNK_SIZE / 2, chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2);
-        if (chunkBiome == BiomeType.PLAINS) {
-            float cowSpawnChance;
-            synchronized (randomLock) {
-                cowSpawnChance = this.random.nextFloat();
-            }
-            
-            if (cowSpawnChance < 0.1f) { // 10% chance per chunk
-                spawnCowsInChunk(chunk);
-            }
-        }
+        MobGenerator.processChunkMobSpawning(this, chunk, chunkBiome, this.random, this.randomLock);
         
         chunk.setFeaturesPopulated(true);
     }
     
-    
-    /**
-     * Spawns 1-4 cows in a plains chunk at valid grass locations.
-     */
-    private void spawnCowsInChunk(Chunk chunk) {
-        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        if (entityManager == null) return;
-        
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-        
-        // Determine number of cows to spawn (1-4)
-        int cowCount;
-        synchronized (randomLock) {
-            cowCount = 1 + this.random.nextInt(4); // 1, 2, 3, or 4 cows
-        }
-        
-        int spawned = 0;
-        int attempts = 0;
-        int maxAttempts = 20; // Limit attempts to prevent infinite loops
-        
-        while (spawned < cowCount && attempts < maxAttempts) {
-            attempts++;
-            
-            // Random position within chunk
-            int localX, localZ;
-            synchronized (randomLock) {
-                localX = this.random.nextInt(CHUNK_SIZE);
-                localZ = this.random.nextInt(CHUNK_SIZE);
-            }
-            
-            int worldX = chunkX * CHUNK_SIZE + localX;
-            int worldZ = chunkZ * CHUNK_SIZE + localZ;
-            
-            // Find surface height
-            int surfaceY = 0;
-            for (int y = WORLD_HEIGHT - 1; y >= 0; y--) {
-                if (chunk.getBlock(localX, y, localZ) != BlockType.AIR) {
-                    surfaceY = y + 1; // First air block above ground
-                    break;
-                }
-            }
-            
-            // Check if valid spawn location
-            if (isValidCowSpawnLocation(chunk, localX, surfaceY, localZ)) {
-                // Spawn cow at this location
-                org.joml.Vector3f spawnPos = new org.joml.Vector3f(
-                    worldX + 0.5f, // Center of block
-                    surfaceY,
-                    worldZ + 0.5f  // Center of block
-                );
-                
-                // Select random texture variant for world generation cow spawning
-                String[] variants = {"default", "angus", "highland"};
-                String textureVariant = variants[(int)(Math.random() * variants.length)];
-                entityManager.spawnCowWithVariant(spawnPos, textureVariant);
-                spawned++;
-            }
-        }
-    }
-    
-    /**
-     * Checks if the given location is valid for cow spawning.
-     * Requires grass block below, air blocks above, and not in water.
-     */
-    private boolean isValidCowSpawnLocation(Chunk chunk, int localX, int y, int localZ) {
-        // Check bounds
-        if (localX < 0 || localX >= CHUNK_SIZE || localZ < 0 || localZ >= CHUNK_SIZE) {
-            return false;
-        }
-        if (y < 1 || y >= WORLD_HEIGHT - 1) {
-            return false;
-        }
-        
-        // Check ground block (must be grass)
-        BlockType groundBlock = chunk.getBlock(localX, y - 1, localZ);
-        if (groundBlock != BlockType.GRASS) {
-            return false;
-        }
-        
-        // Check spawn space (must be air for cow's height)
-        BlockType spawnBlock = chunk.getBlock(localX, y, localZ);
-        BlockType aboveBlock = chunk.getBlock(localX, y + 1, localZ);
-        
-        return spawnBlock == BlockType.AIR && aboveBlock == BlockType.AIR;
-    }
     
 /**
      * Safely generates a new chunk, registers it, and queues it for mesh building.
