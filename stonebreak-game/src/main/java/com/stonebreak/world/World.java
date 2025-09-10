@@ -16,10 +16,10 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.util.SplineInterpolator;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.features.TreeGenerator;
 import com.stonebreak.world.generation.mobs.MobGenerator;
+import com.stonebreak.world.generation.TerrainGenerationSystem;
 
 /**
  * Manages the game world and chunks.
@@ -30,14 +30,9 @@ public class World {
     public static final int WORLD_HEIGHT = 256;
     public static final int SEA_LEVEL = 64;
     private static final int RENDER_DISTANCE = 8;
-      // Seed for terrain generation
-    private final long seed;
-    private final Random random;
-    private final NoiseGenerator terrainNoise;
-    private final NoiseGenerator temperatureNoise; // For biome determination
-    private final NoiseGenerator continentalnessNoise;
-    private final SplineInterpolator terrainSpline;
-    private final Object randomLock = new Object(); // Lock for synchronizing random access
+    
+    // Terrain generation system
+    private final TerrainGenerationSystem terrainSystem;
     
     // Stores all chunks in the world
     private final Map<ChunkPosition, Chunk> chunks;
@@ -62,23 +57,10 @@ public class World {
     private final SnowLayerManager snowLayerManager;
 
     public World() {
-        this.seed = System.currentTimeMillis();
-        this.random = new Random(seed);
-        this.terrainNoise = new NoiseGenerator(seed);
-        this.temperatureNoise = new NoiseGenerator(seed + 1); // Use a different seed for temperature
-        this.continentalnessNoise = new NoiseGenerator(seed + 2);
+        long seed = System.currentTimeMillis();
+        this.terrainSystem = new TerrainGenerationSystem(seed);
         this.chunks = new ConcurrentHashMap<>();
         this.chunkManager = new ChunkManager(this, RENDER_DISTANCE);
-
-        this.terrainSpline = new SplineInterpolator();
-        terrainSpline.addPoint(-1.0, 70);  // Islands (changed from 20 to simulate islands above sea level)
-        terrainSpline.addPoint(-0.8, 20);  // Deep ocean (new point for preserved deep ocean areas)
-        terrainSpline.addPoint(-0.4, 60);  // Approaching coast
-        terrainSpline.addPoint(-0.2, 70);  // Just above sea level
-        terrainSpline.addPoint(0.1, 75);   // Lowlands
-        terrainSpline.addPoint(0.3, 120);  // Mountain foothills
-        terrainSpline.addPoint(0.7, 140);  // Common foothills (new point for enhanced foothill generation)
-        terrainSpline.addPoint(1.0, 200);  // High peaks
         
         // Initialize thread pool for chunk mesh building
         // Use half available processors, minimum 1
@@ -90,7 +72,7 @@ public class World {
         this.chunksFailedToBuildMesh = new ConcurrentLinkedQueue<>(); // Initialize the new queue
         this.snowLayerManager = new SnowLayerManager();
         
-        System.out.println("Creating world with seed: " + seed + ", using " + numThreads + " mesh builder threads.");
+        System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + numThreads + " mesh builder threads.");
     }
     
     /**
@@ -192,7 +174,7 @@ public class World {
 
         // 1. Populate features if not already done
         if (!chunk.areFeaturesPopulated()) {
-            populateChunkWithFeatures(chunk);
+            terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
             // Population changes blocks, so a mesh rebuild is necessary.
             synchronized (chunk) {
                 chunk.setDataReadyForGL(false);
@@ -236,7 +218,7 @@ public class World {
         Chunk chunk = chunks.get(position);
         
         if (chunk == null) {
-            // Use the new safe method for generation, registration, and queueing
+            // Use the terrain system to generate and register the chunk
             chunk = safelyGenerateAndRegisterChunk(x, z);
         }
         
@@ -350,257 +332,6 @@ public class World {
        }
        return true;
    }
-   
-   /**
-     * Generates only the bare terrain for a new chunk (no features like ores or trees).
-     * Uses chunk.setBlock() for local block placement.
-     */
-    private Chunk generateBareChunk(int chunkX, int chunkZ) {
-        updateLoadingProgress("Generating Base Terrain Shape");
-        Chunk chunk = new Chunk(chunkX, chunkZ);
-        
-        // Generate terrain
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                // Calculate absolute world coordinates
-                int worldX = chunkX * CHUNK_SIZE + x;
-                int worldZ = chunkZ * CHUNK_SIZE + z;
-                
-                // Generate height map using noise
-                int height = generateTerrainHeight(worldX, worldZ);
-                
-                // Update progress for biome determination
-                if (x == 0 && z == 0) {
-                    updateLoadingProgress("Determining Biomes");
-                }
-                BiomeType biome = getBiomeType(worldX, worldZ);
-                
-                // Generate blocks based on height and biome
-                if (x == 8 && z == 8) { // Update progress mid-chunk
-                    updateLoadingProgress("Applying Biome Materials");
-                }
-                for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    BlockType blockType;
-                    
-                    if (y == 0) {
-                        blockType = BlockType.BEDROCK;
-                    } else if (y < height - 4) {
-                        // Deeper layers - biome can influence stone type
-                        if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 && random.nextFloat() < 0.6f) {
-                            blockType = BlockType.MAGMA; // More magma deeper in volcanic areas
-                        } else {
-                            blockType = BlockType.STONE;
-                        }                    } else if (y < height - 1) {
-                        // Sub-surface layer
-                        blockType = (biome != null) ? switch (biome) {
-                            case RED_SAND_DESERT -> BlockType.RED_SANDSTONE;
-                            case DESERT -> BlockType.SANDSTONE;
-                            case PLAINS -> BlockType.DIRT;
-                            case SNOWY_PLAINS -> BlockType.DIRT;
-                            default -> BlockType.DIRT;
-                        } : BlockType.DIRT;                    } else if (y < height) {
-                        // Top layer
-                        blockType = (biome != null) ? switch (biome) {
-                            case DESERT -> BlockType.SAND;
-                            case RED_SAND_DESERT -> BlockType.RED_SAND;
-                            case PLAINS -> BlockType.GRASS;
-                            case SNOWY_PLAINS -> BlockType.SNOWY_DIRT;
-                            default -> BlockType.DIRT; // Default case to handle any new biome types
-                        } : BlockType.DIRT;
-                    } else if (y < SEA_LEVEL) { // Water level
-                        // No water in volcanic biomes above a certain height
-                        if (biome == BiomeType.RED_SAND_DESERT && height > SEA_LEVEL) {
-                             blockType = BlockType.AIR;
-                        } else {
-                            blockType = BlockType.WATER;
-                        }
-                    } else {
-                        blockType = BlockType.AIR;
-                    }
-                    chunk.setBlock(x, y, z, blockType); // Local placement
-                }
-                // Trees and other features will be generated in populateChunkWithFeatures
-            }
-        }
-        chunk.setFeaturesPopulated(false); // Explicitly mark as not populated
-        return chunk;
-    }
-
-    /**
-     * Populates an existing chunk with features like ores and trees.
-     * Uses this.setBlockAt() for global block placement.
-     */
-    private void populateChunkWithFeatures(Chunk chunk) {
-        if (chunk == null || chunk.areFeaturesPopulated()) {
-            return; // Already populated or null chunk
-        }
-
-        updateLoadingProgress("Adding Surface Decorations & Details");
-        
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                int worldX = chunkX * CHUNK_SIZE + x;
-                int worldZ = chunkZ * CHUNK_SIZE + z;
-
-                // Determine surface height for this column *within this chunk*
-                // This height is relative to the chunk's own blocks, not a fresh noise query
-                int surfaceHeight = 0;
-                for (int yScan = WORLD_HEIGHT - 1; yScan >= 0; yScan--) {
-                    if (chunk.getBlock(x, yScan, z) != BlockType.AIR) {
-                        surfaceHeight = yScan + 1; // surfaceHeight is the first AIR block *above* solid ground, or top of solid ground
-                        break;
-                    }
-                }
-                 if (surfaceHeight == 0 && chunk.getBlock(x,0,z) != BlockType.AIR) { // Edge case: column is solid to y=0
-                    surfaceHeight = 1; // Place features starting at y=1 if ground is at y=0
-                }
-                
-                BiomeType biome = getBiomeType(worldX, worldZ);
-
-                // Generate Ores & Biome Specific Features
-                for (int y = 1; y < surfaceHeight -1; y++) { // Iterate up to just below surface
-                    BlockType currentBlock = chunk.getBlock(x, y, z);
-                    BlockType oreType = null;
-
-                    if (currentBlock == BlockType.STONE) {
-                        synchronized (randomLock) {
-                            if (this.random.nextFloat() < 0.015) { // Increased coal slightly
-                                oreType = BlockType.COAL_ORE;
-                            } else if (this.random.nextFloat() < 0.008 && y < 50) { // Increased iron slightly, wider range
-                                oreType = BlockType.IRON_ORE;
-                            }
-                        }
-                    } else if (biome == BiomeType.RED_SAND_DESERT && (currentBlock == BlockType.RED_SAND || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
-                        // Crystal generation in Volcanic biomes, embedded in Obsidian, Stone or Magma
-                        synchronized (randomLock) {
-                            if (this.random.nextFloat() < 0.02) { // Chance for Crystal
-                                oreType = BlockType.CRYSTAL;
-                            }
-                        }
-                    }
-                    
-                    if (oreType != null) {
-                        this.setBlockAt(worldX, y, worldZ, oreType);
-                    }
-                }
-                
-                // Generate Trees (in PLAINS and SNOWY_PLAINS biomes)
-                if (biome == BiomeType.PLAINS) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) { // Ensure tree spawns on grass
-                        float treeChance;
-                        synchronized (randomLock) {
-                            treeChance = this.random.nextFloat();
-                        }
-                        
-                        if (treeChance < 0.01 && surfaceHeight > 64) { // 1% total tree chance
-                            // Determine tree type: 60% regular oak, 40% elm trees
-                            boolean shouldGenerateElm;
-                            synchronized (randomLock) {
-                                shouldGenerateElm = this.random.nextFloat() < 0.4f; // 40% chance for elm
-                            }
-                            
-                            if (shouldGenerateElm) {
-                                TreeGenerator.generateElmTree(this, chunk, x, surfaceHeight, z, this.random, this.randomLock);
-                            } else {
-                                TreeGenerator.generateTree(this, chunk, x, surfaceHeight, z);
-                            }
-                        }
-                    }
-                } else if (biome == BiomeType.SNOWY_PLAINS) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) { // Pine trees spawn on snowy dirt
-                        boolean shouldGeneratePineTree;
-                        synchronized (randomLock) {
-                            shouldGeneratePineTree = (this.random.nextFloat() < 0.015 && surfaceHeight > 64); // Slightly higher chance for pine trees
-                        }
-                        if (shouldGeneratePineTree) {
-                            TreeGenerator.generatePineTree(this, chunk, x, surfaceHeight, z);
-                        }
-                    }
-                }
-                
-                // Generate Flowers on grass surfaces in PLAINS biome
-                if (biome == BiomeType.PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS && 
-                        chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
-                        boolean shouldGenerateFlower;
-                        synchronized (randomLock) {
-                            shouldGenerateFlower = this.random.nextFloat() < 0.08; // 8% chance for flowers
-                        }
-                        if (shouldGenerateFlower) {
-                            BlockType flowerType;
-                            synchronized (randomLock) {
-                                flowerType = this.random.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION;
-                            }
-                            this.setBlockAt(worldX, surfaceHeight, worldZ, flowerType);
-                        }
-                    }
-                }
-                
-                // Generate Gravel patches on sand surfaces in DESERT biome
-                if (biome == BiomeType.DESERT && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SAND) {
-                        boolean shouldGenerateGravel;
-                        synchronized (randomLock) {
-                            shouldGenerateGravel = this.random.nextFloat() < 0.01; // 1% chance for gravel patches
-                        }
-                        if (shouldGenerateGravel) {
-                            // Create small gravel patches (2x2 or 3x3)
-                            int patchSize;
-                            synchronized (randomLock) {
-                                patchSize = this.random.nextBoolean() ? 2 : 3; // Random patch size
-                            }
-                            
-                            for (int dx = 0; dx < patchSize; dx++) {
-                                for (int dz = 0; dz < patchSize; dz++) {
-                                    int patchWorldX = worldX + dx - patchSize/2;
-                                    int patchWorldZ = worldZ + dz - patchSize/2;
-                                    int patchY = this.generateTerrainHeight(patchWorldX, patchWorldZ) - 1;
-                                    
-                                    // Only place gravel if the spot is sand
-                                    if (this.getBlockAt(patchWorldX, patchY, patchWorldZ) == BlockType.SAND) {
-                                        this.setBlockAt(patchWorldX, patchY, patchWorldZ, BlockType.GRAVEL);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Generate Ice patches and Snow layers in SNOWY_PLAINS biome
-                if (biome == BiomeType.SNOWY_PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT && 
-                        chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
-                        float featureChance;
-                        synchronized (randomLock) {
-                            featureChance = this.random.nextFloat();
-                        }
-                        
-                        if (featureChance < 0.03) { // 3% chance for ice patches
-                            this.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.ICE);
-                        } else if (featureChance < 0.08) { // Additional 5% chance for snow layers
-                            this.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
-                            // Set initial snow layer count (1-3 layers randomly)
-                            int layers;
-                            synchronized (randomLock) {
-                                layers = 1 + this.random.nextInt(3); // 1, 2, or 3 layers
-                            }
-                            snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
-                        }
-                    }
-                }
-                // No trees in DESERT or VOLCANIC biomes by default
-            }
-        }
-        
-        // Process mob spawning for this chunk
-        BiomeType chunkBiome = getBiomeType(chunkX * CHUNK_SIZE + CHUNK_SIZE / 2, chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2);
-        MobGenerator.processChunkMobSpawning(this, chunk, chunkBiome, this.random, this.randomLock);
-        
-        chunk.setFeaturesPopulated(true);
-    }
     
     
 /**
@@ -619,7 +350,7 @@ public class World {
             // Track chunk allocation
             MemoryProfiler.getInstance().incrementAllocation("Chunk");
             
-            Chunk newGeneratedChunk = generateBareChunk(chunkX, chunkZ);
+            Chunk newGeneratedChunk = terrainSystem.generateBareChunk(chunkX, chunkZ);
             
             if (newGeneratedChunk == null) {
                 // This indicates a problem in generateChunk if it's designed to return null on error
@@ -667,62 +398,12 @@ public class World {
             return null; // Indicate failure
         }
     }
-    /**
-     * Generates terrain height for the specified world position.
-     */
-    private int generateTerrainHeight(int x, int z) {
-        float continentalness = continentalnessNoise.noise(x / 800.0f, z / 800.0f);
-        int height = (int) terrainSpline.interpolate(continentalness);
-        return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));
-    }
-    
-    /**
-     * Generates moisture value for determining biomes.
-     */
-    private float generateMoisture(int x, int z) {
-        float nx = x / 200.0f;
-        float nz = z / 200.0f;
-        
-        return terrainNoise.noise(nx + 100, nz + 100) * 0.5f + 0.5f; // Range 0.0 to 1.0
-    }
-    
-    private float generateTemperature(int x, int z) {
-        float nx = x / 300.0f; // Different scale for temperature
-        float nz = z / 300.0f;
-        return temperatureNoise.noise(nx - 50, nz - 50) * 0.5f + 0.5f; // Range 0.0 to 1.0
-    }
-    
-    private BiomeType getBiomeType(int x, int z) {
-        float moisture = generateMoisture(x, z);
-        float temperature = generateTemperature(x, z);
-
-        if (temperature > 0.65f) { // Hot
-            if (moisture < 0.35f) {
-                return BiomeType.DESERT;
-            } else {
-                return BiomeType.RED_SAND_DESERT; // Hot and somewhat moist/varied = Red Sand Desert
-            }
-        } else if (temperature < 0.35f) { // Cold
-            if (moisture > 0.6f) {
-                return BiomeType.SNOWY_PLAINS; // Cold and moist = snowy plains
-            } else {
-                return BiomeType.PLAINS; // Cold but dry = regular plains
-            }
-        } else { // Temperate
-            if (moisture < 0.3f) {
-                return BiomeType.DESERT; // Temperate but dry = also desert like
-            } else {
-                return BiomeType.PLAINS;
-            }
-        }
-    }
     
     /**
      * Gets the continentalness value at the specified world position.
-     * This is the same value used for terrain height generation.
      */
     public float getContinentalnessAt(int x, int z) {
-        return continentalnessNoise.noise(x / 800.0f, z / 800.0f);
+        return terrainSystem.getContinentalnessAt(x, z);
     }
     
     /**
@@ -898,7 +579,7 @@ public class World {
 
                 if (chunk != null) {
                     if (!chunk.areFeaturesPopulated()) {
-                        populateChunkWithFeatures(chunk);
+                        terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
                         // Mark for mesh rebuild as population changes blocks
                         synchronized (chunk) {
                             chunk.setDataReadyForGL(false);
