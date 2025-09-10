@@ -121,7 +121,7 @@ public class World {
         MemoryProfiler.getInstance().takeSnapshot("after_chunk_position_cache_cleanup");
     }
     
-    public void update() {
+    public void update(com.stonebreak.rendering.Renderer renderer) {
         // Re-queue chunks that failed their mesh build on a previous frame
         requeueFailedChunks();
 
@@ -149,7 +149,7 @@ public class World {
         }
 
         // Process requests to build mesh data (async)
-        processChunkMeshBuildRequests();
+        processChunkMeshBuildRequests(renderer);
 
         // Apply mesh data to GL objects on the main thread
         
@@ -441,7 +441,7 @@ public class World {
      * Submits tasks to the executor to build mesh data for chunks in the queue.
      * This is called from the main game loop.
      */
-    private void processChunkMeshBuildRequests() {
+    private void processChunkMeshBuildRequests(com.stonebreak.rendering.Renderer renderer) {
         if (chunksToBuildMesh.isEmpty()) {
             return;
         }
@@ -456,7 +456,7 @@ public class World {
                 boolean buildSuccess = false;
                 try {
                     // The chunkToProcess.meshDataGenerationScheduledOrInProgress was set to true before adding to chunksToBuildMesh
-                    chunkToProcess.buildAndPrepareMeshData(this); // This sets dataReadyForGL internally
+                    chunkToProcess.buildAndPrepareMeshData(this, renderer); // This sets dataReadyForGL internally
                     buildSuccess = chunkToProcess.isDataReadyForGL();
                     
                     if (buildSuccess) {

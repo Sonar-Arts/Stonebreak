@@ -605,7 +605,7 @@ public class Game {
         
         // Update world (processes chunk loading, mesh building, etc.)
         if (world != null) {
-            worldUpdateExecutor.submit(() -> world.update());
+            worldUpdateExecutor.submit(() -> world.update(renderer));
             world.updateMainThread();
             // Process GPU cleanup on main thread after world update
             world.processGpuCleanupQueue();
