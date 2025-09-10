@@ -456,7 +456,7 @@ public class World {
                 boolean buildSuccess = false;
                 try {
                     // The chunkToProcess.meshDataGenerationScheduledOrInProgress was set to true before adding to chunksToBuildMesh
-                    chunkToProcess.buildAndPrepareMeshData(this, renderer); // This sets dataReadyForGL internally
+                    chunkToProcess.buildAndPrepareMeshData(this); // This sets dataReadyForGL internally
                     buildSuccess = chunkToProcess.isDataReadyForGL();
                     
                     if (buildSuccess) {

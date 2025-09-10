@@ -6,7 +6,6 @@ import com.stonebreak.rendering.core.OpenGLErrorHandler;
 import com.stonebreak.rendering.core.RenderingConfigurationManager;
 import com.stonebreak.rendering.core.ResourceManager;
 import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
-import com.stonebreak.world.chunk.mesh.ChunkMeshOperations;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
@@ -37,7 +36,6 @@ public class Renderer {
     private final ResourceManager resourceManager;
     private final RenderingConfigurationManager configManager;
     private final BlockDefinitionRegistry blockRegistry;
-    private final ChunkMeshOperations chunkMeshOperations;
     
     // Specialized renderers
     private final BlockRenderer blockRenderer;
@@ -64,8 +62,6 @@ public class Renderer {
         // Initialize block definition registry for CBR support
         blockRegistry = new GameBlockDefinitionRegistry();
         
-        // Initialize chunk mesh operations coordinator
-        chunkMeshOperations = new ChunkMeshOperations();
         
         // Initialize specialized renderers with CBR support
         blockRenderer = new BlockRenderer(resourceManager.getTextureAtlas(), blockRegistry);
@@ -417,13 +413,6 @@ public class Renderer {
 
 
 
-    /**
-     * Generates mesh data for a chunk through the centralized mesh operations coordinator.
-     * This method provides centralized control over chunk meshing operations.
-     */
-    public ChunkMeshOperations.MeshData generateChunkMeshData(com.stonebreak.blocks.BlockType[][][] blocks, int chunkX, int chunkZ, World world) {
-        return chunkMeshOperations.generateMeshData(blocks, chunkX, chunkZ, world);
-    }
     
     /**
      * Renders the world using the specialized WorldRenderer sub-renderer.

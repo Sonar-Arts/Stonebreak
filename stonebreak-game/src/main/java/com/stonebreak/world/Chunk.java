@@ -77,10 +77,13 @@ public class Chunk {
         blocks[x][y][z] = blockType;
     }
     
+    // Chunk mesh operations instance for generating mesh data
+    private final ChunkMeshOperations chunkMeshOperations = new ChunkMeshOperations();
+    
     /**
      * Builds the mesh data for this chunk. This is CPU-intensive and can be run on a worker thread.
      */
-    public void buildAndPrepareMeshData(World world, com.stonebreak.rendering.Renderer renderer) {
+    public void buildAndPrepareMeshData(World world) {
         // meshDataGenerationScheduledOrInProgress is true, set by World.
         try {
             // Update loading progress
@@ -89,8 +92,8 @@ public class Chunk {
                 game.getLoadingScreen().updateProgress("Meshing Chunk");
             }
             
-            // Use Renderer to coordinate mesh data generation
-            ChunkMeshOperations.MeshData meshData = renderer.generateChunkMeshData(blocks, x, z, world);
+            // Generate mesh data directly within the chunk
+            ChunkMeshOperations.MeshData meshData = chunkMeshOperations.generateMeshData(blocks, x, z, world);
             
             // Store the generated mesh data
             updateMeshDataFromResult(meshData);
