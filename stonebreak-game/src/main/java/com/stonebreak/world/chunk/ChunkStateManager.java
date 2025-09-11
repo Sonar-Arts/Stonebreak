@@ -1,15 +1,20 @@
 package com.stonebreak.world.chunk;
 
 import java.util.function.Consumer;
+import com.stonebreak.world.chunk.operations.ChunkState;
 
+/**
+ * Higher-level chunk state management that orchestrates operations across chunks.
+ * Uses the new ChunkStateManager system internally.
+ */
 public class ChunkStateManager {
     
     public void markForMeshRebuild(Chunk chunk) {
         if (chunk == null) return;
         
         synchronized (chunk) {
-            chunk.setDataReadyForGL(false);
-            chunk.setMeshDataGenerationScheduledOrInProgress(false);
+            chunk.getStateManager().markMeshDirty();
+            chunk.getStateManager().removeState(ChunkState.MESH_GENERATING);
         }
     }
     
@@ -22,8 +27,9 @@ public class ChunkStateManager {
         if (chunk == null) return;
         
         synchronized (chunk) {
-            chunk.setDataReadyForGL(false);
-            chunk.setMeshDataGenerationScheduledOrInProgress(false);
+            chunk.getStateManager().removeState(ChunkState.MESH_CPU_READY);
+            chunk.getStateManager().removeState(ChunkState.MESH_GENERATING);
+            chunk.getStateManager().markMeshDirty();
         }
     }
     
@@ -31,7 +37,7 @@ public class ChunkStateManager {
         if (chunk == null) return;
         
         synchronized (chunk) {
-            chunk.setMeshDataGenerationScheduledOrInProgress(true);
+            chunk.getStateManager().markMeshGenerating();
         }
     }
     
@@ -39,7 +45,7 @@ public class ChunkStateManager {
         if (chunk == null) return;
         
         synchronized (chunk) {
-            chunk.setMeshDataGenerationScheduledOrInProgress(false);
+            chunk.getStateManager().removeState(ChunkState.MESH_GENERATING);
         }
     }
     
@@ -47,16 +53,7 @@ public class ChunkStateManager {
         if (chunk == null) return false;
         
         synchronized (chunk) {
-            if (chunk.isMeshGenerated() && chunk.isDataReadyForGL()) {
-                return false; // Already fully meshed and data applied
-            }
-            if (chunk.isDataReadyForGL() && !chunk.isMeshGenerated()) {
-                return false; // Data ready for GL, waiting for main thread
-            }
-            if (chunk.isMeshDataGenerationScheduledOrInProgress()) {
-                return false; // Already scheduled or worker is on it
-            }
-            return true;
+            return chunk.getStateManager().needsMeshGeneration();
         }
     }
     

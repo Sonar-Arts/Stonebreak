@@ -163,7 +163,7 @@ public class World {
         chunk.setBlock(localX, y, localZ, blockType);
 
         stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-        neighborCoordinator.rebuildNeighborChunks(chunkX, chunkZ, localX, localZ);
+        neighborCoordinator.rebuildNeighborChunksScheduled(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
         
         return true;
     }

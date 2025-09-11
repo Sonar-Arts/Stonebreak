@@ -31,6 +31,24 @@ public class ChunkNeighborCoordinator {
             rebuildNeighborChunk(chunkX, chunkZ + 1);
         }
     }
+
+    /**
+     * Marks neighbor chunks dirty and schedules their mesh rebuilds when an edge block changes.
+     */
+    public void rebuildNeighborChunksScheduled(int chunkX, int chunkZ, int localX, int localZ, Consumer<Chunk> meshBuildScheduler) {
+        if (localX == 0) {
+            rebuildNeighborChunkScheduled(chunkX - 1, chunkZ, meshBuildScheduler);
+        }
+        if (localX == WorldConfiguration.CHUNK_SIZE - 1) {
+            rebuildNeighborChunkScheduled(chunkX + 1, chunkZ, meshBuildScheduler);
+        }
+        if (localZ == 0) {
+            rebuildNeighborChunkScheduled(chunkX, chunkZ - 1, meshBuildScheduler);
+        }
+        if (localZ == WorldConfiguration.CHUNK_SIZE - 1) {
+            rebuildNeighborChunkScheduled(chunkX, chunkZ + 1, meshBuildScheduler);
+        }
+    }
     
     public void ensureNeighborsReadyForRender(int centerChunkX, int centerChunkZ, Consumer<Chunk> meshBuildScheduler) {
         int[][] neighborOffsets = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
@@ -71,6 +89,13 @@ public class ChunkNeighborCoordinator {
         Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
         if (neighbor != null) {
             stateManager.markForMeshRebuild(neighbor);
+        }
+    }
+
+    private void rebuildNeighborChunkScheduled(int chunkX, int chunkZ, Consumer<Chunk> meshBuildScheduler) {
+        Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
+        if (neighbor != null) {
+            stateManager.markForMeshRebuildWithScheduling(neighbor, meshBuildScheduler);
         }
     }
 }
