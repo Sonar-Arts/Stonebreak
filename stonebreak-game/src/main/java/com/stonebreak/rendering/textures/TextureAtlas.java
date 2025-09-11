@@ -40,9 +40,11 @@ public class TextureAtlas {
     private int actualAtlasHeight;
     private boolean metadataLoaded = false;
     
-    // Atlas coordinates for the water tile (loaded from metadata)
-    private int waterAtlasX = 9; // fallback
-    private int waterAtlasY = 0; // fallback
+    // Atlas coordinates for water tiles (loaded from metadata)
+    private int waterAtlasX = 9; // legacy single-tile fallback (grid-based atlas)
+    private int waterAtlasY = 0;
+    // List of all water face tiles present in the atlas metadata. Each entry is [atlasX, atlasY].
+    private java.util.List<int[]> waterFaceTiles = new java.util.ArrayList<>();
     
     // Paths
     private static final String ATLAS_METADATA_PATH = "stonebreak-game/src/main/resources/Texture Atlas/atlas_metadata.json";
@@ -185,6 +187,8 @@ public class TextureAtlas {
             }
             
             // Update water coordinates from metadata
+            // Support both legacy names ("water", "water_still") and the current "water_temp_*" faces.
+            waterFaceTiles.clear();
             AtlasMetadata.TextureEntry waterTexture = atlasMetadata.findTexture("water");
             if (waterTexture == null) {
                 waterTexture = atlasMetadata.findTexture("water_still");
@@ -192,7 +196,29 @@ public class TextureAtlas {
             if (waterTexture != null) {
                 waterAtlasX = waterTexture.getX() / texturePixelSize;
                 waterAtlasY = waterTexture.getY() / texturePixelSize;
+                waterFaceTiles.add(new int[]{waterAtlasX, waterAtlasY});
             }
+
+            // Scan all textures for water face entries (e.g., water_temp_top, water_temp_north, etc.)
+            for (java.util.Map.Entry<String, AtlasMetadata.TextureEntry> e : atlasMetadata.getTextures().entrySet()) {
+                String name = e.getKey();
+                if (name.startsWith("water_") || name.startsWith("waterTemp_") || name.startsWith("watertemp_") || name.startsWith("watertemp") || name.startsWith("water_temp")) {
+                    AtlasMetadata.TextureEntry tex = e.getValue();
+                    int ax = tex.getX() / texturePixelSize;
+                    int ay = tex.getY() / texturePixelSize;
+                    int[] pair = new int[]{ax, ay};
+                    // Avoid duplicates (some names may point to same tile)
+                    boolean exists = false;
+                    for (int[] p : waterFaceTiles) {
+                        if (p[0] == ax && p[1] == ay) { exists = true; break; }
+                    }
+                    if (!exists) {
+                        waterFaceTiles.add(pair);
+                    }
+                }
+            }
+
+            // If we didn’t find any, keep legacy fallback tile
             
             // Cache the pixel buffer for NanoVG
             cachePixelBuffer(atlasImage);
@@ -393,13 +419,25 @@ public class TextureAtlas {
                 return;
             }
 
-            int offsetX = waterAtlasX * texturePixelSize;
-            int offsetY = waterAtlasY * texturePixelSize;
-
-            // Update the specific region of the texture atlas corresponding to the water tile
-            GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, offsetX, offsetY,
-                                 texturePixelSize, texturePixelSize,
-                                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, waterTileUpdateBuffer);
+            // If metadata provided multiple water face tiles, update all of them; else update legacy single tile.
+            if (!waterFaceTiles.isEmpty()) {
+                for (int i = 0; i < waterFaceTiles.size(); i++) {
+                    int[] tile = waterFaceTiles.get(i);
+                    int offsetX = tile[0] * texturePixelSize;
+                    int offsetY = tile[1] * texturePixelSize;
+                    // Reset buffer position for each upload
+                    waterTileUpdateBuffer.rewind();
+                    GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, offsetX, offsetY,
+                                         texturePixelSize, texturePixelSize,
+                                         GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, waterTileUpdateBuffer);
+                }
+            } else {
+                int offsetX = waterAtlasX * texturePixelSize;
+                int offsetY = waterAtlasY * texturePixelSize;
+                GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, offsetX, offsetY,
+                                     texturePixelSize, texturePixelSize,
+                                     GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, waterTileUpdateBuffer);
+            }
         } catch (Exception e) {
             System.err.println("ERROR in updateAnimatedWater: " + e.getMessage());
             System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));

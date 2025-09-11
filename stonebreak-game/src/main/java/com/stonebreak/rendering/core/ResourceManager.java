@@ -39,6 +39,7 @@ public class ResourceManager {
         shaderProgram.createUniform("u_atlasUVScale");
         shaderProgram.createUniform("u_renderPass");
         shaderProgram.createUniform("u_isUIElement");
+        shaderProgram.createUniform("u_time");
     }
     
     private String getVertexShaderSource() {
@@ -60,15 +61,35 @@ public class ResourceManager {
                uniform bool u_transformUVsForItem;
                uniform vec2 u_atlasUVOffset;
                uniform vec2 u_atlasUVScale;
+               uniform float u_time;
                void main() {
-                   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+                   // Compute world-space position first for stable, seamless waves
+                   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                   vec3 pos = position;
+                   // Apply GPU-side water surface displacement to avoid remeshing for waves
+                   if (isWater > 0.5) {
+                       // World-space wave using simple, seamless functions
+                       float s = 0.50;             // spatial scale
+                       float speed1 = 1.5;         // primary speed
+                       float speed2 = 2.0;         // secondary speed
+                       float amp1 = 0.12;          // primary amplitude
+                       float amp2 = 0.04;          // secondary amplitude
+                       float wave = sin(worldPos.x * s + u_time * speed1) * cos(worldPos.z * s * 0.8 + u_time * speed1 * 0.9) * amp1
+                                 + sin((worldPos.x + worldPos.z) * s * 1.7 + u_time * speed2) * amp2;
+                       // Favor top faces but still apply a small amount to sides to ensure visible motion
+                       float topFactor = clamp(normal.y, 0.0, 1.0);
+                       float sideFactor = 0.15;
+                       float factor = max(topFactor, sideFactor);
+                       pos.y += wave * factor;
+                   }
+                   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
                    if (u_transformUVsForItem) {
                        outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;
                    } else {
                        outTexCoord = texCoord;
                    }
                    outNormal = normal;
-                   fragPos = position;
+                   fragPos = (modelMatrix * vec4(pos, 1.0)).xyz;
                    v_isWater = isWater;
                    v_isAlphaTested = isAlphaTested;
                }""";

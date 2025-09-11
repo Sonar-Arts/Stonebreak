@@ -114,10 +114,8 @@ public class GeometryGenerator {
      */
     public float getBlockHeight(BlockType blockType, float worldX, float worldY, float worldZ, World world) {
         if (blockType == BlockType.WATER) {
-            WaterEffects waterEffects = Game.getWaterEffects();
-            if (waterEffects != null) {
-                return waterEffects.getWaterVisualHeight((int)worldX, (int)worldY, (int)worldZ);
-            }
+            // Keep a constant base water height; dynamic waves are handled in the vertex shader
+            return 0.875f;
         } else if (blockType == BlockType.SNOW) {
             // Get snow layer height from world
             if (world != null) {

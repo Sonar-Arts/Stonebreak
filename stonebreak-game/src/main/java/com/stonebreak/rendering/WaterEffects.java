@@ -96,9 +96,10 @@ public class WaterEffects {
         updateWaveSimulation(deltaTime);
         updateWaterFlow(deltaTime);
         
-        // Clear per-frame caches
+        // Clear per-frame caches – wave height depends on time, so cached heights
+        // must be invalidated every update to avoid appearing static.
         if (needsWaveUpdate) {
-            updateHeightCache();
+            heightCache.clear();
             needsWaveUpdate = false;
         }
     }
