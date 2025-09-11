@@ -13,9 +13,15 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import java.util.List;
+import java.util.ArrayDeque;
 
 public class DebugOverlay {
     private boolean visible = false;
+    
+    // FPS averaging
+    private static final int FPS_SAMPLE_SIZE = 60; // Average over 60 frames
+    private ArrayDeque<Float> fpsHistory = new ArrayDeque<>(FPS_SAMPLE_SIZE);
+    private float averageFPS = 0.0f;
 
     public DebugOverlay() {
     }
@@ -57,7 +63,7 @@ public class DebugOverlay {
         long usedMemory = totalMemory - freeMemory;
 
         // Get FPS
-        float fps = 1.0f / Game.getDeltaTime();
+        updateAverageFPS();
 
         // Get world information
         int loadedChunks = world.getLoadedChunkCount();
@@ -83,7 +89,7 @@ public class DebugOverlay {
         debug.append(String.format("Block Below: %s\n", blockBelowName));
         debug.append(String.format("Continentalness: %.3f\n", continentalness));
         debug.append("\n");
-        debug.append(String.format("FPS: %.0f\n", fps));
+        debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
         debug.append(String.format("Memory: %d/%d MB\n", usedMemory, maxMemory));
         debug.append(String.format("Chunks: %d loaded\n", loadedChunks));
         debug.append(String.format("Pending Mesh: %d\n", world.getPendingMeshBuildCount()));
@@ -92,6 +98,30 @@ public class DebugOverlay {
         debug.append("Path Visualization: ON\n");
 
         return debug.toString();
+    }
+
+    /**
+     * Updates the average FPS calculation with the current frame's FPS.
+     */
+    private void updateAverageFPS() {
+        float currentFPS = 1.0f / Game.getDeltaTime();
+        
+        // Add current FPS to history
+        fpsHistory.addLast(currentFPS);
+        
+        // Remove oldest FPS if we exceed sample size
+        if (fpsHistory.size() > FPS_SAMPLE_SIZE) {
+            fpsHistory.removeFirst();
+        }
+        
+        // Calculate average
+        if (!fpsHistory.isEmpty()) {
+            float sum = 0.0f;
+            for (Float fps : fpsHistory) {
+                sum += fps;
+            }
+            averageFPS = sum / fpsHistory.size();
+        }
     }
 
     /**
