@@ -2,6 +2,8 @@ package com.stonebreak.world.chunk;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -17,6 +19,8 @@ import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
  * Represents a chunk of the world, storing block data and mesh information.
  */
 public class Chunk {
+    
+    private static final Logger logger = Logger.getLogger(Chunk.class.getName());
     
     private final int x;
     private final int z;
@@ -101,11 +105,10 @@ public class Chunk {
             updateMeshDataFromResult(meshData);
             this.dataReadyForGL = true; // Mark data as ready for GL upload ONLY on success
         } catch (Exception e) {
-            System.err.println("CRITICAL: Exception during generateMeshData for chunk (" + x + ", " + z + "): " + e.getMessage());
-            System.err.println("Time: " + java.time.LocalDateTime.now());
-            System.err.println("Thread: " + Thread.currentThread().getName());
-            System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
-            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+            logger.log(Level.SEVERE, "CRITICAL: Exception during generateMeshData for chunk (" + x + ", " + z + "): " + e.getMessage()
+                + "\nTime: " + java.time.LocalDateTime.now()
+                + "\nThread: " + Thread.currentThread().getName()
+                + "\nMemory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used", e);
             this.dataReadyForGL = false; // Ensure it's false on error
             // meshDataGenerationScheduledOrInProgress is reset by the worker task's finally block in World.java.
         }
@@ -171,13 +174,12 @@ public class Chunk {
             // The data is now safely stored in GPU buffers and no longer needed in RAM
             freeMeshDataArrays();
         } catch (Exception e) {
-            System.err.println("CRITICAL: Error during createMesh for chunk (" + x + ", " + z + "): " + e.getMessage());
-            System.err.println("Time: " + java.time.LocalDateTime.now());
-            System.err.println("Thread: " + Thread.currentThread().getName());
-            System.err.println("VAO ID: " + this.vaoId + ", VBO ID: " + this.vertexVboId + ", Index Buffer ID: " + this.indexVboId);
-            System.err.println("Index count: " + this.indexCount);
-            System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
-            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+            logger.log(Level.SEVERE, "CRITICAL: Error during createMesh for chunk (" + x + ", " + z + "): " + e.getMessage()
+                + "\nTime: " + java.time.LocalDateTime.now()
+                + "\nThread: " + Thread.currentThread().getName()
+                + "\nVAO ID: " + this.vaoId + ", VBO ID: " + this.vertexVboId + ", Index Buffer ID: " + this.indexVboId
+                + "\nIndex count: " + this.indexCount
+                + "\nMemory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used", e);
             
             // createMesh failed. this.vaoId etc. might now hold IDs of partially created, invalid GL objects.
             // These new, failed GL objects need to be cleaned up. cleanupMesh() uses this.vaoId etc.
