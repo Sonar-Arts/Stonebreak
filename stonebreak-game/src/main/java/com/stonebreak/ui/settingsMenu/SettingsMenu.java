@@ -1,4 +1,4 @@
-package com.stonebreak.ui;
+package com.stonebreak.ui.settingsMenu;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;

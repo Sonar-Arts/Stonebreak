@@ -3,6 +3,7 @@ package com.stonebreak.core;
 import java.nio.*;
 
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import org.lwjgl.*;
 import org.lwjgl.glfw.*;
 import static org.lwjgl.glfw.Callbacks.*;
@@ -419,7 +420,7 @@ public class Main {
             mainMenu.render(width, height);
         } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);
-        } else if (screen instanceof com.stonebreak.ui.SettingsMenu settingsMenu) {
+        } else if (screen instanceof SettingsMenu settingsMenu) {
             settingsMenu.render(width, height);
         }
         renderer.endUIFrame();

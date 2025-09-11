@@ -5,7 +5,7 @@ import static org.lwjgl.glfw.GLFW.*;
 import com.stonebreak.config.Settings;
 import com.stonebreak.ui.components.buttons.DropdownButton;
 import com.stonebreak.ui.components.sliders.Slider;
-import com.stonebreak.ui.settingsMenu.config.ButtonSelection;
+import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
@@ -31,35 +31,51 @@ public class InputHandler {
      * Handles all keyboard input for the settings menu.
      */
     public void handleInput(long window) {
-        handleNavigationKeys(window);
+        handleCategoryNavigationKeys(window);
+        handleSettingNavigationKeys(window);
         handleValueAdjustmentKeys(window);
         handleActionKeys(window);
         handleEscapeKey(window);
     }
     
     /**
-     * Handles up/down navigation keys for button selection.
+     * Handles left/right navigation keys for category selection.
      */
-    private void handleNavigationKeys(long window) {
-        if (isKeyPressed(window, GLFW_KEY_UP, GLFW_KEY_W)) {
-            int currentButton = stateManager.getSelectedButton();
-            stateManager.setSelectedButton(Math.max(ButtonSelection.getMinIndex(), currentButton - 1));
+    private void handleCategoryNavigationKeys(long window) {
+        if (isKeyPressed(window, GLFW_KEY_LEFT, GLFW_KEY_A)) {
+            stateManager.navigateToPreviousCategory();
         }
-        if (isKeyPressed(window, GLFW_KEY_DOWN, GLFW_KEY_S)) {
-            int currentButton = stateManager.getSelectedButton();
-            stateManager.setSelectedButton(Math.min(ButtonSelection.getMaxIndex(), currentButton + 1));
+        if (isKeyPressed(window, GLFW_KEY_RIGHT, GLFW_KEY_D)) {
+            stateManager.navigateToNextCategory();
         }
     }
     
     /**
-     * Handles left/right keys for adjusting setting values.
+     * Handles up/down navigation keys for setting selection within a category.
+     */
+    private void handleSettingNavigationKeys(long window) {
+        if (isKeyPressed(window, GLFW_KEY_UP, GLFW_KEY_W)) {
+            stateManager.navigateToPreviousSettingInCategory();
+        }
+        if (isKeyPressed(window, GLFW_KEY_DOWN, GLFW_KEY_S)) {
+            stateManager.navigateToNextSettingInCategory();
+        }
+    }
+    
+    /**
+     * Handles keys for adjusting setting values within the settings panel.
+     * Uses Shift+Left/Right to avoid conflict with category navigation.
      */
     private void handleValueAdjustmentKeys(long window) {
-        if (isKeyPressed(window, GLFW_KEY_LEFT, GLFW_KEY_A)) {
-            adjustSelectedSettingValue(-1);
-        }
-        if (isKeyPressed(window, GLFW_KEY_RIGHT, GLFW_KEY_D)) {
-            adjustSelectedSettingValue(1);
+        boolean shiftHeld = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+        
+        if (shiftHeld) {
+            if (isKeyPressed(window, GLFW_KEY_LEFT, GLFW_KEY_A)) {
+                adjustSelectedSettingValue(-1);
+            }
+            if (isKeyPressed(window, GLFW_KEY_RIGHT, GLFW_KEY_D)) {
+                adjustSelectedSettingValue(1);
+            }
         }
     }
     
@@ -68,8 +84,20 @@ public class InputHandler {
      */
     private void handleActionKeys(long window) {
         if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
-            ButtonSelection button = ButtonSelection.fromIndex(stateManager.getSelectedButton());
-            if (button == ButtonSelection.RESOLUTION && stateManager.getResolutionButton().isDropdownOpen()) {
+            // Get the current setting type based on category and selection
+            CategoryState.SettingType[] settings = stateManager.getSelectedCategory().getSettings();
+            CategoryState.SettingType currentSetting;
+            
+            if (stateManager.getSelectedSettingInCategory() < settings.length) {
+                currentSetting = settings[stateManager.getSelectedSettingInCategory()];
+            } else {
+                // Handle Apply/Back buttons
+                int buttonIndex = stateManager.getSelectedSettingInCategory() - settings.length;
+                currentSetting = (buttonIndex == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
+            }
+            
+            // Handle dropdown confirmations
+            if (currentSetting == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isDropdownOpen()) {
                 confirmResolutionSelection();
             } else {
                 actionHandler.executeSelectedAction();
@@ -107,10 +135,14 @@ public class InputHandler {
      * @param direction -1 for decrease, 1 for increase
      */
     private void adjustSelectedSettingValue(int direction) {
-        ButtonSelection button = ButtonSelection.fromIndex(stateManager.getSelectedButton());
-        if (button == null) return;
+        // Get the current setting type based on category and selection
+        CategoryState.SettingType[] settings = stateManager.getSelectedCategory().getSettings();
+        if (stateManager.getSelectedSettingInCategory() >= settings.length) return; // Can't adjust Apply/Back buttons
         
-        switch (button) {
+        CategoryState.SettingType currentSetting = settings[stateManager.getSelectedSettingInCategory()];
+        if (currentSetting == null) return;
+        
+        switch (currentSetting) {
             case RESOLUTION -> adjustResolutionSetting(direction);
             case VOLUME -> adjustVolumeSetting(direction);
             case ARM_MODEL -> adjustArmModelSetting(direction);

@@ -3,9 +3,10 @@ package com.stonebreak.ui.settingsMenu.handlers;
 import static org.lwjgl.glfw.GLFW.*;
 
 import com.stonebreak.ui.components.buttons.Button;
+import com.stonebreak.ui.components.buttons.CategoryButton;
 import com.stonebreak.ui.components.buttons.DropdownButton;
 import com.stonebreak.ui.components.sliders.Slider;
-import com.stonebreak.ui.settingsMenu.config.ButtonSelection;
+import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
@@ -24,13 +25,7 @@ public class MouseHandler {
     /**
      * Handles mouse movement for hover effects and dragging interactions.
      */
-    public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-        
-        // Update button positions based on current window size
-        updateButtonPositions(centerX, centerY);
-        
+    public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {        
         // Update button hover states
         updateButtonHoverStates((float)mouseX, (float)mouseY);
         
@@ -53,51 +48,17 @@ public class MouseHandler {
         }
     }
     
-    /**
-     * Updates button and slider positions based on current center coordinates.
-     */
-    private void updateButtonPositions(float centerX, float centerY) {
-        stateManager.getResolutionButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.RESOLUTION_BUTTON_Y_OFFSET
-        );
-        
-        stateManager.getArmModelButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.ARM_MODEL_BUTTON_Y_OFFSET
-        );
-        
-        stateManager.getCrosshairStyleButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.CROSSHAIR_STYLE_BUTTON_Y_OFFSET
-        );
-        
-        stateManager.getApplyButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.APPLY_BUTTON_Y_OFFSET
-        );
-        
-        stateManager.getBackButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.BACK_BUTTON_Y_OFFSET
-        );
-        
-        // Update slider positions
-        stateManager.getVolumeSlider().setPosition(
-            centerX, 
-            centerY + SettingsConfig.VOLUME_SLIDER_Y_OFFSET
-        );
-        
-        stateManager.getCrosshairSizeSlider().setPosition(
-            centerX, 
-            centerY + SettingsConfig.CROSSHAIR_SIZE_SLIDER_Y_OFFSET
-        );
-    }
     
     /**
      * Updates hover states for all button and slider components.
      */
     private void updateButtonHoverStates(float mouseX, float mouseY) {
+        // Update category button hover states
+        for (CategoryButton categoryButton : stateManager.getCategoryButtons()) {
+            categoryButton.setHovered(categoryButton.contains(mouseX, mouseY));
+        }
+        
+        // Update settings component hover states
         stateManager.getResolutionButton().updateHover(mouseX, mouseY);
         stateManager.getArmModelButton().updateHover(mouseX, mouseY);
         stateManager.getCrosshairStyleButton().updateHover(mouseX, mouseY);
@@ -108,28 +69,60 @@ public class MouseHandler {
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
         stateManager.getCrosshairSizeSlider().updateHover(mouseX, mouseY);
         
-        // Update selected button index based on hover
-        updateSelectedButtonFromHover();
+        // Update selected state based on hover
+        updateSelectedStateFromHover();
     }
     
     /**
-     * Updates the selected button index based on which component is currently hovered.
+     * Updates the selected category and setting based on which component is currently hovered.
      */
-    private void updateSelectedButtonFromHover() {
-        if (stateManager.getResolutionButton().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.RESOLUTION.getIndex());
-        } else if (stateManager.getVolumeSlider().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.VOLUME.getIndex());
-        } else if (stateManager.getArmModelButton().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.ARM_MODEL.getIndex());
-        } else if (stateManager.getCrosshairStyleButton().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.CROSSHAIR_STYLE.getIndex());
-        } else if (stateManager.getCrosshairSizeSlider().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.CROSSHAIR_SIZE.getIndex());
-        } else if (stateManager.getApplyButton().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.APPLY.getIndex());
+    private void updateSelectedStateFromHover() {
+        // Check for hovered category buttons first
+        for (CategoryButton categoryButton : stateManager.getCategoryButtons()) {
+            if (categoryButton.isHovered()) {
+                stateManager.setSelectedCategory(categoryButton.getCategory());
+                return; // Category selection resets setting selection to 0
+            }
+        }
+        
+        // Check for hovered setting components within current category
+        CategoryState selectedCategory = stateManager.getSelectedCategory();
+        CategoryState.SettingType[] settings = selectedCategory.getSettings();
+        
+        // Check settings in the current category
+        for (int i = 0; i < settings.length; i++) {
+            CategoryState.SettingType setting = settings[i];
+            boolean isHovered = false;
+            
+            switch (setting) {
+                case RESOLUTION:
+                    isHovered = stateManager.getResolutionButton().isHovered();
+                    break;
+                case VOLUME:
+                    isHovered = stateManager.getVolumeSlider().isHovered();
+                    break;
+                case ARM_MODEL:
+                    isHovered = stateManager.getArmModelButton().isHovered();
+                    break;
+                case CROSSHAIR_STYLE:
+                    isHovered = stateManager.getCrosshairStyleButton().isHovered();
+                    break;
+                case CROSSHAIR_SIZE:
+                    isHovered = stateManager.getCrosshairSizeSlider().isHovered();
+                    break;
+            }
+            
+            if (isHovered) {
+                stateManager.setSelectedSettingInCategory(i);
+                return;
+            }
+        }
+        
+        // Check Apply/Back buttons
+        if (stateManager.getApplyButton().isHovered()) {
+            stateManager.setSelectedSettingInCategory(settings.length); // Apply button
         } else if (stateManager.getBackButton().isHovered()) {
-            stateManager.setSelectedButton(ButtonSelection.BACK.getIndex());
+            stateManager.setSelectedSettingInCategory(settings.length + 1); // Back button
         }
     }
     
@@ -162,44 +155,55 @@ public class MouseHandler {
         float mouseXf = (float)mouseX;
         float mouseYf = (float)mouseY;
         
-        // Update button positions first
-        updateButtonPositions(centerX, centerY);
-        
-        // Handle button clicks
-        if (stateManager.getResolutionButton().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.RESOLUTION.getIndex());
-            return;
+        // Handle category button clicks first
+        for (CategoryButton categoryButton : stateManager.getCategoryButtons()) {
+            if (categoryButton.contains(mouseXf, mouseYf)) {
+                categoryButton.onClick();
+                return;
+            }
         }
         
-        if (stateManager.getArmModelButton().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.ARM_MODEL.getIndex());
-            return;
+        // Handle settings component clicks for current category
+        CategoryState selectedCategory = stateManager.getSelectedCategory();
+        CategoryState.SettingType[] settings = selectedCategory.getSettings();
+        
+        // Check settings in the current category
+        for (int i = 0; i < settings.length; i++) {
+            CategoryState.SettingType setting = settings[i];
+            boolean wasClicked = false;
+            
+            switch (setting) {
+                case RESOLUTION:
+                    wasClicked = stateManager.getResolutionButton().handleClick(mouseXf, mouseYf);
+                    break;
+                case VOLUME:
+                    wasClicked = stateManager.getVolumeSlider().handleClick(mouseXf, mouseYf);
+                    break;
+                case ARM_MODEL:
+                    wasClicked = stateManager.getArmModelButton().handleClick(mouseXf, mouseYf);
+                    break;
+                case CROSSHAIR_STYLE:
+                    wasClicked = stateManager.getCrosshairStyleButton().handleClick(mouseXf, mouseYf);
+                    break;
+                case CROSSHAIR_SIZE:
+                    wasClicked = stateManager.getCrosshairSizeSlider().handleClick(mouseXf, mouseYf);
+                    break;
+            }
+            
+            if (wasClicked) {
+                stateManager.setSelectedSettingInCategory(i);
+                return;
+            }
         }
         
-        if (stateManager.getCrosshairStyleButton().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.CROSSHAIR_STYLE.getIndex());
-            return;
-        }
-        
+        // Handle Apply/Back button clicks
         if (stateManager.getApplyButton().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.APPLY.getIndex());
+            stateManager.setSelectedSettingInCategory(settings.length); // Apply button
             return;
         }
         
         if (stateManager.getBackButton().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.BACK.getIndex());
-            return;
-        }
-        
-        // Handle volume slider
-        if (stateManager.getVolumeSlider().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.VOLUME.getIndex());
-            return;
-        }
-        
-        // Handle crosshair size slider
-        if (stateManager.getCrosshairSizeSlider().handleClick(mouseXf, mouseYf)) {
-            stateManager.setSelectedButton(ButtonSelection.CROSSHAIR_SIZE.getIndex());
+            stateManager.setSelectedSettingInCategory(settings.length + 1); // Back button
             return;
         }
     }

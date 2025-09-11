@@ -4,10 +4,13 @@ import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.components.buttons.Button;
+import com.stonebreak.ui.components.buttons.CategoryButton;
 import com.stonebreak.ui.components.buttons.DropdownButton;
 import com.stonebreak.ui.components.sliders.Slider;
-import com.stonebreak.ui.settingsMenu.config.ButtonSelection;
+import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Manages the UI state and components for the settings menu.
@@ -27,8 +30,12 @@ public class StateManager {
     private Slider volumeSlider;
     private Slider crosshairSizeSlider;
     
+    // ===== CATEGORY COMPONENTS =====
+    private List<CategoryButton> categoryButtons;
+    
     // ===== UI STATE =====
-    private int selectedButton = ButtonSelection.RESOLUTION.getIndex();
+    private CategoryState selectedCategory = CategoryState.GENERAL;
+    private int selectedSettingInCategory = 0; // Index within the category's settings
     private GameState previousState = GameState.MAIN_MENU;
     
     // ===== DROPDOWN STATE =====
@@ -47,7 +54,8 @@ public class StateManager {
      */
     private void initializeState() {
         initializeSettingsState();
-        initializeButtons();
+        initializeCategoryButtons();
+        initializeSettingButtons();
     }
     
     /**
@@ -60,9 +68,27 @@ public class StateManager {
     }
     
     /**
-     * Initializes the button components with their properties and actions.
+     * Initializes the category buttons for left-side navigation.
      */
-    public void initializeButtons() {
+    private void initializeCategoryButtons() {
+        categoryButtons = new ArrayList<>();
+        
+        for (CategoryState category : CategoryState.values()) {
+            CategoryButton button = new CategoryButton(
+                category, 
+                0, 0, // Position will be set during rendering
+                SettingsConfig.CATEGORY_BUTTON_WIDTH, 
+                SettingsConfig.CATEGORY_BUTTON_HEIGHT,
+                null // Action will be set via callbacks
+            );
+            categoryButtons.add(button);
+        }
+    }
+    
+    /**
+     * Initializes the setting button components with their properties and actions.
+     */
+    public void initializeSettingButtons() {
         // Create action handlers that will be set by the main SettingsMenu
         applyButton = new Button("Apply Settings", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
         backButton = new Button("Back", 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
@@ -103,6 +129,15 @@ public class StateManager {
         crosshairStyleButton.setOnSelectionChangeAction(crosshairStyleAction);
         volumeSlider.setOnValueChangeAction(volumeAction);
         crosshairSizeSlider.setOnValueChangeAction(crosshairSizeAction);
+        
+        // Set category button callbacks - each will set the selected category
+        for (CategoryButton button : categoryButtons) {
+            final CategoryState category = button.getCategory();
+            button.setOnClickAction(() -> {
+                selectedCategory = category;
+                selectedSettingInCategory = 0; // Reset to first setting in category
+            });
+        }
     }
     
     /**
@@ -117,25 +152,83 @@ public class StateManager {
     }
     
     /**
-     * Updates the selection state of all UI components based on the current selected button.
+     * Updates the selection state of all UI components based on the current selected category and setting.
      */
     public void updateButtonSelectionStates() {
-        resolutionButton.setSelected(selectedButton == ButtonSelection.RESOLUTION.getIndex());
-        volumeSlider.setSelected(selectedButton == ButtonSelection.VOLUME.getIndex());
-        armModelButton.setSelected(selectedButton == ButtonSelection.ARM_MODEL.getIndex());
-        crosshairStyleButton.setSelected(selectedButton == ButtonSelection.CROSSHAIR_STYLE.getIndex());
-        crosshairSizeSlider.setSelected(selectedButton == ButtonSelection.CROSSHAIR_SIZE.getIndex());
-        applyButton.setSelected(selectedButton == ButtonSelection.APPLY.getIndex());
-        backButton.setSelected(selectedButton == ButtonSelection.BACK.getIndex());
+        // Update category button selection states
+        for (CategoryButton button : categoryButtons) {
+            button.setSelected(button.getCategory() == selectedCategory);
+        }
+        
+        // Update setting selection states based on current category
+        CategoryState.SettingType[] settings = selectedCategory.getSettings();
+        CategoryState.SettingType currentSetting = (selectedSettingInCategory < settings.length) 
+            ? settings[selectedSettingInCategory] 
+            : CategoryState.SettingType.APPLY; // Default to apply if out of bounds
+            
+        // Reset all setting selections
+        resolutionButton.setSelected(false);
+        volumeSlider.setSelected(false);
+        armModelButton.setSelected(false);
+        crosshairStyleButton.setSelected(false);
+        crosshairSizeSlider.setSelected(false);
+        applyButton.setSelected(false);
+        backButton.setSelected(false);
+        
+        // Set selection based on current setting
+        if (currentSetting != null) {
+            switch (currentSetting) {
+                case RESOLUTION:
+                    resolutionButton.setSelected(true);
+                    break;
+                case VOLUME:
+                    volumeSlider.setSelected(true);
+                    break;
+                case ARM_MODEL:
+                    armModelButton.setSelected(true);
+                    break;
+                case CROSSHAIR_STYLE:
+                    crosshairStyleButton.setSelected(true);
+                    break;
+                case CROSSHAIR_SIZE:
+                    crosshairSizeSlider.setSelected(true);
+                    break;
+                case APPLY:
+                    applyButton.setSelected(true);
+                    break;
+                case BACK:
+                    backButton.setSelected(true);
+                    break;
+            }
+        }
     }
     
     // ===== GETTERS AND SETTERS =====
     
-    public int getSelectedButton() { return selectedButton; }
-    public void setSelectedButton(int selectedButton) { this.selectedButton = selectedButton; }
+    public CategoryState getSelectedCategory() { return selectedCategory; }
+    public void setSelectedCategory(CategoryState selectedCategory) { 
+        this.selectedCategory = selectedCategory; 
+        this.selectedSettingInCategory = 0; // Reset to first setting in category
+    }
+    
+    public int getSelectedSettingInCategory() { return selectedSettingInCategory; }
+    public void setSelectedSettingInCategory(int selectedSettingInCategory) { 
+        this.selectedSettingInCategory = selectedSettingInCategory; 
+    }
     
     public GameState getPreviousState() { return previousState; }
     public void setPreviousState(GameState previousState) { this.previousState = previousState; }
+    
+    // Legacy method for backward compatibility
+    @Deprecated
+    public int getSelectedButton() { 
+        return selectedSettingInCategory; 
+    }
+    
+    @Deprecated
+    public void setSelectedButton(int selectedButton) { 
+        this.selectedSettingInCategory = selectedButton; 
+    }
     
     public int getSelectedResolutionIndex() { return selectedResolutionIndex; }
     public void setSelectedResolutionIndex(int selectedResolutionIndex) { this.selectedResolutionIndex = selectedResolutionIndex; }
@@ -155,4 +248,48 @@ public class StateManager {
     public DropdownButton getCrosshairStyleButton() { return crosshairStyleButton; }
     public Slider getVolumeSlider() { return volumeSlider; }
     public Slider getCrosshairSizeSlider() { return crosshairSizeSlider; }
+    public List<CategoryButton> getCategoryButtons() { return categoryButtons; }
+    
+    // ===== NAVIGATION METHODS =====
+    
+    /**
+     * Navigates to the next category in the list.
+     */
+    public void navigateToNextCategory() {
+        int currentIndex = selectedCategory.getIndex();
+        int nextIndex = (currentIndex + 1) % CategoryState.values().length;
+        selectedCategory = CategoryState.fromIndex(nextIndex);
+        selectedSettingInCategory = 0;
+    }
+    
+    /**
+     * Navigates to the previous category in the list.
+     */
+    public void navigateToPreviousCategory() {
+        int currentIndex = selectedCategory.getIndex();
+        int prevIndex = (currentIndex - 1 + CategoryState.values().length) % CategoryState.values().length;
+        selectedCategory = CategoryState.fromIndex(prevIndex);
+        selectedSettingInCategory = 0;
+    }
+    
+    /**
+     * Navigates to the next setting within the current category.
+     */
+    public void navigateToNextSettingInCategory() {
+        CategoryState.SettingType[] settings = selectedCategory.getSettings();
+        if (settings.length > 0) {
+            selectedSettingInCategory = (selectedSettingInCategory + 1) % (settings.length + 2); // +2 for Apply/Back
+        }
+    }
+    
+    /**
+     * Navigates to the previous setting within the current category.
+     */
+    public void navigateToPreviousSettingInCategory() {
+        CategoryState.SettingType[] settings = selectedCategory.getSettings();
+        if (settings.length > 0) {
+            int maxIndex = settings.length + 1; // +2 for Apply/Back, -1 for 0-based
+            selectedSettingInCategory = (selectedSettingInCategory - 1 + maxIndex + 2) % (settings.length + 2);
+        }
+    }
 }

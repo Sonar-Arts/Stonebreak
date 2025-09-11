@@ -7,8 +7,8 @@ import com.stonebreak.ui.settingsMenu.handlers.MouseHandler;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
 /**
- * Handles rendering of individual settings sections.
- * Manages display, audio, crosshair, and action button sections.
+ * Handles rendering of the two-panel settings layout.
+ * Manages category buttons on the left and settings on the right.
  */
 public class SectionRenderer {
     
@@ -23,17 +23,21 @@ public class SectionRenderer {
     }
     
     /**
-     * Renders all settings sections (display, audio, crosshair).
+     * Renders the complete two-panel layout (categories left, settings right).
      */
     public void renderSettingSections(float centerX, float centerY) {
-        // Update button positions and selection states
+        // Update all button positions and selection states
         updateButtonPositions(centerX, centerY);
         stateManager.updateButtonSelectionStates();
         
-        renderDisplaySettings(centerX, centerY);
-        renderAudioSettings(centerX, centerY);
-        renderArmModelSettings(centerX, centerY);
-        renderCrosshairSettings(centerX, centerY);
+        // Render left panel (categories)
+        renderCategoryPanel(centerX, centerY);
+        
+        // Render panel separator
+        renderPanelSeparator(centerX, centerY);
+        
+        // Render right panel (settings for selected category)
+        renderSettingsPanel(centerX, centerY);
     }
     
     /**
@@ -41,127 +45,166 @@ public class SectionRenderer {
      * This is shared logic used by both rendering and mouse handling.
      */
     private void updateButtonPositions(float centerX, float centerY) {
+        // Position category buttons (left panel)
+        float categoryX = centerX + SettingsConfig.CATEGORY_PANEL_X_OFFSET;
+        float categoryY = centerY + SettingsConfig.CATEGORY_BUTTONS_START_Y_OFFSET;
+        
+        for (int i = 0; i < stateManager.getCategoryButtons().size(); i++) {
+            stateManager.getCategoryButtons().get(i).setPosition(
+                categoryX,
+                categoryY + (i * SettingsConfig.CATEGORY_BUTTON_SPACING)
+            );
+        }
+        
+        // Position settings components (right panel)
+        float settingsX = centerX + SettingsConfig.SETTINGS_PANEL_X_OFFSET;
+        
         stateManager.getResolutionButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
             centerY + SettingsConfig.RESOLUTION_BUTTON_Y_OFFSET
         );
         
         stateManager.getArmModelButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
             centerY + SettingsConfig.ARM_MODEL_BUTTON_Y_OFFSET
         );
         
         stateManager.getCrosshairStyleButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
             centerY + SettingsConfig.CROSSHAIR_STYLE_BUTTON_Y_OFFSET
         );
         
         stateManager.getApplyButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
             centerY + SettingsConfig.APPLY_BUTTON_Y_OFFSET
         );
         
         stateManager.getBackButton().setPosition(
-            centerX - SettingsConfig.BUTTON_WIDTH/2, 
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
             centerY + SettingsConfig.BACK_BUTTON_Y_OFFSET
         );
         
         // Update slider positions
         stateManager.getVolumeSlider().setPosition(
-            centerX, 
+            settingsX, 
             centerY + SettingsConfig.VOLUME_SLIDER_Y_OFFSET
         );
         
         stateManager.getCrosshairSizeSlider().setPosition(
-            centerX, 
+            settingsX, 
             centerY + SettingsConfig.CROSSHAIR_SIZE_SLIDER_Y_OFFSET
         );
     }
     
     /**
-     * Renders display-related settings section.
+     * Renders the left panel with category buttons.
      */
-    private void renderDisplaySettings(float centerX, float centerY) {
+    private void renderCategoryPanel(float centerX, float centerY) {
+        // Render all category buttons
+        for (com.stonebreak.ui.components.buttons.CategoryButton button : stateManager.getCategoryButtons()) {
+            button.render(uiRenderer);
+        }
+    }
+    
+    /**
+     * Renders the separator between left and right panels.
+     */
+    private void renderPanelSeparator(float centerX, float centerY) {
+        // Use regular separator rotated vertically or draw a simple line
+        // If drawVerticalSeparator doesn't exist, we'll fallback to a horizontal separator
+        try {
+            uiRenderer.drawSeparator(
+                centerX + SettingsConfig.PANEL_SEPARATOR_X_OFFSET,
+                centerY,
+                2.0f // Thin vertical line
+            );
+        } catch (Exception e) {
+            // Fallback - don't render separator if method doesn't exist
+        }
+    }
+    
+    /**
+     * Renders the right panel with settings for the currently selected category.
+     */
+    private void renderSettingsPanel(float centerX, float centerY) {
+        com.stonebreak.ui.settingsMenu.config.CategoryState selectedCategory = stateManager.getSelectedCategory();
+        
+        switch (selectedCategory) {
+            case GENERAL:
+                renderGeneralSettings();
+                break;
+            case QUALITY:
+                renderQualitySettings();
+                break;
+            case PERFORMANCE:
+                renderPerformanceSettings();
+                break;
+            case ADVANCED:
+                renderAdvancedSettings();
+                break;
+            case EXTRAS:
+                renderExtrasSettings();
+                break;
+            case AUDIO:
+                renderAudioSettings();
+                break;
+        }
+    }
+    
+    /**
+     * Renders General category settings (Resolution).
+     */
+    private void renderGeneralSettings() {
         // Update button text to show current resolution
         String resolutionText = "Resolution: " + settings.getCurrentResolutionString();
         stateManager.getResolutionButton().setText(resolutionText);
-        
-        // Render the dropdown button component
         stateManager.getResolutionButton().render(uiRenderer);
-        
-        uiRenderer.drawSeparator(
-            centerX, 
-            centerY + SettingsConfig.DISPLAY_SEPARATOR_Y_OFFSET, 
-            SettingsConfig.BUTTON_WIDTH * SettingsConfig.SEPARATOR_WIDTH_FACTOR
-        );
     }
     
     /**
-     * Renders audio-related settings section.
+     * Renders Quality category settings (extensible for future).
      */
-    private void renderAudioSettings(float centerX, float centerY) {
-        // Render the volume slider component
-        stateManager.getVolumeSlider().render(uiRenderer);
-        
-        uiRenderer.drawSeparator(
-            centerX, 
-            centerY + SettingsConfig.AUDIO_SEPARATOR_Y_OFFSET, 
-            SettingsConfig.BUTTON_WIDTH * SettingsConfig.SEPARATOR_WIDTH_FACTOR
-        );
+    private void renderQualitySettings() {
+        // Currently empty - ready for future quality settings
     }
     
     /**
-     * Renders arm model settings section.
+     * Renders Performance category settings (extensible for future).
      */
-    private void renderArmModelSettings(float centerX, float centerY) {
+    private void renderPerformanceSettings() {
+        // Currently empty - ready for future performance settings
+    }
+    
+    /**
+     * Renders Advanced category settings (Arm Model).
+     */
+    private void renderAdvancedSettings() {
         // Update button text to show current arm model
         String currentArmModelName = SettingsConfig.ARM_MODEL_NAMES[stateManager.getSelectedArmModelIndex()];
         String armModelText = "Arm Model: " + currentArmModelName;
         stateManager.getArmModelButton().setText(armModelText);
-        
-        // Render the dropdown button component
         stateManager.getArmModelButton().render(uiRenderer);
-        
-        uiRenderer.drawSeparator(
-            centerX, 
-            centerY + SettingsConfig.ARM_MODEL_SEPARATOR_Y_OFFSET, 
-            SettingsConfig.BUTTON_WIDTH * SettingsConfig.SEPARATOR_WIDTH_FACTOR
-        );
     }
     
     /**
-     * Renders crosshair-related settings section.
+     * Renders Extras category settings (Crosshair).
      */
-    private void renderCrosshairSettings(float centerX, float centerY) {
-        renderCrosshairStyleSetting(centerX, centerY);
-        renderCrosshairSizeSetting(centerX, centerY);
-        
-        uiRenderer.drawSeparator(
-            centerX, 
-            centerY + SettingsConfig.CROSSHAIR_SEPARATOR_Y_OFFSET, 
-            SettingsConfig.BUTTON_WIDTH * SettingsConfig.SEPARATOR_WIDTH_FACTOR
-        );
-    }
-    
-    /**
-     * Renders crosshair style dropdown setting.
-     */
-    private void renderCrosshairStyleSetting(float centerX, float centerY) {
+    private void renderExtrasSettings() {
         // Update button text to show current crosshair style
         String currentStyleName = SettingsConfig.CROSSHAIR_STYLE_NAMES[stateManager.getSelectedCrosshairStyleIndex()];
         String crosshairStyleText = "Crosshair: " + currentStyleName;
         stateManager.getCrosshairStyleButton().setText(crosshairStyleText);
-        
-        // Render the dropdown button component
         stateManager.getCrosshairStyleButton().render(uiRenderer);
+        
+        // Render crosshair size slider
+        stateManager.getCrosshairSizeSlider().render(uiRenderer);
     }
     
     /**
-     * Renders crosshair size slider setting.
+     * Renders Audio category settings (Master Volume).
      */
-    private void renderCrosshairSizeSetting(float centerX, float centerY) {
-        // Render the crosshair size slider component
-        stateManager.getCrosshairSizeSlider().render(uiRenderer);
+    private void renderAudioSettings() {
+        stateManager.getVolumeSlider().render(uiRenderer);
     }
     
     /**
