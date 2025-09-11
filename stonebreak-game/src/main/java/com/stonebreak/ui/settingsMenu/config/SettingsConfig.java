@@ -75,6 +75,19 @@ public final class SettingsConfig {
     public static final float PANEL_SEPARATOR_HEIGHT = 300;
     public static final float SEPARATOR_WIDTH_FACTOR = 0.8f;
     
+    // ===== SCROLLABLE CONTAINER CONFIGURATION =====
+    public static final float SCROLL_TOP_MARGIN = 100; // Space for SETTINGS title + padding
+    public static final float SCROLL_BOTTOM_MARGIN = 120; // Space for Apply/Back buttons + padding
+    public static final float SCROLL_ITEM_SPACING = 80; // Space between settings items
+    public static final float SCROLL_CONTENT_PADDING = 20; // Padding within scroll container
+    public static final float SCROLLBAR_WIDTH = 12; // Width of the scrollbar
+    
+    // ===== SCROLL BEHAVIOR SETTINGS =====
+    public static final float SCROLL_WHEEL_SENSITIVITY = 30; // Pixels per scroll wheel tick
+    public static final float SCROLL_VELOCITY_FACTOR = 0.8f; // Multiplier for scroll velocity
+    public static final float SCROLL_VELOCITY_DECAY = 0.85f; // Velocity decay rate per frame
+    public static final float SCROLL_LERP_SPEED = 8.0f; // Smoothness of scroll interpolation
+    
     /**
      * Gets the arm model index for the specified type.
      * @param currentArmModel the arm model type to find

@@ -32,7 +32,6 @@ public class SettingsRenderer {
         // Phase 1: Render background and all UI components
         renderMenuBackground(windowWidth, windowHeight, centerX, centerY);
         sectionRenderer.renderSettingSections(centerX, centerY);
-        sectionRenderer.renderActionButtons(centerX, centerY);
         
         // Phase 2: Render all dropdown menus on top
         renderDropdowns();
@@ -74,5 +73,12 @@ public class SettingsRenderer {
         stateManager.getResolutionButton().renderDropdown(uiRenderer);
         stateManager.getArmModelButton().renderDropdown(uiRenderer);
         stateManager.getCrosshairStyleButton().renderDropdown(uiRenderer);
+    }
+    
+    /**
+     * Provides access to the section renderer for external components.
+     */
+    public SectionRenderer getSectionRenderer() {
+        return sectionRenderer;
     }
 }

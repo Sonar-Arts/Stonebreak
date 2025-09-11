@@ -10,7 +10,9 @@ import com.stonebreak.ui.components.sliders.Slider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Manages the UI state and components for the settings menu.
@@ -43,6 +45,10 @@ public class StateManager {
     private int selectedArmModelIndex = 0;
     private int selectedCrosshairStyleIndex = 0;
     
+    // ===== SCROLL STATE =====
+    private Map<CategoryState, ScrollManager> scrollManagers;
+    private ScrollManager currentScrollManager;
+    
     public StateManager(Settings settings, UIRenderer uiRenderer) {
         this.settings = settings;
         this.uiRenderer = uiRenderer;
@@ -54,6 +60,7 @@ public class StateManager {
      */
     private void initializeState() {
         initializeSettingsState();
+        initializeScrollManagers();
         initializeCategoryButtons();
         initializeSettingButtons();
     }
@@ -65,6 +72,21 @@ public class StateManager {
         this.selectedResolutionIndex = settings.getCurrentResolutionIndex();
         this.selectedArmModelIndex = SettingsConfig.findArmModelIndex(settings.getArmModelType());
         this.selectedCrosshairStyleIndex = SettingsConfig.findCrosshairStyleIndex(settings.getCrosshairStyle());
+    }
+    
+    /**
+     * Initializes scroll managers for each category.
+     */
+    private void initializeScrollManagers() {
+        scrollManagers = new HashMap<>();
+        
+        // Create a scroll manager for each category
+        for (CategoryState category : CategoryState.values()) {
+            scrollManagers.put(category, new ScrollManager());
+        }
+        
+        // Set current scroll manager to selected category
+        currentScrollManager = scrollManagers.get(selectedCategory);
     }
     
     /**
@@ -221,6 +243,12 @@ public class StateManager {
     public void setSelectedCategory(CategoryState selectedCategory) { 
         this.selectedCategory = selectedCategory; 
         this.selectedSettingInCategory = 0; // Reset to first setting in category
+        
+        // Switch to the scroll manager for the new category
+        currentScrollManager = scrollManagers.get(selectedCategory);
+        if (currentScrollManager != null) {
+            currentScrollManager.scrollTo(0); // Reset scroll position when switching categories
+        }
     }
     
     public int getSelectedSettingInCategory() { return selectedSettingInCategory; }
@@ -261,6 +289,14 @@ public class StateManager {
     public Slider getVolumeSlider() { return volumeSlider; }
     public Slider getCrosshairSizeSlider() { return crosshairSizeSlider; }
     public List<CategoryButton> getCategoryButtons() { return categoryButtons; }
+    
+    // ===== SCROLL MANAGER GETTERS =====
+    
+    public ScrollManager getCurrentScrollManager() { return currentScrollManager; }
+    public ScrollManager getScrollManagerForCategory(CategoryState category) { 
+        return scrollManagers.get(category); 
+    }
+    public UIRenderer getUIRenderer() { return uiRenderer; }
     
     // ===== NAVIGATION METHODS =====
     

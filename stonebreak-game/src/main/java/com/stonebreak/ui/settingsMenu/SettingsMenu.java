@@ -64,6 +64,9 @@ public class SettingsMenu {
             actionHandler::onVolumeChange,
             actionHandler::onCrosshairSizeChange
         );
+        
+        // Connect MouseHandler with the scrollable container
+        mouseHandler.setScrollableContainer(settingsRenderer.getSectionRenderer().getScrollableContainer());
     }
     
     // ===== INPUT HANDLING =====
@@ -92,7 +95,12 @@ public class SettingsMenu {
         mouseHandler.handleMouseClick(mouseX, mouseY, windowWidth, windowHeight, button, action);
     }
     
-    
+    /**
+     * Handles mouse wheel scrolling for the scrollable settings container.
+     */
+    public boolean handleMouseWheel(double mouseX, double mouseY, double scrollDelta) {
+        return mouseHandler.handleMouseWheel(mouseX, mouseY, scrollDelta);
+    }
     
     // ===== PUBLIC API =====
     

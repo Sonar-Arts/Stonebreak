@@ -6,6 +6,7 @@ import com.stonebreak.ui.components.buttons.Button;
 import com.stonebreak.ui.components.buttons.CategoryButton;
 import com.stonebreak.ui.components.buttons.DropdownButton;
 import com.stonebreak.ui.components.sliders.Slider;
+import com.stonebreak.ui.settingsMenu.components.ScrollableSettingsContainer;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
@@ -17,9 +18,17 @@ import com.stonebreak.ui.settingsMenu.managers.StateManager;
 public class MouseHandler {
     
     private final StateManager stateManager;
+    private ScrollableSettingsContainer scrollableContainer;
     
     public MouseHandler(StateManager stateManager) {
         this.stateManager = stateManager;
+    }
+    
+    /**
+     * Sets the scrollable container reference for scroll wheel handling.
+     */
+    public void setScrollableContainer(ScrollableSettingsContainer scrollableContainer) {
+        this.scrollableContainer = scrollableContainer;
     }
     
     /**
@@ -211,5 +220,22 @@ public class MouseHandler {
         // Stop slider dragging
         stateManager.getVolumeSlider().stopDragging();
         stateManager.getCrosshairSizeSlider().stopDragging();
+    }
+    
+    /**
+     * Handles mouse wheel scrolling for the scrollable settings container.
+     * @param mouseX Current mouse X position
+     * @param mouseY Current mouse Y position
+     * @param scrollDelta Scroll wheel delta (positive for up, negative for down)
+     * @return true if scroll was handled, false otherwise
+     */
+    public boolean handleMouseWheel(double mouseX, double mouseY, double scrollDelta) {
+        if (scrollableContainer != null) {
+            // Convert scroll delta to appropriate sensitivity
+            float adjustedDelta = (float) scrollDelta;
+            
+            return scrollableContainer.handleMouseWheel((float)mouseX, (float)mouseY, adjustedDelta);
+        }
+        return false;
     }
 }
