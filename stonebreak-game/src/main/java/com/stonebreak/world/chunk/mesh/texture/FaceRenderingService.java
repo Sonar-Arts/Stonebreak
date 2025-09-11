@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.WaterEffects;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Service responsible for determining if faces should be rendered and getting adjacent blocks.
@@ -21,8 +22,8 @@ public class FaceRenderingService {
                 // Check if we should render between water blocks based on water levels
                 WaterEffects waterEffects = Game.getWaterEffects();
                 if (waterEffects != null) {
-                    int worldX = lx + chunkX * World.CHUNK_SIZE;
-                    int worldZ = lz + chunkZ * World.CHUNK_SIZE;
+                    int worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+                    int worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
                     float currentWaterLevel = waterEffects.getWaterLevel(worldX, ly, worldZ);
                     
                     // Get adjacent block's world coordinates for level check
@@ -69,16 +70,16 @@ public class FaceRenderingService {
         try {
             return switch (face) {
                 case 0 -> // Top
-                    y + 1 < World.WORLD_HEIGHT ? blocks[x][y + 1][z] : BlockType.AIR;
+                    y + 1 < WorldConfiguration.WORLD_HEIGHT ? blocks[x][y + 1][z] : BlockType.AIR;
                 case 1 -> // Bottom
                     y - 1 >= 0 ? blocks[x][y - 1][z] : BlockType.AIR;
                 case 2 -> { // Front
-                    if (z + 1 < World.CHUNK_SIZE) {
+                    if (z + 1 < WorldConfiguration.CHUNK_SIZE) {
                         yield blocks[x][y][z + 1];
                     } else {
                         // Get block from neighboring chunk
-                        int worldX = x + chunkX * World.CHUNK_SIZE;
-                        int worldZ = z + chunkZ * World.CHUNK_SIZE + 1;
+                        int worldX = x + chunkX * WorldConfiguration.CHUNK_SIZE;
+                        int worldZ = z + chunkZ * WorldConfiguration.CHUNK_SIZE + 1;
                         yield world.getBlockAt(worldX, y, worldZ);
                     }
                 }
@@ -87,18 +88,18 @@ public class FaceRenderingService {
                         yield blocks[x][y][z - 1];
                     } else {
                         // Get block from neighboring chunk
-                        int worldX = x + chunkX * World.CHUNK_SIZE;
-                        int worldZ = z + chunkZ * World.CHUNK_SIZE - 1;
+                        int worldX = x + chunkX * WorldConfiguration.CHUNK_SIZE;
+                        int worldZ = z + chunkZ * WorldConfiguration.CHUNK_SIZE - 1;
                         yield world.getBlockAt(worldX, y, worldZ);
                     }
                 }
                 case 4 -> { // Right
-                    if (x + 1 < World.CHUNK_SIZE) {
+                    if (x + 1 < WorldConfiguration.CHUNK_SIZE) {
                         yield blocks[x + 1][y][z];
                     } else {
                         // Get block from neighboring chunk
-                        int worldX = x + chunkX * World.CHUNK_SIZE + 1;
-                        int worldZ = z + chunkZ * World.CHUNK_SIZE;
+                        int worldX = x + chunkX * WorldConfiguration.CHUNK_SIZE + 1;
+                        int worldZ = z + chunkZ * WorldConfiguration.CHUNK_SIZE;
                         yield world.getBlockAt(worldX, y, worldZ);
                     }
                 }
@@ -107,8 +108,8 @@ public class FaceRenderingService {
                         yield blocks[x - 1][y][z];
                     } else {
                         // Get block from neighboring chunk
-                        int worldX = x + chunkX * World.CHUNK_SIZE - 1;
-                        int worldZ = z + chunkZ * World.CHUNK_SIZE;
+                        int worldX = x + chunkX * WorldConfiguration.CHUNK_SIZE - 1;
+                        int worldZ = z + chunkZ * WorldConfiguration.CHUNK_SIZE;
                         yield world.getBlockAt(worldX, y, worldZ);
                     }
                 }

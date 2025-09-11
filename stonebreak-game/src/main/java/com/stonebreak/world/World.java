@@ -1,78 +1,54 @@
 package com.stonebreak.world;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Queue;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap; // Added
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
-import com.stonebreak.player.Player;
-import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.features.TreeGenerator;
-import com.stonebreak.world.generation.mobs.MobGenerator;
+import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.memory.WorldMemoryManager;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Manages the game world and chunks.
+ * Manages the game world and chunks using a modular architecture.
  */
 public class World {
-      // World settings
-    public static final int CHUNK_SIZE = 16;
-    public static final int WORLD_HEIGHT = 256;
-    public static final int SEA_LEVEL = 64;
-    private static final int RENDER_DISTANCE = 8;
-    
-    // Terrain generation system
+    // Configuration and core systems
+    private final WorldConfiguration config;
     private final TerrainGenerationSystem terrainSystem;
-    
-    // Stores all chunks in the world
-    private final Map<ChunkPosition, Chunk> chunks;
-    
-    // Cache for ChunkPosition objects to reduce allocations
-    private final Map<Long, ChunkPosition> chunkPositionCache = new ConcurrentHashMap<>();
-    private static final int MAX_CHUNK_POSITION_CACHE_SIZE = 10000; // Limit cache size
-    
-    // Tracks which chunks need mesh updates
-    private final ExecutorService chunkBuildExecutor;
-    private final Set<Chunk> chunksToBuildMesh; // Chunks needing their mesh data (re)built
-    private final Queue<Chunk> chunksReadyForGLUpload; // Chunks with mesh data ready for GL upload
-    private final Queue<Chunk> chunksFailedToBuildMesh; // New queue for failed chunks
-    private static final int MAX_FAILED_CHUNK_RETRIES = 3; // Limit retries to prevent infinite loops
-    private final Map<Chunk, Integer> chunkRetryCount = new ConcurrentHashMap<>(); // Track retry attempts
-    private final Queue<Chunk> chunksPendingGpuCleanup = new ConcurrentLinkedQueue<>();
-    
-    // Chunk Manager
     private final ChunkManager chunkManager;
-    
-    // Snow layer management
     private final SnowLayerManager snowLayerManager;
+    
+    // Modular components
+    private final WorldChunkStore chunkStore;
+    private final ChunkStateManager stateManager;
+    private final ChunkNeighborCoordinator neighborCoordinator;
+    private final WorldMemoryManager memoryManager;
+    private final ChunkMeshBuildingPipeline meshPipeline;
+    private final ChunkErrorReporter errorReporter;
 
     public World() {
+        this(new WorldConfiguration());
+    }
+    
+    public World(WorldConfiguration config) {
+        this.config = config;
+        
         long seed = System.currentTimeMillis();
         this.terrainSystem = new TerrainGenerationSystem(seed);
-        this.chunks = new ConcurrentHashMap<>();
-        this.chunkManager = new ChunkManager(this, RENDER_DISTANCE);
-        
-        // Initialize thread pool for chunk mesh building
-        // Use half available processors, minimum 1
-        int numThreads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
-        this.chunkBuildExecutor = Executors.newFixedThreadPool(numThreads);
-        
-        this.chunksToBuildMesh = ConcurrentHashMap.newKeySet(); // Changed to concurrent set
-        this.chunksReadyForGLUpload = new ConcurrentLinkedQueue<>();
-        this.chunksFailedToBuildMesh = new ConcurrentLinkedQueue<>(); // Initialize the new queue
         this.snowLayerManager = new SnowLayerManager();
         
-        System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + numThreads + " mesh builder threads.");
+        // Initialize modular components
+        this.stateManager = new ChunkStateManager();
+        this.errorReporter = new ChunkErrorReporter();
+        this.meshPipeline = new ChunkMeshBuildingPipeline(config, stateManager, errorReporter);
+        this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
+        this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, stateManager, config);
+        this.memoryManager = new WorldMemoryManager(config, chunkStore);
+        
+        this.chunkManager = new ChunkManager(this, config.getRenderDistance());
+        
+        System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
     }
     
     /**
@@ -85,128 +61,44 @@ public class World {
         }
     }
     
-    /**
-     * Gets a cached ChunkPosition object to reduce allocations.
-     */
-    public ChunkPosition getCachedChunkPosition(int x, int z) {
-        // Use a long to combine x and z coordinates as a cache key
-        long key = ((long) x << 32) | (z & 0xFFFFFFFFL);
-        
-        // Check cache size and clean if necessary
-        if (chunkPositionCache.size() > MAX_CHUNK_POSITION_CACHE_SIZE) {
-            cleanupChunkPositionCache();
-        }
-        
-        return chunkPositionCache.computeIfAbsent(key, k -> new ChunkPosition(x, z));
-    }
-    
-    /**
-     * Cleans up the chunk position cache when it gets too large.
-     * Removes positions that are not currently loaded chunks.
-     */
-    private void cleanupChunkPositionCache() {
-        System.out.println("Cleaning chunk position cache (size: " + chunkPositionCache.size() + ")");
-        
-        // Create a set of keys for currently loaded chunks
-        Set<Long> loadedChunkKeys = new HashSet<>();
-        for (ChunkPosition pos : chunks.keySet()) {
-            long key = ((long) pos.getX() << 32) | (pos.getZ() & 0xFFFFFFFFL);
-            loadedChunkKeys.add(key);
-        }
-        
-        // Remove cache entries that don't correspond to loaded chunks
-        chunkPositionCache.entrySet().removeIf(entry -> !loadedChunkKeys.contains(entry.getKey()));
-        
-        System.out.println("Chunk position cache cleaned (new size: " + chunkPositionCache.size() + ")");
-        MemoryProfiler.getInstance().takeSnapshot("after_chunk_position_cache_cleanup");
-    }
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
-        // Re-queue chunks that failed their mesh build on a previous frame
-        requeueFailedChunks();
-
-        // Use the new chunk loader to manage loading/unloading
+        meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
-
-        // CRITICAL: Proactive memory management with multiple thresholds
-        int loadedChunks = getLoadedChunkCount();
-        if (loadedChunks > 800) { // Critical emergency - extreme chunk overload
-            System.out.println("CRITICAL EMERGENCY: " + loadedChunks + " chunks loaded, triggering massive unloading");
-            forceUnloadDistantChunks(400); // Unload up to 400 chunks
-        } else if (loadedChunks > 500) { // Emergency threshold - well above normal 361 chunk max
-            System.out.println("EMERGENCY: " + loadedChunks + " chunks loaded, triggering emergency unloading");
-            forceUnloadDistantChunks(200); // Unload up to 200 chunks
-        } else if (loadedChunks > 400) { // Warning threshold - above expected maximum
-            // Clean up position cache proactively
-            if (chunkPositionCache.size() > loadedChunks * 2) {
-                cleanupChunkPositionCache();
-                System.out.println("WARNING: " + loadedChunks + " chunks loaded, cleaned position cache");
-            }
-            // Force GC on high chunk count (less frequent logging)
-            if (loadedChunks % 50 == 0) {
-                Game.forceGCAndReport("Proactive GC at " + loadedChunks + " chunks");
-            }
-        }
-
-        // Process requests to build mesh data (async)
-        processChunkMeshBuildRequests(renderer);
-
-        // Apply mesh data to GL objects on the main thread
-        
-        // Process GPU resource cleanups on the main thread
+        memoryManager.performMemoryManagement();
+        meshPipeline.processChunkMeshBuildRequests(this);
     }
 
     public void updateMainThread() {
-        applyPendingGLUpdates();
-        processGpuCleanupQueue();
+        meshPipeline.applyPendingGLUpdates();
+        meshPipeline.processGpuCleanupQueue();
+    }
+    
+    public void processGpuCleanupQueue() {
+        meshPipeline.processGpuCleanupQueue();
     }
     public void ensureChunkIsReadyForRender(int cx, int cz) {
-        ChunkPosition position = getCachedChunkPosition(cx, cz);
-        Chunk chunk = chunks.get(position);
+        Chunk chunk = chunkStore.getChunk(cx, cz);
 
         if (chunk == null) {
-            // This should be rare as the loader calls getChunkAt first, but handle it just in case.
             chunk = getChunkAt(cx, cz);
             if (chunk == null) {
-                return; // Failed to create/get chunk
+                return;
             }
         }
 
-        // 1. Populate features if not already done
         if (!chunk.areFeaturesPopulated()) {
             terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-            // Population changes blocks, so a mesh rebuild is necessary.
-            synchronized (chunk) {
-                chunk.setDataReadyForGL(false);
-                chunk.setMeshDataGenerationScheduledOrInProgress(false);
-            }
-            conditionallyScheduleMeshBuild(chunk);
+            stateManager.markChunkForPopulation(chunk);
+            meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
 
-        // 2. Check mesh status and schedule build if needed
         boolean isMeshReady = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
         if (!isMeshReady) {
-            // It might already be scheduled, but this ensures it gets picked up
-            // if it was missed or a previous build failed.
-            conditionallyScheduleMeshBuild(chunk);
+            meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
 
-        // 3. Also check and schedule direct neighbors for mesh builds.
-        // This is crucial for seamless terrain visuals.
-        int[][] neighborOffsets = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-        for (int[] offset : neighborOffsets) {
-            ChunkPosition neighborPos = getCachedChunkPosition(cx + offset[0], cz + offset[1]);
-            Chunk neighbor = chunks.get(neighborPos);
-            
-            // Only trigger a mesh build if the neighbor exists and is populated but not yet meshed.
-            // If the neighbor is not populated, it will be handled when its turn comes.
-            if (neighbor != null && neighbor.areFeaturesPopulated()) {
-                boolean isNeighborMeshReady = neighbor.isMeshGenerated() && neighbor.isDataReadyForGL();
-                if (!isNeighborMeshReady) {
-                    conditionallyScheduleMeshBuild(neighbor);
-                }
-            }
-        }
+        neighborCoordinator.ensureNeighborsReadyForRender(cx, cz, meshPipeline::scheduleConditionalMeshBuild);
     }
     
     /**
@@ -214,45 +106,35 @@ public class World {
      * If the chunk doesn't exist, it will be generated.
      */
     public Chunk getChunkAt(int x, int z) {
-        ChunkPosition position = getCachedChunkPosition(x, z);
-        Chunk chunk = chunks.get(position);
-        
-        if (chunk == null) {
-            // Use the terrain system to generate and register the chunk
-            chunk = safelyGenerateAndRegisterChunk(x, z);
-        }
-        
-        return chunk;
+        return chunkStore.getOrCreateChunk(x, z);
     }
     
     /**
      * Checks if a chunk exists at the specified position.
      */
     public boolean hasChunkAt(int x, int z) {
-        return chunks.containsKey(getCachedChunkPosition(x, z));
+        return chunkStore.hasChunk(x, z);
     }
     
     /**
      * Gets the block type at the specified world position.
      */
     public BlockType getBlockAt(int x, int y, int z) {
-        if (y < 0 || y >= WORLD_HEIGHT) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return BlockType.AIR;
         }
         
-        int chunkX = Math.floorDiv(x, CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, CHUNK_SIZE);
+        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
         
         Chunk chunk = getChunkAt(chunkX, chunkZ);
         
-        // If the chunk failed to generate (e.g., safelyGenerateAndRegisterChunk returned null),
-        // treat its blocks as AIR to prevent NullPointerExceptions.
         if (chunk == null) {
             return BlockType.AIR;
         }
         
-        int localX = Math.floorMod(x, CHUNK_SIZE);
-        int localZ = Math.floorMod(z, CHUNK_SIZE);
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
         
         return chunk.getBlock(localX, y, localZ);
     }
@@ -262,142 +144,27 @@ public class World {
      * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
      */
     public boolean setBlockAt(int x, int y, int z, BlockType blockType) {
-        if (y < 0 || y >= WORLD_HEIGHT) {
+        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return false;
         }
         
-        int chunkX = Math.floorDiv(x, CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, CHUNK_SIZE);
+        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
         
         Chunk chunk = getChunkAt(chunkX, chunkZ);
         
-        int localX = Math.floorMod(x, CHUNK_SIZE);
-        int localZ = Math.floorMod(z, CHUNK_SIZE);
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
         
         chunk.setBlock(localX, y, localZ, blockType);
 
-        // Mark chunk for mesh data rebuild. The existing mesh (if any) will continue to be used until the new one is ready.
-        synchronized (chunk) {
-            // chunk.setMeshGenerated(false); // Keep existing mesh active for rendering
-            chunk.setDataReadyForGL(false); // Indicate that current GL data (if any) is stale / new data is needed
-            chunk.setMeshDataGenerationScheduledOrInProgress(false); // Allow re-queue for mesh data generation
-        }
-        conditionallyScheduleMeshBuild(chunk);
+        stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        neighborCoordinator.rebuildNeighborChunks(chunkX, chunkZ, localX, localZ);
         
-        // Also mark neighbors for rebuild if the block was on an edge.
-        Chunk neighbor;
-        if (localX == 0) {
-            neighbor = chunks.get(getCachedChunkPosition(chunkX - 1, chunkZ));
-            if (neighbor != null) {
-                synchronized (neighbor) {
-                    // neighbor.setMeshGenerated(false);
-                    neighbor.setDataReadyForGL(false);
-                    neighbor.setMeshDataGenerationScheduledOrInProgress(false);
-                }
-                conditionallyScheduleMeshBuild(neighbor);
-            }
-        }
-        if (localX == CHUNK_SIZE - 1) {
-            neighbor = chunks.get(getCachedChunkPosition(chunkX + 1, chunkZ));
-            if (neighbor != null) {
-                synchronized (neighbor) {
-                    // neighbor.setMeshGenerated(false);
-                    neighbor.setDataReadyForGL(false);
-                    neighbor.setMeshDataGenerationScheduledOrInProgress(false);
-                }
-                conditionallyScheduleMeshBuild(neighbor);
-            }
-        }
-        if (localZ == 0) {
-            neighbor = chunks.get(getCachedChunkPosition(chunkX, chunkZ - 1));
-            if (neighbor != null) {
-                synchronized (neighbor) {
-                    // neighbor.setMeshGenerated(false);
-                    neighbor.setDataReadyForGL(false);
-                    neighbor.setMeshDataGenerationScheduledOrInProgress(false);
-                }
-                conditionallyScheduleMeshBuild(neighbor);
-            }
-        }
-        if (localZ == CHUNK_SIZE - 1) {
-            neighbor = chunks.get(getCachedChunkPosition(chunkX, chunkZ + 1));
-            if (neighbor != null) {
-                synchronized (neighbor) {
-                    // neighbor.setMeshGenerated(false);
-                    neighbor.setDataReadyForGL(false);
-                    neighbor.setMeshDataGenerationScheduledOrInProgress(false);
-                }
-                conditionallyScheduleMeshBuild(neighbor);
-           }
-       }
-       return true;
-   }
-    
-    
-/**
-     * Safely generates a new chunk, registers it, and queues it for mesh building.
-     * Handles exceptions during generation/registration and prevents adding null to collections.
-     */
-    private Chunk safelyGenerateAndRegisterChunk(int chunkX, int chunkZ) {
-        ChunkPosition position = getCachedChunkPosition(chunkX, chunkZ);
-        // This check is a safeguard; callers (getChunkAt, getChunksAroundPlayer) 
-        // usually check if the chunk exists before calling a generation path.
-        if (chunks.containsKey(position)) {
-            return chunks.get(position); // Should ideally not happen if callers check first
-        }
-
-        try {
-            // Track chunk allocation
-            MemoryProfiler.getInstance().incrementAllocation("Chunk");
-            
-            Chunk newGeneratedChunk = terrainSystem.generateBareChunk(chunkX, chunkZ);
-            
-            if (newGeneratedChunk == null) {
-                // This indicates a problem in generateChunk if it's designed to return null on error
-                // instead of throwing. ConcurrentHashMap cannot store null values.
-                System.err.println("CRITICAL: generateChunk returned null for position (" + chunkX + ", " + chunkZ + ")");
-                return null; // Cannot register null
-            }
-            
-            // Attempt to add the new chunk to the map.
-            // Using putIfAbsent could be an option for stricter concurrency,
-            // but current logic has callers check containsKey first.
-            chunks.put(position, newGeneratedChunk);
-            // Only queue for mesh build if within a certain distance of the player,
-            // or if the player object isn't available yet (e.g. initial generation).
-            // This prevents cascading mesh builds from chunks generated far away
-            // solely for adjacency checks during other chunks' mesh building.
-            boolean shouldQueueForMesh = true; // Default to true
-            Player player = Game.getPlayer();
-            if (player != null) {
-                int playerChunkX = (int) Math.floor(player.getPosition().x / CHUNK_SIZE);
-                int playerChunkZ = (int) Math.floor(player.getPosition().z / CHUNK_SIZE);
-                int distanceToPlayer = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
-
-                // RENDER_DISTANCE + 1 is the zone actively loaded by getChunksAroundPlayer.
-                // Chunks generated beyond this for adjacency checks should not be automatically meshed.
-                if (distanceToPlayer > RENDER_DISTANCE + 1) {
-                    shouldQueueForMesh = false;
-                }
-            }
-
-            if (shouldQueueForMesh) {
-                // Instead of directly adding, use the conditional scheduler
-                // which handles the meshDataGenerationScheduledOrInProgress flag.
-                conditionallyScheduleMeshBuild(newGeneratedChunk);
-            }
-            return newGeneratedChunk;
-        } catch (Exception e) {
-            // Catch any exception from generateChunk or map operations (e.g., if generateChunk throws)
-            System.err.println("Exception during chunk generation or registration at (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
-            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-            // Ensure the potentially problematic position is not left in an inconsistent state in 'chunks'
-            // if 'put' partially succeeded before an error, though 'put' on CHM is atomic.
-            // If an error occurred, the chunk is not considered successfully registered.
-            chunks.remove(position); // Clean up if put happened before another error
-            return null; // Indicate failure
-        }
+        return true;
     }
+    
+    
     
     /**
      * Gets the continentalness value at the specified world position.
@@ -407,206 +174,32 @@ public class World {
     }
     
     /**
-     * Conditionally schedules a chunk for mesh data building if it's not already
-     * built, being built, or scheduled. Manages the 'meshDataGenerationScheduledOrInProgress' flag.
+     * Gets a cached chunk position for coordinate lookup.
      */
-    private void conditionallyScheduleMeshBuild(Chunk chunkToBuild) {
-        if (chunkToBuild == null) {
-            return;
-        }
-
-        synchronized (chunkToBuild) {
-            // Check if already processed or in a queue/state that doesn't require re-scheduling
-            if (chunkToBuild.isMeshGenerated() && chunkToBuild.isDataReadyForGL()) { // Already fully meshed and data applied
-                return;
-            }
-            if (chunkToBuild.isDataReadyForGL() && !chunkToBuild.isMeshGenerated()) { // Data ready for GL, waiting for main thread
-                // This state is handled by applyPendingGLUpdates, no need to re-schedule for mesh data gen.
-                return;
-            }
-            if (chunkToBuild.isMeshDataGenerationScheduledOrInProgress()) { // Already scheduled or worker is on it
-                return;
-            }
-            if (chunksToBuildMesh.contains(chunkToBuild) || chunksReadyForGLUpload.contains(chunkToBuild)) { // Already in one of the queues
-                return;
-            }
-
-            // If we reach here, the chunk needs its mesh data generated.
-            chunkToBuild.setMeshDataGenerationScheduledOrInProgress(true);
-            chunksToBuildMesh.add(chunkToBuild); // Add to the set for the worker pool to pick up
-        }
-    }
-
-    /**
-     * Submits tasks to the executor to build mesh data for chunks in the queue.
-     * This is called from the main game loop.
-     */
-    private void processChunkMeshBuildRequests(com.stonebreak.rendering.Renderer renderer) {
-        if (chunksToBuildMesh.isEmpty()) {
-            return;
-        }
-
-        // Process a copy to avoid issues if new chunks are added concurrently
-        // (though current design adds from main thread only)
-        Set<Chunk> batchToProcess = new HashSet<>(chunksToBuildMesh);
-        chunksToBuildMesh.clear(); // Clear the set for next frame's requests
-
-        for (Chunk chunkToProcess : batchToProcess) {
-            chunkBuildExecutor.submit(() -> {
-                boolean buildSuccess = false;
-                try {
-                    // The chunkToProcess.meshDataGenerationScheduledOrInProgress was set to true before adding to chunksToBuildMesh
-                    chunkToProcess.buildAndPrepareMeshData(this); // This sets dataReadyForGL internally
-                    buildSuccess = chunkToProcess.isDataReadyForGL();
-                    
-                    if (buildSuccess) {
-                        chunksReadyForGLUpload.offer(chunkToProcess);
-                    }
-                } catch (Exception e) {
-                    // This catch is primarily for unexpected errors from the submit call itself,
-                    // as buildAndPrepareMeshData now catches its internal exceptions.
-                    System.err.println("Outer error during mesh build task for chunk at (" + chunkToProcess.getWorldX(0)/CHUNK_SIZE + ", " + chunkToProcess.getWorldZ(0)/CHUNK_SIZE + "): " + e.getMessage());
-                    System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-                    buildSuccess = false; // Ensure success is false if an outer exception occurred
-                } finally {
-                    // CRITICAL: Always reset the flag for the current chunk.
-                    synchronized (chunkToProcess) {
-                        chunkToProcess.setMeshDataGenerationScheduledOrInProgress(false);
-                    }
-
-                    // If the build failed for chunkToProcess, add to retry queue with limits
-                    if (!buildSuccess) {
-                        int retryCount = chunkRetryCount.getOrDefault(chunkToProcess, 0);
-                        if (retryCount < MAX_FAILED_CHUNK_RETRIES) {
-                            chunkRetryCount.put(chunkToProcess, retryCount + 1);
-                            chunksFailedToBuildMesh.offer(chunkToProcess);
-                            // System.out.println("Mesh build failed for chunk (" + chunkToProcess.getChunkX() + ", " + chunkToProcess.getChunkZ() + "). Retry " + (retryCount + 1) + "/" + MAX_FAILED_CHUNK_RETRIES);
-                        } else {
-                            // Max retries reached, remove from retry tracking and log warning
-                            chunkRetryCount.remove(chunkToProcess);
-                            System.err.println("WARNING: Chunk (" + chunkToProcess.getChunkX() + ", " + chunkToProcess.getChunkZ() + ") failed mesh build after " + MAX_FAILED_CHUNK_RETRIES + " retries. Giving up.");
-                            MemoryProfiler.getInstance().incrementAllocation("FailedChunk");
-                        }
-                    } else {
-                        // Build succeeded, remove from retry tracking if it was there
-                        chunkRetryCount.remove(chunkToProcess);
-                    }
-                }
-            });
-        }
+    public ChunkPosition getCachedChunkPosition(int x, int z) {
+        return chunkStore.getCachedChunkPosition(x, z);
     }
     
-    /**
-     * Re-queues chunks that failed to build their mesh on a previous frame.
-     * This provides a "second pass" for chunks that might have failed due to temporary issues (e.g., neighbor not ready).
-     */
-    private void requeueFailedChunks() {
-        Chunk failedChunk;
-        while ((failedChunk = chunksFailedToBuildMesh.poll()) != null) {
-            // Reset flags and re-schedule it for a mesh build.
-            // The conditionallyScheduleMeshBuild method will handle the logic
-            // of adding it to the chunksToBuildMesh set.
-            synchronized (failedChunk) {
-                failedChunk.setDataReadyForGL(false);
-                failedChunk.setMeshDataGenerationScheduledOrInProgress(false);
-            }
-            conditionallyScheduleMeshBuild(failedChunk);
-             // System.out.println("Re-queueing failed chunk (" + failedChunk.getChunkX() + ", " + failedChunk.getChunkZ() + ") for a new build attempt.");
-        }
-    }
+
+    
 
     /**
-     * Applies prepared mesh data to OpenGL for chunks that are ready.
-     * This must be called from the main game (OpenGL) thread.
-     * 
-     * OPTIMIZED: Now uses frame-time aware batch sizing to eliminate buffering.
-     */
-    private void applyPendingGLUpdates() {
-        Chunk chunkToUpdate;
-        // Process a limited number per frame to avoid stutter if many chunks complete at once
-        int updatesThisFrame = 0;
-        
-        // Use the optimized batch size that considers both memory usage AND frame performance
-        int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
-
-        while ((chunkToUpdate = chunksReadyForGLUpload.poll()) != null && updatesThisFrame < maxUpdatesPerFrame) {
-            try {
-                chunkToUpdate.applyPreparedDataToGL();
-                updatesThisFrame++;
-            } catch (Exception e) {
-                System.err.println("CRITICAL: Exception during applyPreparedDataToGL for chunk (" + chunkToUpdate.getChunkX() + ", " + chunkToUpdate.getChunkZ() + ")");
-                System.err.println("Time: " + java.time.LocalDateTime.now());
-                System.err.println("Updates this frame: " + updatesThisFrame + "/" + maxUpdatesPerFrame);
-                System.err.println("Queue size: " + chunksReadyForGLUpload.size());
-                System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
-                System.err.println("Exception: " + e.getMessage());
-                System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-                
-                // Try to save crash log to file
-                try (java.io.FileWriter fw = new java.io.FileWriter("chunk_gl_errors.txt", true)) {
-                    fw.write("=== CHUNK GL ERROR " + java.time.LocalDateTime.now() + " ===\n");
-                    fw.write("Chunk: (" + chunkToUpdate.getChunkX() + ", " + chunkToUpdate.getChunkZ() + ")\n");
-                    fw.write("Updates: " + updatesThisFrame + "/" + maxUpdatesPerFrame + "\n");
-                    fw.write("Queue size: " + chunksReadyForGLUpload.size() + "\n");
-                    fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
-                    fw.write("Exception: " + e.getMessage() + "\n");
-                    fw.write("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()) + "\n\n");
-                } catch (java.io.IOException logEx) {
-                    System.err.println("Failed to write chunk GL error log: " + logEx.getMessage());
-                }
-                
-                // Continue processing other chunks instead of crashing
-            }
-        }
-        
-        // Log memory usage when processing many GL updates or when memory is high
-        if (updatesThisFrame >= 16 || ChunkManager.isHighMemoryPressure()) {
-            Game.logDetailedMemoryInfo("After processing " + updatesThisFrame + " GL updates (optimized batch size: " + maxUpdatesPerFrame + ")");
-        }
-    }
-      /**
      * Returns chunks around the specified position within render distance.
      */
     public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
-        Map<ChunkPosition, Chunk> visibleChunks = new HashMap<>();
+        Map<ChunkPosition, Chunk> visibleChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
         
-        // First pass: Generate all chunks that should be visible
-        // First pass: Ensure chunks within render distance are loaded and populated
-        for (int x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
-            for (int z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
-                ChunkPosition position = getCachedChunkPosition(x, z);
-                Chunk chunk = getChunkAt(x, z); // Gets or creates a bare chunk
-
-                if (chunk != null) {
-                    if (!chunk.areFeaturesPopulated()) {
-                        terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-                        // Mark for mesh rebuild as population changes blocks
-                        synchronized (chunk) {
-                            chunk.setDataReadyForGL(false);
-                            chunk.setMeshDataGenerationScheduledOrInProgress(false);
-                        }
-                        conditionallyScheduleMeshBuild(chunk);
-                    }
-                    visibleChunks.put(position, chunk); // Add to visible map
-                }
+        // Populate chunks that need features
+        for (Chunk chunk : visibleChunks.values()) {
+            if (!chunk.areFeaturesPopulated()) {
+                terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
+                stateManager.markChunkForPopulation(chunk);
+                meshPipeline.scheduleConditionalMeshBuild(chunk);
             }
         }
         
-        // Second pass: Ensure border chunks (just outside render_distance) exist (as bare chunks) for meshing purposes.
-        // These are not added to `visibleChunks` and are not populated here.
-        for (int x = playerChunkX - RENDER_DISTANCE - 1; x <= playerChunkX + RENDER_DISTANCE + 1; x++) {
-            for (int z = playerChunkZ - RENDER_DISTANCE - 1; z <= playerChunkZ + RENDER_DISTANCE + 1; z++) {
-                // Only process chunks that are in the border strip (i.e., not in the main render_distance loop above)
-                boolean isInsideRenderDist = (x >= playerChunkX - RENDER_DISTANCE && x <= playerChunkX + RENDER_DISTANCE &&
-                                              z >= playerChunkZ - RENDER_DISTANCE && z <= playerChunkZ + RENDER_DISTANCE);
-                if (isInsideRenderDist) {
-                    continue; // Already handled by the first pass
-                }
-                
-                // If we are here, it's a border chunk. Ensure it exists as at least a bare chunk.
-                getChunkAt(x, z); // This will create a bare chunk if it doesn't exist. No need to populate.
-            }
-        }
+        // Ensure border chunks exist for meshing purposes
+        neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
         
         return visibleChunks;
     }
@@ -615,71 +208,19 @@ public class World {
      * This is now called by the ChunkLoader.
      */
     public void unloadChunk(int chunkX, int chunkZ) {
-        ChunkPosition pos = getCachedChunkPosition(chunkX, chunkZ);
-        Chunk chunk = chunks.remove(pos);
-
-        if (chunk != null) {
-            chunksToBuildMesh.remove(chunk);
-            chunksReadyForGLUpload.remove(chunk);
-            chunksFailedToBuildMesh.remove(chunk);
-            chunkRetryCount.remove(chunk);
-
-            chunk.cleanupCpuResources();
-            chunksPendingGpuCleanup.offer(chunk);
-            
-            // Remove entities within this chunk
-            Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
-            
-            long key = ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
-            chunkPositionCache.remove(key);
-            
-            // Log memory usage after unloading chunks (every 10th unload)
-            if ((chunkX + chunkZ) % 10 == 0) {
-                Game.logDetailedMemoryInfo("After unloading chunk (" + chunkX + ", " + chunkZ + ")");
-            }
-            
-            // Optional: Log unloading
-            // System.out.println("Unloaded chunk at (" + chunkX + ", " + chunkZ + ")");
-        }
+        chunkStore.unloadChunk(chunkX, chunkZ);
     }
-      /**
+    /**
      * Cleans up resources when the game exits.
      */
     public void cleanup() {
-        // First, shut down the chunk manager's executor
         if (chunkManager != null) {
             chunkManager.shutdown();
         }
-
-        // Then, shut down the chunk build executor
-        chunkBuildExecutor.shutdown();
-        try {
-            if (!chunkBuildExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                System.err.println("Chunk build executor did not terminate in 2 seconds. Forcing shutdown...");
-                chunkBuildExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            System.err.println("Error while shutting down chunk build executor: " + e.getMessage());
-            chunkBuildExecutor.shutdownNow();
-        }
         
-        // Clear async processing queues
-        chunksToBuildMesh.clear();
-        chunksReadyForGLUpload.clear();
-        chunksFailedToBuildMesh.clear();
-        chunkRetryCount.clear();
-        
-        // Now clean up chunk resources after ensuring no threads are modifying the collection
-        for (Chunk chunk : new HashMap<>(chunks).values()) {
-            chunk.cleanupGpuResources();
-        }
-        
-        // Process any remaining chunks in the cleanup queue
-        processGpuCleanupQueue();
-
-        // Finally clear the chunks map and cache
-        chunks.clear();
-        chunkPositionCache.clear();
+        meshPipeline.shutdown();
+        meshPipeline.processGpuCleanupQueue();
+        chunkStore.cleanup();
     }
     
     /**
@@ -687,7 +228,7 @@ public class World {
      * This is used for debugging purposes.
      */
     public int getLoadedChunkCount() {
-        return chunks.size();
+        return chunkStore.getLoadedChunkCount();
     }
     
     /**
@@ -695,7 +236,7 @@ public class World {
      * This is used for debugging purposes.
      */
     public int getPendingMeshBuildCount() {
-        return chunksToBuildMesh.size();
+        return meshPipeline.getPendingMeshBuildCount();
     }
     
     /**
@@ -703,7 +244,7 @@ public class World {
      * This is used for debugging purposes.
      */
     public int getPendingGLUploadCount() {
-        return chunksReadyForGLUpload.size();
+        return meshPipeline.getPendingGLUploadCount();
     }
     
     /**
@@ -737,84 +278,17 @@ public class World {
      * Use this when block visual properties change without changing the block type.
      */
     public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
-        int chunkX = Math.floorDiv(worldX, CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(worldZ, CHUNK_SIZE);
+        int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
         
-        Chunk chunk = chunks.get(getCachedChunkPosition(chunkX, chunkZ));
+        Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
         if (chunk != null) {
-            synchronized (chunk) {
-                chunk.setDataReadyForGL(false);
-                chunk.setMeshDataGenerationScheduledOrInProgress(false);
-            }
-            conditionallyScheduleMeshBuild(chunk);
+            stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
         }
     }
     
     
-    private void forceUnloadDistantChunks(int maxUnloadCount) {
-        Player player = Game.getPlayer();
-        if (player == null) return;
-        
-        int playerChunkX = (int) Math.floor(player.getPosition().x / CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / CHUNK_SIZE);
-        
-        // More aggressive emergency distance based on severity
-        int emergencyDistance = maxUnloadCount > 200 ? RENDER_DISTANCE + 3 : RENDER_DISTANCE + 1;
-        
-        Set<ChunkPosition> chunksToUnload = new HashSet<>();
-        
-        // Find chunks beyond emergency distance
-        for (ChunkPosition pos : chunks.keySet()) {
-            int distance = Math.max(Math.abs(pos.getX() - playerChunkX), Math.abs(pos.getZ() - playerChunkZ));
-            if (distance > emergencyDistance) {
-                chunksToUnload.add(pos);
-            }
-        }
-        
-        // Sort chunks by distance (unload furthest first for maximum memory recovery)
-        java.util.List<ChunkPosition> sortedUnloads = new java.util.ArrayList<>(chunksToUnload);
-        sortedUnloads.sort((a, b) -> {
-            int distA = Math.max(Math.abs(a.getX() - playerChunkX), Math.abs(a.getZ() - playerChunkZ));
-            int distB = Math.max(Math.abs(b.getX() - playerChunkX), Math.abs(b.getZ() - playerChunkZ));
-            return Integer.compare(distB, distA); // Furthest first
-        });
-        
-        // Unload distant chunks more aggressively
-        int unloadedCount = 0;
-        for (ChunkPosition pos : sortedUnloads) {
-            unloadChunk(pos.getX(), pos.getZ());
-            unloadedCount++;
-            
-            // Don't process GPU cleanup here - it must be done on main thread
-            
-            // Dynamic unloading limit based on severity
-            if (unloadedCount >= maxUnloadCount) break;
-        }
-        
-        if (unloadedCount > 0) {
-            // Clear position cache aggressively during emergency
-            if (chunkPositionCache.size() > 100) {
-                chunkPositionCache.clear();
-            }
-            
-            System.out.println("Emergency unloaded " + unloadedCount + " distant chunks. Total remaining: " + getLoadedChunkCount());
-            Game.forceGCAndReport("After emergency chunk unloading");
-        }
-    }
     
-    public void processGpuCleanupQueue() {
-        Chunk chunk;
-        int cleaned = 0;
-        while ((chunk = chunksPendingGpuCleanup.poll()) != null) {
-            chunk.cleanupGpuResources();
-            cleaned++;
-        }
-        
-        // Log when significant GPU cleanup occurs
-        if (cleaned > 10) {
-            System.out.println("Cleaned up GPU resources for " + cleaned + " chunks");
-        }
-    }
     
     /**
      * Represents a position of a chunk in the world.

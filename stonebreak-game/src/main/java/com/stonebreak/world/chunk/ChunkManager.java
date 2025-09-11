@@ -1,4 +1,4 @@
-package com.stonebreak.world;
+package com.stonebreak.world.chunk;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -9,6 +9,9 @@ import java.util.concurrent.TimeUnit;
 
 import com.stonebreak.player.Player;
 import com.stonebreak.core.Game;
+import com.stonebreak.world.Chunk;
+import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 public class ChunkManager {
     
@@ -43,8 +46,8 @@ public class ChunkManager {
     private void updateActiveChunks(Player player) {
         if (player == null) return;
 
-        int playerChunkX = (int) Math.floor(player.getPosition().x / World.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / World.CHUNK_SIZE);
+        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
 
         Set<World.ChunkPosition> requiredChunks = calculateRequiredChunks(playerChunkX, playerChunkZ);
         unloadExitedChunks(requiredChunks);

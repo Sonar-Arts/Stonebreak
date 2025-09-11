@@ -1,5 +1,6 @@
 package com.stonebreak.player;
 
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -1296,7 +1297,7 @@ public class Player {      // Player settings
             int blockY = (int) Math.floor(yCurrent);
 
             // Ensure y-check is within world bounds
-            if (blockY < 0 || blockY >= World.WORLD_HEIGHT) {
+            if (blockY < 0 || blockY >= WorldConfiguration.WORLD_HEIGHT) {
                 continue;
             }
 

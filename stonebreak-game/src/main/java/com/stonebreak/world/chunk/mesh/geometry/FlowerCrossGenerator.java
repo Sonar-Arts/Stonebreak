@@ -5,7 +5,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
-import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Service responsible for generating cross-shaped geometry for flower blocks.
@@ -23,9 +23,9 @@ public class FlowerCrossGenerator {
                                  int flagIndex, int[] indexArray, int indexIndex) {
         
         // Convert to world coordinates
-        float worldX = x + chunkX * World.CHUNK_SIZE;
+        float worldX = x + chunkX * WorldConfiguration.CHUNK_SIZE;
         float worldY = y;
-        float worldZ = z + chunkZ * World.CHUNK_SIZE;
+        float worldZ = z + chunkZ * WorldConfiguration.CHUNK_SIZE;
         
         // Offset for centering the cross in the block
         float centerX = worldX + 0.5f;

@@ -5,6 +5,7 @@ import java.util.Random;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.Chunk;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Handles generation of various tree types in the world.
@@ -22,7 +23,7 @@ public class TreeGenerator {
 
         // Check if the top of the tree goes out of world bounds vertically.
         // Trunk is 5 blocks (worldYBase to worldYBase+4), leaves extend to worldYBase+6.
-        if (worldYBase + 6 >= World.WORLD_HEIGHT) {
+        if (worldYBase + 6 >= WorldConfiguration.WORLD_HEIGHT) {
             return;
         }
 
@@ -31,7 +32,7 @@ public class TreeGenerator {
 
         // Place tree trunk
         for (int dyTrunk = 0; dyTrunk < 5; dyTrunk++) { // 5 blocks high trunk
-            if (worldYBase + dyTrunk < World.WORLD_HEIGHT) { // Ensure trunk block is within height limits
+            if (worldYBase + dyTrunk < WorldConfiguration.WORLD_HEIGHT) { // Ensure trunk block is within height limits
                  world.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.WOOD);
             }
         }
@@ -43,7 +44,7 @@ public class TreeGenerator {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
 
             // Ensure this leaf layer is within world height (mostly covered by initial check)
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) {
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) {
                 continue;
             }
 
@@ -78,13 +79,13 @@ public class TreeGenerator {
 
         // Pine trees are taller - check if the top goes out of world bounds
         // Trunk is 7 blocks, leaves extend to worldYBase+8
-        if (worldYBase + 8 >= World.WORLD_HEIGHT) {
+        if (worldYBase + 8 >= WorldConfiguration.WORLD_HEIGHT) {
             return;
         }
 
         // Place pine tree trunk (darker wood)
         for (int dyTrunk = 0; dyTrunk < 7; dyTrunk++) { // 7 blocks high trunk
-            if (worldYBase + dyTrunk < World.WORLD_HEIGHT) {
+            if (worldYBase + dyTrunk < WorldConfiguration.WORLD_HEIGHT) {
                 world.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.PINE);
             }
         }
@@ -93,7 +94,7 @@ public class TreeGenerator {
         // Bottom layer (offset 3-4): radius 2
         for (int leafLayerYOffset = 3; leafLayerYOffset <= 4; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) continue;
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) continue;
 
             int leafRadius = 2;
             for (int dxLeaf = -leafRadius; dxLeaf <= leafRadius; dxLeaf++) {
@@ -114,7 +115,7 @@ public class TreeGenerator {
         // Middle layer (offset 5-6): radius 1
         for (int leafLayerYOffset = 5; leafLayerYOffset <= 6; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) continue;
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) continue;
 
             int leafRadius = 1;
             for (int dxLeaf = -leafRadius; dxLeaf <= leafRadius; dxLeaf++) {
@@ -131,7 +132,7 @@ public class TreeGenerator {
         // Top layer (offset 7-8): just around the top
         for (int leafLayerYOffset = 7; leafLayerYOffset <= 8; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) continue;
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) continue;
 
             // Very small cap
             for (int dxLeaf = -1; dxLeaf <= 1; dxLeaf++) {
@@ -165,13 +166,13 @@ public class TreeGenerator {
             trunkHeight = 8 + random.nextInt(5); // 8-12 blocks tall trunk
         }
         
-        if (worldYBase + trunkHeight + 6 >= World.WORLD_HEIGHT) {
+        if (worldYBase + trunkHeight + 6 >= WorldConfiguration.WORLD_HEIGHT) {
             return; // Tree would exceed world height
         }
 
         // Place elm trunk - straight up with some branching at the top
         for (int dyTrunk = 0; dyTrunk < trunkHeight; dyTrunk++) {
-            if (worldYBase + dyTrunk < World.WORLD_HEIGHT) {
+            if (worldYBase + dyTrunk < WorldConfiguration.WORLD_HEIGHT) {
                 world.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.ELM_WOOD_LOG);
             }
         }
@@ -179,7 +180,7 @@ public class TreeGenerator {
         // Add branch structure at top of trunk (characteristic elm branching)
         // Elm trees branch out near the top, creating the vase shape
         int branchLevel = worldYBase + trunkHeight - 3; // Start branching 3 blocks from top
-        if (branchLevel + 3 < World.WORLD_HEIGHT) {
+        if (branchLevel + 3 < WorldConfiguration.WORLD_HEIGHT) {
             // Add horizontal branches for vase shape
             for (int branchY = branchLevel; branchY < branchLevel + 3; branchY++) {
                 // Create 4 main branches extending outward
@@ -205,7 +206,7 @@ public class TreeGenerator {
         // Bottom leaf layer - fullest and widest (characteristic of elm's umbrella shape)
         for (int leafLayerYOffset = trunkHeight - 1; leafLayerYOffset <= trunkHeight + 2; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) continue;
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) continue;
 
             for (int dxLeaf = -leafRadius; dxLeaf <= leafRadius; dxLeaf++) {
                 for (int dzLeaf = -leafRadius; dzLeaf <= leafRadius; dzLeaf++) {
@@ -240,7 +241,7 @@ public class TreeGenerator {
         // Upper leaf layers - gradually smaller but still maintaining elm's broad canopy
         for (int leafLayerYOffset = trunkHeight + 3; leafLayerYOffset <= trunkHeight + 5; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) continue;
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) continue;
 
             int upperRadius = 3; // Slightly smaller for upper layers
             for (int dxLeaf = -upperRadius; dxLeaf <= upperRadius; dxLeaf++) {
@@ -267,7 +268,7 @@ public class TreeGenerator {
         // Top crown - small cluster at very top
         for (int leafLayerYOffset = trunkHeight + 6; leafLayerYOffset <= trunkHeight + 6; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
-            if (currentLeafWorldY >= World.WORLD_HEIGHT) continue;
+            if (currentLeafWorldY >= WorldConfiguration.WORLD_HEIGHT) continue;
 
             for (int dxLeaf = -1; dxLeaf <= 1; dxLeaf++) {
                 for (int dzLeaf = -1; dzLeaf <= 1; dzLeaf++) {

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering;
 
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -290,7 +291,7 @@ public class WaterEffects {
         int y = pos.y + 1;
         
         // Check water column above
-        while (y < World.WORLD_HEIGHT) {
+        while (y < WorldConfiguration.WORLD_HEIGHT) {
             if (world.getBlockAt(pos.x, y, pos.z) == BlockType.WATER) {
                 WaterBlock above = waterBlocks.get(new Vector3i(pos.x, y, pos.z));
                 if (above != null) {

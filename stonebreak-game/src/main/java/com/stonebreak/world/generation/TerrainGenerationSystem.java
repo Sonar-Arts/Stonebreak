@@ -3,10 +3,11 @@ package com.stonebreak.world.generation;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.util.SplineInterpolator;
-import com.stonebreak.world.BiomeType;
+import com.stonebreak.world.biomes.BiomeType;
 import com.stonebreak.world.Chunk;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.features.TreeGenerator;
 import com.stonebreak.world.generation.mobs.MobGenerator;
 
@@ -17,8 +18,8 @@ import java.util.Random;
  * and noise-based world generation.
  */
 public class TerrainGenerationSystem {
-    public static final int SEA_LEVEL = 64;
-    public static final int WORLD_HEIGHT = 256;
+    public static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
+    public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     
     private final long seed;
     private final Random random;
@@ -156,11 +157,11 @@ public class TerrainGenerationSystem {
         Chunk chunk = new Chunk(chunkX, chunkZ);
         
         // Generate terrain
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int z = 0; z < World.CHUNK_SIZE; z++) {
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                 // Calculate absolute world coordinates
-                int worldX = chunkX * World.CHUNK_SIZE + x;
-                int worldZ = chunkZ * World.CHUNK_SIZE + z;
+                int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
+                int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
                 
                 // Generate height map using noise
                 int height = generateTerrainHeight(worldX, worldZ);
@@ -238,10 +239,10 @@ public class TerrainGenerationSystem {
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int z = 0; z < World.CHUNK_SIZE; z++) {
-                int worldX = chunkX * World.CHUNK_SIZE + x;
-                int worldZ = chunkZ * World.CHUNK_SIZE + z;
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
+                int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
+                int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
 
                 // Determine surface height for this column *within this chunk*
                 // This height is relative to the chunk's own blocks, not a fresh noise query
@@ -394,7 +395,7 @@ public class TerrainGenerationSystem {
         }
         
         // Process mob spawning for this chunk
-        BiomeType chunkBiome = getBiomeType(chunkX * World.CHUNK_SIZE + World.CHUNK_SIZE / 2, chunkZ * World.CHUNK_SIZE + World.CHUNK_SIZE / 2);
+        BiomeType chunkBiome = getBiomeType(chunkX * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2, chunkZ * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2);
         MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, random, randomLock);
         
         chunk.setFeaturesPopulated(true);

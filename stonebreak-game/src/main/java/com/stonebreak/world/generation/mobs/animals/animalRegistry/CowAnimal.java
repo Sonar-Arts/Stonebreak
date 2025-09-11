@@ -3,6 +3,7 @@ package com.stonebreak.world.generation.mobs.animals.animalRegistry;
 import java.util.Random;
 
 import com.stonebreak.world.generation.mobs.animals.Animal;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 
 import com.stonebreak.blocks.BlockType;
@@ -46,16 +47,16 @@ public class CowAnimal implements Animal {
             // Random position within chunk
             int localX, localZ;
             synchronized (randomLock) {
-                localX = random.nextInt(World.CHUNK_SIZE);
-                localZ = random.nextInt(World.CHUNK_SIZE);
+                localX = random.nextInt(WorldConfiguration.CHUNK_SIZE);
+                localZ = random.nextInt(WorldConfiguration.CHUNK_SIZE);
             }
             
-            int worldX = chunkX * World.CHUNK_SIZE + localX;
-            int worldZ = chunkZ * World.CHUNK_SIZE + localZ;
+            int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + localX;
+            int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + localZ;
             
             // Find surface height
             int surfaceY = 0;
-            for (int y = World.WORLD_HEIGHT - 1; y >= 0; y--) {
+            for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
                 if (chunk.getBlock(localX, y, localZ) != BlockType.AIR) {
                     surfaceY = y + 1;
                     break;
@@ -86,9 +87,9 @@ public class CowAnimal implements Animal {
     public boolean canSpawnInChunk(Chunk chunk) {
         // Cows can spawn in chunks with grass blocks (plains biome)
         // Check if chunk has any grass blocks
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int z = 0; z < World.CHUNK_SIZE; z++) {
-                for (int y = 0; y < World.WORLD_HEIGHT; y++) {
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
+                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                     if (chunk.getBlock(x, y, z) == BlockType.GRASS) {
                         return true;
                     }
@@ -118,10 +119,10 @@ public class CowAnimal implements Animal {
      */
     private boolean isValidSpawnLocation(Chunk chunk, int localX, int y, int localZ) {
         // Check bounds
-        if (localX < 0 || localX >= World.CHUNK_SIZE || localZ < 0 || localZ >= World.CHUNK_SIZE) {
+        if (localX < 0 || localX >= WorldConfiguration.CHUNK_SIZE || localZ < 0 || localZ >= WorldConfiguration.CHUNK_SIZE) {
             return false;
         }
-        if (y < 1 || y >= World.WORLD_HEIGHT - 1) {
+        if (y < 1 || y >= WorldConfiguration.WORLD_HEIGHT - 1) {
             return false;
         }
         

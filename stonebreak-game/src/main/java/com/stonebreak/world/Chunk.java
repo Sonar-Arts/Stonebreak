@@ -3,6 +3,7 @@ package com.stonebreak.world;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -42,13 +43,13 @@ public class Chunk {
     public Chunk(int x, int z) {
         this.x = x;
         this.z = z;
-        this.blocks = new BlockType[World.CHUNK_SIZE][World.WORLD_HEIGHT][World.CHUNK_SIZE];
+        this.blocks = new BlockType[WorldConfiguration.CHUNK_SIZE][WorldConfiguration.WORLD_HEIGHT][WorldConfiguration.CHUNK_SIZE];
         this.meshGenerated = false;
         
         // Initialize all blocks to air
-        for (int i = 0; i < World.CHUNK_SIZE; i++) {
-            for (int j = 0; j < World.WORLD_HEIGHT; j++) {
-                for (int k = 0; k < World.CHUNK_SIZE; k++) {
+        for (int i = 0; i < WorldConfiguration.CHUNK_SIZE; i++) {
+            for (int j = 0; j < WorldConfiguration.WORLD_HEIGHT; j++) {
+                for (int k = 0; k < WorldConfiguration.CHUNK_SIZE; k++) {
                     blocks[i][j][k] = BlockType.AIR;
                 }
             }
@@ -59,7 +60,7 @@ public class Chunk {
      * Gets the block type at the specified local position.
      */
     public BlockType getBlock(int x, int y, int z) {
-        if (x < 0 || x >= World.CHUNK_SIZE || y < 0 || y >= World.WORLD_HEIGHT || z < 0 || z >= World.CHUNK_SIZE) {
+        if (x < 0 || x >= WorldConfiguration.CHUNK_SIZE || y < 0 || y >= WorldConfiguration.WORLD_HEIGHT || z < 0 || z >= WorldConfiguration.CHUNK_SIZE) {
             return BlockType.AIR;
         }
         
@@ -70,7 +71,7 @@ public class Chunk {
      * Sets the block type at the specified local position.
      */
     public void setBlock(int x, int y, int z, BlockType blockType) {
-        if (x < 0 || x >= World.CHUNK_SIZE || y < 0 || y >= World.WORLD_HEIGHT || z < 0 || z >= World.CHUNK_SIZE) {
+        if (x < 0 || x >= WorldConfiguration.CHUNK_SIZE || y < 0 || y >= WorldConfiguration.WORLD_HEIGHT || z < 0 || z >= WorldConfiguration.CHUNK_SIZE) {
             return;
         }
         
@@ -450,14 +451,14 @@ public class Chunk {
      * Converts a local X coordinate to a world X coordinate.
      */
     public int getWorldX(int localX) {
-        return x * World.CHUNK_SIZE + localX;
+        return x * WorldConfiguration.CHUNK_SIZE + localX;
     }
     
     /**
      * Converts a local Z coordinate to a world Z coordinate.
      */
     public int getWorldZ(int localZ) {
-        return z * World.CHUNK_SIZE + localZ;
+        return z * WorldConfiguration.CHUNK_SIZE + localZ;
     }
 
     public int getChunkX() {

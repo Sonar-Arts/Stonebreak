@@ -4,6 +4,7 @@ package com.stonebreak.rendering.gameWorld;
 import java.util.*;
 
 // JOML Math Library
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -178,8 +179,8 @@ public class WorldRenderer {
      * Get visible chunks around the player.
      */
     private Map<World.ChunkPosition, Chunk> getVisibleChunks(World world, Player player) {
-        int playerChunkX = (int) Math.floor(player.getPosition().x / World.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / World.CHUNK_SIZE);
+        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         return world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
     }
     
@@ -223,10 +224,10 @@ public class WorldRenderer {
         
         Collections.sort(reusableSortedChunks, (c1, c2) -> {
             // Calculate distance squared from player to center of each chunk
-            float c1CenterX = c1.getWorldX(World.CHUNK_SIZE / 2);
-            float c1CenterZ = c1.getWorldZ(World.CHUNK_SIZE / 2);
-            float c2CenterX = c2.getWorldX(World.CHUNK_SIZE / 2);
-            float c2CenterZ = c2.getWorldZ(World.CHUNK_SIZE / 2);
+            float c1CenterX = c1.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
+            float c1CenterZ = c1.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
+            float c2CenterX = c2.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
+            float c2CenterZ = c2.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
 
             float distSq1 = (playerPos.x - c1CenterX) * (playerPos.x - c1CenterX) +
                             (playerPos.z - c1CenterZ) * (playerPos.z - c1CenterZ);

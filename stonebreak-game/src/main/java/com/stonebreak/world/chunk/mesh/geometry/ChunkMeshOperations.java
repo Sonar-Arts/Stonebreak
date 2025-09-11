@@ -2,6 +2,7 @@ package com.stonebreak.world.chunk.mesh.geometry;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.chunk.mesh.texture.FaceRenderingService;
 import com.stonebreak.world.chunk.mesh.data.MeshDataAssembler;
 import com.stonebreak.world.chunk.mesh.texture.TextureCoordinateProcessor;
@@ -92,9 +93,9 @@ public class ChunkMeshOperations {
             int index = 0;
             
             // Iterate through all blocks in the chunk
-            for (int lx = 0; lx < World.CHUNK_SIZE; lx++) {
-                for (int ly = 0; ly < World.WORLD_HEIGHT; ly++) {
-                    for (int lz = 0; lz < World.CHUNK_SIZE; lz++) {
+            for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
+                for (int ly = 0; ly < WorldConfiguration.WORLD_HEIGHT; ly++) {
+                    for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
                         BlockType blockType = blocks[lx][ly][lz];
                         
                         // Skip air blocks
@@ -147,9 +148,9 @@ public class ChunkMeshOperations {
         }
         
         // Convert to world coordinates
-        float worldX = x + chunkX * World.CHUNK_SIZE;
+        float worldX = x + chunkX * WorldConfiguration.CHUNK_SIZE;
         float worldY = y;
-        float worldZ = z + chunkZ * World.CHUNK_SIZE;
+        float worldZ = z + chunkZ * WorldConfiguration.CHUNK_SIZE;
         
         // Get visual height for blocks that can have variable heights
         float blockHeight = geometryGenerator.getBlockHeight(blockType, worldX, worldY, worldZ, world);
