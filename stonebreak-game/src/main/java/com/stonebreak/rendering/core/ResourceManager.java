@@ -40,6 +40,7 @@ public class ResourceManager {
         shaderProgram.createUniform("u_renderPass");
         shaderProgram.createUniform("u_isUIElement");
         shaderProgram.createUniform("u_time");
+        shaderProgram.createUniform("u_disableWaterWaves");
     }
     
     private String getVertexShaderSource() {
@@ -62,12 +63,13 @@ public class ResourceManager {
                uniform vec2 u_atlasUVOffset;
                uniform vec2 u_atlasUVScale;
                uniform float u_time;
+               uniform bool u_disableWaterWaves;
                void main() {
                    // Compute world-space position first for stable, seamless waves
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;
                    // Apply GPU-side water surface displacement to avoid remeshing for waves
-                   if (isWater > 0.5) {
+                   if (isWater > 0.5 && !u_disableWaterWaves) {
                        // World-space wave using simple, seamless functions
                        float s = 0.50;             // spatial scale
                        float speed1 = 1.5;         // primary speed

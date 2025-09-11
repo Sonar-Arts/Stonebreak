@@ -59,6 +59,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
+        // Disable water waves for held blocks to prevent animation
+        shaderProgram.setUniform("u_disableWaterWaves", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -89,6 +91,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
+        // Disable water waves for held blocks to prevent animation
+        shaderProgram.setUniform("u_disableWaterWaves", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -196,6 +200,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_isText", false); 
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        // Disable water waves for held tools to prevent animation
+        shaderProgram.setUniform("u_disableWaterWaves", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);

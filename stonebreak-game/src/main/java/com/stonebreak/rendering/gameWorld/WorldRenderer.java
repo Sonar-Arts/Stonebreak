@@ -88,6 +88,8 @@ public class WorldRenderer {
         setupWorldUniforms(player);
         // Animate water waves in the vertex shader without remeshing
         shaderProgram.setUniform("u_time", totalTime);
+        // Enable water waves for world rendering
+        shaderProgram.setUniform("u_disableWaterWaves", false);
         checkGLError("After setting uniforms");
         
         // Bind texture atlas once before passes
