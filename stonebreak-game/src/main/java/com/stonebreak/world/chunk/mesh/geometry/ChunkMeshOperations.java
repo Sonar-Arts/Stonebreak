@@ -139,7 +139,7 @@ public class ChunkMeshOperations {
      */
     private int addFace(int x, int y, int z, int face, BlockType blockType, int index, int chunkX, int chunkZ, World world) {
         // Check if we have enough space in our pre-allocated arrays
-        if (!meshAssembler.validateArraySpace(vertexIndex, textureIndex, normalIndex, flagIndex, indexIndex,
+        if (meshAssembler.isArraySpaceInsufficient(vertexIndex, textureIndex, normalIndex, flagIndex, indexIndex,
                                             tempVertices, tempTextureCoords, tempNormals, tempIsWaterFlags, 
                                             tempIsAlphaTestedFlags, tempIndices, 12, 8, 12, 4, 6)) {
             // Arrays are full, skip this face to avoid overflow
@@ -184,7 +184,7 @@ public class ChunkMeshOperations {
      */
     private int addFlowerCross(int x, int y, int z, BlockType blockType, int index, int chunkX, int chunkZ) {
         // Check if we have enough space in our pre-allocated arrays for flower geometry (8 vertices)
-        if (!meshAssembler.validateArraySpace(vertexIndex, textureIndex, normalIndex, flagIndex, indexIndex,
+        if (meshAssembler.isArraySpaceInsufficient(vertexIndex, textureIndex, normalIndex, flagIndex, indexIndex,
                                             tempVertices, tempTextureCoords, tempNormals, tempIsWaterFlags, 
                                             tempIsAlphaTestedFlags, tempIndices, 24, 16, 24, 8, 24)) {
             // Arrays are full, skip this flower to avoid overflow

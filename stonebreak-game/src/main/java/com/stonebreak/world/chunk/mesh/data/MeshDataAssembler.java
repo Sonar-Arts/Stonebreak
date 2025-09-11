@@ -66,23 +66,21 @@ public class MeshDataAssembler {
     }
     
     /**
-     * Validates that there is enough space in arrays for additional data.
-     * Returns true if there is enough space, false otherwise.
+     * Checks if arrays lack sufficient space for additional data.
+     * Returns true if arrays are full (insufficient space), false if there's enough space.
      */
-    public boolean validateArraySpace(int vertexIndex, int textureIndex, int normalIndex, int flagIndex, 
-                                    int indexIndex, float[] tempVertices, float[] tempTextureCoords,
-                                    float[] tempNormals, float[] tempIsWaterFlags, float[] tempIsAlphaTestedFlags,
-                                    int[] tempIndices, int verticesNeeded, int texturesNeeded, int normalsNeeded,
-                                    int flagsNeeded, int indicesNeeded) {
-        if (vertexIndex + verticesNeeded > tempVertices.length || 
-            textureIndex + texturesNeeded > tempTextureCoords.length ||
-            normalIndex + normalsNeeded > tempNormals.length ||
-            flagIndex + flagsNeeded > tempIsWaterFlags.length ||
-            flagIndex + flagsNeeded > tempIsAlphaTestedFlags.length ||
-            indexIndex + indicesNeeded > tempIndices.length) {
-            return false;
-        }
-        return true;
+    public boolean isArraySpaceInsufficient(int vertexIndex, int textureIndex, int normalIndex, int flagIndex, 
+                                          int indexIndex, float[] tempVertices, float[] tempTextureCoords,
+                                          float[] tempNormals, float[] tempIsWaterFlags, float[] tempIsAlphaTestedFlags,
+                                          int[] tempIndices, int verticesNeeded, int texturesNeeded, int normalsNeeded,
+                                          int flagsNeeded, int indicesNeeded) {
+        int requiredFlagSpace = flagIndex + flagsNeeded;
+        return vertexIndex + verticesNeeded > tempVertices.length || 
+               textureIndex + texturesNeeded > tempTextureCoords.length ||
+               normalIndex + normalsNeeded > tempNormals.length ||
+               requiredFlagSpace > tempIsWaterFlags.length ||
+               requiredFlagSpace > tempIsAlphaTestedFlags.length ||
+               indexIndex + indicesNeeded > tempIndices.length;
     }
     
     /**
