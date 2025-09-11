@@ -1,6 +1,7 @@
 package com.stonebreak.ui.settingsMenu.renderers;
 
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
 /**
@@ -29,7 +30,7 @@ public class SettingsRenderer {
         float centerY = windowHeight / 2.0f;
         
         // Phase 1: Render background and all UI components
-        renderMenuBackground(windowWidth, windowHeight);
+        renderMenuBackground(windowWidth, windowHeight, centerX, centerY);
         sectionRenderer.renderSettingSections(centerX, centerY);
         sectionRenderer.renderActionButtons(centerX, centerY);
         
@@ -40,9 +41,30 @@ public class SettingsRenderer {
     /**
      * Renders the background and base menu structure.
      */
-    private void renderMenuBackground(int windowWidth, int windowHeight) {
+    private void renderMenuBackground(int windowWidth, int windowHeight, float centerX, float centerY) {
+        // Render the original full-screen background
         uiRenderer.renderSettingsMenu(windowWidth, windowHeight);
+        
+        // Render the SETTINGS title at the top of the screen
+        renderSettingsTitle(centerX, centerY);
     }
+    
+    /**
+     * Renders the SETTINGS title at the top of the menu.
+     */
+    private void renderSettingsTitle(float centerX, float centerY) {
+        // Position title at the top of the menu area
+        float titleY = centerY - 200; // Position above the main menu content
+        
+        try {
+            // Render the SETTINGS title prominently
+            uiRenderer.drawText("SETTINGS", centerX, titleY, "default", 28.0f, 1.0f, 1.0f, 1.0f, 1.0f);
+        } catch (Exception e) {
+            // Fallback if text rendering fails
+            System.out.println("Failed to render SETTINGS title");
+        }
+    }
+    
     
     /**
      * Renders all dropdown menus on top of other UI elements.

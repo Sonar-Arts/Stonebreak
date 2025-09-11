@@ -162,9 +162,21 @@ public class StateManager {
         
         // Update setting selection states based on current category
         CategoryState.SettingType[] settings = selectedCategory.getSettings();
-        CategoryState.SettingType currentSetting = (selectedSettingInCategory < settings.length) 
-            ? settings[selectedSettingInCategory] 
-            : CategoryState.SettingType.APPLY; // Default to apply if out of bounds
+        CategoryState.SettingType currentSetting;
+        
+        if (selectedSettingInCategory < settings.length) {
+            // Regular setting within the category
+            currentSetting = settings[selectedSettingInCategory];
+        } else if (selectedSettingInCategory == settings.length) {
+            // Apply button
+            currentSetting = CategoryState.SettingType.APPLY;
+        } else if (selectedSettingInCategory == settings.length + 1) {
+            // Back button
+            currentSetting = CategoryState.SettingType.BACK;
+        } else {
+            // Out of bounds - default to apply
+            currentSetting = CategoryState.SettingType.APPLY;
+        }
             
         // Reset all setting selections
         resolutionButton.setSelected(false);

@@ -2,6 +2,7 @@ package com.stonebreak.ui.settingsMenu.renderers;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.handlers.MouseHandler;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
@@ -56,44 +57,80 @@ public class SectionRenderer {
             );
         }
         
-        // Position settings components (right panel)
+        // Position settings components (right panel) based on current category
         float settingsX = centerX + SettingsConfig.SETTINGS_PANEL_X_OFFSET;
+        positionCurrentCategorySettings(settingsX, centerY);
+    }
+    
+    /**
+     * Positions settings components dynamically based on the currently selected category.
+     */
+    private void positionCurrentCategorySettings(float settingsX, float centerY) {
+        CategoryState selectedCategory = stateManager.getSelectedCategory();
+        CategoryState.SettingType[] settings = selectedCategory.getSettings();
         
-        stateManager.getResolutionButton().setPosition(
-            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.RESOLUTION_BUTTON_Y_OFFSET
-        );
+        // Calculate panel bounds to ensure buttons stay within the container
+        // Panel dimensions match those in MenuRenderer.renderSettingsMenu()
+        float panelHeight = Math.min(550, 600 * 0.85f); // Match panel height calculation
+        float panelTop = centerY - panelHeight / 2;
+        float panelBottom = centerY + panelHeight / 2;
         
-        stateManager.getArmModelButton().setPosition(
-            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.ARM_MODEL_BUTTON_Y_OFFSET
-        );
+        // Starting Y position for settings - positioned within panel with increased top margin for title padding
+        float topMargin = 100; // Increased space for SETTINGS title + padding
+        float bottomMargin = 60; // Space for button padding
+        float startY = panelTop + topMargin;
+        float availableHeight = panelHeight - topMargin - bottomMargin;
         
-        stateManager.getCrosshairStyleButton().setPosition(
-            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.CROSSHAIR_STYLE_BUTTON_Y_OFFSET
-        );
+        // Calculate dynamic spacing based on number of items (settings + 2 action buttons)
+        int totalItems = settings.length + 2; // +2 for Apply and Back buttons
+        float settingSpacing = Math.min(80, availableHeight / totalItems);
+        int settingIndex = 0;
+        
+        // Position category-specific settings
+        for (CategoryState.SettingType setting : settings) {
+            float currentY = startY + (settingIndex * settingSpacing);
+            
+            switch (setting) {
+                case RESOLUTION:
+                    stateManager.getResolutionButton().setPosition(
+                        settingsX - SettingsConfig.BUTTON_WIDTH/2, currentY);
+                    break;
+                case VOLUME:
+                    stateManager.getVolumeSlider().setPosition(settingsX, currentY);
+                    break;
+                case ARM_MODEL:
+                    stateManager.getArmModelButton().setPosition(
+                        settingsX - SettingsConfig.BUTTON_WIDTH/2, currentY);
+                    break;
+                case CROSSHAIR_STYLE:
+                    stateManager.getCrosshairStyleButton().setPosition(
+                        settingsX - SettingsConfig.BUTTON_WIDTH/2, currentY);
+                    break;
+                case CROSSHAIR_SIZE:
+                    stateManager.getCrosshairSizeSlider().setPosition(settingsX, currentY);
+                    break;
+            }
+            settingIndex++;
+        }
+        
+        // Position Apply and Back buttons within panel bounds with spacing from settings
+        float buttonSpacing = 15; // Small gap between action buttons
+        float applyY = startY + (settingIndex * settingSpacing) + 30; // Extra space from settings
+        float backY = applyY + SettingsConfig.BUTTON_HEIGHT + buttonSpacing;
+        
+        // Ensure buttons don't exceed panel bottom
+        float maxBackY = panelBottom - bottomMargin - SettingsConfig.BUTTON_HEIGHT;
+        if (backY > maxBackY) {
+            // Adjust both buttons upward if they would overflow
+            float overflow = backY - maxBackY;
+            applyY -= overflow;
+            backY = maxBackY;
+        }
         
         stateManager.getApplyButton().setPosition(
-            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.APPLY_BUTTON_Y_OFFSET
-        );
-        
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, applyY);
         stateManager.getBackButton().setPosition(
-            settingsX - SettingsConfig.BUTTON_WIDTH/2, 
-            centerY + SettingsConfig.BACK_BUTTON_Y_OFFSET
-        );
-        
-        // Update slider positions
-        stateManager.getVolumeSlider().setPosition(
-            settingsX, 
-            centerY + SettingsConfig.VOLUME_SLIDER_Y_OFFSET
-        );
-        
-        stateManager.getCrosshairSizeSlider().setPosition(
-            settingsX, 
-            centerY + SettingsConfig.CROSSHAIR_SIZE_SLIDER_Y_OFFSET
-        );
+            settingsX - SettingsConfig.BUTTON_WIDTH/2, backY);
     }
     
     /**

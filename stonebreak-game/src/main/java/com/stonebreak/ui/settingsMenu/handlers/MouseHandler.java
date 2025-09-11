@@ -74,16 +74,12 @@ public class MouseHandler {
     }
     
     /**
-     * Updates the selected category and setting based on which component is currently hovered.
+     * Updates the selected setting based on which component is currently hovered.
+     * Category buttons only show hover visual feedback but don't change selection on hover.
      */
     private void updateSelectedStateFromHover() {
-        // Check for hovered category buttons first
-        for (CategoryButton categoryButton : stateManager.getCategoryButtons()) {
-            if (categoryButton.isHovered()) {
-                stateManager.setSelectedCategory(categoryButton.getCategory());
-                return; // Category selection resets setting selection to 0
-            }
-        }
+        // Category buttons are handled separately - they only show hover visual feedback
+        // Category selection only happens on actual clicks, not hover
         
         // Check for hovered setting components within current category
         CategoryState selectedCategory = stateManager.getSelectedCategory();

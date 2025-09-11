@@ -3,7 +3,7 @@ package com.stonebreak.ui.settingsMenu.handlers;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
-import com.stonebreak.ui.settingsMenu.config.ButtonSelection;
+import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.managers.SettingsManager;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
@@ -24,13 +24,24 @@ public class ActionHandler {
     }
     
     /**
-     * Executes the action associated with the currently selected button.
+     * Executes the action associated with the currently selected setting.
      */
     public void executeSelectedAction() {
-        ButtonSelection button = ButtonSelection.fromIndex(stateManager.getSelectedButton());
-        if (button == null) return;
+        // Get the current setting type based on category and selection
+        CategoryState.SettingType[] settings = stateManager.getSelectedCategory().getSettings();
+        CategoryState.SettingType currentSetting;
         
-        switch (button) {
+        if (stateManager.getSelectedSettingInCategory() < settings.length) {
+            currentSetting = settings[stateManager.getSelectedSettingInCategory()];
+        } else {
+            // Handle Apply/Back buttons
+            int buttonIndex = stateManager.getSelectedSettingInCategory() - settings.length;
+            currentSetting = (buttonIndex == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
+        }
+        
+        if (currentSetting == null) return;
+        
+        switch (currentSetting) {
             case RESOLUTION -> stateManager.getResolutionButton().toggleDropdown();
             case VOLUME -> {} // Volume handled by mouse/keyboard interaction
             case ARM_MODEL -> stateManager.getArmModelButton().toggleDropdown();
@@ -43,6 +54,7 @@ public class ActionHandler {
     
     /**
      * Applies all current settings and saves them to persistent storage.
+     * Does not exit the settings menu, allowing users to continue making adjustments.
      */
     public void applySettings() {
         settings.saveSettings();
@@ -52,7 +64,7 @@ public class ActionHandler {
         settingsManager.applyDisplaySettings();
         
         System.out.println("Settings applied successfully!");
-        goBack();
+        // Note: Removed goBack() call - users should be able to continue adjusting settings
     }
     
     /**
