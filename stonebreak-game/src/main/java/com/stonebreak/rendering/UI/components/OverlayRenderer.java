@@ -3,6 +3,7 @@ package com.stonebreak.rendering.UI.components;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Item;
+import com.stonebreak.player.Player;
 import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
@@ -13,21 +14,23 @@ import com.stonebreak.ui.WorkbenchScreen;
 
 /**
  * Handles rendering of UI overlay elements that need to appear above all other UI components.
- * This includes tooltips, item icons, block icons, and other UI elements that should render on the top layer.
+ * This includes tooltips, item icons, block icons, underwater overlay, and other UI elements that should render on the top layer.
  */
 public class OverlayRenderer {
     
     private final BlockIconRenderer blockIconRenderer;
     private final ItemIconRenderer itemIconRenderer;
+    private final UnderwaterOverlayRenderer underwaterOverlayRenderer;
     
     public OverlayRenderer(BlockIconRenderer blockIconRenderer, ItemIconRenderer itemIconRenderer) {
         this.blockIconRenderer = blockIconRenderer;
         this.itemIconRenderer = itemIconRenderer;
+        this.underwaterOverlayRenderer = new UnderwaterOverlayRenderer();
     }
     
     /**
      * Renders all overlay UI elements for the current game state.
-     * This includes tooltips and other elements that should appear above all other UI.
+     * This includes tooltips, underwater overlay, and other elements that should appear above all other UI.
      * This should be called after all other UI rendering is complete.
      */
     public void renderOverlay(Game game, int windowWidth, int windowHeight) {
@@ -41,6 +44,9 @@ public class OverlayRenderer {
         
         // Render workbench tooltips if visible
         renderWorkbenchTooltips(game);
+        
+        // Render underwater overlay if player is underwater
+        renderUnderwaterOverlay(game, windowWidth, windowHeight);
     }
     
     /**
@@ -75,6 +81,17 @@ public class OverlayRenderer {
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
             // WorkbenchScreen handles its own tooltip rendering internally
             // This method is here for consistency and future expansion
+        }
+    }
+    
+    /**
+     * Renders the underwater overlay effect if the player is underwater.
+     */
+    private void renderUnderwaterOverlay(Game game, int windowWidth, int windowHeight) {
+        Player player = game.getPlayer();
+        if (player != null) {
+            underwaterOverlayRenderer.update(player, game.getDeltaTime());
+            underwaterOverlayRenderer.render(windowWidth, windowHeight);
         }
     }
     
@@ -119,6 +136,13 @@ public class OverlayRenderer {
         if (blockIconRenderer != null) {
             blockIconRenderer.draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
         }
+    }
+    
+    /**
+     * Get the underwater overlay renderer for access to underwater effects.
+     */
+    public UnderwaterOverlayRenderer getUnderwaterOverlayRenderer() {
+        return underwaterOverlayRenderer;
     }
     
     /**
