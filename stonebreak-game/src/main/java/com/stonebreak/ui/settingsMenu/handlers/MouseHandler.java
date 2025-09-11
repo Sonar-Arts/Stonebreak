@@ -78,58 +78,10 @@ public class MouseHandler {
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
         stateManager.getCrosshairSizeSlider().updateHover(mouseX, mouseY);
         
-        // Update selected state based on hover
-        updateSelectedStateFromHover();
+        // Note: Hover states are now purely visual - they don't affect selection state
+        // Only category buttons maintain selection state (handled in updateButtonSelectionStates)
     }
     
-    /**
-     * Updates the selected setting based on which component is currently hovered.
-     * Category buttons only show hover visual feedback but don't change selection on hover.
-     */
-    private void updateSelectedStateFromHover() {
-        // Category buttons are handled separately - they only show hover visual feedback
-        // Category selection only happens on actual clicks, not hover
-        
-        // Check for hovered setting components within current category
-        CategoryState selectedCategory = stateManager.getSelectedCategory();
-        CategoryState.SettingType[] settings = selectedCategory.getSettings();
-        
-        // Check settings in the current category
-        for (int i = 0; i < settings.length; i++) {
-            CategoryState.SettingType setting = settings[i];
-            boolean isHovered = false;
-            
-            switch (setting) {
-                case RESOLUTION:
-                    isHovered = stateManager.getResolutionButton().isHovered();
-                    break;
-                case VOLUME:
-                    isHovered = stateManager.getVolumeSlider().isHovered();
-                    break;
-                case ARM_MODEL:
-                    isHovered = stateManager.getArmModelButton().isHovered();
-                    break;
-                case CROSSHAIR_STYLE:
-                    isHovered = stateManager.getCrosshairStyleButton().isHovered();
-                    break;
-                case CROSSHAIR_SIZE:
-                    isHovered = stateManager.getCrosshairSizeSlider().isHovered();
-                    break;
-            }
-            
-            if (isHovered) {
-                stateManager.setSelectedSettingInCategory(i);
-                return;
-            }
-        }
-        
-        // Check Apply/Back buttons
-        if (stateManager.getApplyButton().isHovered()) {
-            stateManager.setSelectedSettingInCategory(settings.length); // Apply button
-        } else if (stateManager.getBackButton().isHovered()) {
-            stateManager.setSelectedSettingInCategory(settings.length + 1); // Back button
-        }
-    }
     
     /**
      * Handles mouse press events.

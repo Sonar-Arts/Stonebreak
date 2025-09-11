@@ -200,7 +200,8 @@ public class StateManager {
             currentSetting = CategoryState.SettingType.APPLY;
         }
             
-        // Reset all setting selections
+        // Keep all setting button selections OFF - they should only show hover state, not persistent selection
+        // Only category buttons maintain persistent selection state
         resolutionButton.setSelected(false);
         volumeSlider.setSelected(false);
         armModelButton.setSelected(false);
@@ -209,32 +210,9 @@ public class StateManager {
         applyButton.setSelected(false);
         backButton.setSelected(false);
         
-        // Set selection based on current setting
-        if (currentSetting != null) {
-            switch (currentSetting) {
-                case RESOLUTION:
-                    resolutionButton.setSelected(true);
-                    break;
-                case VOLUME:
-                    volumeSlider.setSelected(true);
-                    break;
-                case ARM_MODEL:
-                    armModelButton.setSelected(true);
-                    break;
-                case CROSSHAIR_STYLE:
-                    crosshairStyleButton.setSelected(true);
-                    break;
-                case CROSSHAIR_SIZE:
-                    crosshairSizeSlider.setSelected(true);
-                    break;
-                case APPLY:
-                    applyButton.setSelected(true);
-                    break;
-                case BACK:
-                    backButton.setSelected(true);
-                    break;
-            }
-        }
+        // Note: selectedSettingInCategory is kept for internal state tracking (keyboard navigation, etc.)
+        // but it no longer affects visual selection state for setting buttons.
+        // Setting buttons should only show blue overlay when hovered, not when selected.
     }
     
     // ===== GETTERS AND SETTERS =====

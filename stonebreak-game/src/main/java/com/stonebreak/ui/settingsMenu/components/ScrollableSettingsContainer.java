@@ -46,10 +46,11 @@ public class ScrollableSettingsContainer {
         this.containerX = centerX + SettingsConfig.SETTINGS_PANEL_X_OFFSET - containerWidth / 2;
         this.containerY = centerY - panelHeight / 2 + SettingsConfig.SCROLL_TOP_MARGIN;
         
-        // Calculate total content height
+        // Calculate total content height including top padding
         CategoryState selectedCategory = stateManager.getSelectedCategory();
         int settingsCount = selectedCategory.getSettings().length;
-        this.contentHeight = Math.max(0, (settingsCount - 1) * itemSpacing + SettingsConfig.BUTTON_HEIGHT);
+        float topPadding = Math.max(SettingsConfig.SCROLL_CONTENT_PADDING, 40); // Match rendering padding
+        this.contentHeight = Math.max(0, topPadding + (settingsCount - 1) * itemSpacing + SettingsConfig.BUTTON_HEIGHT + SettingsConfig.SCROLL_CONTENT_PADDING);
         
         // Update scroll manager bounds
         scrollManager.updateBounds(containerHeight, contentHeight);
@@ -100,7 +101,9 @@ public class ScrollableSettingsContainer {
         CategoryState.SettingType[] settings = selectedCategory.getSettings();
         
         float scrollOffset = scrollManager.getScrollOffset();
-        float startY = containerY - scrollOffset + SettingsConfig.SCROLL_CONTENT_PADDING;
+        // Ensure proper top padding - first item should be well within container bounds
+        float topPadding = Math.max(SettingsConfig.SCROLL_CONTENT_PADDING, 40); // Minimum 40px from container top
+        float startY = containerY - scrollOffset + topPadding;
         float settingsX = containerX + containerWidth / 2;
         
         // Update button texts before rendering
