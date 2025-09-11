@@ -2,9 +2,7 @@ package com.stonebreak.world.generation.mobs.animals;
 
 import java.util.Random;
 
-import org.joml.Vector3f;
-
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 
 /**

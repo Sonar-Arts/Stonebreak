@@ -2,7 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
 import com.stonebreak.world.World;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.blocks.BlockType;
 
 import java.util.Random;

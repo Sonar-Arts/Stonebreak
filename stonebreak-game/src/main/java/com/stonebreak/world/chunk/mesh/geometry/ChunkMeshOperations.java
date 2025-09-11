@@ -4,7 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.chunk.mesh.texture.FaceRenderingService;
-import com.stonebreak.world.chunk.mesh.data.MeshDataAssembler;
+import com.stonebreak.world.chunk.mesh.builder.MeshDataAssembler;
 import com.stonebreak.world.chunk.mesh.texture.TextureCoordinateProcessor;
 
 /**

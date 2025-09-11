@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 
 import com.stonebreak.player.Player;
 import com.stonebreak.core.Game;
-import com.stonebreak.world.Chunk;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 

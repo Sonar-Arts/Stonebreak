@@ -3,7 +3,7 @@ package com.stonebreak.world.features;
 import java.util.Random;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 

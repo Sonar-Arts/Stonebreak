@@ -1,4 +1,4 @@
-package com.stonebreak.world.chunk.mesh.data;
+package com.stonebreak.world.chunk.mesh.builder;
 
 import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
 

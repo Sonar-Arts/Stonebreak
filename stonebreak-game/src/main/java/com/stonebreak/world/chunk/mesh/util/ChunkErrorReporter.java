@@ -1,7 +1,7 @@
-package com.stonebreak.world.chunk;
+package com.stonebreak.world.chunk.mesh.util;
 
 import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.io.FileWriter;

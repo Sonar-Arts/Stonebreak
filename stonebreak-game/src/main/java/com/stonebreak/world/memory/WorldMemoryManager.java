@@ -3,7 +3,7 @@ package com.stonebreak.world.memory;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.WorldChunkStore;
+import com.stonebreak.world.chunk.mesh.data.WorldChunkStore;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.chunk.ChunkManager;
 

@@ -1,8 +1,9 @@
-package com.stonebreak.world;
+package com.stonebreak.world.chunk;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
+import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;

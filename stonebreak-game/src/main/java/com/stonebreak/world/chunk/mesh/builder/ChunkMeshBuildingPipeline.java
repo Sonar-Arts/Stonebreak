@@ -1,8 +1,10 @@
-package com.stonebreak.world.chunk;
+package com.stonebreak.world.chunk.mesh.builder;
 
-import com.stonebreak.world.Chunk;
-import com.stonebreak.world.ChunkStateManager;
+import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.ChunkStateManager;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.ChunkManager;
+import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.core.Game;
 

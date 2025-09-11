@@ -1,7 +1,7 @@
-package com.stonebreak.world.chunk;
+package com.stonebreak.world.chunk.mesh.data;
 
-import com.stonebreak.world.Chunk;
-import com.stonebreak.world.ChunkStateManager;
+import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.ChunkStateManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.function.Consumer;

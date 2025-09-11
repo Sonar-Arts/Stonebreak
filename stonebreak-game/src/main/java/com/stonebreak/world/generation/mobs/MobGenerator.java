@@ -3,7 +3,7 @@ package com.stonebreak.world.generation.mobs;
 import java.util.Random;
 
 import com.stonebreak.world.biomes.BiomeType;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.mobs.animals.AnimalGenerator;
 

@@ -1,4 +1,4 @@
-package com.stonebreak.world;
+package com.stonebreak.world.chunk;
 
 import java.util.function.Consumer;
 

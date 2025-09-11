@@ -8,7 +8,7 @@ import org.joml.Vector3f;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 
 /**
