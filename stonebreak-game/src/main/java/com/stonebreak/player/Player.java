@@ -1463,7 +1463,7 @@ public class Player {      // Player settings
         SoundSystem soundSystem = Game.getSoundSystem();
         if (soundSystem != null) {
             if (groundBlock == BlockType.GRASS) {
-                soundSystem.playSoundWithVolume("grasswalk", 0.3f);
+                soundSystem.playSoundWithVariation("grasswalk", 0.3f);
             } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
                 soundSystem.playSoundWithVolume("sandwalk", 0.3f);
             }

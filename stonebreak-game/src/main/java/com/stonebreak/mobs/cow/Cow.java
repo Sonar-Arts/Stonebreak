@@ -203,7 +203,7 @@ public class Cow extends LivingEntity {
             if (game != null) {
                 var soundSystem = com.stonebreak.core.Game.getSoundSystem();
                 if (soundSystem != null) {
-                    soundSystem.playSoundWithVolume("grasswalk", 0.2f);
+                    soundSystem.playSoundWithVariation("grasswalk", 0.2f);
                 }
             }
         } catch (Exception e) {
