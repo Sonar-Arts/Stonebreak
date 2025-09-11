@@ -58,17 +58,17 @@ public class ChunkMeshOperations {
         public final float[] isWaterData;
         public final float[] isAlphaTestedData;
         public final int[] indexData;
-        public final int vertexCount;
+        public final int indexCount; // number of indices to draw
         
         public MeshData(float[] vertexData, float[] textureData, float[] normalData,
-                       float[] isWaterData, float[] isAlphaTestedData, int[] indexData, int vertexCount) {
+                       float[] isWaterData, float[] isAlphaTestedData, int[] indexData, int indexCount) {
             this.vertexData = vertexData;
             this.textureData = textureData;
             this.normalData = normalData;
             this.isWaterData = isWaterData;
             this.isAlphaTestedData = isAlphaTestedData;
             this.indexData = indexData;
-            this.vertexCount = vertexCount;
+            this.indexCount = indexCount;
         }
     }
 

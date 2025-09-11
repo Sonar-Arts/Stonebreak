@@ -31,7 +31,7 @@ public class Chunk {
     private int isWaterVboId; // VBO for isWater flag
     private int isAlphaTestedVboId; // New VBO for isAlphaTested flag
     private int indexVboId;
-    private int vertexCount;
+    private int indexCount;
     private boolean meshGenerated;
     private volatile boolean dataReadyForGL = false; // Added flag
     private volatile boolean meshDataGenerationScheduledOrInProgress = false; // New flag
@@ -119,7 +119,7 @@ public class Chunk {
         }
 
         // Case 1: Chunk has become empty or has no renderable data
-        if (vertexData == null || vertexData.length == 0 || indexData == null || indexData.length == 0 || vertexCount == 0) {
+        if (vertexData == null || vertexData.length == 0 || indexData == null || indexData.length == 0 || indexCount == 0) {
             if (this.meshGenerated) { // If there was an old mesh
                 cleanupMesh(); // Deletes current this.vaoId, this.vertexVboId etc.
                 this.meshGenerated = false;
@@ -174,7 +174,7 @@ public class Chunk {
             System.err.println("Time: " + java.time.LocalDateTime.now());
             System.err.println("Thread: " + Thread.currentThread().getName());
             System.err.println("VAO ID: " + this.vaoId + ", VBO ID: " + this.vertexVboId + ", Index Buffer ID: " + this.indexVboId);
-            System.err.println("Vertex count: " + this.vertexCount);
+            System.err.println("Index count: " + this.indexCount);
             System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
             System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
             
@@ -195,10 +195,10 @@ public class Chunk {
                 this.isWaterVboId = tempOldIsWaterVboId;
                 this.isAlphaTestedVboId = tempOldIsAlphaTestedVboId; // Restore old isAlphaTestedVboId
                 this.indexVboId = tempOldIndexVboId;
-                // vertexCount should still correspond to the old mesh if data wasn't changed,
-                // but generateMeshData would have updated vertexCount for the new data.
-                // This part is tricky; for now, we assume vertexCount from generateMeshData is for the new data.
-                // If we revert to old mesh, ideally we'd revert vertexCount too if it changed.
+                // indexCount should still correspond to the old mesh if data wasn't changed,
+                // but generateMeshData would have updated indexCount for the new data.
+                // This part is tricky; for now, we assume indexCount from generateMeshData is for the new data.
+                // If we revert to old mesh, ideally we'd revert indexCount too if it changed.
                 // However, the primary goal is to keep rendering *something*.
                 this.meshGenerated = true; // Old mesh is still considered valid and active.
             } else {
@@ -224,7 +224,7 @@ public class Chunk {
         isWaterData = meshData.isWaterData;
         isAlphaTestedData = meshData.isAlphaTestedData;
         indexData = meshData.indexData;
-        vertexCount = meshData.vertexCount;
+        indexCount = meshData.indexCount;
     }
     
     // Mesh data
@@ -433,7 +433,7 @@ public class Chunk {
      * Renders the chunk.
      */
     public void render() {
-        if (!meshGenerated || vertexCount == 0) {
+        if (!meshGenerated || indexCount == 0) {
             return;
         }
         
@@ -441,7 +441,7 @@ public class Chunk {
         GL30.glBindVertexArray(vaoId);
         
         // Draw the mesh
-        GL15.glDrawElements(GL15.GL_TRIANGLES, vertexCount, GL15.GL_UNSIGNED_INT, 0);
+        GL15.glDrawElements(GL15.GL_TRIANGLES, indexCount, GL15.GL_UNSIGNED_INT, 0);
         
         // Unbind the VAO
         GL30.glBindVertexArray(0);
@@ -504,7 +504,7 @@ public class Chunk {
       */
      public void cleanupCpuResources() {
          freeMeshDataArrays();
-         vertexCount = 0;
+         indexCount = 0;
          dataReadyForGL = false;
          // Reusable buffers are not cleaned here as they are tied to the GL context thread.
      }

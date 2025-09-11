@@ -2,11 +2,16 @@ package com.stonebreak.world.chunk.mesh.data;
 
 import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
  * Service responsible for assembling final mesh data from temporary arrays.
  * Follows Single Responsibility Principle by handling only mesh data assembly and validation.
  */
 public class MeshDataAssembler {
+
+    private static final Logger LOGGER = Logger.getLogger(MeshDataAssembler.class.getName());
     
     /**
      * Creates the final mesh data result from temporary arrays with safety validation.
@@ -21,12 +26,16 @@ public class MeshDataAssembler {
             if (vertexIndex > tempVertices.length || textureIndex > tempTextureCoords.length ||
                 normalIndex > tempNormals.length || flagIndex > tempIsWaterFlags.length ||
                 flagIndex > tempIsAlphaTestedFlags.length || indexIndex > tempIndices.length) {
-                System.err.println("CRITICAL: Array indices exceed bounds during mesh data copy");
-                System.err.println("Vertex: " + vertexIndex + "/" + tempVertices.length +
-                                 ", Texture: " + textureIndex + "/" + tempTextureCoords.length +
-                                 ", Normal: " + normalIndex + "/" + tempNormals.length +
-                                 ", Flag: " + flagIndex + "/" + tempIsWaterFlags.length +
-                                 ", Index: " + indexIndex + "/" + tempIndices.length);
+                // Structured log with key=value pairs for easier parsing
+                LOGGER.log(Level.SEVERE,
+                        () -> String.format(
+                                "event=MeshDataCopyBoundsExceeded vertexIndex=%d vertexCapacity=%d textureIndex=%d textureCapacity=%d normalIndex=%d normalCapacity=%d flagIndex=%d waterFlagCapacity=%d alphaFlagCapacity=%d indexIndex=%d indexCapacity=%d",
+                                vertexIndex, tempVertices.length,
+                                textureIndex, tempTextureCoords.length,
+                                normalIndex, tempNormals.length,
+                                flagIndex, tempIsWaterFlags.length,
+                                tempIsAlphaTestedFlags.length,
+                                indexIndex, tempIndices.length));
                 // Return empty arrays to prevent crash
                 return new ChunkMeshOperations.MeshData(new float[0], new float[0], new float[0], new float[0], new float[0], new int[0], 0);
             }
@@ -81,8 +90,9 @@ public class MeshDataAssembler {
      */
     public void logArrayOverflow(String operation, int vertexIndex, int textureIndex, int normalIndex, 
                                int flagIndex, int indexIndex) {
-        System.err.println("Warning: Chunk mesh arrays full, skipping " + operation + 
-                         ". Vertex: " + vertexIndex + ", Texture: " + textureIndex + 
-                         ", Normal: " + normalIndex + ", Flag: " + flagIndex + ", Index: " + indexIndex);
+        LOGGER.log(Level.WARNING,
+                () -> String.format(
+                        "event=ChunkMeshArrayOverflow operation=%s vertexIndex=%d textureIndex=%d normalIndex=%d flagIndex=%d indexIndex=%d",
+                        operation, vertexIndex, textureIndex, normalIndex, flagIndex, indexIndex));
     }
 }
