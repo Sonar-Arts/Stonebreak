@@ -1,4 +1,6 @@
-package com.stonebreak.world.chunk.mesh;
+package com.stonebreak.world.chunk.mesh.data;
+
+import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
 
 /**
  * Service responsible for assembling final mesh data from temporary arrays.
@@ -9,11 +11,11 @@ public class MeshDataAssembler {
     /**
      * Creates the final mesh data result from temporary arrays with safety validation.
      */
-    public ChunkMeshOperations.MeshData createMeshDataResult(float[] tempVertices, float[] tempTextureCoords, 
-                                                           float[] tempNormals, float[] tempIsWaterFlags, 
-                                                           float[] tempIsAlphaTestedFlags, int[] tempIndices,
-                                                           int vertexIndex, int textureIndex, int normalIndex, 
-                                                           int flagIndex, int indexIndex) {
+    public ChunkMeshOperations.MeshData createMeshDataResult(float[] tempVertices, float[] tempTextureCoords,
+                                                             float[] tempNormals, float[] tempIsWaterFlags,
+                                                             float[] tempIsAlphaTestedFlags, int[] tempIndices,
+                                                             int vertexIndex, int textureIndex, int normalIndex,
+                                                             int flagIndex, int indexIndex) {
         if (vertexIndex > 0) {
             // Safety checks to prevent array overruns
             if (vertexIndex > tempVertices.length || textureIndex > tempTextureCoords.length ||

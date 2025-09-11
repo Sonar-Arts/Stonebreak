@@ -1,4 +1,4 @@
-package com.stonebreak.world.chunk.mesh;
+package com.stonebreak.world.chunk.mesh.texture;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;

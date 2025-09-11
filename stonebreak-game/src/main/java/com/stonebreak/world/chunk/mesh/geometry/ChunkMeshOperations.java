@@ -1,7 +1,10 @@
-package com.stonebreak.world.chunk.mesh;
+package com.stonebreak.world.chunk.mesh.geometry;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.mesh.texture.FaceRenderingService;
+import com.stonebreak.world.chunk.mesh.data.MeshDataAssembler;
+import com.stonebreak.world.chunk.mesh.texture.TextureCoordinateProcessor;
 
 /**
  * Handles mesh generation operations for chunks following SOLID principles.

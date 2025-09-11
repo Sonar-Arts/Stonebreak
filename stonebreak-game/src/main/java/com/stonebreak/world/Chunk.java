@@ -9,7 +9,7 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.system.MemoryUtil;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
-import com.stonebreak.world.chunk.mesh.ChunkMeshOperations;
+import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
 
 /**
  * Represents a chunk of the world, storing block data and mesh information.
