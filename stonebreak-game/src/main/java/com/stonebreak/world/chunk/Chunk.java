@@ -116,6 +116,9 @@ public class Chunk {
 
     /**
      * Applies the prepared mesh data to OpenGL. This must be called on the main GL thread.
+     *
+     * Optimization: if a mesh already exists (VAO/VBOs allocated), update buffer data in place
+     * instead of destroying and recreating GL objects. This avoids VAO/VBO churn.
      */
     public void applyPreparedDataToGL() {
         if (!dataReadyForGL) {
@@ -135,83 +138,124 @@ public class Chunk {
         }
 
         // Case 2: We have new mesh data to apply.
-        // Store current (old) GL resource IDs and state.
-        int tempOldVaoId = this.vaoId;
-        int tempOldVertexVboId = this.vertexVboId;
-        int tempOldTextureVboId = this.textureVboId;
-        int tempOldNormalVboId = this.normalVboId;
-        int tempOldIsWaterVboId = this.isWaterVboId;
-        int tempOldIsAlphaTestedVboId = this.isAlphaTestedVboId; // Store old isAlphaTestedVboId
-        int tempOldIndexVboId = this.indexVboId;
-        boolean oldMeshWasActuallyGenerated = this.meshGenerated;
+        final boolean hasExistingMesh = this.meshGenerated && this.vaoId != 0;
 
         try {
-            // createMesh() will generate new VAO/VBOs and assign their IDs to this.vaoId, this.vertexVboId, etc.
-            // It uses this.vertexData, this.textureData, etc. which are already prepared.
-            createMesh();            // If createMesh succeeded, this.vaoId etc. now hold the NEW mesh IDs.
-            this.meshGenerated = true; // New mesh is now active and ready for rendering.
-
-            // If an old mesh existed, delete its GL resources now.
-            if (oldMeshWasActuallyGenerated) {
-                // Only delete if the old VAO ID is valid and different from the new one
-                // (should always be different if glGenVertexArrays works correctly).
-                if (tempOldVaoId != 0 && tempOldVaoId != this.vaoId) {
-                     GL30.glDeleteVertexArrays(tempOldVaoId);
-                     GL15.glDeleteBuffers(tempOldVertexVboId);
-                     GL15.glDeleteBuffers(tempOldTextureVboId);
-                     GL15.glDeleteBuffers(tempOldNormalVboId);
-                     GL15.glDeleteBuffers(tempOldIsWaterVboId);
-                     GL15.glDeleteBuffers(tempOldIsAlphaTestedVboId); // Delete old isAlphaTestedVboId
-                     GL15.glDeleteBuffers(tempOldIndexVboId);
-                } else if (tempOldVaoId != 0 && tempOldVaoId == this.vaoId) {
-                    // This is an unexpected state, log a warning.
-                    System.err.println("Warning: Old VAO ID " + tempOldVaoId + " is same as new VAO ID " + this.vaoId +
-                                       " for chunk (" + x + ", " + z + ") after mesh creation. Old mesh not explicitly deleted to protect new mesh.");
-                }
+            if (hasExistingMesh) {
+                // Fast path: update buffer contents in-place
+                updateMeshInPlace();
+            } else {
+                // First-time creation path: allocate VAO/VBOs and upload data
+                createMesh();
+                this.meshGenerated = true; // New mesh is now active and ready for rendering.
             }
             
             // CRITICAL FIX: Free mesh data arrays after successful GL upload
             // The data is now safely stored in GPU buffers and no longer needed in RAM
             freeMeshDataArrays();
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "CRITICAL: Error during createMesh for chunk (" + x + ", " + z + "): " + e.getMessage()
-                + "\nTime: " + java.time.LocalDateTime.now()
-                + "\nThread: " + Thread.currentThread().getName()
-                + "\nVAO ID: " + this.vaoId + ", VBO ID: " + this.vertexVboId + ", Index Buffer ID: " + this.indexVboId
-                + "\nIndex count: " + this.indexCount
-                + "\nMemory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used", e);
+            logger.log(Level.SEVERE, () ->
+                "CRITICAL: Error during " + (hasExistingMesh ? "updateMeshInPlace" : "createMesh") +
+                " for chunk (" + x + ", " + z + ")\n" +
+                "Time=" + java.time.LocalDateTime.now() +
+                " Thread=" + Thread.currentThread().getName() +
+                " VAO=" + this.vaoId +
+                " VBO(vertex)=" + this.vertexVboId +
+                " EBO(index)=" + this.indexVboId +
+                " IndexCount=" + this.indexCount +
+                " MemMB=" + ((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024));
             
-            // createMesh failed. this.vaoId etc. might now hold IDs of partially created, invalid GL objects.
-            // These new, failed GL objects need to be cleaned up. cleanupMesh() uses this.vaoId etc.
-            // It's important that createMesh() sets this.vaoId etc. to 0 or valid new IDs before throwing.
-            // If createMesh sets IDs before potential failure points, cleanupMesh() will target the new, bad IDs.
-            if (this.vaoId != tempOldVaoId || this.vertexVboId != tempOldVertexVboId || this.isWaterVboId != tempOldIsWaterVboId || this.isAlphaTestedVboId != tempOldIsAlphaTestedVboId ) { // Check if createMesh changed any ID before failing
-                 cleanupMesh(); // This will attempt to delete the new, partially created GL objects.
-            }
-
-            // Attempt to restore the old valid mesh's IDs and state if an old mesh existed.
-            if (oldMeshWasActuallyGenerated) {
-                this.vaoId = tempOldVaoId;
-                this.vertexVboId = tempOldVertexVboId;
-                this.textureVboId = tempOldTextureVboId;
-                this.normalVboId = tempOldNormalVboId;
-                this.isWaterVboId = tempOldIsWaterVboId;
-                this.isAlphaTestedVboId = tempOldIsAlphaTestedVboId; // Restore old isAlphaTestedVboId
-                this.indexVboId = tempOldIndexVboId;
-                // indexCount should still correspond to the old mesh if data wasn't changed,
-                // but generateMeshData would have updated indexCount for the new data.
-                // This part is tricky; for now, we assume indexCount from generateMeshData is for the new data.
-                // If we revert to old mesh, ideally we'd revert indexCount too if it changed.
-                // However, the primary goal is to keep rendering *something*.
-                this.meshGenerated = true; // Old mesh is still considered valid and active.
-            } else {
-                // No old mesh, and new one failed. Chunk has no valid mesh.
+            if (!hasExistingMesh) {
+                // Creation failed; ensure we don't hold partially created GL objects
+                try {
+                    cleanupMesh();
+                } catch (Exception ignore) {
+                    // Best effort cleanup
+                }
                 this.meshGenerated = false;
                 this.vaoId = 0; this.vertexVboId = 0; this.textureVboId = 0; this.normalVboId = 0; this.isWaterVboId = 0; this.isAlphaTestedVboId = 0; this.indexVboId = 0;
-           }
+            }
        } finally {
             this.dataReadyForGL = false; // Data has been processed (or attempt failed)
         }
+    }
+
+    /**
+     * Updates existing VAO/VBOs with new data. Assumes VAO/VBOs already created.
+     */
+    private void updateMeshInPlace() {
+        // Bind VAO
+        GL30.glBindVertexArray(vaoId);
+
+        // Vertex buffer
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertexVboId);
+        if (reusableVertexBuffer == null || reusableVertexBuffer.capacity() < vertexData.length) {
+            if (reusableVertexBuffer != null) { MemoryUtil.memFree(reusableVertexBuffer); reusableVertexBuffer = null; }
+            reusableVertexBuffer = MemoryUtil.memAllocFloat(vertexData.length);
+        }
+        reusableVertexBuffer.clear();
+        reusableVertexBuffer.put(vertexData).flip();
+        // Orphan then upload to avoid stalls
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, (long) vertexData.length * 4L, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0L, reusableVertexBuffer);
+
+        // Texture buffer
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, textureVboId);
+        if (reusableTextureBuffer == null || reusableTextureBuffer.capacity() < textureData.length) {
+            if (reusableTextureBuffer != null) { MemoryUtil.memFree(reusableTextureBuffer); reusableTextureBuffer = null; }
+            reusableTextureBuffer = MemoryUtil.memAllocFloat(textureData.length);
+        }
+        reusableTextureBuffer.clear();
+        reusableTextureBuffer.put(textureData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, (long) textureData.length * 4L, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0L, reusableTextureBuffer);
+
+        // Normal buffer
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, normalVboId);
+        if (reusableNormalBuffer == null || reusableNormalBuffer.capacity() < normalData.length) {
+            if (reusableNormalBuffer != null) { MemoryUtil.memFree(reusableNormalBuffer); reusableNormalBuffer = null; }
+            reusableNormalBuffer = MemoryUtil.memAllocFloat(normalData.length);
+        }
+        reusableNormalBuffer.clear();
+        reusableNormalBuffer.put(normalData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, (long) normalData.length * 4L, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0L, reusableNormalBuffer);
+
+        // isWater buffer
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isWaterVboId);
+        if (reusableIsWaterBuffer == null || reusableIsWaterBuffer.capacity() < isWaterData.length) {
+            if (reusableIsWaterBuffer != null) { MemoryUtil.memFree(reusableIsWaterBuffer); reusableIsWaterBuffer = null; }
+            reusableIsWaterBuffer = MemoryUtil.memAllocFloat(isWaterData.length);
+        }
+        reusableIsWaterBuffer.clear();
+        reusableIsWaterBuffer.put(isWaterData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, (long) isWaterData.length * 4L, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0L, reusableIsWaterBuffer);
+
+        // isAlphaTested buffer
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, isAlphaTestedVboId);
+        if (reusableIsAlphaTestedBuffer == null || reusableIsAlphaTestedBuffer.capacity() < isAlphaTestedData.length) {
+            if (reusableIsAlphaTestedBuffer != null) { MemoryUtil.memFree(reusableIsAlphaTestedBuffer); reusableIsAlphaTestedBuffer = null; }
+            reusableIsAlphaTestedBuffer = MemoryUtil.memAllocFloat(isAlphaTestedData.length);
+        }
+        reusableIsAlphaTestedBuffer.clear();
+        reusableIsAlphaTestedBuffer.put(isAlphaTestedData).flip();
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, (long) isAlphaTestedData.length * 4L, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0L, reusableIsAlphaTestedBuffer);
+
+        // Index buffer
+        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, indexVboId);
+        if (reusableIndexBuffer == null || reusableIndexBuffer.capacity() < indexData.length) {
+            if (reusableIndexBuffer != null) { MemoryUtil.memFree(reusableIndexBuffer); reusableIndexBuffer = null; }
+            reusableIndexBuffer = MemoryUtil.memAllocInt(indexData.length);
+        }
+        reusableIndexBuffer.clear();
+        reusableIndexBuffer.put(indexData).flip();
+        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, (long) indexData.length * 4L, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBufferSubData(GL15.GL_ELEMENT_ARRAY_BUFFER, 0L, reusableIndexBuffer);
+
+        // Unbind VAO
+        GL30.glBindVertexArray(0);
     }
     
     /**
