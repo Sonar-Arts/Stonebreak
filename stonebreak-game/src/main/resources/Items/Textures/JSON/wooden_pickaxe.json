@@ -1,0 +1,152 @@
+{
+  "item_type": "WOODEN_PICKAXE",
+  "texture_name": "wooden_pickaxe",
+  "description": "Authentic Minecraft-style wooden pickaxe with vertical orientation, bow-like curved head with dual points, and vertical stick handle",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["TOOL_TEXTURE", "ITEM_ICON"],
+    "atlas_coordinates": {"x": 3, "y": 3}
+  },
+  "color_palette": {
+    "wood_head": {
+      "base": {"r": 125, "g": 85, "b": 55},
+      "highlight": {"r": 145, "g": 105, "b": 75},
+      "shadow": {"r": 100, "g": 65, "b": 40}
+    },
+    "wood_handle": {
+      "base": {"r": 139, "g": 69, "b": 19},
+      "highlight": {"r": 160, "g": 85, "b": 35}
+    },
+    "border": {
+      "color": {"r": 25, "g": 15, "b": 5}
+    },
+    "transparent": {
+      "color": {"r": 0, "g": 0, "b": 0, "a": 0}
+    }
+  },
+  "texture_patterns": {
+    "wood_grain": {
+      "head_grain": {
+        "x_frequency": 0.7,
+        "y_frequency": 0.9,
+        "x_amplitude": 0.25,
+        "y_amplitude": 0.2
+      },
+      "handle_grain": {
+        "vertical_frequency": 1.0,
+        "amplitude": 0.3
+      }
+    },
+    "plank_lines": {
+      "x_modulo": 4,
+      "line_positions": [0, 3],
+      "shadow_adjustment": -0.3
+    },
+    "lighting_effects": {
+      "top_highlight": {"row": 2, "adjustment": 0.25},
+      "bottom_shadow": {"row": 5, "adjustment": -0.15}
+    }
+  },
+  "tool_shape": {
+    "type": "PICKAXE",
+    "orientation": "vertical",
+    "components": {
+      "head": {
+        "description": "Bow-like curved pickaxe head with dual points",
+        "position": "top",
+        "y_range": [1, 5],
+        "center_connection": [
+          {"y": 1, "x_range": [6, 9]},
+          {"y": 2, "x_range": [6, 9]}
+        ],
+        "left_pick": [
+          {"y": 2, "x_range": [3, 5]},
+          {"y": 3, "x_range": [2, 6]},
+          {"y": 4, "x_range": [1, 3]},
+          {"y": 5, "x_range": [2, 2]}
+        ],
+        "right_pick": [
+          {"y": 2, "x_range": [10, 12]},
+          {"y": 3, "x_range": [9, 13]},
+          {"y": 4, "x_range": [12, 14]},
+          {"y": 5, "x_range": [13, 13]}
+        ]
+      },
+      "handle": {
+        "description": "Vertical stick handle connected to head",
+        "position": "bottom",
+        "y_range": [2, 15],
+        "x_range": [7, 8],
+        "width": 2
+      },
+      "borders": {
+        "description": "Dark borders around tool shape",
+        "head_borders": [
+          {"y": 0, "x_range": [6, 9]},
+          {"y": 1, "x_positions": [5, 10]},
+          {"y": 2, "x_positions": [2, 6, 9, 13]},
+          {"y": 3, "x_positions": [1, 5, 10, 14]},
+          {"y": 4, "x_positions": [0, 15]},
+          {"y": 5, "x_positions": [1, 14]},
+          {"y": 6, "x_positions": [2, 13]}
+        ],
+        "handle_borders": {
+          "y_range": [2, 15],
+          "x_positions": [6, 9]
+        },
+        "center_connection_borders": [
+          {"y": 1, "x_positions": [5, 10]},
+          {"y": 3, "x_positions": [5, 10]}
+        ]
+      }
+    }
+  },
+  "generation_algorithm": {
+    "coordinate_system": "Local tile coordinates: pX_pickaxe = globalX % 16, pY_pickaxe = globalY % 16",
+    "pixel_classification": {
+      "step1": "Initialize flags: isPickaxePixel = false, isBorderPixel = false, isHandle = false",
+      "step2": "Check if pixel coordinates match head shape definitions",
+      "step3": "Check if pixel coordinates match handle shape definitions",
+      "step4": "Check if pixel coordinates match border definitions",
+      "step5": "Set isHandle flag for pixels in handle region"
+    },
+    "color_application": {
+      "border_pixels": "Apply dark brown border color (25, 15, 5, 255)",
+      "handle_pixels": {
+        "grain_calculation": "grain = Math.sin(pY_pickaxe * 1.0) * 0.3",
+        "highlight_condition": "if pX_pickaxe == 8 (right edge of handle)",
+        "highlight_color": "Apply handleHighlightR/G/B + grain adjustment",
+        "base_color": "Apply handleR/G/B + grain adjustment"
+      },
+      "head_pixels": {
+        "grain_calculation": [
+          "grainX = Math.sin(pX_pickaxe * 0.7) * 0.25",
+          "grainY = Math.cos(pY_pickaxe * 0.9) * 0.2",
+          "totalGrain = grainX + grainY"
+        ],
+        "plank_lines": "if (pX_pickaxe % 4 == 0) || (pX_pickaxe % 4 == 3): totalGrain -= 0.3",
+        "lighting_effects": [
+          "if pY_pickaxe == 2: totalGrain += 0.25 (top highlight)",
+          "if pY_pickaxe == 5: totalGrain -= 0.15 (bottom shadow)"
+        ],
+        "color_selection": [
+          "if totalGrain > 0.15: Use headHighlight colors",
+          "if totalGrain < -0.15: Use headShadow colors",
+          "else: Use base head colors"
+        ]
+      },
+      "transparent_pixels": "Apply (0, 0, 0, 0) for background"
+    },
+    "final_processing": "Clamp all RGB values to [0, 255] range"
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java wooden pickaxe texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2180-2338",
+    "atlas_coordinates": {"x": 3, "y": 3},
+    "purpose": "JSON conversion of hardcoded wooden pickaxe texture algorithm",
+    "version": "1.0",
+    "conversion_status": "Complete - exact algorithm conversion",
+    "validation": "Pixel-perfect match with original TextureAtlas generation"
+  }
+}

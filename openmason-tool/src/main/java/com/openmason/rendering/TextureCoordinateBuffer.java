@@ -1,7 +1,7 @@
 package com.openmason.rendering;
 
-import com.stonebreak.textures.CowTextureDefinition;
-import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureLoader;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;

@@ -1,7 +1,7 @@
 package com.openmason.texture;
 
-import com.stonebreak.textures.CowTextureDefinition;
-import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureLoader;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;

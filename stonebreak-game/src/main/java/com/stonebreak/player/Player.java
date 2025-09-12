@@ -1,5 +1,6 @@
 package com.stonebreak.player;
 
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -13,6 +14,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.world.World;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.WaterEffects;
+import com.stonebreak.util.DropUtil;
 
 /**
  * Represents the player in the game world.
@@ -40,9 +42,6 @@ public class Player {      // Player settings
     private float waterExitTime = 0.0f; // Time since last water exit
     private static final float WATER_EXIT_ANTI_FLOAT_DURATION = 0.5f; // Duration to apply anti-floating after water exit (500ms)
     private float attackAnimationTime;
-    
-    // Health system
-    private float health = 20.0f; // Default health (20 like Minecraft)
     
     
     // Camera
@@ -754,18 +753,15 @@ public class Player {      // Player settings
                         int snowLayers = world.getSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                         world.getSnowLayerManager().removeSnowLayers(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                         
-                        // Spawn snow drops based on layer count
-                        if (snowLayers > 0) {
-                            spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), snowLayers);
-                        }
                     } else {
-                        // For non-snow blocks, spawn one drop
-                        // Breaking block for timed breaks
-                        spawnBlockDrop(breakingBlock.x, breakingBlock.y, breakingBlock.z, blockType.getId(), 1);
                     }
                     
-                    // Break the block (player modification)
-                    world.setBlockByPlayer(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+                    // Create drops before breaking the block
+                    Vector3f dropPosition = new Vector3f(breakingBlock.x + 0.5f, breakingBlock.y + 0.5f, breakingBlock.z + 0.5f);
+                    DropUtil.handleBlockBroken(world, dropPosition, blockType);
+                    
+                    // Break the block
+                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
                     resetBlockBreaking();
                 }
             }
@@ -813,17 +809,14 @@ public class Player {      // Player settings
                         int snowLayers = world.getSnowLayers(blockPos.x, blockPos.y, blockPos.z);
                         world.getSnowLayerManager().removeSnowLayers(blockPos.x, blockPos.y, blockPos.z);
                         
-                        // Spawn snow drops based on layer count
-                        if (snowLayers > 0) {
-                            spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), snowLayers);
-                        }
                     } else {
-                        // For non-snow blocks, spawn one drop
-                        // Breaking block for instant breaks
-                        spawnBlockDrop(blockPos.x, blockPos.y, blockPos.z, blockType.getId(), 1);
                     }
                     
-                    world.setBlockByPlayer(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+                    // Create drops before breaking the block
+                    Vector3f dropPosition = new Vector3f(blockPos.x + 0.5f, blockPos.y + 0.5f, blockPos.z + 0.5f);
+                    DropUtil.handleBlockBroken(world, dropPosition, blockType);
+                    
+                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
                     resetBlockBreaking();
                 }
             }
@@ -840,16 +833,6 @@ public class Player {      // Player settings
     /**
      * Spawns a block drop at the specified location with some random velocity.
      */
-    private void spawnBlockDrop(int x, int y, int z, int blockTypeId, int quantity) {
-        if (world != null && world.getBlockDropManager() != null) {
-            // Add some offset to spawn drop at center of block
-            float dropX = x + 0.5f;
-            float dropY = y + 0.5f;
-            float dropZ = z + 0.5f;
-            
-            world.getBlockDropManager().spawnDrop(dropX, dropY, dropZ, blockTypeId, quantity);
-        }
-    }
     
     /**
      * Places the currently selected block from the inventory where the player is looking.
@@ -936,8 +919,8 @@ public class Player {      // Player settings
                     BlockType blockAbove = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
                     if (blockAbove == BlockType.AIR) {
                         if (!intersectsWithPlayer(abovePos)) {
-                            // Place new snow block above (player modification)
-                            if (world.setBlockByPlayer(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
+                            // Place new snow block above
+                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
                                 inventory.removeItem(selectedItem.getItem(), 1);
                             }
@@ -968,8 +951,8 @@ public class Player {      // Player settings
                     }
                 }
                 
-                // All checks passed, place the block (player modification).
-                if (world.setBlockByPlayer(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
+                // All checks passed, place the block.
+                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
                     
                     // If placing a water block, register it as a water source
@@ -1314,7 +1297,7 @@ public class Player {      // Player settings
             int blockY = (int) Math.floor(yCurrent);
 
             // Ensure y-check is within world bounds
-            if (blockY < 0 || blockY >= World.WORLD_HEIGHT) {
+            if (blockY < 0 || blockY >= WorldConfiguration.WORLD_HEIGHT) {
                 continue;
             }
 
@@ -1480,9 +1463,9 @@ public class Player {      // Player settings
         SoundSystem soundSystem = Game.getSoundSystem();
         if (soundSystem != null) {
             if (groundBlock == BlockType.GRASS) {
-                soundSystem.playSoundWithVolume("grasswalk", 0.3f);
+                soundSystem.playSoundWithVariation("grasswalk", 0.3f);
             } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
-                soundSystem.playSoundWithVolume("sandwalk", 0.3f);
+                soundSystem.playSoundWithVariation("sandwalk", 0.3f);
             }
         }
     }
@@ -1578,7 +1561,7 @@ public class Player {      // Player settings
                  }
             }
 
-            if (world.setBlockByPlayer(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
+            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
                 if (blockToPlace == BlockType.SNOW) {
                     world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
                 }
@@ -1586,94 +1569,5 @@ public class Player {      // Player settings
                 return true;
             }
         }        return false;
-    }
-    
-    /**
-     * Checks if the player is currently on solid ground.
-     */
-    public boolean isOnGround() {
-        return onGround;
-    }
-    
-    /**
-     * Sets the player's on-ground state (used when loading from save).
-     */
-    public void setOnGround(boolean onGround) {
-        this.onGround = onGround;
-    }
-    
-    /**
-     * Sets the player's velocity (used when loading from save).
-     */
-    public void setVelocity(Vector3f velocity) {
-        this.velocity.set(velocity);
-    }
-    
-    /**
-     * Sets the player's position (used when loading from save).
-     */
-    public void setPosition(Vector3f position) {
-        this.position.set(position);
-    }
-    
-    /**
-     * Sets the player's flying state (used when loading from save).
-     */
-    public void setFlying(boolean flying) {
-        this.isFlying = flying;
-    }
-    
-    /**
-     * Gets the player's health.
-     */
-    public float getHealth() {
-        return this.health;
-    }
-    
-    /**
-     * Sets the player's health (used when loading from save).
-     */
-    public void setHealth(float health) {
-        this.health = Math.max(0.0f, Math.min(20.0f, health)); // Clamp between 0 and 20
-    }
-    
-    /**
-     * Resets player data for switching to a new world.
-     * This resets position, velocity, state, and inventory while preserving world-specific data.
-     */
-    public void resetPlayerData() {
-        System.out.println("Resetting player data for new world...");
-        
-        // Reset position to default spawn
-        this.position.set(0, 100, 0);
-        
-        // Reset velocity and physics state  
-        this.velocity.set(0, 0, 0);
-        this.onGround = false;
-        this.physicallyInWater = false;
-        this.wasInWaterLastFrame = false;
-        this.justExitedWaterThisFrame = false;
-        this.waterExitTime = 0.0f;
-        
-        // Reset attack/animation state
-        this.isAttacking = false;
-        this.attackAnimationTime = 0.0f;
-        
-        // Reset block breaking state
-        this.breakingBlock = null;
-        this.breakingProgress = 0.0f;
-        this.breakingTime = 0.0f;
-        
-        // Reset inventory to starting items (world-specific inventory)
-        if (inventory != null) {
-            inventory.resetToStartingItems();
-        }
-        
-        // Reset camera to default position (looking forward)
-        if (camera != null) {
-            camera.reset();
-        }
-        
-        System.out.println("Player data reset completed for new world");
     }
 }

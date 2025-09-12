@@ -1,0 +1,124 @@
+{
+  "block_type": "COBBLESTONE",
+  "texture_name": "minecraft_style_stone",
+  "description": "Minecraft-style stone texture with pixel-perfect gray patterns and horizontal stratification",
+  "algorithm_type": "minecraft_pixel_stone",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["REPEATX", "REPEATY"],
+    "note": "16x16 pixel-perfect Minecraft aesthetic"
+  },
+  "color_palette": {
+    "darkest_gray": {
+      "rgb": [85, 85, 85],
+      "usage": "Deep shadows and cracks",
+      "probability": 0.15
+    },
+    "dark_gray": {
+      "rgb": [108, 108, 108],
+      "usage": "Shadow areas and depth",
+      "probability": 0.25
+    },
+    "medium_gray": {
+      "rgb": [128, 128, 128],
+      "usage": "Main stone body color",
+      "probability": 0.35
+    },
+    "light_gray": {
+      "rgb": [162, 162, 162],
+      "usage": "Highlighted areas and texture",
+      "probability": 0.25
+    }
+  },
+  "pixel_patterns": {
+    "horizontal_strata": {
+      "enabled": true,
+      "layer_height": [2, 3, 4],
+      "layer_probability": [0.3, 0.5, 0.2],
+      "color_shift_intensity": 0.8,
+      "note": "Horizontal stone layers mimicking geological strata"
+    },
+    "noise_clusters": {
+      "enabled": true,
+      "cluster_size": [1, 2],
+      "cluster_density": 0.4,
+      "random_seed": 12345,
+      "note": "Small pixel clusters for stone texture detail"
+    },
+    "crack_patterns": {
+      "enabled": true,
+      "crack_probability": 0.12,
+      "crack_thickness": 1,
+      "preferred_directions": ["horizontal", "vertical"],
+      "direction_weights": [0.6, 0.4],
+      "note": "Thin cracks using darkest gray pixels"
+    },
+    "highlight_spots": {
+      "enabled": true,
+      "spot_probability": 0.18,
+      "spot_size": [1, 2],
+      "intensity_variation": 0.3,
+      "note": "Light gray highlight pixels for depth"
+    }
+  },
+  "minecraft_constraints": {
+    "pixel_perfect": true,
+    "no_antialiasing": true,
+    "discrete_colors_only": true,
+    "seamless_tiling": true,
+    "max_colors": 4,
+    "note": "Strict Minecraft aesthetic requirements"
+  },
+  "pattern_generation": {
+    "base_noise": {
+      "type": "perlin_discrete",
+      "frequency": 0.3,
+      "amplitude": 1.0,
+      "pixel_snapping": true,
+      "note": "Low-frequency noise for large stone formations"
+    },
+    "detail_noise": {
+      "type": "random_clusters", 
+      "density": 0.25,
+      "cluster_coherence": 0.7,
+      "pixel_aligned": true,
+      "note": "High-frequency detail for stone texture"
+    },
+    "stratification": {
+      "type": "horizontal_bands",
+      "band_thickness": [2, 3, 4],
+      "color_progression": ["darkest_gray", "dark_gray", "medium_gray", "light_gray"],
+      "band_irregularity": 0.3,
+      "note": "Geological layering effect"
+    }
+  },
+  "tiling_optimization": {
+    "edge_matching": true,
+    "pattern_repetition_avoidance": true,
+    "corner_coherence": true,
+    "tile_boundary_smoothing": false,
+    "note": "Ensures perfect tiling without visible seams but maintains pixel crispness"
+  },
+  "generation_algorithm": {
+    "step1": "Initialize 16x16 pixel grid with medium gray base",
+    "step2": "Apply horizontal stratification using band patterns",
+    "step3": "Generate discrete Perlin noise for large-scale stone variation",
+    "step4": "Add pixel-aligned cluster noise for fine detail",
+    "step5": "Place crack patterns using darkest gray pixels",
+    "step6": "Add highlight spots using light gray pixels",
+    "step7": "Ensure pixel-perfect edges and discrete color usage",
+    "step8": "Optimize for seamless tiling across all edges",
+    "step9": "Validate Minecraft aesthetic constraints",
+    "step10": "Output final 16x16 pixel-perfect texture"
+  },
+  "metadata": {
+    "created_from": "Minecraft stone texture research and analysis",
+    "purpose": "Authentic Minecraft-style stone block texture",
+    "version": "5.0",
+    "conversion_status": "Minecraft pixel art generator",
+    "reference_style": "Official Minecraft stone aesthetic",
+    "technical_specs": "16x16 pixels, 4-color palette, pixel-perfect, seamless tiling",
+    "notes": "Designed for pixel art aesthetic with horizontal stratification patterns"
+  }
+}

@@ -3,7 +3,7 @@ package com.openmason.rendering;
 import com.openmason.model.StonebreakModel;
 import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
-import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
 
 import java.util.HashMap;
 import java.util.List;
@@ -728,8 +728,8 @@ public class ModelRenderer implements AutoCloseable {
      */
     private void updateTextureVariants(StonebreakModel model, String textureVariant) {
         // Load the current texture variant definition dynamically
-        com.stonebreak.textures.CowTextureDefinition.CowVariant variantDefinition = 
-            com.stonebreak.textures.CowTextureLoader.getCowVariant(textureVariant);
+        com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant variantDefinition = 
+            com.stonebreak.textures.mobs.CowTextureLoader.getCowVariant(textureVariant);
             
         if (variantDefinition == null) {
             System.err.println("[ModelRenderer] ERROR: Failed to load texture variant: " + textureVariant);

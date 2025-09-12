@@ -131,6 +131,18 @@ public class EntityManager {
     }
     
     /**
+     * Adds an existing entity to the manager.
+     * This is used for entities created outside the spawn system, like drops.
+     */
+    public void addEntity(Entity entity) {
+        if (entity != null) {
+            synchronized (entitiesToAdd) {
+                entitiesToAdd.add(entity);
+            }
+        }
+    }
+    
+    /**
      * Creates an entity instance based on the entity type.
      * This method will be expanded in future phases as new entity types are added.
      */
@@ -411,14 +423,8 @@ public class EntityManager {
      * Cleans up dead entities and performs maintenance.
      */
     public void cleanup() {
-        // Remove all dead entities
-        Iterator<Entity> iterator = entities.iterator();
-        while (iterator.hasNext()) {
-            Entity entity = iterator.next();
-            if (!entity.isAlive()) {
-                iterator.remove();
-            }
-        }
+        // Remove all dead entities (CopyOnWriteArrayList doesn't support iterator.remove())
+        entities.removeIf(entity -> !entity.isAlive());
         
         // Clear pending lists
         synchronized (entitiesToAdd) {

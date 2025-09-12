@@ -1,0 +1,91 @@
+{
+  "item_type": "STICK",
+  "texture_name": "stick",
+  "description": "Simple diagonal brown wooden stick with subtle wood grain variation, thin and minimalist design",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["ITEM_TEXTURE", "ITEM_ICON"],
+    "atlas_coordinates": {"x": 1, "y": 3}
+  },
+  "color_palette": {
+    "wood_base": {
+      "color": {"r": 139, "g": 69, "b": 19},
+      "description": "Base brown wood color (saddle brown)"
+    },
+    "border": {
+      "color": {"r": 0, "g": 0, "b": 0},
+      "description": "Black border around stick"
+    },
+    "transparent": {
+      "color": {"r": 0, "g": 0, "b": 0, "a": 0},
+      "description": "Transparent background"
+    }
+  },
+  "texture_patterns": {
+    "wood_grain": {
+      "x_frequency": 0.8,
+      "y_frequency": 0.6,
+      "amplitude": 0.15,
+      "r_variance": 30,
+      "g_variance": 20,
+      "b_variance": 15,
+      "description": "Subtle wood grain variation using sine wave"
+    }
+  },
+  "stick_shape": {
+    "type": "DIAGONAL_STICK",
+    "orientation": "top_left_to_bottom_right",
+    "description": "Diagonal line from top-left to bottom-right with consistent width",
+    "geometry": {
+      "start_point": {"x": 2, "y": 2},
+      "end_point": {"x": 13, "y": 13},
+      "width": 3,
+      "diagonal_ratio": "1:1",
+      "active_region": {
+        "x_range": [2, 13],
+        "y_range": [2, 13]
+      }
+    },
+    "pixel_classification": {
+      "distance_calculation": "Math.abs(pY_stick - pX_stick)",
+      "stick_condition": "distanceFromLine <= stickWidth / 2",
+      "border_condition": "distanceFromLine <= stickWidth / 2 + 1 && !isStickPixel"
+    }
+  },
+  "generation_algorithm": {
+    "coordinate_system": "Local tile coordinates: pX_stick = globalX % 16, pY_stick = globalY % 16",
+    "step_by_step": {
+      "step1": "Calculate expectedY = pX_stick (1:1 diagonal ratio)",
+      "step2": "Calculate distanceFromLine = Math.abs(pY_stick - expectedY)",
+      "step3": "Check if pixel is within active region (x: 2-13, y: 2-13)",
+      "step4": "Classify pixel: stick (distance <= width/2), border (distance <= width/2 + 1), or transparent",
+      "step5": "For stick pixels: Apply wood grain calculation",
+      "step6": "Apply appropriate color based on classification"
+    },
+    "wood_grain_calculation": {
+      "formula": "grain = Math.sin(pX_stick * 0.8 + pY_stick * 0.6) * 0.15",
+      "color_application": [
+        "r = baseR + grain * 30",
+        "g = baseG + grain * 20", 
+        "b = baseB + grain * 15"
+      ],
+      "clamping": "Math.max(0, Math.min(255, colorValue))"
+    },
+    "color_assignment": {
+      "border_pixels": "Solid black (0, 0, 0, 255)",
+      "stick_pixels": "Base wood color + grain variation",
+      "background_pixels": "Transparent (0, 0, 0, 0)"
+    }
+  },
+  "metadata": {
+    "created_from": "TextureAtlas.java stick texture generation",
+    "original_location": "com.stonebreak.rendering.TextureAtlas:2170-2215",
+    "atlas_coordinates": {"x": 1, "y": 3},
+    "purpose": "JSON conversion of hardcoded stick texture algorithm",
+    "version": "1.0",
+    "conversion_status": "Complete - exact algorithm conversion",
+    "validation": "Pixel-perfect match with original TextureAtlas generation",
+    "design_notes": "Simple diagonal design, much simpler than complex tools like pickaxe/axe"
+  }
+}

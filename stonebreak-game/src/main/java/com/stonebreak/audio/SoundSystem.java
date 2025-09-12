@@ -315,6 +315,33 @@ public class SoundSystem {
         }
     }
     
+    public void playSoundWithVariation(String name, float volume) {
+        Integer[] soundSources = sources.get(name);
+        if (soundSources != null) {
+            // Get the current source index and cycle through sources
+            int currentIndex = sourceIndexes.get(name);
+            int source = soundSources[currentIndex];
+            
+            // Create slight pitch variation (0.9 to 1.1, so ±10% variation)
+            float pitchVariation = 0.9f + (float)(Math.random() * 0.2f);
+            
+            // Apply volume and pitch variation
+            alSourcef(source, AL_GAIN, volume * masterVolume);
+            alSourcef(source, AL_PITCH, pitchVariation);
+            alSourcePlay(source);
+            
+            // Move to next source for next call (round-robin)
+            sourceIndexes.put(name, (currentIndex + 1) % soundSources.length);
+            
+            int error = alGetError();
+            if (error != AL_NO_ERROR) {
+                System.err.println("OpenAL error playing sound " + name + " with variation: " + error);
+            }
+        } else {
+            System.err.println("Sound not found: " + name);
+        }
+    }
+    
     public void setListenerPosition(float x, float y, float z) {
         alListener3f(AL_POSITION, x, y, z);
     }

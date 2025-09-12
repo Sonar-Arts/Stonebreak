@@ -2,8 +2,8 @@ package com.openmason.model;
 
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;
-import com.stonebreak.textures.CowTextureDefinition;
-import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureLoader;
 import com.openmason.model.ModelManager;
 
 import java.util.List;

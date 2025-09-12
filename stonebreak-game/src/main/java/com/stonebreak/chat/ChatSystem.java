@@ -168,7 +168,7 @@ public class ChatSystem {
                     }
                 }
             }
-            case "/enableflight" -> {
+            case "/fly" -> {
                 if (!Game.getInstance().isCheatsEnabled()) {
                     addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                     return;
@@ -192,10 +192,10 @@ public class ChatSystem {
                                 player.setFlightEnabled(false);
                                 addMessage("Flight disabled!", new float[]{1.0f, 0.5f, 0.0f, 1.0f}); // Orange
                             }
-                            default -> addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                            default -> addMessage("Usage: /fly <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                         }
                     } catch (NumberFormatException e) {
-                        addMessage("Usage: /enableflight <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                        addMessage("Usage: /fly <1|0>", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                     }
                 } else {
                     // Toggle flight if no parameter provided

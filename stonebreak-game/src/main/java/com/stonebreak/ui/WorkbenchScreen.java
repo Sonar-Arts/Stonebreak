@@ -6,6 +6,7 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
@@ -312,9 +313,9 @@ public class WorkbenchScreen {
                     // The main begin/endFrame for the whole screen is now in this class's render().
 
                     uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
-                    // Draw 3D item using existing renderer - only works for BlockTypes for now
+                    // Draw 3D item using UIRenderer's BlockIconRenderer
                     if (item instanceof BlockType blockType) {
-                        renderer.draw3DItemInSlot(blockType, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                        uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), blockType, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas());
                     } else {
                         // For ItemTypes, render a 2D sprite using UIRenderer
                         uiRenderer.renderItemIcon(slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
@@ -342,9 +343,9 @@ public class WorkbenchScreen {
         try (MemoryStack stack = stackPush()){
             long vg = uiRenderer.getVG();
             uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
-            // Draw 3D item using existing renderer - only works for BlockTypes for now
+            // Draw 3D item using UIRenderer's BlockIconRenderer
             if (item instanceof BlockType blockType) {
-                renderer.draw3DItemInSlot(blockType, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4);
+                uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), blockType, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas());
             } else {
                 // For ItemTypes, render a 2D sprite using UIRenderer
                 uiRenderer.renderItemIcon(x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());

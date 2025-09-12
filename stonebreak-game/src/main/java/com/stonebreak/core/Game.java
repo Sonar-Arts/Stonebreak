@@ -13,10 +13,11 @@ import com.stonebreak.items.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
 import com.stonebreak.rendering.CowTextureAtlas;
+import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
+import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
-import com.stonebreak.world.save.*;
 
 /**
  * Central class for accessing game state and resources.
@@ -36,11 +37,9 @@ public class Game {
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
     private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
-    private WorldSelectScreen worldSelectScreen; // Added WorldSelectScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
-    private UIRenderer uiRenderer; // UI renderer for menus
     private MainMenu mainMenu; // Main menu
     private SettingsMenu settingsMenu; // Settings menu
     private SoundSystem soundSystem; // Sound system
@@ -53,7 +52,6 @@ public class Game {
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
-    private com.stonebreak.mobs.entities.EntityRenderer entityRenderer; // Entity rendering system
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
@@ -81,10 +79,6 @@ public class Game {
      */
     private Game() {
         lastFrameTime = System.nanoTime();
-        
-        // Initialize WorldManager singleton
-        WorldManager.getInstance();
-        System.out.println("Game: WorldManager initialized");
     }
     
     /**
@@ -170,13 +164,13 @@ public class Game {
             }
         }
         
-        // Initialize UI components
-        this.uiRenderer = new UIRenderer();
-        this.uiRenderer.init();
-        this.mainMenu = new MainMenu(this.uiRenderer);
-        this.settingsMenu = new SettingsMenu(this.uiRenderer);
-        this.loadingScreen = new LoadingScreen(this.uiRenderer);
-        this.worldSelectScreen = new WorldSelectScreen(this.uiRenderer);
+        // Initialize UI components (UI renderer is now managed by the main renderer)
+        this.mainMenu = new MainMenu(this.renderer.getUIRenderer());
+        this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
+        this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
+        
+        // Initialize crosshair with settings
+        initializeCrosshairSettings();
 
         // Initialize CraftingManager
         this.craftingManager = new CraftingManager();
@@ -414,7 +408,7 @@ public class Game {
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
             // Trigger initial tooltip for the currently selected item
@@ -431,15 +425,15 @@ public class Game {
         }
 
         // Initialize WorkbenchScreen
-        if (this.uiRenderer != null) {
-            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.uiRenderer, this.inputHandler, this.craftingManager);
+        if (this.renderer.getUIRenderer() != null) {
+            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
         } else {
             System.err.println("Failed to initialize WorkbenchScreen due to null components.");
         }
 
         // Initialize RecipeBookScreen
-        if (this.uiRenderer != null && this.craftingManager != null && getFont() != null) {
-            this.recipeBookScreen = new RecipeBookScreen(this.uiRenderer, this.inputHandler, renderer);
+        if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
+            this.recipeBookScreen = new RecipeBookScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
@@ -459,9 +453,43 @@ public class Game {
         
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        this.entityRenderer = new com.stonebreak.mobs.entities.EntityRenderer();
-        this.entityRenderer.initialize();
         System.out.println("Entity system initialized - cows can now spawn!");
+    }
+    
+    /**
+     * Initializes the crosshair renderer with settings from the config file.
+     */
+    private void initializeCrosshairSettings() {
+        if (renderer != null && renderer.getUIRenderer() != null) {
+            var crosshairRenderer = renderer.getUIRenderer().getCrosshairRenderer();
+            if (crosshairRenderer != null) {
+                Settings settings = Settings.getInstance();
+                
+                // Apply crosshair style
+                try {
+                    var styleEnum = com.stonebreak.rendering.UI.components.CrosshairRenderer.CrosshairStyle.valueOf(settings.getCrosshairStyle());
+                    crosshairRenderer.setStyle(styleEnum);
+                } catch (IllegalArgumentException e) {
+                    System.err.println("Invalid crosshair style in settings: " + settings.getCrosshairStyle() + ", using default");
+                    crosshairRenderer.setStyle(com.stonebreak.rendering.UI.components.CrosshairRenderer.CrosshairStyle.SIMPLE_CROSS);
+                }
+                
+                // Apply other crosshair properties
+                crosshairRenderer.setSize(settings.getCrosshairSize());
+                crosshairRenderer.setThickness(settings.getCrosshairThickness());
+                crosshairRenderer.setGap(settings.getCrosshairGap());
+                crosshairRenderer.setOpacity(settings.getCrosshairOpacity());
+                crosshairRenderer.setColor(settings.getCrosshairColorR(), settings.getCrosshairColorG(), settings.getCrosshairColorB());
+                crosshairRenderer.setOutline(settings.getCrosshairOutline());
+                
+                System.out.println("Crosshair settings initialized: style=" + settings.getCrosshairStyle() + 
+                                 ", size=" + settings.getCrosshairSize());
+            } else {
+                System.err.println("Warning: CrosshairRenderer not available during initialization");
+            }
+        } else {
+            System.err.println("Warning: Renderer or UIRenderer not available during crosshair initialization");
+        }
     }
     
     /**
@@ -487,13 +515,6 @@ public class Game {
                 // Main menu updates (if any)
                 if (mainMenu != null) {
                     // mainMenu.update(deltaTime); // If main menu needs updates
-                }
-                return; // Don't update game world
-            }
-            case WORLD_SELECT -> {
-                // World select screen updates (if any)
-                if (worldSelectScreen != null) {
-                    // worldSelectScreen.update(deltaTime); // If world select needs updates
                 }
                 return; // Don't update game world
             }
@@ -585,7 +606,7 @@ public class Game {
         
         // Update world (processes chunk loading, mesh building, etc.)
         if (world != null) {
-            worldUpdateExecutor.submit(() -> world.update());
+            worldUpdateExecutor.submit(() -> world.update(renderer));
             world.updateMainThread();
             // Process GPU cleanup on main thread after world update
             world.processGpuCleanupQueue();
@@ -677,13 +698,6 @@ public class Game {
      */
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return getInstance().entityManager;
-    }
-    
-    /**
-     * Gets the entity renderer.
-     */
-    public static com.stonebreak.mobs.entities.EntityRenderer getEntityRenderer() {
-        return getInstance().entityRenderer;
     }
     
     /**
@@ -809,7 +823,7 @@ public class Game {
      */
     private void updatePauseState(GameState state) {
         switch (state) {
-            case MAIN_MENU, WORLD_SELECT, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
+            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
                 paused = true;
             }
             case PLAYING -> {
@@ -858,17 +872,10 @@ public class Game {
     }
     
     /**
-     * Gets the world select screen.
-     */
-    public WorldSelectScreen getWorldSelectScreen() {
-        return worldSelectScreen;
-    }
-    
-    /**
      * Gets the UI renderer.
      */
-    public UIRenderer getUIRenderer() {
-        return uiRenderer;
+    public com.stonebreak.rendering.UI.UIRenderer getUIRenderer() {
+        return renderer != null ? renderer.getUIRenderer() : null;
     }
     
     /**
@@ -997,94 +1004,16 @@ public class Game {
     }
     
     /**
-     * Resets and cleans up world state when switching between worlds.
-     * This ensures no residual data from previous worlds persists while keeping rendering intact.
-     */
-    public void resetWorld() {
-        System.out.println("Resetting world state for world switching...");
-        
-        // Stop auto-save and save final state before clearing world data
-        WorldManager worldManager = WorldManager.getInstance();
-        if (worldManager.getCurrentWorldName() != null) {
-            System.out.println("Stopping auto-save and performing final save...");
-            worldManager.stopAutoSave();
-            
-            // Update world-specific play time before saving
-            try {
-                worldManager.updateCurrentWorldPlayTime().join();
-            } catch (Exception e) {
-                System.err.println("Error updating play time: " + e.getMessage());
-            }
-            
-            // Perform final save before clearing world data
-            try {
-                worldManager.saveWorld(world, player).join();
-                System.out.println("Final save completed for world: " + worldManager.getCurrentWorldName());
-            } catch (Exception e) {
-                System.err.println("Error during final save: " + e.getMessage());
-            }
-        }
-        
-        // Clear world data without shutting down thread pools
-        if (world != null) {
-            world.clearWorldData();
-        }
-        
-        // Clean up entity system and recreate it
-        if (entityManager != null) {
-            entityManager.cleanup();
-            // Recreate entity manager for the same world instance
-            entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        }
-        
-        // Reset all player data (position, inventory, state) for the new world
-        if (player != null) {
-            player.resetPlayerData();
-        }
-        
-        // Clear any cached world-related state
-        hasInitializedMouseCaptureAfterLoading = false;
-        
-        System.out.println("World state reset completed.");
-    }
-    
-    /**
      * Cleanup game resources.
      */
     public void cleanup() {
-        // Perform final world save and WorldManager cleanup before other cleanup
-        WorldManager worldManager = WorldManager.getInstance();
-        if (worldManager.getCurrentWorldName() != null && world != null && player != null) {
-            System.out.println("Game exit: Performing final world save...");
-            try {
-                worldManager.stopAutoSave();
-                
-                // Update world-specific play time before saving
-                worldManager.updateCurrentWorldPlayTime().join();
-                
-                worldManager.saveWorld(world, player).join();
-                System.out.println("Final world save completed successfully");
-            } catch (Exception e) {
-                System.err.println("Error during final world save: " + e.getMessage());
-            }
-        }
-        
-        // Shutdown WorldManager
-        try {
-            worldManager.shutdown();
-            System.out.println("WorldManager shutdown completed");
-        } catch (Exception e) {
-            System.err.println("Error shutting down WorldManager: " + e.getMessage());
-        }
+        System.out.println("Starting Game cleanup...");
         
         if (world != null) {
             world.cleanup();
         }
         if (pauseMenu != null) {
             pauseMenu.cleanup();
-        }
-        if (uiRenderer != null) {
-            uiRenderer.cleanup();
         }
         if (soundSystem != null) {
             soundSystem.cleanup();
@@ -1095,13 +1024,47 @@ public class Game {
         if (memoryLeakDetector != null) {
             memoryLeakDetector.stopMonitoring();
         }
-        if (entityRenderer != null) {
-            entityRenderer.cleanup();
-        }
         if (entityManager != null) {
             entityManager.cleanup();
         }
+        
+        // Shutdown world update executor with proper termination waiting
+        System.out.println("Shutting down world update executor...");
         worldUpdateExecutor.shutdownNow();
+        try {
+            if (!worldUpdateExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                System.err.println("World update executor did not terminate gracefully");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted while waiting for world update executor shutdown");
+        }
+        
+        // Cleanup static resources that may have executors
+        cleanupStaticResources();
+        
+        System.out.println("Game cleanup completed");
+    }
+    
+    /**
+     * Cleanup static resources that may have background threads.
+     */
+    private void cleanupStaticResources() {
+        try {
+            // Shutdown ModelLoader async executor
+            System.out.println("Shutting down ModelLoader executor...");
+            com.stonebreak.model.ModelLoader.shutdown();
+        } catch (Exception e) {
+            System.err.println("Error shutting down ModelLoader: " + e.getMessage());
+        }
+        
+        try {
+            // Shutdown CowTextureAtlas if it has any background resources
+            System.out.println("Cleaning up CowTextureAtlas...");
+            com.stonebreak.rendering.CowTextureAtlas.cleanup();
+        } catch (Exception e) {
+            System.err.println("Error cleaning up CowTextureAtlas: " + e.getMessage());
+        }
     }
     
     /**
@@ -1295,16 +1258,6 @@ public class Game {
      * This method should be called when transitioning from main menu to game.
      */
     public void startWorldGeneration() {
-        // Create world instance if it doesn't exist, otherwise just clear its data
-        if (world == null) {
-            this.world = new World();
-            // Initialize entity system for the new world
-            this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        } else {
-            // Reset existing world state while preserving thread pools
-            resetWorld();
-        }
-        
         if (loadingScreen != null) {
             loadingScreen.show(); // This sets state to LOADING
             System.out.println("Started world generation with loading screen");
@@ -1315,102 +1268,10 @@ public class Game {
     }
     
     /**
-     * Starts world generation with a specific world name and seed.
-     * This method should be called when creating or loading a specific world.
-     */
-    public void startWorldGeneration(String worldName, long seed) {
-        WorldManager worldManager = WorldManager.getInstance();
-        
-        // Create world instance if it doesn't exist, otherwise reset
-        if (world == null) {
-            this.world = new World();
-            // Initialize entity system for the new world
-            this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        } else {
-            // Reset existing world state
-            resetWorld();
-        }
-        
-        if (loadingScreen != null) {
-            loadingScreen.show(); // This sets state to LOADING
-            
-            // Check if world exists - load it or create new one
-            if (worldManager.worldExists(worldName)) {
-                System.out.println("Loading existing world: " + worldName);
-                
-                // Load existing world in a separate thread
-                new Thread(() -> {
-                    try {
-                        worldManager.setCurrentWorldName(worldName);
-                        worldManager.loadWorld(worldName, world, player).join();
-                        
-                        // Start auto-save after successful load
-                        worldManager.startAutoSave(world, player);
-                        System.out.println("AUTO-SAVE: Started auto-save after loading existing world: " + worldName);
-                        
-                        // Continue with any additional generation needed
-                        performInitialWorldGeneration(worldName, world.getSeed());
-                    } catch (Exception e) {
-                        System.err.println("Failed to load world " + worldName + ": " + e.getMessage());
-                        e.printStackTrace();
-                        // Fallback to new world generation
-                        world.setSeed(seed);
-                        worldManager.setCurrentWorldName(worldName);
-                        worldManager.startAutoSave(world, player);
-                        System.out.println("AUTO-SAVE: Started auto-save for fallback world generation: " + worldName);
-                        performInitialWorldGeneration(worldName, seed);
-                    }
-                }).start();
-            } else {
-                System.out.println("Creating new world: " + worldName + " with seed: " + seed);
-                
-                // Create new world in a separate thread
-                new Thread(() -> {
-                    try {
-                        world.setSeed(seed);
-                        
-                        // Create world metadata
-                        WorldSaveMetadata metadata = new WorldSaveMetadata();
-                        metadata.setWorldName(worldName);
-                        metadata.setSeed(seed);
-                        metadata.setSpawnX((int) player.getPosition().x);
-                        metadata.setSpawnY((int) player.getPosition().y);
-                        metadata.setSpawnZ((int) player.getPosition().z);
-                        
-                        // Create world directory structure
-                        worldManager.createWorld(metadata).join();
-                        worldManager.setCurrentWorldName(worldName);
-                        
-                        // Start auto-save for new world
-                        worldManager.startAutoSave(world, player);
-                        System.out.println("AUTO-SAVE: Started auto-save for new world: " + worldName);
-                        
-                        // Generate initial world content
-                        performInitialWorldGeneration(worldName, seed);
-                    } catch (Exception e) {
-                        System.err.println("Failed to create world " + worldName + ": " + e.getMessage());
-                        e.printStackTrace();
-                        // Fallback to basic generation
-                        world.setSeed(seed);
-                        worldManager.setCurrentWorldName(worldName);
-                        worldManager.startAutoSave(world, player);
-                        System.out.println("AUTO-SAVE: Started auto-save for fallback basic generation: " + worldName);
-                        performInitialWorldGeneration(worldName, seed);
-                    }
-                }).start();
-            }
-        }
-    }
-    
-    /**
-     * Performs initial world generation with progress updates and timeout protection.
+     * Performs initial world generation with progress updates.
      * This runs in a background thread while the loading screen is displayed.
      */
     private void performInitialWorldGeneration() {
-        final long WORLD_GENERATION_TIMEOUT = 120000; // 2 minutes timeout
-        final long CHUNK_GENERATION_TIMEOUT = 10000;  // 10 seconds per chunk timeout
-        final long startTime = System.currentTimeMillis();
-        
         try {
             // Update progress through the loading screen
             if (loadingScreen != null) {
@@ -1419,137 +1280,6 @@ public class Game {
             
             // Give a brief moment for the loading screen to render
             Thread.sleep(100);
-            
-            // Generate initial chunks around spawn point (0, 0)
-            if (world != null && player != null) {
-                // Set player position first
-                player.setPosition(0, 100, 0);
-                
-                // Generate chunks around spawn
-                int playerChunkX = 0;
-                int playerChunkZ = 0;
-                int renderDistance = 4; // Smaller initial area
-                
-                if (loadingScreen != null) {
-                    loadingScreen.updateProgress("Generating Base Terrain Shape");
-                }
-                
-                // Generate chunks in expanding rings with timeout protection
-                long lastProgressUpdate = System.currentTimeMillis();
-                int chunksGenerated = 0;
-                boolean timedOut = false;
-                
-                for (int ring = 0; ring <= renderDistance && !timedOut; ring++) {
-                    for (int x = playerChunkX - ring; x <= playerChunkX + ring && !timedOut; x++) {
-                        for (int z = playerChunkZ - ring; z <= playerChunkZ + ring && !timedOut; z++) {
-                            // Check overall timeout
-                            long currentTime = System.currentTimeMillis();
-                            if (currentTime - startTime > WORLD_GENERATION_TIMEOUT) {
-                                timedOut = true;
-                                System.err.println("TIMEOUT: World generation exceeded " + (WORLD_GENERATION_TIMEOUT/1000) + " seconds");
-                                if (loadingScreen != null) {
-                                    loadingScreen.reportError("World generation timed out - please try again");
-                                }
-                                break;
-                            }
-                            
-                            // Only generate chunks on the edge of the current ring
-                            if (ring == 0 || x == playerChunkX - ring || x == playerChunkX + ring ||
-                                z == playerChunkZ - ring || z == playerChunkZ + ring) {
-                                
-                                long chunkStartTime = System.currentTimeMillis();
-                                com.stonebreak.world.Chunk chunk = world.getChunkAt(x, z); // This generates the chunk
-                                long chunkEndTime = System.currentTimeMillis();
-                                
-                                // Check individual chunk timeout
-                                if (chunkEndTime - chunkStartTime > CHUNK_GENERATION_TIMEOUT) {
-                                    System.err.println("WARNING: Chunk (" + x + ", " + z + ") took " + (chunkEndTime - chunkStartTime) + "ms to generate (timeout threshold: " + CHUNK_GENERATION_TIMEOUT + "ms)");
-                                }
-                                
-                                // Check if chunk generation failed
-                                if (chunk == null) {
-                                    System.err.println("ERROR: Failed to generate critical spawn chunk at (" + x + ", " + z + ")");
-                                }
-                                
-                                chunksGenerated++;
-                                
-                                // Rate limiting: pause every few chunks to prevent excessive CPU usage
-                                if (chunksGenerated % 3 == 0) {
-                                    currentTime = System.currentTimeMillis();
-                                    // Rate limit progress updates to 50ms intervals
-                                    if (currentTime - lastProgressUpdate >= 50) {
-                                        lastProgressUpdate = currentTime;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Update progress based on ring completion (if not timed out)
-                    if (!timedOut && loadingScreen != null) {
-                        switch (ring) {
-                            case 1 -> loadingScreen.updateProgress("Determining Biomes");
-                            case 2 -> loadingScreen.updateProgress("Applying Biome Materials");
-                            case 3 -> loadingScreen.updateProgress("Adding Surface Decorations & Details");
-                            case 4 -> loadingScreen.updateProgress("Meshing Chunk");
-                        }
-                    }
-                }
-                
-                // Only proceed if we didn't time out
-                if (!timedOut) {
-                    // Give time for all chunks to finish processing
-                    Thread.sleep(500);
-                    
-                    // Validate loading progress before completion
-                    if (validateWorldLoadingComplete()) {
-                        // Complete world generation
-                        completeWorldGeneration();
-                    } else {
-                        // Loading validation failed
-                        System.err.println("World loading validation failed - staying on loading screen");
-                        if (loadingScreen != null) {
-                            loadingScreen.reportError("World loading validation failed - not enough chunks generated successfully");
-                        }
-                        return; // Stay on loading screen with error message
-                    }
-                } else {
-                    // World generation timed out - don't complete, stay on loading screen
-                    System.err.println("World generation was aborted due to timeout");
-                    return; // Stay on loading screen with error message
-                }
-                
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.err.println("World generation interrupted: " + e.getMessage());
-        } catch (Exception e) {
-            System.err.println("Error during world generation: " + e.getMessage());
-            System.err.println("World generation error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-            // Still complete the generation to avoid being stuck
-            completeWorldGeneration();
-        }
-    }
-    
-    /**
-     * Performs initial world generation with custom world name and seed.
-     * This runs in a background thread while the loading screen is displayed.
-     */
-    private void performInitialWorldGeneration(String worldName, long seed) {
-        try {
-            // Update progress through the loading screen
-            if (loadingScreen != null) {
-                loadingScreen.updateProgress("Initializing World: " + worldName);
-            }
-            
-            // Give a brief moment for the loading screen to render
-            Thread.sleep(100);
-            
-            // Set up world generation with custom seed
-            if (world != null) {
-                // Set custom seed for world generation
-                world.setSeed(seed);
-            }
             
             // Generate initial chunks around spawn point (0, 0)
             if (world != null && player != null) {
@@ -1622,61 +1352,12 @@ public class Game {
     }
     
     /**
-     * Validates that world loading has completed successfully before transitioning to playing.
-     * Checks that critical spawn chunks are loaded and valid.
-     */
-    private boolean validateWorldLoadingComplete() {
-        if (world == null || player == null) {
-            System.err.println("VALIDATION FAILED: World or player is null");
-            return false;
-        }
-        
-        int playerChunkX = (int) Math.floor(player.getPosition().x / com.stonebreak.world.World.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / com.stonebreak.world.World.CHUNK_SIZE);
-        int criticalRadius = 2; // Must have at least 2 chunks around spawn
-        
-        int validChunks = 0;
-        int totalCriticalChunks = 0;
-        
-        for (int x = playerChunkX - criticalRadius; x <= playerChunkX + criticalRadius; x++) {
-            for (int z = playerChunkZ - criticalRadius; z <= playerChunkZ + criticalRadius; z++) {
-                totalCriticalChunks++;
-                com.stonebreak.world.Chunk chunk = world.getChunkAt(x, z);
-                if (chunk != null && chunk.areFeaturesPopulated()) {
-                    validChunks++;
-                } else {
-                    System.err.println("VALIDATION: Critical chunk (" + x + ", " + z + ") is " + 
-                        (chunk == null ? "null" : "not populated"));
-                }
-            }
-        }
-        
-        double successRate = (double) validChunks / totalCriticalChunks;
-        System.out.println("VALIDATION: " + validChunks + "/" + totalCriticalChunks + " critical chunks valid (" + 
-            String.format("%.1f%%", successRate * 100) + ")");
-        
-        // Require at least 80% of critical chunks to be valid
-        if (successRate >= 0.8) {
-            System.out.println("VALIDATION: World loading validation passed");
-            return true;
-        } else {
-            System.err.println("VALIDATION: World loading validation failed - insufficient valid chunks");
-            return false;
-        }
-    }
-    
-    /**
      * Completes world generation and transitions to playing.
      * This method should be called when initial world generation is complete.
      */
     public void completeWorldGeneration() {
         if (loadingScreen != null) {
             loadingScreen.hide(); // This sets state to PLAYING
-            
-            // Mark world as finished loading for memory management optimization
-            if (world != null) {
-                world.setWorldLoadingComplete();
-            }
             
             // Force mouse capture update after loading screen completion
             if (mouseCaptureManager != null) {

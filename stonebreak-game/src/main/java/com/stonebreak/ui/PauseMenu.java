@@ -1,5 +1,7 @@
 package com.stonebreak.ui;
 
+import com.stonebreak.rendering.UI.UIRenderer;
+
 /**
  * Represents the pause menu that appears when the user presses the escape key.
  */

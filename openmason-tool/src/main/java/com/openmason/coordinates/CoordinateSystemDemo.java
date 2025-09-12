@@ -1,6 +1,6 @@
 package com.openmason.coordinates;
 
-import com.stonebreak.textures.CowTextureLoader;
+import com.stonebreak.textures.mobs.CowTextureLoader;
 import com.stonebreak.model.ModelDefinition;
 
 /**

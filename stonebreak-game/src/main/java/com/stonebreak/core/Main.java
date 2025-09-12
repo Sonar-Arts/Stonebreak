@@ -2,6 +2,8 @@ package com.stonebreak.core;
 
 import java.nio.*;
 
+import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import org.lwjgl.*;
 import org.lwjgl.glfw.*;
 import static org.lwjgl.glfw.Callbacks.*;
@@ -19,6 +21,7 @@ import com.stonebreak.config.*;
 import com.stonebreak.input.*;
 import com.stonebreak.player.*;
 import com.stonebreak.rendering.*;
+import com.stonebreak.textures.atlas.TextureAtlasBuilder;
 import com.stonebreak.ui.*;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
@@ -68,6 +71,8 @@ public class Main {
             loop();
         } finally {
             cleanup();
+            System.out.println("Stonebreak shutdown complete.");
+            System.exit(0);
         }
     }
     
@@ -105,7 +110,7 @@ public class Main {
         glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
             // Pass key events to InputHandler for chat handling
             if (inputHandler != null) {
-                inputHandler.handleKeyInput(key, action, mods);
+                inputHandler.handleKeyInput(key, action);
             }
         });
         
@@ -143,20 +148,6 @@ public class Main {
                         }
                     }
                 }
-            } else if (game != null && game.getState() == GameState.WORLD_SELECT) {
-                // Handle world select screen clicks
-                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
-                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                    glfwGetCursorPos(window, xpos, ypos);
-                    if (game.getWorldSelectScreen() != null) {
-                        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                            game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height);
-                        } else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-                            game.getWorldSelectScreen().handleMouseRightClick(xpos.get(), ypos.get(), width, height);
-                        }
-                    }
-                }
             } else if (game != null && game.getState() == GameState.SETTINGS) {
                 // Handle settings menu clicks
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -190,24 +181,9 @@ public class Main {
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
             }
-            
-            // Handle world select screen hover events
-            if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                game.getWorldSelectScreen().handleMouseMove(xpos, ypos, width, height);
-            }
-        });
-        
-        // Setup mouse scroll callback
-        glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
-            Game game = Game.getInstance();
-            if (game != null) {
-                if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
-                    // Route scroll to WorldSelectScreen
-                    game.getWorldSelectScreen().handleMouseWheel(yoffset);
-                } else if (game.getInputHandler() != null) {
-                    // Route scroll to InputHandler for hotbar selection and other game scroll events
-                    game.getInputHandler().handleScroll(yoffset);
-                }
+            // Handle settings menu hover events
+            else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
+                game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             }
         });
         
@@ -222,6 +198,12 @@ public class Main {
                     mouseCaptureManager.temporaryRelease();
                 }
             }
+        });
+        
+        // Setup window close callback to handle X button clicks
+        glfwSetWindowCloseCallback(window, win -> {
+            System.out.println("Window close requested - initiating shutdown...");
+            running = false;
         });
         
         // Get the thread stack and push a new frame
@@ -276,6 +258,9 @@ public class Main {
       private void initializeGameComponents() {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
+          
+          // Check if texture atlas needs regeneration
+          regenerateAtlasIfNeeded();
           
           // Initialize the renderer with window dimensions
           renderer = new Renderer(width, height);
@@ -348,12 +333,6 @@ public class Main {
                         game.getMainMenu().handleInput(window);
                     }
                 }
-                case WORLD_SELECT -> {
-                    // Handle world select screen input
-                    if (game.getWorldSelectScreen() != null) {
-                        game.getWorldSelectScreen().handleInput(window);
-                    }
-                }
                 case LOADING -> {
                     // Loading screen - no input handling needed
                     // User should wait for world generation to complete
@@ -415,216 +394,257 @@ public class Main {
                 }
             }
         }
-    }    private void render() {
-        // Clear the framebuffer
+    }
+    
+    private void render() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         Game game = Game.getInstance();
-        UIRenderer uiRenderer = game.getUIRenderer(); // Get UIRenderer once
+        Renderer renderer = Game.getRenderer();
         
         switch (game.getState()) {
-            case MAIN_MENU -> {
-                if (uiRenderer != null && game.getMainMenu() != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
-                    game.getMainMenu().render(width, height);
-                    uiRenderer.endFrame();
-                }
-            }
-            case WORLD_SELECT -> {
-                // Render world select screen using NanoVG
-                if (uiRenderer != null && game.getWorldSelectScreen() != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
-                    game.getWorldSelectScreen().render(width, height);
-                    uiRenderer.endFrame();
-                }
-            }
-            case LOADING -> {
-                // Render loading screen using NanoVG
-                if (uiRenderer != null && game.getLoadingScreen() != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
-                    game.getLoadingScreen().render(width, height);
-                    uiRenderer.endFrame();
-                }
-            }
-            case SETTINGS -> {
-                // Render settings menu using NanoVG
-                if (uiRenderer != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f);
-                    if (game.getSettingsMenu() != null) {
-                        game.getSettingsMenu().render(width, height);
-                    }
-                    uiRenderer.endFrame();
-                }
-            }
-            default -> { // Covers PLAYING, PAUSED, RECIPE_BOOK_UI, WORKBENCH_UI and any other potential states
-                // Debug: Log state transition
-                if (firstRender) {
-                    System.out.println("First 3D render after loading - State: " + game.getState());
-                    firstRender = false;
-                }
-                
-                // Step 1: Completely reset OpenGL state for 3D rendering
-                try {
-                    // Verify OpenGL context
-                    long currentContext = glfwGetCurrentContext();
-                    if (currentContext != window) {
-                        System.err.println("CRITICAL: Wrong OpenGL context - resetting");
-                        glfwMakeContextCurrent(window);
-                        GL.createCapabilities(); // Recreate capabilities
-                    }
-                    
-                    if (firstRender) {
-                        String version = glGetString(GL_VERSION);
-                        System.out.println("OpenGL Version: " + version);
-                    }
-                    
-                    // Aggressive state reset - disable everything first, then re-enable what we need
-                    glUseProgram(0);              // Unbind any shader program
-                    glBindTexture(GL_TEXTURE_2D, 0); // Unbind textures
-                    glBindVertexArray(0);         // Unbind VAO
-                    glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind VBO
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // Unbind EBO
-                    
-                    // Reset all OpenGL state
-                    glDisable(GL_BLEND);
-                    glDisable(GL_SCISSOR_TEST);
-                    glDisable(GL_STENCIL_TEST);
-                    glDisable(GL_CULL_FACE);
-                    
-                    // Clear error queue completely
-                    while (glGetError() != GL_NO_ERROR) { /* clear */ }
-                    
-                    // Now enable depth test
-                    glEnable(GL_DEPTH_TEST);
-                    glDepthFunc(GL_LESS);
-                    glDepthMask(true);
-                    
-                    // Check for any errors after state reset
-                    int finalError = glGetError();
-                    if (finalError != GL_NO_ERROR && firstRender) {
-                        System.err.println("Error after complete state reset: 0x" + Integer.toHexString(finalError));
-                    }
-                } catch (Exception e) {
-                    System.err.println("Exception during OpenGL state reset: " + e.getMessage());
-                    System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-                    return; // Skip this frame
-                }
-                
-                // Step 2: Render the 3D world first as a background for overlays
-                try {
-                    renderer.renderWorld(world, player, game.getTotalTimeElapsed());
-                } catch (Exception e) {
-                    System.err.println("CRITICAL CRASH: Exception in renderWorld() - State: " + game.getState());
-                    System.err.println("Time: " + java.time.LocalDateTime.now());
-                    System.err.println("Player pos: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null"));
-                    System.err.println("World chunks loaded: " + (world != null ? world.getLoadedChunkCount() : "null"));
-                    System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
-                    System.err.println("Exception: " + e.getMessage());
-                    System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-                    // Try to save crash log to file
-                    try (java.io.FileWriter fw = new java.io.FileWriter("crash_log.txt", true)) {
-                        fw.write("=== CRASH LOG " + java.time.LocalDateTime.now() + " ===\n");
-                        fw.write("State: " + game.getState() + "\n");
-                        fw.write("Player: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null") + "\n");
-                        fw.write("Chunks: " + (world != null ? world.getLoadedChunkCount() : "null") + "\n");
-                        fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
-                        fw.write("Exception: " + e.getMessage() + "\n");
-                        fw.write("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()) + "\n\n");
-                    } catch (java.io.IOException logEx) {
-                        System.err.println("Failed to write crash log: " + logEx.getMessage());
-                    }
-                    throw new RuntimeException("Render crash - see crash_log.txt", e);
-                }
-                // Step 2: Render NanoVG UIs on top
-                if (uiRenderer != null) {
-                    uiRenderer.beginFrame(width, height, 1.0f); // Single begin/end frame for all NanoVG UI for these states
-                    // Inventory / Hotbar / Chat (primarily for PLAYING/PAUSED state)
-                    if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
-                        InventoryScreen inventoryScreen = game.getInventoryScreen();
-                        if (inventoryScreen != null) {
-                            if (inventoryScreen.isVisible()) {
-                                inventoryScreen.render(width, height);
-                            } else {
-                                inventoryScreen.renderHotbar(width, height);
-                            }
-                        }
-                        ChatSystem chatSystem = game.getChatSystem();
-                        if (chatSystem != null) {
-                            uiRenderer.renderChat(chatSystem, width, height);
-                        }
-                    }
-                    // Pause Menu (if active, and we are not in Main Menu or other full-screen UI states)
-                    if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
-                        game.getPauseMenu().render(uiRenderer, width, height); // Assumes PauseMenu draws within this frame
-                    }
-                    uiRenderer.endFrame(); // End the shared NanoVG frame for standard game overlays
-                }
-                // Separate rendering for full-screen UI states that manage their own NanoVG frames
-                // and should draw AFTER the 3D world.
-                if (game.getState() == GameState.RECIPE_BOOK_UI) {
-                     RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-                     if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                         recipeBookScreen.render(); // This screen now manages its own NanoVG begin/end frame
-                     }
-                } else if (game.getState() == GameState.WORKBENCH_UI) {
-                    WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
-                    if (workbenchScreen != null && workbenchScreen.isVisible()){
-                        workbenchScreen.render(); // This screen now manages its own NanoVG begin/end frame
-                    }
-                }
-                // DEFERRED: Render block drops AFTER all UI is complete
-                // Block drops render behind both inventory and pause menu with depth curtain protection
-                renderer.renderBlockDropsDeferred(world, player);
-                // Render tooltips AFTER block drops to ensure they appear above 3D block drops
-                InventoryScreen inventoryScreen = game.getInventoryScreen();
-                RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-                if (uiRenderer != null) { // Added null check for uiRenderer
-                    // Render inventory tooltips
-                    if (inventoryScreen != null) {
-                        uiRenderer.beginFrame(width, height, 1.0f);
-                        if (inventoryScreen.isVisible()) {
-                            // Render only tooltips for full inventory screen
-                            inventoryScreen.renderTooltipsOnly(width, height);
-                        } else {
-                            // Render only hotbar tooltips when inventory is not open
-                            inventoryScreen.renderHotbarTooltipsOnly(width, height);
-                        }
-                        uiRenderer.endFrame();
-                    }
-                    // Render recipe book tooltips
-                    if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                        recipeBookScreen.renderTooltipsOnly();
-                    }
-                }
-                // Render pause menu if paused
-                PauseMenu pauseMenu = game.getPauseMenu();
-                if (pauseMenu != null && pauseMenu.isVisible()) {
-                    // UIRenderer uiRenderer = game.getUIRenderer(); // Removed duplicate, use uiRenderer from line 377
-                    if (uiRenderer != null) {
-                        uiRenderer.beginFrame(width, height, 1.0f);
-                        pauseMenu.render(uiRenderer, width, height);
-                        uiRenderer.endFrame();
-                    }
-                    // STEP 2: Render invisible depth curtain AFTER NanoVG to prevent interference
-                    renderer.renderPauseMenuDepthCurtain();
-                }
-            }
+            case MAIN_MENU -> renderUIState(renderer, game.getMainMenu());
+            case LOADING -> renderUIState(renderer, game.getLoadingScreen());
+            case SETTINGS -> renderUIState(renderer, game.getSettingsMenu());
+            default -> render3DGameState(game, renderer);
         }
         
-        // Render debug overlay last, so it's on top of everything
-        DebugOverlay debugOverlay = Game.getDebugOverlay();
-        if (debugOverlay != null && debugOverlay.isVisible()) {
-            // Render wireframes first (3D rendering)
-            debugOverlay.renderWireframes(renderer);
+        renderDebugOverlay(renderer);
+    }
+
+    private void renderUIState(Renderer renderer, Object screen) {
+        if (renderer == null || screen == null) return;
+        
+        renderer.beginUIFrame(width, height, 1.0f);
+        if (screen instanceof com.stonebreak.ui.MainMenu mainMenu) {
+            mainMenu.render(width, height);
+        } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
+            loadingScreen.render(width, height);
+        } else if (screen instanceof SettingsMenu settingsMenu) {
+            settingsMenu.render(width, height);
+        }
+        renderer.endUIFrame();
+    }
+
+    private void render3DGameState(Game game, Renderer renderer) {
+        logFirstRender(game);
+        
+        if (!resetOpenGLState()) return;
+        
+        render3DWorld(game, renderer);
+        renderDeferredElements(game, renderer);
+        renderGameUI(game, renderer);
+        renderFullscreenMenus(game);
+        renderer.renderOverlay(game, width, height);
+        renderPauseMenu(game, renderer);
+    }
+
+    private void logFirstRender(Game game) {
+        if (firstRender) {
+            System.out.println("First 3D render after loading - State: " + game.getState());
+            firstRender = false;
+        }
+    }
+
+    private boolean resetOpenGLState() {
+        try {
+            long currentContext = glfwGetCurrentContext();
+            if (currentContext != window) {
+                System.err.println("CRITICAL: Wrong OpenGL context - resetting");
+                glfwMakeContextCurrent(window);
+                GL.createCapabilities();
+            }
             
-            // Then render UI overlay on top
-            if (uiRenderer != null) {
-                uiRenderer.beginFrame(width, height, 1.0f);
-                debugOverlay.render(uiRenderer);
-                uiRenderer.endFrame();
+            if (firstRender) {
+                String version = glGetString(GL_VERSION);
+                System.out.println("OpenGL Version: " + version);
+            }
+            
+            glUseProgram(0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            
+            glDisable(GL_BLEND);
+            glDisable(GL_SCISSOR_TEST);
+            glDisable(GL_STENCIL_TEST);
+            glDisable(GL_CULL_FACE);
+            
+            while (glGetError() != GL_NO_ERROR) { /* clear */ }
+            
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LESS);
+            glDepthMask(true);
+            
+            int finalError = glGetError();
+            if (finalError != GL_NO_ERROR && firstRender) {
+                System.err.println("Error after complete state reset: 0x" + Integer.toHexString(finalError));
+            }
+            
+            return true;
+        } catch (Exception e) {
+            System.err.println("Exception during OpenGL state reset: " + e.getMessage());
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+            return false;
+        }
+    }
+
+    private void render3DWorld(Game game, Renderer renderer) {
+        try {
+            renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+        } catch (Exception e) {
+            logRenderCrash(game, e);
+            throw new RuntimeException("Render crash - see crash_log.txt", e);
+        }
+    }
+
+    private void logRenderCrash(Game game, Exception e) {
+        System.err.println("CRITICAL CRASH: Exception in renderWorld() - State: " + game.getState());
+        System.err.println("Time: " + java.time.LocalDateTime.now());
+        System.err.println("Player pos: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null"));
+        System.err.println("World chunks loaded: " + (world != null ? world.getLoadedChunkCount() : "null"));
+        System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+        System.err.println("Exception: " + e.getMessage());
+        System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
+        
+        try (java.io.FileWriter fw = new java.io.FileWriter("crash_log.txt", true)) {
+            fw.write("=== CRASH LOG " + java.time.LocalDateTime.now() + " ===\n");
+            fw.write("State: " + game.getState() + "\n");
+            fw.write("Player: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null") + "\n");
+            fw.write("Chunks: " + (world != null ? world.getLoadedChunkCount() : "null") + "\n");
+            fw.write("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB\n");
+            fw.write("Exception: " + e.getMessage() + "\n");
+            fw.write("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()) + "\n\n");
+        } catch (java.io.IOException logEx) {
+            System.err.println("Failed to write crash log: " + logEx.getMessage());
+        }
+    }
+
+    private void renderGameUI(Game game, Renderer renderer) {
+        if (renderer == null) return;
+        
+        renderer.beginUIFrame(width, height, 1.0f);
+        
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
+            renderCrosshair(game, renderer);
+            renderInventoryAndHotbar(game);
+            renderChat(game, renderer);
+        }
+        
+        renderActivePauseMenu(game, renderer);
+        renderer.endUIFrame();
+    }
+
+    private void renderCrosshair(Game game, Renderer renderer) {
+        if (game.getState() == GameState.PLAYING) {
+            InventoryScreen inventoryScreen = game.getInventoryScreen();
+            if (inventoryScreen == null || !inventoryScreen.isVisible()) {
+                renderer.getUIRenderer().renderCrosshair(width, height);
             }
         }
     }
+
+    private void renderInventoryAndHotbar(Game game) {
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen != null) {
+            if (inventoryScreen.isVisible()) {
+                inventoryScreen.render(width, height);
+            } else {
+                inventoryScreen.renderHotbar(width, height);
+            }
+        }
+    }
+
+    private void renderChat(Game game, Renderer renderer) {
+        ChatSystem chatSystem = game.getChatSystem();
+        if (chatSystem != null) {
+            renderer.renderChat(chatSystem, width, height);
+        }
+    }
+
+    private void renderActivePauseMenu(Game game, Renderer renderer) {
+        if ((game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) 
+            && game.getPauseMenu() != null && game.getPauseMenu().isVisible()) {
+            game.getPauseMenu().render(renderer.getUIRenderer(), width, height);
+        }
+    }
+
+    private void renderFullscreenMenus(Game game) {
+        if (game.getState() == GameState.RECIPE_BOOK_UI) {
+            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                recipeBookScreen.render();
+            }
+        } else if (game.getState() == GameState.WORKBENCH_UI) {
+            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+            if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                workbenchScreen.render();
+            }
+        }
+    }
+
+    private void renderDeferredElements(Game game, Renderer renderer) {
+        // No deferred elements to render
+    }
+
+
+    private void renderPauseMenu(Game game, Renderer renderer) {
+        PauseMenu pauseMenu = game.getPauseMenu();
+        if (pauseMenu != null && pauseMenu.isVisible() && renderer != null) {
+            renderer.beginUIFrame(width, height, 1.0f);
+            pauseMenu.render(renderer.getUIRenderer(), width, height);
+            renderer.endUIFrame();
+            renderer.getUIRenderer().renderPauseMenuDepthCurtain();
+        }
+    }
+
+    private void renderDebugOverlay(Renderer renderer) {
+        DebugOverlay debugOverlay = Game.getDebugOverlay();
+        if (debugOverlay != null && debugOverlay.isVisible()) {
+            debugOverlay.renderWireframes(renderer);
+            
+            if (renderer != null) {
+                renderer.beginUIFrame(width, height, 1.0f);
+                debugOverlay.render(renderer.getUIRenderer());
+                renderer.endUIFrame();
+            }
+        }
+    }
+    
+    /**
+     * Check if texture atlas needs regeneration and regenerate if necessary.
+     * This ensures textures are up-to-date before rendering starts.
+     */
+    private void regenerateAtlasIfNeeded() {
+        try {
+            System.out.println("Checking if texture atlas regeneration is needed...");
+            
+            TextureAtlasBuilder atlasBuilder = new TextureAtlasBuilder();
+            
+            if (atlasBuilder.shouldRegenerateAtlas()) {
+                System.out.println("Texture atlas regeneration required - starting generation...");
+                
+                long startTime = System.currentTimeMillis();
+                boolean success = atlasBuilder.generateAtlas();
+                long endTime = System.currentTimeMillis();
+                
+                if (success) {
+                    System.out.println("Texture atlas regenerated successfully in " + (endTime - startTime) + "ms");
+                } else {
+                    System.err.println("Failed to regenerate texture atlas - game may display incorrectly");
+                }
+            } else {
+                System.out.println("Texture atlas is up-to-date, no regeneration needed");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error during atlas regeneration check: " + e.getMessage());
+            e.printStackTrace();
+            System.err.println("Continuing with existing atlas...");
+        }
+    }
+    
       private void cleanup() {
           Game.logDetailedMemoryInfo("Before cleanup");
           

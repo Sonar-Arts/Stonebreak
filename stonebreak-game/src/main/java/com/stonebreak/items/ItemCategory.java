@@ -9,7 +9,7 @@ public enum ItemCategory {
      * Blocks that can be placed in the world.
      * Examples: Stone, Wood, Dirt, Grass
      */
-    BLOCKS("Blocks"),
+    BLOCKS("blocks"),
     
     /**
      * Tools and equipment used by the player.

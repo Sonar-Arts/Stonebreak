@@ -11,20 +11,17 @@ import com.stonebreak.chat.ChatSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.RecipeBookScreen;
-import com.stonebreak.ui.SettingsMenu;
-import com.stonebreak.ui.UIRenderer;
+import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.WorkbenchScreen;
 import com.stonebreak.ui.WorldSelectScreen;
 import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.world.World;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
@@ -359,45 +356,8 @@ public class InputHandler {
     }
     
     private void dropSelectedItem(Player player) {
-        Inventory inventory = player.getInventory();
-        if (inventory == null) {
-            return;
-        }
-        
-        // Get the currently selected hotbar slot
-        int selectedSlotIndex = inventory.getSelectedHotbarSlotIndex();
-        ItemStack selectedStack = inventory.getHotbarSlot(selectedSlotIndex);
-        
-        if (selectedStack.isEmpty()) {
-            return; // Nothing to drop
-        }
-        
-        // Get player position and camera direction for throwing
-        Vector3f playerPos = player.getPosition();
-        Vector3f cameraForward = player.getCamera().getFront();
-        
-        // Spawn the drop at player position (eye level)
-        float dropX = playerPos.x;
-        float dropY = playerPos.y + 1.5f; // Eye level
-        float dropZ = playerPos.z;
-        
-        // Calculate throwing velocity - forward direction with upward arc
-        float throwSpeed = 8.0f; // Throwing speed
-        Vector3f throwVelocity = new Vector3f(
-            cameraForward.x * throwSpeed,
-            Math.max(2.0f, cameraForward.y * throwSpeed + 3.0f), // Minimum upward velocity for arc
-            cameraForward.z * throwSpeed
-        );
-        
-        // Use the new velocity-based spawning method
-        World world = Game.getWorld();
-        if (world != null && world.getBlockDropManager() != null) {
-            world.getBlockDropManager().spawnDropWithVelocity(dropX, dropY, dropZ, 
-                selectedStack.getItem().getId(), 1, throwVelocity);
-            
-            // Remove one item from the inventory
-            inventory.removeItem(selectedStack.getItem(), 1);
-        }
+        // Use the new drop utility to drop a single item from selected slot
+        com.stonebreak.util.DropUtil.dropSingleItemFromPlayer(player);
     }
  
     // private void handleRecipeBookKey() { ... } // Method removed

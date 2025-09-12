@@ -269,7 +269,7 @@ public class ModelBrowserImGui {
             
             // Filter options
             ImGui.text("Show:");
-            ImGui.checkbox("Blocks/Textures/Models", filterModels);
+            ImGui.checkbox("blocks/Textures/Models", filterModels);
             ImGui.sameLine();
             ImGui.checkbox("Variants", filterVariants);
             ImGui.sameLine();
@@ -295,7 +295,7 @@ public class ModelBrowserImGui {
     }
     
     private void renderModelTree() {
-        if (ImGui.collapsingHeader("Blocks/Textures/Models", ImGuiTreeNodeFlags.DefaultOpen)) {
+        if (ImGui.collapsingHeader("blocks/Textures/Models", ImGuiTreeNodeFlags.DefaultOpen)) {
             ImGui.indent();
             
             if (discoveredModels.isEmpty()) {
@@ -635,7 +635,7 @@ public class ModelBrowserImGui {
     // Filtering methods
     
     private boolean shouldShowCategory(String categoryName, List<ModelNode> models) {
-        if (!filterModels.get() && categoryName.contains("Blocks/Textures/Models")) {
+        if (!filterModels.get() && categoryName.contains("blocks/Textures/Models")) {
             return false;
         }
         if (!filterMobs.get() && categoryName.equals("Mobs")) {
@@ -983,7 +983,7 @@ public class ModelBrowserImGui {
     
     private void loadTextureVariants() {
         try {
-            String[] availableVariants = com.stonebreak.textures.CowTextureLoader.getAvailableVariants();
+            String[] availableVariants = com.stonebreak.textures.mobs.CowTextureLoader.getAvailableVariants();
             logger.info("Found {} texture variants: {}", availableVariants.length, String.join(", ", availableVariants));
             totalVariantsDiscovered = availableVariants.length;
             
@@ -1116,7 +1116,7 @@ public class ModelBrowserImGui {
                 case "sheep":
                     return "Mobs";
                 case "blocks":
-                    return "Blocks";
+                    return "blocks";
                 case "items":
                     return "Items";
                 default:

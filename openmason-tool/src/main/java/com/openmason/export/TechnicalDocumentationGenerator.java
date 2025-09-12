@@ -3,7 +3,7 @@ package com.openmason.export;
 import com.openmason.model.ModelManager;
 import com.stonebreak.model.ModelDefinition;
 import com.openmason.texture.TextureManager;
-import com.stonebreak.textures.CowTextureDefinition;
+import com.stonebreak.textures.mobs.CowTextureDefinition;
 import com.openmason.coordinates.ModelCoordinateSystem;
 import com.openmason.coordinates.AtlasCoordinateSystem;
 import org.slf4j.Logger;
