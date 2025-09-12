@@ -1465,7 +1465,7 @@ public class Player {      // Player settings
             if (groundBlock == BlockType.GRASS) {
                 soundSystem.playSoundWithVariation("grasswalk", 0.3f);
             } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
-                soundSystem.playSoundWithVolume("sandwalk", 0.3f);
+                soundSystem.playSoundWithVariation("sandwalk", 0.3f);
             }
         }
     }
