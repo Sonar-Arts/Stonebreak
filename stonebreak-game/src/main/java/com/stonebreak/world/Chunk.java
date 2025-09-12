@@ -1137,6 +1137,15 @@ public class Chunk {
     public int getChunkZ() {
         return this.z;
     }
+    
+    // Aliases for binary save system compatibility
+    public int getX() {
+        return this.x;
+    }
+    
+    public int getZ() {
+        return this.z;
+    }
 
     public boolean areFeaturesPopulated() {
         return featuresPopulated;

@@ -21,6 +21,9 @@ module stonebreak.game {
     requires com.fasterxml.jackson.annotation;
     requires com.fasterxml.jackson.datatype.jsr310;
     
+    // LZ4 compression for binary save system (automatic module)
+    requires lz4;
+    
     // Java base modules
     requires java.desktop;
     requires java.management;

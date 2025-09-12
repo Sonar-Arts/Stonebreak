@@ -23,22 +23,30 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WorldManager {
     
     private static final String WORLDS_DIRECTORY = "worlds";
-    private static final String WORLD_METADATA_FILE = "world.json";
-    private static final String CHUNKS_DIRECTORY = "chunks";
+    private static final String WORLD_METADATA_FILE = "world.dat"; // Changed from world.json to world.dat for binary format
+    private static final String PLAYER_DATA_FILE = "player.dat"; // Binary player data file
+    private static final String REGIONS_DIRECTORY = "regions"; // Changed from chunks to regions directory
+    private static final String CHUNKS_DIRECTORY = "chunks"; // Legacy chunks directory for backward compatibility
     
     // Singleton instance
     private static WorldManager instance;
     private static final Object instanceLock = new Object();
     
-    // Jackson ObjectMapper for JSON serialization
+    // Jackson ObjectMapper for JSON serialization (kept for backward compatibility/migration)
     private final ObjectMapper objectMapper;
     
-    // Components
-    private final WorldSaver worldSaver;
-    private final WorldLoader worldLoader;
+    // New Binary Components
+    private RegionFileManager regionFileManager; // Non-final, initialized per world
+    private final BinaryChunkCodec chunkCodec;
+    
+    // Legacy Components (for migration support)
     private final ChunkFileManager chunkFileManager;
     private final SaveFileValidator validator;
     private final CorruptionRecoveryManager recoveryManager;
+    
+    // Updated Components
+    private final WorldSaver worldSaver;
+    private final WorldLoader worldLoader;
     
     // Thread pool for async operations (separate from World's chunkBuildExecutor)
     private final ExecutorService saveLoadExecutor;
@@ -51,18 +59,26 @@ public class WorldManager {
      * Private constructor for singleton pattern.
      */
     private WorldManager() {
-        // Initialize Jackson ObjectMapper
+        // Initialize Jackson ObjectMapper (kept for backward compatibility)
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
         
-        // Initialize components
+        // Initialize binary components
+        this.chunkCodec = new BinaryChunkCodec();
+        
+        // Initialize RegionFileManager (will be configured per world)
+        this.regionFileManager = null; // Initialized per world in setCurrentWorld()
+        
+        // Initialize legacy components (for migration support)
         this.chunkFileManager = new ChunkFileManager(objectMapper);
         this.validator = new SaveFileValidator(objectMapper, chunkFileManager);
+        this.recoveryManager = new CorruptionRecoveryManager(objectMapper, chunkFileManager, validator);
+        
+        // Initialize updated components (will be modified to support binary format)
         this.worldSaver = new WorldSaver(objectMapper, chunkFileManager);
         this.worldLoader = new WorldLoader(objectMapper, chunkFileManager);
-        this.recoveryManager = new CorruptionRecoveryManager(objectMapper, chunkFileManager, validator);
         
         // Create dedicated thread pool for save/load operations
         this.saveLoadExecutor = Executors.newFixedThreadPool(2, r -> {
@@ -96,6 +112,74 @@ public class WorldManager {
     }
     
     /**
+     * Set up RegionFileManager for the current world.
+     * @param worldName World name to set up region management for
+     * @throws IOException if RegionFileManager creation fails
+     */
+    private void setupRegionFileManager(String worldName) throws IOException {
+        if (regionFileManager != null) {
+            regionFileManager.close();
+        }
+        
+        String worldPath = Paths.get(WORLDS_DIRECTORY, worldName).toString();
+        this.regionFileManager = new RegionFileManager(worldPath);
+    }
+    
+    /**
+     * Check if world uses binary format (has regions directory).
+     * @param worldName World name to check
+     * @return True if world uses binary format
+     */
+    private boolean usesBinaryFormat(String worldName) {
+        Path regionsPath = Paths.get(WORLDS_DIRECTORY, worldName, REGIONS_DIRECTORY);
+        Path binaryWorldFile = Paths.get(WORLDS_DIRECTORY, worldName, WORLD_METADATA_FILE);
+        return Files.exists(regionsPath) || Files.exists(binaryWorldFile);
+    }
+    
+    /**
+     * Save world metadata in binary format.
+     * @param worldName World name
+     * @param world World instance
+     * @param player Player instance
+     * @throws IOException if saving fails
+     */
+    private void saveBinaryMetadata(String worldName, World world, Player player) throws IOException {
+        String worldPath = Paths.get(WORLDS_DIRECTORY, worldName).toString();
+        
+        // Save world metadata
+        BinaryWorldMetadata worldMetadata = new BinaryWorldMetadata(worldName, world.getSeed());
+        worldMetadata.setSpawnPosition(world.getSpawnPosition());
+        worldMetadata.updatePlayTime(System.currentTimeMillis() - sessionStartTime.get());
+        worldMetadata.saveToFile(worldPath);
+        
+        // Save player data
+        BinaryPlayerData playerData = new BinaryPlayerData(player);
+        playerData.saveToFile(worldPath);
+    }
+    
+    /**
+     * Load world metadata from binary format.
+     * @param worldName World name
+     * @param world World instance
+     * @param player Player instance
+     * @throws IOException if loading fails
+     */
+    private void loadBinaryMetadata(String worldName, World world, Player player) throws IOException {
+        String worldPath = Paths.get(WORLDS_DIRECTORY, worldName).toString();
+        
+        // Load world metadata
+        BinaryWorldMetadata worldMetadata = BinaryWorldMetadata.loadFromFile(worldPath);
+        world.setSeed(worldMetadata.getSeed());
+        world.setSpawnPosition(worldMetadata.getSpawnPosition());
+        
+        // Load player data if exists
+        if (BinaryPlayerData.exists(worldPath)) {
+            BinaryPlayerData playerData = BinaryPlayerData.loadFromFile(worldPath);
+            playerData.applyToPlayer(player);
+        }
+    }
+    
+    /**
      * Saves a world asynchronously with automatic backup creation.
      * 
      * @param world The world to save
@@ -124,13 +208,31 @@ public class WorldManager {
                     }
                 }
                 
-                // Perform the actual save
-                worldSaver.saveWorldSync(world, player, currentWorldName);
-                
-                // Validate saved data
-                SaveFileValidator.ValidationResult validation = validator.validateWorld(currentWorldName).join();
-                if (!validation.isValid()) {
-                    System.err.println("Warning: Saved world failed validation: " + validation.getSummary());
+                // Determine save format and perform the actual save
+                if (usesBinaryFormat(currentWorldName)) {
+                    System.out.println("Using binary save format for world: " + currentWorldName);
+                    
+                    // Set up region file manager
+                    setupRegionFileManager(currentWorldName);
+                    
+                    // Save world and player metadata
+                    saveBinaryMetadata(currentWorldName, world, player);
+                    
+                    // Save dirty chunks using binary format
+                    saveBinaryChunks(world);
+                    
+                    System.out.println("Binary save completed for world: " + currentWorldName);
+                } else {
+                    System.out.println("Using legacy JSON save format for world: " + currentWorldName);
+                    
+                    // Use legacy save system
+                    worldSaver.saveWorldSync(world, player, currentWorldName);
+                    
+                    // Validate saved data
+                    SaveFileValidator.ValidationResult validation = validator.validateWorld(currentWorldName).join();
+                    if (!validation.isValid()) {
+                        System.err.println("Warning: Saved world failed validation: " + validation.getSummary());
+                    }
                 }
                 
                 long duration = System.currentTimeMillis() - startTime;
@@ -142,6 +244,72 @@ public class WorldManager {
                 throw new RuntimeException("Failed to save world: " + currentWorldName, e);
             }
         }, saveLoadExecutor);
+    }
+    
+    /**
+     * Save dirty chunks using binary format.
+     * @param world World instance to save chunks from
+     * @throws IOException if chunk saving fails
+     */
+    private void saveBinaryChunks(World world) throws IOException {
+        if (regionFileManager == null) {
+            throw new IllegalStateException("RegionFileManager not initialized");
+        }
+        
+        // Get all dirty chunks from the world
+        var dirtyChunks = world.getDirtyChunks(); // This method would need to be added to World class
+        
+        System.out.println("Saving " + dirtyChunks.size() + " dirty chunks in binary format");
+        
+        // Save each dirty chunk
+        for (var chunk : dirtyChunks) {
+            try {
+                regionFileManager.saveChunkSync(chunk);
+                chunk.markClean(); // Mark chunk as clean after successful save
+            } catch (IOException e) {
+                System.err.println("Failed to save chunk [" + chunk.getX() + ", " + chunk.getZ() + "]: " + e.getMessage());
+                throw e;
+            }
+        }
+        
+        // Sync all region files to disk
+        regionFileManager.syncAllSync();
+        
+        System.out.println("Binary chunk save completed");
+    }
+    
+    /**
+     * Load chunks using binary format.
+     * @param world World instance to load chunks into
+     * @param centerX Center chunk X coordinate
+     * @param centerZ Center chunk Z coordinate
+     * @param radius Radius of chunks to load around center
+     * @throws IOException if chunk loading fails
+     */
+    private void loadBinaryChunks(World world, int centerX, int centerZ, int radius) throws IOException {
+        if (regionFileManager == null) {
+            throw new IllegalStateException("RegionFileManager not initialized");
+        }
+        
+        int chunksLoaded = 0;
+        
+        // Load chunks in a radius around the center
+        for (int x = centerX - radius; x <= centerX + radius; x++) {
+            for (int z = centerZ - radius; z <= centerZ + radius; z++) {
+                try {
+                    var chunk = regionFileManager.loadChunkSync(x, z);
+                    if (chunk != null) {
+                        world.setChunk(x, z, chunk); // This method would need to be added to World class
+                        chunksLoaded++;
+                    }
+                } catch (IOException e) {
+                    System.err.println("Failed to load chunk [" + x + ", " + z + "]: " + e.getMessage());
+                    // Continue loading other chunks
+                }
+            }
+        }
+        
+        System.out.println("Loaded " + chunksLoaded + " chunks in binary format");
     }
     
     /**
@@ -169,27 +337,48 @@ public class WorldManager {
                 long startTime = System.currentTimeMillis();
                 System.out.println("Starting enhanced world load for: " + worldName);
                 
-                // Phase 1: Validate world files
-                SaveFileValidator.ValidationResult validation = validator.validateWorld(worldName).join();
-                
-                if (!validation.isValid()) {
-                    System.err.println("World validation failed for " + worldName + ": " + validation.getSummary());
+                // Determine load format and perform the actual load
+                if (usesBinaryFormat(worldName)) {
+                    System.out.println("Using binary load format for world: " + worldName);
                     
-                    // Attempt automatic recovery
-                    System.out.println("Attempting automatic recovery for world: " + worldName);
-                    CorruptionRecoveryManager.RecoveryResult recovery = 
-                        recoveryManager.recoverCorruptedWorld(worldName, world, player).join();
+                    // Set up region file manager
+                    setupRegionFileManager(worldName);
                     
-                    if (!recovery.isSuccessful()) {
-                        throw new RuntimeException("World recovery failed: " + recovery.getMessage());
-                    }
+                    // Load world and player metadata
+                    loadBinaryMetadata(worldName, world, player);
                     
-                    System.out.println("Recovery successful: " + recovery.getMessage());
+                    // Load initial chunks around spawn
+                    var spawnPos = world.getSpawnPosition();
+                    int spawnChunkX = (int) Math.floor(spawnPos.x / 16);
+                    int spawnChunkZ = (int) Math.floor(spawnPos.z / 16);
+                    loadBinaryChunks(world, spawnChunkX, spawnChunkZ, 8); // Load 8-chunk radius
+                    
+                    System.out.println("Binary load completed for world: " + worldName);
                 } else {
-                    System.out.println("World validation passed for: " + worldName);
+                    System.out.println("Using legacy JSON load format for world: " + worldName);
                     
-                    // Phase 2: Normal loading
-                    worldLoader.loadWorld(worldName, world, player);
+                    // Phase 1: Validate world files (legacy format)
+                    SaveFileValidator.ValidationResult validation = validator.validateWorld(worldName).join();
+                    
+                    if (!validation.isValid()) {
+                        System.err.println("World validation failed for " + worldName + ": " + validation.getSummary());
+                        
+                        // Attempt automatic recovery
+                        System.out.println("Attempting automatic recovery for world: " + worldName);
+                        CorruptionRecoveryManager.RecoveryResult recovery = 
+                            recoveryManager.recoverCorruptedWorld(worldName, world, player).join();
+                        
+                        if (!recovery.isSuccessful()) {
+                            throw new RuntimeException("World recovery failed: " + recovery.getMessage());
+                        }
+                        
+                        System.out.println("Recovery successful: " + recovery.getMessage());
+                    } else {
+                        System.out.println("World validation passed for: " + worldName);
+                        
+                        // Phase 2: Normal loading (legacy)
+                        worldLoader.loadWorld(worldName, world, player);
+                    }
                 }
                 
                 long duration = System.currentTimeMillis() - startTime;
@@ -526,6 +715,15 @@ public class WorldManager {
             
             // Update play time for current session
             updateCurrentWorldPlayTime().join();
+            
+            // Close RegionFileManager if open
+            if (regionFileManager != null) {
+                try {
+                    regionFileManager.close();
+                } catch (IOException e) {
+                    System.err.println("Error closing RegionFileManager: " + e.getMessage());
+                }
+            }
             
             // Shutdown components
             worldSaver.shutdown();

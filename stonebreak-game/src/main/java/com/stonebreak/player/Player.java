@@ -41,6 +41,9 @@ public class Player {      // Player settings
     private static final float WATER_EXIT_ANTI_FLOAT_DURATION = 0.5f; // Duration to apply anti-floating after water exit (500ms)
     private float attackAnimationTime;
     
+    // Health system
+    private float health = 20.0f; // Default health (20 like Minecraft)
+    
     
     // Camera
     private final Camera camera;
@@ -1618,6 +1621,20 @@ public class Player {      // Player settings
      */
     public void setFlying(boolean flying) {
         this.isFlying = flying;
+    }
+    
+    /**
+     * Gets the player's health.
+     */
+    public float getHealth() {
+        return this.health;
+    }
+    
+    /**
+     * Sets the player's health (used when loading from save).
+     */
+    public void setHealth(float health) {
+        this.health = Math.max(0.0f, Math.min(20.0f, health)); // Clamp between 0 and 20
     }
     
     /**

@@ -1691,6 +1691,24 @@ public class World {
     }
     
     /**
+     * Gets all dirty chunks that need to be saved.
+     * Used by the binary save system to determine which chunks to save.
+     * @return List of dirty chunks
+     */
+    public java.util.List<Chunk> getDirtyChunks() {
+        java.util.List<Chunk> dirtyChunks = new java.util.ArrayList<>();
+        
+        // Iterate through all chunks and collect dirty ones
+        for (Chunk chunk : chunks.values()) {
+            if (chunk.isDirty()) {
+                dirtyChunks.add(chunk);
+            }
+        }
+        
+        return dirtyChunks;
+    }
+    
+    /**
      * Sets the spawn position for this world.
      * Stores the spawn position for save/load operations.
      */
