@@ -23,6 +23,7 @@ import static org.lwjgl.nanovg.NanoVG.nvgTextAlign;
 import org.lwjgl.system.MemoryStack;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
+import static org.lwjgl.glfw.GLFW.*;
 
 public class LoadingScreen {
     private final UIRenderer uiRenderer;
@@ -462,5 +463,20 @@ public class LoadingScreen {
         }
         
         nvgText(vg, centerX, errorBoxY + errorBoxHeight + 25, instructionText);
+    }
+
+    /**
+     * Handles input for the loading screen, primarily for error recovery.
+     */
+    public void handleInput(long window) {
+        // Only handle input if there's an error displayed
+        if (hasError) {
+            boolean escPressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+            if (escPressed) {
+                // Return to main menu when ESC is pressed during error
+                System.out.println("LoadingScreen: ESC pressed during error, returning to main menu");
+                Game.getInstance().setState(GameState.MAIN_MENU);
+            }
+        }
     }
 }

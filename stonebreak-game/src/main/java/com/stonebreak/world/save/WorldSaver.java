@@ -2,9 +2,11 @@ package com.stonebreak.world.save;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.world.World;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World.ChunkPosition;
+import com.stonebreak.world.save.ChunkData;
 import com.stonebreak.player.Player;
+import org.joml.Vector3f;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -86,14 +88,14 @@ public class WorldSaver {
             return CompletableFuture.failedFuture(new IllegalArgumentException("World, player, and worldName cannot be null"));
         }
         
-        // Use the World's existing chunkBuildExecutor for async operations
+        // Use CompletableFuture's default executor for async operations
         return CompletableFuture.runAsync(() -> {
             try {
                 saveWorldSync(world, player, worldName);
             } catch (Exception e) {
                 throw new RuntimeException("Async save failed for world: " + worldName, e);
             }
-        }, world.getChunkBuildExecutor());
+        });
     }
     
     /**
@@ -234,10 +236,12 @@ public class WorldSaver {
                 metadata = objectMapper.readValue(metadataPath.toFile(), WorldSaveMetadata.class);
             } catch (IOException e) {
                 System.err.println("Error reading existing metadata, creating new: " + e.getMessage());
-                metadata = new WorldSaveMetadata(worldName, world.getSeed(), world.getSpawnPosition());
+                // TODO: Add getSeed() and getSpawnPosition() methods to World class
+                metadata = new WorldSaveMetadata(worldName, 0L, new Vector3f(0, 100, 0));
             }
         } else {
-            metadata = new WorldSaveMetadata(worldName, world.getSeed(), world.getSpawnPosition());
+            // TODO: Add getSeed() and getSpawnPosition() methods to World class
+            metadata = new WorldSaveMetadata(worldName, 0L, new Vector3f(0, 100, 0));
         }
         
         // Update metadata
@@ -310,22 +314,14 @@ public class WorldSaver {
      * @return List of dirty chunks
      */
     private List<Chunk> getDirtyChunks(World world) {
-        List<Chunk> dirtyChunks = new ArrayList<>();
+        // Use the existing getDirtyChunks method from World class
+        List<Chunk> dirtyChunks = world.getDirtyChunks();
+        System.out.println("[SAVE-DEBUG] Found " + dirtyChunks.size() + " dirty chunks to save");
         
-        // Get all loaded chunks and filter for dirty ones
-        java.util.Collection<Chunk> allChunks = world.getAllLoadedChunks();
-        System.out.println("[SAVE-DEBUG] Checking " + allChunks.size() + " loaded chunks for dirty status");
-        
-        int dirtyCount = 0;
-        for (Chunk chunk : allChunks) {
-            if (chunk.isDirty()) {
-                dirtyChunks.add(chunk);
-                dirtyCount++;
-                System.out.println("[SAVE-DEBUG] Found dirty chunk: (" + chunk.getChunkX() + "," + chunk.getChunkZ() + ")");
-            }
+        for (Chunk chunk : dirtyChunks) {
+            System.out.println("[SAVE-DEBUG] Dirty chunk: (" + chunk.getChunkX() + "," + chunk.getChunkZ() + ")");
         }
         
-        System.out.println("[SAVE-DEBUG] Total dirty chunks found: " + dirtyCount + " out of " + allChunks.size());
         return dirtyChunks;
     }
     

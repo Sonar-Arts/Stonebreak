@@ -8,7 +8,7 @@ import com.stonebreak.blocks.BlockType;
  */
 public class ChunkDataOperations {
     
-    private final ChunkData chunkData;
+    private final ChunkDataBuffer chunkData;
     private final ChunkInternalStateManager stateManager;
     
     /**
@@ -16,7 +16,7 @@ public class ChunkDataOperations {
      * @param chunkData The chunk data to operate on
      * @param stateManager The state manager for dirty marking
      */
-    public ChunkDataOperations(ChunkData chunkData, ChunkInternalStateManager stateManager) {
+    public ChunkDataOperations(ChunkDataBuffer chunkData, ChunkInternalStateManager stateManager) {
         this.chunkData = chunkData;
         this.stateManager = stateManager;
     }
@@ -123,7 +123,7 @@ public class ChunkDataOperations {
      * Gets the chunk data being operated on.
      * @return The chunk data
      */
-    public ChunkData getChunkData() {
+    public ChunkDataBuffer getChunkData() {
         return chunkData;
     }
     

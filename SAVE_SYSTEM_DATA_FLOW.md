@@ -48,47 +48,53 @@ STONEBREAK SAVE SYSTEM DATA FLOW
 ```
 worlds/
 ├── [worldName1]/                    ← World-specific directory
-│   ├── world.json                   ← WorldSaveMetadata (JSON)
-│   ├── player.json                  ← PlayerData (JSON) 
-│   ├── entities.json               ← EntityData[] (JSON)
-│   ├── chunks/                     ← Chunk files directory
-│   │   ├── chunk_0_0.json          ← ChunkData (JSON w/ RLE compression)
-│   │   ├── chunk_0_1.json          ← ChunkData (JSON w/ RLE compression)
-│   │   ├── chunk_1_0.json          ← ChunkData (JSON w/ RLE compression)
-│   │   └── ...                     ← More chunk files
+│   ├── world.dat                    ← BinaryWorldMetadata (Binary format)
+│   ├── player.dat                   ← BinaryPlayerData (Binary format) 
+│   ├── entities.dat                ← EntityData[] (Binary format)
+│   ├── regions/                    ← Region files directory
+│   │   ├── r.0.0.mcr               ← RegionFile (32×32 chunks, binary compressed)
+│   │   ├── r.0.1.mcr               ← RegionFile (32×32 chunks, binary compressed)
+│   │   ├── r.1.0.mcr               ← RegionFile (32×32 chunks, binary compressed)
+│   │   └── ...                     ← More region files
 │   └── backups/                    ← Automatic backup directory
-│       ├── world_backup_TIMESTAMP.json
-│       ├── player_backup_TIMESTAMP.json
-│       └── entities_backup_TIMESTAMP.json
+│       ├── world_backup_TIMESTAMP.dat
+│       ├── player_backup_TIMESTAMP.dat
+│       └── entities_backup_TIMESTAMP.dat
 │
 ├── [worldName2]/                    ← Another world
-│   ├── world.json
-│   ├── player.json
+│   ├── world.dat
+│   ├── player.dat
 │   └── ...
 └── ...
 ```
 
 ## Data Models & Contents
 
-### WorldSaveMetadata.java (world.json)
+### BinaryWorldMetadata.java (world.dat)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        WorldSaveMetadata.java                          │
-│                         (world.json)                                   │
+│                        BinaryWorldMetadata.java                        │
+│                         (world.dat - Binary Format)                    │
 ├─────────────────────────────────────────────────────────────────────────┤
-│ • worldName          : String    (World display name)                  │
-│ • seed               : long      (World generation seed)               │
-│ • spawnX, spawnY, spawnZ : float (Spawn coordinates)                   │
-│ • creationTime       : LocalDateTime (When world was created)          │
-│ • lastPlayed         : LocalDateTime (Last play session)               │
-│ • totalPlayTimeMillis: long      (Total play time)                     │
-│ • gameVersion        : String    (Game version compatibility)          │
-│ • difficulty         : String    (Game difficulty setting)             │
-│ • gameMode           : String    (SURVIVAL/CREATIVE)                   │
-│ • worldType          : String    (DEFAULT/FLAT/etc)                    │
-│ • preGeneratedChunks : int       (Chunk generation counter)            │
-│ • schemaVersion      : Integer   (Save format version)                 │
+│ HEADER (32 bytes):                                                      │
+│ • magicNumber        : int       (0x53544F4E - "STON" validation)       │
+│ • formatVersion      : int       (Binary format version)                │
+│ • createdTime        : long      (Creation timestamp)                   │
+│ • lastPlayed         : long      (Last played timestamp)                │
+│ • totalPlayTime      : long      (Total play time milliseconds)         │
+│ • dataSize          : int       (Size of variable data section)         │
+│                                                                         │
+│ CORE DATA (variable size):                                              │
+│ • seed               : long      (World generation seed)                │
+│ • worldName          : String    (Length-prefixed UTF-8)                │
+│ • spawnPosition      : Vector3f  (12 bytes: x, y, z floats)            │
+│ • gameMode           : int       (0=Survival, 1=Creative)               │
+│ • cheatsEnabled      : byte      (Boolean flag)                        │
+│                                                                         │
+│ CUSTOM PROPERTIES (variable):                                           │
+│ • propertyCount      : int       (Number of key-value pairs)            │
+│ • properties[]       : String    (Key-value pairs for extensibility)   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -126,35 +132,41 @@ worlds/
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### ChunkData.java (chunks/chunk_X_Z.json)
+### Binary Chunk Data (regions/r.X.Z.mcr)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           ChunkData.java                               │
-│                      (chunks/chunk_X_Z.json)                           │
+│                          Binary Chunk System                           │
+│                       (regions/r.X.Z.mcr files)                        │
 ├─────────────────────────────────────────────────────────────────────────┤
-│ CHUNK IDENTIFICATION:                                                   │
-│ • chunkX, chunkZ     : int       (Chunk coordinates)                   │
+│ REGION FILE STRUCTURE:                                                  │
+│ • Header (8KB):     Chunk offset/length tables for 32×32 chunks        │
+│ • Chunk Data:       Variable-size compressed chunk blocks               │
 │                                                                         │
-│ COMPRESSED BLOCK DATA (Run-Length Encoding):                           │
-│ • blocks[]           : BlockEntry[] (RLE compressed block data)        │
-│   └─ BlockEntry:                                                       │
-│      • blockId       : int       (Block type ID)                      │
-│      • runLength     : int       (Consecutive block count)             │
+│ INDIVIDUAL CHUNK FORMAT:                                                │
+│ • ChunkHeader (32 bytes):                                               │
+│   - chunkX, chunkZ    : int       (Chunk coordinates)                  │
+│   - version           : int       (Binary format version)               │
+│   - uncompressedSize  : int       (Size before compression)            │
+│   - lastModified      : long      (Unix timestamp)                     │
+│   - paletteSize       : int       (Number of unique blocks)            │
+│   - bitsPerBlock      : byte      (Palette bit depth: 1-8)             │
+│   - compressionType   : byte      (0=None, 1=LZ4)                      │
+│   - flags             : byte      (Dirty, PlayerModified, Features)    │
 │                                                                         │
-│ MODIFICATION TRACKING:                                                  │
-│ • isDirty            : boolean   (Has unsaved changes)                 │
-│ • lastModified       : LocalDateTime (Last modification time)          │
-│ • generatedByPlayer  : boolean   (Player vs world generation)          │
-│ • featuresPopulated  : boolean   (Trees/ores/structures added)         │
+│ • BlockPalette (variable):                                              │
+│   - Unique block types in chunk mapped to palette indexes              │
+│   - Optimal bit depth: 1-8 bits per block (vs 32 bits normally)       │
 │                                                                         │
-│ METADATA:                                                               │
-│ • version            : int       (Chunk format version)                │
-│ • compressionType    : String    ("RLE" - Run-Length Encoding)         │
+│ • Bit-packed Block Data:                                                │
+│   - All chunk blocks stored using palette indexes                      │
+│   - Additional LZ4 compression applied to entire payload               │
 │                                                                         │
-│ COMPRESSION STATS:                                                      │
-│ • Achieves 80%+ compression on sparse chunks (mostly air)              │
-│ • 16×256×16 = 65,536 blocks compressed to ~hundreds of entries         │
+│ COMPRESSION PERFORMANCE:                                                │
+│ • Achieves 75-97% size reduction (vs uncompressed)                     │
+│ • Air-only chunks: 97% reduction (1 bit/block)                         │
+│ • Complex chunks: 50-75% reduction (5-8 bits/block)                    │
+│ • 16×256×16 = 65,536 blocks → ~2KB-8KB per chunk                       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -283,20 +295,24 @@ worlds/
 
 ### Key Classes
 
-- **WorldManager**: Main coordination point for all save/load operations
-- **WorldSaver**: Handles asynchronous world saving with auto-save and backup creation
-- **WorldLoader**: Loads world data with granular progress tracking
-- **ChunkFileManager**: Manages chunk serialization with compression and validation
+- **WorldManager**: Main coordination point for all save/load operations (integrates with binary system)
+- **RegionFileManager**: Handles binary region file operations and caching
+- **BinaryChunkCodec**: Encodes/decodes chunks using palette compression + LZ4
+- **BlockPalette**: Optimizes block storage with 1-8 bits per block (vs 32 bits)
+- **RegionFile**: Manages individual .mcr files containing 32×32 chunks
+- **BinaryWorldMetadata**: Efficient binary world metadata storage
+- **ChunkHeader**: 32-byte binary header for each chunk with flags and compression info
 - **SaveFileValidator**: Comprehensive validation with checksum verification
 - **CorruptionRecoveryManager**: Multi-strategy corruption recovery with backup management
 
 ### Data Serialization
 
-All data is serialized using **Jackson JSON** with:
-- **JavaTimeModule** for LocalDateTime support
-- **Custom annotations** for field mapping
-- **Schema versioning** for backward compatibility
-- **Compression** for large data structures
+All data is serialized using **Binary Format** with:
+- **Custom binary protocols** optimized for game data
+- **Block palette system** for efficient chunk storage
+- **LZ4 compression** for fast compression/decompression
+- **Magic numbers and version headers** for validation
+- **Bit-packing** to minimize storage requirements
 
 ### Thread Safety
 

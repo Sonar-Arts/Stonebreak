@@ -522,12 +522,243 @@ public class MenuRenderer extends BaseRenderer {
         try (MemoryStack stack = stackPush()) {
             float x = centerX - width / 2.0f;
             float lineHeight = 1.5f;
-            
+
             // Draw the separator line with a subtle color
             nvgBeginPath(vg);
             nvgRect(vg, x, y, width, lineHeight);
             nvgFillColor(vg, nvgRGBA(150, 150, 150, 100, NVGColor.malloc(stack)));
             nvgFill(vg);
         }
+    }
+
+    /**
+     * Renders the world selection screen with scrollable world list and UI elements.
+     */
+    public void renderWorldSelectScreen(int width, int height, java.util.List<String> worldList, int selectedIndex,
+                                       boolean showCreateDialog, int scrollOffset, int visibleItems, boolean createButtonSelected) {
+        float centerX = width / 2.0f;
+        float centerY = height / 2.0f;
+
+        // Draw dirt background with overlay
+        drawDirtBackground(width, height, 40);
+
+        // Calculate panel dimensions
+        float panelWidth = Math.min(600, width * 0.8f);
+        float panelHeight = Math.min(500, height * 0.8f);
+        float panelX = centerX - panelWidth / 2;
+        float panelY = centerY - panelHeight / 2;
+
+        // Draw main panel
+        drawMinecraftPanel(panelX, panelY, panelWidth, panelHeight);
+
+        // Draw title
+        float titleY = panelY + 40;
+        drawSettingsTitle(centerX, titleY, "SELECT WORLD");
+
+        // Calculate world list area
+        float listStartY = titleY + 60;
+        float listHeight = panelHeight - 160; // Leave space for title and buttons
+        float itemHeight = 40;
+
+        // Draw world list
+        if (!worldList.isEmpty()) {
+            for (int i = 0; i < Math.min(visibleItems, worldList.size()); i++) {
+                int worldIndex = i + scrollOffset;
+                if (worldIndex >= worldList.size()) break;
+
+                String worldName = worldList.get(worldIndex);
+                float itemY = listStartY + i * itemHeight;
+                boolean isSelected = worldIndex == selectedIndex;
+
+                // Draw world item background
+                try (MemoryStack stack = stackPush()) {
+                    if (isSelected) {
+                        nvgBeginPath(vg);
+                        nvgRect(vg, panelX + 10, itemY, panelWidth - 20, itemHeight - 2);
+                        nvgFillColor(vg, nvgRGBA(100, 100, 120, 200, NVGColor.malloc(stack)));
+                        nvgFill(vg);
+                    }
+
+                    // Draw world name
+                    nvgFontSize(vg, 18);
+                    nvgFontFace(vg, getFontName());
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                    nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+                    nvgText(vg, panelX + 20, itemY + itemHeight / 2, worldName);
+                }
+            }
+        } else {
+            // No worlds message
+            try (MemoryStack stack = stackPush()) {
+                nvgFontSize(vg, 16);
+                nvgFontFace(vg, getFontName());
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, listStartY + listHeight / 2, "No worlds found. Create a new world to get started!");
+            }
+        }
+
+        // Draw buttons at bottom
+        float buttonY = panelY + panelHeight - 60;
+        float buttonWidth = 120;
+        float buttonHeight = 35;
+        float buttonSpacing = 20;
+
+        // Create New World button
+        float createButtonX = centerX - buttonWidth - buttonSpacing / 2;
+        drawMinecraftButton("Create New", createButtonX, buttonY, buttonWidth, buttonHeight, createButtonSelected);
+
+        // Load Selected World button (only show if world is selected)
+        if (selectedIndex >= 0 && selectedIndex < worldList.size()) {
+            float loadButtonX = centerX + buttonSpacing / 2;
+            drawMinecraftButton("Load World", loadButtonX, buttonY, buttonWidth, buttonHeight, false);
+        }
+
+        // Back button
+        float backButtonX = panelX + 10;
+        float backButtonY = panelY + 10;
+        drawMinecraftButton("Back", backButtonX, backButtonY, 80, 30, false);
+    }
+
+    /**
+     * Renders the create world dialog container background.
+     */
+    public void renderCreateDialogContainer(int width, int height) {
+        float centerX = width / 2.0f;
+        float centerY = height / 2.0f;
+
+        // Calculate dialog dimensions
+        float dialogWidth = Math.min(400, width * 0.6f);
+        float dialogHeight = Math.min(300, height * 0.5f);
+        float dialogX = centerX - dialogWidth / 2;
+        float dialogY = centerY - dialogHeight / 2;
+
+        // Draw semi-transparent overlay
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, width, height);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+
+        // Draw dialog panel
+        drawMinecraftPanel(dialogX, dialogY, dialogWidth, dialogHeight);
+
+        // Draw dialog title
+        float titleY = dialogY + 40;
+        drawSettingsTitle(centerX, titleY, "CREATE NEW WORLD");
+
+        // Draw labels for input fields
+        try (MemoryStack stack = stackPush()) {
+            nvgFontSize(vg, 16);
+            nvgFontFace(vg, getFontName());
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+
+            // World name label
+            nvgText(vg, dialogX + 20, dialogY + 100, "World Name:");
+
+            // Seed label
+            nvgText(vg, dialogX + 20, dialogY + 160, "Seed (optional):");
+        }
+    }
+
+    // ===== Text Input Rendering Methods =====
+
+    public void drawTextInputBackground(float x, float y, float width, float height, boolean focused, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+
+        // Background color - darker when focused
+        if (focused) {
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+        } else {
+            nvgFillColor(vg, nvgRGBA(30, 30, 30, 255, NVGColor.malloc(stack)));
+        }
+        nvgFill(vg);
+    }
+
+    public void drawTextInputBorder(float x, float y, float width, float height, boolean focused, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+
+        // Border color - blue when focused, gray when not
+        if (focused) {
+            nvgStrokeColor(vg, nvgRGBA(100, 150, 255, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 2.0f);
+        } else {
+            nvgStrokeColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 1.0f);
+        }
+        nvgStroke(vg);
+    }
+
+    public void drawTextInputIcon(float x, float y, float size, String iconType, MemoryStack stack) {
+        // Simple icon drawing - can be enhanced with actual icons later
+        nvgBeginPath(vg);
+        nvgCircle(vg, x + size/2, y + size/2, size/3);
+        nvgFillColor(vg, nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+    }
+
+    public void drawTextInputText(float x, float y, String text, boolean isPlaceholder, MemoryStack stack) {
+        nvgFontSize(vg, 16);
+        nvgFontFace(vg, getFontName());
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+
+        if (isPlaceholder) {
+            // Placeholder text - lighter gray
+            nvgFillColor(vg, nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
+        } else {
+            // Regular text - white
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        }
+
+        nvgText(vg, x, y, text);
+    }
+
+    public void drawTextInputCursor(float x, float y1, float y2, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x, y1);
+        nvgLineTo(vg, x, y2);
+        nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStroke(vg);
+    }
+
+    public void drawValidationIndicator(float x, float y, float size, boolean isValid, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgCircle(vg, x + size/2, y + size/2, size/2);
+
+        if (isValid) {
+            // Green checkmark circle
+            nvgFillColor(vg, nvgRGBA(50, 200, 50, 255, NVGColor.malloc(stack)));
+        } else {
+            // Red error circle
+            nvgFillColor(vg, nvgRGBA(200, 50, 50, 255, NVGColor.malloc(stack)));
+        }
+        nvgFill(vg);
+
+        // Draw simple indicator mark
+        nvgBeginPath(vg);
+        if (isValid) {
+            // Simple checkmark
+            float centerX = x + size/2;
+            float centerY = y + size/2;
+            nvgMoveTo(vg, centerX - size/4, centerY);
+            nvgLineTo(vg, centerX - size/8, centerY + size/8);
+            nvgLineTo(vg, centerX + size/4, centerY - size/4);
+        } else {
+            // Simple X
+            float centerX = x + size/2;
+            float centerY = y + size/2;
+            nvgMoveTo(vg, centerX - size/4, centerY - size/4);
+            nvgLineTo(vg, centerX + size/4, centerY + size/4);
+            nvgMoveTo(vg, centerX + size/4, centerY - size/4);
+            nvgLineTo(vg, centerX - size/4, centerY + size/4);
+        }
+        nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        nvgStrokeWidth(vg, 1.5f);
+        nvgStroke(vg);
     }
 }

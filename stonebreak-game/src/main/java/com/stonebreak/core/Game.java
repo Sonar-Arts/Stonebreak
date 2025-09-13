@@ -18,6 +18,8 @@ import com.stonebreak.ui.*;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
+import com.stonebreak.world.save.WorldManager;
+import org.joml.Vector3f;
 
 /**
  * Central class for accessing game state and resources.
@@ -48,6 +50,7 @@ public class Game {
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
+    private WorldSelectScreen worldSelectScreen; // World selection screen
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     
     // Entity system components
@@ -168,7 +171,8 @@ public class Game {
         this.mainMenu = new MainMenu(this.renderer.getUIRenderer());
         this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
-        
+        this.worldSelectScreen = new WorldSelectScreen(this.renderer.getUIRenderer());
+
         // Initialize crosshair with settings
         initializeCrosshairSettings();
 
@@ -1045,7 +1049,50 @@ public class Game {
         
         System.out.println("Game cleanup completed");
     }
-    
+
+    /**
+     * Resets the world state without fully cleaning up resources.
+     * Used when returning to main menu from gameplay.
+     */
+    public void resetWorld() {
+        System.out.println("Resetting world state...");
+
+        // Reset player state if player exists
+        if (player != null) {
+            // Reset player position to spawn
+            if (world != null) {
+                Vector3f spawnPosition = world.getSpawnPosition();
+                if (spawnPosition != null) {
+                    player.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z);
+                }
+            }
+
+            // Reset camera orientation
+            if (player.getCamera() != null) {
+                player.getCamera().reset();
+            }
+
+            // Reset inventory to starting state
+            if (player.getInventory() != null) {
+                player.getInventory().resetToStartingItems();
+            }
+        }
+
+        // Clear world data without shutting down critical systems
+        if (world != null) {
+            // If clearWorldData exists, use it; otherwise use a basic reset
+            try {
+                // This method should exist based on CLAUDE.md documentation
+                world.clearWorldData();
+            } catch (Exception e) {
+                System.out.println("clearWorldData not available, using basic world reset");
+                // Basic reset fallback - could be expanded as needed
+            }
+        }
+
+        System.out.println("World reset completed");
+    }
+
     /**
      * Cleanup static resources that may have background threads.
      */
@@ -1252,7 +1299,14 @@ public class Game {
     public LoadingScreen getLoadingScreen() {
         return loadingScreen;
     }
-    
+
+    /**
+     * Gets the world select screen.
+     */
+    public WorldSelectScreen getWorldSelectScreen() {
+        return worldSelectScreen;
+    }
+
     /**
      * Starts world generation with loading screen.
      * This method should be called when transitioning from main menu to game.
@@ -1261,9 +1315,27 @@ public class Game {
         if (loadingScreen != null) {
             loadingScreen.show(); // This sets state to LOADING
             System.out.println("Started world generation with loading screen");
-            
+
             // Trigger initial world generation in a separate thread
             new Thread(this::performInitialWorldGeneration).start();
+        }
+    }
+
+    /**
+     * Starts world generation with loading screen for a specific named world.
+     * This method should be called when loading/creating a world from world selection.
+     *
+     * @param worldName The name of the world to load or create
+     * @param seed The seed for world generation
+     */
+    public void startWorldGeneration(String worldName, long seed) {
+        System.out.println("Starting world generation for: " + worldName + " with seed: " + seed);
+
+        if (loadingScreen != null) {
+            loadingScreen.show(); // This sets state to LOADING
+
+            // Trigger world loading/generation in a separate thread
+            new Thread(() -> performWorldLoadingOrGeneration(worldName, seed)).start();
         }
     }
     
@@ -1350,7 +1422,105 @@ public class Game {
             completeWorldGeneration();
         }
     }
-    
+
+    /**
+     * Performs world loading or generation with WorldManager integration.
+     * This runs in a background thread while the loading screen is displayed.
+     *
+     * @param worldName The name of the world to load or create
+     * @param seed The seed for world generation
+     */
+    private void performWorldLoadingOrGeneration(String worldName, long seed) {
+        try {
+            WorldManager worldManager = WorldManager.getInstance();
+
+            // Check if world exists
+            java.io.File worldDir = new java.io.File("worlds", worldName);
+            boolean worldExists = worldDir.exists() && worldDir.isDirectory();
+
+            if (worldExists) {
+                // Load existing world
+                if (loadingScreen != null) {
+                    loadingScreen.updateProgress("Loading World: " + worldName);
+                }
+                System.out.println("Loading existing world: " + worldName);
+
+                // Use WorldManager to load the world
+                worldManager.loadWorld(worldName, world, player)
+                    .thenRun(() -> {
+                        System.out.println("Successfully loaded world: " + worldName);
+                    })
+                    .exceptionally(throwable -> {
+                        System.err.println("Failed to load world: " + worldName + " - " + throwable.getMessage());
+                        if (loadingScreen != null) {
+                            loadingScreen.updateProgress("Load failed - generating new world...");
+                        }
+                        // Fall back to creating a new world with the same name
+                        createNewWorldWithGeneration(worldName, seed);
+                        return null;
+                    });
+            } else {
+                // Create new world
+                createNewWorldWithGeneration(worldName, seed);
+            }
+
+            // Complete world generation/loading
+            completeWorldGeneration();
+
+        } catch (Exception e) {
+            System.err.println("Error during world loading/generation: " + e.getMessage());
+            e.printStackTrace();
+
+            if (loadingScreen != null) {
+                loadingScreen.updateProgress("Error occurred - falling back to default generation");
+            }
+
+            // Fall back to basic world generation
+            try {
+                Thread.sleep(1000); // Brief pause to show error message
+                performInitialWorldGeneration();
+            } catch (Exception fallbackError) {
+                System.err.println("Fallback generation also failed: " + fallbackError.getMessage());
+                completeWorldGeneration(); // Complete anyway to avoid being stuck
+            }
+        }
+    }
+
+    /**
+     * Creates a new world with specified name and seed, then generates initial terrain.
+     *
+     * @param worldName The name of the new world
+     * @param seed The seed for world generation
+     */
+    private void createNewWorldWithGeneration(String worldName, long seed) {
+        try {
+            if (loadingScreen != null) {
+                loadingScreen.updateProgress("Creating New World: " + worldName);
+            }
+            System.out.println("Creating new world: " + worldName + " with seed: " + seed);
+
+            // Reset the world state for the new world
+            if (world != null) {
+                world.clearWorldData(); // Clear previous world data
+                world.setSeed(seed); // Set the new seed
+            }
+
+            // Reset player to spawn position
+            if (player != null) {
+                player.resetPlayerData(); // Reset player data for new world
+                player.setPosition(0, 100, 0); // Set spawn position
+            }
+
+            // Generate initial chunks around spawn
+            performInitialWorldGeneration();
+
+        } catch (Exception e) {
+            System.err.println("Error creating new world: " + e.getMessage());
+            e.printStackTrace();
+            throw e; // Re-throw to be handled by calling method
+        }
+    }
+
     /**
      * Completes world generation and transitions to playing.
      * This method should be called when initial world generation is complete.

@@ -14,6 +14,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -55,6 +58,12 @@ public class WorldManager {
     private final AtomicLong sessionStartTime;
     private String currentWorldName;
     
+    // Binary auto-save functionality
+    private final ScheduledExecutorService binaryAutoSaveScheduler;
+    private ScheduledFuture<?> binaryAutoSaveTask;
+    private volatile World binaryAutoSaveWorld;
+    private volatile Player binaryAutoSavePlayer;
+    
     /**
      * Private constructor for singleton pattern.
      */
@@ -83,6 +92,13 @@ public class WorldManager {
         // Create dedicated thread pool for save/load operations
         this.saveLoadExecutor = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "WorldManager-SaveLoad");
+            t.setDaemon(true);
+            return t;
+        });
+        
+        // Create binary auto-save scheduler
+        this.binaryAutoSaveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "BinaryAutoSave");
             t.setDaemon(true);
             return t;
         });
@@ -394,6 +410,7 @@ public class WorldManager {
     
     /**
      * Starts auto-save for the current world.
+     * Uses binary format for new worlds, legacy JSON for old worlds.
      * 
      * @param world The world to auto-save
      * @param player The player to auto-save
@@ -404,15 +421,79 @@ public class WorldManager {
             return;
         }
         
-        worldSaver.startAutoSave(world, player, currentWorldName);
-        System.out.println("Auto-save started for world: " + currentWorldName);
+        if (usesBinaryFormat(currentWorldName)) {
+            // For binary format worlds, start our own auto-save
+            startBinaryAutoSave(world, player);
+        } else {
+            // For legacy JSON worlds, use the old WorldSaver
+            worldSaver.startAutoSave(world, player, currentWorldName);
+        }
+        System.out.println("Auto-save started for world: " + currentWorldName + " (format: " + 
+                          (usesBinaryFormat(currentWorldName) ? "binary" : "legacy JSON") + ")");
+    }
+    
+    /**
+     * Start binary auto-save for the current world.
+     * @param world World to auto-save
+     * @param player Player to auto-save
+     */
+    private void startBinaryAutoSave(World world, Player player) {
+        // Stop existing binary auto-save if running
+        stopBinaryAutoSave();
+        
+        // Store references for auto-save
+        this.binaryAutoSaveWorld = world;
+        this.binaryAutoSavePlayer = player;
+        
+        // Schedule auto-save every 30 seconds
+        this.binaryAutoSaveTask = binaryAutoSaveScheduler.scheduleWithFixedDelay(() -> {
+            try {
+                System.out.println("Binary auto-save triggered for world: " + currentWorldName);
+                
+                // Set up region file manager if needed
+                setupRegionFileManager(currentWorldName);
+                
+                // Save world and player metadata
+                saveBinaryMetadata(currentWorldName, binaryAutoSaveWorld, binaryAutoSavePlayer);
+                
+                // Save dirty chunks
+                saveBinaryChunks(binaryAutoSaveWorld);
+                
+                System.out.println("Binary auto-save completed for world: " + currentWorldName);
+                
+            } catch (Exception e) {
+                System.err.println("Binary auto-save failed for world " + currentWorldName + ": " + e.getMessage());
+                e.printStackTrace();
+            }
+        }, 30, 30, TimeUnit.SECONDS);
+        
+        System.out.println("Binary auto-save scheduled for world: " + currentWorldName);
+    }
+    
+    /**
+     * Stop binary auto-save.
+     */
+    private void stopBinaryAutoSave() {
+        if (binaryAutoSaveTask != null && !binaryAutoSaveTask.isCancelled()) {
+            binaryAutoSaveTask.cancel(false);
+            binaryAutoSaveTask = null;
+            System.out.println("Binary auto-save stopped");
+        }
+        
+        this.binaryAutoSaveWorld = null;
+        this.binaryAutoSavePlayer = null;
     }
     
     /**
      * Stops auto-save for the current world.
      */
     public void stopAutoSave() {
+        // Stop binary auto-save
+        stopBinaryAutoSave();
+        
+        // Stop legacy auto-save
         worldSaver.stopAutoSave();
+        
         System.out.println("Auto-save stopped for world: " + currentWorldName);
     }
     

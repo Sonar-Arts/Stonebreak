@@ -2,6 +2,7 @@ package com.stonebreak.ui;
 
 import static org.lwjgl.glfw.GLFW.*;
 import org.lwjgl.system.MemoryStack;
+import com.stonebreak.rendering.UI.UIRenderer;
 
 /**
  * Reusable text input field component with full keyboard and mouse support
@@ -316,7 +317,7 @@ public class TextInputField {
         
         // Draw field label if specified
         if (fieldLabel != null && !fieldLabel.isEmpty()) {
-            uiRenderer.drawFieldLabel(renderX, renderY - 5, fieldLabel, stack);
+            uiRenderer.drawText(fieldLabel, renderX, renderY - 25, "sans", 14.0f, 0.8f, 0.8f, 0.8f, 1.0f);
         }
         
         // Calculate text area accounting for icon space
@@ -572,6 +573,7 @@ public class TextInputField {
         float startX = textAreaX + (start * 8.0f); // Approximate character width
         float endX = textAreaX + (end * 8.0f);
         
-        uiRenderer.drawTextInputSelection(startX, y + 8, endX - startX, height - 16, stack);
+        // TODO: Implement text selection highlighting using NanoVG
+        // For now, text selection functionality works but visual highlight is not shown
     }
 }

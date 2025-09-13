@@ -73,6 +73,9 @@ public class Player {      // Player settings
     private static final float NORMAL_JUMP_GRACE_PERIOD = 0.2f; // Grace period for normal jumps (200ms)
     private static final float FLY_SPEED = MOVE_SPEED * 2.5f; // Flight movement speed (250% of walking speed)
     private static final float FLY_VERTICAL_SPEED = 15.0f; // Vertical flight speed (ascent/descent)
+
+    // Player health
+    private float health = 20.0f; // Player health (full health)
     
     /**
      * Creates a new player in the specified world.
@@ -98,6 +101,7 @@ public class Player {      // Player settings
         this.wasJumpPressed = false;
         this.lastSpaceKeyTime = 0.0f;
         this.lastNormalJumpTime = 0.0f;
+        this.health = 20.0f;
     }
       /**
      * Updates the player's position and camera.
@@ -1328,6 +1332,13 @@ public class Player {      // Player settings
         position.set(x, y, z);
         camera.setPosition(x, y + PLAYER_HEIGHT * 0.8f, z);
     }
+
+    /**
+     * Sets the player's position.
+     */
+    public void setPosition(Vector3f position) {
+        setPosition(position.x, position.y, position.z);
+    }
     
     /**
      * Gets the player's position.
@@ -1392,6 +1403,13 @@ public class Player {      // Player settings
      */
     public Vector3f getVelocity() {
         return velocity;
+    }
+
+    /**
+     * Sets the player's velocity vector.
+     */
+    public void setVelocity(Vector3f velocity) {
+        this.velocity.set(velocity);
     }
 
     /**
@@ -1516,6 +1534,41 @@ public class Player {      // Player settings
     }
 
     /**
+     * Returns whether the player is currently on the ground.
+     */
+    public boolean isOnGround() {
+        return onGround;
+    }
+
+    /**
+     * Returns the player's current health.
+     */
+    public float getHealth() {
+        return health;
+    }
+
+    /**
+     * Sets whether the player is on the ground.
+     */
+    public void setOnGround(boolean onGround) {
+        this.onGround = onGround;
+    }
+
+    /**
+     * Sets whether the player is flying.
+     */
+    public void setFlying(boolean flying) {
+        this.isFlying = flying;
+    }
+
+    /**
+     * Sets the player's health.
+     */
+    public void setHealth(float health) {
+        this.health = health;
+    }
+
+    /**
      * Attempts to drop an item as a block in front of the player.
      * @param itemToDrop The ItemStack to drop.
      * @return true if the item was successfully dropped, false otherwise.
@@ -1569,5 +1622,58 @@ public class Player {      // Player settings
                 return true;
             }
         }        return false;
+    }
+
+    /**
+     * Resets player data for switching between worlds.
+     * This resets position, inventory, physics state, and camera orientation.
+     */
+    public void resetPlayerData() {
+        // Reset position to spawn
+        position.set(0, 100, 0);
+
+        // Reset velocity and physics state
+        velocity.set(0, 0, 0);
+        onGround = false;
+
+        // Reset water state
+        physicallyInWater = false;
+        wasInWaterLastFrame = false;
+        justExitedWaterThisFrame = false;
+        waterExitTime = 0.0f;
+
+        // Reset attack state
+        isAttacking = false;
+        attackAnimationTime = 0.0f;
+
+        // Reset block breaking state
+        breakingBlock = null;
+        breakingProgress = 0.0f;
+        breakingTime = 0.0f;
+
+        // Reset walking sound state
+        walkingSoundTimer = 0.0f;
+        wasMovingLastFrame = false;
+
+        // Reset flight state
+        isFlying = false;
+        wasJumpPressed = false;
+        lastSpaceKeyTime = 0.0f;
+        lastNormalJumpTime = 0.0f;
+
+        // Reset health
+        health = 20.0f;
+
+        // Reset camera orientation
+        if (camera != null) {
+            camera.reset();
+        }
+
+        // Reset inventory to starting items
+        if (inventory != null) {
+            inventory.resetToStartingItems();
+        }
+
+        System.out.println("Player data reset for world switching");
     }
 }

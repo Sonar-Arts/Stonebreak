@@ -1,8 +1,9 @@
 package com.stonebreak.world.save;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -53,9 +54,9 @@ public class BlockPalette {
         Set<BlockType> uniqueBlocks = new HashSet<>();
         
         // Collect all unique block types in the chunk
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int y = 0; y < World.WORLD_HEIGHT; y++) {
-                for (int z = 0; z < World.CHUNK_SIZE; z++) {
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                     uniqueBlocks.add(chunk.getBlock(x, y, z));
                 }
             }
@@ -204,7 +205,7 @@ public class BlockPalette {
      * @return Bit-packed block data
      */
     public long[] encodeChunk(Chunk chunk) {
-        int totalBlocks = World.CHUNK_SIZE * World.WORLD_HEIGHT * World.CHUNK_SIZE;
+        int totalBlocks = WorldConfiguration.CHUNK_SIZE * WorldConfiguration.WORLD_HEIGHT * WorldConfiguration.CHUNK_SIZE;
         int bitsNeeded = totalBlocks * bitsPerBlock;
         int longsNeeded = (bitsNeeded + 63) / 64; // Round up to nearest long
         
@@ -212,9 +213,9 @@ public class BlockPalette {
         int currentLong = 0;
         int currentBit = 0;
         
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int y = 0; y < World.WORLD_HEIGHT; y++) {
-                for (int z = 0; z < World.CHUNK_SIZE; z++) {
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                     BlockType block = chunk.getBlock(x, y, z);
                     int paletteIndex = getIndex(block);
                     
@@ -266,9 +267,9 @@ public class BlockPalette {
         int currentBit = 0;
         long mask = (1L << bitsPerBlock) - 1;
         
-        for (int x = 0; x < World.CHUNK_SIZE; x++) {
-            for (int y = 0; y < World.WORLD_HEIGHT; y++) {
-                for (int z = 0; z < World.CHUNK_SIZE; z++) {
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                     int paletteIndex;
                     
                     if (currentBit + bitsPerBlock > 64) {

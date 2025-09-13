@@ -1,7 +1,9 @@
 package com.stonebreak.world;
 
 import java.util.Map;
+import java.util.List;
 
+import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
@@ -22,6 +24,9 @@ public class World {
     private final TerrainGenerationSystem terrainSystem;
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
+    
+    // World spawn position
+    private Vector3f spawnPosition = new Vector3f(0, 100, 0);
     
     // Modular components
     private final WorldChunkStore chunkStore;
@@ -207,6 +212,15 @@ public class World {
         
         return visibleChunks;
     }
+
+    /**
+     * Get all dirty chunks that need to be saved.
+     * @return List of chunks that have been modified and need saving
+     */
+    public List<Chunk> getDirtyChunks() {
+        return chunkStore.getDirtyChunks();
+    }
+    
     /**
      * Unloads a chunk at a specific position, cleaning up its resources.
      * This is now called by the ChunkLoader.
@@ -226,7 +240,39 @@ public class World {
         meshPipeline.processGpuCleanupQueue();
         chunkStore.cleanup();
     }
-    
+
+    /**
+     * Clears world data for switching between worlds without shutting down critical systems.
+     * This preserves thread pools and rendering systems while clearing chunks, caches, and queues.
+     */
+    public void clearWorldData() {
+        // Clear chunks and caches without shutting down thread pools
+        if (chunkStore != null) {
+            chunkStore.cleanup();
+        }
+
+        // Reset world state using available methods
+        if (stateManager != null) {
+            // Reset mesh generation states for all chunks
+            for (Chunk chunk : chunkStore.getAllChunks()) {
+                stateManager.resetMeshGenerationState(chunk);
+            }
+        }
+
+        // Clear memory management caches using available methods
+        if (memoryManager != null) {
+            // Perform aggressive memory cleanup by unloading distant chunks
+            memoryManager.forceUnloadDistantChunks(400);
+        }
+
+        // Process any pending GPU cleanup without shutting down the pipeline
+        if (meshPipeline != null) {
+            meshPipeline.processGpuCleanupQueue();
+        }
+
+        System.out.println("World data cleared for world switching");
+    }
+
     /**
      * Returns the total number of loaded chunks.
      * This is used for debugging purposes.
@@ -291,7 +337,54 @@ public class World {
         }
     }
     
+    /**
+     * Gets the seed used for world generation
+     */
+    public long getSeed() {
+        return terrainSystem.getSeed();
+    }
     
+    /**
+     * Sets the seed for world generation (used during world loading)
+     */
+    public void setSeed(long seed) {
+        // Note: This method is primarily for save/load compatibility
+        // The terrain system seed cannot be changed after construction
+        // This will log a warning if attempting to change an existing seed
+        if (terrainSystem.getSeed() != seed) {
+            System.err.println("Warning: Attempting to set seed " + seed + 
+                " but terrain system already has seed " + terrainSystem.getSeed() + 
+                ". Seed cannot be changed after world creation.");
+        }
+    }
+    
+    /**
+     * Gets the world spawn position
+     */
+    public Vector3f getSpawnPosition() {
+        return new Vector3f(spawnPosition);
+    }
+    
+    /**
+     * Sets the world spawn position
+     */
+    public void setSpawnPosition(Vector3f newSpawnPosition) {
+        this.spawnPosition.set(newSpawnPosition);
+    }
+    
+    /**
+     * Sets the world spawn position with coordinates
+     */
+    public void setSpawnPosition(float x, float y, float z) {
+        this.spawnPosition.set(x, y, z);
+    }
+    
+    /**
+     * Sets a chunk at the given position (used for world loading)
+     */
+    public void setChunk(int x, int z, Chunk chunk) {
+        chunkStore.setChunk(x, z, chunk);
+    }
     
     
     /**

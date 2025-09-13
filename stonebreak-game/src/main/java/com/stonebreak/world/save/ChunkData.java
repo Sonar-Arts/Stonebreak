@@ -2,8 +2,8 @@ package com.stonebreak.world.save;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.Chunk;
-import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -86,9 +86,9 @@ public class ChunkData {
         BlockType currentBlock = null;
         int runLength = 0;
         
-        for (int y = 0; y < World.WORLD_HEIGHT; y++) {
-            for (int x = 0; x < World.CHUNK_SIZE; x++) {
-                for (int z = 0; z < World.CHUNK_SIZE; z++) {
+        for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+            for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+                for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                     BlockType block = chunk.getBlock(x, y, z);
                     
                     if (block == currentBlock) {
@@ -145,17 +145,17 @@ public class ChunkData {
             
             // Place blocks for the run length
             for (int i = 0; i < entry.getRunLength(); i++) {
-                if (position >= World.CHUNK_SIZE * World.WORLD_HEIGHT * World.CHUNK_SIZE) {
+                if (position >= WorldConfiguration.CHUNK_SIZE * WorldConfiguration.WORLD_HEIGHT * WorldConfiguration.CHUNK_SIZE) {
                     System.err.println("Warning: Chunk data overflow at position " + position + 
                                      " for chunk (" + chunkX + "," + chunkZ + ")");
                     return;
                 }
                 
                 // Convert 1D position back to 3D coordinates (Y-major order)
-                int y = position / (World.CHUNK_SIZE * World.CHUNK_SIZE);
-                int temp = position % (World.CHUNK_SIZE * World.CHUNK_SIZE);
-                int x = temp / World.CHUNK_SIZE;
-                int z = temp % World.CHUNK_SIZE;
+                int y = position / (WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE);
+                int temp = position % (WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE);
+                int x = temp / WorldConfiguration.CHUNK_SIZE;
+                int z = temp % WorldConfiguration.CHUNK_SIZE;
                 
                 chunk.setBlock(x, y, z, blockType);
                 position++;
@@ -185,7 +185,7 @@ public class ChunkData {
      * Returns an estimate of the compression ratio achieved.
      */
     public double getCompressionRatio() {
-        int uncompressedSize = World.CHUNK_SIZE * World.WORLD_HEIGHT * World.CHUNK_SIZE;
+        int uncompressedSize = WorldConfiguration.CHUNK_SIZE * WorldConfiguration.WORLD_HEIGHT * WorldConfiguration.CHUNK_SIZE;
         int compressedSize = blocks.size();
         return (double) compressedSize / uncompressedSize;
     }

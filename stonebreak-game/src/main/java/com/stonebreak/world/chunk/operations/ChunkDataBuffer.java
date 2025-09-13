@@ -7,7 +7,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Immutable data container for chunk block data.
  * Represents the 3D block array and metadata for a chunk.
  */
-public class ChunkData {
+public class ChunkDataBuffer {
     
     private final int chunkX;
     private final int chunkZ;
@@ -18,7 +18,7 @@ public class ChunkData {
      * @param chunkX The chunk's X coordinate
      * @param chunkZ The chunk's Z coordinate
      */
-    public ChunkData(int chunkX, int chunkZ) {
+    public ChunkDataBuffer(int chunkX, int chunkZ) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.blocks = new BlockType[WorldConfiguration.CHUNK_SIZE][WorldConfiguration.WORLD_HEIGHT][WorldConfiguration.CHUNK_SIZE];

@@ -1,7 +1,8 @@
 package com.stonebreak.world.save;
 
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4SafeDecompressor;
 import net.jpountz.lz4.LZ4Factory;
@@ -155,7 +156,7 @@ public class BinaryChunkCodec {
         
         // Step 6: Set chunk metadata
         if (header.isDirty()) {
-            chunk.markDirty(header.isPlayerModified());
+            chunk.setDirty(header.isPlayerModified());
         }
         chunk.setFeaturesPopulated(header.isFeaturesPopulated());
         chunk.setLastModified(header.getLastModifiedAsDateTime());
@@ -209,7 +210,7 @@ public class BinaryChunkCodec {
         int paletteSize = 4 + (palette.size() * 4);
         
         // Block data size: 4 bytes (length) + bit-packed data
-        int totalBlocks = World.CHUNK_SIZE * World.WORLD_HEIGHT * World.CHUNK_SIZE;
+        int totalBlocks = WorldConfiguration.CHUNK_SIZE * WorldConfiguration.WORLD_HEIGHT * WorldConfiguration.CHUNK_SIZE;
         int bitsNeeded = totalBlocks * palette.getBitsPerBlock();
         int longsNeeded = (bitsNeeded + 63) / 64; // Round up
         int blockDataSize = 4 + (longsNeeded * 8);
@@ -231,7 +232,7 @@ public class BinaryChunkCodec {
     public CompressionStats calculateStats(Chunk chunk) {
         try {
             // Current system size estimation (BlockType enum = 4 bytes per block)
-            int currentSystemSize = World.CHUNK_SIZE * World.WORLD_HEIGHT * World.CHUNK_SIZE * 4;
+            int currentSystemSize = WorldConfiguration.CHUNK_SIZE * WorldConfiguration.WORLD_HEIGHT * WorldConfiguration.CHUNK_SIZE * 4;
             
             // New system size
             byte[] encoded = encodeChunk(chunk);

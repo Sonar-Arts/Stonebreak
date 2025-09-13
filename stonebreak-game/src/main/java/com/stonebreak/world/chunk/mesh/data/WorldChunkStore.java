@@ -64,9 +64,21 @@ public class WorldChunkStore {
     public Set<World.ChunkPosition> getAllChunkPositions() {
         return new HashSet<>(chunks.keySet());
     }
+
+    public Collection<Chunk> getAllChunks() {
+        return new ArrayList<>(chunks.values());
+    }
     
     public int getLoadedChunkCount() {
         return chunks.size();
+    }
+    
+    /**
+     * Sets a chunk at the given position (used for world loading)
+     */
+    public void setChunk(int x, int z, Chunk chunk) {
+        World.ChunkPosition position = getCachedChunkPosition(x, z);
+        chunks.put(position, chunk);
     }
     
     public void unloadChunk(int chunkX, int chunkZ) {
@@ -176,6 +188,20 @@ public class WorldChunkStore {
         int distanceToPlayer = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
         
         return distanceToPlayer <= config.getBorderChunkDistance();
+    }
+    
+    /**
+     * Get all chunks that are dirty and need to be saved.
+     * @return List of dirty chunks
+     */
+    public List<Chunk> getDirtyChunks() {
+        List<Chunk> dirtyChunks = new ArrayList<>();
+        for (Chunk chunk : chunks.values()) {
+            if (chunk != null && chunk.isDirty()) {
+                dirtyChunks.add(chunk);
+            }
+        }
+        return dirtyChunks;
     }
     
     public void cleanup() {

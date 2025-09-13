@@ -1,6 +1,6 @@
 package com.stonebreak.world.save;
 
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 
 import java.io.IOException;
 import java.nio.file.Files;

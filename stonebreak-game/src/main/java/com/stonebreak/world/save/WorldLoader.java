@@ -2,8 +2,9 @@ package com.stonebreak.world.save;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.world.World;
-import com.stonebreak.world.Chunk;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.ChunkPosition;
+import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.player.Player;
 
 import java.io.IOException;
@@ -505,8 +506,8 @@ public class WorldLoader {
         
         // Get player's chunk position
         org.joml.Vector3f playerPos = player.getPosition();
-        int playerChunkX = (int) Math.floor(playerPos.x / World.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(playerPos.z / World.CHUNK_SIZE);
+        int playerChunkX = (int) Math.floor(playerPos.x / WorldConfiguration.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(playerPos.z / WorldConfiguration.CHUNK_SIZE);
         
         // Determine render distance (use a reasonable default)
         int renderDistance = 8; // This should match World.RENDER_DISTANCE if accessible
@@ -630,8 +631,8 @@ public class WorldLoader {
         
         // Get player's chunk position
         org.joml.Vector3f playerPos = player.getPosition();
-        int playerChunkX = (int) Math.floor(playerPos.x / World.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(playerPos.z / World.CHUNK_SIZE);
+        int playerChunkX = (int) Math.floor(playerPos.x / WorldConfiguration.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(playerPos.z / WorldConfiguration.CHUNK_SIZE);
         
         // Determine render distance
         int renderDistance = 8;

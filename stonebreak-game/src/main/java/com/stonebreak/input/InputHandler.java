@@ -22,6 +22,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.WorkbenchScreen;
 import com.stonebreak.ui.WorldSelectScreen;
 import com.stonebreak.util.MemoryProfiler;
+import com.stonebreak.world.World;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
