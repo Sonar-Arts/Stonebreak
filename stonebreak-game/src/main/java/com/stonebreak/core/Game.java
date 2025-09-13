@@ -16,6 +16,7 @@ import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
 import com.stonebreak.world.save.WorldManager;
@@ -807,19 +808,34 @@ public class Game {
      * Sets the current game state.
      */
     public void setState(GameState state) {
+        System.out.println("DEBUG: Game.setState() called - transitioning from " + this.currentState + " to " + state);
+
         // Don't update previousGameState if we are just re-setting the same state
         if (this.currentState != state && state != null) {
             this.previousGameState = this.currentState;
+            System.out.println("DEBUG: Previous state saved as: " + this.previousGameState);
         }
         this.currentState = state;
-        
+        System.out.println("DEBUG: Current state set to: " + this.currentState);
+
+        // Special debug for world select screen
+        if (state == GameState.WORLD_SELECT) {
+            System.out.println("DEBUG: Transitioning to WORLD_SELECT state");
+            System.out.println("DEBUG: worldSelectScreen = " + (worldSelectScreen != null ? "not null" : "NULL"));
+            if (worldSelectScreen != null) {
+                System.out.println("DEBUG: worldSelectScreen class: " + worldSelectScreen.getClass().getName());
+            }
+        }
+
         // Update pause state based on game state
         updatePauseState(state);
-        
+
         // Update mouse capture state based on new game state
         if (mouseCaptureManager != null) {
             mouseCaptureManager.updateCaptureState();
         }
+
+        System.out.println("DEBUG: Game.setState() completed successfully");
     }
     
     /**

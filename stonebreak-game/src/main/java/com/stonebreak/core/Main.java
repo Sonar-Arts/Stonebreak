@@ -4,6 +4,7 @@ import java.nio.*;
 
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import org.lwjgl.*;
 import org.lwjgl.glfw.*;
 import static org.lwjgl.glfw.Callbacks.*;
@@ -163,14 +164,12 @@ public class Main {
                 }
             } else if (game != null && game.getState() == GameState.WORLD_SELECT) {
                 // Handle world select screen clicks
-                if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                    try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-                        java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
-                        java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
-                        glfwGetCursorPos(window, xpos, ypos);
-                        if (game.getWorldSelectScreen() != null) {
-                            game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height);
-                        }
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getWorldSelectScreen() != null) {
+                        game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
                 }
             } else if (game != null && game.getState() == GameState.SETTINGS) {
@@ -464,7 +463,7 @@ public class Main {
         renderer.beginUIFrame(width, height, 1.0f);
         if (screen instanceof com.stonebreak.ui.MainMenu mainMenu) {
             mainMenu.render(width, height);
-        } else if (screen instanceof com.stonebreak.ui.WorldSelectScreen worldSelectScreen) {
+        } else if (screen instanceof WorldSelectScreen worldSelectScreen) {
             worldSelectScreen.render(width, height);
         } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);

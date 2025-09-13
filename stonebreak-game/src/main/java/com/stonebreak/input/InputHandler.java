@@ -2,6 +2,8 @@ package com.stonebreak.input;
 
 import java.util.Arrays;
 
+import com.stonebreak.ui.*;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -14,13 +16,8 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.player.Player;
-import com.stonebreak.ui.InventoryScreen;
-import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.ui.WorkbenchScreen;
-import com.stonebreak.ui.WorldSelectScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 

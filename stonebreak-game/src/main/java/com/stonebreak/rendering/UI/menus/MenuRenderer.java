@@ -539,8 +539,8 @@ public class MenuRenderer extends BaseRenderer {
         float centerX = width / 2.0f;
         float centerY = height / 2.0f;
 
-        // Draw dirt background with overlay
-        drawDirtBackground(width, height, 40);
+        // Draw three-section background
+        drawTriSectionBackground(width, height);
 
         // Calculate panel dimensions
         float panelWidth = Math.min(600, width * 0.8f);
@@ -760,5 +760,116 @@ public class MenuRenderer extends BaseRenderer {
         nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
         nvgStrokeWidth(vg, 1.5f);
         nvgStroke(vg);
+    }
+
+    /**
+     * Draws a three-section background for the world select screen.
+     * Top section (15%): dirt texture
+     * Middle section (70%): stone texture
+     * Bottom section (15%): dirt texture
+     */
+    private void drawTriSectionBackground(int width, int height) {
+        // Calculate section heights
+        float topHeight = height * 0.15f;
+        float middleHeight = height * 0.70f;
+        float bottomHeight = height * 0.15f;
+
+        float middleY = topHeight;
+        float bottomY = topHeight + middleHeight;
+
+        // Draw top dirt section
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, width, topHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add overlay for consistency
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, width, topHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 40, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+
+        // Draw middle stone section
+        drawStoneBackground(0, middleY, width, middleHeight);
+
+        // Add subtle gradient at top of stone section
+        try (MemoryStack stack = stackPush()) {
+            NVGPaint gradientPaint = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, 0, middleY, 0, middleY + 20,
+                nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)),
+                nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)), gradientPaint);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, middleY, width, 20);
+            nvgFillPaint(vg, gradientPaint);
+            nvgFill(vg);
+        }
+
+        // Draw bottom dirt section
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, bottomY, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, bottomY, width, bottomHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add overlay for consistency
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, bottomY, width, bottomHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 40, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws a stone background texture extracted from the panel rendering logic.
+     * Used for the middle section of the world select screen.
+     */
+    private void drawStoneBackground(float x, float y, float w, float h) {
+        try (MemoryStack stack = stackPush()) {
+            // Base stone color fill
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillColor(vg, nvgRGBA(95, 95, 95, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+
+            // Add stone texture pattern - similar to drawMinecraftPanel but adapted for background
+            int textureRows = (int)(h / 12) + 1; // Adapt rows based on height
+            int textureCols = (int)(w / 12) + 1; // Adapt columns based on width
+
+            for (int i = 0; i < textureRows * textureCols; i++) {
+                float px = x + (i % textureCols) * 12;
+                float py = y + (i / textureCols) * 12;
+
+                // Skip if outside bounds
+                if (px >= x + w || py >= y + h) continue;
+
+                float size = 8; // Slightly smaller for background
+
+                nvgBeginPath(vg);
+                nvgRect(vg, px + (i % 3), py + (i % 2), size, size);
+
+                int variation = (i * 17) % 40;
+                nvgFillColor(vg, nvgRGBA(75 + variation/2, 75 + variation/2, 75 + variation/2, 80, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+
+            // Add subtle overall overlay to blend the texture
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 20, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
     }
 }

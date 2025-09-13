@@ -123,3 +123,10 @@ AGENTS.md
 Crash_log.txt
 crash_log.txt
 /DevTextures/
+
+# Git ignored files (Johnny)
+/Git ignored/
+
+# World data and Backups
+/backups/
+/worlds/
