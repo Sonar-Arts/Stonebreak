@@ -4,7 +4,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.worldSelect.config.WorldSelectConfig;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.world.save.WorldSaveMetadata;
+import com.stonebreak.world.save.core.WorldMetadata;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -169,7 +169,7 @@ public class WorldListRenderer {
      * Renders additional world information (last played, etc.).
      */
     private void renderWorldInfo(String worldName, float x, float y, MemoryStack stack) {
-        WorldSaveMetadata metadata = discoveryManager.getWorldMetadata(worldName);
+        WorldMetadata metadata = discoveryManager.getWorldMetadata(worldName);
         if (metadata == null) return;
 
         long vg = uiRenderer.getVG();
@@ -177,8 +177,8 @@ public class WorldListRenderer {
         // Format world info
         StringBuilder info = new StringBuilder();
 
-        if (metadata.getLastPlayed() != null) {
-            info.append("Last played: ").append(formatDateTime(metadata.getLastPlayed()));
+        if (metadata.getLastPlayed() > 0) {
+            info.append("Last played: ").append(formatTimestamp(metadata.getLastPlayed()));
         }
 
         if (metadata.getSeed() != 0) {
@@ -288,11 +288,15 @@ public class WorldListRenderer {
     }
 
     /**
-     * Formats a date/time for display purposes.
+     * Formats a timestamp for display purposes.
      */
-    private String formatDateTime(java.time.LocalDateTime dateTime) {
-        if (dateTime == null) return "Unknown";
+    private String formatTimestamp(long timestamp) {
+        if (timestamp <= 0) return "Unknown";
 
+        java.time.LocalDateTime dateTime = java.time.LocalDateTime.ofInstant(
+            java.time.Instant.ofEpochMilli(timestamp),
+            java.time.ZoneId.systemDefault()
+        );
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
 
         if (dateTime.toLocalDate().equals(now.toLocalDate())) {

@@ -53,5 +53,8 @@ module stonebreak.game {
     opens com.stonebreak.rendering.models.blocks to com.fasterxml.jackson.databind;
     
     // Open save system packages for Jackson serialization
-    opens com.stonebreak.world.save to com.fasterxml.jackson.databind;
+    opens com.stonebreak.world.save.core to com.fasterxml.jackson.databind;
+    opens com.stonebreak.world.save.storage.binary to com.fasterxml.jackson.databind;
+    opens com.stonebreak.world.save.storage.providers to com.fasterxml.jackson.databind;
+    opens com.stonebreak.world.save.managers to com.fasterxml.jackson.databind;
 }

@@ -2,7 +2,7 @@ package com.stonebreak.ui.worldSelect.managers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.stonebreak.world.save.WorldSaveMetadata;
+import com.stonebreak.world.save.core.WorldMetadata;
 
 import java.io.File;
 import java.io.IOException;
@@ -24,7 +24,7 @@ public class WorldDiscoveryManager {
     private final ObjectMapper objectMapper;
 
     // Cache for world metadata to avoid repeated file reads
-    private final Map<String, WorldSaveMetadata> metadataCache = new HashMap<>();
+    private final Map<String, WorldMetadata> metadataCache = new HashMap<>();
     private long lastScanTime = 0;
     private static final long CACHE_VALIDITY_MS = 5000; // 5 seconds
 
@@ -69,11 +69,11 @@ public class WorldDiscoveryManager {
 
             // Sort worlds by last played time (most recent first)
             worlds.sort((a, b) -> {
-                WorldSaveMetadata metadataA = getWorldMetadata(a);
-                WorldSaveMetadata metadataB = getWorldMetadata(b);
+                WorldMetadata metadataA = getWorldMetadata(a);
+                WorldMetadata metadataB = getWorldMetadata(b);
 
-                LocalDateTime timeA = metadataA != null ? metadataA.getLastPlayed() : null;
-                LocalDateTime timeB = metadataB != null ? metadataB.getLastPlayed() : null;
+                Long timeA = metadataA != null ? metadataA.getLastPlayed() : null;
+                Long timeB = metadataB != null ? metadataB.getLastPlayed() : null;
 
                 // Handle null times (put them at the end)
                 if (timeA == null && timeB == null) return a.compareTo(b);
@@ -119,7 +119,7 @@ public class WorldDiscoveryManager {
     /**
      * Gets metadata for a specific world, using cache when possible.
      */
-    public WorldSaveMetadata getWorldMetadata(String worldName) {
+    public WorldMetadata getWorldMetadata(String worldName) {
         if (worldName == null || worldName.trim().isEmpty()) {
             return null;
         }
@@ -131,7 +131,7 @@ public class WorldDiscoveryManager {
         }
 
         // Load from file
-        WorldSaveMetadata metadata = loadWorldMetadata(worldName);
+        WorldMetadata metadata = loadWorldMetadata(worldName);
 
         // Update cache
         if (metadata != null) {
@@ -145,7 +145,7 @@ public class WorldDiscoveryManager {
     /**
      * Loads world metadata from the file system.
      */
-    private WorldSaveMetadata loadWorldMetadata(String worldName) {
+    private WorldMetadata loadWorldMetadata(String worldName) {
         try {
             Path metadataPath = Paths.get(WORLDS_DIRECTORY, worldName, METADATA_FILENAME);
 
@@ -153,7 +153,7 @@ public class WorldDiscoveryManager {
                 return null;
             }
 
-            return objectMapper.readValue(metadataPath.toFile(), WorldSaveMetadata.class);
+            return objectMapper.readValue(metadataPath.toFile(), WorldMetadata.class);
 
         } catch (IOException e) {
             System.err.println("Error loading metadata for world '" + worldName + "': " + e.getMessage());
@@ -261,26 +261,27 @@ public class WorldDiscoveryManager {
      * Gets a display-friendly summary of world information.
      */
     public String getWorldDisplayInfo(String worldName) {
-        WorldSaveMetadata metadata = getWorldMetadata(worldName);
+        WorldMetadata metadata = getWorldMetadata(worldName);
         if (metadata == null) {
             return worldName;
         }
 
         StringBuilder info = new StringBuilder(worldName);
 
-        if (metadata.getLastPlayed() != null) {
-            info.append(" (Last played: ").append(formatDateTime(metadata.getLastPlayed())).append(")");
+        if (metadata.getLastPlayed() > 0) {
+            info.append(" (Last played: ").append(formatTimestamp(metadata.getLastPlayed())).append(")");
         }
 
         return info.toString();
     }
 
     /**
-     * Formats a LocalDateTime for display purposes.
+     * Formats a timestamp for display purposes.
      */
-    private String formatDateTime(LocalDateTime dateTime) {
-        if (dateTime == null) return "Unknown";
+    private String formatTimestamp(long timestamp) {
+        if (timestamp <= 0) return "Unknown";
 
+        LocalDateTime dateTime = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(timestamp), java.time.ZoneId.systemDefault());
         LocalDateTime now = LocalDateTime.now();
 
         if (dateTime.toLocalDate().equals(now.toLocalDate())) {

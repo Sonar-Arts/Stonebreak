@@ -430,4 +430,30 @@ public class Chunk {
     public boolean isFeaturesPopulated() {
         return stateManager.hasState(ChunkState.FEATURES_POPULATED);
     }
+
+    /**
+     * Gets the block array for this chunk.
+     * Used by binary save/load system.
+     * @return The 3D block array
+     */
+    public BlockType[][][] getBlocks() {
+        return chunkData.getBlocks();
+    }
+
+    /**
+     * Sets the block array for this chunk.
+     * Used by binary save/load system.
+     * @param blocks The 3D block array to set
+     */
+    public void setBlocks(BlockType[][][] blocks) {
+        chunkData.setBlocks(blocks);
+    }
+
+    /**
+     * Marks this chunk as dirty.
+     * Alias for setDirty(true) used by binary save/load system.
+     */
+    public void markDirty() {
+        setDirty(true);
+    }
 }

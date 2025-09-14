@@ -4,8 +4,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.world.save.WorldManager;
-import com.stonebreak.world.save.WorldSaveMetadata;
+import com.stonebreak.world.save.managers.WorldSaveSystem;
+import com.stonebreak.world.save.core.WorldMetadata;
 import org.joml.Vector3f;
 
 import java.time.LocalDateTime;
@@ -65,12 +65,11 @@ public class WorldActionHandler {
         try {
             System.out.println("Loading world: " + worldName);
 
-            // Set the world name in WorldManager
-            WorldManager worldManager = WorldManager.getInstance();
-            worldManager.setCurrentWorldName(worldName);
+            // Note: WorldSaveSystem is created per-world, not a singleton
+            // The actual world loading will be handled by Game.startWorldGeneration
 
             // Get world metadata to retrieve the seed
-            WorldSaveMetadata metadata = discoveryManager.getWorldMetadata(worldName);
+            WorldMetadata metadata = discoveryManager.getWorldMetadata(worldName);
             long seed;
 
             if (metadata != null && metadata.getSeed() != 0) {
@@ -182,17 +181,13 @@ public class WorldActionHandler {
             System.out.println("Creating new world: " + worldName + " with seed: " + seed);
 
             // Create world metadata
-            WorldSaveMetadata metadata = new WorldSaveMetadata();
+            WorldMetadata metadata = new WorldMetadata();
             metadata.setWorldName(worldName);
             metadata.setSeed(seed);
             metadata.setSpawnPosition(new Vector3f(0, 100, 0)); // Default spawn
-            metadata.setCreationTime(LocalDateTime.now());
-            metadata.setLastPlayed(LocalDateTime.now());
-            metadata.setTotalPlayTimeMillis(0);
-            metadata.setGameVersion("1.0.0");
-            metadata.setDifficulty("Normal");
-            metadata.setGameMode("Creative");
-            metadata.setWorldType("Default");
+            metadata.setCreatedTime(System.currentTimeMillis());
+            metadata.setLastPlayed(System.currentTimeMillis());
+            metadata.setTotalPlayTime(0);
 
             // Create world directory
             if (!discoveryManager.ensureWorldsDirectoryExists()) {
@@ -200,12 +195,47 @@ public class WorldActionHandler {
                 return false;
             }
 
-            // Use WorldManager to create the world
-            WorldManager worldManager = WorldManager.getInstance();
-            worldManager.createWorld(metadata).get(); // Wait for completion
+            // Create world directory and save metadata file
+            try {
+                java.nio.file.Path worldDir = java.nio.file.Paths.get("worlds", worldName);
+                java.nio.file.Files.createDirectories(worldDir);
 
-            System.out.println("World created successfully: " + worldName);
-            return true;
+                // Create chunks directory (required by WorldDiscoveryManager validation)
+                java.nio.file.Path chunksDir = worldDir.resolve("chunks");
+                java.nio.file.Files.createDirectories(chunksDir);
+
+                // Save metadata to JSON file (to match discoveryManager expectations)
+                java.nio.file.Path metadataFile = worldDir.resolve("metadata.json");
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+
+                // Convert WorldMetadata to a JSON-compatible format
+                java.util.Map<String, Object> metadataMap = new java.util.HashMap<>();
+                metadataMap.put("worldName", metadata.getWorldName());
+                metadataMap.put("seed", metadata.getSeed());
+                metadataMap.put("spawnPosition", java.util.Map.of(
+                    "x", metadata.getSpawnPosition().x,
+                    "y", metadata.getSpawnPosition().y,
+                    "z", metadata.getSpawnPosition().z
+                ));
+                metadataMap.put("creationTime", java.time.LocalDateTime.ofInstant(
+                    java.time.Instant.ofEpochMilli(metadata.getCreatedTime()),
+                    java.time.ZoneId.systemDefault()
+                ));
+                metadataMap.put("lastPlayed", java.time.LocalDateTime.ofInstant(
+                    java.time.Instant.ofEpochMilli(metadata.getLastPlayed()),
+                    java.time.ZoneId.systemDefault()
+                ));
+                metadataMap.put("totalPlayTimeMillis", metadata.getTotalPlayTime());
+
+                mapper.writeValue(metadataFile.toFile(), metadataMap);
+
+                System.out.println("World created successfully: " + worldName);
+                return true;
+            } catch (java.io.IOException ioEx) {
+                System.err.println("Error creating world directory or metadata: " + ioEx.getMessage());
+                return false;
+            }
 
         } catch (Exception e) {
             System.err.println("Error creating world '" + worldName + "': " + e.getMessage());
@@ -280,7 +310,7 @@ public class WorldActionHandler {
     /**
      * Gets metadata for a specific world.
      */
-    public WorldSaveMetadata getWorldMetadata(String worldName) {
+    public WorldMetadata getWorldMetadata(String worldName) {
         return discoveryManager.getWorldMetadata(worldName);
     }
 

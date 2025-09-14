@@ -19,7 +19,7 @@ import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
-import com.stonebreak.world.save.WorldManager;
+import com.stonebreak.world.save.managers.WorldSaveSystem;
 import org.joml.Vector3f;
 
 /**
@@ -1440,7 +1440,7 @@ public class Game {
     }
 
     /**
-     * Performs world loading or generation with WorldManager integration.
+     * Performs world loading or generation with WorldSaveSystem integration.
      * This runs in a background thread while the loading screen is displayed.
      *
      * @param worldName The name of the world to load or create
@@ -1448,7 +1448,8 @@ public class Game {
      */
     private void performWorldLoadingOrGeneration(String worldName, long seed) {
         try {
-            WorldManager worldManager = WorldManager.getInstance();
+            String worldPath = "worlds/" + worldName;
+            WorldSaveSystem saveSystem = new WorldSaveSystem(worldPath);
 
             // Check if world exists
             java.io.File worldDir = new java.io.File("worlds", worldName);
@@ -1461,10 +1462,23 @@ public class Game {
                 }
                 System.out.println("Loading existing world: " + worldName);
 
-                // Use WorldManager to load the world
-                worldManager.loadWorld(worldName, world, player)
-                    .thenRun(() -> {
-                        System.out.println("Successfully loaded world: " + worldName);
+                // Use WorldSaveSystem to check if world exists and load metadata
+                saveSystem.worldExists()
+                    .thenCompose(exists -> {
+                        if (exists) {
+                            return saveSystem.loadWorldMetadata()
+                                .thenAccept(metadata -> {
+                                    if (metadata != null) {
+                                        // Set the seed from loaded metadata
+                                        world.setSeed(metadata.getSeed());
+                                        System.out.println("Successfully loaded world metadata for: " + worldName);
+                                    }
+                                });
+                        } else {
+                            // World directory exists but save system doesn't recognize it
+                            createNewWorldWithGeneration(worldName, seed);
+                            return java.util.concurrent.CompletableFuture.completedFuture(null);
+                        }
                     })
                     .exceptionally(throwable -> {
                         System.err.println("Failed to load world: " + worldName + " - " + throwable.getMessage());

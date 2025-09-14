@@ -433,11 +433,13 @@ public class InputHandler {
             f6KeyPressed = false;
         }
         
-        // F7 - Manual save
+        // F7 - Manual save (temporarily disabled - WorldManager not implemented yet)
         boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
         if (isF7Pressed && !f7KeyPressed) {
             f7KeyPressed = true;
-            System.out.println("[DEBUG] Manual save triggered by F7 key...");
+            System.out.println("[DEBUG] Manual save triggered by F7 key (feature temporarily disabled)");
+            // TODO: Re-enable manual save functionality when WorldManager is implemented
+            /*
             Game game = Game.getInstance();
             if (game != null) {
                 World world = game.getWorld();
@@ -467,6 +469,7 @@ public class InputHandler {
             } else {
                 System.err.println("[MANUAL-SAVE] Game instance is null");
             }
+            */
         } else if (!isF7Pressed) {
             f7KeyPressed = false;
         }

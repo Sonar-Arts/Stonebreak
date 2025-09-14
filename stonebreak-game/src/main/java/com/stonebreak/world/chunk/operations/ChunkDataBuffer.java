@@ -84,13 +84,33 @@ public class ChunkDataBuffer {
         if (!ChunkCoordinateUtils.isValidLocalCoordinate(localX, localY, localZ)) {
             return false;
         }
-        
+
         BlockType currentBlock = blocks[localX][localY][localZ];
         if (currentBlock == blockType) {
             return false; // No change
         }
-        
+
         blocks[localX][localY][localZ] = blockType;
         return true;
+    }
+
+    /**
+     * Sets the entire block array. Used by the save/load system.
+     * This replaces all existing block data.
+     * @param newBlocks The new block array to set
+     */
+    public void setBlocks(BlockType[][][] newBlocks) {
+        if (newBlocks == null) {
+            throw new IllegalArgumentException("Block array cannot be null");
+        }
+
+        // Copy the new blocks into our internal array
+        for (int x = 0; x < Math.min(blocks.length, newBlocks.length); x++) {
+            for (int y = 0; y < Math.min(blocks[x].length, newBlocks[x].length); y++) {
+                for (int z = 0; z < Math.min(blocks[x][y].length, newBlocks[x][y].length); z++) {
+                    blocks[x][y][z] = newBlocks[x][y][z] != null ? newBlocks[x][y][z] : BlockType.AIR;
+                }
+            }
+        }
     }
 }
