@@ -65,12 +65,25 @@ public class WorldActionHandler {
         try {
             System.out.println("Loading world: " + worldName);
 
-            // Set the world name in WorldManager and transition to loading screen
+            // Set the world name in WorldManager
             WorldManager worldManager = WorldManager.getInstance();
             worldManager.setCurrentWorldName(worldName);
 
-            // Transition to loading screen - Game will handle the actual loading
-            Game.getInstance().setState(GameState.LOADING);
+            // Get world metadata to retrieve the seed
+            WorldSaveMetadata metadata = discoveryManager.getWorldMetadata(worldName);
+            long seed;
+
+            if (metadata != null && metadata.getSeed() != 0) {
+                seed = metadata.getSeed();
+                System.out.println("Using existing world seed: " + seed);
+            } else {
+                // If no metadata or seed, generate a random one for new worlds
+                seed = new Random().nextLong();
+                System.out.println("Generated new world seed: " + seed);
+            }
+
+            // Trigger actual world loading/generation process
+            Game.getInstance().startWorldGeneration(worldName, seed);
 
             // Trigger callback for world loaded
             if (onWorldLoaded != null) {
