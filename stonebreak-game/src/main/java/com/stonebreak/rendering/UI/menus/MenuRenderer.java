@@ -872,4 +872,244 @@ public class MenuRenderer extends BaseRenderer {
             nvgFill(vg);
         }
     }
+
+    // ===== ENHANCED THREE-SECTION BACKGROUND RENDERING =====
+    // Added for SOLID-compliant WorldSelectScreen architecture
+
+    /**
+     * Draws an enhanced three-section background with configurable section heights.
+     * Integrates with the new SOLID-based world select screen architecture.
+     *
+     * @param width screen width
+     * @param height screen height
+     * @param topHeightPercent height percentage for top section (0.0-1.0)
+     * @param middleHeightPercent height percentage for middle section (0.0-1.0)
+     * @param bottomHeightPercent height percentage for bottom section (0.0-1.0)
+     */
+    public void drawEnhancedTriSectionBackground(int width, int height,
+                                               float topHeightPercent, float middleHeightPercent, float bottomHeightPercent) {
+        // Validate percentages
+        if (Math.abs((topHeightPercent + middleHeightPercent + bottomHeightPercent) - 1.0f) > 0.001f) {
+            System.err.println("Warning: Section height percentages don't sum to 1.0, using defaults");
+            drawTriSectionBackground(width, height);
+            return;
+        }
+
+        // Calculate section heights
+        float topHeight = height * topHeightPercent;
+        float middleHeight = height * middleHeightPercent;
+        float bottomHeight = height * bottomHeightPercent;
+
+        float middleY = topHeight;
+        float bottomY = topHeight + middleHeight;
+
+        // Draw top section with enhanced styling
+        drawEnhancedTopSection(0, 0, width, topHeight);
+
+        // Draw middle section with enhanced styling
+        drawEnhancedMiddleSection(0, middleY, width, middleHeight);
+
+        // Draw bottom section with enhanced styling
+        drawEnhancedBottomSection(0, bottomY, width, bottomHeight);
+
+        // Add section separators for better visual distinction
+        drawSectionSeparators(width, topHeight, middleY, bottomY);
+    }
+
+    /**
+     * Draws the enhanced top section (navigation area).
+     */
+    private void drawEnhancedTopSection(float x, float y, float width, float height) {
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                // Draw dirt texture
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, x, y, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add darker overlay for navigation area distinction
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 50, NVGColor.malloc(stack)));
+                nvgFill(vg);
+
+                // Add subtle bottom gradient to blend into middle section
+                NVGPaint gradientPaint = NVGPaint.malloc(stack);
+                nvgLinearGradient(vg, x, y + height - 15f, x, y + height,
+                    nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)),
+                    nvgRGBA(0, 0, 0, 30, NVGColor.malloc(stack)), gradientPaint);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y + height - 15f, width, 15f);
+                nvgFillPaint(vg, gradientPaint);
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws the enhanced middle section (world list area) with optimized styling for content display.
+     */
+    private void drawEnhancedMiddleSection(float x, float y, float width, float height) {
+        try (MemoryStack stack = stackPush()) {
+            // Draw stone background with lighter overlay for better content visibility
+            drawStoneBackground(x, y, width, height);
+
+            // Add content-optimized overlay - lighter than default for better readability
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, height);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 15, NVGColor.malloc(stack))); // Lighter than default 20
+            nvgFill(vg);
+
+            // Add subtle top gradient from top section
+            NVGPaint topGradient = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, x, y, x, y + 20,
+                nvgRGBA(0, 0, 0, 40, NVGColor.malloc(stack)),
+                nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)), topGradient);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, 20);
+            nvgFillPaint(vg, topGradient);
+            nvgFill(vg);
+
+            // Add subtle bottom gradient to bottom section
+            NVGPaint bottomGradient = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, x, y + height - 20, x, y + height,
+                nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)),
+                nvgRGBA(0, 0, 0, 25, NVGColor.malloc(stack)), bottomGradient);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y + height - 20, width, 20);
+            nvgFillPaint(vg, bottomGradient);
+            nvgFill(vg);
+        }
+    }
+
+    /**
+     * Draws the enhanced bottom section (action area).
+     */
+    private void drawEnhancedBottomSection(float x, float y, float width, float height) {
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                // Draw dirt texture
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, x, y, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add slightly darker overlay for action area distinction
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 45, NVGColor.malloc(stack)));
+                nvgFill(vg);
+
+                // Add subtle top gradient to blend with middle section
+                NVGPaint gradientPaint = NVGPaint.malloc(stack);
+                nvgLinearGradient(vg, x, y, x, y + 15f,
+                    nvgRGBA(0, 0, 0, 30, NVGColor.malloc(stack)),
+                    nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)), gradientPaint);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, 15f);
+                nvgFillPaint(vg, gradientPaint);
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws subtle separators between sections for better visual distinction.
+     */
+    private void drawSectionSeparators(float width, float topHeight, float middleY, float bottomY) {
+        try (MemoryStack stack = stackPush()) {
+            // Top-Middle separator (subtle line)
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, topHeight - 1, width, 2);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)));
+            nvgFill(vg);
+
+            // Middle-Bottom separator (subtle line)
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, bottomY - 1, width, 2);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+    }
+
+    /**
+     * Draws individual section backgrounds for the new panel system.
+     * Allows rendering specific sections independently.
+     *
+     * @param sectionType 0=top, 1=middle, 2=bottom
+     * @param x section x coordinate
+     * @param y section y coordinate
+     * @param width section width
+     * @param height section height
+     */
+    public void drawSectionBackground(int sectionType, float x, float y, float width, float height) {
+        switch (sectionType) {
+            case 0: // Top section
+                drawEnhancedTopSection(x, y, width, height);
+                break;
+            case 1: // Middle section
+                drawEnhancedMiddleSection(x, y, width, height);
+                break;
+            case 2: // Bottom section
+                drawEnhancedBottomSection(x, y, width, height);
+                break;
+            default:
+                System.err.println("Warning: Invalid section type " + sectionType + ", using middle section");
+                drawEnhancedMiddleSection(x, y, width, height);
+                break;
+        }
+    }
+
+    /**
+     * Creates a customized three-section background using section bounds from the layout system.
+     * This method integrates directly with the new SOLID architecture.
+     */
+    public void drawLayoutBasedTriSectionBackground(
+            com.stonebreak.ui.worldSelect.SectionBounds topSection,
+            com.stonebreak.ui.worldSelect.SectionBounds middleSection,
+            com.stonebreak.ui.worldSelect.SectionBounds bottomSection) {
+
+        if (topSection == null || middleSection == null || bottomSection == null) {
+            System.err.println("Warning: Section bounds are null, falling back to default background");
+            drawTriSectionBackground(800, 600); // Fallback with default dimensions
+            return;
+        }
+
+        // Draw each section using its specific bounds
+        drawEnhancedTopSection(
+            topSection.getX(),
+            topSection.getY(),
+            topSection.getWidth(),
+            topSection.getHeight()
+        );
+
+        drawEnhancedMiddleSection(
+            middleSection.getX(),
+            middleSection.getY(),
+            middleSection.getWidth(),
+            middleSection.getHeight()
+        );
+
+        drawEnhancedBottomSection(
+            bottomSection.getX(),
+            bottomSection.getY(),
+            bottomSection.getWidth(),
+            bottomSection.getHeight()
+        );
+
+        // Draw separators at the boundaries
+        float width = Math.max(topSection.getWidth(), Math.max(middleSection.getWidth(), bottomSection.getWidth()));
+        drawSectionSeparators(width, topSection.getBottom(), middleSection.getY(), bottomSection.getY());
+    }
 }
