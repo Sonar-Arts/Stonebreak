@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WorldManager {
     
     private static final String WORLDS_DIRECTORY = "worlds";
-    private static final String WORLD_METADATA_FILE = "world.dat"; // Changed from world.json to world.dat for binary format
+    private static final String WORLD_METADATA_FILE = "metadata.json"; // JSON metadata file for world discovery compatibility
     private static final String PLAYER_DATA_FILE = "player.dat"; // Binary player data file
     private static final String REGIONS_DIRECTORY = "regions"; // Changed from chunks to regions directory
     private static final String CHUNKS_DIRECTORY = "chunks"; // Legacy chunks directory for backward compatibility

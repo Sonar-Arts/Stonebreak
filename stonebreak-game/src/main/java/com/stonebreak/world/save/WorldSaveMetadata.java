@@ -1,6 +1,7 @@
 package com.stonebreak.world.save;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.joml.Vector3f;
 
@@ -90,6 +91,7 @@ public class WorldSaveMetadata {
         return seed;
     }
 
+    @JsonIgnore
     public Vector3f getSpawnPosition() {
         return new Vector3f(spawnX, spawnY, spawnZ);
     }
@@ -152,6 +154,7 @@ public class WorldSaveMetadata {
         this.seed = seed;
     }
 
+    @JsonIgnore
     public void setSpawnPosition(Vector3f spawnPosition) {
         this.spawnX = spawnPosition.x;
         this.spawnY = spawnPosition.y;
