@@ -52,6 +52,9 @@ public class Game {
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
+    private WorldSaveSystem worldSaveSystem; // World save/load system for manual saves
+    private String currentWorldName; // Current world name for save system initialization
+    private long currentWorldSeed; // Current world seed for save system initialization
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     
     // Entity system components
@@ -1324,6 +1327,13 @@ public class Game {
     }
 
     /**
+     * Gets the world save system for manual save operations.
+     */
+    public WorldSaveSystem getWorldSaveSystem() {
+        return worldSaveSystem;
+    }
+
+    /**
      * Starts world generation with loading screen.
      * This method should be called when transitioning from main menu to game.
      */
@@ -1451,6 +1461,11 @@ public class Game {
             String worldPath = "worlds/" + worldName;
             WorldSaveSystem saveSystem = new WorldSaveSystem(worldPath);
 
+            // Store the save system reference and world info for manual saves
+            this.worldSaveSystem = saveSystem;
+            this.currentWorldName = worldName;
+            this.currentWorldSeed = seed;
+
             // Check if world exists
             java.io.File worldDir = new java.io.File("worlds", worldName);
             boolean worldExists = worldDir.exists() && worldDir.isDirectory();
@@ -1558,10 +1573,26 @@ public class Game {
     public void completeWorldGeneration() {
         if (loadingScreen != null) {
             loadingScreen.hide(); // This sets state to PLAYING
-            
+
             // Force mouse capture update after loading screen completion
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.forceUpdate();
+            }
+        }
+
+        // Initialize the save system now that world and player are ready
+        if (worldSaveSystem != null && world != null && player != null && currentWorldName != null) {
+            try {
+                // Create world metadata for save system initialization
+                com.stonebreak.world.save.core.WorldMetadata worldMetadata =
+                    new com.stonebreak.world.save.core.WorldMetadata(currentWorldSeed, currentWorldName);
+
+                // Initialize the save system with current game state
+                worldSaveSystem.initialize(world, player, worldMetadata);
+                System.out.println("[SAVE-SYSTEM] Initialized save system for world: " + currentWorldName);
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Failed to initialize save system: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }

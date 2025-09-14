@@ -433,43 +433,55 @@ public class InputHandler {
             f6KeyPressed = false;
         }
         
-        // F7 - Manual save (temporarily disabled - WorldManager not implemented yet)
+        // F7 - Manual save
         boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
         if (isF7Pressed && !f7KeyPressed) {
             f7KeyPressed = true;
-            System.out.println("[DEBUG] Manual save triggered by F7 key (feature temporarily disabled)");
-            // TODO: Re-enable manual save functionality when WorldManager is implemented
-            /*
+
             Game game = Game.getInstance();
             if (game != null) {
-                World world = game.getWorld();
-                Player player = game.getPlayer();
-                if (world != null && player != null) {
+                com.stonebreak.world.save.managers.WorldSaveSystem saveSystem = game.getWorldSaveSystem();
+                ChatSystem chatSystem = game.getChatSystem();
+
+                if (saveSystem != null) {
                     try {
-                        com.stonebreak.world.save.WorldManager worldManager = com.stonebreak.world.save.WorldManager.getInstance();
-                        String currentWorldName = worldManager.getCurrentWorldName();
-                        if (currentWorldName != null) {
-                            System.out.println("[MANUAL-SAVE] Starting manual save for world: " + currentWorldName);
-                            worldManager.saveWorld(world, player)
-                                .thenRun(() -> System.out.println("[MANUAL-SAVE] Manual save completed successfully"))
-                                .exceptionally(throwable -> {
-                                    System.err.println("[MANUAL-SAVE] Manual save failed: " + throwable.getMessage());
-                                    return null;
-                                });
-                        } else {
-                            System.err.println("[MANUAL-SAVE] No current world name set - cannot save");
+                        System.out.println("[MANUAL-SAVE] Starting manual save...");
+
+                        // Show visual feedback in chat
+                        if (chatSystem != null) {
+                            chatSystem.addMessage("Saving world...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
                         }
+
+                        saveSystem.saveWorldNow()
+                            .thenRun(() -> {
+                                System.out.println("[MANUAL-SAVE] Manual save completed successfully");
+                                if (chatSystem != null) {
+                                    chatSystem.addMessage("World saved successfully!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                                }
+                            })
+                            .exceptionally(throwable -> {
+                                System.err.println("[MANUAL-SAVE] Manual save failed: " + throwable.getMessage());
+                                if (chatSystem != null) {
+                                    chatSystem.addMessage("Save failed: " + throwable.getMessage(), new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                                }
+                                return null;
+                            });
                     } catch (Exception e) {
                         System.err.println("[MANUAL-SAVE] Error during manual save: " + e.getMessage());
                         e.printStackTrace();
+                        if (chatSystem != null) {
+                            chatSystem.addMessage("Save error: " + e.getMessage(), new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                        }
                     }
                 } else {
-                    System.err.println("[MANUAL-SAVE] World or Player is null - cannot save");
+                    System.err.println("[MANUAL-SAVE] Save system not available - cannot save");
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Save system not available", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
                 }
             } else {
                 System.err.println("[MANUAL-SAVE] Game instance is null");
             }
-            */
         } else if (!isF7Pressed) {
             f7KeyPressed = false;
         }
