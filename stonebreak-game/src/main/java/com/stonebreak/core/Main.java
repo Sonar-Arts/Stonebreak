@@ -215,11 +215,14 @@ public class Main {
             }
         });
 
-        // Setup scroll callback for world select screen
+        // Setup scroll callback for world select screen and hotbar selection
         glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
             Game game = Game.getInstance();
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            } else if (inputHandler != null) {
+                // Forward scroll events to InputHandler for hotbar selection and other UI interactions
+                inputHandler.handleScroll(yoffset);
             }
         });
 
