@@ -3,11 +3,15 @@ package com.stonebreak.world.save.storage.providers;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.save.core.WorldMetadata;
 import com.stonebreak.world.save.storage.binary.RegionFileManager;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CompletableFuture;
 import java.util.Collection;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Provides access to terrain data (chunks and world metadata).
@@ -16,14 +20,17 @@ import java.util.Collection;
  */
 public class TerrainDataProvider implements AutoCloseable {
 
-    private static final String WORLD_METADATA_FILE = "world.dat";
+    private static final String WORLD_METADATA_FILE = "metadata.json";
 
     private final String worldPath;
     private final RegionFileManager regionManager;
+    private final ObjectMapper objectMapper;
 
     public TerrainDataProvider(String worldPath) {
         this.worldPath = worldPath;
         this.regionManager = new RegionFileManager(worldPath);
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
 
         // Ensure world directory exists
         try {
@@ -45,8 +52,8 @@ public class TerrainDataProvider implements AutoCloseable {
                     return null; // World doesn't exist
                 }
 
-                byte[] data = Files.readAllBytes(metadataPath);
-                return WorldMetadata.deserialize(data);
+                String jsonContent = Files.readString(metadataPath, StandardCharsets.UTF_8);
+                return objectMapper.readValue(jsonContent, WorldMetadata.class);
 
             } catch (Exception e) {
                 throw new RuntimeException("Failed to load world metadata", e);
@@ -60,15 +67,33 @@ public class TerrainDataProvider implements AutoCloseable {
     public CompletableFuture<Void> saveWorldMetadata(WorldMetadata metadata) {
         return CompletableFuture.runAsync(() -> {
             try {
+                if (metadata == null) {
+                    throw new IllegalArgumentException("WorldMetadata cannot be null");
+                }
+
                 Path metadataPath = getMetadataPath();
-                byte[] data = metadata.serialize();
+
+                // Ensure parent directory exists
+                Path parentDir = metadataPath.getParent();
+                if (parentDir != null && !Files.exists(parentDir)) {
+                    Files.createDirectories(parentDir);
+                }
+
+                String jsonContent = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metadata);
+                if (jsonContent == null || jsonContent.trim().isEmpty()) {
+                    throw new RuntimeException("Serialized metadata is empty");
+                }
 
                 // Atomic write using temporary file
                 Path tempPath = Paths.get(metadataPath.toString() + ".tmp");
-                Files.write(tempPath, data);
-                Files.move(tempPath, metadataPath);
+                Files.writeString(tempPath, jsonContent, StandardCharsets.UTF_8);
+                Files.move(tempPath, metadataPath, StandardCopyOption.REPLACE_EXISTING);
+
+                System.out.println("[SAVE] Successfully saved world metadata to: " + metadataPath);
 
             } catch (Exception e) {
+                System.err.println("[SAVE-ERROR] Failed to save world metadata: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                e.printStackTrace();
                 throw new RuntimeException("Failed to save world metadata", e);
             }
         });

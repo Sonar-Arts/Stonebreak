@@ -72,8 +72,8 @@ public class WorldDiscoveryManager {
                 WorldMetadata metadataA = getWorldMetadata(a);
                 WorldMetadata metadataB = getWorldMetadata(b);
 
-                Long timeA = metadataA != null ? metadataA.getLastPlayed() : null;
-                Long timeB = metadataB != null ? metadataB.getLastPlayed() : null;
+                Long timeA = metadataA != null ? metadataA.getLastPlayedMillis() : null;
+                Long timeB = metadataB != null ? metadataB.getLastPlayedMillis() : null;
 
                 // Handle null times (put them at the end)
                 if (timeA == null && timeB == null) return a.compareTo(b);
@@ -268,8 +268,8 @@ public class WorldDiscoveryManager {
 
         StringBuilder info = new StringBuilder(worldName);
 
-        if (metadata.getLastPlayed() > 0) {
-            info.append(" (Last played: ").append(formatTimestamp(metadata.getLastPlayed())).append(")");
+        if (metadata.getLastPlayedMillis() > 0) {
+            info.append(" (Last played: ").append(formatTimestamp(metadata.getLastPlayedMillis())).append(")");
         }
 
         return info.toString();

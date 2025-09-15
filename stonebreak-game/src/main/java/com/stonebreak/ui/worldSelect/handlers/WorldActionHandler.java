@@ -219,11 +219,11 @@ public class WorldActionHandler {
                     "z", metadata.getSpawnPosition().z
                 ));
                 metadataMap.put("creationTime", java.time.LocalDateTime.ofInstant(
-                    java.time.Instant.ofEpochMilli(metadata.getCreatedTime()),
+                    java.time.Instant.ofEpochMilli(metadata.getCreatedTimeMillis()),
                     java.time.ZoneId.systemDefault()
                 ));
                 metadataMap.put("lastPlayed", java.time.LocalDateTime.ofInstant(
-                    java.time.Instant.ofEpochMilli(metadata.getLastPlayed()),
+                    java.time.Instant.ofEpochMilli(metadata.getLastPlayedMillis()),
                     java.time.ZoneId.systemDefault()
                 ));
                 metadataMap.put("totalPlayTimeMillis", metadata.getTotalPlayTime());

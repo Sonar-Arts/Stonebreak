@@ -86,7 +86,10 @@ public class Chunk {
      * Sets the block type at the specified local position.
      */
     public void setBlock(int x, int y, int z, BlockType blockType) {
-        dataOperations.setBlock(x, y, z, blockType);
+        boolean changed = dataOperations.setBlock(x, y, z, blockType);
+        if (changed) {
+            setDirty(true); // Mark chunk as dirty for saving when block data changes
+        }
     }
     
     // Chunk mesh operations instance for generating mesh data

@@ -1,28 +1,90 @@
 package com.stonebreak.world.save.core;
 
 import org.joml.Vector3f;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 /**
  * Simplified world metadata focused on terrain data only.
  * No entity complexity, AI data, or enterprise features.
+ * Now uses Jackson JSON serialization for human-readable format.
  */
+// Custom serializers for Vector3f to match existing format
+class Vector3fSerializer extends JsonSerializer<Vector3f> {
+    @Override
+    public void serialize(Vector3f value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+        if (value == null) {
+            gen.writeNull();
+        } else {
+            gen.writeStartObject();
+            gen.writeNumberField("x", value.x);
+            gen.writeNumberField("y", value.y);
+            gen.writeNumberField("z", value.z);
+            gen.writeEndObject();
+        }
+    }
+}
+
+class Vector3fDeserializer extends JsonDeserializer<Vector3f> {
+    @Override
+    public Vector3f deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        if (p.currentToken() == null) {
+            return new Vector3f(0, 100, 0);
+        }
+        JsonNode node = p.getCodec().readTree(p);
+        if (node.isNull()) {
+            return new Vector3f(0, 100, 0);
+        }
+        float x = (float) node.get("x").asDouble();
+        float y = (float) node.get("y").asDouble();
+        float z = (float) node.get("z").asDouble();
+        return new Vector3f(x, y, z);
+    }
+}
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class WorldMetadata {
 
+    @JsonProperty("seed")
     private long seed;              // World generation seed
+
+    @JsonProperty("worldName")
     private String worldName;       // Display name
+
+    @JsonProperty("spawnPosition")
+    @JsonSerialize(using = Vector3fSerializer.class)
+    @JsonDeserialize(using = Vector3fDeserializer.class)
     private Vector3f spawnPosition; // Player spawn point
-    private long createdTime;       // Creation timestamp
-    private long lastPlayed;        // Last access time
+
+    @JsonProperty("creationTime")
+    private LocalDateTime creationTime; // Creation timestamp
+
+    @JsonProperty("lastPlayed")
+    private LocalDateTime lastPlayed;   // Last access time
+
+    @JsonProperty("totalPlayTimeMillis")
     private long totalPlayTime;     // Total session time in milliseconds
+
+    @JsonProperty("formatVersion")
     private int formatVersion;      // Save format version
 
     public WorldMetadata() {
         this.spawnPosition = new Vector3f(0, 100, 0);
         this.formatVersion = 1;
-        this.createdTime = System.currentTimeMillis();
-        this.lastPlayed = this.createdTime;
+        this.creationTime = LocalDateTime.now();
+        this.lastPlayed = this.creationTime;
         this.totalPlayTime = 0;
     }
 
@@ -32,58 +94,18 @@ public class WorldMetadata {
         this.worldName = worldName;
     }
 
-    // Binary serialization for efficient storage
-    public byte[] serialize() {
-        ByteBuffer buffer = ByteBuffer.allocate(1024);
-
-        buffer.putInt(0x53544F4E); // Magic number "STON" for validation
-        buffer.putInt(formatVersion);
-        buffer.putLong(seed);
-        buffer.putLong(createdTime);
-        buffer.putLong(lastPlayed);
-        buffer.putLong(totalPlayTime);
-
-        // Spawn position
-        buffer.putFloat(spawnPosition.x);
-        buffer.putFloat(spawnPosition.y);
-        buffer.putFloat(spawnPosition.z);
-
-        // World name (length-prefixed UTF-8)
-        byte[] nameBytes = worldName.getBytes();
-        buffer.putInt(nameBytes.length);
-        buffer.put(nameBytes);
-
-        return Arrays.copyOf(buffer.array(), buffer.position());
+    // Helper method to convert legacy timestamp to LocalDateTime
+    public static LocalDateTime timestampToLocalDateTime(long timestamp) {
+        return LocalDateTime.ofEpochSecond(timestamp / 1000, (int) (timestamp % 1000) * 1000000, ZoneOffset.UTC);
     }
 
-    public static WorldMetadata deserialize(byte[] data) {
-        ByteBuffer buffer = ByteBuffer.wrap(data);
+    // Helper method to convert LocalDateTime to timestamp for legacy compatibility
+    public long getCreatedTimeMillis() {
+        return creationTime != null ? creationTime.toEpochSecond(ZoneOffset.UTC) * 1000 : System.currentTimeMillis();
+    }
 
-        int magic = buffer.getInt();
-        if (magic != 0x53544F4E) {
-            throw new IllegalArgumentException("Invalid world metadata format");
-        }
-
-        WorldMetadata metadata = new WorldMetadata();
-        metadata.formatVersion = buffer.getInt();
-        metadata.seed = buffer.getLong();
-        metadata.createdTime = buffer.getLong();
-        metadata.lastPlayed = buffer.getLong();
-        metadata.totalPlayTime = buffer.getLong();
-
-        // Spawn position
-        float x = buffer.getFloat();
-        float y = buffer.getFloat();
-        float z = buffer.getFloat();
-        metadata.spawnPosition = new Vector3f(x, y, z);
-
-        // World name
-        int nameLength = buffer.getInt();
-        byte[] nameBytes = new byte[nameLength];
-        buffer.get(nameBytes);
-        metadata.worldName = new String(nameBytes);
-
-        return metadata;
+    public long getLastPlayedMillis() {
+        return lastPlayed != null ? lastPlayed.toEpochSecond(ZoneOffset.UTC) * 1000 : System.currentTimeMillis();
     }
 
     // Getters and setters
@@ -96,11 +118,21 @@ public class WorldMetadata {
     public Vector3f getSpawnPosition() { return spawnPosition; }
     public void setSpawnPosition(Vector3f spawnPosition) { this.spawnPosition = spawnPosition; }
 
-    public long getCreatedTime() { return createdTime; }
-    public void setCreatedTime(long createdTime) { this.createdTime = createdTime; }
+    public LocalDateTime getCreatedTime() { return creationTime; }
+    public void setCreatedTime(LocalDateTime creationTime) { this.creationTime = creationTime; }
 
-    public long getLastPlayed() { return lastPlayed; }
-    public void setLastPlayed(long lastPlayed) { this.lastPlayed = lastPlayed; }
+    // Legacy compatibility methods
+    public void setCreatedTime(long createdTime) {
+        this.creationTime = timestampToLocalDateTime(createdTime);
+    }
+
+    public LocalDateTime getLastPlayed() { return lastPlayed; }
+    public void setLastPlayed(LocalDateTime lastPlayed) { this.lastPlayed = lastPlayed; }
+
+    // Legacy compatibility methods
+    public void setLastPlayed(long lastPlayed) {
+        this.lastPlayed = timestampToLocalDateTime(lastPlayed);
+    }
 
     public long getTotalPlayTime() { return totalPlayTime; }
     public void setTotalPlayTime(long totalPlayTime) { this.totalPlayTime = totalPlayTime; }
@@ -109,6 +141,6 @@ public class WorldMetadata {
 
     public void addPlayTime(long sessionTime) {
         this.totalPlayTime += sessionTime;
-        this.lastPlayed = System.currentTimeMillis();
+        this.lastPlayed = LocalDateTime.now();
     }
 }

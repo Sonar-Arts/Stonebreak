@@ -1050,7 +1050,17 @@ public class Game {
         if (entityManager != null) {
             entityManager.cleanup();
         }
-        
+
+        // Cleanup save system
+        if (worldSaveSystem != null) {
+            try {
+                System.out.println("Closing WorldSaveSystem...");
+                worldSaveSystem.close();
+            } catch (Exception e) {
+                System.err.println("Error closing WorldSaveSystem: " + e.getMessage());
+            }
+        }
+
         // Shutdown world update executor with proper termination waiting
         System.out.println("Shutting down world update executor...");
         worldUpdateExecutor.shutdownNow();
@@ -1106,6 +1116,16 @@ public class Game {
             } catch (Exception e) {
                 System.out.println("clearWorldData not available, using basic world reset");
                 // Basic reset fallback - could be expanded as needed
+            }
+        }
+
+        // Stop auto-save when switching worlds
+        if (worldSaveSystem != null) {
+            try {
+                worldSaveSystem.stopAutoSave();
+                System.out.println("[SAVE-SYSTEM] Stopped auto-save for world switch");
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Error stopping auto-save: " + e.getMessage());
             }
         }
 

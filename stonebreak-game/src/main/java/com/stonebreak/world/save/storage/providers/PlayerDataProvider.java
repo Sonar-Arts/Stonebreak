@@ -1,10 +1,14 @@
 package com.stonebreak.world.save.storage.providers;
 
 import com.stonebreak.world.save.core.PlayerState;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CompletableFuture;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Provides access to basic player state data.
@@ -13,12 +17,15 @@ import java.util.concurrent.CompletableFuture;
  */
 public class PlayerDataProvider {
 
-    private static final String PLAYER_DATA_FILE = "player.dat";
+    private static final String PLAYER_DATA_FILE = "player.json";
 
     private final String worldPath;
+    private final ObjectMapper objectMapper;
 
     public PlayerDataProvider(String worldPath) {
         this.worldPath = worldPath;
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
 
         // Ensure world directory exists
         try {
@@ -40,8 +47,8 @@ public class PlayerDataProvider {
                     return null; // No saved player data
                 }
 
-                byte[] data = Files.readAllBytes(playerPath);
-                return PlayerState.deserialize(data);
+                String jsonContent = Files.readString(playerPath, StandardCharsets.UTF_8);
+                return objectMapper.readValue(jsonContent, PlayerState.class);
 
             } catch (Exception e) {
                 throw new RuntimeException("Failed to load player state", e);
@@ -55,18 +62,36 @@ public class PlayerDataProvider {
     public CompletableFuture<Void> savePlayerState(PlayerState playerState) {
         return CompletableFuture.runAsync(() -> {
             try {
+                if (playerState == null) {
+                    throw new IllegalArgumentException("PlayerState cannot be null");
+                }
+
                 Path playerPath = getPlayerDataPath();
-                byte[] data = playerState.serialize();
+
+                // Ensure parent directory exists
+                Path parentDir = playerPath.getParent();
+                if (parentDir != null && !Files.exists(parentDir)) {
+                    Files.createDirectories(parentDir);
+                }
+
+                String jsonContent = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(playerState);
+                if (jsonContent == null || jsonContent.trim().isEmpty()) {
+                    throw new RuntimeException("Serialized player state is empty");
+                }
 
                 // Atomic write using temporary file
                 Path tempPath = Paths.get(playerPath.toString() + ".tmp");
-                Files.write(tempPath, data);
-                Files.move(tempPath, playerPath);
+                Files.writeString(tempPath, jsonContent, StandardCharsets.UTF_8);
+                Files.move(tempPath, playerPath, StandardCopyOption.REPLACE_EXISTING);
 
                 // Update last saved timestamp
                 playerState.updateLastSaved();
 
+                System.out.println("[SAVE] Successfully saved player state to: " + playerPath);
+
             } catch (Exception e) {
+                System.err.println("[SAVE-ERROR] Failed to save player state: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                e.printStackTrace();
                 throw new RuntimeException("Failed to save player state", e);
             }
         });
@@ -108,7 +133,7 @@ public class PlayerDataProvider {
                 Path playerPath = getPlayerDataPath();
                 if (Files.exists(playerPath)) {
                     String timestamp = String.valueOf(System.currentTimeMillis());
-                    Path backupPath = Paths.get(worldPath, "player_backup_" + timestamp + ".dat");
+                    Path backupPath = Paths.get(worldPath, "player_backup_" + timestamp + ".json");
                     Files.copy(playerPath, backupPath);
                 }
             } catch (Exception e) {

@@ -177,8 +177,8 @@ public class WorldListRenderer {
         // Format world info
         StringBuilder info = new StringBuilder();
 
-        if (metadata.getLastPlayed() > 0) {
-            info.append("Last played: ").append(formatTimestamp(metadata.getLastPlayed()));
+        if (metadata.getLastPlayedMillis() > 0) {
+            info.append("Last played: ").append(formatTimestamp(metadata.getLastPlayedMillis()));
         }
 
         if (metadata.getSeed() != 0) {

@@ -136,23 +136,19 @@ public class WorldSaveSystem implements AutoCloseable {
         // Apply hotbar items (slots 0-8)
         for (int i = 0; i < 9; i++) {
             if (loadedInventory[i] != null) {
-                // Note: This would need the appropriate method in Inventory class
-                // For now, we'll skip actual application since we don't have setHotbarItem method
-                // inventory.setHotbarItem(i, loadedInventory[i]);
+                inventory.setHotbarItem(i, loadedInventory[i]);
             }
         }
 
         // Apply main inventory items (slots 9-35)
         for (int i = 0; i < 27; i++) {
             if (loadedInventory[i + 9] != null) {
-                // Note: This would need the appropriate method in Inventory class
-                // inventory.setMainInventoryItem(i, loadedInventory[i + 9]);
+                inventory.setMainInventoryItem(i, loadedInventory[i + 9]);
             }
         }
 
         // Set selected hotbar slot
-        // Note: This would need the appropriate method in Inventory class
-        // inventory.setSelectedSlot(playerState.getSelectedHotbarSlot());
+        inventory.setSelectedSlot(playerState.getSelectedHotbarSlot());
     }
 
     /**

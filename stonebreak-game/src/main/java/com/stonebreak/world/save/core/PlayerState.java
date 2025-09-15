@@ -4,23 +4,120 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 /**
  * Simplified player state focused on basic gameplay data only.
  * No complex physics, AI state, or entity relationships.
  */
+
+// Custom serializers for Vector3f to match existing format
+class Vector3fSerializerPS extends JsonSerializer<Vector3f> {
+    @Override
+    public void serialize(Vector3f value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+        if (value == null) {
+            gen.writeNull();
+        } else {
+            gen.writeStartObject();
+            gen.writeNumberField("x", value.x);
+            gen.writeNumberField("y", value.y);
+            gen.writeNumberField("z", value.z);
+            gen.writeEndObject();
+        }
+    }
+}
+
+class Vector3fDeserializerPS extends JsonDeserializer<Vector3f> {
+    @Override
+    public Vector3f deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        if (p.currentToken() == null) {
+            return new Vector3f(0, 100, 0);
+        }
+        JsonNode node = p.getCodec().readTree(p);
+        if (node.isNull()) {
+            return new Vector3f(0, 100, 0);
+        }
+        float x = (float) node.get("x").asDouble();
+        float y = (float) node.get("y").asDouble();
+        float z = (float) node.get("z").asDouble();
+        return new Vector3f(x, y, z);
+    }
+}
+
+// Custom serializers for Vector2f
+class Vector2fSerializer extends JsonSerializer<Vector2f> {
+    @Override
+    public void serialize(Vector2f value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+        if (value == null) {
+            gen.writeNull();
+        } else {
+            gen.writeStartObject();
+            gen.writeNumberField("x", value.x); // yaw
+            gen.writeNumberField("y", value.y); // pitch
+            gen.writeEndObject();
+        }
+    }
+}
+
+class Vector2fDeserializer extends JsonDeserializer<Vector2f> {
+    @Override
+    public Vector2f deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        if (p.currentToken() == null) {
+            return new Vector2f(0, 0);
+        }
+        JsonNode node = p.getCodec().readTree(p);
+        if (node.isNull()) {
+            return new Vector2f(0, 0);
+        }
+        float x = (float) node.get("x").asDouble();
+        float y = (float) node.get("y").asDouble();
+        return new Vector2f(x, y);
+    }
+}
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PlayerState {
 
+    @JsonProperty("position")
+    @JsonSerialize(using = Vector3fSerializerPS.class)
+    @JsonDeserialize(using = Vector3fDeserializerPS.class)
     private Vector3f position;      // World position
+
+    @JsonProperty("rotation")
+    @JsonSerialize(using = Vector2fSerializer.class)
+    @JsonDeserialize(using = Vector2fDeserializer.class)
     private Vector2f rotation;      // Camera yaw/pitch
+
+    @JsonProperty("health")
     private float health;           // Health points
+
+    @JsonProperty("isFlying")
     private boolean isFlying;       // Flight state
+
+    @JsonProperty("gameMode")
     private int gameMode;           // 0=Survival, 1=Creative
+
+    @JsonProperty("inventory")
     private ItemStack[] inventory;  // Inventory contents (36 slots: 9 hotbar + 27 main)
+
+    @JsonProperty("selectedHotbarSlot")
     private int selectedHotbarSlot; // Currently selected hotbar slot
-    private long lastSaved;         // Timestamp of last save
+
+    @JsonProperty("lastSaved")
+    private LocalDateTime lastSaved; // Timestamp of last save
 
     public PlayerState() {
         this.position = new Vector3f(0, 100, 0);
@@ -30,7 +127,7 @@ public class PlayerState {
         this.gameMode = 1; // Creative mode
         this.inventory = new ItemStack[36];
         this.selectedHotbarSlot = 0;
-        this.lastSaved = System.currentTimeMillis();
+        this.lastSaved = LocalDateTime.now();
 
         // Initialize empty inventory slots
         for (int i = 0; i < inventory.length; i++) {
@@ -38,77 +135,11 @@ public class PlayerState {
         }
     }
 
-    // Binary serialization for efficient storage
-    public byte[] serialize() {
-        ByteBuffer buffer = ByteBuffer.allocate(4096);
-
-        // Position and rotation
-        buffer.putFloat(position.x);
-        buffer.putFloat(position.y);
-        buffer.putFloat(position.z);
-        buffer.putFloat(rotation.x); // yaw
-        buffer.putFloat(rotation.y); // pitch
-
-        // Player state
-        buffer.putFloat(health);
-        buffer.put((byte) (isFlying ? 1 : 0));
-        buffer.putInt(gameMode);
-        buffer.putInt(selectedHotbarSlot);
-        buffer.putLong(lastSaved);
-
-        // Inventory serialization (simplified)
-        buffer.putInt(inventory.length);
-        for (ItemStack item : inventory) {
-            if (item == null || item.isEmpty()) {
-                buffer.putInt(0); // Empty slot
-                buffer.putInt(0);
-            } else {
-                buffer.putInt(item.getItem().getId());
-                buffer.putInt(item.getCount());
-            }
-        }
-
-        return Arrays.copyOf(buffer.array(), buffer.position());
+    // Helper method to update last saved time
+    public void updateLastSaved() {
+        this.lastSaved = LocalDateTime.now();
     }
 
-    public static PlayerState deserialize(byte[] data) {
-        ByteBuffer buffer = ByteBuffer.wrap(data);
-
-        PlayerState state = new PlayerState();
-
-        // Position and rotation
-        float x = buffer.getFloat();
-        float y = buffer.getFloat();
-        float z = buffer.getFloat();
-        state.position = new Vector3f(x, y, z);
-
-        float yaw = buffer.getFloat();
-        float pitch = buffer.getFloat();
-        state.rotation = new Vector2f(yaw, pitch);
-
-        // Player state
-        state.health = buffer.getFloat();
-        state.isFlying = buffer.get() == 1;
-        state.gameMode = buffer.getInt();
-        state.selectedHotbarSlot = buffer.getInt();
-        state.lastSaved = buffer.getLong();
-
-        // Inventory deserialization
-        int inventorySize = buffer.getInt();
-        state.inventory = new ItemStack[inventorySize];
-        for (int i = 0; i < inventorySize; i++) {
-            int itemId = buffer.getInt();
-            int count = buffer.getInt();
-
-            if (itemId == 0 || count == 0) {
-                state.inventory[i] = new ItemStack(BlockType.AIR.getId(), 0);
-            } else {
-                state.inventory[i] = new ItemStack(itemId, count);
-            }
-        }
-
-        return state;
-    }
 
     // Getters and setters
     public Vector3f getPosition() { return position; }
@@ -132,6 +163,16 @@ public class PlayerState {
     public int getSelectedHotbarSlot() { return selectedHotbarSlot; }
     public void setSelectedHotbarSlot(int selectedHotbarSlot) { this.selectedHotbarSlot = selectedHotbarSlot; }
 
-    public long getLastSaved() { return lastSaved; }
-    public void updateLastSaved() { this.lastSaved = System.currentTimeMillis(); }
+    public LocalDateTime getLastSaved() { return lastSaved; }
+    public void setLastSaved(LocalDateTime lastSaved) { this.lastSaved = lastSaved; }
+
+    // Legacy compatibility method
+    public void setLastSaved(long lastSaved) {
+        this.lastSaved = LocalDateTime.ofEpochSecond(lastSaved / 1000, (int) (lastSaved % 1000) * 1000000, ZoneOffset.UTC);
+    }
+
+    public long getLastSavedMillis() {
+        return lastSaved != null ? lastSaved.toEpochSecond(ZoneOffset.UTC) * 1000 : System.currentTimeMillis();
+    }
+
 }
