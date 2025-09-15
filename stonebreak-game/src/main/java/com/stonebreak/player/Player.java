@@ -330,8 +330,14 @@ public class Player {      // Player settings
         if (stepUpHeight > 0.0f && !collisionOccurred && onGround) {
             position.y += stepUpHeight + 0.01f; // Small extra height to ensure we're on top
         } else if (collisionOccurred) {
+            float originalX = position.x;
             position.x = correctedPositionX;
-            // Sliding is allowed, so velocity.x is not zeroed here.
+            // Zero the velocity in the direction of collision to prevent sticking
+            if (velocity.x > 0 && correctedPositionX < originalX) {
+                velocity.x = 0; // Moving right but got pushed left
+            } else if (velocity.x < 0 && correctedPositionX > originalX) {
+                velocity.x = 0; // Moving left but got pushed right
+            }
         }
     }
 
@@ -511,8 +517,14 @@ public class Player {      // Player settings
         if (stepUpHeight > 0.0f && !collisionOccurred && onGround) {
             position.y += stepUpHeight + 0.01f; // Small extra height to ensure we're on top
         } else if (collisionOccurred) {
+            float originalZ = position.z;
             position.z = correctedPositionZ;
-            // Sliding is allowed, so velocity.z is not zeroed here.
+            // Zero the velocity in the direction of collision to prevent sticking
+            if (velocity.z > 0 && correctedPositionZ < originalZ) {
+                velocity.z = 0; // Moving towards +Z but got pushed towards -Z
+            } else if (velocity.z < 0 && correctedPositionZ > originalZ) {
+                velocity.z = 0; // Moving towards -Z but got pushed towards +Z
+            }
         }
     }
 
