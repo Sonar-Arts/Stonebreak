@@ -8,6 +8,7 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Inventory;
+import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -202,7 +203,7 @@ public class WorldSaveSystem implements AutoCloseable {
      */
     private void updateWorldMetadata(WorldMetadata metadata) {
         // Update last played time
-        metadata.setLastPlayed(System.currentTimeMillis());
+        metadata.setLastPlayed(LocalDateTime.now());
     }
 
     /**

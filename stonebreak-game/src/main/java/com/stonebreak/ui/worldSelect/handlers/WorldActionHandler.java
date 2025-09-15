@@ -185,8 +185,8 @@ public class WorldActionHandler {
             metadata.setWorldName(worldName);
             metadata.setSeed(seed);
             metadata.setSpawnPosition(new Vector3f(0, 100, 0)); // Default spawn
-            metadata.setCreatedTime(System.currentTimeMillis());
-            metadata.setLastPlayed(System.currentTimeMillis());
+            metadata.setCreatedTime(LocalDateTime.now());
+            metadata.setLastPlayed(LocalDateTime.now());
             metadata.setTotalPlayTime(0);
 
             // Create world directory

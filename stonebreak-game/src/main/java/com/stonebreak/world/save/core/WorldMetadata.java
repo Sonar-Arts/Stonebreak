@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -54,6 +55,40 @@ class Vector3fDeserializer extends JsonDeserializer<Vector3f> {
     }
 }
 
+class FlexibleLocalDateTimeDeserializer extends JsonDeserializer<LocalDateTime> {
+    @Override
+    public LocalDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        if (p.currentToken() == JsonToken.START_ARRAY) {
+            // Handle array format: [year, month, day, hour, minute, second, nanos]
+            JsonNode node = p.getCodec().readTree(p);
+            if (node.isArray() && node.size() >= 6) {
+                int year = node.get(0).asInt();
+                int month = node.get(1).asInt();
+                int day = node.get(2).asInt();
+                int hour = node.get(3).asInt();
+                int minute = node.get(4).asInt();
+                int second = node.get(5).asInt();
+                int nanos = node.size() > 6 ? node.get(6).asInt() : 0;
+                return LocalDateTime.of(year, month, day, hour, minute, second, nanos);
+            }
+        } else if (p.currentToken() == JsonToken.VALUE_NUMBER_INT) {
+            // Handle legacy timestamp format
+            long timestamp = p.getLongValue();
+            return timestampToLocalDateTime(timestamp);
+        } else if (p.currentToken() == JsonToken.VALUE_STRING) {
+            // Handle ISO string format (default Jackson behavior)
+            return LocalDateTime.parse(p.getText());
+        }
+
+        // Default fallback
+        return LocalDateTime.now();
+    }
+
+    private static LocalDateTime timestampToLocalDateTime(long timestamp) {
+        return LocalDateTime.ofEpochSecond(timestamp / 1000, (int) (timestamp % 1000) * 1000000, ZoneOffset.UTC);
+    }
+}
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WorldMetadata {
 
@@ -69,9 +104,11 @@ public class WorldMetadata {
     private Vector3f spawnPosition; // Player spawn point
 
     @JsonProperty("creationTime")
+    @JsonDeserialize(using = FlexibleLocalDateTimeDeserializer.class)
     private LocalDateTime creationTime; // Creation timestamp
 
     @JsonProperty("lastPlayed")
+    @JsonDeserialize(using = FlexibleLocalDateTimeDeserializer.class)
     private LocalDateTime lastPlayed;   // Last access time
 
     @JsonProperty("totalPlayTimeMillis")
@@ -122,12 +159,13 @@ public class WorldMetadata {
     public void setCreatedTime(LocalDateTime creationTime) { this.creationTime = creationTime; }
 
     // Legacy compatibility methods
-    public void setCreatedTime(long createdTime) {
+    public void setCreatedTimeMillis(long createdTime) {
         this.creationTime = timestampToLocalDateTime(createdTime);
     }
 
     // Support for legacy "createdTime" field name that maps to "creationTime"
     @JsonProperty("createdTime")
+    @JsonDeserialize(using = FlexibleLocalDateTimeDeserializer.class)
     public void setCreatedTimeAlias(LocalDateTime createdTime) {
         this.creationTime = createdTime;
     }
@@ -136,7 +174,7 @@ public class WorldMetadata {
     public void setLastPlayed(LocalDateTime lastPlayed) { this.lastPlayed = lastPlayed; }
 
     // Legacy compatibility methods
-    public void setLastPlayed(long lastPlayed) {
+    public void setLastPlayedMillis(long lastPlayed) {
         this.lastPlayed = timestampToLocalDateTime(lastPlayed);
     }
 
