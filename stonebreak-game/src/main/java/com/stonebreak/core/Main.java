@@ -4,9 +4,8 @@ import java.nio.*;
 
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
-import org.lwjgl.*;
+import org.lwjgl.Version;
 import org.lwjgl.glfw.*;
-import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
 import org.lwjgl.opengl.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -37,7 +36,6 @@ public class Main {
     // Game settings - loaded from Settings at startup
     private int width;
     private int height;
-    private final String title = "Stonebreak";
     private static final int TARGET_FPS = 144;
     private static final long FRAME_TIME_NANOS = (long)(1_000_000_000.0 / TARGET_FPS);
     
@@ -50,14 +48,23 @@ public class Main {
     private Player player;
     private Renderer renderer;
     private InputHandler inputHandler;
-    private TextureAtlas textureAtlas; // Added TextureAtlas
+
+    // GLFW callback references for proper cleanup
+    private GLFWKeyCallback keyCallback;
+    private GLFWCharCallback charCallback;
+    private GLFWFramebufferSizeCallback framebufferSizeCallback;
+    private GLFWMouseButtonCallback mouseButtonCallback;
+    private GLFWCursorPosCallback cursorPosCallback;
+    private GLFWWindowFocusCallback windowFocusCallback;
+    private GLFWWindowCloseCallback windowCloseCallback;
     
     // Static references for system-wide access
     private static Main instance;
-    
+
     public static void main(String[] args) {
         new Main().run();
     }
+    
     
     private void run() {
         instance = this; // Set the instance
@@ -72,8 +79,8 @@ public class Main {
         } finally {
             cleanup();
             System.out.println("Stonebreak shutdown complete.");
-            System.exit(0);
         }
+        System.exit(0);
     }
     
     private void loadSettings() {
@@ -102,26 +109,29 @@ public class Main {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
           // Create the window
+        String title = "Stonebreak";
         window = glfwCreateWindow(width, height, title, 0, 0);
         if (window == 0) {
             throw new RuntimeException("Failed to create the GLFW window");
         }
           // Setup key callback
-        glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
+        keyCallback = GLFWKeyCallback.create((win, key, scancode, action, mods) -> {
             // Pass key events to InputHandler for chat handling
             if (inputHandler != null) {
                 inputHandler.handleKeyInput(key, action);
             }
         });
+        glfwSetKeyCallback(window, keyCallback);
         
         // Setup character callback for chat text input
-        glfwSetCharCallback(window, (win, codepoint) -> {
+        charCallback = GLFWCharCallback.create((win, codepoint) -> {
             if (inputHandler != null) {
                 inputHandler.handleCharacterInput((char) codepoint);
             }
         });
+        glfwSetCharCallback(window, charCallback);
           // Setup window resize callback
-        glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
+        framebufferSizeCallback = GLFWFramebufferSizeCallback.create((win, w, h) -> {
             this.width = w;
             this.height = h;
             glViewport(0, 0, w, h);
@@ -131,10 +141,11 @@ public class Main {
             // Update the Game singleton with new dimensions
             Game.getInstance().setWindowDimensions(w, h);
         });
+        glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
         // Setup mouse button callback
         // This now directly calls InputHandler's processMouseButton method.
         // InputHandler will then decide how to process the click based on game state (paused, inventory open, etc.)
-        glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
+        mouseButtonCallback = GLFWMouseButtonCallback.create((win, button, action, mods) -> {
             Game game = Game.getInstance();
             if (game != null && game.getState() == GameState.MAIN_MENU) {
                 // Handle main menu clicks
@@ -162,21 +173,22 @@ public class Main {
                 inputHandler.processMouseButton(button, action, mods);
             }
         });
+        glfwSetMouseButtonCallback(window, mouseButtonCallback);
           // Setup cursor position callback
-        glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
+        cursorPosCallback = GLFWCursorPosCallback.create((win, xpos, ypos) -> {
             Game game = Game.getInstance();
-            
+
             // Process mouse movement for camera look (if mouse is captured)
             MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.processMouseMovement(xpos, ypos);
             }
-            
+
             // Update InputHandler for UI interactions (always needed for UI)
             if (inputHandler != null) {
                 inputHandler.updateMousePosition((float)xpos, (float)ypos);
             }
-            
+
             // Handle main menu hover events
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
@@ -186,9 +198,10 @@ public class Main {
                 game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             }
         });
+        glfwSetCursorPosCallback(window, cursorPosCallback);
         
         // Setup window focus callback to handle mouse capture on focus changes
-        glfwSetWindowFocusCallback(window, (win, focused) -> {
+        windowFocusCallback = GLFWWindowFocusCallback.create((win, focused) -> {
             Game game = Game.getInstance();
             MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
             if (mouseCaptureManager != null) {
@@ -199,12 +212,14 @@ public class Main {
                 }
             }
         });
+        glfwSetWindowFocusCallback(window, windowFocusCallback);
         
         // Setup window close callback to handle X button clicks
-        glfwSetWindowCloseCallback(window, win -> {
+        windowCloseCallback = GLFWWindowCloseCallback.create(win -> {
             System.out.println("Window close requested - initiating shutdown...");
             running = false;
         });
+        glfwSetWindowCloseCallback(window, windowCloseCallback);
         
         // Get the thread stack and push a new frame
         try (MemoryStack stack = stackPush()) {
@@ -280,8 +295,8 @@ public class Main {
           player.setPosition(0, 100, 0);
   
           // Initialize TextureAtlas (used by Renderer and potentially UI)
-          textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
-  
+          TextureAtlas textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
+
             // Initialize the Game singleton
           // Pass inputHandler to Game's init method
           Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler, window);
@@ -432,7 +447,7 @@ public class Main {
         if (!resetOpenGLState()) return;
         
         render3DWorld(game, renderer);
-        renderDeferredElements(game, renderer);
+        renderDeferredElements();
         renderGameUI(game, renderer);
         renderFullscreenMenus(game);
         renderer.renderOverlay(game, width, height);
@@ -470,8 +485,6 @@ public class Main {
             glDisable(GL_SCISSOR_TEST);
             glDisable(GL_STENCIL_TEST);
             glDisable(GL_CULL_FACE);
-            
-            while (glGetError() != GL_NO_ERROR) { /* clear */ }
             
             glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
@@ -584,7 +597,7 @@ public class Main {
         }
     }
 
-    private void renderDeferredElements(Game game, Renderer renderer) {
+    private void renderDeferredElements() {
         // No deferred elements to render
     }
 
@@ -640,16 +653,24 @@ public class Main {
             
         } catch (Exception e) {
             System.err.println("Error during atlas regeneration check: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
             System.err.println("Continuing with existing atlas...");
         }
     }
     
       private void cleanup() {
           Game.logDetailedMemoryInfo("Before cleanup");
-          
-          // Free the window callbacks and destroy the window
-          glfwFreeCallbacks(window);
+
+          // Free individual callbacks
+          if (keyCallback != null) keyCallback.free();
+          if (charCallback != null) charCallback.free();
+          if (framebufferSizeCallback != null) framebufferSizeCallback.free();
+          if (mouseButtonCallback != null) mouseButtonCallback.free();
+          if (cursorPosCallback != null) cursorPosCallback.free();
+          if (windowFocusCallback != null) windowFocusCallback.free();
+          if (windowCloseCallback != null) windowCloseCallback.free();
+
+          // Destroy the window
           glfwDestroyWindow(window);
           Game.logDetailedMemoryInfo("After GLFW cleanup");
           
@@ -680,18 +701,12 @@ public class Main {
           }
       }
     
+    
+
     /**
      * Return the window handle.
      */
     public static long getWindowHandle() {
         return instance != null ? instance.window : 0;
-    }
-    
-    
-    /**
-     * Return the input handler.
-     */
-    public static InputHandler getInputHandler() {
-        return instance != null ? instance.inputHandler : null;
     }
 }
