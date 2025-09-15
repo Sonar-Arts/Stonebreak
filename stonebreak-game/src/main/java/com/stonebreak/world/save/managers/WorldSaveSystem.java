@@ -104,6 +104,20 @@ public class WorldSaveSystem implements AutoCloseable {
     }
 
     /**
+     * Loads a single chunk if it exists in storage.
+     */
+    public java.util.concurrent.CompletableFuture<com.stonebreak.world.chunk.Chunk> loadChunk(int chunkX, int chunkZ) {
+        return loadManager.loadChunk(chunkX, chunkZ);
+    }
+
+    /**
+     * Checks if a given chunk exists in storage.
+     */
+    public java.util.concurrent.CompletableFuture<Boolean> chunkExists(int chunkX, int chunkZ) {
+        return loadManager.chunkExists(chunkX, chunkZ);
+    }
+
+    /**
      * Applies loaded player state to the current player.
      */
     public void applyPlayerState(PlayerState playerState) {

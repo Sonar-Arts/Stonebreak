@@ -46,37 +46,28 @@ public class BinaryChunkCodec {
             // Serialize palette
             byte[] paletteData = palette.serializePalette();
 
-            // Create uncompressed chunk data
-            ByteBuffer uncompressedBuffer = ByteBuffer.allocate(
-                CHUNK_HEADER_SIZE + paletteData.length + encodedBlocks.length * 8
-            );
-
-            // Write chunk header (32 bytes)
-            writeChunkHeader(uncompressedBuffer, chunk, palette, 0);
-
-            // Write palette data
-            uncompressedBuffer.put(paletteData);
-
-            // Write encoded block data
+            // Build uncompressed body (palette + encoded blocks)
+            ByteBuffer bodyBuffer = ByteBuffer.allocate(paletteData.length + encodedBlocks.length * 8);
+            bodyBuffer.put(paletteData);
             for (long blockData : encodedBlocks) {
-                uncompressedBuffer.putLong(blockData);
+                bodyBuffer.putLong(blockData);
             }
+            byte[] body = Arrays.copyOf(bodyBuffer.array(), bodyBuffer.position());
 
-            byte[] uncompressedData = Arrays.copyOf(uncompressedBuffer.array(), uncompressedBuffer.position());
+            // Try LZ4 compression on the body
+            byte[] compressedBody = compressor.compress(body);
+            boolean useCompression = compressedBody.length < body.length * 0.9;
 
-            // Try LZ4 compression
-            byte[] compressed = compressor.compress(uncompressedData);
-
-            // Use compression if it saves at least 10%
-            if (compressed.length < uncompressedData.length * 0.9) {
-                // Update header to indicate compression
-                ByteBuffer compressedBuffer = ByteBuffer.wrap(compressed);
-                compressedBuffer.putInt(28, uncompressedData.length); // Uncompressed size
-                compressedBuffer.put(30, COMPRESSION_LZ4); // Compression type
-                return compressed;
+            if (useCompression) {
+                ByteBuffer finalBuffer = ByteBuffer.allocate(CHUNK_HEADER_SIZE + compressedBody.length);
+                writeChunkHeader(finalBuffer, chunk, palette, body.length, COMPRESSION_LZ4, (byte) (chunk.isDirty() ? 1 : 0));
+                finalBuffer.put(compressedBody);
+                return finalBuffer.array();
             } else {
-                // Use uncompressed data
-                return uncompressedData;
+                ByteBuffer finalBuffer = ByteBuffer.allocate(CHUNK_HEADER_SIZE + body.length);
+                writeChunkHeader(finalBuffer, chunk, palette, 0, COMPRESSION_NONE, (byte) (chunk.isDirty() ? 1 : 0));
+                finalBuffer.put(body);
+                return finalBuffer.array();
             }
 
         } catch (Exception e) {
@@ -89,22 +80,21 @@ public class BinaryChunkCodec {
      */
     public Chunk decodeChunk(byte[] data) {
         try {
-            ByteBuffer buffer;
-
-            // Check if data is compressed
+            // Read header
             ByteBuffer headerBuffer = ByteBuffer.wrap(data, 0, CHUNK_HEADER_SIZE);
-            byte compressionType = headerBuffer.get(30);
+            ChunkHeader header = readChunkHeader(headerBuffer);
 
-            if (compressionType == COMPRESSION_LZ4) {
-                int uncompressedSize = headerBuffer.getInt(28);
-                byte[] decompressed = decompressor.decompress(data, uncompressedSize);
-                buffer = ByteBuffer.wrap(decompressed);
+            // Extract body based on compression
+            int bodyOffset = CHUNK_HEADER_SIZE;
+            byte[] bodyBytes;
+            if (header.compressionType == COMPRESSION_LZ4) {
+                int uncompressedSize = header.uncompressedSize;
+                byte[] compressed = Arrays.copyOfRange(data, bodyOffset, data.length);
+                bodyBytes = decompressor.decompress(compressed, uncompressedSize);
             } else {
-                buffer = ByteBuffer.wrap(data);
+                bodyBytes = Arrays.copyOfRange(data, bodyOffset, data.length);
             }
-
-            // Read chunk header
-            ChunkHeader header = readChunkHeader(buffer);
+            ByteBuffer buffer = ByteBuffer.wrap(bodyBytes);
 
             // Read palette
             byte[] paletteData = new byte[header.paletteSize * 4 + 8];
@@ -139,7 +129,7 @@ public class BinaryChunkCodec {
         }
     }
 
-    private void writeChunkHeader(ByteBuffer buffer, Chunk chunk, BlockPalette palette, int uncompressedSize) {
+    private void writeChunkHeader(ByteBuffer buffer, Chunk chunk, BlockPalette palette, int uncompressedSize, byte compressionType, byte flags) {
         buffer.putInt(chunk.getX());                    // chunkX
         buffer.putInt(chunk.getZ());                    // chunkZ
         buffer.putInt(FORMAT_VERSION);                  // version
@@ -148,8 +138,8 @@ public class BinaryChunkCodec {
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()); // lastModified
         buffer.putInt(palette.size());                  // paletteSize
         buffer.put((byte) palette.getBitsPerBlock());   // bitsPerBlock
-        buffer.put(COMPRESSION_NONE);                   // compressionType (will be updated if compressed)
-        buffer.put((byte) (chunk.isDirty() ? 1 : 0));   // flags (bit 0: dirty)
+        buffer.put(compressionType);                    // compressionType
+        buffer.put(flags);                              // flags (bit 0: dirty)
         buffer.put((byte) 0);                           // reserved
     }
 

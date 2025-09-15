@@ -1491,28 +1491,42 @@ public class Game {
             boolean worldExists = worldDir.exists() && worldDir.isDirectory();
 
             if (worldExists) {
-                // Load existing world
+                // Load existing world: metadata + player state, then finalize
                 if (loadingScreen != null) {
                     loadingScreen.updateProgress("Loading World: " + worldName);
                 }
                 System.out.println("Loading existing world: " + worldName);
 
-                // Use WorldSaveSystem to check if world exists and load metadata
-                saveSystem.worldExists()
-                    .thenCompose(exists -> {
-                        if (exists) {
-                            return saveSystem.loadWorldMetadata()
-                                .thenAccept(metadata -> {
-                                    if (metadata != null) {
-                                        // Set the seed from loaded metadata
-                                        world.setSeed(metadata.getSeed());
-                                        System.out.println("Successfully loaded world metadata for: " + worldName);
+                saveSystem.loadCompleteWorldState()
+                    .thenAccept(result -> {
+                        try {
+                            if (result != null && result.isValid()) {
+                                var metadata = result.metadata;
+                                if (metadata != null) {
+                                    // Apply metadata to world
+                                    if (world != null) {
+                                        world.setSeed(metadata.getSeed()); // May warn if already set
+                                        if (metadata.getSpawnPosition() != null) {
+                                            world.setSpawnPosition(metadata.getSpawnPosition());
+                                        }
                                     }
-                                });
-                        } else {
-                            // World directory exists but save system doesn't recognize it
-                            createNewWorldWithGeneration(worldName, seed);
-                            return java.util.concurrent.CompletableFuture.completedFuture(null);
+                                    // Update seed for save system initialization
+                                    this.currentWorldSeed = metadata.getSeed();
+                                }
+
+                                // Apply player state
+                                if (result.playerState != null) {
+                                    saveSystem.applyPlayerState(result.playerState);
+                                }
+
+                                System.out.println("Successfully loaded complete world state for: " + worldName);
+                            } else {
+                                System.out.println("World load incomplete or invalid; generating new world.");
+                                createNewWorldWithGeneration(worldName, seed);
+                                return; // performInitialWorldGeneration handles completion
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Error applying loaded world state: " + e.getMessage());
                         }
                     })
                     .exceptionally(throwable -> {
@@ -1520,17 +1534,14 @@ public class Game {
                         if (loadingScreen != null) {
                             loadingScreen.updateProgress("Load failed - generating new world...");
                         }
-                        // Fall back to creating a new world with the same name
                         createNewWorldWithGeneration(worldName, seed);
                         return null;
-                    });
+                    })
+                    .thenRun(this::completeWorldGeneration);
             } else {
-                // Create new world
+                // Create new world (performInitialWorldGeneration will call completeWorldGeneration)
                 createNewWorldWithGeneration(worldName, seed);
             }
-
-            // Complete world generation/loading
-            completeWorldGeneration();
 
         } catch (Exception e) {
             System.err.println("Error during world loading/generation: " + e.getMessage());

@@ -47,6 +47,31 @@ public class WorldChunkStore {
         Chunk chunk = chunks.get(position);
         
         if (chunk == null) {
+            // Try to load from save system first
+            try {
+                com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+                var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
+
+                if (saveSystem != null) {
+                    Boolean exists = saveSystem.chunkExists(x, z).get();
+                    if (exists != null && exists) {
+                        Chunk loaded = saveSystem.loadChunk(x, z).get();
+                        if (loaded != null) {
+                            chunks.put(position, loaded);
+                            // Ensure mesh is scheduled for build for loaded chunks
+                            if (shouldQueueForMesh(x, z)) {
+                                meshPipeline.scheduleConditionalMeshBuild(loaded);
+                            }
+                            return loaded;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Fall back to generation on any load error
+                System.err.println("Error loading chunk (" + x + ", " + z + ") from storage: " + e.getMessage());
+            }
+
+            // If not loaded, generate anew
             chunk = safelyGenerateAndRegisterChunk(x, z);
         }
         

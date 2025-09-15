@@ -126,6 +126,12 @@ public class WorldMetadata {
         this.creationTime = timestampToLocalDateTime(createdTime);
     }
 
+    // Support for legacy "createdTime" field name that maps to "creationTime"
+    @JsonProperty("createdTime")
+    public void setCreatedTimeAlias(LocalDateTime createdTime) {
+        this.creationTime = createdTime;
+    }
+
     public LocalDateTime getLastPlayed() { return lastPlayed; }
     public void setLastPlayed(LocalDateTime lastPlayed) { this.lastPlayed = lastPlayed; }
 
