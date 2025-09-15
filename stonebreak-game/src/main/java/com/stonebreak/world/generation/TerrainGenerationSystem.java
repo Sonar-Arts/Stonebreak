@@ -390,6 +390,54 @@ public class TerrainGenerationSystem {
                         }
                     }
                 }
+                
+                // Generate Clay patches in RED_SAND_DESERT biome
+                if (biome == BiomeType.RED_SAND_DESERT && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.RED_SAND) {
+                        float clayChance;
+                        synchronized (randomLock) {
+                            clayChance = random.nextFloat();
+                        }
+                        
+                        if (clayChance < 0.008) { // 0.8% chance for clay patches (much rarer)
+                            // Create organic-looking clay patches
+                            int centerX = worldX;
+                            int centerZ = worldZ;
+                            int radius;
+                            synchronized (randomLock) {
+                                radius = 1 + random.nextInt(2); // Radius 1-2 blocks
+                            }
+                            
+                            // Generate circular/organic patch with some randomness
+                            for (int dx = -radius; dx <= radius; dx++) {
+                                for (int dz = -radius; dz <= radius; dz++) {
+                                    int patchWorldX = centerX + dx;
+                                    int patchWorldZ = centerZ + dz;
+                                    
+                                    // Calculate distance from center
+                                    double distance = Math.sqrt(dx * dx + dz * dz);
+                                    
+                                    // Only place clay within radius with some randomness for organic shape
+                                    if (distance <= radius) {
+                                        float placeChance;
+                                        synchronized (randomLock) {
+                                            // Higher chance near center, lower chance at edges
+                                            placeChance = 1.0f - (float)(distance / radius) * 0.4f;
+                                            if (random.nextFloat() < placeChance) {
+                                                int patchY = generateTerrainHeight(patchWorldX, patchWorldZ) - 1;
+                                                
+                                                // Only place clay if the spot is red sand
+                                                if (world.getBlockAt(patchWorldX, patchY, patchWorldZ) == BlockType.RED_SAND) {
+                                                    world.setBlockAt(patchWorldX, patchY, patchWorldZ, BlockType.CLAY);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 // No trees in DESERT or VOLCANIC biomes by default
             }
         }

@@ -150,6 +150,11 @@
       "id": 29,
       "textureType": "uniform",
       "texture": "gravel_texture"
+    },
+    "stonebreak:clay": {
+      "id": 30,
+      "textureType": "uniform",
+      "texture": "clay_texture"
     }
   }
 }

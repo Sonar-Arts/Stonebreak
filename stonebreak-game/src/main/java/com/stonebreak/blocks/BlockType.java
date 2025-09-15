@@ -41,7 +41,8 @@ public enum BlockType implements Item {
     ELM_WOOD_PLANKS(27, "Elm Wood Planks", true, true, 5, 3, 3.0f), // Atlas coords (5,3) - ID updated from 29 to 27
     ELM_LEAVES(28, "Elm Leaves", true, true, 6, 3, 0.5f), // Atlas coords (6,3) - ID updated from 30 to 28
     COBBLESTONE(29, "Cobblestone", true, true, 7, 3, 4.0f),
-    GRAVEL(30, "Gravel", true, true, 8, 3, 1.5f);
+    GRAVEL(30, "Gravel", true, true, 8, 3, 1.5f),
+    CLAY(31, "Clay", true, true, 0, 4, 2.0f);
 
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
@@ -253,6 +254,7 @@ public enum BlockType implements Item {
             case ELM_LEAVES -> new float[]{6, 3}; // All faces use (6,3)
             case COBBLESTONE -> new float[]{7, 3}; // All faces use (7,3)
             case GRAVEL -> new float[]{8, 3}; // All faces use (8,3)
+            case CLAY -> new float[]{0, 4}; // All faces use (0,4)
             default -> new float[]{0, 0};
         };
     }
