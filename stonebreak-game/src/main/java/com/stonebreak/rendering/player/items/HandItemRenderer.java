@@ -59,8 +59,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        // Disable water waves for held blocks to prevent animation
-        shaderProgram.setUniform("u_disableWaterWaves", true);
+        // Enable UI element mode to disable water waves for held blocks
+        shaderProgram.setUniform("u_isUIElement", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -81,6 +81,9 @@ public class HandItemRenderer {
         // Re-enable blending for other elements
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**
@@ -91,8 +94,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        // Disable water waves for held blocks to prevent animation
-        shaderProgram.setUniform("u_disableWaterWaves", true);
+        // Enable UI element mode to disable water waves for held blocks
+        shaderProgram.setUniform("u_isUIElement", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -114,6 +117,9 @@ public class HandItemRenderer {
         CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
         resource.getMesh().bind();
         glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**
@@ -200,8 +206,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_isText", false); 
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        // Disable water waves for held tools to prevent animation
-        shaderProgram.setUniform("u_disableWaterWaves", true);
+        // Enable UI element mode to disable water waves for held tools
+        shaderProgram.setUniform("u_isUIElement", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -231,6 +237,9 @@ public class HandItemRenderer {
         
         // Restore OpenGL state
         glEnable(GL_CULL_FACE);
+
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**
