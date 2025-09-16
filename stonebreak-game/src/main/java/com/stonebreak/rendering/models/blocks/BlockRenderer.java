@@ -101,6 +101,7 @@ public class BlockRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", true); // Treat crack overlay as UI element to disable water waves
         shaderProgram.setUniform("texture_sampler", 0);
         
         // Bind crack texture
@@ -138,10 +139,11 @@ public class BlockRenderer {
         glDisable(GL_BLEND);
         glDisable(GL_POLYGON_OFFSET_FILL);
         glBindTexture(GL_TEXTURE_2D, 0);
-        
+
         // Reset shader state
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+        shaderProgram.setUniform("u_isUIElement", false); // Restore world rendering state
+
         shaderProgram.unbind();
     }
     
