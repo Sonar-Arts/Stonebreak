@@ -47,8 +47,8 @@ public class Player {      // Player settings
     // Camera
     private final Camera camera;
     
-    // Reference to the world
-    private final World world;
+    // Reference to the world (mutable for world switching)
+    private World world;
     
     // Inventory
     private final Inventory inventory;
@@ -1637,10 +1637,10 @@ public class Player {      // Player settings
     }
 
     /**
-     * Resets player data for switching between worlds.
+     * Gives starting items and resets player state for new worlds.
      * This resets position, inventory, physics state, and camera orientation.
      */
-    public void resetPlayerData() {
+    public void giveStartingItems() {
         // Reset position to spawn
         position.set(0, 100, 0);
 
@@ -1687,5 +1687,14 @@ public class Player {      // Player settings
         }
 
         System.out.println("Player data reset for world switching");
+    }
+
+    /**
+     * Sets the world reference for world switching.
+     * This is used when switching between worlds to update the player's world reference.
+     */
+    public void setWorld(World world) {
+        this.world = world;
+        System.out.println("[WORLD-ISOLATION] Player world reference updated for world switching");
     }
 }

@@ -39,11 +39,14 @@ public class World {
     public World() {
         this(new WorldConfiguration());
     }
-    
+
     public World(WorldConfiguration config) {
+        this(config, System.currentTimeMillis());
+    }
+
+    public World(WorldConfiguration config, long seed) {
         this.config = config;
-        
-        long seed = System.currentTimeMillis();
+
         this.terrainSystem = new TerrainGenerationSystem(seed);
         this.snowLayerManager = new SnowLayerManager();
         
@@ -269,6 +272,13 @@ public class World {
         if (meshPipeline != null) {
             meshPipeline.processGpuCleanupQueue();
         }
+
+        // Reset spawn position to default for world isolation
+        spawnPosition.set(0, 100, 0);
+
+        // Clear any additional world state that may persist between worlds
+        // Note: TerrainGenerationSystem seed cannot be changed, so fresh World instances
+        // should be used for complete isolation instead
 
         System.out.println("World data cleared for world switching");
     }

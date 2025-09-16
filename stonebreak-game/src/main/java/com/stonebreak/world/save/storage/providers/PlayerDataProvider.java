@@ -76,6 +76,7 @@ public class PlayerDataProvider {
                 state.setFlying(root.path("isFlying").asBoolean(false));
                 state.setGameMode(root.path("gameMode").asInt(1));
                 state.setSelectedHotbarSlot(root.path("selectedHotbarSlot").asInt(0));
+                state.setWorldName(root.path("worldName").asText(null)); // Load world name for validation
 
                 // Inventory
                 com.fasterxml.jackson.databind.JsonNode inv = root.path("inventory");
@@ -152,6 +153,7 @@ public class PlayerDataProvider {
                 root.put("isFlying", playerState.isFlying());
                 root.put("gameMode", playerState.getGameMode());
                 root.put("selectedHotbarSlot", playerState.getSelectedHotbarSlot());
+                root.put("worldName", playerState.getWorldName()); // Save world name for validation
                 root.put("lastSaved", playerState.getLastSaved());
 
                 // Inventory: 36 slots
