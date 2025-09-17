@@ -26,9 +26,25 @@ public class SoundBuffer {
         for (int i = 0; i < sourcesPerSound; i++) {
             int sourcePointer = alGenSources();
             alSourcei(sourcePointer, AL_BUFFER, bufferPointer);
+
+            // Configure for 3D positional audio
             alSourcef(sourcePointer, AL_GAIN, 0.5f);
-            alSourcef(sourcePointer, AL_PITCH, 1f);
-            alSource3f(sourcePointer, AL_POSITION, 0, 0, 0);
+            alSourcef(sourcePointer, AL_PITCH, 1.0f);
+
+            // Set initial position (will be overridden by 3D play methods)
+            alSource3f(sourcePointer, AL_POSITION, 0.0f, 0.0f, 0.0f);
+            alSource3f(sourcePointer, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
+
+            // Configure 3D audio distance parameters
+            alSourcef(sourcePointer, AL_REFERENCE_DISTANCE, 1.0f);    // Distance where volume is at full
+            alSourcef(sourcePointer, AL_MAX_DISTANCE, 50.0f);         // Maximum distance before volume reaches minimum
+            alSourcef(sourcePointer, AL_ROLLOFF_FACTOR, 1.0f);        // How quickly volume decreases with distance
+
+            // Ensure source is positional (not relative to listener)
+            alSourcei(sourcePointer, AL_SOURCE_RELATIVE, AL_FALSE);
+
+            // Set to non-looping by default
+            alSourcei(sourcePointer, AL_LOOPING, AL_FALSE);
 
             int error = alGetError();
             if (error != AL_NO_ERROR) {

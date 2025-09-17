@@ -29,10 +29,16 @@ public abstract class SoundEmitter {
 
     /**
      * Updates the sound emitter, handling timing and sound playback.
+     * Only plays sounds if a world is loaded and a player exists.
      * @param deltaTime The time elapsed since last update in seconds
      */
     public void update(float deltaTime) {
         if (!isActive) {
+            return;
+        }
+
+        // Safety check: ensure we have a valid game state before playing sounds
+        if (!canPlaySounds()) {
             return;
         }
 
@@ -41,6 +47,16 @@ public abstract class SoundEmitter {
             playSound();
             timer = 0.0f;
         }
+    }
+
+    /**
+     * Checks if sounds can be played based on game state.
+     * @return True if sounds should be played, false otherwise
+     */
+    protected boolean canPlaySounds() {
+        // Ensure we have a loaded world and player before playing sounds
+        return com.stonebreak.core.Game.getWorld() != null &&
+               com.stonebreak.core.Game.getPlayer() != null;
     }
 
     /**
@@ -131,9 +147,10 @@ public abstract class SoundEmitter {
 
     /**
      * Immediately triggers the sound emission, regardless of timer state.
+     * Only plays if the emitter is active and game state allows sound playback.
      */
     public void triggerSound() {
-        if (isActive) {
+        if (isActive && canPlaySounds()) {
             playSound();
         }
     }

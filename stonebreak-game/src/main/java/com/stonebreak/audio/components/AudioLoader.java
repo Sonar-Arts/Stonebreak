@@ -142,12 +142,18 @@ public class AudioLoader {
 
                 System.out.println("Original format: " + format);
 
+                // For 3D positional audio, we need MONO sounds. Convert stereo to mono.
+                int targetChannels = 1; // Force mono for 3D audio compatibility
+                if (format.getChannels() > 1) {
+                    System.out.println("🔄 Converting " + format.getChannels() + "-channel audio to MONO for 3D positional audio");
+                }
+
                 AudioFormat targetFormat = new AudioFormat(
                     AudioFormat.Encoding.PCM_SIGNED,
                     format.getSampleRate(),
                     16,
-                    format.getChannels(),
-                    format.getChannels() * 2,
+                    targetChannels,        // Always use 1 channel (mono)
+                    targetChannels * 2,    // Frame size: 1 channel * 2 bytes
                     format.getSampleRate(),
                     false
                 );
@@ -162,18 +168,13 @@ public class AudioLoader {
                     int sampleRate = (int) targetFormat.getSampleRate();
 
                     System.out.println("Converted format: " + channels + " channels, " + sampleRate + " Hz, " + audioData.length + " bytes");
+                    System.out.println("✅ Audio converted to MONO for 3D positional audio compatibility");
 
-                    int alFormat = switch (channels) {
-                        case 1 -> AL_FORMAT_MONO16;
-                        case 2 -> AL_FORMAT_STEREO16;
-                        default -> {
-                            System.err.println("Unsupported channel count: " + channels);
-                            yield -1;
-                        }
-                    };
-
-                    if (alFormat == -1) {
-                        return LoadResult.failure("Unsupported channel count: " + channels);
+                    // Since we're forcing mono, this should always be 1 channel
+                    int alFormat = AL_FORMAT_MONO16;
+                    if (channels != 1) {
+                        System.err.println("❌ ERROR: Expected 1 channel after conversion, got " + channels);
+                        return LoadResult.failure("Mono conversion failed: got " + channels + " channels");
                     }
 
                     int bufferPointer = alGenBuffers();

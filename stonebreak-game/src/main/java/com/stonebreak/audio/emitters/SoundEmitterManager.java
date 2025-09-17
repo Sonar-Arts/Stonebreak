@@ -19,9 +19,15 @@ public class SoundEmitterManager {
 
     /**
      * Updates all active sound emitters.
+     * Only updates if a world is loaded to prevent sounds before world initialization.
      * @param deltaTime The time elapsed since last update in seconds
      */
     public void update(float deltaTime) {
+        // Safety check: only update emitters if a world is loaded
+        if (com.stonebreak.core.Game.getWorld() == null) {
+            return;
+        }
+
         for (SoundEmitter emitter : emitters) {
             emitter.update(deltaTime);
         }

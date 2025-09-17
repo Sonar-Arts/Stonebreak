@@ -214,6 +214,12 @@ public class ChatSystem {
                     return;
                 }
 
+                // Check if world is loaded
+                if (Game.getWorld() == null) {
+                    addMessage("Cannot spawn sound emitter - no world loaded!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
                 Player player = Game.getPlayer();
                 if (player == null) {
                     addMessage("Player not found!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
@@ -236,6 +242,67 @@ public class ChatSystem {
                 } else {
                     addMessage("Sound emitter system not available!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
                 }
+            }
+            case "/test_3d_audio" -> {
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
+                // Check if world is loaded
+                if (Game.getWorld() == null) {
+                    addMessage("Cannot test 3D audio - no world loaded!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
+                Player player = Game.getPlayer();
+                if (player == null) {
+                    addMessage("Player not found!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
+                addMessage("Starting 3D audio test with sounds at 2, 10, 25, and 60 blocks...",
+                    new float[]{0.0f, 1.0f, 1.0f, 1.0f}); // Cyan
+                addMessage("Check console for detailed debug information!",
+                    new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+
+                // Run the test in a separate thread to avoid blocking the chat
+                new Thread(() -> {
+                    Game.getSoundSystem().test3DAudio();
+                }).start();
+            }
+            case "/test_3d_near" -> {
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+                if (Game.getWorld() == null || Game.getPlayer() == null) {
+                    addMessage("World and player required!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+                addMessage("Testing 3D audio at 2 blocks distance...", new float[]{0.0f, 1.0f, 1.0f, 1.0f}); // Cyan
+                Game.getSoundSystem().testSingle3DAudio(2.0f);
+            }
+            case "/test_3d_far" -> {
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+                if (Game.getWorld() == null || Game.getPlayer() == null) {
+                    addMessage("World and player required!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+                addMessage("Testing 3D audio at 60 blocks distance...", new float[]{0.0f, 1.0f, 1.0f, 1.0f}); // Cyan
+                Game.getSoundSystem().testSingle3DAudio(60.0f);
+            }
+            case "/diagnose_openal" -> {
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+                addMessage("Running OpenAL 3D audio diagnosis...", new float[]{0.0f, 1.0f, 1.0f, 1.0f}); // Cyan
+                addMessage("Check console for detailed information!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                Game.getSoundSystem().diagnoseOpenAL3D();
             }
             default -> addMessage("Unknown command: " + commandName, new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
         }

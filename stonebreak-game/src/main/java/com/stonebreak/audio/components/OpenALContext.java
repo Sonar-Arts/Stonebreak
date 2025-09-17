@@ -37,9 +37,16 @@ public class OpenALContext {
 
             AL.createCapabilities(ALC.createCapabilities(device));
 
-            alListener3f(AL_POSITION, 0, 0, 1.0f);
-            alListener3f(AL_VELOCITY, 0, 0, 0);
-            alListener3f(AL_ORIENTATION, 0, 0, 1);
+            // Set up 3D audio distance model for proper spatial audio
+            alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
+            System.out.println("🔧 OPENAL DEBUG: Set distance model to AL_INVERSE_DISTANCE_CLAMPED");
+
+            // Print current distance model to verify
+            int currentModel = alGetInteger(AL_DISTANCE_MODEL);
+            System.out.println("🔧 OPENAL DEBUG: Current distance model: " + currentModel + " (AL_INVERSE_DISTANCE_CLAMPED=" + AL_INVERSE_DISTANCE_CLAMPED + ")");
+
+            // Note: Initial listener setup will be handled by AudioListener.initializeDefaultListener()
+            // We don't set listener properties here to avoid conflicts
 
             initialized = true;
             System.out.println("OpenAL initialized successfully");

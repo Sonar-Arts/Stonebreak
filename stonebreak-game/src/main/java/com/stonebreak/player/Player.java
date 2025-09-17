@@ -219,6 +219,12 @@ public class Player {      // Player settings
         
         // Update walking sounds
         Game.getSoundSystem().updatePlayerSounds(position, velocity, onGround, physicallyInWater);
+
+        // Update audio listener position and orientation for proper 3D spatial audio
+        // Only update if we have a valid world loaded
+        if (Game.getWorld() != null) {
+            Game.getSoundSystem().setListenerFromCamera(position, camera.getFront(), camera.getUp());
+        }
     }
     
     /**
