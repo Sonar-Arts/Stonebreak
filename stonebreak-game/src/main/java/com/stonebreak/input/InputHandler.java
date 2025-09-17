@@ -444,6 +444,14 @@ public class InputHandler {
                 ChatSystem chatSystem = game.getChatSystem();
 
                 if (saveSystem != null) {
+                    if (!saveSystem.isInitialized()) {
+                        System.out.println("[MANUAL-SAVE] Save system not yet initialized - world still loading");
+                        if (chatSystem != null) {
+                            chatSystem.addMessage("World still loading, Hold your horses...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                        }
+                        return;
+                    }
+
                     try {
                         System.out.println("[MANUAL-SAVE] Starting manual save...");
 

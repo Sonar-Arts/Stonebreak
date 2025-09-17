@@ -48,6 +48,13 @@ public class WorldSaveSystem implements AutoCloseable {
     }
 
     /**
+     * Checks if the save system is properly initialized with all required components.
+     */
+    public boolean isInitialized() {
+        return currentWorld != null && currentPlayer != null && currentWorldMetadata != null;
+    }
+
+    /**
      * Saves the current world state immediately.
      */
     public CompletableFuture<Void> saveWorldNow() {
