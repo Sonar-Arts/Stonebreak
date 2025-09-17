@@ -93,7 +93,6 @@ public class AudioListener {
         float distance = position.distance(lastLoggedPosition);
 
         if (distance > 1.0f || (currentTime - lastLogTime) > 5000) { // Log every 1 block movement or 5 seconds
-            System.out.println("🎧 LISTENER DEBUG: Position (" + String.format("%.1f", position.x) + ", " + String.format("%.1f", position.y) + ", " + String.format("%.1f", position.z) + ")");
             lastLoggedPosition.set(position);
             lastLogTime = currentTime;
         }
