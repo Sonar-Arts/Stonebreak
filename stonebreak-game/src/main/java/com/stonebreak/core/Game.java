@@ -454,6 +454,10 @@ public class Game {
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         System.out.println("Entity system initialized - cows can now spawn!");
+
+        // Initialize player sounds
+        this.soundSystem.initializePlayerSounds(world);
+        System.out.println("Player sound system initialized");
     }
     
     /**

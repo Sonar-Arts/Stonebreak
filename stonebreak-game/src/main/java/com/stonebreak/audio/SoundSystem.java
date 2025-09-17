@@ -12,6 +12,7 @@ public class SoundSystem {
     private final SoundPlayer soundPlayer;
     private final AudioListener audioListener;
     private final AudioDiagnostics audioDiagnostics;
+    private PlayerSounds playerSounds;
 
     private SoundSystem() {
         this.openALContext = new OpenALContext();
@@ -87,7 +88,34 @@ public class SoundSystem {
     public float getMasterVolume() {
         return volumeController.getMasterVolume();
     }
-    
+
+    /**
+     * Initializes player sound management with the given world.
+     * Should be called when a world is loaded.
+     */
+    public void initializePlayerSounds(com.stonebreak.world.World world) {
+        this.playerSounds = new PlayerSounds(world);
+    }
+
+    /**
+     * Updates player walking sounds based on movement state.
+     * Should be called every frame during player update.
+     */
+    public void updatePlayerSounds(org.joml.Vector3f position, org.joml.Vector3f velocity, boolean onGround, boolean physicallyInWater) {
+        if (playerSounds != null) {
+            playerSounds.updateWalkingSounds(position, velocity, onGround, physicallyInWater);
+        }
+    }
+
+    /**
+     * Resets player sound state. Call when player is created or respawned.
+     */
+    public void resetPlayerSounds() {
+        if (playerSounds != null) {
+            playerSounds.reset();
+        }
+    }
+
     public void cleanup() {
         soundBuffer.cleanup();
         openALContext.cleanup();
