@@ -55,6 +55,21 @@ public class WorldSaveSystem implements AutoCloseable {
     }
 
     /**
+     * Updates the world and player references without losing existing metadata or state.
+     * This is used when world/player objects are recreated but we want to preserve
+     * the save system's initialization state and metadata.
+     */
+    public void updateReferences(World newWorld, Player newPlayer) {
+        if (isInitialized()) {
+            this.currentWorld = newWorld;
+            this.currentPlayer = newPlayer;
+            System.out.println("[SAVE-SYSTEM] Updated object references to maintain save system functionality");
+        } else {
+            System.out.println("[SAVE-SYSTEM] Cannot update references - save system not initialized");
+        }
+    }
+
+    /**
      * Saves the current world state immediately.
      */
     public CompletableFuture<Void> saveWorldNow() {
