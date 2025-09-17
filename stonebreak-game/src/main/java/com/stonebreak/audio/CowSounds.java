@@ -3,6 +3,7 @@ package com.stonebreak.audio;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
+import com.stonebreak.player.Player;
 import org.joml.Vector3f;
 
 /**
@@ -13,7 +14,8 @@ public class CowSounds {
     // Walking sound system
     private float walkingSoundTimer;
     private boolean wasMovingLastFrame;
-    private static final float WALKING_SOUND_INTERVAL = 0.4f;
+    private static final float WALKING_SOUND_INTERVAL = 1.2f; // Much slower interval for relaxed cow footsteps
+    private static final float MAX_SOUND_DISTANCE = 30.0f; // Maximum distance for cow sounds
 
     // Ambient mooing system
     // private float ambientMooTimer;
@@ -46,7 +48,9 @@ public class CowSounds {
     private void updateWalkingSounds(Vector3f position, Vector3f velocity, boolean onGround) {
         // Calculate horizontal movement speed
         float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        boolean isMoving = horizontalSpeed > 0.5f && onGround;
+        // Be more forgiving - allow sound if moving fast enough, regardless of brief off-ground moments
+        boolean isMoving = horizontalSpeed > 0.5f;
+
 
         if (isMoving) {
             // If cow just started moving, play sound immediately
@@ -63,8 +67,10 @@ public class CowSounds {
                 }
             }
         } else {
-            // Reset timer when not moving
-            walkingSoundTimer = 0.0f;
+            // Only reset timer when actually stopped (not just brief off-ground moments)
+            if (horizontalSpeed <= 0.1f) {
+                walkingSoundTimer = 0.0f;
+            }
         }
 
         wasMovingLastFrame = isMoving;
@@ -87,24 +93,37 @@ public class CowSounds {
      * Plays the appropriate walking sound based on the block type under the cow.
      */
     private void playWalkingSound(Vector3f position) {
+        // Check distance to player first
+        Player player = Game.getPlayer();
+        if (player == null) {
+            return; // No player to hear the sound
+        }
+
+        Vector3f playerPos = player.getPosition();
+        float distance = position.distance(playerPos);
+
+        // Only play sound if within hearing range
+        if (distance > MAX_SOUND_DISTANCE) {
+            return;
+        }
+
         // Check what block type the cow is standing on
         int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(position.y - 0.1f); // Slightly below feet to get ground block
+        int blockY = (int) Math.floor(position.y - 1.0f); // Check one block below cow's feet
         int blockZ = (int) Math.floor(position.z);
 
         BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
 
-        // Play appropriate walking sound based on block type
+        // Play appropriate walking sound based on block type using positional audio
+        // Use same sound names as player but with positional 3D audio
         SoundSystem soundSystem = Game.getSoundSystem();
         if (soundSystem != null) {
             if (groundBlock == BlockType.GRASS) {
-                soundSystem.playSoundWithVariation("cow_grasswalk", 0.2f);
+                soundSystem.playSoundAt3DWithVariation("grasswalk", 0.3f, position);
             } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
-                soundSystem.playSoundWithVariation("cow_sandwalk", 0.2f);
-            } else {
-                // Default walking sound for other block types
-                soundSystem.playSoundWithVariation("cow_walk", 0.2f);
+                soundSystem.playSoundAt3DWithVariation("sandwalk", 0.3f, position);
             }
+            // Only play sounds for grass and sand like the player does
         }
     }
 
