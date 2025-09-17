@@ -497,8 +497,16 @@ public class Renderer {
     public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
         debugRenderer.renderWireframePath(pathPoints, color);
     }
-    
-    
+
+    /**
+     * Renders all sound emitters as yellow triangle wireframes when debug mode is enabled.
+     * @param debugMode Whether debug mode is currently enabled
+     */
+    public void renderSoundEmitters(boolean debugMode) {
+        debugRenderer.renderSoundEmitters(debugMode);
+    }
+
+
     /**
      * Checks for OpenGL errors and logs them with context information.
      */

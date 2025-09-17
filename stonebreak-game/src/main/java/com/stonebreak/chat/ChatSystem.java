@@ -208,6 +208,35 @@ public class ChatSystem {
                     }
                 }
             }
+            case "/spawn_soundemit" -> {
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
+                Player player = Game.getPlayer();
+                if (player == null) {
+                    addMessage("Player not found!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
+                // Get player position and spawn sound emitter there
+                org.joml.Vector3f playerPos = player.getPosition();
+                org.joml.Vector3f spawnPos = new org.joml.Vector3f(playerPos.x, playerPos.y + 1.0f, playerPos.z); // Slightly above player
+
+                com.stonebreak.audio.emitters.SoundEmitterManager emitterManager = Game.getSoundEmitterManager();
+                if (emitterManager != null) {
+                    com.stonebreak.audio.emitters.types.BlockPickupSoundEmitter emitter =
+                        emitterManager.spawnBlockPickupEmitter(spawnPos);
+
+                    addMessage(String.format("Sound emitter spawned at (%.1f, %.1f, %.1f)",
+                        spawnPos.x, spawnPos.y, spawnPos.z), new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                    addMessage("Enable debug mode to see the yellow wireframe triangle!",
+                        new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                } else {
+                    addMessage("Sound emitter system not available!", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                }
+            }
             default -> addMessage("Unknown command: " + commandName, new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
         }
     }

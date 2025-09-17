@@ -184,13 +184,16 @@ public class DebugOverlay {
         for (Entity cow : cowEntities) {
             if (cow.isAlive()) {
                 renderEntityBoundingBox(cow, renderer);
-                
+
                 // Render path wireframe if entity is a Cow
                 if (cow instanceof Cow) {
                     renderCowPathWireframe((Cow) cow, renderer);
                 }
             }
         }
+
+        // Render sound emitters as yellow triangle wireframes
+        renderer.renderSoundEmitters(true); // Debug mode is always true when in debug overlay
     }
     
     /**

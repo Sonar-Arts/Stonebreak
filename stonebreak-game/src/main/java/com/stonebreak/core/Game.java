@@ -45,6 +45,7 @@ public class Game {
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
+    private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
@@ -405,6 +406,9 @@ public class Game {
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
+
+        // Initialize sound emitter manager
+        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
         
         // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
         if (renderer.getFont() != null && textureAtlas != null) {
@@ -606,6 +610,11 @@ public class Game {
         // Update chat system
         if (chatSystem != null) {
             chatSystem.update(deltaTime);
+        }
+
+        // Update sound emitters
+        if (soundEmitterManager != null) {
+            soundEmitterManager.update(deltaTime);
         }
         
         // Update world (processes chunk loading, mesh building, etc.)
@@ -901,6 +910,13 @@ public class Game {
      */
     public static CraftingManager getCraftingManager() {
         return getInstance().craftingManager;
+    }
+
+    /**
+     * Gets the sound emitter manager.
+     */
+    public static com.stonebreak.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
+        return getInstance().soundEmitterManager;
     }
 
     /**
