@@ -83,10 +83,10 @@ public class DropRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
         
-        // Enable depth testing and blending for proper rendering
+        // Enable depth testing for proper rendering
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Note: Blending will be handled per-drop based on transparency requirements
         
         // Render each drop (skip compressed ones)
         for (Entity drop : drops) {
@@ -105,8 +105,9 @@ public class DropRenderer {
             }
         }
         
-        // Clean up state
-        glDisable(GL_BLEND);
+        // Clean up state - restore blending for UI elements
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
@@ -182,10 +183,20 @@ public class DropRenderer {
         
         CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(blockType);
         
+        // Handle transparency and blending based on block type and settings
+        boolean isTransparent = isTransparentBlock(blockType);
+
+        // Handle blending - enable only for transparent blocks
+        if (isTransparent) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        } else {
+            glDisable(GL_BLEND);
+        }
+
         // Handle depth writing based on block transparency
         // For transparent blocks (like glass), disable depth writes to prevent occlusion issues
         // For solid blocks, enable depth writes to ensure all faces render properly
-        boolean isTransparent = isTransparentBlock(blockType);
         glDepthMask(!isTransparent);
         
         // Set shader uniforms for block rendering
@@ -197,8 +208,9 @@ public class DropRenderer {
         // CBR meshes already have texture coordinates baked in, so don't transform them
         shaderProgram.setUniform("u_transformUVsForItem", false);
         
-        // Set color with slight transparency for visual appeal
-        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.95f));
+        // Set color - full opacity for opaque blocks, slight transparency for transparent blocks
+        float alpha = isTransparent ? 0.95f : 1.0f;
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, alpha));
         
         // Render the block mesh
         resource.getMesh().bind();
@@ -332,16 +344,11 @@ public class DropRenderer {
     /**
      * Determines if a block type should be considered transparent for rendering purposes.
      * Transparent blocks need special depth handling to render properly.
+     * Uses the same logic as BlockType.isTransparent() to respect leaf transparency setting.
      */
     private boolean isTransparentBlock(BlockType blockType) {
-        switch (blockType) {
-            case WATER:
-            case ROSE:
-            case DANDELION:
-                return true;
-            default:
-                return false;
-        }
+        // Use the BlockType's isTransparent() method which handles leaf transparency setting
+        return blockType.isTransparent();
     }
     
     /**
