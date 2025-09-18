@@ -116,22 +116,23 @@ public class PlayerArmAnimator {
     
     /**
      * Applies attack animation with diagonal swing motion.
+     * Adjusted for new voxelized sprite transformations (4x scale, repositioned).
      */
     private void applyAttackAnimation(Matrix4f armTransform, float attackProgress) {
         float progress = 1.0f - attackProgress; // Reverse the progress
-        
-        // Diagonal swing motion towards center of screen
-        float swingAngle = (float) (Math.sin(progress * Math.PI) * 45.0f);
-        float diagonalAngle = (float) (Math.sin(progress * Math.PI) * 30.0f);
-        float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.08f);
-        
-        // Apply diagonal swing rotation
-        armTransform.rotate((float) Math.toRadians(-swingAngle * 0.7f), 1.0f, 0.0f, 0.0f);
-        armTransform.rotate((float) Math.toRadians(-diagonalAngle), 0.0f, 1.0f, 0.0f);
-        armTransform.rotate((float) Math.toRadians(swingAngle * 0.2f), 0.0f, 0.0f, 1.0f);
-        
-        // Translate towards center of screen during swing
-        armTransform.translate(progress * -0.1f, swingLift, progress * -0.05f);
+
+        // Enhanced diagonal swing motion for larger voxelized items
+        float swingAngle = (float) (Math.sin(progress * Math.PI) * 60.0f); // Increased from 45° to 60°
+        float diagonalAngle = (float) (Math.sin(progress * Math.PI) * 40.0f); // Increased from 30° to 40°
+        float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.16f); // Doubled from 0.08f to 0.16f
+
+        // Apply enhanced diagonal swing rotation for voxelized items
+        armTransform.rotate((float) Math.toRadians(-swingAngle * 0.8f), 1.0f, 0.0f, 0.0f); // Increased multiplier from 0.7f to 0.8f
+        armTransform.rotate((float) Math.toRadians(-diagonalAngle * 1.2f), 0.0f, 1.0f, 0.0f); // Added multiplier for more Y rotation
+        armTransform.rotate((float) Math.toRadians(swingAngle * 0.3f), 0.0f, 0.0f, 1.0f); // Increased from 0.2f to 0.3f
+
+        // Enhanced translation towards center of screen during swing (scaled for voxelized items)
+        armTransform.translate(progress * -0.2f, swingLift, progress * -0.1f); // Doubled translation values
     }
     
     /**

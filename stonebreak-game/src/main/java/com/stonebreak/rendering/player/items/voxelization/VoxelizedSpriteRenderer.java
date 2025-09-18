@@ -29,22 +29,22 @@ public class VoxelizedSpriteRenderer {
     // Cache for voxelization results (palette + voxel data)
     private final Map<ItemType, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
 
-    // Hardcoded base translation
-    private static final Vector3f BASE_TRANSLATION = new Vector3f(0.3f, -0.1f, -0.4f);
+    // Hardcoded base translation (updated from debug output final values)
+    private static final Vector3f BASE_TRANSLATION = new Vector3f(0.3f, -1.1f, -0.1f);
 
-    // Adjustable translation offset (starts at 0,0,0)
+    // Adjustable translation offset (reset to 0,0,0)
     private static Vector3f translationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f);
 
-    // Hardcoded base rotation (equivalent to -40° diagonal axis rotation)
-    private static final Vector3f BASE_ROTATION = new Vector3f(-23.1f, -23.1f, -23.1f); // degrees (X, Y, Z)
+    // Hardcoded base rotation (updated from debug output final values)
+    private static final Vector3f BASE_ROTATION = new Vector3f(-23.1f, -38.1f, 21.9f); // degrees (X, Y, Z)
 
-    // Adjustable rotation offset (starts at 0,0,0)
+    // Adjustable rotation offset (reset to 0,0,0)
     private static Vector3f rotationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f); // degrees (X, Y, Z)
 
-    // Hardcoded base scale
-    private static final float BASE_SCALE = 2.0f;
+    // Hardcoded base scale (updated from debug output final values)
+    private static final float BASE_SCALE = 4.0f;
 
-    // Adjustable scale multiplier (starts at 1.0 = no change)
+    // Adjustable scale multiplier (reset to 1.0 = no change)
     private static float scaleAdjustment = 1.0f;
 
     /**
