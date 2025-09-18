@@ -23,13 +23,13 @@ public class SpriteVoxelizer {
     private static final Map<ItemType, BufferedImage> spriteCache = new HashMap<>();
 
     // Voxel size in world units (each pixel becomes a cube this size)
-    private static final float DEFAULT_VOXEL_SIZE = 0.04f; // Slightly smaller than 1/16th block
+    private static final float DEFAULT_VOXEL_SIZE = 0.02f; // Smaller to prevent overlap
 
     // Depth of the voxelized sprite (how thick the 3D projection is)
     private static final float DEFAULT_DEPTH = 0.08f; // 2 voxels deep
 
-    // Scale factor for positioning the voxelized sprite
-    private static final float SPRITE_SCALE = 0.025f;
+    // Scale factor for positioning the voxelized sprite (match voxel size for proper spacing)
+    private static final float SPRITE_SCALE = 0.02f;
 
     // Vertical offset to raise the tool in the hand
     private static final float VERTICAL_OFFSET = 0.3f;
@@ -91,23 +91,19 @@ public class SpriteVoxelizer {
                 float voxelX = startX + (x * SPRITE_SCALE);
                 float voxelY = startY + ((height - 1 - y) * SPRITE_SCALE) + VERTICAL_OFFSET;
 
-                // Create voxels for depth (create multiple voxels in Z direction)
-                int depthLayers = Math.max(1, (int) (DEFAULT_DEPTH / DEFAULT_VOXEL_SIZE));
-                float startZ = -(depthLayers * DEFAULT_VOXEL_SIZE) / 2.0f;
+                // Create single voxel per pixel with proper Z spacing to avoid z-fighting
+                // Use a small offset based on pixel position to ensure unique Z values
+                float voxelZ = (y * width + x) * 0.0001f; // Tiny offset per pixel
 
-                for (int z = 0; z < depthLayers; z++) {
-                    float voxelZ = startZ + (z * DEFAULT_VOXEL_SIZE);
+                // Create voxel data with palette coordinate
+                VoxelData voxel = new VoxelData(
+                    voxelX, voxelY, voxelZ,
+                    paletteCoordinate,
+                    finalRGBA,
+                    x, y
+                );
 
-                    // Create voxel data with palette coordinate
-                    VoxelData voxel = new VoxelData(
-                        voxelX, voxelY, voxelZ,
-                        paletteCoordinate,
-                        finalRGBA,
-                        x, y
-                    );
-
-                    voxels.add(voxel);
-                }
+                voxels.add(voxel);
             }
         }
 
