@@ -71,6 +71,7 @@ public class MouseHandler {
         stateManager.getResolutionButton().updateHover(mouseX, mouseY);
         stateManager.getArmModelButton().updateHover(mouseX, mouseY);
         stateManager.getCrosshairStyleButton().updateHover(mouseX, mouseY);
+        stateManager.getLeafTransparencyButton().updateHover(mouseX, mouseY);
         stateManager.getApplyButton().updateHover(mouseX, mouseY);
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         
@@ -144,6 +145,9 @@ public class MouseHandler {
                     break;
                 case CROSSHAIR_SIZE:
                     wasClicked = stateManager.getCrosshairSizeSlider().handleClick(mouseXf, mouseYf);
+                    break;
+                case LEAF_TRANSPARENCY:
+                    wasClicked = stateManager.getLeafTransparencyButton().handleClick(mouseXf, mouseYf);
                     break;
             }
             

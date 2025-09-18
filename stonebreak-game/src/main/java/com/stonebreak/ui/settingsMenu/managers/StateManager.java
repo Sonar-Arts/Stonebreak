@@ -31,6 +31,7 @@ public class StateManager {
     private DropdownButton crosshairStyleButton;
     private Slider volumeSlider;
     private Slider crosshairSizeSlider;
+    private Button leafTransparencyButton;
     
     // ===== CATEGORY COMPONENTS =====
     private List<CategoryButton> categoryButtons;
@@ -134,16 +135,21 @@ public class StateManager {
         volumeSlider = new Slider("Master Volume", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT, 
                                 SettingsConfig.MIN_VOLUME, SettingsConfig.MAX_VOLUME, settings.getMasterVolume(), null);
         
-        crosshairSizeSlider = new Slider("Crosshair Size", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT, 
+        crosshairSizeSlider = new Slider("Crosshair Size", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT,
                                        SettingsConfig.MIN_CROSSHAIR_SIZE, SettingsConfig.MAX_CROSSHAIR_SIZE, settings.getCrosshairSize(), null);
+
+        // Initialize leaf transparency button
+        String leafTransparencyText = "Leaf Transparency: " + (settings.getLeafTransparency() ? "ON" : "OFF");
+        leafTransparencyButton = new Button(leafTransparencyText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
     }
     
     /**
      * Sets the callback actions for components after ActionHandler is created.
      */
-    public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction, 
-                           Runnable armModelAction, Runnable crosshairStyleAction, 
-                           java.util.function.Consumer<Float> volumeAction, java.util.function.Consumer<Float> crosshairSizeAction) {
+    public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction,
+                           Runnable armModelAction, Runnable crosshairStyleAction,
+                           java.util.function.Consumer<Float> volumeAction, java.util.function.Consumer<Float> crosshairSizeAction,
+                           Runnable leafTransparencyAction) {
         applyButton.setOnClickAction(applyAction);
         backButton.setOnClickAction(backAction);
         resolutionButton.setOnSelectionChangeAction(resolutionAction);
@@ -151,6 +157,7 @@ public class StateManager {
         crosshairStyleButton.setOnSelectionChangeAction(crosshairStyleAction);
         volumeSlider.setOnValueChangeAction(volumeAction);
         crosshairSizeSlider.setOnValueChangeAction(crosshairSizeAction);
+        leafTransparencyButton.setOnClickAction(leafTransparencyAction);
         
         // Set category button callbacks - each will set the selected category
         for (CategoryButton button : categoryButtons) {
@@ -266,6 +273,7 @@ public class StateManager {
     public DropdownButton getCrosshairStyleButton() { return crosshairStyleButton; }
     public Slider getVolumeSlider() { return volumeSlider; }
     public Slider getCrosshairSizeSlider() { return crosshairSizeSlider; }
+    public Button getLeafTransparencyButton() { return leafTransparencyButton; }
     public List<CategoryButton> getCategoryButtons() { return categoryButtons; }
     
     // ===== SCROLL MANAGER GETTERS =====

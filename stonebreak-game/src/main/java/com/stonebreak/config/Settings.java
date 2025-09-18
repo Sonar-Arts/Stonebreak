@@ -26,6 +26,9 @@ public class Settings {
     private float crosshairColorG = 1.0f;
     private float crosshairColorB = 1.0f;
     private boolean crosshairOutline = true;
+
+    // Quality settings
+    private boolean leafTransparency = true;
     
     // Available resolutions (ordered smallest to largest by total pixels)
     private static final int[][] RESOLUTIONS = {
@@ -65,7 +68,8 @@ public class Settings {
             json.append("  \"crosshairColorR\": ").append(crosshairColorR).append(",\n");
             json.append("  \"crosshairColorG\": ").append(crosshairColorG).append(",\n");
             json.append("  \"crosshairColorB\": ").append(crosshairColorB).append(",\n");
-            json.append("  \"crosshairOutline\": ").append(crosshairOutline).append("\n");
+            json.append("  \"crosshairOutline\": ").append(crosshairOutline).append(",\n");
+            json.append("  \"leafTransparency\": ").append(leafTransparency).append("\n");
             json.append("}");
             
             Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
@@ -208,6 +212,15 @@ public class Settings {
                         System.err.println("Invalid crosshairOutline value: " + value);
                     }
                 }
+            } else if (line.contains("leafTransparency")) {
+                String value = extractValue(line);
+                if (value != null) {
+                    try {
+                        leafTransparency = Boolean.parseBoolean(value);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid leafTransparency value: " + value);
+                    }
+                }
             }
         }
     }
@@ -250,6 +263,9 @@ public class Settings {
     public float getCrosshairColorG() { return crosshairColorG; }
     public float getCrosshairColorB() { return crosshairColorB; }
     public boolean getCrosshairOutline() { return crosshairOutline; }
+
+    // Quality getters
+    public boolean getLeafTransparency() { return leafTransparency; }
     
     // Setters
     public void setResolution(int width, int height) {
@@ -304,6 +320,11 @@ public class Settings {
     
     public void setCrosshairOutline(boolean outline) {
         this.crosshairOutline = outline;
+    }
+
+    // Quality setters
+    public void setLeafTransparency(boolean leafTransparency) {
+        this.leafTransparency = leafTransparency;
     }
     
     // Helper methods

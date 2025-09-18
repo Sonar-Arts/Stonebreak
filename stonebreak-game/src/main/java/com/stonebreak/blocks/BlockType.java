@@ -2,6 +2,7 @@ package com.stonebreak.blocks;
 
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemCategory;
+import com.stonebreak.config.Settings;
 
 /**
  * Defines all block types in the game.
@@ -92,7 +93,19 @@ public enum BlockType implements Item {
      * @return true if the block is transparent (like air or water)
      */
     public boolean isTransparent() {
-        return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == ELM_LEAVES;
+        // Check if this is a leaf block
+        if (this == LEAVES || this == SNOWY_LEAVES || this == ELM_LEAVES) {
+            // For leaf blocks, check the transparency setting
+            try {
+                return Settings.getInstance().getLeafTransparency();
+            } catch (Exception e) {
+                // Fallback to true if settings can't be accessed
+                return true;
+            }
+        }
+
+        // For non-leaf blocks, use the original logic
+        return this == AIR || this == WATER || this == ROSE || this == DANDELION || this == ICE || this == SNOW;
     }
 
     @Override

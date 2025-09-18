@@ -284,10 +284,33 @@ public class World {
     public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
         int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
         if (chunk != null) {
             stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        }
+    }
+
+    /**
+     * Triggers a mesh rebuild for all loaded chunks.
+     * Use this when global visual settings change that affect block rendering.
+     * This method requires a player position to determine which chunks are currently loaded.
+     */
+    public void rebuildAllLoadedChunks(int playerChunkX, int playerChunkZ) {
+        try {
+            // Get all chunks currently loaded around the player
+            Map<ChunkPosition, Chunk> loadedChunks = getChunksAroundPlayer(playerChunkX, playerChunkZ);
+
+            // Mark all loaded chunks for mesh rebuild
+            for (Chunk chunk : loadedChunks.values()) {
+                if (chunk != null) {
+                    stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                }
+            }
+
+            System.out.println("Marked " + loadedChunks.size() + " chunks for mesh rebuild due to settings change");
+        } catch (Exception e) {
+            System.err.println("Error rebuilding all chunks: " + e.getMessage());
         }
     }
     
