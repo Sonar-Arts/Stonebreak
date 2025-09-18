@@ -69,16 +69,24 @@ public class HandItemRenderer {
         
         // No tint for block texture
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Disable blending to prevent transparency issues
-        glDisable(GL_BLEND);
+
+        // Handle leaf transparency - enable blending only for transparent leaf blocks
+        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.SNOWY_LEAVES || blockType == BlockType.ELM_LEAVES);
+        if (isLeafBlock && blockType.isTransparent()) {
+            // Enable blending for transparent leaves
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        } else {
+            // Disable blending for opaque blocks (including opaque leaves)
+            glDisable(GL_BLEND);
+        }
         
         // Get or create block-specific cube with proper face textures
         int blockSpecificVao = handBlockGeometry.getHandBlockVao(blockType);
         GL30.glBindVertexArray(blockSpecificVao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
         
-        // Re-enable blending for other elements
+        // Re-enable blending for other elements (restore standard UI blending)
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 

@@ -108,7 +108,7 @@ public class BlockIconRenderer {
         try {
             // --- Setup GL state for 3D item rendering ---
             setupViewportAndScissor(screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
-            setupDepthAndBlending(originalState);
+            setupDepthAndBlending(originalState, type);
             
             // --- Shader setup for 3D item ---
             configureShaderForItem(shaderProgram, textureAtlas, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
@@ -203,14 +203,22 @@ public class BlockIconRenderer {
     /**
      * Configures depth testing and blending for 3D block rendering.
      */
-    private void setupDepthAndBlending(GLState originalState) {
+    private void setupDepthAndBlending(GLState originalState, BlockType blockType) {
         // Enable depth testing for 3D rendering
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
-        
-        // Disable blending for opaque block rendering
-        if (originalState.blendWasEnabled) {
-            glDisable(GL_BLEND);
+
+        // Handle leaf transparency - enable blending only for transparent leaf blocks
+        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.SNOWY_LEAVES || blockType == BlockType.ELM_LEAVES);
+        if (isLeafBlock && blockType.isTransparent()) {
+            // Enable blending for transparent leaves
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        } else {
+            // Disable blending for opaque blocks (including opaque leaves)
+            if (originalState.blendWasEnabled) {
+                glDisable(GL_BLEND);
+            }
         }
     }
     
