@@ -155,6 +155,16 @@
       "id": 30,
       "textureType": "uniform",
       "texture": "clay_texture"
+    },
+    "stonebreak:red_sand_cobblestone": {
+      "id": 31,
+      "textureType": "uniform",
+      "texture": "red_sand_cobblestone_texture"
+    },
+    "stonebreak:sand_cobblestone": {
+      "id": 32,
+      "textureType": "uniform",
+      "texture": "sand_cobblestone_texture"
     }
   }
 }

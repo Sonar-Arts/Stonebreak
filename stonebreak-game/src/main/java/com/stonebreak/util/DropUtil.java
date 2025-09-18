@@ -242,6 +242,12 @@ public class DropUtil {
             case STONE:
                 // Stone drops cobblestone when mined
                 return BlockType.COBBLESTONE;
+            case RED_SANDSTONE:
+                // Red sandstone drops red sand cobblestone when mined
+                return BlockType.RED_SAND_COBBLESTONE;
+            case SANDSTONE:
+                // Sandstone drops sand cobblestone when mined
+                return BlockType.SAND_COBBLESTONE;
             case GRASS:
                 return BlockType.DIRT;
             case IRON_ORE:

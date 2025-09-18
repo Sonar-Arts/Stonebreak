@@ -273,6 +273,8 @@ public class TextureResourceManager implements AutoCloseable {
             case "dirt": return BlockType.DIRT;
             case "stone": return BlockType.STONE;
             case "cobblestone": return BlockType.COBBLESTONE;
+            case "red_sand_cobblestone": return BlockType.RED_SAND_COBBLESTONE;
+            case "sand_cobblestone": return BlockType.SAND_COBBLESTONE;
             case "gravel": return BlockType.GRAVEL;
             case "clay": return BlockType.CLAY;
             case "bedrock": return BlockType.BEDROCK;
