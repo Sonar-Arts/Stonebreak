@@ -564,7 +564,7 @@ public class TextureAtlas {
             case PINE_WOOD_PLANKS: return "pine_wood_planks_custom"; // Added missing mapping
             case ELM_WOOD_PLANKS: return "elm_wood_planks_custom"; // Added missing mapping
             case SNOWY_DIRT: return "snowy_dirt";
-            case SNOWY_LEAVES: return "snowy_leaves";
+            case PINE_LEAVES: return "pine_leaves";
             case RED_SAND: return "red_sand";
             case CRYSTAL: return "crystal";
             case SANDSTONE: return "sandstone";

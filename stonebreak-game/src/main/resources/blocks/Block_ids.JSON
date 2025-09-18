@@ -104,7 +104,7 @@
     "stonebreak:snowy_leaves": {
       "id": 20,
       "textureType": "uniform",
-      "texture": "snowy_leaves_texture"
+      "texture": "pine_leaves_texture"
     },
     "stonebreak:snow": {
       "id": 21,

@@ -31,7 +31,7 @@ public enum BlockType implements Item {
     ROSE(16, "Rose", false, true, 10, 1, 0.1f), // Moved from 7,1
     DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f), // Moved from 8,1
     SNOWY_DIRT(18, "Snowy Dirt", true, true, 0, 2, 1.0f), // Snow Top (clone of grass)
-    SNOWY_LEAVES(19, "Snowy Leaves", true, true, 4, 2, 0.5f),
+    PINE_LEAVES(19, "Pine Leaves", true, true, 3, 4, 0.5f),
     PINE(20, "Pine", true, true, 2, 2, 3.0f), // Darker wood variant
     ICE(21, "Ice", true, true, 3, 2, 2.0f),
     SNOW(22, "Snow", false, true, 5, 2, 0.1f), // Layered snow block
@@ -94,7 +94,7 @@ public enum BlockType implements Item {
      */
     public boolean isTransparent() {
         // Check if this is a leaf block
-        if (this == LEAVES || this == SNOWY_LEAVES || this == ELM_LEAVES) {
+        if (this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES) {
             // For leaf blocks, check the transparency setting
             try {
                 return Settings.getInstance().getLeafTransparency();
@@ -244,7 +244,7 @@ public enum BlockType implements Item {
                 yield new float[]{1, 2}; // Sides - snow side
             }
             case SNOW -> new float[]{5, 2}; // Pure snow texture for layers
-            case SNOWY_LEAVES -> new float[]{4, 2};
+            case PINE_LEAVES -> new float[]{3, 4};
             case PINE -> {
                 if (face == Face.TOP) yield new float[]{2, 2}; // Top
                 if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt

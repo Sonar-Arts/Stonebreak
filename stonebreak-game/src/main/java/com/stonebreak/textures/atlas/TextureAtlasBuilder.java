@@ -270,7 +270,7 @@ public class TextureAtlasBuilder {
             "iron_ore_texture.png", "red_sand_texture.png", "magma_texture.png",
             "crystal_texture.png", "sandstone_texture.png", "red_sandstone_texture.png",
             "rose_texture.png", "dandelion_texture.png", "snowy_dirt_texture.png",
-            "pine_wood_texture.png", "ice_texture.png", "snowy_leaves_texture.png",
+            "pine_wood_texture.png", "ice_texture.png", "pine_leaves_texture.png",
             "snow_texture.png", "workbench_custom_texture.png", "wood_planks_custom_texture.png",
             "pine_wood_planks_custom_texture.png", "elm_wood_log_texture.png", 
             "elm_wood_planks_custom_texture.png", "elm_leaves_texture.png", "cobblestone_texture.png", "Errockson.gif"

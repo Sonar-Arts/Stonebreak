@@ -243,7 +243,7 @@ public class TextureResourceLoader {
             "sandstone_texture.png",
             "snow_texture.png",
             "snowy_dirt_texture.png",
-            "snowy_leaves_texture.png",
+            "pine_leaves_texture.png",
             "stone_texture.png",
             "water_texture.png",
             "wood_log_texture.png",

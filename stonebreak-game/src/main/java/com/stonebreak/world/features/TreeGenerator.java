@@ -107,7 +107,7 @@ public class TreeGenerator {
                     if (dxLeaf == 0 && dzLeaf == 0) {
                         continue;
                     }
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.SNOWY_LEAVES);
+                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
                 }
             }
         }
@@ -124,7 +124,7 @@ public class TreeGenerator {
                     if (dxLeaf == 0 && dzLeaf == 0) {
                         continue;
                     }
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.SNOWY_LEAVES);
+                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
                 }
             }
         }
@@ -144,7 +144,7 @@ public class TreeGenerator {
                     if (leafLayerYOffset == 7 && (dxLeaf == 0 && dzLeaf == 0)) {
                         continue; // Skip center for trunk
                     }
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.SNOWY_LEAVES);
+                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
                 }
             }
         }

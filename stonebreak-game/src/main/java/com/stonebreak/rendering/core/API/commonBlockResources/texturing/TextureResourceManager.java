@@ -296,7 +296,7 @@ public class TextureResourceManager implements AutoCloseable {
             case "pine_wood_planks": return BlockType.PINE_WOOD_PLANKS;
             case "elm_wood_planks": return BlockType.ELM_WOOD_PLANKS;
             case "leaves": return BlockType.LEAVES;
-            case "snowy_leaves": return BlockType.SNOWY_LEAVES;
+            case "pine_leaves": return BlockType.PINE_LEAVES;
             case "elm_leaves": return BlockType.ELM_LEAVES;
             
             // Flowers

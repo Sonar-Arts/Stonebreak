@@ -46,7 +46,7 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
      * Use when leaf transparency setting changes.
      */
     public void refreshLeafDefinitions() {
-        BlockType[] leafBlocks = {BlockType.LEAVES, BlockType.SNOWY_LEAVES, BlockType.ELM_LEAVES};
+        BlockType[] leafBlocks = {BlockType.LEAVES, BlockType.PINE_LEAVES, BlockType.ELM_LEAVES};
 
         for (BlockType leafBlock : leafBlocks) {
             BlockDefinition newDefinition = createDefinitionForBlockType(leafBlock);
@@ -99,7 +99,7 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
         switch (blockType) {
             case ROSE, DANDELION:
                 return BlockDefinition.RenderLayer.CUTOUT; // Transparent flowers
-            case LEAVES, SNOWY_LEAVES, ELM_LEAVES:
+            case LEAVES, PINE_LEAVES, ELM_LEAVES:
                 // Leaf blocks use cutout only when transparency is enabled
                 // When disabled, use opaque to show the black spots
                 try {

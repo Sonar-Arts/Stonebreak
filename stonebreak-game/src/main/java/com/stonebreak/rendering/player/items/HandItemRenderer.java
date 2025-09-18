@@ -71,7 +71,7 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
 
         // Handle leaf transparency - enable blending only for transparent leaf blocks
-        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.SNOWY_LEAVES || blockType == BlockType.ELM_LEAVES);
+        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
         if (isLeafBlock && blockType.isTransparent()) {
             // Enable blending for transparent leaves
             glEnable(GL_BLEND);
