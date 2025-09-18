@@ -370,6 +370,11 @@ public class ChatSystem {
                 Game.getSoundSystem().diagnoseOpenAL3D();
             }
             case "/voxeladj" -> {
+                if (!Game.getInstance().isCheatsEnabled()) {
+                    addMessage("Cheats must be enabled first! Use /cheats", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    return;
+                }
+
                 if (parts.length >= 4 && parts.length <= 8) {
                     try {
                         float x = Float.parseFloat(parts[1]);
@@ -526,38 +531,6 @@ public class ChatSystem {
                     addMessage("  /voxeladj <x> <y> <z> <rotY>                - Position + Y rotation", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
                     addMessage("  /voxeladj <x> <y> <z> <rotX> <rotY> <rotZ>   - Position + XYZ rotation", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
                     addMessage("  /voxeladj <x> <y> <z> <rotX> <rotY> <rotZ> <scale> - Full transform", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
-                }
-            }
-            case "/copy" -> {
-                if (parts.length == 1) {
-                    // Copy the last chat message
-                    if (!messages.isEmpty()) {
-                        ChatMessage lastMessage = messages.get(messages.size() - 1);
-                        copyMessageToClipboard(lastMessage.getText());
-                        addMessage("Copied last message to clipboard", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
-                    } else {
-                        addMessage("No messages to copy", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                    }
-                } else if (parts.length == 2) {
-                    try {
-                        int messageIndex = Integer.parseInt(parts[1]);
-                        if (messageIndex > 0 && messageIndex <= messages.size()) {
-                            // Copy message by index (1-based)
-                            ChatMessage message = messages.get(messages.size() - messageIndex);
-                            copyMessageToClipboard(message.getText());
-                            addMessage(String.format("Copied message %d to clipboard", messageIndex), new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
-                        } else {
-                            addMessage("Invalid message number", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                        }
-                    } catch (NumberFormatException e) {
-                        addMessage("Usage: /copy [message_number]", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                        addMessage("Example: /copy 3 (copies 3rd last message)", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
-                    }
-                } else {
-                    addMessage("Usage: /copy [message_number]", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                    addMessage("Examples:", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
-                    addMessage("  /copy          - Copy last message", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
-                    addMessage("  /copy 3        - Copy 3rd last message", new float[]{0.8f, 0.8f, 0.8f, 1.0f}); // Light gray
                 }
             }
             default -> addMessage("Unknown command: " + commandName, new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
