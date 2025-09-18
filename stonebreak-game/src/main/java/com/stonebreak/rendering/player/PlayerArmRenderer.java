@@ -91,12 +91,12 @@ public class PlayerArmRenderer {
         // Reset transformation matrix
         reusableArmViewModel.identity();
         
-        // Apply all animations through the animator component
-        animator.applyAnimations(reusableArmViewModel, player);
-        
         // Determine what item to display
         ItemStack selectedItem = getSelectedItem(player);
         ItemDisplayInfo displayInfo = determineItemDisplay(selectedItem);
+
+        // Apply all animations through the animator component (with item context for attack animations)
+        animator.applyAnimations(reusableArmViewModel, player, selectedItem);
         
         // Apply item-specific transformations if displaying an item
         if (displayInfo.displayingItem) {
