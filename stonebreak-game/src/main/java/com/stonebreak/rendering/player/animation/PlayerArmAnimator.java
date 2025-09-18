@@ -183,9 +183,7 @@ public class PlayerArmAnimator {
         // Apply smooth rotation (X-axis for vertical swing)
         armTransform.rotate((float) Math.toRadians(windupAngle + swingAngle), 1.0f, 0.0f, 0.0f);
 
-        // Large outward swing motion away from player (Y-axis)
-        float outwardRotation = (float) (Math.sin(progress * Math.PI) * -45.0f); // Negative for outward swing away from player
-        armTransform.rotate((float) Math.toRadians(outwardRotation), 0.0f, 1.0f, 0.0f);
+        // No Y-axis rotation - outward motion achieved purely through translation
 
         // Apply smooth translation with large outward swing motion (negative X for outward)
         armTransform.translate(-outwardMotion, verticalMotion, forwardMotion);
