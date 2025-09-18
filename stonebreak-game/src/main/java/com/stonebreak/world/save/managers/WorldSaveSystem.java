@@ -48,6 +48,13 @@ public class WorldSaveSystem implements AutoCloseable {
     }
 
     /**
+     * Checks if the save system is properly initialized with all required components.
+     */
+    public boolean isInitialized() {
+        return currentWorld != null && currentPlayer != null && currentWorldMetadata != null;
+    }
+
+    /**
      * Saves the current world state immediately.
      */
     public CompletableFuture<Void> saveWorldNow() {
@@ -126,6 +133,16 @@ public class WorldSaveSystem implements AutoCloseable {
             return;
         }
 
+        // Validate that the player state belongs to this world
+        if (playerState.getWorldName() != null && currentWorldMetadata != null) {
+            String currentWorldName = currentWorldMetadata.getWorldName();
+            if (!playerState.getWorldName().equals(currentWorldName)) {
+                System.out.println("[WORLD-ISOLATION] Player data from world '" + playerState.getWorldName() +
+                    "' does not match current world '" + currentWorldName + "'. Skipping player data load.");
+                return; // Do not apply player state from different world
+            }
+        }
+
         // Apply position and rotation
         currentPlayer.getPosition().set(playerState.getPosition());
         currentPlayer.getCamera().setYaw(playerState.getRotation().x);
@@ -194,6 +211,11 @@ public class WorldSaveSystem implements AutoCloseable {
 
         state.setInventory(combinedInventory);
         state.setSelectedHotbarSlot(inventory.getSelectedSlot());
+
+        // Set world name for validation
+        if (currentWorldMetadata != null) {
+            state.setWorldName(currentWorldMetadata.getWorldName());
+        }
 
         return state;
     }

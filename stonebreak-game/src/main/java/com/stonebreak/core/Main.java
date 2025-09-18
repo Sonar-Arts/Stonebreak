@@ -47,8 +47,6 @@ public class Main {
     private boolean firstRender = true;
     
     // Game components
-    private World world;
-    private Player player;
     private Renderer renderer;
     private InputHandler inputHandler;
     private TextureAtlas textureAtlas; // Added TextureAtlas
@@ -297,41 +295,30 @@ public class Main {
       private void initializeGameComponents() {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
-          
+
           // Check if texture atlas needs regeneration
           regenerateAtlasIfNeeded();
-          
+
           // Initialize the renderer with window dimensions
           renderer = new Renderer(width, height);
           profiler.takeSnapshot("after_renderer_init");
-          
+
           // Initialize the input handler
           inputHandler = new InputHandler(window);
-          
-          // Initialize the world
-          world = new World();
-          profiler.takeSnapshot("after_world_init");
-          
-          // Initialize the player
-          player = new Player(world);
-          
-          // Set initial camera position
-          player.setPosition(0, 100, 0);
-  
+
           // Initialize TextureAtlas (used by Renderer and potentially UI)
           textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
-  
-            // Initialize the Game singleton
-          // Pass inputHandler to Game's init method
-          Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler, window);
+
+          // Initialize the Game singleton with core components only (no world/player)
+          Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window);
           Game.getInstance().setWindowDimensions(width, height);
           profiler.takeSnapshot("after_game_init");
-          
+
           running = true;
-          
+
           // Log memory usage after initialization
-          Game.logDetailedMemoryInfo("Game components initialized");
-          
+          Game.logDetailedMemoryInfo("Core game components initialized - no world created");
+
           // Compare memory usage
           profiler.compareSnapshots("before_initialization", "after_game_init");
       }
@@ -404,7 +391,10 @@ public class Main {
                         }
                         // General player input handling (movement, interaction) happens if not paused for UI.
                         // InputHandler's own logic + Game.update() decides if player/world updates proceed.
-                        inputHandler.handleInput(player);
+                        Player player = game.getPlayer();
+                        if (player != null) {
+                            inputHandler.handleInput(player);
+                        }
                     }
                 }
                 default -> {
@@ -542,7 +532,11 @@ public class Main {
 
     private void render3DWorld(Game game, Renderer renderer) {
         try {
-            renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+            World world = game.getWorld();
+            Player player = game.getPlayer();
+            if (world != null && player != null) {
+                renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+            }
         } catch (Exception e) {
             logRenderCrash(game, e);
             throw new RuntimeException("Render crash - see crash_log.txt", e);
@@ -550,6 +544,9 @@ public class Main {
     }
 
     private void logRenderCrash(Game game, Exception e) {
+        World world = game.getWorld();
+        Player player = game.getPlayer();
+
         System.err.println("CRITICAL CRASH: Exception in renderWorld() - State: " + game.getState());
         System.err.println("Time: " + java.time.LocalDateTime.now());
         System.err.println("Player pos: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null"));
@@ -557,7 +554,7 @@ public class Main {
         System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
         System.err.println("Exception: " + e.getMessage());
         System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-        
+
         try (java.io.FileWriter fw = new java.io.FileWriter("crash_log.txt", true)) {
             fw.write("=== CRASH LOG " + java.time.LocalDateTime.now() + " ===\n");
             fw.write("State: " + game.getState() + "\n");
@@ -710,6 +707,7 @@ public class Main {
           }
           
           // Clean up world resources
+          World world = Game.getInstance().getWorld();
           if (world != null) {
               world.cleanup();
               Game.logDetailedMemoryInfo("After world cleanup");

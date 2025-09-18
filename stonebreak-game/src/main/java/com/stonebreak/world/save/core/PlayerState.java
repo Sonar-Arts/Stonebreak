@@ -119,6 +119,9 @@ public class PlayerState {
     @JsonProperty("lastSaved")
     private LocalDateTime lastSaved; // Timestamp of last save
 
+    @JsonProperty("worldName")
+    private String worldName; // Name of the world this player data belongs to
+
     public PlayerState() {
         this.position = new Vector3f(0, 100, 0);
         this.rotation = new Vector2f(0, 0);
@@ -165,6 +168,9 @@ public class PlayerState {
 
     public LocalDateTime getLastSaved() { return lastSaved; }
     public void setLastSaved(LocalDateTime lastSaved) { this.lastSaved = lastSaved; }
+
+    public String getWorldName() { return worldName; }
+    public void setWorldName(String worldName) { this.worldName = worldName; }
 
     // Legacy compatibility method
     public void setLastSaved(long lastSaved) {
