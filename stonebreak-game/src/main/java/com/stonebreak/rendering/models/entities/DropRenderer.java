@@ -230,11 +230,44 @@ public class DropRenderer {
 
         // Check if this item can be rendered using the voxelization system
         if (SpriteVoxelizer.isVoxelizable(itemType)) {
-            // Use the voxelized sprite renderer for 3D representation
-            voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
+            // Use the voxelized sprite renderer for 3D representation with drop-specific settings
+            renderVoxelizedItemDrop(itemType);
         } else {
             // Fallback to 2D billboard sprite for items without voxelization support
             renderFallback2DItemDrop(drop, shaderProgram, itemType);
+        }
+    }
+
+    /**
+     * Renders a voxelized item drop with proper positioning for world drops.
+     * Temporarily adjusts the VoxelizedSpriteRenderer settings for drop-specific positioning.
+     */
+    private void renderVoxelizedItemDrop(ItemType itemType) {
+        // Save current VoxelizedSpriteRenderer settings
+        Vector3f originalTranslation = VoxelizedSpriteRenderer.getTranslationAdjustment();
+        Vector3f originalRotation = VoxelizedSpriteRenderer.getRotationAdjustment();
+        float originalScale = VoxelizedSpriteRenderer.getScaleAdjustment();
+
+        // Apply drop-specific adjustments to counteract hand-held positioning
+        // VoxelizedSpriteRenderer has BASE_TRANSLATION.y = -1.1f for hand positioning
+        // We need to lift item drops higher so they don't sink into blocks
+        float dropYOffset = 1.3f; // Compensate for base translation + extra lift for floating
+        VoxelizedSpriteRenderer.adjustTransform(
+            0.0f, dropYOffset, 0.0f,     // Translation: lift Y position
+            0.0f, 0.0f, 0.0f,            // Rotation: no additional rotation needed
+            1.0f                         // Scale: keep same scale
+        );
+
+        try {
+            // Render with drop-specific settings
+            voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
+        } finally {
+            // Always restore original settings to avoid affecting hand-held items
+            VoxelizedSpriteRenderer.adjustTransform(
+                originalTranslation.x, originalTranslation.y, originalTranslation.z,
+                originalRotation.x, originalRotation.y, originalRotation.z,
+                originalScale
+            );
         }
     }
 
@@ -392,11 +425,18 @@ public class DropRenderer {
         // Test voxelization system
         voxelizedSpriteRenderer.testVoxelizedRendering();
 
+        // Test positioning adjustments for voxelized items
+        System.out.println("\nTesting voxelized item drop positioning:");
+        System.out.println("  Base VoxelizedSpriteRenderer Y offset: " + VoxelizedSpriteRenderer.getBaseTranslation().y + "f");
+        System.out.println("  Drop Y compensation offset: 1.3f");
+        System.out.println("  Final effective Y offset for drops: " + (VoxelizedSpriteRenderer.getBaseTranslation().y + 1.3f) + "f");
+        System.out.println("  Result: Item drops should float ~0.2f units above their base position");
+
         // Report which items use which rendering method
         System.out.println("\nItem Drop Rendering Methods:");
         for (ItemType itemType : ItemType.values()) {
             if (usesVoxelizedRendering(itemType)) {
-                System.out.println("  " + itemType.getName() + ": 3D Voxelized");
+                System.out.println("  " + itemType.getName() + ": 3D Voxelized (with positioning adjustment)");
             } else {
                 System.out.println("  " + itemType.getName() + ": 2D Billboard Fallback");
             }
