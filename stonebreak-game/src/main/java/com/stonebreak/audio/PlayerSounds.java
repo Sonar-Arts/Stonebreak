@@ -72,6 +72,10 @@ public class PlayerSounds {
                 soundSystem.playSoundWithVariation("grasswalk", 0.3f);
             } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
                 soundSystem.playSoundWithVariation("sandwalk", 0.3f);
+            } else if (groundBlock == BlockType.WOOD || groundBlock == BlockType.WOOD_PLANKS ||
+                       groundBlock == BlockType.PINE_WOOD_PLANKS || groundBlock == BlockType.ELM_WOOD_LOG ||
+                       groundBlock == BlockType.ELM_WOOD_PLANKS) {
+                soundSystem.playSoundWithVariation("woodwalk", 0.3f);
             }
         }
     }

@@ -122,8 +122,11 @@ public class CowSounds {
                 soundSystem.playSoundAt3DWithVariation("grasswalk", 0.3f, position);
             } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
                 soundSystem.playSoundAt3DWithVariation("sandwalk", 0.3f, position);
+            } else if (groundBlock == BlockType.WOOD || groundBlock == BlockType.WOOD_PLANKS ||
+                       groundBlock == BlockType.PINE_WOOD_PLANKS || groundBlock == BlockType.ELM_WOOD_LOG ||
+                       groundBlock == BlockType.ELM_WOOD_PLANKS) {
+                soundSystem.playSoundAt3DWithVariation("woodwalk", 0.3f, position);
             }
-            // Only play sounds for grass and sand like the player does
         }
     }
 
