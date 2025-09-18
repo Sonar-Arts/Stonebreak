@@ -1,7 +1,7 @@
 {
   "atlasVersion" : "1.0",
   "schemaVersion" : "1.0.0",
-  "generatedAt" : "2025-09-18T17:43:20.752525900Z",
+  "generatedAt" : "2025-09-18T18:48:49.164387300Z",
   "textureSize" : 16,
   "atlasSize" : {
     "width" : 256,
@@ -25,7 +25,7 @@
       "height" : 16
     },
     "grass_block_east" : {
-      "x" : 96,
+      "x" : 192,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -263,7 +263,7 @@
       "height" : 16
     },
     "dirt_block_east" : {
-      "x" : 192,
+      "x" : 96,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -354,16 +354,16 @@
       "height" : 16
     },
     "red_sand_south" : {
-      "x" : 0,
+      "x" : 96,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
     "red_sand_top" : {
-      "x" : 208,
+      "x" : 48,
       "width" : 16,
-      "y" : 144,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -382,7 +382,7 @@
       "height" : 16
     },
     "dirt_block_bottom" : {
-      "x" : 144,
+      "x" : 48,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -438,7 +438,7 @@
       "height" : 16
     },
     "red_sand_west" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -452,9 +452,9 @@
       "height" : 16
     },
     "red_sand_north" : {
-      "x" : 240,
+      "x" : 80,
       "width" : 16,
-      "y" : 144,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -501,7 +501,7 @@
       "height" : 16
     },
     "grass_block_bottom" : {
-      "x" : 48,
+      "x" : 144,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -529,9 +529,9 @@
       "height" : 16
     },
     "sandstone_north" : {
-      "x" : 80,
+      "x" : 240,
       "width" : 16,
-      "y" : 160,
+      "y" : 144,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -550,7 +550,7 @@
       "height" : 16
     },
     "sandstone_south" : {
-      "x" : 96,
+      "x" : 0,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -564,9 +564,9 @@
       "height" : 16
     },
     "sandstone_top" : {
-      "x" : 48,
+      "x" : 208,
       "width" : 16,
-      "y" : 160,
+      "y" : 144,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -592,7 +592,7 @@
       "height" : 16
     },
     "sandstone_east" : {
-      "x" : 112,
+      "x" : 16,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -648,9 +648,9 @@
       "height" : 16
     },
     "sandstone_bottom" : {
-      "x" : 64,
+      "x" : 224,
       "width" : 16,
-      "y" : 160,
+      "y" : 144,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -690,7 +690,7 @@
       "height" : 16
     },
     "grass_block_north" : {
-      "x" : 64,
+      "x" : 160,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -718,7 +718,7 @@
       "height" : 16
     },
     "sandstone_west" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -732,7 +732,7 @@
       "height" : 16
     },
     "dirt_block_top" : {
-      "x" : 128,
+      "x" : 32,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -760,7 +760,7 @@
       "height" : 16
     },
     "grass_block_south" : {
-      "x" : 80,
+      "x" : 176,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -851,9 +851,9 @@
       "height" : 16
     },
     "red_sand_bottom" : {
-      "x" : 224,
+      "x" : 64,
       "width" : 16,
-      "y" : 144,
+      "y" : 160,
       "type" : "block_cube_cross",
       "height" : 16
     },
@@ -949,7 +949,7 @@
       "height" : 16
     },
     "red_sand_east" : {
-      "x" : 16,
+      "x" : 112,
       "width" : 16,
       "y" : 160,
       "type" : "block_cube_cross",
@@ -1040,7 +1040,7 @@
       "height" : 16
     },
     "dirt_block_west" : {
-      "x" : 208,
+      "x" : 112,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1089,7 +1089,7 @@
       "height" : 16
     },
     "dirt_block_south" : {
-      "x" : 176,
+      "x" : 80,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1166,7 +1166,7 @@
       "height" : 16
     },
     "grass_block_top" : {
-      "x" : 32,
+      "x" : 128,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1236,7 +1236,7 @@
       "height" : 16
     },
     "grass_block_west" : {
-      "x" : 112,
+      "x" : 208,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
@@ -1250,7 +1250,7 @@
       "height" : 16
     },
     "dirt_block_north" : {
-      "x" : 160,
+      "x" : 64,
       "width" : 16,
       "y" : 16,
       "type" : "block_cube_cross",
