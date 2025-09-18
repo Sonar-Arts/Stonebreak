@@ -4,6 +4,8 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Vector4f;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
@@ -26,6 +28,24 @@ public class VoxelizedSpriteRenderer {
 
     // Cache for voxelization results (palette + voxel data)
     private final Map<ItemType, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
+
+    // Hardcoded base translation
+    private static final Vector3f BASE_TRANSLATION = new Vector3f(0.3f, -0.1f, -0.4f);
+
+    // Adjustable translation offset (starts at 0,0,0)
+    private static Vector3f translationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f);
+
+    // Hardcoded base rotation (equivalent to -40° diagonal axis rotation)
+    private static final Vector3f BASE_ROTATION = new Vector3f(-23.1f, -23.1f, -23.1f); // degrees (X, Y, Z)
+
+    // Adjustable rotation offset (starts at 0,0,0)
+    private static Vector3f rotationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f); // degrees (X, Y, Z)
+
+    // Hardcoded base scale
+    private static final float BASE_SCALE = 2.0f;
+
+    // Adjustable scale multiplier (starts at 1.0 = no change)
+    private static float scaleAdjustment = 1.0f;
 
     /**
      * Creates a new voxelized sprite renderer.
@@ -59,6 +79,11 @@ public class VoxelizedSpriteRenderer {
         // Set up shader uniforms
         setupShaderUniforms();
 
+        // Apply sprite transformation (2x scale, -40° diagonal rotation)
+        Matrix4f originalTransform = getCurrentModelMatrix();
+        Matrix4f spriteTransform = createSpriteTransform();
+        applyTransformMatrix(spriteTransform);
+
         // Set up OpenGL state for voxel rendering
         setupRenderState();
 
@@ -67,6 +92,9 @@ public class VoxelizedSpriteRenderer {
 
         // Render each voxel with its individual color
         renderVoxelsWithColors(itemType, mesh);
+
+        // Restore transformation matrix
+        applyTransformMatrix(originalTransform);
 
         // Restore OpenGL state
         restoreRenderState();
@@ -187,6 +215,49 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
+     * Creates the transformation matrix for sprite rendering (adjustable scale, adjustable XYZ rotation, adjustable positioning).
+     */
+    private Matrix4f createSpriteTransform() {
+        Matrix4f transform = new Matrix4f();
+
+        // Apply translation to position in hand (base + adjustment)
+        Vector3f finalTranslation = new Vector3f(BASE_TRANSLATION).add(translationAdjustment);
+        transform.translate(finalTranslation);
+
+        // Apply scale (base * adjustment)
+        float finalScale = BASE_SCALE * scaleAdjustment;
+        transform.scale(finalScale);
+
+        // Apply rotations around X, Y, Z axes (base + adjustment)
+        Vector3f finalRotation = new Vector3f(BASE_ROTATION).add(rotationAdjustment);
+
+        // Apply rotations in XYZ order (Tait-Bryan angles)
+        transform.rotateX((float) Math.toRadians(finalRotation.x));
+        transform.rotateY((float) Math.toRadians(finalRotation.y));
+        transform.rotateZ((float) Math.toRadians(finalRotation.z));
+
+        return transform;
+    }
+
+    /**
+     * Gets the current model matrix from the shader.
+     */
+    private Matrix4f getCurrentModelMatrix() {
+        // Create identity matrix as placeholder - in real implementation,
+        // you'd get this from the shader's current model matrix uniform
+        return new Matrix4f();
+    }
+
+    /**
+     * Applies a transformation matrix to the shader.
+     */
+    private void applyTransformMatrix(Matrix4f transform) {
+        // Apply the transformation matrix to the model matrix uniform
+        // Use the standard modelMatrix uniform name
+        shaderProgram.setUniform("modelMatrix", transform);
+    }
+
+    /**
      * Restores OpenGL state after rendering.
      */
     private void restoreRenderState() {
@@ -288,6 +359,143 @@ public class VoxelizedSpriteRenderer {
         System.out.println(getStatistics());
 
         System.out.println("=== Voxelized Renderer Test Complete ===");
+    }
+
+    /**
+     * Adjusts the translation offset for voxel positioning.
+     *
+     * @param x X-axis adjustment
+     * @param y Y-axis adjustment
+     * @param z Z-axis adjustment
+     */
+    public static void adjustTranslation(float x, float y, float z) {
+        translationAdjustment.set(x, y, z);
+    }
+
+    /**
+     * Adjusts translation, rotation, and scale for voxel positioning.
+     *
+     * @param x X-axis translation adjustment
+     * @param y Y-axis translation adjustment
+     * @param z Z-axis translation adjustment
+     * @param rotX X-axis rotation adjustment in degrees
+     * @param rotY Y-axis rotation adjustment in degrees
+     * @param rotZ Z-axis rotation adjustment in degrees
+     * @param scale Scale multiplier (1.0 = base scale, 0.5 = half size, 2.0 = double size)
+     */
+    public static void adjustTransform(float x, float y, float z, float rotX, float rotY, float rotZ, float scale) {
+        translationAdjustment.set(x, y, z);
+        rotationAdjustment.set(rotX, rotY, rotZ);
+        scaleAdjustment = scale;
+    }
+
+    /**
+     * Adjusts both translation and rotation for voxel positioning (no scale change).
+     *
+     * @param x X-axis translation adjustment
+     * @param y Y-axis translation adjustment
+     * @param z Z-axis translation adjustment
+     * @param rotX X-axis rotation adjustment in degrees
+     * @param rotY Y-axis rotation adjustment in degrees
+     * @param rotZ Z-axis rotation adjustment in degrees
+     */
+    public static void adjustTransformNoScale(float x, float y, float z, float rotX, float rotY, float rotZ) {
+        translationAdjustment.set(x, y, z);
+        rotationAdjustment.set(rotX, rotY, rotZ);
+    }
+
+    /**
+     * Adjusts both translation and single-axis rotation for voxel positioning (backward compatibility).
+     *
+     * @param x X-axis translation adjustment
+     * @param y Y-axis translation adjustment
+     * @param z Z-axis translation adjustment
+     * @param rotation Single rotation adjustment applied to Y-axis in degrees
+     */
+    public static void adjustTransformSingleRotation(float x, float y, float z, float rotation) {
+        translationAdjustment.set(x, y, z);
+        rotationAdjustment.set(0.0f, rotation, 0.0f);
+    }
+
+    /**
+     * Gets the current translation adjustment values.
+     *
+     * @return Copy of the current translation adjustment
+     */
+    public static Vector3f getTranslationAdjustment() {
+        return new Vector3f(translationAdjustment);
+    }
+
+    /**
+     * Gets the base translation values.
+     *
+     * @return Copy of the base translation
+     */
+    public static Vector3f getBaseTranslation() {
+        return new Vector3f(BASE_TRANSLATION);
+    }
+
+    /**
+     * Gets the final translation (base + adjustment).
+     *
+     * @return Copy of the final translation
+     */
+    public static Vector3f getFinalTranslation() {
+        return new Vector3f(BASE_TRANSLATION).add(translationAdjustment);
+    }
+
+    /**
+     * Gets the current rotation adjustment values.
+     *
+     * @return Copy of current rotation adjustment (X, Y, Z degrees)
+     */
+    public static Vector3f getRotationAdjustment() {
+        return new Vector3f(rotationAdjustment);
+    }
+
+    /**
+     * Gets the base rotation angles.
+     *
+     * @return Copy of base rotation (X, Y, Z degrees)
+     */
+    public static Vector3f getBaseRotation() {
+        return new Vector3f(BASE_ROTATION);
+    }
+
+    /**
+     * Gets the final rotation angles (base + adjustment).
+     *
+     * @return Copy of final rotation (X, Y, Z degrees)
+     */
+    public static Vector3f getFinalRotation() {
+        return new Vector3f(BASE_ROTATION).add(rotationAdjustment);
+    }
+
+    /**
+     * Gets the current scale adjustment value.
+     *
+     * @return Current scale multiplier
+     */
+    public static float getScaleAdjustment() {
+        return scaleAdjustment;
+    }
+
+    /**
+     * Gets the base scale value.
+     *
+     * @return Base scale multiplier
+     */
+    public static float getBaseScale() {
+        return BASE_SCALE;
+    }
+
+    /**
+     * Gets the final scale (base * adjustment).
+     *
+     * @return Final scale multiplier
+     */
+    public static float getFinalScale() {
+        return BASE_SCALE * scaleAdjustment;
     }
 
     /**

@@ -67,7 +67,8 @@ public class Game {
     // Cheat system
     private boolean cheatsEnabled = false;
 
-    // Window dimensions
+    // Window dimensions and handle
+    private long window;
     private int windowWidth;
     private int windowHeight;
 
@@ -94,6 +95,7 @@ public class Game {
       /**     * Initializes game components.
       */
      public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+        this.window = window; // Store window handle for clipboard operations
         this.world = world;
         this.player = player;
         this.renderer = renderer;
@@ -662,6 +664,13 @@ public class Game {
      */
     public static int getWindowHeight() {
         return getInstance().windowHeight;
+    }
+
+    /**
+     * Gets window handle for GLFW operations.
+     */
+    public long getWindow() {
+        return window;
     }
 
     /**

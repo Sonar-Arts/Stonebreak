@@ -3,6 +3,8 @@ package com.stonebreak.rendering.player.items.voxelization;
 import com.stonebreak.items.ItemType;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.joml.Quaternionf;
+import org.joml.AxisAngle4f;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -23,13 +25,13 @@ public class SpriteVoxelizer {
     private static final Map<ItemType, BufferedImage> spriteCache = new HashMap<>();
 
     // Voxel size in world units (each pixel becomes a cube this size)
-    private static final float DEFAULT_VOXEL_SIZE = 0.02f; // Smaller to prevent overlap
+    private static final float DEFAULT_VOXEL_SIZE = 0.02f; // Original size
 
     // Depth of the voxelized sprite (how thick the 3D projection is)
     private static final float DEFAULT_DEPTH = 0.08f; // 2 voxels deep
 
-    // Scale factor for positioning the voxelized sprite (match voxel size for proper spacing)
-    private static final float SPRITE_SCALE = 0.02f;
+    // Scale factor for positioning the voxelized sprite
+    private static final float SPRITE_SCALE = 0.02f; // Original size
 
     // Vertical offset to raise the tool in the hand
     private static final float VERTICAL_OFFSET = 0.3f;
@@ -233,6 +235,7 @@ public class SpriteVoxelizer {
                 return null;
         }
     }
+
 
     /**
      * Gets the default voxel size for rendering.

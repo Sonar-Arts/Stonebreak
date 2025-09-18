@@ -706,6 +706,20 @@ public class InputHandler {
                     case GLFW_KEY_ESCAPE -> {
                         chatSystem.closeChat();
                     }
+                    case GLFW_KEY_V -> {
+                        // Handle Ctrl+V for paste
+                        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
+                            chatSystem.handlePaste();
+                        }
+                    }
+                    case GLFW_KEY_C -> {
+                        // Handle Ctrl+C for copy
+                        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
+                            chatSystem.handleCopy();
+                        }
+                    }
                     case GLFW_KEY_T -> {
                         // T key does nothing when chat is already open
                     }
