@@ -7,6 +7,8 @@ import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResou
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.player.geometry.ArmGeometry;
 import com.stonebreak.rendering.player.geometry.HandBlockGeometry;
+import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
+import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Vector4f;
@@ -26,12 +28,14 @@ public class HandItemRenderer {
     private final TextureAtlas textureAtlas;
     private final HandBlockGeometry handBlockGeometry;
     private final BlockRenderer blockRenderer;
+    private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
     
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
         this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
         this.blockRenderer = new BlockRenderer();
+        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
     }
     
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
@@ -39,6 +43,7 @@ public class HandItemRenderer {
         this.textureAtlas = textureAtlas;
         this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
         this.blockRenderer = new BlockRenderer(textureAtlas, blockRegistry);
+        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
     }
     
     /**
@@ -203,9 +208,29 @@ public class HandItemRenderer {
     */
     
     /**
-     * Renders tools as 2D sprites in the player's hand.
+     * Renders tools in the player's hand using appropriate rendering method.
+     * Uses 3D voxelized rendering for supported items, falls back to 2D sprites.
      */
     public void renderToolInHand(ItemType itemType) {
+        // Check if this item can be rendered as a voxelized 3D sprite
+        if (SpriteVoxelizer.isVoxelizable(itemType)) {
+            renderVoxelizedToolInHand(itemType);
+        } else {
+            render2DToolInHand(itemType);
+        }
+    }
+
+    /**
+     * Renders tools as 3D voxelized sprites in the player's hand.
+     */
+    private void renderVoxelizedToolInHand(ItemType itemType) {
+        voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
+    }
+
+    /**
+     * Renders tools as 2D sprites in the player's hand (fallback method).
+     */
+    private void render2DToolInHand(ItemType itemType) {
         // Get UV coordinates for the item
         float[] uvCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
         
@@ -251,10 +276,56 @@ public class HandItemRenderer {
     }
     
     /**
+     * Preloads voxel meshes for all supported items.
+     * Call this during initialization to reduce hitches during gameplay.
+     */
+    public void preloadVoxelMeshes() {
+        voxelizedSpriteRenderer.preloadAllVoxelMeshes();
+    }
+
+    /**
+     * Gets statistics about the voxelized sprite renderer.
+     */
+    public String getVoxelizationStatistics() {
+        return voxelizedSpriteRenderer.getStatistics();
+    }
+
+    /**
+     * Checks if an item uses voxelized rendering.
+     */
+    public boolean usesVoxelizedRendering(ItemType itemType) {
+        return SpriteVoxelizer.isVoxelizable(itemType);
+    }
+
+    /**
+     * Tests the complete hand item rendering system including voxelization.
+     * This verifies that sprites can be loaded, voxelized, and prepared for rendering.
+     */
+    public void testHandItemRendering() {
+        System.out.println("=== Hand Item Renderer Test ===");
+
+        // Test voxelization system
+        voxelizedSpriteRenderer.testVoxelizedRendering();
+
+        // Report which items use which rendering method
+        System.out.println("\nItem Rendering Methods:");
+        for (ItemType itemType : ItemType.values()) {
+            if (usesVoxelizedRendering(itemType)) {
+                System.out.println("  " + itemType.getName() + ": 3D Voxelized");
+            } else {
+                System.out.println("  " + itemType.getName() + ": 2D Sprite");
+            }
+        }
+
+        System.out.println("=== Hand Item Renderer Test Complete ===");
+    }
+
+    /**
      * Cleanup resources when the renderer is destroyed.
      */
     public void cleanup() {
         handBlockGeometry.cleanup();
         blockRenderer.cleanup();
+        voxelizedSpriteRenderer.cleanup();
     }
 }

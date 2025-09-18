@@ -1,0 +1,299 @@
+package com.stonebreak.rendering.player.items.voxelization;
+
+import com.stonebreak.items.ItemType;
+import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.stonebreak.rendering.textures.TextureAtlas;
+import org.joml.Vector4f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL20;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Handles rendering of voxelized 3D sprite representations.
+ * Manages mesh caching and OpenGL rendering state for 3D sprite projections.
+ */
+public class VoxelizedSpriteRenderer {
+
+    private final ShaderProgram shaderProgram;
+    private final TextureAtlas textureAtlas;
+
+    // Cache for voxel meshes to avoid regenerating them every frame
+    private final Map<ItemType, VoxelMesh> meshCache = new HashMap<>();
+
+    // Cache for voxelization results (palette + voxel data)
+    private final Map<ItemType, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
+
+    /**
+     * Creates a new voxelized sprite renderer.
+     *
+     * @param shaderProgram The shader program to use for rendering
+     * @param textureAtlas The texture atlas (for consistent texture binding)
+     */
+    public VoxelizedSpriteRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
+        this.shaderProgram = shaderProgram;
+        this.textureAtlas = textureAtlas;
+    }
+
+    /**
+     * Renders a voxelized sprite for the given item type.
+     *
+     * @param itemType The item type to render
+     */
+    public void renderVoxelizedSprite(ItemType itemType) {
+        if (!SpriteVoxelizer.isVoxelizable(itemType)) {
+            System.err.println("Item type " + itemType.getName() + " is not voxelizable");
+            return;
+        }
+
+        // Get or create voxel mesh
+        VoxelMesh mesh = getOrCreateMesh(itemType);
+        if (mesh == null || !mesh.isCreated()) {
+            System.err.println("Failed to create mesh for " + itemType.getName());
+            return;
+        }
+
+        // Set up shader uniforms
+        setupShaderUniforms();
+
+        // Set up OpenGL state for voxel rendering
+        setupRenderState();
+
+        // Bind texture atlas (though we won't use it in solid color mode)
+        bindColorPaletteTexture(itemType);
+
+        // Render each voxel with its individual color
+        renderVoxelsWithColors(itemType, mesh);
+
+        // Restore OpenGL state
+        restoreRenderState();
+    }
+
+    /**
+     * Gets or creates a voxel mesh for the given item type.
+     */
+    private VoxelMesh getOrCreateMesh(ItemType itemType) {
+        if (meshCache.containsKey(itemType)) {
+            return meshCache.get(itemType);
+        }
+
+        // Generate voxelization result if not cached
+        SpriteVoxelizer.VoxelizationResult result;
+        if (voxelizationCache.containsKey(itemType)) {
+            result = voxelizationCache.get(itemType);
+            // System.out.println("Using cached voxelization for " + itemType.getName()); // Debug only
+        } else {
+            result = SpriteVoxelizer.voxelizeSpriteWithPalette(itemType);
+            voxelizationCache.put(itemType, result);
+            // System.out.println("Generated voxelization for " + itemType.getName() + ": " + result.getVoxels().size() + " voxels, " + result.getColorPalette().getColorCount() + " colors"); // Debug only
+        }
+
+        if (!result.isValid()) {
+            System.err.println("No valid voxelization data available for " + itemType.getName() + " - cannot create mesh");
+            return null;
+        }
+
+        // Create mesh from voxel data
+        VoxelMesh mesh = new VoxelMesh();
+        mesh.createMesh(result.getVoxels(), SpriteVoxelizer.getDefaultVoxelSize());
+        meshCache.put(itemType, mesh);
+
+        // System.out.println("Created voxel mesh for " + itemType.getName() + " with " + mesh.getIndexCount() + " indices"); // Debug only
+        return mesh;
+    }
+
+    /**
+     * Sets up shader uniforms for voxel rendering.
+     */
+    private void setupShaderUniforms() {
+        // Enable solid color mode since we'll be rendering each voxel with its own color
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+
+        // Enable UI element mode to disable water waves for held items
+        shaderProgram.setUniform("u_isUIElement", true);
+
+        // Color will be set per voxel during rendering
+    }
+
+    /**
+     * Sets up OpenGL rendering state for voxel sprites.
+     */
+    private void setupRenderState() {
+        // Enable blending for transparency
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+        // Enable depth testing for proper 3D rendering
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthFunc(GL11.GL_LESS);
+
+        // Enable back face culling for performance (we generated proper normals)
+        GL11.glEnable(GL11.GL_CULL_FACE);
+        GL11.glCullFace(GL11.GL_BACK);
+        GL11.glFrontFace(GL11.GL_CCW);
+    }
+
+    /**
+     * Renders each voxel with its individual color using solid color mode.
+     */
+    private void renderVoxelsWithColors(ItemType itemType, VoxelMesh mesh) {
+        SpriteVoxelizer.VoxelizationResult result = voxelizationCache.get(itemType);
+        if (result == null || result.getVoxels().isEmpty()) {
+            return;
+        }
+
+        mesh.bind();
+
+        List<VoxelData> voxels = result.getVoxels();
+        int facesPerVoxel = 6;
+        int indicesPerFace = 6;
+
+        // Render each voxel with its own color
+        for (int i = 0; i < voxels.size(); i++) {
+            VoxelData voxel = voxels.get(i);
+
+            // Convert RGBA to normalized color values
+            int rgba = voxel.getOriginalRGBA();
+            float red = ((rgba >> 16) & 0xFF) / 255.0f;
+            float green = ((rgba >> 8) & 0xFF) / 255.0f;
+            float blue = (rgba & 0xFF) / 255.0f;
+            float alpha = ((rgba >> 24) & 0xFF) / 255.0f;
+
+            // Set the color uniform for this voxel
+            shaderProgram.setUniform("u_color", new Vector4f(red, green, blue, alpha));
+
+            // Render all faces of this voxel
+            int startIndex = i * facesPerVoxel * indicesPerFace;
+            GL11.glDrawElements(GL11.GL_TRIANGLES, facesPerVoxel * indicesPerFace, GL11.GL_UNSIGNED_INT, startIndex * Integer.BYTES);
+        }
+
+        mesh.unbind();
+    }
+
+    /**
+     * Binds the main texture atlas instead of a separate color palette texture.
+     */
+    private void bindColorPaletteTexture(ItemType itemType) {
+        // Use the main texture atlas instead of a separate 1D palette texture
+        // This makes the voxelizer compatible with the existing shader system
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureAtlas.getTextureId());
+        shaderProgram.setUniform("texture_sampler", 0);
+    }
+
+    /**
+     * Restores OpenGL state after rendering.
+     */
+    private void restoreRenderState() {
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
+
+        // Keep blending enabled for UI elements
+        // Keep depth testing enabled
+        // Keep face culling enabled - this is standard for the game
+    }
+
+    /**
+     * Preloads voxel data and meshes for all supported items.
+     * Useful for reducing hitches during gameplay.
+     */
+    public void preloadAllVoxelMeshes() {
+        System.out.println("Preloading voxel meshes...");
+
+        for (ItemType itemType : ItemType.values()) {
+            if (SpriteVoxelizer.isVoxelizable(itemType)) {
+                getOrCreateMesh(itemType);
+            }
+        }
+
+        System.out.println("Preloaded " + meshCache.size() + " voxel meshes");
+    }
+
+    /**
+     * Gets statistics about the voxel renderer for debugging.
+     */
+    public String getStatistics() {
+        int totalVoxels = 0;
+        int totalIndices = 0;
+        int totalColors = 0;
+
+        for (Map.Entry<ItemType, SpriteVoxelizer.VoxelizationResult> entry : voxelizationCache.entrySet()) {
+            SpriteVoxelizer.VoxelizationResult result = entry.getValue();
+            totalVoxels += result.getVoxels().size();
+            if (result.getColorPalette() != null) {
+                totalColors += result.getColorPalette().getColorCount();
+            }
+        }
+
+        for (Map.Entry<ItemType, VoxelMesh> entry : meshCache.entrySet()) {
+            if (entry.getValue().isCreated()) {
+                totalIndices += entry.getValue().getIndexCount();
+            }
+        }
+
+        return String.format("VoxelizedSpriteRenderer: %d items cached, %d total voxels, %d total colors, %d total indices",
+            meshCache.size(), totalVoxels, totalColors, totalIndices);
+    }
+
+    /**
+     * Checks if an item type has a cached mesh.
+     */
+    public boolean hasCachedMesh(ItemType itemType) {
+        return meshCache.containsKey(itemType) && meshCache.get(itemType).isCreated();
+    }
+
+    /**
+     * Clears all cached meshes, palettes, and voxel data.
+     * Useful for resource management or when switching render modes.
+     */
+    public void clearCache() {
+        // Clean up OpenGL resources
+        for (VoxelMesh mesh : meshCache.values()) {
+            mesh.cleanup();
+        }
+
+        // Clean up color palette textures
+        for (SpriteVoxelizer.VoxelizationResult result : voxelizationCache.values()) {
+            if (result.getColorPalette() != null) {
+                result.getColorPalette().cleanup();
+            }
+        }
+
+        meshCache.clear();
+        voxelizationCache.clear();
+        SpriteVoxelizer.clearCache();
+
+        System.out.println("Cleared voxel renderer cache");
+    }
+
+    /**
+     * Tests the voxelized rendering system by preloading and reporting on all items.
+     * This can be called during game initialization to verify everything works.
+     */
+    public void testVoxelizedRendering() {
+        System.out.println("=== Voxelized Sprite Renderer Test ===");
+
+        // Test sprite voxelization first
+        SpriteVoxelizer.testVoxelization();
+
+        // Preload all meshes and report results
+        preloadAllVoxelMeshes();
+
+        // Print final statistics
+        System.out.println(getStatistics());
+
+        System.out.println("=== Voxelized Renderer Test Complete ===");
+    }
+
+    /**
+     * Cleans up all OpenGL resources.
+     */
+    public void cleanup() {
+        clearCache();
+    }
+}
