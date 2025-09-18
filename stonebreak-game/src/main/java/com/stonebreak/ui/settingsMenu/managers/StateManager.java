@@ -163,8 +163,7 @@ public class StateManager {
         for (CategoryButton button : categoryButtons) {
             final CategoryState category = button.getCategory();
             button.setOnClickAction(() -> {
-                selectedCategory = category;
-                selectedSettingInCategory = 0; // Reset to first setting in category
+                setSelectedCategory(category); // Use the setter method to trigger dropdown closing
             });
         }
     }
@@ -225,10 +224,13 @@ public class StateManager {
     // ===== GETTERS AND SETTERS =====
     
     public CategoryState getSelectedCategory() { return selectedCategory; }
-    public void setSelectedCategory(CategoryState selectedCategory) { 
-        this.selectedCategory = selectedCategory; 
+    public void setSelectedCategory(CategoryState selectedCategory) {
+        this.selectedCategory = selectedCategory;
         this.selectedSettingInCategory = 0; // Reset to first setting in category
-        
+
+        // Close all open dropdowns when switching categories
+        closeAllDropdowns();
+
         // Switch to the scroll manager for the new category
         currentScrollManager = scrollManagers.get(selectedCategory);
         if (currentScrollManager != null) {
@@ -284,8 +286,26 @@ public class StateManager {
     }
     public UIRenderer getUIRenderer() { return uiRenderer; }
     
+    // ===== DROPDOWN MANAGEMENT =====
+
+    /**
+     * Closes all open dropdown menus. This is called when switching categories
+     * to ensure no dropdown remains open from the previous category.
+     */
+    private void closeAllDropdowns() {
+        if (resolutionButton != null) {
+            resolutionButton.closeDropdown();
+        }
+        if (armModelButton != null) {
+            armModelButton.closeDropdown();
+        }
+        if (crosshairStyleButton != null) {
+            crosshairStyleButton.closeDropdown();
+        }
+    }
+
     // ===== NAVIGATION METHODS =====
-    
+
     /**
      * Navigates to the next category in the list.
      */
@@ -294,6 +314,7 @@ public class StateManager {
         int nextIndex = (currentIndex + 1) % CategoryState.values().length;
         selectedCategory = CategoryState.fromIndex(nextIndex);
         selectedSettingInCategory = 0;
+        closeAllDropdowns();
     }
     
     /**
@@ -304,6 +325,7 @@ public class StateManager {
         int prevIndex = (currentIndex - 1 + CategoryState.values().length) % CategoryState.values().length;
         selectedCategory = CategoryState.fromIndex(prevIndex);
         selectedSettingInCategory = 0;
+        closeAllDropdowns();
     }
     
     /**
