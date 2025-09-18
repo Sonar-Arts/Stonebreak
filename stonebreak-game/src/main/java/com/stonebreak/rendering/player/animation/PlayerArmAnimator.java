@@ -175,19 +175,20 @@ public class PlayerArmAnimator {
         float windupAngle = smoothProgress * 35.0f; // Positive angle to start high/back
         float swingAngle = (float) (Math.sin(progress * Math.PI) * -65.0f); // Negative angle to swing forward/down
 
-        // Smooth vertical motion - less dramatic movements
-        float verticalMotion = (float) (Math.sin(progress * Math.PI) * 0.15f); // Reduced from 0.4f to 0.15f
-        float forwardMotion = (float) (Math.sin(progress * Math.PI) * 0.12f); // Reduced from 0.3f to 0.12f
+        // Enhanced motion for large outward swing
+        float verticalMotion = (float) (Math.sin(progress * Math.PI) * 0.2f); // Increased for more dramatic motion
+        float forwardMotion = (float) (Math.sin(progress * Math.PI) * 0.25f); // Increased for more forward reach
+        float outwardMotion = (float) (Math.sin(progress * Math.PI) * 0.3f); // New outward translation
 
         // Apply smooth rotation (X-axis for vertical swing)
         armTransform.rotate((float) Math.toRadians(windupAngle + swingAngle), 1.0f, 0.0f, 0.0f);
 
-        // Very gentle inward rotation during swing (Y-axis)
-        float inwardRotation = smoothProgress * 8.0f; // Reduced from 15.0f to 8.0f
-        armTransform.rotate((float) Math.toRadians(-inwardRotation), 0.0f, 1.0f, 0.0f);
+        // Large outward swing motion away from player (Y-axis)
+        float outwardRotation = (float) (Math.sin(progress * Math.PI) * -45.0f); // Negative for outward swing away from player
+        armTransform.rotate((float) Math.toRadians(outwardRotation), 0.0f, 1.0f, 0.0f);
 
-        // Apply smooth translation with gentle motion
-        armTransform.translate(0.0f, verticalMotion, forwardMotion);
+        // Apply smooth translation with large outward swing motion (negative X for outward)
+        armTransform.translate(-outwardMotion, verticalMotion, forwardMotion);
 
         // Minimal twist for subtle realism (Z-axis)
         float swingTwist = (float) (Math.sin(progress * Math.PI) * 3.0f); // Reduced from 8.0f to 3.0f
