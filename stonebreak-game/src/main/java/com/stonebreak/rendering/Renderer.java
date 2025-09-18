@@ -84,8 +84,13 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas());
-        
+        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas(), resourceManager.getShaderProgram());
+
+        // Test the new voxelized item drop system
+        System.out.println("[Renderer] Testing voxelized item drop system...");
+        dropRenderer.testDropRendering();
+        System.out.println("[Renderer] Voxelized item drop system test complete.");
+
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(), 
                                          resourceManager.getTextureAtlas(), 
                                          configManager.getProjectionMatrix(),
