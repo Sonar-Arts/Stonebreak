@@ -2,7 +2,7 @@
 name: Open Mason Bug Report
 about: Create a report to help improve Open Mason
 title: "[BUG] [OPEN MASON]"
-labels: Attention needed, Bug, Engine/dev tools
+labels: Attention needed, Bug, Engine/dev tools, Feature/system addition
 assignees: ''
 
 ---
