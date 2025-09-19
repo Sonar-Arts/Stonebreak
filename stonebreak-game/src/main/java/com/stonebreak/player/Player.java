@@ -48,7 +48,10 @@ public class Player {      // Player settings
     
     // Reference to the world
     private final World world;
-    
+
+    // Block placement validation service
+    private final IBlockPlacementService blockPlacementService;
+
     // Inventory
     private final Inventory inventory;
     
@@ -74,6 +77,7 @@ public class Player {      // Player settings
      */
     public Player(World world) {
         this.world = world;
+        this.blockPlacementService = new BlockPlacementValidator(world);
         this.position = new Vector3f(0, 100, 0);
         this.velocity = new Vector3f(0, 0, 0);
         this.onGround = false;
@@ -918,7 +922,7 @@ public class Player {      // Player settings
                     Vector3i abovePos = new Vector3i(placePos.x, placePos.y + 1, placePos.z);
                     BlockType blockAbove = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
                     if (blockAbove == BlockType.AIR) {
-                        if (!intersectsWithPlayer(abovePos)) {
+                        if (!blockPlacementService.wouldIntersectWithPlayer(abovePos, position)) {
                             // Place new snow block above
                             if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
@@ -930,17 +934,16 @@ public class Player {      // Player settings
                 }
             }
             
-            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER || 
+            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER ||
                 (blockTypeToPlace == BlockType.SNOW && blockAtPos == BlockType.SNOW)) {
-                if (intersectsWithPlayer(placePos)) {
-                    // System.out.println("DEBUG: Placement at " + placePos + " denied due to intersection with player.");
-                    return; // Collision with player, abort.
-                }
-                
-                // Check if the placement position has at least one adjacent solid block
-                // Exception: Allow placement on water blocks (replacing water doesn't require adjacent solid blocks)
-                if (blockAtPos != BlockType.WATER && !hasAdjacentSolidBlock(placePos)) {
-                    return; // Cannot place blocks in mid-air
+
+                // Use the block placement validator to check placement validity
+                BlockPlacementValidator.PlacementValidationResult validationResult =
+                    blockPlacementService.validatePlacement(placePos, position, blockTypeToPlace);
+
+                if (!validationResult.canPlace()) {
+                    // Block placement is invalid - simply return without placing or moving player
+                    return;
                 }
                 
                 // If replacing water, remove it from water simulation first
@@ -1124,7 +1127,7 @@ public class Player {      // Player settings
             }
             
             // Check if block would intersect with player (last check to prioritize placement)
-            if (intersectsWithPlayer(placePos)) {
+            if (blockPlacementService.wouldIntersectWithPlayer(placePos, position)) {
                 return null;
             }
         }
@@ -1132,67 +1135,7 @@ public class Player {      // Player settings
         return placePos;
     }
     
-    /**
-     * Checks if a block position has at least one adjacent solid block.
-     * This prevents placing blocks in mid-air.
-     */
-    private boolean hasAdjacentSolidBlock(Vector3i blockPos) {
-        // Check all 6 adjacent positions (up, down, north, south, east, west)
-        Vector3i[] adjacentPositions = {
-            new Vector3i(blockPos.x, blockPos.y + 1, blockPos.z), // Above
-            new Vector3i(blockPos.x, blockPos.y - 1, blockPos.z), // Below
-            new Vector3i(blockPos.x + 1, blockPos.y, blockPos.z), // East
-            new Vector3i(blockPos.x - 1, blockPos.y, blockPos.z), // West
-            new Vector3i(blockPos.x, blockPos.y, blockPos.z + 1), // North
-            new Vector3i(blockPos.x, blockPos.y, blockPos.z - 1)  // South
-        };
-        
-        for (Vector3i adjacentPos : adjacentPositions) {
-            BlockType adjacentBlock = world.getBlockAt(adjacentPos.x, adjacentPos.y, adjacentPos.z);
-            if (adjacentBlock.isSolid()) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
     
-    /**
-     * Checks if a block at the specified position would intersect with the player.
-     * Uses more precise AABB (Axis-Aligned Bounding Box) collision detection.
-     * Uses the player's actual physics bounding box.
-     */
-    private boolean intersectsWithPlayer(Vector3i blockPos) {
-        // Player's actual physics bounding box
-        float halfPlayerWidth = PLAYER_WIDTH / 2;
-        float pMinX = position.x - halfPlayerWidth;
-        float pMaxX = position.x + halfPlayerWidth;
-        float pMinY = position.y; // Player's feet
-        float pMaxY = position.y + PLAYER_HEIGHT; // Player's head
-        float pMinZ = position.z - halfPlayerWidth;
-        float pMaxZ = position.z + halfPlayerWidth;
-        
-        // Block's bounding box - consider actual block height
-        float blockHeight = getBlockCollisionHeight(blockPos.x, blockPos.y, blockPos.z);
-        if (blockHeight <= 0) {
-            return false; // Non-solid blocks don't cause collision
-        }
-        
-        float bMinX = blockPos.x;
-        float bMaxX = blockPos.x + 1.0f;
-        float bMinY = blockPos.y;
-        float bMaxY = blockPos.y + blockHeight; // Use actual block height
-        float bMinZ = blockPos.z;
-        float bMaxZ = blockPos.z + 1.0f;
-        
-        // Standard AABB collision check
-        boolean collisionX = (pMinX < bMaxX) && (pMaxX > bMinX);
-        boolean collisionY = (pMinY < bMaxY) && (pMaxY > bMinY); // True if Y volumes overlap
-        boolean collisionZ = (pMinZ < bMaxZ) && (pMaxZ > bMinZ);
-        
-        // Return true if all three axes have overlapping volumes
-        return collisionX && collisionY && collisionZ;
-    }
     
     /**
      * Calculates the intersection of a ray with a plane.
@@ -1494,14 +1437,14 @@ public class Player {      // Player settings
 
         // Check if the target drop position is AIR and doesn't intersect with the player
         BlockType blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
-        if (blockAtDropPos == BlockType.AIR && !intersectsWithPlayer(dropPos)) {
+        if (blockAtDropPos == BlockType.AIR && !blockPlacementService.wouldIntersectWithPlayer(dropPos, position)) {
             // Also ensure there is a solid block below the drop position to prevent floating items
             BlockType blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
             if (!blockBelowDropPos.isSolid()) {
                 // Try one block lower if initial position has no support
                 dropPos.y = dropPos.y -1;
                 blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
-                 if (blockAtDropPos != BlockType.AIR || intersectsWithPlayer(dropPos)) {
+                 if (blockAtDropPos != BlockType.AIR || blockPlacementService.wouldIntersectWithPlayer(dropPos, position)) {
                     return false; // Lower position is also not suitable
                 }
                  blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
