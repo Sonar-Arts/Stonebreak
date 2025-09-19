@@ -922,7 +922,7 @@ public class Player {      // Player settings
                     Vector3i abovePos = new Vector3i(placePos.x, placePos.y + 1, placePos.z);
                     BlockType blockAbove = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
                     if (blockAbove == BlockType.AIR) {
-                        if (!blockPlacementService.wouldIntersectWithPlayer(abovePos, position)) {
+                        if (!blockPlacementService.wouldIntersectWithPlayer(abovePos, position, BlockType.SNOW, onGround)) {
                             // Place new snow block above
                             if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
@@ -939,7 +939,7 @@ public class Player {      // Player settings
 
                 // Use the block placement validator to check placement validity
                 BlockPlacementValidator.PlacementValidationResult validationResult =
-                    blockPlacementService.validatePlacement(placePos, position, blockTypeToPlace);
+                    blockPlacementService.validatePlacement(placePos, position, blockTypeToPlace, onGround);
 
                 if (!validationResult.canPlace()) {
                     // Block placement is invalid - simply return without placing or moving player
@@ -1127,7 +1127,7 @@ public class Player {      // Player settings
             }
             
             // Check if block would intersect with player (last check to prioritize placement)
-            if (blockPlacementService.wouldIntersectWithPlayer(placePos, position)) {
+            if (blockPlacementService.wouldIntersectWithPlayer(placePos, position, null, onGround)) {
                 return null;
             }
         }
@@ -1337,6 +1337,10 @@ public class Player {      // Player settings
         return velocity;
     }
 
+    public boolean isOnGround() {
+        return onGround;
+    }
+
     /**
      * Initiates the attack animation.
      */
@@ -1437,14 +1441,14 @@ public class Player {      // Player settings
 
         // Check if the target drop position is AIR and doesn't intersect with the player
         BlockType blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
-        if (blockAtDropPos == BlockType.AIR && !blockPlacementService.wouldIntersectWithPlayer(dropPos, position)) {
+        if (blockAtDropPos == BlockType.AIR && !blockPlacementService.wouldIntersectWithPlayer(dropPos, position, blockToPlace, onGround)) {
             // Also ensure there is a solid block below the drop position to prevent floating items
             BlockType blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
             if (!blockBelowDropPos.isSolid()) {
                 // Try one block lower if initial position has no support
                 dropPos.y = dropPos.y -1;
                 blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
-                 if (blockAtDropPos != BlockType.AIR || blockPlacementService.wouldIntersectWithPlayer(dropPos, position)) {
+                 if (blockAtDropPos != BlockType.AIR || blockPlacementService.wouldIntersectWithPlayer(dropPos, position, blockToPlace, onGround)) {
                     return false; // Lower position is also not suitable
                 }
                  blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);

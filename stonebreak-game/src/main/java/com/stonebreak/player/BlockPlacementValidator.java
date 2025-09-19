@@ -35,18 +35,40 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * @return ValidationResult containing whether placement is valid and any adjustments needed
      */
     public PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType) {
+        return validatePlacement(blockPos, playerPos, blockType, true);
+    }
+
+    /**
+     * Validates whether a block can be placed at the given position.
+     *
+     * @param blockPos The position to place the block
+     * @param playerPos The current player position
+     * @param blockType The type of block to place
+     * @param playerOnGround Whether the player is currently on the ground
+     * @return ValidationResult containing whether placement is valid and any adjustments needed
+     */
+    public PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType, boolean playerOnGround) {
         // Check if target position is valid for placement
         if (!isValidPlacementLocation(blockPos, blockType)) {
             return new PlacementValidationResult(false, PlacementValidationResult.FailureReason.INVALID_LOCATION);
         }
 
+
         // Check if block would intersect with player
-        if (wouldIntersectWithPlayer(blockPos, playerPos, blockType)) {
+        if (wouldIntersectWithPlayer(blockPos, playerPos, blockType, playerOnGround)) {
             return new PlacementValidationResult(false, PlacementValidationResult.FailureReason.PLAYER_COLLISION);
         }
 
-        // Check if block has proper support (for non-water placements)
-        if (!hasAdjacentSolidBlock(blockPos) && world.getBlockAt(blockPos.x, blockPos.y, blockPos.z) != BlockType.WATER) {
+        // Check if block has proper support (no floating blocks allowed)
+        // Exception: Allow nerdpoling (placing blocks underneath while jumping)
+        boolean hasSupport = hasAdjacentSolidBlock(blockPos);
+        boolean isWaterReplacement = world.getBlockAt(blockPos.x, blockPos.y, blockPos.z) == BlockType.WATER;
+        boolean isNerdpoling = !playerOnGround &&
+                              (blockPos.y < playerPos.y) &&
+                              (blockPos.y >= playerPos.y - 3.0f) &&
+                              isHorizontallyAligned(blockPos, playerPos);
+
+        if (!hasSupport && !isWaterReplacement && !isNerdpoling) {
             return new PlacementValidationResult(false, PlacementValidationResult.FailureReason.NO_SUPPORT);
         }
 
@@ -88,6 +110,15 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      */
     @Override
     public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos, BlockType blockType) {
+        return wouldIntersectWithPlayer(blockPos, playerPos, blockType, true);
+    }
+
+    /**
+     * Checks if placing a specific block type would intersect with the player.
+     * Uses precise AABB (Axis-Aligned Bounding Box) collision detection.
+     * Allows special case for placing blocks directly beneath player's feet when jumping.
+     */
+    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos, BlockType blockType, boolean playerOnGround) {
         // Player's physics bounding box
         float halfPlayerWidth = PLAYER_WIDTH / 2;
         float pMinX = playerPos.x - halfPlayerWidth;
@@ -125,12 +156,20 @@ public class BlockPlacementValidator implements IBlockPlacementService {
 
         boolean hasCollision = collisionX && collisionY && collisionZ;
 
-        // Debug logging for troubleshooting
-        if (hasCollision) {
-            System.out.println("DEBUG: Block placement collision detected at " + blockPos +
-                             " with block height " + blockHeight +
-                             " (player at " + String.format("%.2f,%.2f,%.2f", playerPos.x, playerPos.y, playerPos.z) + ")");
+        // Special case: Allow nerdpoling (placing blocks beneath feet) ONLY when jumping
+        // If there's a collision, check if this could be a valid nerdpole placement
+        if (hasCollision && !playerOnGround) {
+            // Check if block is strictly underneath the player's feet (very close)
+            // Block must be directly below the player and very close
+            boolean isDirectlyUnderneath = (blockPos.y < playerPos.y) && // Block must be below player's feet
+                                         (blockPos.y >= playerPos.y - 1.5f) && // Must be very close (within 1.5 blocks)
+                                         collisionX && collisionZ; // Block overlaps with player horizontally
+
+            if (isDirectlyUnderneath) {
+                return false; // Allow placement
+            }
         }
+
 
         return hasCollision;
     }
@@ -142,6 +181,55 @@ public class BlockPlacementValidator implements IBlockPlacementService {
     @Override
     public boolean hasProperSupport(Vector3i blockPos) {
         return hasAdjacentSolidBlock(blockPos);
+    }
+
+    /**
+     * Checks if a block position is horizontally aligned with the player (overlaps horizontally).
+     */
+    private boolean isHorizontallyAligned(Vector3i blockPos, Vector3f playerPos) {
+        float halfPlayerWidth = PLAYER_WIDTH / 2;
+        float pMinX = playerPos.x - halfPlayerWidth;
+        float pMaxX = playerPos.x + halfPlayerWidth;
+        float pMinZ = playerPos.z - halfPlayerWidth;
+        float pMaxZ = playerPos.z + halfPlayerWidth;
+
+        float bMinX = blockPos.x;
+        float bMaxX = blockPos.x + 1.0f;
+        float bMinZ = blockPos.z;
+        float bMaxZ = blockPos.z + 1.0f;
+
+        boolean overlapX = (pMinX < bMaxX) && (pMaxX > bMinX);
+        boolean overlapZ = (pMinZ < bMaxZ) && (pMaxZ > bMinZ);
+
+        return overlapX && overlapZ;
+    }
+
+    /**
+     * Checks if this is a "clutch" block placement - placing a block near the player's feet while jumping.
+     */
+    private boolean isClutchPlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType) {
+        // Player's physics bounding box for horizontal overlap check
+        float halfPlayerWidth = PLAYER_WIDTH / 2;
+        float pMinX = playerPos.x - halfPlayerWidth;
+        float pMaxX = playerPos.x + halfPlayerWidth;
+        float pMinZ = playerPos.z - halfPlayerWidth;
+        float pMaxZ = playerPos.z + halfPlayerWidth;
+
+        // Block's bounding box
+        float bMinX = blockPos.x;
+        float bMaxX = blockPos.x + 1.0f;
+        float bMinZ = blockPos.z;
+        float bMaxZ = blockPos.z + 1.0f;
+
+        // Check horizontal overlap
+        boolean overlapX = (pMinX < bMaxX) && (pMaxX > bMinX);
+        boolean overlapZ = (pMinZ < bMaxZ) && (pMaxZ > bMinZ);
+
+        // Check if block is near player's feet vertically (extremely permissive for testing)
+        boolean nearFeetVertically = (blockPos.y >= playerPos.y - 5.0f) && (blockPos.y <= playerPos.y + 2.0f);
+
+
+        return overlapX && overlapZ && nearFeetVertically;
     }
 
     /**
@@ -163,7 +251,6 @@ public class BlockPlacementValidator implements IBlockPlacementService {
                 return true;
             }
         }
-
         return false;
     }
 
