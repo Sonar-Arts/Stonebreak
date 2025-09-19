@@ -47,32 +47,51 @@ public class WorldChunkStore {
         Chunk chunk = chunks.get(position);
         
         if (chunk == null) {
-            // Try to load from save system first
+            // Generate chunk immediately to avoid blocking
+            chunk = safelyGenerateAndRegisterChunk(x, z);
+
+            // Try to load from save system asynchronously and replace if found
             try {
                 com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
                 var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
 
-                if (saveSystem != null) {
-                    Boolean exists = saveSystem.chunkExists(x, z).get();
-                    if (exists != null && exists) {
-                        Chunk loaded = saveSystem.loadChunk(x, z).get();
-                        if (loaded != null) {
-                            chunks.put(position, loaded);
-                            // Ensure mesh is scheduled for build for loaded chunks
-                            if (shouldQueueForMesh(x, z)) {
-                                meshPipeline.scheduleConditionalMeshBuild(loaded);
+                if (saveSystem != null && saveSystem.isInitialized()) {
+                    // Capture the final chunk reference for async operations
+                    final Chunk generatedChunk = chunk;
+
+                    // Asynchronously check if saved chunk exists and load it
+                    saveSystem.chunkExists(x, z)
+                        .thenAccept(exists -> {
+                            if (exists != null && exists) {
+                                // Load the saved chunk asynchronously
+                                saveSystem.loadChunk(x, z)
+                                    .thenAccept(loaded -> {
+                                        if (loaded != null) {
+                                            // Replace generated chunk with loaded chunk
+                                            chunks.put(position, loaded);
+                                            System.out.println("[CHUNK-LOAD] Replaced generated chunk (" + x + ", " + z + ") with saved chunk");
+
+                                            // Ensure mesh is scheduled for build for loaded chunks
+                                            if (shouldQueueForMesh(x, z)) {
+                                                meshPipeline.scheduleConditionalMeshBuild(loaded);
+                                            }
+                                        }
+                                    })
+                                    .exceptionally(throwable -> {
+                                        System.err.println("Error loading chunk (" + x + ", " + z + ") from storage: " + throwable.getMessage());
+                                        return null;
+                                    });
                             }
-                            return loaded;
-                        }
-                    }
+                        })
+                        .exceptionally(throwable -> {
+                            System.err.println("Error checking chunk existence (" + x + ", " + z + "): " + throwable.getMessage());
+                            return null;
+                        });
                 }
             } catch (Exception e) {
-                // Fall back to generation on any load error
-                System.err.println("Error loading chunk (" + x + ", " + z + ") from storage: " + e.getMessage());
+                // Non-fatal: generation already succeeded, just log the error
+                System.err.println("Error initiating async chunk load (" + x + ", " + z + "): " + e.getMessage());
             }
-
-            // If not loaded, generate anew
-            chunk = safelyGenerateAndRegisterChunk(x, z);
         }
         
         return chunk;

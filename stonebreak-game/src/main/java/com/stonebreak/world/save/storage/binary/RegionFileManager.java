@@ -22,24 +22,42 @@ public class RegionFileManager implements AutoCloseable {
     private final Path regionsDirectory;
     private final BinaryChunkCodec chunkCodec;
     private final ConcurrentHashMap<RegionCoordinate, RegionFile> openRegions;
-    private final ExecutorService ioExecutor;
+    private volatile ExecutorService ioExecutor; // Lazy-initialized
+    private final Object executorLock = new Object();
 
     public RegionFileManager(String worldPath) {
         this.regionsDirectory = Paths.get(worldPath, "regions");
         this.chunkCodec = new BinaryChunkCodec();
         this.openRegions = new ConcurrentHashMap<>();
-        this.ioExecutor = Executors.newFixedThreadPool(2, r -> {
-            Thread t = new Thread(r, "RegionFileIO");
-            t.setDaemon(true);
-            return t;
-        });
 
-        // Ensure regions directory exists
-        try {
-            Files.createDirectories(regionsDirectory);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create regions directory", e);
+        // Async directory creation to avoid blocking initialization
+        CompletableFuture.runAsync(() -> {
+            try {
+                Files.createDirectories(regionsDirectory);
+            } catch (IOException e) {
+                System.err.println("[INIT-WARNING] Failed to create regions directory: " + regionsDirectory + " - " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Gets or creates the I/O executor with lazy initialization.
+     * Avoids thread pool creation overhead during world initialization.
+     */
+    private ExecutorService getIOExecutor() {
+        if (ioExecutor == null) {
+            synchronized (executorLock) {
+                if (ioExecutor == null) {
+                    ioExecutor = Executors.newFixedThreadPool(2, r -> {
+                        Thread t = new Thread(r, "RegionFileIO-" + regionsDirectory.getFileName());
+                        t.setDaemon(true);
+                        return t;
+                    });
+                    System.out.println("[PERFORMANCE] Lazy-initialized RegionFileManager executor for: " + regionsDirectory.getFileName());
+                }
+            }
         }
+        return ioExecutor;
     }
 
     /**
@@ -68,7 +86,7 @@ public class RegionFileManager implements AutoCloseable {
             } catch (Exception e) {
                 throw new RuntimeException("Failed to load chunk at " + chunkX + "," + chunkZ, e);
             }
-        }, ioExecutor);
+        }, getIOExecutor());
     }
 
     /**
@@ -93,7 +111,7 @@ public class RegionFileManager implements AutoCloseable {
             } catch (Exception e) {
                 throw new RuntimeException("Failed to save chunk at " + chunk.getX() + "," + chunk.getZ(), e);
             }
-        }, ioExecutor);
+        }, getIOExecutor());
     }
 
     /**
@@ -117,7 +135,7 @@ public class RegionFileManager implements AutoCloseable {
             } catch (Exception e) {
                 return false;
             }
-        }, ioExecutor);
+        }, getIOExecutor());
     }
 
     /**
@@ -138,7 +156,7 @@ public class RegionFileManager implements AutoCloseable {
             } catch (Exception e) {
                 throw new RuntimeException("Failed to delete chunk at " + chunkX + "," + chunkZ, e);
             }
-        }, ioExecutor);
+        }, getIOExecutor());
     }
 
     /**
@@ -155,7 +173,7 @@ public class RegionFileManager implements AutoCloseable {
                     }
                 }
             }
-        }, ioExecutor);
+        }, getIOExecutor());
     }
 
     /**
@@ -190,8 +208,10 @@ public class RegionFileManager implements AutoCloseable {
 
         openRegions.clear();
 
-        // Shutdown executor
-        ioExecutor.shutdown();
+        // Shutdown executor if it was initialized
+        if (ioExecutor != null) {
+            ioExecutor.shutdown();
+        }
     }
 
     private RegionCoordinate getRegionCoordinate(int chunkX, int chunkZ) {

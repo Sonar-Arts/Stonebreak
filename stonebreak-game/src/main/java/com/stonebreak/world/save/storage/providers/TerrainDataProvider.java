@@ -4,7 +4,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.save.core.WorldMetadata;
 import com.stonebreak.world.save.storage.binary.RegionFileManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.stonebreak.world.save.util.JsonMapperUtil;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -28,16 +28,19 @@ public class TerrainDataProvider implements AutoCloseable {
 
     public TerrainDataProvider(String worldPath) {
         this.worldPath = worldPath;
-        this.regionManager = new RegionFileManager(worldPath);
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.registerModule(new JavaTimeModule());
+        this.objectMapper = JsonMapperUtil.getSharedMapper();
 
-        // Ensure world directory exists
-        try {
-            Files.createDirectories(Paths.get(worldPath));
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create world directory: " + worldPath, e);
-        }
+        // Async directory creation to avoid blocking initialization
+        CompletableFuture.runAsync(() -> {
+            try {
+                Files.createDirectories(Paths.get(worldPath));
+            } catch (Exception e) {
+                System.err.println("[INIT-WARNING] Failed to create world directory: " + worldPath + " - " + e.getMessage());
+            }
+        });
+
+        // Lazy initialization of RegionFileManager to avoid thread pool creation overhead
+        this.regionManager = new RegionFileManager(worldPath);
     }
 
     /**
@@ -79,7 +82,7 @@ public class TerrainDataProvider implements AutoCloseable {
                     Files.createDirectories(parentDir);
                 }
 
-                String jsonContent = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metadata);
+                String jsonContent = JsonMapperUtil.getPrettyWriter().writeValueAsString(metadata);
                 if (jsonContent == null || jsonContent.trim().isEmpty()) {
                     throw new RuntimeException("Serialized metadata is empty");
                 }

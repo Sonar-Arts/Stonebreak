@@ -2,46 +2,48 @@ package com.stonebreak.blocks;
 
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemCategory;
+import com.stonebreak.textures.atlas.AtlasIdManager;
+import com.stonebreak.textures.atlas.AtlasMetadataCache;
 
 /**
  * Defines all block types in the game.
  * These are items that can be placed in the world as blocks.
  */
 public enum BlockType implements Item {
-    // Added atlasX, atlasY for inventory/hotbar display.
-    // These are the primary texture coordinates for the block.
-    // For blocks like GRASS with multiple textures, this will be the "icon" texture (e.g., grass top).
-    AIR(0, "Air", false, false, -1, -1, 0.0f), // No texture for air
-    GRASS(1, "Grass", true, true, 0, 0, 1.0f),     // Grass Top
-    DIRT(2, "Dirt", true, true, 2, 0, 2.0f),
-    STONE(3, "Stone", true, true, 3, 0, 4.0f),
-    BEDROCK(4, "Bedrock", true, false, 4, 0, Float.POSITIVE_INFINITY),
-    WOOD(5, "Wood", true, true, 5, 0, 3.0f),       // Wood Side (or could be Wood Top: 5,1)
-    LEAVES(6, "Leaves", true, true, 7, 0, 0.5f), // Atlas X changed from 6 to 7
-    SAND(7, "Sand", true, true, 8, 0, 1.5f),       // Atlas X changed from 7 to 8
-    WATER(8, "Water", false, false, 9, 0, 0.0f),    // Atlas X changed from 8 to 9
-    COAL_ORE(9, "Coal Ore", true, true, 0, 1, 6.0f),
-    IRON_ORE(10, "Iron Ore", true, true, 1, 1, 8.0f),
-    RED_SAND(11, "Red Sand", true, true, 2, 1, 1.5f), // Was Obsidian, now red sand at old obsidian atlas coords
-    MAGMA(12, "Magma", true, true, 3, 1, 10.0f),       // Placeholder atlas coords
-    CRYSTAL(13, "Crystal", true, true, 4, 1, 12.0f),   // Placeholder atlas coords
-    SANDSTONE(14, "Sandstone", true, true, 5, 1, 5.0f), // Top texture for icon
-    RED_SANDSTONE(15, "Red Sandstone", true, true, 6, 1, 5.0f), // Top texture for icon
-    ROSE(16, "Rose", false, true, 10, 1, 0.1f), // Moved from 7,1
-    DANDELION(17, "Dandelion", false, true, 11, 1, 0.1f), // Moved from 8,1
-    SNOWY_DIRT(18, "Snowy Dirt", true, true, 0, 2, 1.0f), // Snow Top (clone of grass)
-    SNOWY_LEAVES(19, "Snowy Leaves", true, true, 4, 2, 0.5f),
-    PINE(20, "Pine", true, true, 2, 2, 3.0f), // Darker wood variant
-    ICE(21, "Ice", true, true, 3, 2, 2.0f),
-    SNOW(22, "Snow", false, true, 5, 2, 0.1f), // Layered snow block
-    WORKBENCH(23, "Workbench", true, true, 6, 2, 3.0f), // Placeholder atlas coords (6,2)
-    WOOD_PLANKS(24, "Wood Planks", true, true, 0, 3, 3.0f), // Atlas coords (0,3) placeholder
-    PINE_WOOD_PLANKS(25, "Pine Wood Planks", true, true, 2, 3, 3.0f), // Atlas coords (2,3)
-    ELM_WOOD_LOG(26, "Elm Wood Log", true, true, 4, 3, 3.0f), // Atlas coords (4,3) - ID updated from 28 to 26
-    ELM_WOOD_PLANKS(27, "Elm Wood Planks", true, true, 5, 3, 3.0f), // Atlas coords (5,3) - ID updated from 29 to 27
-    ELM_LEAVES(28, "Elm Leaves", true, true, 6, 3, 0.5f), // Atlas coords (6,3) - ID updated from 30 to 28
-    COBBLESTONE(29, "Cobblestone", true, true, 7, 3, 4.0f),
-    GRAVEL(30, "Gravel", true, true, 8, 3, 1.5f);
+    // Updated to use atlas ID system with namespaced identifiers
+    // IDs now align with atlas system expectations for proper texture mapping
+    // Based on test data: grass=0, dirt=1, stone=2, sand=6, dandelion=16
+    AIR(0, "Air", "air", false, false, 0.0f),
+    GRASS(1, "Grass", "grass_block", true, true, 1.0f),
+    DIRT(2, "Dirt", "dirt_block", true, true, 2.0f),
+    STONE(3, "Stone", "stone", true, true, 4.0f),
+    BEDROCK(4, "Bedrock", "bedrock", true, false, Float.POSITIVE_INFINITY),
+    WOOD(5, "Wood", "wood", true, true, 3.0f),
+    LEAVES(6, "Leaves", "leaves", true, true, 0.5f),
+    SAND(7, "Sand", "sand", true, true, 1.5f),
+    WATER(8, "Water", "water_temp", false, false, 0.0f),
+    COAL_ORE(9, "Coal Ore", "coal_ore", true, true, 6.0f),
+    IRON_ORE(10, "Iron Ore", "iron_ore", true, true, 8.0f),
+    RED_SAND(11, "Red Sand", "red_sand", true, true, 1.5f),
+    MAGMA(12, "Magma", "magma", true, true, 10.0f),
+    CRYSTAL(13, "Crystal", "crystal", true, true, 12.0f),
+    SANDSTONE(14, "Sandstone", "sandstone", true, true, 5.0f),
+    RED_SANDSTONE(15, "Red Sandstone", "red_sandstone", true, true, 5.0f),
+    ROSE(16, "Rose", "rose", false, true, 0.1f),
+    DANDELION(17, "Dandelion", "dandelion", false, true, 0.1f),
+    SNOWY_DIRT(18, "Snowy Dirt", "snowy_dirt", true, true, 1.0f),
+    SNOWY_LEAVES(19, "Snowy Leaves", "snowy_leaves", true, true, 0.5f),
+    PINE(20, "Pine", "pine_wood", true, true, 3.0f),
+    ICE(21, "Ice", "ice", true, true, 2.0f),
+    SNOW(22, "Snow", "snow", false, true, 0.1f),
+    WORKBENCH(23, "Workbench", "workbench", true, true, 3.0f),
+    WOOD_PLANKS(24, "Wood Planks", "wood_planks_custom", true, true, 3.0f),
+    PINE_WOOD_PLANKS(25, "Pine Wood Planks", "pine_wood_planks_custom", true, true, 3.0f),
+    ELM_WOOD_LOG(26, "Elm Wood Log", "elm_wood_log", true, true, 3.0f),
+    ELM_WOOD_PLANKS(27, "Elm Wood Planks", "elm_wood_planks_custom", true, true, 3.0f),
+    ELM_LEAVES(28, "Elm Leaves", "elm_leaves", true, true, 0.5f),
+    COBBLESTONE(29, "Cobblestone", "cobblestone", true, true, 4.0f),
+    GRAVEL(30, "Gravel", "gravel", true, true, 1.5f);
 
     public enum Face {
         TOP(0), BOTTOM(1), SIDE_NORTH(2), SIDE_SOUTH(3), SIDE_EAST(4), SIDE_WEST(5);
@@ -52,19 +54,20 @@ public enum BlockType implements Item {
     
     private final int id;
     private final String name;
+    private final String atlasName; // Atlas namespaced identifier (e.g., "grass_block")
     private final boolean solid;
     private final boolean breakable;
-    private final int atlasX; // Texture atlas X coordinate for UI
-    private final int atlasY; // Texture atlas Y coordinate for UI
     private final float hardness; // Time in seconds to break with bare hands
-    
-    BlockType(int id, String name, boolean solid, boolean breakable, int atlasX, int atlasY, float hardness) {
+
+    // Static atlas cache for dynamic coordinate lookups
+    private static AtlasMetadataCache atlasCache;
+
+    BlockType(int id, String name, String atlasName, boolean solid, boolean breakable, float hardness) {
         this.id = id;
         this.name = name;
+        this.atlasName = atlasName;
         this.solid = solid;
         this.breakable = breakable;
-        this.atlasX = atlasX;
-        this.atlasY = atlasY;
         this.hardness = hardness;
     }
     
@@ -94,14 +97,56 @@ public enum BlockType implements Item {
         return this == AIR || this == WATER || this == LEAVES || this == ROSE || this == DANDELION || this == SNOWY_LEAVES || this == ICE || this == SNOW || this == ELM_LEAVES;
     }
 
+    /**
+     * Gets the atlas namespaced name for this block type.
+     * @return The atlas identifier (e.g., "grass_block")
+     */
+    public String getAtlasName() {
+        return atlasName;
+    }
+
+    /**
+     * Gets the full namespaced atlas identifier.
+     * @return The full atlas name (e.g., "stonebreak:grass_block")
+     */
+    public String getNamespacedAtlasName() {
+        return "stonebreak:" + atlasName;
+    }
+
+    /**
+     * Sets the atlas cache for dynamic coordinate lookups.
+     * Should be called during game initialization.
+     */
+    public static void setAtlasCache(AtlasMetadataCache cache) {
+        atlasCache = cache;
+    }
+
     @Override
     public int getAtlasX() {
-        return atlasX;
+        if (atlasCache != null && this != AIR) {
+            var coords = atlasCache.get(getNamespacedAtlasName() + "_top");
+            if (coords == null) {
+                coords = atlasCache.get(getNamespacedAtlasName());
+            }
+            if (coords != null) {
+                return coords.atlasX;
+            }
+        }
+        return this == AIR ? -1 : 0; // Fallback
     }
 
     @Override
     public int getAtlasY() {
-        return atlasY;
+        if (atlasCache != null && this != AIR) {
+            var coords = atlasCache.get(getNamespacedAtlasName() + "_top");
+            if (coords == null) {
+                coords = atlasCache.get(getNamespacedAtlasName());
+            }
+            if (coords != null) {
+                return coords.atlasY;
+            }
+        }
+        return this == AIR ? -1 : 0; // Fallback
     }
     
     public float getHardness() {
@@ -185,75 +230,93 @@ public enum BlockType implements Item {
     }
     
     /**
-     * Get texture coordinates for the block type.
-     * @param face The face of the block (0=top, 1=bottom, 2-5=sides)
-     * @return Array with [x, y] coordinates in the texture atlas
+     * Get dynamic texture coordinates for the block type using atlas cache.
+     * @param face The face of the block (TOP, BOTTOM, SIDE_NORTH, etc.)
+     * @return Array with [x, y] pixel coordinates in the texture atlas, or [0, 0] if not found
      */
     public float[] getTextureCoords(Face face) {
-        return switch (this) {
-            case GRASS -> {
-                if (face == Face.TOP) yield new float[]{0, 0}; // Top - grass
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
-                yield new float[]{1, 0}; // Sides - grass side
+        if (this == AIR) {
+            return new float[]{-1, -1}; // No texture for air
+        }
+
+        if (atlasCache == null) {
+            // Fallback to basic coordinates if atlas cache not available
+            return new float[]{0, 0};
+        }
+
+        // Build texture name based on face and block atlas name
+        String textureName = getNamespacedAtlasName();
+        String faceSuffix = getFaceSuffix(face);
+
+        // Try face-specific texture first
+        if (!faceSuffix.isEmpty()) {
+            var coords = atlasCache.get(textureName + "_" + faceSuffix);
+            if (coords != null) {
+                return new float[]{coords.atlasX, coords.atlasY};
             }
-            case DIRT -> new float[]{2, 0};
-            case STONE -> new float[]{3, 0};
-            case BEDROCK -> new float[]{4, 0};
-            case WOOD -> {
-                if (face == Face.TOP) yield new float[]{6, 0}; // Top - wood top texture (concentric rings)
-                if (face == Face.BOTTOM) yield new float[]{6, 0}; // Bottom - same as top (tree rings)
-                yield new float[]{5, 0}; // Sides - wood side texture (vertical grain)
-            }
-            case LEAVES -> new float[]{7, 0}; // Atlas X changed from 6 to 7
-            case SAND -> new float[]{8, 0}; // Atlas X changed from 7 to 8
-            case WATER -> new float[]{9, 0}; // Atlas X changed from 8 to 9
-            case COAL_ORE -> new float[]{0, 1};
-            case IRON_ORE -> new float[]{1, 1};
-            case RED_SAND -> new float[]{2, 1}; // Use its unique atlas coordinates
-            case MAGMA -> new float[]{3, 1}; // Placeholder atlas coords
-            case CRYSTAL -> new float[]{4, 1}; // Placeholder atlas coords
-            case SANDSTONE -> {
-                if (face == Face.TOP) yield new float[]{5, 1}; // Top
-                if (face == Face.BOTTOM) yield new float[]{5, 1}; // Bottom (same as top)
-                yield new float[]{7, 1}; // Sides
-            }
-            case RED_SANDSTONE -> {
-                if (face == Face.TOP) yield new float[]{6, 1}; // Top
-                if (face == Face.BOTTOM) yield new float[]{6, 1}; // Bottom (same as top)
-                yield new float[]{8, 1}; // Sides
-            }
-            case ROSE -> new float[]{10, 1}; // Moved from 7,1
-            case DANDELION -> new float[]{11, 1}; // Moved from 8,1
-            case SNOWY_DIRT -> {
-                if (face == Face.TOP) yield new float[]{0, 2}; // Top - snow
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
-                yield new float[]{1, 2}; // Sides - snow side
-            }
-            case SNOW -> new float[]{5, 2}; // Pure snow texture for layers
-            case SNOWY_LEAVES -> new float[]{4, 2};
-            case PINE -> {
-                if (face == Face.TOP) yield new float[]{2, 2}; // Top
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - dirt
-                yield new float[]{2, 2}; // Sides
-            }
-            case ICE -> new float[]{3, 2};
-            case WORKBENCH -> {
-                if (face == Face.TOP) yield new float[]{6, 2}; // Top - main texture
-                if (face == Face.BOTTOM) yield new float[]{2, 0}; // Bottom - Dirt texture (like wood)
-                yield new float[]{7, 2}; // Sides - placeholder side texture
-            }
-            case WOOD_PLANKS -> new float[]{0, 3}; // All faces use (0,3)
-            case PINE_WOOD_PLANKS -> new float[]{2, 3}; // All faces use (2,3)
-            case ELM_WOOD_LOG -> {
-                if (face == Face.TOP) yield new float[]{4, 3}; // Top - elm wood ring pattern
-                if (face == Face.BOTTOM) yield new float[]{4, 3}; // Bottom - same as top
-                yield new float[]{7, 3}; // Sides - elm bark texture
-            }
-            case ELM_WOOD_PLANKS -> new float[]{5, 3}; // All faces use (5,3)
-            case ELM_LEAVES -> new float[]{6, 3}; // All faces use (6,3)
-            case COBBLESTONE -> new float[]{7, 3}; // All faces use (7,3)
-            case GRAVEL -> new float[]{8, 3}; // All faces use (8,3)
-            default -> new float[]{0, 0};
+        }
+
+        // Fall back to general texture
+        var coords = atlasCache.get(textureName);
+        if (coords != null) {
+            return new float[]{coords.atlasX, coords.atlasY};
+        }
+
+        // Ultimate fallback for missing textures
+        System.err.println("Warning: No atlas texture found for " + textureName + " face " + face);
+        return new float[]{0, 0};
+    }
+
+    /**
+     * Gets the face suffix for atlas texture lookups.
+     * @param face The block face
+     * @return The suffix string for the face (e.g., \"top\", \"bottom\", \"north\")
+     */
+    private String getFaceSuffix(Face face) {
+        return switch (face) {
+            case TOP -> "top";
+            case BOTTOM -> "bottom";
+            case SIDE_NORTH -> "north";
+            case SIDE_SOUTH -> "south";
+            case SIDE_EAST -> "east";
+            case SIDE_WEST -> "west";
         };
+    }
+
+    /**
+     * Get UV coordinates for the block type using atlas cache.
+     * @param face The face of the block
+     * @return Array with [u1, v1, u2, v2] UV coordinates, or [0, 0, 1, 1] if not found
+     */
+    public float[] getUVCoords(Face face) {
+        if (this == AIR) {
+            return new float[]{0, 0, 0, 0}; // No UV for air
+        }
+
+        if (atlasCache == null) {
+            // Fallback UV coordinates if atlas cache not available
+            return new float[]{0, 0, 1, 1};
+        }
+
+        String textureName = getNamespacedAtlasName();
+        String faceSuffix = getFaceSuffix(face);
+
+        // Try face-specific texture first
+        if (!faceSuffix.isEmpty()) {
+            var coords = atlasCache.get(textureName + "_" + faceSuffix);
+            if (coords != null) {
+                return coords.getUVArray();
+            }
+        }
+
+        // Fall back to general texture
+        var coords = atlasCache.get(textureName);
+        if (coords != null) {
+            return coords.getUVArray();
+        }
+
+        // Ultimate fallback
+        System.err.println("Warning: No UV coordinates found for " + textureName + " face " + face);
+        return new float[]{0, 0, 1, 1};
     }
 }

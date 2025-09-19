@@ -169,8 +169,11 @@ public class Game {
         this.world = world;
         this.player = player;
 
-        // Update save system references if it exists and is initialized
-        if (worldSaveSystem != null && worldSaveSystem.isInitialized()) {
+        // Update save system references if it exists (regardless of initialization state)
+        // This ensures the save system gets the correct world/player references even if
+        // initialization happens later in the flow
+        if (worldSaveSystem != null) {
+            System.out.println("[SAVE-SYSTEM] Updating save system references during world component initialization");
             worldSaveSystem.updateReferences(world, player);
         }
 
@@ -925,14 +928,18 @@ public class Game {
         System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
         System.out.println("========================================");
 
-        // Save current player data before resetting (if save system is available)
-        if (worldSaveSystem != null && worldSaveSystem.isInitialized()) {
+        // Skip explicit save during world reset to avoid hanging
+        // The auto-save system should have already saved data periodically
+        System.out.println("[WORLD-ISOLATION] Skipping explicit save during world reset to prevent hanging");
+        System.out.println("[WORLD-ISOLATION] Auto-save system should have saved data already");
+
+        // Stop auto-save to prevent further save operations during reset
+        if (worldSaveSystem != null) {
             try {
-                // Perform final save before leaving world
-                worldSaveSystem.saveWorldNow().join(); // Blocking save to ensure completion
-                System.out.println("[WORLD-ISOLATION] Final save completed before world reset");
+                worldSaveSystem.stopAutoSave();
+                System.out.println("[WORLD-ISOLATION] Stopped auto-save system for clean reset");
             } catch (Exception e) {
-                System.err.println("[WORLD-ISOLATION] Failed to save before world reset: " + e.getMessage());
+                System.err.println("[WORLD-ISOLATION] Error stopping auto-save: " + e.getMessage());
             }
         }
 
@@ -1317,27 +1324,37 @@ public class Game {
                         com.stonebreak.world.save.core.WorldMetadata worldMetadata =
                             new com.stonebreak.world.save.core.WorldMetadata(currentWorldSeed, currentWorldName);
                         worldSaveSystem.initialize(world, player, worldMetadata);
-                        System.out.println("[SAVE-SYSTEM] Initialized save system early for player data loading");
+                        System.out.println("[SAVE-SYSTEM] ✓ Initialized save system for world '" + currentWorldName + "'");
+                        System.out.println("[SAVE-SYSTEM] Save system isInitialized(): " + worldSaveSystem.isInitialized());
 
                         // Check if player data exists and load it
-                        com.stonebreak.world.save.core.PlayerState existingPlayerState =
-                            worldSaveSystem.loadPlayerState().get(); // Blocking call for simplicity during generation
+                        com.stonebreak.world.save.core.PlayerState existingPlayerState = null;
+                        try {
+                            existingPlayerState = worldSaveSystem.loadPlayerState().get(); // Blocking call for simplicity during generation
+                        } catch (Exception loadException) {
+                            System.out.println("[PLAYER-DATA] Player data loading failed (likely new world): " + loadException.getMessage());
+                            existingPlayerState = null;
+                        }
 
                         if (existingPlayerState != null) {
                             // Apply the loaded player state (with world name validation)
                             worldSaveSystem.applyPlayerState(existingPlayerState);
                             playerPosition = new org.joml.Vector3f(existingPlayerState.getPosition());
-                            System.out.println("[PLAYER-DATA] Loaded existing player data for world '" + currentWorldName + "': position=" +
+                            System.out.println("[PLAYER-DATA] ✓ Loaded existing player data for world '" + currentWorldName + "': position=" +
                                 playerPosition.x + "," + playerPosition.y + "," + playerPosition.z);
                         } else {
-                            // No existing player data, give starting items and set default position
+                            // No existing player data, give starting items and set default position (this is normal for new worlds)
                             player.giveStartingItems();
-                            System.out.println("[PLAYER-DATA] No existing player data found for world '" + currentWorldName + "', giving starting items and using default position");
+                            System.out.println("[PLAYER-DATA] ✓ No existing player data found for world '" + currentWorldName + "' - treating as new world, giving starting items");
                         }
                     } catch (Exception e) {
-                        // Failed to load player data, give starting items and use defaults
+                        // Failed to initialize save system or load player data
+                        System.err.println("[SAVE-SYSTEM] ✗ CRITICAL ERROR: Save system initialization failed for world '" + currentWorldName + "'!");
+                        System.err.println("[SAVE-SYSTEM] Error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                        System.err.println("[SAVE-SYSTEM] This will prevent saving/loading - player will get starter items every time");
+
                         player.giveStartingItems();
-                        System.out.println("[PLAYER-DATA] Failed to load player data for world '" + currentWorldName + "', giving starting items and using default position: " + e.getMessage());
+                        System.out.println("[PLAYER-DATA] Save system failed, giving starting items as fallback: " + e.getMessage());
                     }
                 } else {
                     // No save system available, give starting items and use defaults
@@ -1452,6 +1469,15 @@ public class Game {
                                     this.currentWorldSeed = metadata.getSeed();
                                 }
 
+                                // Reinitialize save system with fresh world/player instances after replaceWorldInstance
+                                if (metadata != null) {
+                                    System.out.println("[SAVE-SYSTEM] Reinitializing save system after world replacement for existing world");
+                                    com.stonebreak.world.save.core.WorldMetadata worldMetadata =
+                                        new com.stonebreak.world.save.core.WorldMetadata(metadata.getSeed(), worldName);
+                                    saveSystem.initialize(world, player, worldMetadata);
+                                    System.out.println("[SAVE-SYSTEM] Save system reinitialized - isInitialized(): " + saveSystem.isInitialized());
+                                }
+
                                 // Apply player state
                                 if (result.playerState != null) {
                                     saveSystem.applyPlayerState(result.playerState);
@@ -1547,6 +1573,14 @@ public class Game {
 
         // Save system was already initialized during world generation for player data loading
         // No need to reinitialize here
-        System.out.println("[SAVE-SYSTEM] Save system already initialized during world generation");
+        if (worldSaveSystem != null && worldSaveSystem.isInitialized()) {
+            System.out.println("[SAVE-SYSTEM] ✓ Save system is working properly after world generation");
+        } else {
+            System.err.println("[SAVE-SYSTEM] ✗ CRITICAL: Save system is NOT working after world generation!");
+            System.err.println("[SAVE-SYSTEM] worldSaveSystem = " + (worldSaveSystem != null ? "not null" : "NULL"));
+            if (worldSaveSystem != null) {
+                System.err.println("[SAVE-SYSTEM] isInitialized() = " + worldSaveSystem.isInitialized());
+            }
+        }
     }
 }

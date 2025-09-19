@@ -65,7 +65,16 @@ public class WorldSaveSystem implements AutoCloseable {
             this.currentPlayer = newPlayer;
             System.out.println("[SAVE-SYSTEM] Updated object references to maintain save system functionality");
         } else {
-            System.out.println("[SAVE-SYSTEM] Cannot update references - save system not initialized");
+            // If save system isn't fully initialized but we have metadata, complete initialization
+            if (currentWorldMetadata != null && newWorld != null && newPlayer != null) {
+                System.out.println("[SAVE-SYSTEM] Completing initialization with new references");
+                initialize(newWorld, newPlayer, currentWorldMetadata);
+            } else {
+                // Store references for later initialization
+                this.currentWorld = newWorld;
+                this.currentPlayer = newPlayer;
+                System.out.println("[SAVE-SYSTEM] Stored references for later initialization (world=" + (newWorld != null) + ", player=" + (newPlayer != null) + ", metadata=" + (currentWorldMetadata != null) + ")");
+            }
         }
     }
 

@@ -112,12 +112,15 @@ public class WorldLoadManager implements LoadOperations, AutoCloseable {
     }
 
     /**
-     * Loads complete world state (metadata and player state).
+     * Loads complete world state (metadata and player state) with optimized parallel loading.
      * Chunks are loaded on-demand as needed.
      */
     public CompletableFuture<WorldLoadResult> loadCompleteWorldState() {
+        long startTime = System.nanoTime();
+
+        // Parallel loading of metadata and player state for faster initialization
         CompletableFuture<WorldMetadata> metadataFuture = loadWorldMetadata();
-        CompletableFuture<PlayerState> playerFuture = loadPlayerState();
+        CompletableFuture<PlayerState> playerFuture = loadPlayerStateWithDefaults();
 
         return CompletableFuture.allOf(metadataFuture, playerFuture)
             .thenApply(v -> {
@@ -130,10 +133,11 @@ public class WorldLoadManager implements LoadOperations, AutoCloseable {
                     result.playerState = playerState;
                     result.success = (metadata != null);
 
+                    long loadTime = (System.nanoTime() - startTime) / 1_000_000; // Convert to milliseconds
                     if (result.success) {
-                        System.out.println("Successfully loaded complete world state");
+                        System.out.println("[PERFORMANCE] Successfully loaded complete world state in " + loadTime + "ms");
                     } else {
-                        System.out.println("World state loading completed with missing components");
+                        System.out.println("[WARNING] World state loading completed with missing components in " + loadTime + "ms");
                     }
 
                     return result;
@@ -143,7 +147,8 @@ public class WorldLoadManager implements LoadOperations, AutoCloseable {
                 }
             })
             .exceptionally(ex -> {
-                System.err.println("Failed to load complete world state: " + ex.getMessage());
+                long loadTime = (System.nanoTime() - startTime) / 1_000_000;
+                System.err.println("[ERROR] Failed to load complete world state in " + loadTime + "ms: " + ex.getMessage());
 
                 WorldLoadResult result = new WorldLoadResult();
                 result.success = false;
@@ -186,36 +191,45 @@ public class WorldLoadManager implements LoadOperations, AutoCloseable {
     }
 
     /**
-     * Loads chunks around a spawn point for initial world loading.
+     * Loads chunks around a spawn point for initial world loading with parallel processing.
      */
     public CompletableFuture<Integer> loadSpawnChunks(WorldMetadata metadata, int renderDistance) {
         if (metadata == null || metadata.getSpawnPosition() == null) {
             return CompletableFuture.completedFuture(0);
         }
 
+        long startTime = System.nanoTime();
         int spawnChunkX = (int) Math.floor(metadata.getSpawnPosition().x / 16);
         int spawnChunkZ = (int) Math.floor(metadata.getSpawnPosition().z / 16);
+        int radius = Math.min(renderDistance, 8); // Limit initial load radius
 
-        return CompletableFuture.supplyAsync(() -> {
-            int loadedCount = 0;
-            int radius = Math.min(renderDistance, 8); // Limit initial load radius
+        // Create list of chunk positions to load
+        java.util.List<CompletableFuture<Chunk>> chunkFutures = new java.util.ArrayList<>();
 
-            for (int x = spawnChunkX - radius; x <= spawnChunkX + radius; x++) {
-                for (int z = spawnChunkZ - radius; z <= spawnChunkZ + radius; z++) {
+        for (int x = spawnChunkX - radius; x <= spawnChunkX + radius; x++) {
+            for (int z = spawnChunkZ - radius; z <= spawnChunkZ + radius; z++) {
+                chunkFutures.add(loadChunk(x, z));
+            }
+        }
+
+        // Load all chunks in parallel and count successful loads
+        return CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0]))
+            .thenApply(v -> {
+                int loadedCount = 0;
+                for (CompletableFuture<Chunk> future : chunkFutures) {
                     try {
-                        Chunk chunk = loadChunk(x, z).get();
-                        if (chunk != null) {
+                        if (future.get() != null) {
                             loadedCount++;
                         }
                     } catch (Exception e) {
-                        // Continue loading other chunks
+                        // Continue counting other chunks
                     }
                 }
-            }
 
-            System.out.println("Loaded " + loadedCount + " chunks around spawn point");
-            return loadedCount;
-        });
+                long loadTime = (System.nanoTime() - startTime) / 1_000_000;
+                System.out.println("[PERFORMANCE] Loaded " + loadedCount + " chunks around spawn point in " + loadTime + "ms");
+                return loadedCount;
+            });
     }
 
     /**
