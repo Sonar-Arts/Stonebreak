@@ -170,9 +170,9 @@ public class InputHandler {
                 inventoryScreen.handleMouseInput(windowWidth, windowHeight);
             }
 
-            // Only process movement in PLAYING and INVENTORY_UI states
-            // Block movement in other states (PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, etc.)
-            if (currentGameState == GameState.PLAYING || currentGameState == GameState.INVENTORY_UI) {
+            // Only process movement in PLAYING state
+            // Block movement in UI states (PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, etc.)
+            if (currentGameState == GameState.PLAYING) {
                 // Process movement inputs
                 boolean moveForward = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
                 boolean moveBackward = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
@@ -527,9 +527,9 @@ public class InputHandler {
             return; // Pause menu handled or ignored the click
         }
 
-        // Only allow world interaction in PLAYING and INVENTORY_UI states
+        // Only allow world interaction in PLAYING state
         GameState currentState = Game.getInstance().getState();
-        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI) {
+        if (currentState == GameState.PLAYING) {
             if (action == GLFW_PRESS) { // Only react on initial press for world actions
                 Player player = Game.getPlayer();
                 if (player != null) {
