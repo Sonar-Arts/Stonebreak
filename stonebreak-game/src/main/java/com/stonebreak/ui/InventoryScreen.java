@@ -17,6 +17,9 @@ import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.ui.inventoryScreen.InventorySlotRenderer;
 import com.stonebreak.ui.inventoryScreen.InventoryPanelRenderer;
+import com.stonebreak.ui.inventoryScreen.InventoryButtonRenderer;
+import com.stonebreak.ui.inventoryScreen.InventoryCraftingRenderer;
+import com.stonebreak.ui.inventoryScreen.InventoryTooltipRenderer;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_BOTTOM;
@@ -231,7 +234,7 @@ public class InventoryScreen {
         // Draw Arrow (placeholder visual)
         int arrowX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + (SLOT_SIZE - 20) / 2; // Centered in SLOT_SIZE space
         int arrowY = craftingGridStartY + (craftingAreaHeight - 20) / 2 - SLOT_PADDING; // Vertically centered in grid area
-        drawCraftingArrow(arrowX, arrowY, 20, 20);
+        InventoryCraftingRenderer.drawCraftingArrow(uiRenderer, arrowX, arrowY, 20, 20);
 
         // Draw Crafting Output Slot
         int outputSlotX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
@@ -254,7 +257,7 @@ public class InventoryScreen {
         //     recipeButtonX = panelStartX + inventoryPanelWidth - SLOT_PADDING - recipeButtonWidth;
         // }
 
-        drawRecipeButton(recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, RECIPE_BUTTON_TEXT);
+        InventoryButtonRenderer.drawRecipeButton(uiRenderer, inputHandler, recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, RECIPE_BUTTON_TEXT);
  
         // Draw "Inventory" title below crafting area
         float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SLOT_SIZE /2; // Reposition inventory title
@@ -387,7 +390,7 @@ public class InventoryScreen {
         // Draw Arrow (placeholder visual)
         int arrowX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + (SLOT_SIZE - 20) / 2; // Centered in SLOT_SIZE space
         int arrowY = craftingGridStartY + (craftingAreaHeight - 20) / 2 - SLOT_PADDING; // Vertically centered in grid area
-        drawCraftingArrow(arrowX, arrowY, 20, 20);
+        InventoryCraftingRenderer.drawCraftingArrow(uiRenderer, arrowX, arrowY, 20, 20);
 
         // Draw Crafting Output Slot
         int outputSlotX = craftingElementsStartX + craftInputGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
@@ -410,7 +413,7 @@ public class InventoryScreen {
         //     recipeButtonX = panelStartX + inventoryPanelWidth - SLOT_PADDING - recipeButtonWidth;
         // }
 
-        drawRecipeButton(recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, RECIPE_BUTTON_TEXT);
+        InventoryButtonRenderer.drawRecipeButton(uiRenderer, inputHandler, recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, RECIPE_BUTTON_TEXT);
  
         // Draw "Inventory" title below crafting area
         float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SLOT_SIZE /2; // Reposition inventory title
@@ -471,7 +474,7 @@ public class InventoryScreen {
             Item item = hoveredItemStack.getItem();
             if (item != null && item != BlockType.AIR) {
                 Vector2f mousePos = inputHandler.getMousePosition();
-                drawItemTooltip(item.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
+                InventoryTooltipRenderer.drawItemTooltip(uiRenderer, item.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
             }
         }
     }
@@ -515,72 +518,6 @@ public class InventoryScreen {
         }
     }
     
-    private void drawItemTooltip(String itemName, float x, float y, int screenWidth, int screenHeight) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            float padding = 12.0f;
-            float cornerRadius = 6.0f;
-            
-            // Measure text with better font
-            nvgFontSize(vg, 16);
-            nvgFontFace(vg, "minecraft");
-            float[] bounds = new float[4];
-            nvgTextBounds(vg, 0, 0, itemName, bounds);
-            float textWidth = bounds[2] - bounds[0];
-            float textHeight = bounds[3] - bounds[1];
-            
-            float tooltipWidth = textWidth + 2 * padding;
-            float tooltipHeight = textHeight + 2 * padding;
-            
-            // Adjust position to stay within screen bounds with margin
-            float margin = 10.0f;
-            if (x + tooltipWidth > screenWidth - margin) {
-                x = screenWidth - tooltipWidth - margin;
-            }
-            if (y + tooltipHeight > screenHeight - margin) {
-                y = screenHeight - tooltipHeight - margin;
-            }
-            if (x < margin) x = margin;
-            if (y < margin) y = margin;
-            
-            // Drop shadow for depth
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x + 3, y + 3, tooltipWidth, tooltipHeight, cornerRadius);
-            nvgFillColor(vg, nvgRGBA(0, 0, 0, 100, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Tooltip background with gradient
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, tooltipWidth, tooltipHeight, cornerRadius);
-            nvgFillColor(vg, nvgRGBA(40, 40, 50, 240, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Inner highlight for 3D effect
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x + 1, y + 1, tooltipWidth - 2, tooltipHeight - 2, cornerRadius - 1);
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStrokeColor(vg, nvgRGBA(80, 80, 100, 120, NVGColor.malloc(stack)));
-            nvgStroke(vg);
-            
-            // Outer border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, tooltipWidth, tooltipHeight, cornerRadius);
-            nvgStrokeWidth(vg, 2.0f);
-            nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 180, NVGColor.malloc(stack)));
-            nvgStroke(vg);
-            
-            // Text shadow for better readability
-            nvgFontSize(vg, 16);
-            nvgFontFace(vg, "minecraft");
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
-            nvgText(vg, x + tooltipWidth / 2 + 1, y + tooltipHeight / 2 + 1, itemName);
-            
-            // Main tooltip text
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-            nvgText(vg, x + tooltipWidth / 2, y + tooltipHeight / 2, itemName);
-        }
-    }
     
     
     // drawHotbarTooltip method removed - now handled by HotbarRenderer
@@ -1421,26 +1358,6 @@ public class InventoryScreen {
         // called after taking item from output slot.
     }
 
-    private void drawCraftingArrow(float x, float y, float width, float height) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            nvgBeginPath(vg);
-            nvgFillColor(vg, nvgRGBA(200, 200, 200, 220, NVGColor.malloc(stack)));
-            // Simple arrow: ->
-            nvgMoveTo(vg, x, y + height / 2);
-            nvgLineTo(vg, x + width - (width / 3), y + height / 2);
-            nvgStrokeWidth(vg, 2.0f);
-            nvgStrokeColor(vg, nvgRGBA(150,150,150,255,NVGColor.malloc(stack)));
-            nvgStroke(vg);
-
-            nvgBeginPath(vg);
-            nvgMoveTo(vg, x + width - (width / 3) - (height/4), y + height / 4);
-            nvgLineTo(vg, x + width, y + height / 2);
-            nvgLineTo(vg, x + width - (width / 3) - (height/4), y + height * 3 / 4);
-            // nvgClosePath(vg); // No fill for the point
-            nvgStroke(vg);
-        }
-    }
 // Brace removed, the comment about its removal is now accurate.
 
 private void checkHover(ItemStack itemStack, int slotX, int slotY) {
@@ -1463,38 +1380,6 @@ private void checkHover(ItemStack itemStack, int slotX, int slotY) {
         }
     }
 
-    private void drawRecipeButton(float x, float y, float w, float h, String text) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            NVGColor color = NVGColor.malloc(stack);
-
-            // Button background
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, w, h, 4);
-            boolean isHovering = inputHandler.getMousePosition().x >= x && inputHandler.getMousePosition().x <= x + w &&
-                                 inputHandler.getMousePosition().y >= y && inputHandler.getMousePosition().y <= y + h;
-            if (isHovering) {
-                nvgFillColor(vg, nvgRGBA(100, 120, 140, 255, color)); // Hover color
-            } else {
-                nvgFillColor(vg, nvgRGBA(80, 100, 120, 255, color)); // Normal color
-            }
-            nvgFill(vg);
-
-            // Button border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x + 0.5f, y + 0.5f, w - 1, h - 1, 3.5f);
-            nvgStrokeColor(vg, nvgRGBA(150, 170, 190, 255, color));
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStroke(vg);
-
-            // Button text
-            nvgFontSize(vg, 18); // Use a reasonable font size
-            nvgFontFace(vg, "sans"); // Or "minecraft" if available and preferred
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, color));
-            nvgText(vg, x + w / 2, y + h / 2, text);
-        }
-    }
 
 // Removing the duplicate drawRecipeButton method. The first one (lines 1658-1689) is kept.
 // The class's closing brace '}' at the original line 1723 will now correctly close the class.
