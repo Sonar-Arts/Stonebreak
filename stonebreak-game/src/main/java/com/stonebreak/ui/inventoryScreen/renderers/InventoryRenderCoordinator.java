@@ -13,6 +13,7 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
+import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.joml.Vector2f;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
@@ -259,8 +260,7 @@ public class InventoryRenderCoordinator {
 
             if (count > 1) {
                 String countText = String.valueOf(count);
-                nvgFontSize(vg, 12);
-                nvgFontFace(vg, "sans");
+                RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
                 nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
                 // Text shadow

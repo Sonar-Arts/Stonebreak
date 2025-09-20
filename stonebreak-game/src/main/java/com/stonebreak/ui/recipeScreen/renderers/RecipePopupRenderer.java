@@ -419,8 +419,7 @@ public class RecipePopupRenderer {
                 }
 
                 // "Result" label
-                nvgFontSize(vg, 16);
-                nvgFontFace(vg, "sans");
+                RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
 
                 // Label shadow

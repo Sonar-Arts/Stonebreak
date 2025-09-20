@@ -2,6 +2,7 @@ package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -39,8 +40,7 @@ public class InventoryButtonRenderer {
             nvgStroke(vg);
 
             // Button text
-            nvgFontSize(vg, 18); // Use a reasonable font size
-            nvgFontFace(vg, "sans"); // Or "minecraft" if available and preferred
+            RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL); // Use Minecraft font
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, color));
             nvgText(vg, x + w / 2, y + h / 2, text);

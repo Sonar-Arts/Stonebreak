@@ -6,6 +6,7 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -85,8 +86,7 @@ public class InventorySlotRenderer {
 
                         if (count > 1) {
                             String countText = String.valueOf(count);
-                            nvgFontSize(vg, 12);
-                            nvgFontFace(vg, "sans");
+                            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
                             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
                             // Text shadow

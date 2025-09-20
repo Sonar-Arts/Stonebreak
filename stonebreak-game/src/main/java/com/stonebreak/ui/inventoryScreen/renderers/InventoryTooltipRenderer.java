@@ -1,6 +1,7 @@
 package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -20,8 +21,7 @@ public class InventoryTooltipRenderer {
             float cornerRadius = 6.0f;
 
             // Measure text with better font
-            nvgFontSize(vg, 16);
-            nvgFontFace(vg, "minecraft");
+            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
             float[] bounds = new float[4];
             nvgTextBounds(vg, 0, 0, itemName, bounds);
             float textWidth = bounds[2] - bounds[0];
@@ -68,8 +68,7 @@ public class InventoryTooltipRenderer {
             nvgStroke(vg);
 
             // Text shadow for better readability
-            nvgFontSize(vg, 16);
-            nvgFontFace(vg, "minecraft");
+            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
             nvgText(vg, x + tooltipWidth / 2 + 1, y + tooltipHeight / 2 + 1, itemName);

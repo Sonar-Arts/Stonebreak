@@ -1,6 +1,7 @@
 package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -35,8 +36,7 @@ public class InventoryPanelRenderer {
     public static void drawInventoryTitle(UIRenderer uiRenderer, float centerX, float centerY, String title) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
-            nvgFontSize(vg, 24);
-            nvgFontFace(vg, "sans");
+            RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_MEDIUM);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
             nvgText(vg, centerX, centerY, title);
