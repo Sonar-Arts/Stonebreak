@@ -73,10 +73,12 @@ public class InventorySlotManager {
                                              InventoryLayoutCalculator.InventoryLayout layout,
                                              InventoryDragDropHandler.DragState dragState) {
         ItemStack[] craftingInputSlots = craftingManager.getCraftingInputSlots();
+        int craftingGridSize = craftingManager.getCraftingGridSize();
+        int craftingInputSlotsCount = craftingGridSize * craftingGridSize;
 
-        for (int i = 0; i < InventoryLayoutCalculator.getCraftingInputSlotsCount(); i++) {
-            int r = i / InventoryLayoutCalculator.getCraftingGridSize();
-            int c = i % InventoryLayoutCalculator.getCraftingGridSize();
+        for (int i = 0; i < craftingInputSlotsCount; i++) {
+            int r = i / craftingGridSize;
+            int c = i % craftingGridSize;
             int slotX = layout.craftingElementsStartX +
                        c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.craftingGridStartY +
@@ -139,10 +141,12 @@ public class InventorySlotManager {
     public boolean tryShiftClickCraftingInput(float mouseX, float mouseY,
                                              InventoryLayoutCalculator.InventoryLayout layout) {
         ItemStack[] craftingInputSlots = craftingManager.getCraftingInputSlots();
+        int craftingGridSize = craftingManager.getCraftingGridSize();
+        int craftingInputSlotsCount = craftingGridSize * craftingGridSize;
 
-        for (int i = 0; i < InventoryLayoutCalculator.getCraftingInputSlotsCount(); i++) {
-            int r = i / InventoryLayoutCalculator.getCraftingGridSize();
-            int c = i % InventoryLayoutCalculator.getCraftingGridSize();
+        for (int i = 0; i < craftingInputSlotsCount; i++) {
+            int r = i / craftingGridSize;
+            int c = i % craftingGridSize;
             int slotX = layout.craftingElementsStartX +
                        c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.craftingGridStartY +
@@ -217,11 +221,13 @@ public class InventorySlotManager {
                                             InventoryLayoutCalculator.InventoryLayout layout,
                                             InventoryDragDropHandler.DragState dragState) {
         ItemStack[] craftingInputSlots = craftingManager.getCraftingInputSlots();
+        int craftingGridSize = craftingManager.getCraftingGridSize();
+        int craftingInputSlotsCount = craftingGridSize * craftingGridSize;
 
-        for (int i = 0; i < InventoryLayoutCalculator.getCraftingInputSlotsCount(); i++) {
+        for (int i = 0; i < craftingInputSlotsCount; i++) {
             final int slotIndex = i; // Make effectively final for lambda
-            int r = slotIndex / InventoryLayoutCalculator.getCraftingGridSize();
-            int c = slotIndex % InventoryLayoutCalculator.getCraftingGridSize();
+            int r = slotIndex / craftingGridSize;
+            int c = slotIndex % craftingGridSize;
             int slotX = layout.craftingElementsStartX +
                        c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.craftingGridStartY +
