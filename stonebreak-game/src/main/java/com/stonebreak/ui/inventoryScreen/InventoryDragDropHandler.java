@@ -93,7 +93,7 @@ public class InventoryDragDropHandler {
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
                 return handleSlotPlacement(dragState, inventory.getMainInventorySlot(slotIndex),
-                                         (stack) -> inventory.setMainInventorySlot(slotIndex, stack), slotIndex);
+                                         (stack) -> inventory.setMainInventorySlot(slotIndex, stack), slotIndex, inventory);
             }
         }
         return false;
@@ -111,7 +111,7 @@ public class InventoryDragDropHandler {
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
                 return handleSlotPlacement(dragState, inventory.getHotbarSlot(slotIndex),
-                                         (stack) -> inventory.setHotbarSlot(slotIndex, stack), slotIndex);
+                                         (stack) -> inventory.setHotbarSlot(slotIndex, stack), slotIndex, inventory);
             }
         }
         return false;
@@ -136,7 +136,7 @@ public class InventoryDragDropHandler {
     }
 
     private static boolean handleSlotPlacement(DragState dragState, ItemStack targetStack,
-                                             java.util.function.Consumer<ItemStack> slotSetter, int slotIndex) {
+                                             java.util.function.Consumer<ItemStack> slotSetter, int slotIndex, Inventory inventory) {
         if (targetStack.isEmpty()) {
             slotSetter.accept(dragState.draggedItemStack);
             dragState.draggedItemStack = null;
@@ -151,22 +151,30 @@ public class InventoryDragDropHandler {
                 return true;
             }
         } else {
-            // Swap logic
-            return handleSwap(dragState, targetStack, slotSetter);
+            // Swap logic - now we have inventory access
+            return handleSwap(dragState, targetStack, slotSetter, inventory);
         }
         return false;
     }
 
     private static boolean handleSwap(DragState dragState, ItemStack targetStack,
-                                    java.util.function.Consumer<ItemStack> slotSetter) {
+                                    java.util.function.Consumer<ItemStack> slotSetter, Inventory inventory) {
         if (targetStack.getBlockTypeId() != dragState.draggedItemStack.getBlockTypeId()) {
             ItemStack itemFromTargetSlot = targetStack.copy();
-            slotSetter.accept(dragState.draggedItemStack);
+            ItemStack originalDraggedItem = dragState.draggedItemStack.copy();
 
-            // Handle different drag sources for the swap
-            // Implementation would depend on having access to inventory and crafting slots
-            // For now, simplified to avoid complex dependencies
-            dragState.draggedItemStack = null;
+            // Place dragged item in target slot
+            slotSetter.accept(originalDraggedItem);
+
+            // Place target item back in original slot
+            switch (dragState.dragSource) {
+                case HOTBAR -> inventory.setHotbarSlot(dragState.draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                case MAIN_INVENTORY -> inventory.setMainInventorySlot(dragState.draggedItemOriginalSlotIndex, itemFromTargetSlot);
+                // Note: CRAFTING_INPUT swaps are handled differently in handleCraftingSlotPlacement
+            }
+
+            // Clear drag state since swap is complete
+            dragState.clear();
             return true;
         }
         return false;
