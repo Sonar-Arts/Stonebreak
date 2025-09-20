@@ -16,6 +16,7 @@ import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;

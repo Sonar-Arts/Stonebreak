@@ -10,7 +10,7 @@ import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.RecipeBookScreen;
-import com.stonebreak.ui.WorkbenchScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 
 /**
  * Handles rendering of UI overlay elements that need to appear above all other UI components.
@@ -82,8 +82,7 @@ public class OverlayRenderer {
     private void renderWorkbenchTooltips(Game game) {
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            // WorkbenchScreen handles its own tooltip rendering internally
-            // This method is here for consistency and future expansion
+            workbenchScreen.renderTooltipsOnly();
         }
     }
 

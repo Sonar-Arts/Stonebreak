@@ -19,7 +19,7 @@ import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.ui.WorkbenchScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.util.MemoryProfiler;
 
 import static org.lwjgl.glfw.GLFW.*;

@@ -15,19 +15,23 @@ public class InventoryCraftingManager {
     private final CraftingManager craftingManager;
     private final ItemStack[] craftingInputSlots;
     private ItemStack craftingOutputSlot;
+    private final int craftingGridSize;
 
     public InventoryCraftingManager(CraftingManager craftingManager) {
+        this(craftingManager, InventoryLayoutCalculator.getCraftingGridSize());
+    }
+
+    public InventoryCraftingManager(CraftingManager craftingManager, int craftingGridSize) {
         this.craftingManager = craftingManager;
-        this.craftingInputSlots = new ItemStack[InventoryLayoutCalculator.getCraftingGridSize() *
-                                                InventoryLayoutCalculator.getCraftingGridSize()];
+        this.craftingGridSize = craftingGridSize;
+        this.craftingInputSlots = new ItemStack[craftingGridSize * craftingGridSize];
         initializeCraftingSlots();
         this.craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
     }
 
     private void initializeCraftingSlots() {
-        int gridSize = InventoryLayoutCalculator.getCraftingGridSize() *
-                      InventoryLayoutCalculator.getCraftingGridSize();
-        for (int i = 0; i < gridSize; i++) {
+        int totalSlots = craftingGridSize * craftingGridSize;
+        for (int i = 0; i < totalSlots; i++) {
             this.craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
     }
@@ -45,12 +49,11 @@ public class InventoryCraftingManager {
 
     private List<List<ItemStack>> createCraftingGrid() {
         List<List<ItemStack>> grid = new ArrayList<>();
-        int gridSize = InventoryLayoutCalculator.getCraftingGridSize();
 
-        for (int r = 0; r < gridSize; r++) {
+        for (int r = 0; r < craftingGridSize; r++) {
             List<ItemStack> row = new ArrayList<>();
-            for (int c = 0; c < gridSize; c++) {
-                row.add(craftingInputSlots[r * gridSize + c]);
+            for (int c = 0; c < craftingGridSize; c++) {
+                row.add(craftingInputSlots[r * craftingGridSize + c]);
             }
             grid.add(row);
         }
@@ -58,10 +61,9 @@ public class InventoryCraftingManager {
     }
 
     public void consumeCraftingIngredients() {
-        int gridSize = InventoryLayoutCalculator.getCraftingGridSize() *
-                      InventoryLayoutCalculator.getCraftingGridSize();
+        int totalSlots = craftingGridSize * craftingGridSize;
 
-        for (int i = 0; i < gridSize; i++) {
+        for (int i = 0; i < totalSlots; i++) {
             if (craftingInputSlots[i] != null && !craftingInputSlots[i].isEmpty()) {
                 craftingInputSlots[i].decrementCount(1);
                 if (craftingInputSlots[i].isEmpty()) {
@@ -94,5 +96,9 @@ public class InventoryCraftingManager {
         if (index >= 0 && index < craftingInputSlots.length) {
             craftingInputSlots[index] = itemStack;
         }
+    }
+
+    public int getCraftingGridSize() {
+        return craftingGridSize;
     }
 }

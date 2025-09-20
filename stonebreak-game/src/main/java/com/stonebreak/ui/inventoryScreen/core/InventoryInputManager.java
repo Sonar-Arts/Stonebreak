@@ -13,11 +13,11 @@ import org.lwjgl.glfw.GLFW;
  */
 public class InventoryInputManager {
 
-    private final InputHandler inputHandler;
-    private final Inventory inventory;
-    private final InventorySlotManager slotManager;
-    private final InventoryDragDropHandler.DragState dragState;
-    private final InventoryCraftingManager craftingManager;
+    protected final InputHandler inputHandler;
+    protected final Inventory inventory;
+    protected final InventorySlotManager slotManager;
+    protected final InventoryDragDropHandler.DragState dragState;
+    protected final InventoryCraftingManager craftingManager;
 
     // Recipe button properties
     private float recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight;
@@ -54,8 +54,8 @@ public class InventoryInputManager {
         }
     }
 
-    private void handleLeftClick(float mouseX, float mouseY, boolean shiftDown,
-                                InventoryLayoutCalculator.InventoryLayout layout) {
+    protected void handleLeftClick(float mouseX, float mouseY, boolean shiftDown,
+                                  InventoryLayoutCalculator.InventoryLayout layout) {
         if (shiftDown) {
             handleShiftClickTransfer(mouseX, mouseY, layout);
             inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
@@ -75,8 +75,8 @@ public class InventoryInputManager {
         }
     }
 
-    private void handleRightClick(float mouseX, float mouseY,
-                                 InventoryLayoutCalculator.InventoryLayout layout) {
+    protected void handleRightClick(float mouseX, float mouseY,
+                                   InventoryLayoutCalculator.InventoryLayout layout) {
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             boolean placedOne = tryHandleRightClickDropSingle(mouseX, mouseY, layout);
             if (placedOne) {
@@ -85,7 +85,7 @@ public class InventoryInputManager {
         }
     }
 
-    private void handleDragRelease(int screenWidth, int screenHeight) {
+    protected void handleDragRelease(int screenWidth, int screenHeight) {
         if (dragState.draggedItemStack != null &&
             !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
             placeDraggedItem(screenWidth, screenHeight);
@@ -202,4 +202,32 @@ public class InventoryInputManager {
     public float getRecipeButtonY() { return recipeButtonY; }
     public float getRecipeButtonWidth() { return recipeButtonWidth; }
     public float getRecipeButtonHeight() { return recipeButtonHeight; }
+
+    /**
+     * Handles dragged items when closing the screen.
+     * Attempts to return items to original slots or player inventory.
+     */
+    public void handleCloseWithDraggedItems() {
+        if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
+            // Try to return to original slot first
+            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory,
+                                                            craftingManager.getCraftingInputSlots(),
+                                                            craftingManager::updateCraftingOutput);
+
+            // If still dragging after trying to return, try to add to player inventory
+            if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
+                if (!inventory.addItem(dragState.draggedItemStack)) {
+                    // If can't add to inventory, drop into world
+                    InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
+                }
+            }
+
+            // Clear drag state
+            clearDraggedItemState();
+        }
+    }
+
+    public InventoryCraftingManager getCraftingManager() {
+        return craftingManager;
+    }
 }

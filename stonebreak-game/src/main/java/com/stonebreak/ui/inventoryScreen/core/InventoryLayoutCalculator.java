@@ -8,6 +8,7 @@ public class InventoryLayoutCalculator {
     private static final int SLOT_PADDING = 5;
     private static final int TITLE_HEIGHT = 30;
     private static final int CRAFTING_GRID_SIZE = 2;
+    private static final int WORKBENCH_CRAFTING_GRID_SIZE = 3;
 
     public static class InventoryLayout {
         public final int panelStartX;
@@ -77,6 +78,54 @@ public class InventoryLayoutCalculator {
     public static int getSlotSize() { return SLOT_SIZE; }
     public static int getSlotPadding() { return SLOT_PADDING; }
     public static int getCraftingGridSize() { return CRAFTING_GRID_SIZE; }
+    public static int getWorkbenchCraftingGridSize() { return WORKBENCH_CRAFTING_GRID_SIZE; }
     public static int getTitleHeight() { return TITLE_HEIGHT; }
     public static int getCraftingInputSlotsCount() { return CRAFTING_GRID_SIZE * CRAFTING_GRID_SIZE; }
+    public static int getWorkbenchCraftingInputSlotsCount() { return WORKBENCH_CRAFTING_GRID_SIZE * WORKBENCH_CRAFTING_GRID_SIZE; }
+
+    /**
+     * Calculate layout for workbench screen with 3x3 crafting grid.
+     */
+    public static InventoryLayout calculateWorkbenchLayout(int screenWidth, int screenHeight) {
+        int baseInventoryPanelWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        // Crafting area: 3x3 grid + arrow + output slot + recipe button
+        int craftingGridVisualWidth = WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING;
+        int craftingSectionWidth = craftingGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING; // grid + arrow + output + paddings
+
+        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingSectionWidth);
+
+        // Height: Title + Crafting Grid Area + Player Inv Title + Player Inv (Main + Hotbar) + Paddings
+        int craftingGridActualHeight = WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int totalInventoryRows = Inventory.MAIN_INVENTORY_ROWS + 1; // +1 for hotbar
+        int playerInvHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        int inventoryPanelHeight = TITLE_HEIGHT + craftingGridActualHeight + TITLE_HEIGHT + playerInvHeight + SLOT_PADDING * 3; // Titles + Sections + Gaps
+
+        int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
+        int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
+
+        // Crafting elements layout
+        int craftingGridStartY = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
+        int craftingElementsStartX = panelStartX + (inventoryPanelWidth - craftingSectionWidth) / 2 + SLOT_PADDING;
+
+        // Arrow position
+        int arrowX = craftingElementsStartX + craftingGridVisualWidth + SLOT_PADDING;
+        int arrowY = craftingGridStartY + (WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING - SLOT_SIZE) / 2; // Centered with grid
+
+        // Output slot position
+        int outputSlotX = arrowX + SLOT_SIZE + SLOT_PADDING;
+        int outputSlotY = arrowY; // Align with arrow
+
+        // Player inventory area
+        int playerInvTitleY = craftingGridStartY + craftingGridActualHeight + SLOT_PADDING + (TITLE_HEIGHT / 2);
+        int mainInvContentStartY = playerInvTitleY + (TITLE_HEIGHT / 2) + SLOT_PADDING;
+
+        // Hotbar Y calculation
+        int hotbarRowY = mainInvContentStartY + Inventory.MAIN_INVENTORY_ROWS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+
+        return new InventoryLayout(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight,
+                                 craftingGridStartY, craftingElementsStartX, craftingGridVisualWidth,
+                                 mainInvContentStartY, hotbarRowY, outputSlotX, outputSlotY);
+    }
 }

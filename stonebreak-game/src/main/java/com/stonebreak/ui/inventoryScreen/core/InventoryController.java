@@ -111,4 +111,12 @@ public class InventoryController {
     public void setRenderCoordinator(InventoryRenderCoordinator renderCoordinator) {
         this.renderCoordinator = renderCoordinator;
     }
+
+    protected InventoryInputManager getInputManager() {
+        return inputManager;
+    }
+
+    protected InventoryCraftingManager getCraftingManager() {
+        return craftingManager;
+    }
 }

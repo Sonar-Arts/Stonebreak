@@ -4,6 +4,7 @@ import java.nio.*;
 
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import org.lwjgl.Version;
 import org.lwjgl.glfw.*;
@@ -553,7 +554,13 @@ public class Main {
     private void renderCrosshair(Game game, Renderer renderer) {
         if (game.getState() == GameState.PLAYING) {
             InventoryScreen inventoryScreen = game.getInventoryScreen();
-            if (inventoryScreen == null || !inventoryScreen.isVisible()) {
+            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+
+            // Don't render crosshair if any UI screen is open
+            boolean anyUIVisible = (inventoryScreen != null && inventoryScreen.isVisible()) ||
+                                   (workbenchScreen != null && workbenchScreen.isVisible());
+
+            if (!anyUIVisible) {
                 renderer.getUIRenderer().renderCrosshair(width, height);
             }
         }
@@ -561,10 +568,17 @@ public class Main {
 
     private void renderInventoryAndHotbar(Game game) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
-        if (inventoryScreen != null) {
+        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+
+        // Check which screen is visible and render accordingly
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            // Workbench is open - render workbench instead of inventory
+            workbenchScreen.render();
+        } else if (inventoryScreen != null) {
             if (inventoryScreen.isVisible()) {
                 inventoryScreen.render(width, height);
             } else {
+                // Neither workbench nor inventory is visible - render hotbar
                 inventoryScreen.renderHotbar(width, height);
             }
         }
