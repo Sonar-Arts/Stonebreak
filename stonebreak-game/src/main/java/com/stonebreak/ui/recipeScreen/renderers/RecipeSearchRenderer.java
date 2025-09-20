@@ -59,8 +59,7 @@ public class RecipeSearchRenderer {
                 displayText = searchText.isEmpty() ? "Type to search recipes..." : searchText;
             }
 
-            nvgFontSize(vg, 16);
-            nvgFontFace(vg, "sans");
+            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
 
             if (searchText.isEmpty() && !searchActive && !isTyping) {

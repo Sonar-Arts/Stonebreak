@@ -49,8 +49,7 @@ public class RecipeTooltipRenderer {
             float cornerRadius = 4.0f;
 
             // Measure text
-            nvgFontSize(vg, 14);
-            nvgFontFace(vg, "sans");
+            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_MEDIUM);
             float[] bounds = new float[4];
             nvgTextBounds(vg, 0, 0, itemName, bounds);
             float textWidth = bounds[2] - bounds[0];
@@ -85,8 +84,7 @@ public class RecipeTooltipRenderer {
             nvgStroke(vg);
 
             // Tooltip text
-            nvgFontSize(vg, 14);
-            nvgFontFace(vg, "sans");
+            RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_MEDIUM);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
             nvgText(vg, x + tooltipWidth / 2, y + tooltipHeight / 2, itemName);

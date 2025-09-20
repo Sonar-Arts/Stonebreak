@@ -82,8 +82,7 @@ public class RecipeSlotRenderer {
 
                         if (count > 1) {
                             String countText = String.valueOf(count);
-                            nvgFontSize(vg, 10);
-                            nvgFontFace(vg, "sans");
+                            RecipeUIStyleRenderer.RecipeFonts.setUIFont(vg, RecipeUIStyleRenderer.RecipeFonts.UI_TINY);
                             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
                             // Text shadow
@@ -163,8 +162,7 @@ public class RecipeSlotRenderer {
 
                     if (count > 1) {
                         String countText = String.valueOf(count);
-                        nvgFontSize(vg, 16); // Slightly larger for better visibility
-                        nvgFontFace(vg, "sans");
+                        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE); // Slightly larger for better visibility
                         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
                         // Bold text shadow

@@ -17,6 +17,57 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 public class RecipeUIStyleRenderer {
 
     // ===========================================
+    // RECIPE BOOK FONT SYSTEM
+    // ===========================================
+
+    public static class RecipeFonts {
+        // Primary recipe book font - Minecraft font for authentic game feel
+        public static final String RECIPE_TITLE = "minecraft";         // For titles and headers
+        public static final String RECIPE_BODY = "minecraft";          // For body text and descriptions
+        public static final String RECIPE_UI = "minecraft";            // For UI elements and buttons
+        public static final String RECIPE_NUMBERS = "minecraft";       // For numbers and counts
+
+        // Font size constants for consistency
+        public static final float TITLE_LARGE = 32.0f;       // Main recipe book title
+        public static final float TITLE_MEDIUM = 24.0f;      // Section titles
+        public static final float TITLE_SMALL = 18.0f;       // Sub-section titles
+        public static final float BODY_LARGE = 16.0f;        // Primary body text
+        public static final float BODY_MEDIUM = 14.0f;       // Secondary body text
+        public static final float BODY_SMALL = 12.0f;        // Small details and labels
+        public static final float UI_BUTTON = 13.0f;         // Button text
+        public static final float UI_TINY = 10.0f;           // Very small UI elements
+
+        /**
+         * Helper method to ensure font is loaded and available
+         */
+        public static void setRecipeFont(long vg, String fontName, float fontSize) {
+            nvgFontSize(vg, fontSize);
+            nvgFontFace(vg, fontName);
+        }
+
+        /**
+         * Sets the appropriate font for recipe titles
+         */
+        public static void setTitleFont(long vg, float fontSize) {
+            setRecipeFont(vg, RECIPE_TITLE, fontSize);
+        }
+
+        /**
+         * Sets the appropriate font for recipe body text
+         */
+        public static void setBodyFont(long vg, float fontSize) {
+            setRecipeFont(vg, RECIPE_BODY, fontSize);
+        }
+
+        /**
+         * Sets the appropriate font for UI elements
+         */
+        public static void setUIFont(long vg, float fontSize) {
+            setRecipeFont(vg, RECIPE_UI, fontSize);
+        }
+    }
+
+    // ===========================================
     // COLOR PALETTE SYSTEM
     // ===========================================
 

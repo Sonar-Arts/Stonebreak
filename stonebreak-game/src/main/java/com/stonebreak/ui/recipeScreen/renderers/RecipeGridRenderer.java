@@ -153,8 +153,7 @@ public class RecipeGridRenderer {
                     }
 
                     // Draw item name
-                    nvgFontSize(vg, 12);
-                    nvgFontFace(vg, "sans");
+                    RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
                     nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
 
@@ -181,8 +180,7 @@ public class RecipeGridRenderer {
     public static void drawEmptyMessage(UIRenderer uiRenderer, float centerX, float centerY, String message) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
-            nvgFontSize(vg, 18);
-            nvgFontFace(vg, "sans");
+            RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
             nvgText(vg, centerX, centerY, message);

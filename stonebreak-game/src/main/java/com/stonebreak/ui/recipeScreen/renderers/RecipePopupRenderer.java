@@ -133,8 +133,7 @@ public class RecipePopupRenderer {
         RecipeUIStyleRenderer.drawBeveledBorder(vg, closeButtonX, closeButtonY, closeButtonSize, closeButtonSize, stack, true);
 
         // Draw X symbol with Minecraft styling
-        nvgFontSize(vg, 16);
-        nvgFontFace(vg, "sans");
+        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Text shadow for depth
@@ -165,8 +164,7 @@ public class RecipePopupRenderer {
         RecipeUIStyleRenderer.drawBeveledBorder(vg, popupX + 16, popupY + 16, popupWidth - 32, titleBarHeight, stack, false);
 
         // Main title text with shadow (Minecraft-style golden text)
-        nvgFontSize(vg, 24);
-        nvgFontFace(vg, "sans");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_MEDIUM);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Text shadow
@@ -204,8 +202,7 @@ public class RecipePopupRenderer {
 
         // Page indicator in center
         String pageText = (currentVariationIndex + 1) + " / " + currentRecipeVariations.size();
-        nvgFontSize(vg, 16);
-        nvgFontFace(vg, "sans");
+        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Text shadow
@@ -218,7 +215,7 @@ public class RecipePopupRenderer {
 
         // Recipe variation indicator below page number
         String variationText = "Recipe Variation";
-        nvgFontSize(vg, 12);
+        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
 
         // Variation text shadow
@@ -251,8 +248,7 @@ public class RecipePopupRenderer {
         RecipeUIStyleRenderer.drawBeveledBorder(vg, x, y, size, size, stack, enabled);
 
         // Button symbol
-        nvgFontSize(vg, 20);
-        nvgFontFace(vg, "sans");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         if (!enabled) {
@@ -308,8 +304,7 @@ public class RecipePopupRenderer {
             RecipeUIStyleRenderer.drawBeveledBorder(vg, startX - 8, startY - 30, ingredientsWidth, ingredientsHeight, stack, false);
 
             // Draw "Ingredients" label with Minecraft styling
-            nvgFontSize(vg, 18);
-            nvgFontFace(vg, "sans");
+            RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
 
             // Text shadow
@@ -377,8 +372,7 @@ public class RecipePopupRenderer {
         RecipeUIStyleRenderer.drawBeveledBorder(vg, arrowX, arrowY, arrowWidth, arrowHeight, stack, false);
 
         // Arrow symbol with shadow
-        nvgFontSize(vg, 28);
-        nvgFontFace(vg, "sans");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_MEDIUM);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Arrow shadow
@@ -438,7 +432,7 @@ public class RecipePopupRenderer {
                 nvgText(vg, outputX + slotSize / 2.0f, outputY - 25, outputLabel);
 
                 // Item info below slot
-                nvgFontSize(vg, 14);
+                RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_MEDIUM);
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
 
                 // Info shadow

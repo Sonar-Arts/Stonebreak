@@ -351,8 +351,7 @@ public class RecipePanelRenderer {
      */
     private static void drawTitleShadow(long vg, float centerX, float centerY, String title,
                                       float fontSize, MemoryStack stack) {
-        nvgFontSize(vg, fontSize);
-        nvgFontFace(vg, "sans-bold");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, fontSize);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Multiple shadow layers for depth
@@ -370,8 +369,7 @@ public class RecipePanelRenderer {
      */
     private static void drawTitleGlow(long vg, float centerX, float centerY, String title,
                                     float fontSize, float animationProgress, MemoryStack stack) {
-        nvgFontSize(vg, fontSize + 2.0f);
-        nvgFontFace(vg, "sans-bold");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, fontSize + 2.0f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         float glowIntensity = 0.3f + animationProgress * 0.4f;
@@ -386,8 +384,7 @@ public class RecipePanelRenderer {
      */
     private static void drawMainTitleText(long vg, float centerX, float centerY, String title,
                                         float fontSize, UIState state, MemoryStack stack) {
-        nvgFontSize(vg, fontSize);
-        nvgFontFace(vg, "sans-bold");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, fontSize);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // State-based color selection
@@ -407,8 +404,7 @@ public class RecipePanelRenderer {
      */
     private static void drawTitleHighlight(long vg, float centerX, float centerY, String title,
                                          float fontSize, MemoryStack stack) {
-        nvgFontSize(vg, fontSize);
-        nvgFontFace(vg, "sans-bold");
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, fontSize);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         ColorSpec highlightColor = new ColorSpec(255, 255, 255, 40);

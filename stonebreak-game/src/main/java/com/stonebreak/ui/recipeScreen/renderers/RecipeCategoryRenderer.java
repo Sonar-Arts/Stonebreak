@@ -216,8 +216,7 @@ public class RecipeCategoryRenderer {
         float fontSize = baseFontSize * (stateMultiplier + animationProgress * 0.03f);
 
         // Draw text shadow for depth
-        nvgFontSize(vg, fontSize);
-        nvgFontFace(vg, "sans-bold");
+        RecipeUIStyleRenderer.RecipeFonts.setUIFont(vg, fontSize);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgFillColor(vg, CategoryTheme.TEXT_SHADOW.toNVG(NVGColor.malloc(stack)));
         nvgText(vg, centerX + 1, centerY + 1, category);
@@ -278,8 +277,7 @@ public class RecipeCategoryRenderer {
             nvgStroke(vg);
 
             // Draw category text
-            nvgFontSize(vg, 12.0f);
-            nvgFontFace(vg, "sans-bold");
+            RecipeUIStyleRenderer.RecipeFonts.setUIFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, new ColorSpec(255, 255, 255, 255).toNVG(NVGColor.malloc(stack)));
             nvgText(vg, x + indicatorWidth / 2, y + indicatorHeight / 2, category);
@@ -345,8 +343,7 @@ public class RecipeCategoryRenderer {
             // Add recipe count if needed
             if (recipeCount > 0) {
                 String countText = String.valueOf(recipeCount);
-                nvgFontSize(vg, 10.0f);
-                nvgFontFace(vg, "sans-bold");
+                RecipeUIStyleRenderer.RecipeFonts.setUIFont(vg, RecipeUIStyleRenderer.RecipeFonts.UI_TINY);
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
                 nvgFillColor(vg, new ColorSpec(255, 255, 255, 200).toNVG(NVGColor.malloc(stack)));
                 nvgText(vg, x + 65, y + 12, countText);
