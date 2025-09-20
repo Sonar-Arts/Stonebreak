@@ -16,6 +16,7 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.ui.inventoryScreen.InventorySlotRenderer;
+import com.stonebreak.ui.inventoryScreen.InventoryPanelRenderer;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_BOTTOM;
@@ -195,14 +196,14 @@ public class InventoryScreen {
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
 
         // Draw panel background using UIRenderer
-        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
+        InventoryPanelRenderer.drawInventoryPanel(uiRenderer, panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
         // Draw panel background using UIRenderer
-        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
+        InventoryPanelRenderer.drawInventoryPanel(uiRenderer, panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
         // Draw "Crafting" title
         float craftingTitleY = panelStartY + 20;
-        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, craftingTitleY, "Crafting");
+        InventoryPanelRenderer.drawInventoryTitle(uiRenderer, panelStartX + inventoryPanelWidth / 2, craftingTitleY, "Crafting");
 
         // Crafting slots rendering
         int craftingGridStartY = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
@@ -257,7 +258,7 @@ public class InventoryScreen {
  
         // Draw "Inventory" title below crafting area
         float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SLOT_SIZE /2; // Reposition inventory title
-        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, inventoryTitleY, "Inventory");
+        InventoryPanelRenderer.drawInventoryTitle(uiRenderer, panelStartX + inventoryPanelWidth / 2, inventoryTitleY, "Inventory");
  
         int contentStartY = (int)(inventoryTitleY + TITLE_HEIGHT / 2f + SLOT_PADDING); // Cast to int
  
@@ -351,14 +352,14 @@ public class InventoryScreen {
         int panelStartY = (screenHeight - inventoryPanelHeight) / 2;
 
         // Draw panel background using UIRenderer
-        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
+        InventoryPanelRenderer.drawInventoryPanel(uiRenderer, panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
         // Draw panel background using UIRenderer
-        drawInventoryPanel(panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
+        InventoryPanelRenderer.drawInventoryPanel(uiRenderer, panelStartX, panelStartY, inventoryPanelWidth, inventoryPanelHeight);
 
         // Draw "Crafting" title
         float craftingTitleY = panelStartY + 20;
-        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, craftingTitleY, "Crafting");
+        InventoryPanelRenderer.drawInventoryTitle(uiRenderer, panelStartX + inventoryPanelWidth / 2, craftingTitleY, "Crafting");
 
         // Crafting slots rendering
         int craftingGridStartY = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
@@ -413,7 +414,7 @@ public class InventoryScreen {
  
         // Draw "Inventory" title below crafting area
         float inventoryTitleY = craftingGridStartY + craftingSectionHeight - SLOT_SIZE /2; // Reposition inventory title
-        drawInventoryTitle(panelStartX + inventoryPanelWidth / 2, inventoryTitleY, "Inventory");
+        InventoryPanelRenderer.drawInventoryTitle(uiRenderer, panelStartX + inventoryPanelWidth / 2, inventoryTitleY, "Inventory");
  
         int contentStartY = (int)(inventoryTitleY + TITLE_HEIGHT / 2f + SLOT_PADDING); // Cast to int
  
@@ -472,36 +473,6 @@ public class InventoryScreen {
                 Vector2f mousePos = inputHandler.getMousePosition();
                 drawItemTooltip(item.getName(), mousePos.x + 15, mousePos.y + 15, screenWidth, screenHeight);
             }
-        }
-    }    // Helper method to draw inventory panel using UIRenderer
-    private void drawInventoryPanel(int x, int y, int width, int height) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            // Removed unused bevelSize variable
-            
-            // Main panel background
-            nvgBeginPath(vg);
-            nvgRect(vg, x, y, width, height);
-            nvgFillColor(vg, nvgRGBA(50, 50, 50, 240, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Panel border
-            nvgBeginPath(vg);
-            nvgRect(vg, x, y, width, height);
-            nvgStrokeWidth(vg, 2.0f);
-            nvgStrokeColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
-            nvgStroke(vg);
-        }
-    }
-    
-    private void drawInventoryTitle(float centerX, float centerY, String title) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-            nvgFontSize(vg, 24);
-            nvgFontFace(vg, "sans");
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-            nvgText(vg, centerX, centerY, title);
         }
     }
     
