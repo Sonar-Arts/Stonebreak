@@ -852,13 +852,15 @@ public class Game {
                 paused = true;
             }
             case PLAYING -> {
-                // Special case: Always unpause when coming from LOADING state
-                if (this.previousGameState == GameState.LOADING) {
+                // Always unpause when coming from LOADING, WORKBENCH_UI, or RECIPE_BOOK_UI
+                if (this.previousGameState == GameState.LOADING ||
+                    this.previousGameState == GameState.WORKBENCH_UI ||
+                    this.previousGameState == GameState.RECIPE_BOOK_UI) {
                     paused = false;
                 } else {
                     // For other transitions, only keep paused if inventory is explicitly visible
                     boolean shouldUnpause = (inventoryScreen == null || !inventoryScreen.isVisible());
-                    
+
                     if (shouldUnpause) {
                         paused = false;
                     }

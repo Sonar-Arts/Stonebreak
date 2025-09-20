@@ -1,5 +1,6 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
+import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.ui.inventoryScreen.handlers.WorkbenchDragDropHandler;
@@ -79,6 +80,34 @@ public class WorkbenchInputManager extends InventoryInputManager {
             WorkbenchDragDropHandler.dropEntireStackIntoWorld(super.dragState);
         } else {
             super.getDragState().clear();
+        }
+    }
+
+    /**
+     * Override to use workbench-specific drag drop handler when closing.
+     */
+    @Override
+    public void handleCloseWithDraggedItems() {
+        if (super.dragState.draggedItemStack != null && !super.dragState.draggedItemStack.isEmpty()) {
+            // Use workbench layout for proper 3x3 grid handling
+            InventoryLayoutCalculator.InventoryLayout layout = InventoryLayoutCalculator.calculateWorkbenchLayout(
+                Game.getWindowWidth(), Game.getWindowHeight());
+
+            // Try to return to original slot first using workbench handler
+            WorkbenchDragDropHandler.tryReturnToOriginalSlot(super.dragState, super.inventory,
+                                                            super.craftingManager.getCraftingInputSlots(),
+                                                            layout, super.craftingManager::updateCraftingOutput);
+
+            // If still dragging after trying to return, try to add to player inventory
+            if (super.dragState.draggedItemStack != null && !super.dragState.draggedItemStack.isEmpty()) {
+                if (!super.inventory.addItem(super.dragState.draggedItemStack)) {
+                    // If can't add to inventory, drop into world
+                    WorkbenchDragDropHandler.dropEntireStackIntoWorld(super.dragState);
+                } else {
+                    // Successfully added to inventory, clear drag state
+                    super.getDragState().clear();
+                }
+            }
         }
     }
 

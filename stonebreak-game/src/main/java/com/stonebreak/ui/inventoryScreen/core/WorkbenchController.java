@@ -75,7 +75,8 @@ public class WorkbenchController extends InventoryController {
         if (isVisible()) {
             // Handle any dragged items before closing
             handleDraggedItemsOnClose();
-            close();
+            // Call game's close method which will handle state transition and call our close() method
+            game.closeWorkbenchScreen();
         }
     }
 
