@@ -29,23 +29,29 @@ public class VoxelizedSpriteRenderer {
     // Cache for voxelization results (palette + voxel data)
     private final Map<ItemType, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
 
+    // OpenGL state tracking for proper restoration
+    private boolean previousCullFaceEnabled = false;
+
     // Hardcoded base translation (updated from debug output final values)
     private static final Vector3f BASE_TRANSLATION = new Vector3f(0.3f, -1.1f, -0.1f);
 
-    // Adjustable translation offset (reset to 0,0,0)
-    private static Vector3f translationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f);
+    // Instance-specific adjustable translation offset (reset to 0,0,0)
+    private Vector3f translationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f);
 
     // Hardcoded base rotation (updated from debug output final values)
     private static final Vector3f BASE_ROTATION = new Vector3f(-23.1f, -38.1f, 21.9f); // degrees (X, Y, Z)
 
-    // Adjustable rotation offset (reset to 0,0,0)
-    private static Vector3f rotationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f); // degrees (X, Y, Z)
+    // Instance-specific adjustable rotation offset (reset to 0,0,0)
+    private Vector3f rotationAdjustment = new Vector3f(0.0f, 0.0f, 0.0f); // degrees (X, Y, Z)
 
     // Hardcoded base scale (updated from debug output final values)
     private static final float BASE_SCALE = 4.0f;
 
-    // Adjustable scale multiplier (reset to 1.0 = no change)
-    private static float scaleAdjustment = 1.0f;
+    // Instance-specific adjustable scale multiplier (reset to 1.0 = no change)
+    private float scaleAdjustment = 1.0f;
+
+    // Static default instance for backward compatibility with static methods
+    private static VoxelizedSpriteRenderer defaultInstance = null;
 
     /**
      * Creates a new voxelized sprite renderer.
@@ -152,6 +158,9 @@ public class VoxelizedSpriteRenderer {
      * Sets up OpenGL rendering state for voxel sprites.
      */
     private void setupRenderState() {
+        // Save current face culling state
+        previousCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+
         // Enable blending for transparency
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
@@ -261,12 +270,23 @@ public class VoxelizedSpriteRenderer {
      * Restores OpenGL state after rendering.
      */
     private void restoreRenderState() {
-        // Restore world rendering state
+        // Restore shader uniforms to standard values for other renderers
+        shaderProgram.setUniform("u_useSolidColor", false);  // Critical: restore texture mode
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+
+        // Restore standard white color (no tint)
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+
+        // Restore face culling state to what it was before (Main.java sets it to disabled by default)
+        if (previousCullFaceEnabled) {
+            GL11.glEnable(GL11.GL_CULL_FACE);
+        } else {
+            GL11.glDisable(GL11.GL_CULL_FACE);
+        }
 
         // Keep blending enabled for UI elements
         // Keep depth testing enabled
-        // Keep face culling enabled - this is standard for the game
     }
 
     /**
@@ -362,18 +382,48 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
-     * Adjusts the translation offset for voxel positioning.
+     * Adjusts the translation offset for voxel positioning (instance method).
+     *
+     * @param x X-axis adjustment
+     * @param y Y-axis adjustment
+     * @param z Z-axis adjustment
+     */
+    public void adjustInstanceTranslation(float x, float y, float z) {
+        translationAdjustment.set(x, y, z);
+    }
+
+    /**
+     * Adjusts the translation offset for voxel positioning (static method for backward compatibility).
      *
      * @param x X-axis adjustment
      * @param y Y-axis adjustment
      * @param z Z-axis adjustment
      */
     public static void adjustTranslation(float x, float y, float z) {
-        translationAdjustment.set(x, y, z);
+        if (defaultInstance != null) {
+            defaultInstance.adjustInstanceTranslation(x, y, z);
+        }
     }
 
     /**
-     * Adjusts translation, rotation, and scale for voxel positioning.
+     * Adjusts translation, rotation, and scale for voxel positioning (instance method).
+     *
+     * @param x X-axis translation adjustment
+     * @param y Y-axis translation adjustment
+     * @param z Z-axis translation adjustment
+     * @param rotX X-axis rotation adjustment in degrees
+     * @param rotY Y-axis rotation adjustment in degrees
+     * @param rotZ Z-axis rotation adjustment in degrees
+     * @param scale Scale multiplier (1.0 = base scale, 0.5 = half size, 2.0 = double size)
+     */
+    public void adjustInstanceTransform(float x, float y, float z, float rotX, float rotY, float rotZ, float scale) {
+        translationAdjustment.set(x, y, z);
+        rotationAdjustment.set(rotX, rotY, rotZ);
+        scaleAdjustment = scale;
+    }
+
+    /**
+     * Adjusts translation, rotation, and scale for voxel positioning (static method for backward compatibility).
      *
      * @param x X-axis translation adjustment
      * @param y Y-axis translation adjustment
@@ -384,13 +434,28 @@ public class VoxelizedSpriteRenderer {
      * @param scale Scale multiplier (1.0 = base scale, 0.5 = half size, 2.0 = double size)
      */
     public static void adjustTransform(float x, float y, float z, float rotX, float rotY, float rotZ, float scale) {
-        translationAdjustment.set(x, y, z);
-        rotationAdjustment.set(rotX, rotY, rotZ);
-        scaleAdjustment = scale;
+        if (defaultInstance != null) {
+            defaultInstance.adjustInstanceTransform(x, y, z, rotX, rotY, rotZ, scale);
+        }
     }
 
     /**
-     * Adjusts both translation and rotation for voxel positioning (no scale change).
+     * Adjusts both translation and rotation for voxel positioning (no scale change) - instance method.
+     *
+     * @param x X-axis translation adjustment
+     * @param y Y-axis translation adjustment
+     * @param z Z-axis translation adjustment
+     * @param rotX X-axis rotation adjustment in degrees
+     * @param rotY Y-axis rotation adjustment in degrees
+     * @param rotZ Z-axis rotation adjustment in degrees
+     */
+    public void adjustInstanceTransformNoScale(float x, float y, float z, float rotX, float rotY, float rotZ) {
+        translationAdjustment.set(x, y, z);
+        rotationAdjustment.set(rotX, rotY, rotZ);
+    }
+
+    /**
+     * Adjusts both translation and rotation for voxel positioning (no scale change) - static method for backward compatibility.
      *
      * @param x X-axis translation adjustment
      * @param y Y-axis translation adjustment
@@ -400,12 +465,26 @@ public class VoxelizedSpriteRenderer {
      * @param rotZ Z-axis rotation adjustment in degrees
      */
     public static void adjustTransformNoScale(float x, float y, float z, float rotX, float rotY, float rotZ) {
-        translationAdjustment.set(x, y, z);
-        rotationAdjustment.set(rotX, rotY, rotZ);
+        if (defaultInstance != null) {
+            defaultInstance.adjustInstanceTransformNoScale(x, y, z, rotX, rotY, rotZ);
+        }
     }
 
     /**
-     * Adjusts both translation and single-axis rotation for voxel positioning (backward compatibility).
+     * Adjusts both translation and single-axis rotation for voxel positioning (instance method).
+     *
+     * @param x X-axis translation adjustment
+     * @param y Y-axis translation adjustment
+     * @param z Z-axis translation adjustment
+     * @param rotation Single rotation adjustment applied to Y-axis in degrees
+     */
+    public void adjustInstanceTransformSingleRotation(float x, float y, float z, float rotation) {
+        translationAdjustment.set(x, y, z);
+        rotationAdjustment.set(0.0f, rotation, 0.0f);
+    }
+
+    /**
+     * Adjusts both translation and single-axis rotation for voxel positioning (static method for backward compatibility).
      *
      * @param x X-axis translation adjustment
      * @param y Y-axis translation adjustment
@@ -413,17 +492,30 @@ public class VoxelizedSpriteRenderer {
      * @param rotation Single rotation adjustment applied to Y-axis in degrees
      */
     public static void adjustTransformSingleRotation(float x, float y, float z, float rotation) {
-        translationAdjustment.set(x, y, z);
-        rotationAdjustment.set(0.0f, rotation, 0.0f);
+        if (defaultInstance != null) {
+            defaultInstance.adjustInstanceTransformSingleRotation(x, y, z, rotation);
+        }
     }
 
     /**
-     * Gets the current translation adjustment values.
+     * Gets the current translation adjustment values (instance method).
+     *
+     * @return Copy of the current translation adjustment
+     */
+    public Vector3f getInstanceTranslationAdjustment() {
+        return new Vector3f(translationAdjustment);
+    }
+
+    /**
+     * Gets the current translation adjustment values (static method for backward compatibility).
      *
      * @return Copy of the current translation adjustment
      */
     public static Vector3f getTranslationAdjustment() {
-        return new Vector3f(translationAdjustment);
+        if (defaultInstance != null) {
+            return defaultInstance.getInstanceTranslationAdjustment();
+        }
+        return new Vector3f(0.0f, 0.0f, 0.0f);
     }
 
     /**
@@ -436,21 +528,45 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
-     * Gets the final translation (base + adjustment).
+     * Gets the final translation (base + adjustment) - instance method.
      *
      * @return Copy of the final translation
      */
-    public static Vector3f getFinalTranslation() {
+    public Vector3f getInstanceFinalTranslation() {
         return new Vector3f(BASE_TRANSLATION).add(translationAdjustment);
     }
 
     /**
-     * Gets the current rotation adjustment values.
+     * Gets the final translation (base + adjustment) - static method for backward compatibility.
+     *
+     * @return Copy of the final translation
+     */
+    public static Vector3f getFinalTranslation() {
+        if (defaultInstance != null) {
+            return defaultInstance.getInstanceFinalTranslation();
+        }
+        return new Vector3f(BASE_TRANSLATION);
+    }
+
+    /**
+     * Gets the current rotation adjustment values (instance method).
+     *
+     * @return Copy of current rotation adjustment (X, Y, Z degrees)
+     */
+    public Vector3f getInstanceRotationAdjustment() {
+        return new Vector3f(rotationAdjustment);
+    }
+
+    /**
+     * Gets the current rotation adjustment values (static method for backward compatibility).
      *
      * @return Copy of current rotation adjustment (X, Y, Z degrees)
      */
     public static Vector3f getRotationAdjustment() {
-        return new Vector3f(rotationAdjustment);
+        if (defaultInstance != null) {
+            return defaultInstance.getInstanceRotationAdjustment();
+        }
+        return new Vector3f(0.0f, 0.0f, 0.0f);
     }
 
     /**
@@ -463,21 +579,45 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
-     * Gets the final rotation angles (base + adjustment).
+     * Gets the final rotation angles (base + adjustment) - instance method.
      *
      * @return Copy of final rotation (X, Y, Z degrees)
      */
-    public static Vector3f getFinalRotation() {
+    public Vector3f getInstanceFinalRotation() {
         return new Vector3f(BASE_ROTATION).add(rotationAdjustment);
     }
 
     /**
-     * Gets the current scale adjustment value.
+     * Gets the final rotation angles (base + adjustment) - static method for backward compatibility.
+     *
+     * @return Copy of final rotation (X, Y, Z degrees)
+     */
+    public static Vector3f getFinalRotation() {
+        if (defaultInstance != null) {
+            return defaultInstance.getInstanceFinalRotation();
+        }
+        return new Vector3f(BASE_ROTATION);
+    }
+
+    /**
+     * Gets the current scale adjustment value (instance method).
+     *
+     * @return Current scale multiplier
+     */
+    public float getInstanceScaleAdjustment() {
+        return scaleAdjustment;
+    }
+
+    /**
+     * Gets the current scale adjustment value (static method for backward compatibility).
      *
      * @return Current scale multiplier
      */
     public static float getScaleAdjustment() {
-        return scaleAdjustment;
+        if (defaultInstance != null) {
+            return defaultInstance.getInstanceScaleAdjustment();
+        }
+        return 1.0f;
     }
 
     /**
@@ -490,12 +630,24 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
-     * Gets the final scale (base * adjustment).
+     * Gets the final scale (base * adjustment) - instance method.
+     *
+     * @return Final scale multiplier
+     */
+    public float getInstanceFinalScale() {
+        return BASE_SCALE * scaleAdjustment;
+    }
+
+    /**
+     * Gets the final scale (base * adjustment) - static method for backward compatibility.
      *
      * @return Final scale multiplier
      */
     public static float getFinalScale() {
-        return BASE_SCALE * scaleAdjustment;
+        if (defaultInstance != null) {
+            return defaultInstance.getInstanceFinalScale();
+        }
+        return BASE_SCALE;
     }
 
     /**

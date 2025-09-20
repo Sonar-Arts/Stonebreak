@@ -240,19 +240,19 @@ public class DropRenderer {
 
     /**
      * Renders a voxelized item drop with proper positioning for world drops.
-     * Temporarily adjusts the VoxelizedSpriteRenderer settings for drop-specific positioning.
+     * Uses instance-specific transform adjustments to avoid interfering with hand-held item rendering.
      */
     private void renderVoxelizedItemDrop(ItemType itemType) {
-        // Save current VoxelizedSpriteRenderer settings
-        Vector3f originalTranslation = VoxelizedSpriteRenderer.getTranslationAdjustment();
-        Vector3f originalRotation = VoxelizedSpriteRenderer.getRotationAdjustment();
-        float originalScale = VoxelizedSpriteRenderer.getScaleAdjustment();
+        // Save current instance transform settings
+        Vector3f originalTranslation = voxelizedSpriteRenderer.getInstanceTranslationAdjustment();
+        Vector3f originalRotation = voxelizedSpriteRenderer.getInstanceRotationAdjustment();
+        float originalScale = voxelizedSpriteRenderer.getInstanceScaleAdjustment();
 
         // Apply drop-specific adjustments to counteract hand-held positioning
         // VoxelizedSpriteRenderer has BASE_TRANSLATION.y = -1.1f for hand positioning
         // We need to lift item drops higher so they don't sink into blocks
         float dropYOffset = 1.3f; // Compensate for base translation + extra lift for floating
-        VoxelizedSpriteRenderer.adjustTransform(
+        voxelizedSpriteRenderer.adjustInstanceTransform(
             0.0f, dropYOffset, 0.0f,     // Translation: lift Y position
             0.0f, 0.0f, 0.0f,            // Rotation: no additional rotation needed
             1.0f                         // Scale: keep same scale
@@ -262,8 +262,8 @@ public class DropRenderer {
             // Render with drop-specific settings
             voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
         } finally {
-            // Always restore original settings to avoid affecting hand-held items
-            VoxelizedSpriteRenderer.adjustTransform(
+            // Always restore original settings - this now only affects this instance
+            voxelizedSpriteRenderer.adjustInstanceTransform(
                 originalTranslation.x, originalTranslation.y, originalTranslation.z,
                 originalRotation.x, originalRotation.y, originalRotation.z,
                 originalScale
@@ -431,6 +431,7 @@ public class DropRenderer {
         System.out.println("  Drop Y compensation offset: 1.3f");
         System.out.println("  Final effective Y offset for drops: " + (VoxelizedSpriteRenderer.getBaseTranslation().y + 1.3f) + "f");
         System.out.println("  Result: Item drops should float ~0.2f units above their base position");
+        System.out.println("  Using instance-specific transforms to avoid interference with hand-held items");
 
         // Report which items use which rendering method
         System.out.println("\nItem Drop Rendering Methods:");
