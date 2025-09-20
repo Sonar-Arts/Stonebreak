@@ -49,8 +49,26 @@ public class BlockIconRenderer {
      * @param screenSlotHeight Height of the slot
      * @param textureAtlas The texture atlas containing block textures
      */
-    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY, 
+    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
                                 int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
+        draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, false);
+    }
+
+    /**
+     * Renders a 3D block icon in the specified slot area with optional dragged item positioning.
+     * Handles both 3D cube blocks and flat 2D flower blocks.
+     *
+     * @param shaderProgram The shader program to use for rendering
+     * @param type The block type to render
+     * @param screenSlotX X coordinate of the slot
+     * @param screenSlotY Y coordinate of the slot
+     * @param screenSlotWidth Width of the slot
+     * @param screenSlotHeight Height of the slot
+     * @param textureAtlas The texture atlas containing block textures
+     * @param isDraggedItem If true, renders the item closer to camera to avoid z-fighting
+     */
+    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
+                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
         if (type == null || type.getAtlasX() == -1) {
             return; // Nothing to draw
         }
@@ -63,7 +81,7 @@ public class BlockIconRenderer {
         }
 
         // Render 3D cube block
-        render3DBlockIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
+        render3DBlockIcon(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, isDraggedItem);
     }
     
     /**
@@ -100,8 +118,8 @@ public class BlockIconRenderer {
      * Renders 3D cube blocks with proper viewport isolation and state management.
      */
     private void render3DBlockIcon(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
-                                  int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
-        
+                                  int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+
         // --- Save current GL state ---
         GLState originalState = saveGLState();
 
@@ -109,13 +127,13 @@ public class BlockIconRenderer {
             // --- Setup GL state for 3D item rendering ---
             setupViewportAndScissor(screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
             setupDepthAndBlending(originalState, type);
-            
+
             // --- Shader setup for 3D item ---
-            configureShaderForItem(shaderProgram, textureAtlas, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight);
-            
+            configureShaderForItem(shaderProgram, textureAtlas, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, isDraggedItem);
+
             // --- Create and draw cube with proper face textures ---
             renderBlockCube(type, textureAtlas);
-            
+
         } finally {
             // --- Restore previous GL state ---
             restoreGLState(shaderProgram, originalState);
@@ -225,13 +243,13 @@ public class BlockIconRenderer {
     /**
      * Configures the shader program and matrices for 3D item rendering.
      */
-    private void configureShaderForItem(ShaderProgram shaderProgram, TextureAtlas textureAtlas, 
-                                       int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
+    private void configureShaderForItem(ShaderProgram shaderProgram, TextureAtlas textureAtlas,
+                                       int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight, boolean isDraggedItem) {
         shaderProgram.bind();
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+
         // Enable UI element mode for moderate brightness (80% instead of full lighting)
         shaderProgram.setUniform("u_isUIElement", true);
 
@@ -243,14 +261,18 @@ public class BlockIconRenderer {
             // Wider than tall
             itemProjectionMatrix = new Matrix4f().ortho(-size * aspect, size * aspect, -size, size, 0.1f, 10.0f);
         } else {
-            // Taller than wide  
+            // Taller than wide
             itemProjectionMatrix = new Matrix4f().ortho(-size, size, -size / aspect, size / aspect, 0.1f, 10.0f);
         }
         shaderProgram.setUniform("projectionMatrix", itemProjectionMatrix);
 
-        // Create view matrix with isometric view (similar to original)
+        // Create view matrix with isometric view
         Matrix4f itemViewMatrix = new Matrix4f().identity();
-        itemViewMatrix.translate(0, 0, -1.5f);
+
+        // Position dragged items closer to camera to avoid z-fighting with slot items
+        float zOffset = isDraggedItem ? -1.0f : -1.5f; // Dragged items are 0.5 units closer
+        itemViewMatrix.translate(0, 0, zOffset);
+
         itemViewMatrix.rotate((float) Math.toRadians(30.0f), 1.0f, 0.0f, 0.0f);
         itemViewMatrix.rotate((float) Math.toRadians(-45.0f), 0.0f, 1.0f, 0.0f);
         itemViewMatrix.scale(0.8f);

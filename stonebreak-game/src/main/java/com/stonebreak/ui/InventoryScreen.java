@@ -234,19 +234,7 @@ public class InventoryScreen {
             checkHover(hotbarSlots[i], slotX, slotY);
         }
 
-
-        // Draw dragged item on top of everything else
-        if (dragState.isDragging()) {
-            Vector2f mousePos = inputHandler.getMousePosition();
-            // Center the item on the mouse cursor
-            int itemRenderX = (int) (mousePos.x - (InventoryLayoutCalculator.getSlotSize() - 4) / 2.0f);
-            int itemRenderY = (int) (mousePos.y - (InventoryLayoutCalculator.getSlotSize() - 4) / 2.0f);
-
-            Item item = dragState.draggedItemStack.getItem();
-            if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
-                drawDraggedItem(item, itemRenderX, itemRenderY, dragState.draggedItemStack.getCount());
-            }
-        }
+        // Dragged item rendering moved to overlay phase for proper z-ordering
 
         // Tooltip rendering moved to separate method
     }
@@ -389,18 +377,7 @@ public class InventoryScreen {
             checkHover(hotbarSlots[i], slotX, slotY);
         }
 
-        // Draw dragged item on top of everything else
-        if (dragState.isDragging()) {
-            Vector2f mousePos = inputHandler.getMousePosition();
-            // Center the item on the mouse cursor
-            int itemRenderX = (int) (mousePos.x - (InventoryLayoutCalculator.getSlotSize() - 4) / 2.0f);
-            int itemRenderY = (int) (mousePos.y - (InventoryLayoutCalculator.getSlotSize() - 4) / 2.0f);
-
-            Item item = dragState.draggedItemStack.getItem();
-            if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
-                drawDraggedItem(item, itemRenderX, itemRenderY, dragState.draggedItemStack.getCount());
-            }
-        }
+        // Dragged item rendering moved to overlay phase for proper z-ordering
     }
     
     /**
@@ -421,7 +398,27 @@ public class InventoryScreen {
             }
         }
     }
-    
+
+    /**
+     * Render only the dragged item for the inventory screen.
+     * This method is called during the overlay phase to ensure dragged items appear above all other UI.
+     */
+    public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
+        if (!visible || !dragState.isDragging()) {
+            return;
+        }
+
+        Vector2f mousePos = inputHandler.getMousePosition();
+        // Center the item on the mouse cursor
+        int itemRenderX = (int) (mousePos.x - (InventoryLayoutCalculator.getSlotSize() - 4) / 2.0f);
+        int itemRenderY = (int) (mousePos.y - (InventoryLayoutCalculator.getSlotSize() - 4) / 2.0f);
+
+        Item item = dragState.draggedItemStack.getItem();
+        if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
+            drawDraggedItem(item, itemRenderX, itemRenderY, dragState.draggedItemStack.getCount());
+        }
+    }
+
     // Helper method to draw a single slot using UIRenderer - delegated to InventorySlotRenderer
     private void drawInventorySlot(ItemStack itemStack, int slotX, int slotY, boolean isHotbarSlot, int hotbarIndex) {
         InventorySlotRenderer.drawInventorySlot(itemStack, slotX, slotY, isHotbarSlot, hotbarIndex, uiRenderer, renderer);
@@ -433,9 +430,9 @@ public class InventoryScreen {
             // End NanoVG frame temporarily to draw 3D item
             uiRenderer.endFrame();
 
-            // Draw 3D item using UIRenderer's BlockIconRenderer
+            // Draw 3D item using UIRenderer's BlockIconRenderer with dragged item flag
             if (item instanceof BlockType bt) {
-                uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, InventoryLayoutCalculator.getSlotSize() - 4, InventoryLayoutCalculator.getSlotSize() - 4, renderer.getTextureAtlas());
+                uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, x, y, InventoryLayoutCalculator.getSlotSize() - 4, InventoryLayoutCalculator.getSlotSize() - 4, renderer.getTextureAtlas(), true);
             } else {
                 // For ItemTypes, render a 2D sprite using UIRenderer
                 uiRenderer.renderItemIcon(x, y, InventoryLayoutCalculator.getSlotSize() - 4, InventoryLayoutCalculator.getSlotSize() - 4, item, renderer.getTextureAtlas());

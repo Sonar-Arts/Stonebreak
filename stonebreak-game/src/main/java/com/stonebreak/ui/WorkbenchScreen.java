@@ -234,16 +234,7 @@ public class WorkbenchScreen {
             checkHover(hotbarSlots[i], slotX, hotbarRowY);
         }
 
-        // Draw dragged item
-        if (draggedItemStack != null && !draggedItemStack.isEmpty()) {
-            Vector2f mousePos = inputHandler.getMousePosition();
-            int itemRenderX = (int) (mousePos.x - (SLOT_SIZE - 4) / 2.0f);
-            int itemRenderY = (int) (mousePos.y - (SLOT_SIZE - 4) / 2.0f);
-            Item item = draggedItemStack.getItem();
-            if (item != null) {
-                drawDraggedItem3D(item, itemRenderX, itemRenderY, draggedItemStack.getCount());
-            }
-        }
+        // Dragged item rendering moved to overlay phase for proper z-ordering
 
         // Draw Tooltip
         if (hoveredItemStack != null && !hoveredItemStack.isEmpty() && draggedItemStack == null) {
@@ -254,6 +245,24 @@ public class WorkbenchScreen {
             }
         }
         uiRenderer.endFrame(); // End frame at the end of screen rendering
+    }
+
+    /**
+     * Render only the dragged item for the workbench screen.
+     * This method is called during the overlay phase to ensure dragged items appear above all other UI.
+     */
+    public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
+        if (!visible || draggedItemStack == null || draggedItemStack.isEmpty()) {
+            return;
+        }
+
+        Vector2f mousePos = inputHandler.getMousePosition();
+        int itemRenderX = (int) (mousePos.x - (SLOT_SIZE - 4) / 2.0f);
+        int itemRenderY = (int) (mousePos.y - (SLOT_SIZE - 4) / 2.0f);
+        Item item = draggedItemStack.getItem();
+        if (item != null) {
+            drawDraggedItem3D(item, itemRenderX, itemRenderY, draggedItemStack.getCount());
+        }
     }
 
     private void drawPanel(int x, int y, int width, int height) {
@@ -341,9 +350,9 @@ public class WorkbenchScreen {
         try (MemoryStack stack = stackPush()){
             long vg = uiRenderer.getVG();
             uiRenderer.endFrame(); // End NanoVG frame for 3D rendering
-            // Draw 3D item using UIRenderer's BlockIconRenderer
+            // Draw 3D item using UIRenderer's BlockIconRenderer with dragged item flag
             if (item instanceof BlockType blockType) {
-                uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), blockType, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas());
+                uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), blockType, x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas(), true);
             } else {
                 // For ItemTypes, render a 2D sprite using UIRenderer
                 uiRenderer.renderItemIcon(x + 2, y + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());

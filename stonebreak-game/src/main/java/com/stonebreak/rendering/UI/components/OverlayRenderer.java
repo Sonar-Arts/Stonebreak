@@ -38,13 +38,16 @@ public class OverlayRenderer {
         
         // Render inventory tooltips (both full inventory and hotbar)
         renderInventoryTooltips(game, windowWidth, windowHeight);
-        
+
         // Render recipe book tooltips if visible
         renderRecipeBookTooltips(game);
-        
+
         // Render workbench tooltips if visible
         renderWorkbenchTooltips(game);
-        
+
+        // Render dragged items last (highest z-index) so they appear above everything
+        renderDraggedItems(game, windowWidth, windowHeight);
+
         // Render underwater overlay if player is underwater
         renderUnderwaterOverlay(game, windowWidth, windowHeight);
     }
@@ -83,7 +86,25 @@ public class OverlayRenderer {
             // This method is here for consistency and future expansion
         }
     }
-    
+
+    /**
+     * Renders dragged items from all active UI screens.
+     * This ensures dragged items appear above all other UI elements.
+     */
+    private void renderDraggedItems(Game game, int windowWidth, int windowHeight) {
+        // Render inventory dragged items
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            inventoryScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+        }
+
+        // Render workbench dragged items
+        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            workbenchScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+        }
+    }
+
     /**
      * Renders the underwater overlay effect if the player is underwater.
      */
