@@ -168,6 +168,9 @@ public class InventoryRenderCoordinator {
     }
 
     private void renderRecipeButton(InventoryLayoutCalculator.InventoryLayout layout) {
+        // Ensure button bounds are calculated before rendering
+        inputManager.updateRecipeButtonBoundsForRendering(layout);
+
         InventoryButtonRenderer.drawRecipeButton(uiRenderer, inputHandler,
                                                 inputManager.getRecipeButtonX(),
                                                 inputManager.getRecipeButtonY(),

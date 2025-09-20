@@ -204,6 +204,13 @@ public class InventoryInputManager {
     public float getRecipeButtonHeight() { return recipeButtonHeight; }
 
     /**
+     * Updates recipe button bounds for rendering. Should be called before rendering the button.
+     */
+    public void updateRecipeButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
+        updateRecipeButtonBounds(layout);
+    }
+
+    /**
      * Handles dragged items when closing the screen.
      * Attempts to return items to original slots or player inventory.
      */

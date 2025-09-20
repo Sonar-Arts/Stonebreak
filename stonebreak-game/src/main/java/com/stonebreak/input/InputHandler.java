@@ -296,6 +296,18 @@ public class InputHandler {
             if (chatSystem != null && chatSystem.isOpen()) {
                 return;
             }
+
+            // Don't open inventory if workbench is open
+            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+            if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                return;
+            }
+
+            // Don't open inventory if recipe book is open
+            RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                return;
+            }
             
             Game.getInstance().toggleInventoryScreen();
             // Cursor state is handled by Game.toggleInventoryScreen()
