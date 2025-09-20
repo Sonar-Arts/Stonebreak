@@ -514,13 +514,7 @@ public class InventoryScreen {
                     return;
                 }
             long vg = uiRenderer.getVG();
-            // Highlight selected hotbar slot
-            if (isHotbarSlot && inventory.getSelectedHotbarSlotIndex() == hotbarIndex) {
-                nvgBeginPath(vg);
-                nvgRect(vg, slotX - 2, slotY - 2, SLOT_SIZE + 4, SLOT_SIZE + 4);
-                nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-                nvgFill(vg);
-            }
+            // Hotbar selection highlight removed - no highlight in inventory screen
             
             // Slot border
             nvgBeginPath(vg);

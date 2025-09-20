@@ -21,6 +21,7 @@ public class BlockDrop extends Entity {
     private int stackCount = 1; // How many items this drop represents visually
     private boolean isCompressed = false; // Whether this drop is part of a compressed group
     private BlockDrop parentDrop = null; // Parent drop if this one is hidden
+    private boolean hasInitialStackCount = false; // Whether this drop was created with an intentional stack count
     
     // Physics constants for drops (reworked for moderately floaty effect)
     private static final float DROP_GRAVITY = 12.0f; // Moderate downward acceleration
@@ -295,16 +296,16 @@ public class BlockDrop extends Entity {
      * Updates visual compression by checking for nearby drops of the same type.
      */
     private void updateCompression() {
-        if (world == null || isCompressed) return;
-        
+        if (world == null || isCompressed || hasInitialStackCount) return;
+
         // Get entity manager to find nearby drops
         com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
         if (game == null) return;
-        
+
         com.stonebreak.mobs.entities.EntityManager entityManager = game.getEntityManager();
         if (entityManager == null) return;
-        
-        // Reset stack count
+
+        // Reset stack count only for drops that weren't created with an initial count
         stackCount = 1;
         
         // Find nearby drops of the same type
@@ -329,6 +330,15 @@ public class BlockDrop extends Entity {
      */
     public int getStackCount() {
         return stackCount;
+    }
+
+    /**
+     * Sets the initial stack count for this drop.
+     * Used when creating drops from inventory stacks with multiple items.
+     */
+    public void setStackCount(int count) {
+        this.stackCount = Math.max(1, count);
+        this.hasInitialStackCount = (count > 1);
     }
     
     /**

@@ -143,6 +143,7 @@ public class DropUtil {
             BlockType blockType = itemStack.asBlockType();
             if (blockType != null) {
                 BlockDrop drop = BlockDrop.createDropWithVelocity(world, dropPosition, blockType, dropVelocity);
+                drop.setStackCount(itemStack.getCount()); // Set the actual stack count from the ItemStack
                 EntityManager entityManager = Game.getEntityManager();
                 if (entityManager != null) {
                     entityManager.addEntity(drop);

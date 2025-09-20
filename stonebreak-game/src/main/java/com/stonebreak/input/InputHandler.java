@@ -214,10 +214,16 @@ public class InputHandler {
                 }
             }
             
-            // Handle number keys for hotbar slot selection
-            for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
-                if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
-                    selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
+            // Handle number keys for hotbar slot selection (disabled in inventory/workbench screens)
+            boolean shouldAllowHotbarSelection = !isGamePaused &&
+                (inventoryScreen == null || !inventoryScreen.isVisible()) &&
+                (workbenchScreen == null || !workbenchScreen.isVisible());
+
+            if (shouldAllowHotbarSelection) {
+                for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
+                    if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
+                        selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
+                    }
                 }
             }
         } catch (Exception e) {
@@ -567,9 +573,20 @@ public class InputHandler {
         }
         
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-        // Allow scroll for hotbar selection even if inventory screen is open, but not if pause menu is.
-        if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) {
-            return; // Paused by menu, not just inventory
+        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+
+        // Block hotbar scroll if inventory or workbench screen is open
+        if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            return; // Inventory screen is open, block hotbar selection
+        }
+
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            return; // Workbench screen is open, block hotbar selection
+        }
+
+        // Block scroll if paused by menu (not just inventory/workbench)
+        if (Game.getInstance().isPaused()) {
+            return; // Paused by menu
         }
         
         int newSelectedIndex = currentSelectedHotbarIndex;

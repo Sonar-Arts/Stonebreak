@@ -55,6 +55,10 @@ public class WorkbenchScreen {
     private static final int CRAFTING_INPUT_SLOT_START_INDEX = 100; // Start index for 3x3 grid slots
     private static final int CRAFTING_OUTPUT_SLOT_INDEX = 200;      // Index for output slot
 
+    // Defensive fix: prevent rapid repeated shift-click transfers
+    private long lastShiftClickTime = 0;
+    private static final long SHIFT_CLICK_COOLDOWN_MS = 100; // 100ms cooldown between shift-clicks
+
     // UI constants
     private static final int SLOT_SIZE = 40;
     private static final int SLOT_PADDING = 5;
@@ -280,13 +284,7 @@ public class WorkbenchScreen {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
 
-            // Highlight selected hotbar slot (only if it's a hotbar slot and selected)
-            if (isHotbarSlot && playerInventory.getSelectedHotbarSlotIndex() == hotbarIndex) {
-                nvgBeginPath(vg);
-                nvgRect(vg, slotX - 2, slotY - 2, SLOT_SIZE + 4, SLOT_SIZE + 4);
-                nvgFillColor(vg, nvgRGBA(255, 255, 0, 200, NVGColor.malloc(stack))); // Brighter yellow
-                nvgFill(vg);
-            }
+            // Hotbar selection highlight removed - no highlight in workbench screen
 
             // Slot border
             nvgBeginPath(vg);
@@ -442,6 +440,7 @@ public class WorkbenchScreen {
     public void handleInput(InputHandler inputHandlerInstance) {
         if (!visible) return;
 
+
         // Keyboard input for closing the screen with Escape is now handled by InputHandler.handleEscapeKey()
         // No need for direct Escape key check here anymore.
         
@@ -456,8 +455,20 @@ public class WorkbenchScreen {
     private void handleMouseInputInternal(int screenWidth, int screenHeight, InputHandler currentInputHandler) {
         if (!visible) return;
 
+
         Vector2f mousePos = currentInputHandler.getMousePosition();
-        boolean shiftDown = currentInputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) || currentInputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        boolean leftShiftDown = currentInputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT);
+        boolean rightShiftDown = currentInputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        boolean shiftDown = leftShiftDown || rightShiftDown;
+
+        // Debug: Check if any hotbar keys are pressed
+        boolean anyHotbarKeyPressed = false;
+        for (int i = 0; i < 9; i++) {
+            if (currentInputHandler.isKeyDown(GLFW.GLFW_KEY_1 + i)) {
+                anyHotbarKeyPressed = true;
+                break;
+            }
+        }
 
         // --- Calculate slot coordinates consistently ---
         int playerInvWidth_calc_local = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
@@ -489,6 +500,7 @@ public class WorkbenchScreen {
         boolean leftMouseButtonPressed = currentInputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
         boolean rightMouseButtonPressed = currentInputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
+
         if (leftMouseButtonPressed) {
             // Check Recipe Book Button first
             if (mousePos.x >= recipeButtonX && mousePos.x <= recipeButtonX + recipeButtonWidth &&
@@ -501,19 +513,32 @@ public class WorkbenchScreen {
             }
             
             if (shiftDown) {
-                boolean transferred = tryHandleShiftClickTransfer_Workbench(mousePos.x, mousePos.y,
-                                                                          craftingInputGridX_calc_local, craftingInputGridY_calc_local,
-                                                                          outputSlotX_calc_local, outputSlotY_calc_local,
-                                                                          playerInvSlotsStartX_calc_local, playerInvSlotsStartY_calc_local, hotbarRowY_calc_local);
-                if (transferred) {
-                    currentInputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                    // updateCraftingOutput(); // Called within tryHandleShiftClick if craft grid changes
-                    return;
-                }
-                // If shift was down and a click happened on an interactive slot, but no transfer, consume it.
-                 if (isMouseOverAnyInteractiveSlot(mousePos, craftingInputGridX_calc_local, craftingInputGridY_calc_local, outputSlotX_calc_local, outputSlotY_calc_local, playerInvSlotsStartX_calc_local, playerInvSlotsStartY_calc_local, hotbarRowY_calc_local)) {
-                    currentInputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                    return;
+                // Defensive fix: If hotbar key is pressed, don't treat as shift-click
+                if (anyHotbarKeyPressed) {
+                    // Don't consume the input - let it fall through to normal click logic
+                } else {
+                    // Defensive fix: prevent rapid repeated shift-clicks
+                    long currentTime = System.currentTimeMillis();
+                    if (currentTime - lastShiftClickTime < SHIFT_CLICK_COOLDOWN_MS) {
+                        currentInputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                        return;
+                    }
+                    lastShiftClickTime = currentTime;
+
+                    boolean transferred = tryHandleShiftClickTransfer_Workbench(mousePos.x, mousePos.y,
+                                                                              craftingInputGridX_calc_local, craftingInputGridY_calc_local,
+                                                                              outputSlotX_calc_local, outputSlotY_calc_local,
+                                                                              playerInvSlotsStartX_calc_local, playerInvSlotsStartY_calc_local, hotbarRowY_calc_local);
+                    if (transferred) {
+                        currentInputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                        // updateCraftingOutput(); // Called within tryHandleShiftClick if craft grid changes
+                        return;
+                    }
+                    // If shift was down and a click happened on an interactive slot, but no transfer, consume it.
+                     if (isMouseOverAnyInteractiveSlot(mousePos, craftingInputGridX_calc_local, craftingInputGridY_calc_local, outputSlotX_calc_local, outputSlotY_calc_local, playerInvSlotsStartX_calc_local, playerInvSlotsStartY_calc_local, hotbarRowY_calc_local)) {
+                        currentInputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                        return;
+                    }
                 }
             }
 
@@ -586,11 +611,10 @@ public class WorkbenchScreen {
             if (craftingOutputSlot != null && !craftingOutputSlot.isEmpty()) {
                 draggedItemStack = craftingOutputSlot.copy();
                 consumeCraftingIngredients(); // Consume ingredients AFTER taking the output
-                // Output slot itself is effectively cleared when ingredients are consumed and output re-evaluated.
-                // It's important that updateCraftingOutput reflects this.
+                craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0); // Clear the output slot to prevent duplication
                 draggedItemOriginalSlotIndex = CRAFTING_OUTPUT_SLOT_INDEX;
                 dragSource = DragSource.CRAFTING_OUTPUT; // From Workbench specific enum
-                updateCraftingOutput(); // This will clear the output slot based on new grid state
+                updateCraftingOutput(); // This will regenerate output based on remaining ingredients
                 return;
             }
         }
@@ -734,7 +758,14 @@ public class WorkbenchScreen {
         if (draggedItemStack == null || draggedItemStack.isEmpty()) { // Item successfully placed/stacked fully
              clearDraggedItemState();
         } else if (!placedOrSwapped) { // Not placed or swapped, and still dragging something
-            tryReturnToOriginalSlot(); // Attempt to return the current draggedItemStack
+            // Check if mouse is outside workbench bounds - if so, drop into world
+            if (isMouseOutsideWorkbenchBounds(mousePos.x, mousePos.y,
+                    craftingInputGridX_param, craftingInputGridY_param,
+                    playerInvSlotsStartX_param, playerInvSlotsStartY_param, hotbarRowY_param)) {
+                dropEntireStackIntoWorld();
+            } else {
+                tryReturnToOriginalSlot(); // Attempt to return the current draggedItemStack
+            }
         }
         // If a swap occurred, draggedItemStack holds the swapped item, dragSource/Index updated.
         // No further clear here.
@@ -1155,7 +1186,21 @@ public class WorkbenchScreen {
                    if(draggedItemStack == null) updateCraftingOutput(); // If item was placed/stacked into crafting grid
                 }
             }
-            case CRAFTING_OUTPUT, NONE -> { // Item came from crafting output, or no specific source
+            case CRAFTING_OUTPUT -> {
+                 // Crafting output items should not be automatically returned to inventory
+                 // when dragged outside. Instead, try to drop them in the world.
+
+                 Player player = Game.getPlayer();
+                 if (player != null) {
+                    // Use DropUtil to create proper item drop entities (not place blocks)
+                    com.stonebreak.util.DropUtil.dropItemFromPlayer(player, draggedItemStack.copy());
+                    clearDraggedItemState(); // Item dropped, clear drag state
+                 } else {
+                    // If no player reference, clear the item to prevent duplication
+                    clearDraggedItemState();
+                 }
+            }
+            case NONE -> { // Item from unknown source
                  // Try to add to player inventory first.
                  if (playerInventory.addItem(draggedItemStack)) { // addItem should update draggedItemStack if partial
                     if (draggedItemStack.isEmpty()) {
@@ -1202,6 +1247,47 @@ public class WorkbenchScreen {
     private boolean isMouseOverSlot(Vector2f mousePos, int slotX, int slotY) {
         return mousePos.x >= slotX && mousePos.x <= slotX + SLOT_SIZE &&
                mousePos.y >= slotY && mousePos.y <= slotY + SLOT_SIZE;
+    }
+
+    private boolean isMouseOutsideWorkbenchBounds(float mouseX, float mouseY,
+                                                  int craftingInputGridX_param, int craftingInputGridY_param,
+                                                  int playerInvSlotsStartX_param, int playerInvSlotsStartY_param, int hotbarRowY_param) {
+        // Calculate the overall workbench panel bounds (same logic as in render method)
+        int screenWidth = Game.getWindowWidth();
+        int screenHeight = Game.getWindowHeight();
+
+        int playerInvWidth = Inventory.MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int craftingGridVisualWidth = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING;
+        int craftingSectionWidth = craftingGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING;
+        int panelWidth = Math.max(playerInvWidth, craftingSectionWidth);
+
+        int craftingGridActualHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int playerInvHeight = (Inventory.MAIN_INVENTORY_ROWS + 1) * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
+        int panelHeight = TITLE_HEIGHT + craftingGridActualHeight + TITLE_HEIGHT + playerInvHeight + SLOT_PADDING * 3;
+
+        int panelStartX = (screenWidth - panelWidth) / 2;
+        int panelStartY = (screenHeight - panelHeight) / 2;
+
+        // Check if mouse is outside the panel bounds
+        return mouseX < panelStartX || mouseX > panelStartX + panelWidth ||
+               mouseY < panelStartY || mouseY > panelStartY + panelHeight;
+    }
+
+    private void dropEntireStackIntoWorld() {
+        if (draggedItemStack == null || draggedItemStack.isEmpty()) {
+            clearDraggedItemState();
+            return;
+        }
+
+        // Get player reference to drop items from player position
+        Player player = Game.getPlayer();
+        if (player != null) {
+            // Use DropUtil to properly create item drops in the world
+            com.stonebreak.util.DropUtil.dropItemFromPlayer(player, draggedItemStack.copy());
+        }
+
+        // Clear the dragged item state after dropping
+        clearDraggedItemState();
     }
 
     private void checkHover(ItemStack itemStack, int slotX, int slotY) {
@@ -1326,12 +1412,8 @@ public class WorkbenchScreen {
                     if (!playerInventory.addItem(draggedItemStack)) {
                         Player player = Game.getPlayer();
                         if (player != null) {
-                            if (!player.attemptDropItemInFront(draggedItemStack.copy())) { // Try to drop a copy
-                                // If dropping failed, log it. Item remains "dragged" for now (will be cleared).
-                                Item draggedItem = draggedItemStack.getItem();
-                                String draggedName = (draggedItem != null) ? draggedItem.getName() : "Unknown Item";
-                                System.out.println("Workbench: Couldn't add to inventory OR drop dragged item " + draggedName + " in world.");
-                            }
+                            // Use DropUtil to create proper item drop entities (not place blocks)
+                            com.stonebreak.util.DropUtil.dropItemFromPlayer(player, draggedItemStack.copy());
                         } else {
                             System.out.println("Workbench: Player instance is null, cannot drop item.");
                         }
