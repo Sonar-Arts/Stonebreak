@@ -863,41 +863,24 @@ public class Player {      // Player settings
         
         int selectedBlockTypeId = selectedBlockType.getId();
         
-        Vector3i hitBlockPos = raycast(); // This is the first non-air block hit by ray. Null if only air.
+        Vector3i hitBlockPos = raycastForPlacement(); // This is the first solid (non-air, non-water) block hit by ray. Null if only air/water.
         Vector3i placePos;
 
         if (hitBlockPos != null) {
             BlockType hitBlockType = world.getBlockAt(hitBlockPos.x, hitBlockPos.y, hitBlockPos.z);
             BlockType blockTypeToPlace = BlockType.getById(selectedBlockTypeId);
-            
+
             if (blockTypeToPlace == BlockType.SNOW && hitBlockType == BlockType.SNOW) {
                 // For snow on snow, place directly into the snow's space (stack layers)
-                placePos = new Vector3i(hitBlockPos);
-            } else if (hitBlockType == BlockType.WATER) {
-                // For water blocks, place directly into the water's space (replace the water)
                 placePos = new Vector3i(hitBlockPos);
             } else {
                 // For solid blocks, try to place on an adjacent face
                 placePos = findPlacePosition(hitBlockPos);
             }
         } else {
-            // Player is aiming at AIR (or beyond reach, but raycast handles distance).
-            // Determine the air block cell player is targeting.
-            // Use rayOrigin similar to raycast()
-            Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
-            // Target point is at RAY_CAST_DISTANCE or slightly less to be within the last cell.
-            Vector3f targetPointInAir = new Vector3f(camera.getFront()).mul(RAY_CAST_DISTANCE - 0.1f).add(rayOrigin);
-            
-            placePos = new Vector3i(
-                (int)Math.floor(targetPointInAir.x),
-                (int)Math.floor(targetPointInAir.y),
-                (int)Math.floor(targetPointInAir.z)
-            );
-            // Ensure this calculated position is actually AIR or WATER, otherwise invalid.
-            BlockType blockAtTargetPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
-            if (blockAtTargetPos != BlockType.AIR && blockAtTargetPos != BlockType.WATER) {
-                placePos = null; // Don't place if calculated target isn't air or water.
-            }
+            // Player is aiming at AIR/WATER only (no solid blocks within reach).
+            // Since water is treated like air for placement, blocks cannot be placed without adjacent solid blocks.
+            placePos = null; // Cannot place blocks in mid-air or mid-water without solid block adjacency.
         }
         
         if (placePos != null) {
@@ -1160,33 +1143,66 @@ public class Player {      // Player settings
     /**
      * Performs a raycast from the player's view to find the block they're looking at.
      * Uses a smaller step size for better precision.
-     * @return The position of the first non-air block hit by ray, or null if no block was hit.
+     * Treats water as transparent for block breaking/placing interactions.
+     * @return The position of the first solid (non-air, non-water) block hit by ray, or null if no block was hit.
      */
     public Vector3i raycast() { // Changed to public
         Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
         Vector3f rayDirection = camera.getFront();
-        
+
         // Use a smaller step size for more accurate raycasting
         float stepSize = 0.025f;
-        
+
         // Perform ray marching
         for (float distance = 0; distance < RAY_CAST_DISTANCE; distance += stepSize) {
             Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
-            
+
             int blockX = (int) Math.floor(point.x);
             int blockY = (int) Math.floor(point.y);
             int blockZ = (int) Math.floor(point.z);
-            
+
             BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
-            
-            if (blockType != BlockType.AIR) {
+
+            // Skip air and water blocks - treat water as transparent for interactions
+            if (blockType != BlockType.AIR && blockType != BlockType.WATER) {
                 return new Vector3i(blockX, blockY, blockZ);
             }
         }
-        
+
         return null;
     }
-    
+
+    /**
+     * Performs a raycast specifically for block placement.
+     * Treats water like air - looks for the first solid block to place adjacent to.
+     * @return The position of the first solid (non-air, non-water) block hit by ray, or null if no solid block was hit.
+     */
+    private Vector3i raycastForPlacement() {
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+        Vector3f rayDirection = camera.getFront();
+
+        // Use a smaller step size for more accurate raycasting
+        float stepSize = 0.025f;
+
+        // Perform ray marching
+        for (float distance = 0; distance < RAY_CAST_DISTANCE; distance += stepSize) {
+            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
+
+            int blockX = (int) Math.floor(point.x);
+            int blockY = (int) Math.floor(point.y);
+            int blockZ = (int) Math.floor(point.z);
+
+            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
+
+            // For placement, skip air and water blocks - only return solid blocks
+            if (blockType != BlockType.AIR && blockType != BlockType.WATER) {
+                return new Vector3i(blockX, blockY, blockZ);
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Checks if the given block type is a wooden block that should be affected by axe efficiency.
      * @param blockType The block type to check
