@@ -360,7 +360,7 @@ public class Main {
                         game.getSettingsMenu().handleInput(window);
                     }
                 }
-                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI -> {
+                case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
                     // Handle in-game input if not a purely modal UI like MainMenu
                     // Game.update() will also check its internal state for what to update (e.g. player/world if not paused)
                     if (inputHandler != null) {
@@ -541,7 +541,7 @@ public class Main {
         
         renderer.beginUIFrame(width, height, 1.0f);
         
-        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED) {
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);

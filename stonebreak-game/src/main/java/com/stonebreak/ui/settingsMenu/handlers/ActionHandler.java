@@ -90,11 +90,6 @@ public class ActionHandler {
         // Resume game directly for cleaner user experience
         game.setState(GameState.PLAYING);
         game.getPauseMenu().setVisible(false);
-        
-        // Ensure game is unpaused
-        if (game.isPaused()) {
-            game.togglePauseMenu();
-        }
     }
     
     /**

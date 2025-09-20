@@ -16,6 +16,7 @@ import static org.lwjgl.opengl.GL11.*;
 
 // Project Imports
 import com.stonebreak.core.Game;
+import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.WaterEffects;
@@ -259,10 +260,11 @@ public class WorldRenderer {
     }
     
     /**
-     * Render player arm if not paused.
+     * Render player arm in appropriate game states.
      */
     private void renderPlayerArm(Player player) {
-        if (!Game.getInstance().isPaused()) {
+        GameState currentState = Game.getInstance().getState();
+        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI) {
             playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
         }
     }

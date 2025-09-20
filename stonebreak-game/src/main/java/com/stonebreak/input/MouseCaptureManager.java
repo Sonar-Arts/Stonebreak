@@ -59,29 +59,12 @@ public class MouseCaptureManager {
         
         switch (state) {
             case PLAYING -> {
-                // Only capture if not paused or if paused by inventory only
-                if (!game.isPaused()) {
-                    return true; // Normal gameplay
-                }
-                
-                // Check if paused by pause menu vs just inventory/UI
-                PauseMenu pauseMenu = game.getPauseMenu();
-                boolean pausedByMenu = pauseMenu != null && pauseMenu.isVisible();
-                
-                // Don't capture if paused by the main pause menu
-                if (pausedByMenu) {
-                    return false;
-                }
-                
-                // Check if chat is open
+                // Always capture mouse in PLAYING state unless chat is open
                 ChatSystem chatSystem = game.getChatSystem();
                 if (chatSystem != null && chatSystem.isOpen()) {
                     return false;
                 }
-                
-                // Check if any UI screens that should block camera movement are open
-                InventoryScreen inventoryScreen = game.getInventoryScreen();
-                return inventoryScreen == null || !inventoryScreen.isVisible();
+                return true; // Normal gameplay
             }
             case WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, PAUSED -> {
                 return false;

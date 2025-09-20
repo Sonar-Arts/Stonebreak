@@ -138,8 +138,8 @@ public class InputHandler {
             }
 
             // Handle system-level toggles first, as they might change the active UI
-            handleEscapeKey();      // Toggles pauseMenu and game 'paused' state, sets cursor
-            handleInventoryKey();   // Toggles inventoryScreen, game 'paused' state, sets cursor via Game.toggleInventoryScreen
+            handleEscapeKey();      // Toggles pauseMenu and game state transitions
+            handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
             handleDebugKeys();      // Handle debug and memory profiling keys
@@ -150,8 +150,7 @@ public class InputHandler {
             // Cache expensive calls to avoid repeated method calls
             Game gameInstance = Game.getInstance();
             InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();
-            boolean isGamePaused = gameInstance.isPaused();
-                        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
             RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
 
             // UI screens take precedence for input if active
@@ -163,26 +162,18 @@ public class InputHandler {
                 workbenchScreen.handleInput(this);
                 return; // Workbench UI has full input control
             }
-            // Player inventory screen: if it's visible, it means we are in "PLAYING" state but with UI up.
-            // Game.isPaused() will be true.
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            // Handle inventory screen input when in INVENTORY_UI state
+            if (currentGameState == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // Cache window dimensions to avoid repeated calls
                 int windowWidth = Game.getWindowWidth();
                 int windowHeight = Game.getWindowHeight();
                 inventoryScreen.handleMouseInput(windowWidth, windowHeight);
             }
 
-            // If the game is paused (either by pause menu or inventory), don't process movement/block selection
-            // UNLESS only the inventory is open, in which case some actions might still be allowed (handled by InventoryScreen)
-            if (isGamePaused && (inventoryScreen == null || !inventoryScreen.isVisible())) { // If paused by menu, not just inventory
-                return;
-            }
-            if (isGamePaused && inventoryScreen != null && inventoryScreen.isVisible()){
-                // Movement is blocked, but other non-movement inputs might be processed by inventory screen
-                // The return above handles if pause menu is open.
-                // If only inventory is open, we skip player movement below but allow inventory interaction.
-            } else {
-                 // Process movement inputs only if not paused by menu and inventory is not open
+            // Only process movement in PLAYING and INVENTORY_UI states
+            // Block movement in other states (PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, etc.)
+            if (currentGameState == GameState.PLAYING || currentGameState == GameState.INVENTORY_UI) {
+                // Process movement inputs
                 boolean moveForward = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
                 boolean moveBackward = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
                 boolean moveLeft = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
@@ -214,12 +205,8 @@ public class InputHandler {
                 }
             }
             
-            // Handle number keys for hotbar slot selection (disabled in inventory/workbench screens)
-            boolean shouldAllowHotbarSelection = !isGamePaused &&
-                (inventoryScreen == null || !inventoryScreen.isVisible()) &&
-                (workbenchScreen == null || !workbenchScreen.isVisible());
-
-            if (shouldAllowHotbarSelection) {
+            // Handle number keys for hotbar slot selection (only allow in PLAYING state)
+            if (currentGameState == GameState.PLAYING) {
                 for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
                     if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
                         selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
@@ -267,7 +254,7 @@ public class InputHandler {
             }
 
             // 4. Close Inventory
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            if (game.getState() == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // This covers case where Inventory is open directly, or under Recipe Book if Recipe Book was closed in a prior step this frame
                 game.toggleInventoryScreen(); // This toggles visibility and handles pause/cursor
                 return; // Action taken
@@ -290,6 +277,12 @@ public class InputHandler {
 
         if (isInventoryKeyPressed && !inventoryKeyPressed) {
             inventoryKeyPressed = true;
+
+            // Check if inventory is already open (INVENTORY_UI state)
+            if (Game.getInstance().getState() == GameState.INVENTORY_UI) {
+                Game.getInstance().toggleInventoryScreen();
+                return;
+            }
             
             // Don't open inventory if chat is open
             ChatSystem chatSystem = Game.getInstance().getChatSystem();
@@ -322,8 +315,9 @@ public class InputHandler {
         if (isChatKeyPressed && !chatKeyPressed) {
             chatKeyPressed = true;
             
-            // Don't open chat if pause menu is open or if inventory is open
-            if (Game.getInstance().isPaused()) {
+            // Don't open chat if in states other than PLAYING or INVENTORY_UI
+            GameState currentState = Game.getInstance().getState();
+            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI) {
                 return;
             }
             
@@ -348,8 +342,9 @@ public class InputHandler {
         if (isQKeyPressed && !qKeyPressed) {
             qKeyPressed = true;
             
-            // Don't drop items if any UI is open
-            if (Game.getInstance().isPaused()) {
+            // Only allow dropping items in PLAYING and INVENTORY_UI states
+            GameState currentState = Game.getInstance().getState();
+            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI) {
                 return;
             }
             
@@ -532,8 +527,9 @@ public class InputHandler {
             return; // Pause menu handled or ignored the click
         }
 
-        // If game is not paused by any UI or the main pause menu, handle world interaction
-        if (!Game.getInstance().isPaused()) {
+        // Only allow world interaction in PLAYING and INVENTORY_UI states
+        GameState currentState = Game.getInstance().getState();
+        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI) {
             if (action == GLFW_PRESS) { // Only react on initial press for world actions
                 Player player = Game.getPlayer();
                 if (player != null) {
@@ -596,9 +592,10 @@ public class InputHandler {
             return; // Workbench screen is open, block hotbar selection
         }
 
-        // Block scroll if paused by menu (not just inventory/workbench)
-        if (Game.getInstance().isPaused()) {
-            return; // Paused by menu
+        // Only allow hotbar scrolling in PLAYING state
+        GameState currentState = Game.getInstance().getState();
+        if (currentState != GameState.PLAYING) {
+            return; // Block hotbar scroll in UI states
         }
         
         int newSelectedIndex = currentSelectedHotbarIndex;

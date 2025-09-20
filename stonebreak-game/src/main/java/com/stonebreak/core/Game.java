@@ -542,26 +542,8 @@ public class Game {
                     mouseCaptureManager.forceUpdate();
                     hasInitializedMouseCaptureAfterLoading = true;
                 }
-                
-                if (paused) {
-                    // Check if paused by pause menu vs just inventory/UI
-                    boolean pausedByMenu = pauseMenu != null && pauseMenu.isVisible();
-                    
-                    // Update UI screens that are visible
-                    if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                        inventoryScreen.update(deltaTime);
-                    }
-                    if (workbenchScreen != null && workbenchScreen.isVisible()) {
-                        workbenchScreen.update(deltaTime);
-                    }
-                    
-                    // Only pause game world updates if actually paused by the pause menu
-                    // If paused only by inventory/UI, continue to game world updates
-                    if (pausedByMenu) {
-                        return; // Don't update player/world if paused by escape menu
-                    }
-                }
-                // Continue to game world updates (either not paused, or paused only by inventory/UI)
+
+                // Continue to game world updates - PLAYING state is unpaused
             }
             case WORKBENCH_UI -> {
                 // Update workbench UI but keep the game world running
@@ -589,6 +571,13 @@ public class Game {
                 }
                 // Input handling for these screens is separate.
                 return; // Don't update game world
+            }
+            case INVENTORY_UI -> {
+                // Update inventory screen and continue to game world updates
+                if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                    inventoryScreen.update(deltaTime);
+                }
+                // Continue to game world updates - inventory doesn't pause the game world
             }
             case RECIPE_BOOK_UI -> {
                 if (recipeBookScreen != null) {
@@ -798,23 +787,17 @@ public class Game {
         inventoryScreen.toggleVisibility();
 
         if (inventoryScreen.isVisible()) {
-            // Opening inventory - pause the game
-            this.paused = true;
+            // Opening inventory - transition to INVENTORY_UI state
+            setState(GameState.INVENTORY_UI);
         } else {
-            // Closing inventory - check if we should unpause
+            // Closing inventory - return to PLAYING state
+            // Only return to playing if no other UI is forcing a different state
             if (pauseMenu == null || !pauseMenu.isVisible()) {
-                // Only unpause if we're in PLAYING state and no pause menu is visible
-                if (this.currentState == GameState.PLAYING) {
-                    this.paused = false;
-                }
-                // Other states (WORKBENCH_UI, RECIPE_BOOK_UI) remain paused
+                setState(GameState.PLAYING);
             }
         }
-        
-        // Update mouse capture state when inventory visibility changes
-        if (mouseCaptureManager != null) {
-            mouseCaptureManager.updateCaptureState();
-        }
+
+        // Mouse capture state is automatically updated by setState()
     }
     
     /**
@@ -848,23 +831,12 @@ public class Game {
      */
     private void updatePauseState(GameState state) {
         switch (state) {
-            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
+            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI -> {
                 paused = true;
             }
-            case PLAYING -> {
-                // Always unpause when coming from LOADING, WORKBENCH_UI, or RECIPE_BOOK_UI
-                if (this.previousGameState == GameState.LOADING ||
-                    this.previousGameState == GameState.WORKBENCH_UI ||
-                    this.previousGameState == GameState.RECIPE_BOOK_UI) {
-                    paused = false;
-                } else {
-                    // For other transitions, only keep paused if inventory is explicitly visible
-                    boolean shouldUnpause = (inventoryScreen == null || !inventoryScreen.isVisible());
-
-                    if (shouldUnpause) {
-                        paused = false;
-                    }
-                }
+            case PLAYING, INVENTORY_UI -> {
+                // Both PLAYING and INVENTORY_UI should be unpaused to allow normal game function
+                paused = false;
             }
         }
     }
@@ -983,8 +955,8 @@ public class Game {
         // Case 1: Workbench UI is active
         if (currentState == GameState.WORKBENCH_UI) {
             allowOpen = true;
-        // Case 2: Inventory screen is visible (implies game is PLAYING but effectively paused for this UI)
-        } else if (inventoryScreen != null && inventoryScreen.isVisible()) {
+        // Case 2: Inventory UI is active
+        } else if (currentState == GameState.INVENTORY_UI) {
             allowOpen = true;
         // Case 3: Actively playing and not paused by the main PauseMenu (Escape key menu)
         } else if (currentState == GameState.PLAYING && (pauseMenu == null || !pauseMenu.isVisible())) {
@@ -1005,7 +977,7 @@ public class Game {
             if (pauseMenu != null) {
                 contextDetails += ", MainPauseActive: " + pauseMenu.isVisible();
             }
-            contextDetails += ", Game.paused: " + this.paused;
+            contextDetails += ", CurrentState: " + currentState;
             System.out.println("Cannot open RecipeBook: Not in a valid context (" + contextDetails + ").");
         }
     }

@@ -75,19 +75,19 @@ public class InventoryController {
     }
 
     public void renderHotbar(int screenWidth, int screenHeight) {
-        if (!visible && renderCoordinator != null) {
+        if (renderCoordinator != null) {
             renderCoordinator.renderHotbar(screenWidth, screenHeight);
         }
     }
 
     public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
-        if (!visible && renderCoordinator != null) {
+        if (renderCoordinator != null) {
             renderCoordinator.renderHotbarWithoutTooltips(screenWidth, screenHeight);
         }
     }
 
     public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
-        if (!visible && renderCoordinator != null) {
+        if (renderCoordinator != null) {
             renderCoordinator.renderHotbarTooltipsOnly(screenWidth, screenHeight);
         }
     }
