@@ -46,7 +46,12 @@ public class InventoryLayoutCalculator {
         int totalInventoryRows = Inventory.MAIN_INVENTORY_ROWS + 1; // +1 for hotbar
         int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
 
-        int inventoryPanelWidth = baseInventoryPanelWidth;
+        // Calculate required width for crafting section including recipe button
+        int craftInputGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE - 1) * SLOT_PADDING;
+        int recipeButtonWidth = Math.max(80, (int)(baseInventoryPanelWidth * 0.25f));
+        int craftingElementsTotalWidth = craftInputGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + (SLOT_PADDING * 2) + recipeButtonWidth;
+
+        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingElementsTotalWidth);
         int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2;
 
         int panelStartX = (screenWidth - inventoryPanelWidth) / 2;
@@ -54,8 +59,6 @@ public class InventoryLayoutCalculator {
 
         // Crafting area calculations
         int craftingGridStartY = panelStartY + TITLE_HEIGHT + SLOT_PADDING;
-        int craftInputGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE - 1) * SLOT_PADDING;
-        int craftingElementsTotalWidth = craftInputGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE;
         int craftingElementsStartX = panelStartX + (inventoryPanelWidth - craftingElementsTotalWidth) / 2;
         int craftingAreaHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
 
@@ -91,7 +94,13 @@ public class InventoryLayoutCalculator {
 
         // Crafting area: 3x3 grid + arrow + output slot + recipe button
         int craftingGridVisualWidth = WORKBENCH_CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) - SLOT_PADDING;
-        int craftingSectionWidth = craftingGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING; // grid + arrow + output + paddings
+
+        // Calculate recipe button width (25% of minimum panel width, min 80px)
+        int minPanelWidth = baseInventoryPanelWidth;
+        int recipeButtonWidth = Math.max(80, (int)(minPanelWidth * 0.25f));
+
+        // Total crafting section: grid + spacing + arrow + spacing + output + spacing + button
+        int craftingSectionWidth = craftingGridVisualWidth + SLOT_PADDING + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE + (SLOT_PADDING * 2) + recipeButtonWidth;
 
         int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingSectionWidth);
 

@@ -106,11 +106,14 @@ public class InventoryInputManager {
     }
 
     private void updateRecipeButtonBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        // This should ideally be handled by a button manager, but keeping here for simplicity
-        recipeButtonWidth = 100; // Should be calculated based on text width
+        // Scale button width as a proportion of the panel width for better responsiveness
+        float panelWidthRatio = 0.25f; // Button takes up 25% of panel width
+        recipeButtonWidth = Math.max(80, (int)(layout.inventoryPanelWidth * panelWidthRatio));
         recipeButtonHeight = InventoryLayoutCalculator.getSlotSize();
-        recipeButtonX = layout.outputSlotX + InventoryLayoutCalculator.getSlotSize() +
-                       InventoryLayoutCalculator.getSlotPadding() * 3;
+
+        // Position button to the right of the output slot with proper spacing
+        int spacingAfterOutput = InventoryLayoutCalculator.getSlotPadding() * 2;
+        recipeButtonX = layout.outputSlotX + InventoryLayoutCalculator.getSlotSize() + spacingAfterOutput;
         recipeButtonY = layout.outputSlotY;
     }
 
