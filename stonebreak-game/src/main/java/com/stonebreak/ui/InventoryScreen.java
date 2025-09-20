@@ -936,24 +936,29 @@ public class InventoryScreen {
             mouseY >= outputSlotY_calc && mouseY <= outputSlotY_calc + SLOT_SIZE) {
             if (craftingOutputSlot != null && !craftingOutputSlot.isEmpty()) {
                 ItemStack itemsInOutput = craftingOutputSlot.copy(); // What's available to take
-                int typeId = itemsInOutput.getBlockTypeId();
-                // int initialCountInOutput = itemsInOutput.getCount(); // Not directly needed with before/after inventory count
 
-                int itemsOfTypeInInventoryBefore = inventory.getItemCount(typeId);
-                
-                inventory.addItem(itemsInOutput); // Attempt to add the full stack from output
-                                                  // Note: inventory.addItem(ItemStack) doesn't modify 'itemsInOutput' itself.
+                // Try to add the items to inventory using the same approach as WorkbenchScreen
+                boolean wasAdded = inventory.addItem(itemsInOutput);
 
-                int itemsOfTypeInInventoryAfter = inventory.getItemCount(typeId);
-
-                if (itemsOfTypeInInventoryAfter > itemsOfTypeInInventoryBefore) {
-                    // At least one item was successfully transferred from the craft output
+                if (wasAdded) {
+                    // Items were successfully added to inventory
                     consumeCraftingIngredients();
                     craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0); // Clear the output slot as the craft is "taken"
                     updateCraftingOutput(); // Update for the next potential craft
-                    return true; // Transfer (partial or full) occurred
+                    return true; // Transfer occurred
+                } else {
+                    // Inventory is full - drop the item instead of deleting it
+                    Player player = Game.getPlayer();
+                    if (player != null) {
+                        com.stonebreak.util.DropUtil.dropItemFromPlayer(player, itemsInOutput);
+                        // Still consume ingredients and clear output slot since the craft was "taken" (as a drop)
+                        consumeCraftingIngredients();
+                        craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
+                        updateCraftingOutput();
+                        return true; // Transfer occurred (as a drop)
+                    }
+                    return false; // No items could be transferred and no player to drop to
                 }
-                return false; // No items could be transferred (e.g., inventory completely full for this type)
             }
         }
 
