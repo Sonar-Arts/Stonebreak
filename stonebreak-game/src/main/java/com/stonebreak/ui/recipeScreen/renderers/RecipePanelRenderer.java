@@ -447,39 +447,6 @@ public class RecipePanelRenderer {
         }
     }
 
-    /**
-     * Draws recipe category indicator with themed styling
-     */
-    public static void drawRecipeCategoryIndicator(UIRenderer uiRenderer, float x, float y,
-                                                 String category, ColorSpec categoryColor) {
-        try (MemoryStack stack = stackPush()) {
-            long vg = uiRenderer.getVG();
-
-            float indicatorWidth = 80.0f;
-            float indicatorHeight = 24.0f;
-            float cornerRadius = 12.0f;
-
-            // Draw category background
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, indicatorWidth, indicatorHeight, cornerRadius);
-            nvgFillColor(vg, categoryColor.toNVG(NVGColor.malloc(stack)));
-            nvgFill(vg);
-
-            // Draw category border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x + 1, y + 1, indicatorWidth - 2, indicatorHeight - 2, cornerRadius - 1);
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStrokeColor(vg, categoryColor.darker(0.3f).toNVG(NVGColor.malloc(stack)));
-            nvgStroke(vg);
-
-            // Draw category text
-            nvgFontSize(vg, 12.0f);
-            nvgFontFace(vg, "sans-bold");
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, new ColorSpec(255, 255, 255, 255).toNVG(NVGColor.malloc(stack)));
-            nvgText(vg, x + indicatorWidth / 2, y + indicatorHeight / 2, category);
-        }
-    }
 
     // ===========================================
     // PERFORMANCE AND UTILITY METHODS
