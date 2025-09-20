@@ -16,6 +16,7 @@ import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.util.*;
@@ -38,7 +39,7 @@ public class Game {
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
-    private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
+    private RecipeScreen recipeScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
@@ -442,7 +443,7 @@ public class Game {
 
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
-            this.recipeBookScreen = new RecipeBookScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
+            this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
@@ -577,8 +578,8 @@ public class Game {
                 // Continue to game world updates - inventory doesn't pause the game world
             }
             case RECIPE_BOOK_UI -> {
-                if (recipeBookScreen != null) {
-                    recipeBookScreen.update(deltaTime);
+                if (recipeScreen != null) {
+                    recipeScreen.update(deltaTime);
                 }
                 // Continue to game world updates - recipe book doesn't pause the game world
             }
@@ -850,8 +851,8 @@ public class Game {
     /**
      * Gets the recipe book screen.
      */
-    public RecipeBookScreen getRecipeBookScreen() {
-        return recipeBookScreen;
+    public RecipeScreen getRecipeBookScreen() {
+        return recipeScreen;
     }
 
     /**
@@ -944,7 +945,7 @@ public class Game {
      * Opens the Recipe Book screen.
      */
     public void openRecipeBookScreen() {
-        if (recipeBookScreen == null) {
+        if (recipeScreen == null) {
             System.out.println("Cannot open RecipeBook: recipeBookScreen is null.");
             return;
         }
@@ -965,7 +966,7 @@ public class Game {
             // setState will correctly set this.previousGameState to the current state (e.g., PLAYING, WORKBENCH_UI)
             // before changing currentState to RECIPE_BOOK_UI.
             setState(GameState.RECIPE_BOOK_UI);
-            recipeBookScreen.onOpen(); // Initialize/refresh recipe list
+            recipeScreen.onOpen(); // Initialize/refresh recipe list
             System.out.println("Opened RecipeBook Screen. Will return to: " + this.previousGameState);
         } else {
             String contextDetails = "Current state: " + currentState;
@@ -984,8 +985,8 @@ public class Game {
      * Closes the Recipe Book screen and returns to the previous game state.
      */
     public void closeRecipeBookScreen() {
-        if (recipeBookScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
-            recipeBookScreen.onClose();
+        if (recipeScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
+            recipeScreen.onClose();
             setState(previousGameState); // Uses the stored previous state
             System.out.println("Closed RecipeBook Screen. Returning to: " + previousGameState);
         }

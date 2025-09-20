@@ -1,4 +1,4 @@
-package com.stonebreak.ui;
+package com.stonebreak.ui.recipeScreen;
 
 import java.util.List;
 
@@ -21,7 +21,7 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.rendering.Renderer;
 
-public class RecipeBookScreen {
+public class RecipeScreen {
     private final UIRenderer uiRenderer;
     private final CraftingManager craftingManager;
     private final InputHandler inputHandler;
@@ -33,7 +33,7 @@ public class RecipeBookScreen {
     private final RecipeVariationService variationService;
     private final RecipeBookInputHandler inputHandlerModule;
 
-    public RecipeBookScreen(UIRenderer uiRenderer, InputHandler inputHandler, Renderer renderer) {
+    public RecipeScreen(UIRenderer uiRenderer, InputHandler inputHandler, Renderer renderer) {
         this.uiRenderer = uiRenderer;
         this.inputHandler = inputHandler;
         this.renderer = renderer;

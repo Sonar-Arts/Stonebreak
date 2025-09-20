@@ -16,7 +16,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.RecipeBookScreen;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
@@ -151,11 +151,11 @@ public class InputHandler {
             Game gameInstance = Game.getInstance();
             InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();
             WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-            RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
 
             // UI screens take precedence for input if active
-            if (currentGameState == GameState.RECIPE_BOOK_UI && recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                recipeBookScreen.handleInput();
+            if (currentGameState == GameState.RECIPE_BOOK_UI && recipeScreen != null && recipeScreen.isVisible()) {
+                recipeScreen.handleInput();
                 return; // Recipe Book UI has full input control
             }
             if (currentGameState == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
@@ -228,7 +228,7 @@ public class InputHandler {
 
             Game game = Game.getInstance();
             ChatSystem chatSystem = game.getChatSystem();
-            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+            RecipeScreen recipeScreen = game.getRecipeBookScreen();
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             // PauseMenu pauseMenu = game.getPauseMenu(); // Get the PauseMenu instance // Removed as unused
@@ -242,7 +242,7 @@ public class InputHandler {
             }
 
             // 2. Close Recipe Book
-            if (recipeBookScreen != null && recipeBookScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
+            if (recipeScreen != null && recipeScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
                 game.closeRecipeBookScreen(); // This should set state and handle cursor via Game.setState
                 return; // Action taken
             }
@@ -297,8 +297,8 @@ public class InputHandler {
             }
 
             // Don't open inventory if recipe book is open
-            RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+            if (recipeScreen != null && recipeScreen.isVisible()) {
                 return;
             }
             
@@ -478,8 +478,8 @@ public class InputHandler {
         // This processMouseButton method updates the state for those checks.
         // The 'return' here stops further processing for THIS mouse event in THIS method (e.g., world interaction).
 
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible() && Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() && Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
             // RecipeBookScreen.handleInput should manage its clicks. This prevents world clicks.
             return;
         }
@@ -575,8 +575,8 @@ public class InputHandler {
         }
         
         // If recipe book is open, let it handle scrolling and don't process hotbar scroll
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible()) {
             return; // RecipeBookScreen will use getAndResetScrollY()
         }
         
@@ -709,10 +709,10 @@ public class InputHandler {
         }
         
         // Handle recipe book search input
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() &&
             Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
-            recipeBookScreen.handleCharacterInput(character);
+            recipeScreen.handleCharacterInput(character);
         }
     }
     
@@ -755,11 +755,11 @@ public class InputHandler {
         }
         
         // Handle recipe book search input
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() &&
             Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
             if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-                recipeBookScreen.handleKeyInput(key, action);
+                recipeScreen.handleKeyInput(key, action);
             }
         }
         

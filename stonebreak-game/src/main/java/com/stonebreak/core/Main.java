@@ -4,6 +4,7 @@ import java.nio.*;
 
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import org.lwjgl.Version;
@@ -549,9 +550,9 @@ public class Main {
 
         // Render recipe book as overlay, not fullscreen
         if (game.getState() == GameState.RECIPE_BOOK_UI) {
-            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                recipeBookScreen.render();
+            RecipeScreen recipeScreen = game.getRecipeBookScreen();
+            if (recipeScreen != null && recipeScreen.isVisible()) {
+                recipeScreen.render();
             }
         }
 
