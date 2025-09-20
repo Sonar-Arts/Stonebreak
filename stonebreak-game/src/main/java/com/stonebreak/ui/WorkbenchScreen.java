@@ -680,13 +680,27 @@ public class WorkbenchScreen {
                     targetStack.incrementCount(toAdd);
                     draggedItemStack.decrementCount(toAdd);
                     if (draggedItemStack.isEmpty()) draggedItemStack = null;
-                } else { // Swap
-                    ItemStack temp = targetStack.copy(); // Save what's in the slot
-                    craftingInputSlots[i] = draggedItemStack; // Place dragged item
-                    draggedItemStack = temp; // New dragged item is what was in the slot
-                    // Update drag source for the newly picked up item (from this crafting slot)
-                    dragSource = DragSource.CRAFTING_INPUT;
-                    draggedItemOriginalSlotIndex = CRAFTING_INPUT_SLOT_START_INDEX + i;
+                } else { // Swap - complete atomically
+                    ItemStack itemFromCraftingSlot = targetStack.copy();
+                    ItemStack originalDraggedItem = draggedItemStack.copy();
+
+                    // Place dragged item in crafting slot
+                    craftingInputSlots[i] = originalDraggedItem;
+
+                    // Place crafting slot item back in original slot
+                    switch (dragSource) {
+                        case HOTBAR -> playerInventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromCraftingSlot);
+                        case MAIN_INVENTORY -> playerInventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromCraftingSlot);
+                        case CRAFTING_INPUT -> {
+                            int originalCraftingIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                            if (originalCraftingIndex >= 0 && originalCraftingIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                craftingInputSlots[originalCraftingIndex] = itemFromCraftingSlot;
+                            }
+                        }
+                    }
+
+                    // Clear drag state since swap is complete
+                    clearDraggedItemState();
                 }
                 updateCraftingOutput();
                 placedOrSwapped = true;
@@ -713,12 +727,27 @@ public class WorkbenchScreen {
                         playerInventory.setMainInventorySlot(i, targetStack); // Set back if it was a copy
                         draggedItemStack.decrementCount(toAdd);
                         if (draggedItemStack.isEmpty()) draggedItemStack = null;
-                    } else { // Swap
-                        ItemStack temp = targetStack.copy();
-                        playerInventory.setMainInventorySlot(i, draggedItemStack);
-                        draggedItemStack = temp;
-                        dragSource = DragSource.MAIN_INVENTORY;
-                        draggedItemOriginalSlotIndex = i;
+                    } else { // Swap - complete atomically
+                        ItemStack itemFromMainInventory = targetStack.copy();
+                        ItemStack originalDraggedItem = draggedItemStack.copy();
+
+                        // Place dragged item in main inventory slot
+                        playerInventory.setMainInventorySlot(i, originalDraggedItem);
+
+                        // Place main inventory item back in original slot
+                        switch (dragSource) {
+                            case HOTBAR -> playerInventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromMainInventory);
+                            case MAIN_INVENTORY -> playerInventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromMainInventory);
+                            case CRAFTING_INPUT -> {
+                                int originalCraftingIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                                if (originalCraftingIndex >= 0 && originalCraftingIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                    craftingInputSlots[originalCraftingIndex] = itemFromMainInventory;
+                                }
+                            }
+                        }
+
+                        // Clear drag state since swap is complete
+                        clearDraggedItemState();
                     }
                     placedOrSwapped = true;
                     break;
@@ -742,12 +771,27 @@ public class WorkbenchScreen {
                         playerInventory.setHotbarSlot(i, targetStack); // Set back if it was a copy
                         draggedItemStack.decrementCount(toAdd);
                         if (draggedItemStack.isEmpty()) draggedItemStack = null;
-                    } else { // Swap
-                        ItemStack temp = targetStack.copy();
-                        playerInventory.setHotbarSlot(i, draggedItemStack);
-                        draggedItemStack = temp;
-                        dragSource = DragSource.HOTBAR;
-                        draggedItemOriginalSlotIndex = i;
+                    } else { // Swap - complete atomically
+                        ItemStack itemFromHotbar = targetStack.copy();
+                        ItemStack originalDraggedItem = draggedItemStack.copy();
+
+                        // Place dragged item in hotbar slot
+                        playerInventory.setHotbarSlot(i, originalDraggedItem);
+
+                        // Place hotbar item back in original slot
+                        switch (dragSource) {
+                            case HOTBAR -> playerInventory.setHotbarSlot(draggedItemOriginalSlotIndex, itemFromHotbar);
+                            case MAIN_INVENTORY -> playerInventory.setMainInventorySlot(draggedItemOriginalSlotIndex, itemFromHotbar);
+                            case CRAFTING_INPUT -> {
+                                int originalCraftingIndex = draggedItemOriginalSlotIndex - CRAFTING_INPUT_SLOT_START_INDEX;
+                                if (originalCraftingIndex >= 0 && originalCraftingIndex < CRAFTING_INPUT_SLOTS_COUNT) {
+                                    craftingInputSlots[originalCraftingIndex] = itemFromHotbar;
+                                }
+                            }
+                        }
+
+                        // Clear drag state since swap is complete
+                        clearDraggedItemState();
                     }
                     placedOrSwapped = true;
                     break;
