@@ -538,15 +538,23 @@ public class Main {
 
     private void renderGameUI(Game game, Renderer renderer) {
         if (renderer == null) return;
-        
+
         renderer.beginUIFrame(width, height, 1.0f);
-        
-        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI) {
+
+        if (game.getState() == GameState.PLAYING || game.getState() == GameState.PAUSED || game.getState() == GameState.INVENTORY_UI || game.getState() == GameState.RECIPE_BOOK_UI) {
             renderCrosshair(game, renderer);
             renderInventoryAndHotbar(game);
             renderChat(game, renderer);
         }
-        
+
+        // Render recipe book as overlay, not fullscreen
+        if (game.getState() == GameState.RECIPE_BOOK_UI) {
+            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+                recipeBookScreen.render();
+            }
+        }
+
         renderActivePauseMenu(game, renderer);
         renderer.endUIFrame();
     }
@@ -599,12 +607,7 @@ public class Main {
     }
 
     private void renderFullscreenMenus(Game game) {
-        if (game.getState() == GameState.RECIPE_BOOK_UI) {
-            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-            if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                recipeBookScreen.render();
-            }
-        } else if (game.getState() == GameState.WORKBENCH_UI) {
+        if (game.getState() == GameState.WORKBENCH_UI) {
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             if (workbenchScreen != null && workbenchScreen.isVisible()) {
                 workbenchScreen.render();

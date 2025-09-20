@@ -566,9 +566,6 @@ public class Game {
                 if (pauseMenu != null && pauseMenu.isVisible()) {
                     // pauseMenu.update(deltaTime); // If pause menu has timed elements
                 }
-                 if (recipeBookScreen != null && currentState == GameState.RECIPE_BOOK_UI) { // This specific check seems odd here if RECIPE_BOOK_UI is its own case
-                    recipeBookScreen.update(deltaTime);
-                }
                 // Input handling for these screens is separate.
                 return; // Don't update game world
             }
@@ -583,7 +580,7 @@ public class Game {
                 if (recipeBookScreen != null) {
                     recipeBookScreen.update(deltaTime);
                 }
-                return; // Don't update game world
+                // Continue to game world updates - recipe book doesn't pause the game world
             }
             default -> {
                 return; // Unhandled state
@@ -831,11 +828,12 @@ public class Game {
      */
     private void updatePauseState(GameState state) {
         switch (state) {
-            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI -> {
+            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> {
                 paused = true;
             }
-            case PLAYING, INVENTORY_UI -> {
-                // Both PLAYING and INVENTORY_UI should be unpaused to allow normal game function
+            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI -> {
+                // PLAYING, INVENTORY_UI, and RECIPE_BOOK_UI should be unpaused to allow normal game function
+                // Movement and world interactions are prevented by InputHandler, not by pause state
                 paused = false;
             }
         }

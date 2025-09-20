@@ -315,9 +315,9 @@ public class InputHandler {
         if (isChatKeyPressed && !chatKeyPressed) {
             chatKeyPressed = true;
             
-            // Don't open chat if in states other than PLAYING or INVENTORY_UI
+            // Don't open chat if in states other than PLAYING, INVENTORY_UI, or RECIPE_BOOK_UI
             GameState currentState = Game.getInstance().getState();
-            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI) {
+            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI && currentState != GameState.RECIPE_BOOK_UI) {
                 return;
             }
             
@@ -342,9 +342,9 @@ public class InputHandler {
         if (isQKeyPressed && !qKeyPressed) {
             qKeyPressed = true;
             
-            // Only allow dropping items in PLAYING and INVENTORY_UI states
+            // Only allow dropping items in PLAYING, INVENTORY_UI, and RECIPE_BOOK_UI states
             GameState currentState = Game.getInstance().getState();
-            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI) {
+            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI && currentState != GameState.RECIPE_BOOK_UI) {
                 return;
             }
             
