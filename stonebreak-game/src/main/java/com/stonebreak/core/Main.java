@@ -3,6 +3,7 @@ package com.stonebreak.core;
 import java.nio.*;
 
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import org.lwjgl.Version;
 import org.lwjgl.glfw.*;

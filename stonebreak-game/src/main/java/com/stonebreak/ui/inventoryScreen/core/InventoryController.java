@@ -1,8 +1,9 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.HotbarScreen;
+import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 
 /**
  * Controller responsible for coordinating inventory UI operations.

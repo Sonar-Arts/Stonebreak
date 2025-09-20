@@ -1,17 +1,14 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.handlers;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
-import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class InventoryMouseHandler {
 
@@ -19,13 +16,13 @@ public class InventoryMouseHandler {
     private static final int CRAFTING_OUTPUT_SLOT_INDEX = 2000;
 
     public static void handleMouseInput(InventoryDragDropHandler.DragState dragState,
-                                      Inventory inventory, ItemStack[] craftingInputSlots,
-                                      ItemStack craftingOutputSlot, InputHandler inputHandler,
-                                      int screenWidth, int screenHeight,
-                                      float recipeButtonX, float recipeButtonY,
-                                      float recipeButtonWidth, float recipeButtonHeight,
-                                      Runnable updateCraftingOutput,
-                                      Runnable openRecipeBook) {
+                                        Inventory inventory, ItemStack[] craftingInputSlots,
+                                        ItemStack craftingOutputSlot, InputHandler inputHandler,
+                                        int screenWidth, int screenHeight,
+                                        float recipeButtonX, float recipeButtonY,
+                                        float recipeButtonWidth, float recipeButtonHeight,
+                                        Runnable updateCraftingOutput,
+                                        Runnable openRecipeBook) {
 
         InventoryLayoutCalculator.InventoryLayout layout = InventoryLayoutCalculator.calculateLayout(screenWidth, screenHeight);
         Vector2f mousePos = inputHandler.getMousePosition();

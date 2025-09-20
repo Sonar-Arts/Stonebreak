@@ -1,4 +1,4 @@
-package com.stonebreak.ui;
+package com.stonebreak.ui.inventoryScreen;
 
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.blocks.BlockType;
@@ -6,13 +6,13 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.input.InputHandler;
-import com.stonebreak.ui.inventoryScreen.InventoryController;
-import com.stonebreak.ui.inventoryScreen.InventoryInputManager;
-import com.stonebreak.ui.inventoryScreen.InventoryCraftingManager;
-import com.stonebreak.ui.inventoryScreen.InventoryRenderCoordinator;
-import com.stonebreak.ui.inventoryScreen.InventorySlotManager;
+import com.stonebreak.ui.Font;
 import com.stonebreak.ui.HotbarScreen;
-
+import com.stonebreak.ui.inventoryScreen.core.InventoryController;
+import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
+import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
+import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
+import com.stonebreak.ui.inventoryScreen.core.InventorySlotManager;
 
 
 /**

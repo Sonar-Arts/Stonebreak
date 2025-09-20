@@ -8,7 +8,7 @@ import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.ui.InventoryScreen;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.WorkbenchScreen;
 

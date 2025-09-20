@@ -14,7 +14,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.player.Player;
-import com.stonebreak.ui.InventoryScreen;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.RecipeBookScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;

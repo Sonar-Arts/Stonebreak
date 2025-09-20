@@ -1,4 +1,4 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.items.Inventory;
 

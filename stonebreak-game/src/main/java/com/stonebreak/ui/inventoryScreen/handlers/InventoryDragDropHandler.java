@@ -1,10 +1,10 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.handlers;
 
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import org.joml.Vector2f;
 
 public class InventoryDragDropHandler {

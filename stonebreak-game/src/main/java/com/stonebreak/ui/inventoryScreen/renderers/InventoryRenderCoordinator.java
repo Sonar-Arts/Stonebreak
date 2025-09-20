@@ -1,4 +1,4 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.Renderer;
@@ -8,7 +8,11 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Item;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
-import com.stonebreak.ui.HotbarScreen;
+import com.stonebreak.ui.inventoryScreen.core.InventoryController;
+import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
+import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
+import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
+import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import org.joml.Vector2f;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;

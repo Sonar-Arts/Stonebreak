@@ -1,4 +1,4 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;

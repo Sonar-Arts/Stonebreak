@@ -1,7 +1,7 @@
 package com.stonebreak.items;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.ui.InventoryScreen;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 
 
 /**

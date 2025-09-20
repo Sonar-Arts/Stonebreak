@@ -1,4 +1,4 @@
-package com.stonebreak.ui.inventoryScreen;
+package com.stonebreak.ui.inventoryScreen.renderers;
 
 import com.stonebreak.rendering.UI.UIRenderer;
 import org.lwjgl.nanovg.NVGColor;
