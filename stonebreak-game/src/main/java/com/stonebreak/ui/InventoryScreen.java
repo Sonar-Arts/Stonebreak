@@ -831,7 +831,11 @@ public class InventoryScreen {
                        !inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
                 // Fallback: if somehow still dragging but no buttons are down (e.g., after a failed place)
                 tryReturnToOriginalSlot();
-                clearDraggedItemState();
+                if (draggedItemStack != null && !draggedItemStack.isEmpty()) {
+                    dropEntireStackIntoWorld();
+                } else {
+                    clearDraggedItemState();
+                }
             } else if (draggedItemStack == null) {
                 // Ensure drag state is fully reset if nothing is being dragged and no buttons are down.
                 clearDraggedItemState();
@@ -1488,7 +1492,19 @@ public class InventoryScreen {
     }
     
     private void dropEntireStackIntoWorld() {
-        // Item dropping disabled - 3D block drops have been removed
+        if (draggedItemStack == null || draggedItemStack.isEmpty()) {
+            clearDraggedItemState();
+            return;
+        }
+
+        // Get player reference to drop items from player position
+        Player player = Game.getPlayer();
+        if (player != null) {
+            // Use DropUtil to properly create item drops in the world
+            com.stonebreak.util.DropUtil.dropItemFromPlayer(player, draggedItemStack.copy());
+        }
+
+        // Clear the dragged item state after dropping
         clearDraggedItemState();
     }
 
