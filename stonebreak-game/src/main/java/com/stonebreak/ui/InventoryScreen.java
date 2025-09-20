@@ -15,6 +15,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
+import com.stonebreak.ui.inventoryScreen.InventorySlotRenderer;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nanovg.NVGColor;
 import static org.lwjgl.nanovg.NanoVG.NVG_ALIGN_BOTTOM;
@@ -504,89 +505,9 @@ public class InventoryScreen {
         }
     }
     
-    // Helper method to draw a single slot using UIRenderer
+    // Helper method to draw a single slot using UIRenderer - delegated to InventorySlotRenderer
     private void drawInventorySlot(ItemStack itemStack, int slotX, int slotY, boolean isHotbarSlot, int hotbarIndex) {
-        try {
-            try (MemoryStack stack = stackPush()) {
-                // Add validation
-                if (uiRenderer == null) {
-                    System.err.println("ERROR: UIRenderer is null in drawInventorySlot");
-                    return;
-                }
-            long vg = uiRenderer.getVG();
-            // Hotbar selection highlight removed - no highlight in inventory screen
-            
-            // Slot border
-            nvgBeginPath(vg);
-            nvgRect(vg, slotX, slotY, SLOT_SIZE, SLOT_SIZE);
-            nvgFillColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Slot background
-            nvgBeginPath(vg);
-            nvgRect(vg, slotX + 1, slotY + 1, SLOT_SIZE - 2, SLOT_SIZE - 2);
-            nvgFillColor(vg, nvgRGBA(70, 70, 70, 255, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            if (itemStack != null && !itemStack.isEmpty()) {
-                Item item = itemStack.getItem();
-                int count = itemStack.getCount();
-                
-                if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
-                    try {
-                        // End NanoVG frame temporarily to draw 3D item
-                        uiRenderer.endFrame();
-                        
-                        // Draw 3D item using UIRenderer's BlockIconRenderer
-                        if (item instanceof BlockType bt) {
-                            uiRenderer.draw3DItemInSlot(renderer.getShaderProgram(), bt, slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, renderer.getTextureAtlas());
-                        } else {
-                            // For ItemTypes, render a 2D sprite using UIRenderer
-                            uiRenderer.renderItemIcon(slotX + 2, slotY + 2, SLOT_SIZE - 4, SLOT_SIZE - 4, item, renderer.getTextureAtlas());
-                        }
-                        
-                        // Restart NanoVG frame
-                        uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
-                    } catch (Exception e) {
-                        System.err.println("Error rendering 3D item in slot: " + e.getMessage());
-                        // Try to recover by ensuring frame is restarted
-                        try {
-                            uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
-                        } catch (Exception e2) {
-                            System.err.println("Failed to recover NanoVG frame: " + e2.getMessage());
-                        }
-                    }
-                    
-                    if (count > 1) {
-                        String countText = String.valueOf(count);
-                        nvgFontSize(vg, 12);
-                        nvgFontFace(vg, "sans");
-                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
-                        
-                        // Text shadow
-                        nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
-                        nvgText(vg, slotX + SLOT_SIZE - 2, slotY + SLOT_SIZE - 2, countText);
-                        
-                        // Main text
-                        nvgFillColor(vg, nvgRGBA(255, 220, 0, 255, NVGColor.malloc(stack)));
-                        nvgText(vg, slotX + SLOT_SIZE - 3, slotY + SLOT_SIZE - 3, countText);
-                    }
-                }
-            }
-            }
-        } catch (Exception e) {
-            System.err.println("ERROR in drawInventorySlot: " + e.getMessage() + ". Problem drawing item: " + (itemStack != null ? itemStack.getItem().getName() : "unknown"));
-            System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-
-            // Try to recover UI state
-            try {
-                if (uiRenderer != null) {
-                    uiRenderer.beginFrame(Game.getWindowWidth(), Game.getWindowHeight(), 1.0f);
-                }
-            } catch (Exception e2) {
-                System.err.println("Failed to recover UI frame: " + e2.getMessage());
-            }
-        }
+        InventorySlotRenderer.drawInventorySlot(itemStack, slotX, slotY, isHotbarSlot, hotbarIndex, uiRenderer, renderer);
     }
     
     private void drawDraggedItem(Item item, int x, int y, int count) {
