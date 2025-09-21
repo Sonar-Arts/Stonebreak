@@ -15,12 +15,14 @@ public class WaterBlock {
     private final Vector3f flowDirection = new Vector3f();
     private boolean isSource = false;
     private long lastUpdateTime = 0;
+    private int distanceFromSource = 0;
 
     /**
      * Creates a new water block with full water level.
      */
     public WaterBlock() {
         this.level = MAX_WATER_LEVEL;
+        this.distanceFromSource = 0;
     }
 
     /**
@@ -30,6 +32,7 @@ public class WaterBlock {
      */
     public WaterBlock(float initialLevel) {
         this.level = Math.max(0, Math.min(MAX_WATER_LEVEL, initialLevel));
+        this.distanceFromSource = 0;
     }
 
     /**
@@ -105,6 +108,7 @@ public class WaterBlock {
         if (source) {
             this.level = MAX_WATER_LEVEL;
             this.pressure = MAX_WATER_LEVEL;
+            this.distanceFromSource = 0;
         }
     }
 
@@ -132,7 +136,8 @@ public class WaterBlock {
      * @return Visual height for rendering
      */
     public float getVisualHeight() {
-        return Math.max(0.125f, level / (float)MAX_WATER_LEVEL);
+        if (level <= 0) return 0.0f;
+        return Math.max(0.125f, Math.min(0.875f, level / (float)MAX_WATER_LEVEL));
     }
 
     /**
@@ -219,9 +224,39 @@ public class WaterBlock {
         }
     }
 
+    /**
+     * Gets the distance from the nearest water source.
+     *
+     * @return Distance from source in blocks
+     */
+    public int getDistanceFromSource() {
+        return distanceFromSource;
+    }
+
+    /**
+     * Sets the distance from the nearest water source.
+     *
+     * @param distance Distance from source in blocks
+     */
+    public void setDistanceFromSource(int distance) {
+        this.distanceFromSource = Math.max(0, distance);
+    }
+
+    /**
+     * Gets the maximum level this water block should have based on its distance from source.
+     *
+     * @return Maximum level based on distance
+     */
+    public float getMaxLevelForDistance() {
+        if (isSource) {
+            return MAX_WATER_LEVEL;
+        }
+        return Math.max(0, MAX_WATER_LEVEL - distanceFromSource);
+    }
+
     @Override
     public String toString() {
-        return String.format("WaterBlock{level=%.2f, pressure=%.2f, source=%s, flow=%.2f}",
-                           level, pressure, isSource, flowDirection.length());
+        return String.format("WaterBlock{level=%.2f, pressure=%.2f, source=%s, distance=%d, flow=%.2f}",
+                           level, pressure, isSource, distanceFromSource, flowDirection.length());
     }
 }
