@@ -245,6 +245,32 @@ public class Water {
         flowSimulation.detectExistingWater();
     }
 
+    /**
+     * Notifies the water system that a block was broken.
+     * This triggers immediate flow updates for any affected water.
+     *
+     * @param x X coordinate of the broken block
+     * @param y Y coordinate of the broken block
+     * @param z Z coordinate of the broken block
+     */
+    public static void onBlockBroken(int x, int y, int z) {
+        ensureInitialized();
+        flowSimulation.onBlockBroken(x, y, z);
+    }
+
+    /**
+     * Notifies the water system that a block was placed.
+     * This triggers flow updates for any affected water.
+     *
+     * @param x X coordinate of the placed block
+     * @param y Y coordinate of the placed block
+     * @param z Z coordinate of the placed block
+     */
+    public static void onBlockPlaced(int x, int y, int z) {
+        ensureInitialized();
+        flowSimulation.onBlockPlaced(x, y, z);
+    }
+
     // === RENDERING DATA ACCESS ===
 
     /**

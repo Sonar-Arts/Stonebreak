@@ -12,7 +12,7 @@ import com.stonebreak.items.ItemType;
 // Other package imports
 import com.stonebreak.world.World;
 import com.stonebreak.core.Game;
-import com.stonebreak.rendering.WaterEffects;
+import com.stonebreak.blocks.Water;
 import com.stonebreak.util.DropUtil;
 
 /**
@@ -746,10 +746,7 @@ public class Player {      // Player settings
                 if (breakingProgress >= 1.0f) {
                     // If breaking a water block, remove it from water simulation
                     if (blockType == BlockType.WATER) {
-                        WaterEffects waterEffects = Game.getWaterEffects();
-                        if (waterEffects != null) {
-                            waterEffects.removeWaterSource(breakingBlock.x, breakingBlock.y, breakingBlock.z);
-                        }
+                        Water.removeWaterSource(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                     }
                     
                     // If breaking a snow block, remove snow layer data and spawn correct number of drops
@@ -766,6 +763,10 @@ public class Player {      // Player settings
                     
                     // Break the block
                     world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+
+                    // Notify water system about block being broken
+                    Water.onBlockBroken(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+
                     resetBlockBreaking();
                 }
             }
@@ -821,6 +822,10 @@ public class Player {      // Player settings
                     DropUtil.handleBlockBroken(world, dropPosition, blockType);
                     
                     world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+
+                    // Notify water system about block being broken
+                    Water.onBlockBroken(blockPos.x, blockPos.y, blockPos.z);
+
                     resetBlockBreaking();
                 }
             }
@@ -910,6 +915,9 @@ public class Player {      // Player settings
                             if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
                                 inventory.removeItem(selectedItem.getItem(), 1);
+
+                                // Notify water system about block placement
+                                Water.onBlockPlaced(abovePos.x, abovePos.y, abovePos.z);
                             }
                         }
                     }
@@ -931,23 +939,20 @@ public class Player {      // Player settings
                 
                 // If replacing water, remove it from water simulation first
                 if (blockAtPos == BlockType.WATER) {
-                    WaterEffects waterEffects = Game.getWaterEffects();
-                    if (waterEffects != null) {
-                        waterEffects.removeWaterSource(placePos.x, placePos.y, placePos.z);
-                    }
+                    Water.removeWaterSource(placePos.x, placePos.y, placePos.z);
                 }
                 
                 // All checks passed, place the block.
                 if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
-                    
+
                     // If placing a water block, register it as a water source
                     if (selectedBlockType == BlockType.WATER) {
-                        WaterEffects waterEffects = Game.getWaterEffects();
-                        if (waterEffects != null) {
-                            waterEffects.addWaterSource(placePos.x, placePos.y, placePos.z);
-                        }
+                        Water.addWaterSource(placePos.x, placePos.y, placePos.z);
                     }
+
+                    // Notify water system about block placement (affects flow)
+                    Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
                     
                     // If placing a snow block, initialize it with 1 layer
                     if (selectedBlockType == BlockType.SNOW) {
@@ -1477,6 +1482,9 @@ public class Player {      // Player settings
                 if (blockToPlace == BlockType.SNOW) {
                     world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
                 }
+
+                // Notify water system about block placement
+                Water.onBlockPlaced(dropPos.x, dropPos.y, dropPos.z);
                 System.out.println("Player dropped item " + blockToPlace.getName() + " at " + dropPos.x + ", " + dropPos.y + ", " + dropPos.z);
                 return true;
             }

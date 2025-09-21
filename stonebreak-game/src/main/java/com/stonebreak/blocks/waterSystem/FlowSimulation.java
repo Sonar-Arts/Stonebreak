@@ -230,6 +230,94 @@ public class FlowSimulation {
     }
 
     /**
+     * Notifies the water system that a block was broken at the specified position.
+     * This triggers water flow updates for any water blocks above the broken block.
+     * Water flowing down will reset its distance counter, allowing new horizontal spread.
+     *
+     * @param x X coordinate of the broken block
+     * @param y Y coordinate of the broken block
+     * @param z Z coordinate of the broken block
+     */
+    public void onBlockBroken(int x, int y, int z) {
+        World world = Game.getWorld();
+        if (world == null) return;
+
+        // Check for water blocks above the broken block that might now flow down
+        // We check multiple levels above to catch water that might cascade down
+        for (int dy = 1; dy <= 5; dy++) {
+            Vector3i abovePos = new Vector3i(x, y + dy, z);
+            if (world.getBlockAt(abovePos.x, abovePos.y, abovePos.z) == BlockType.WATER) {
+                // Queue the water block above for immediate update
+                if (!waterBlocks.containsKey(abovePos)) {
+                    // Create water block data if it doesn't exist
+                    WaterBlock water = new WaterBlock();
+                    // Estimate distance, but it will be reset when flowing down
+                    int estimatedDistance = estimateDistanceFromSource(abovePos, world);
+                    water.setDistanceFromSource(estimatedDistance);
+                    waterBlocks.put(abovePos, water);
+                }
+                activeWaterBlocks.add(abovePos);
+                waterUpdateQueue.offer(abovePos);
+            }
+        }
+
+        // Also check horizontal adjacent positions for water that might flow into the newly empty space
+        Vector3i[] adjacentPositions = {
+            new Vector3i(x + 1, y, z),
+            new Vector3i(x - 1, y, z),
+            new Vector3i(x, y, z + 1),
+            new Vector3i(x, y, z - 1)
+        };
+
+        for (Vector3i adjPos : adjacentPositions) {
+            if (world.getBlockAt(adjPos.x, adjPos.y, adjPos.z) == BlockType.WATER) {
+                if (!waterBlocks.containsKey(adjPos)) {
+                    WaterBlock water = new WaterBlock();
+                    int estimatedDistance = estimateDistanceFromSource(adjPos, world);
+                    water.setDistanceFromSource(estimatedDistance);
+                    waterBlocks.put(adjPos, water);
+                }
+                activeWaterBlocks.add(adjPos);
+                waterUpdateQueue.offer(adjPos);
+            }
+        }
+    }
+
+    /**
+     * Notifies the water system that a block was placed at the specified position.
+     * This triggers water flow updates for any water blocks that might be affected.
+     *
+     * @param x X coordinate of the placed block
+     * @param y Y coordinate of the placed block
+     * @param z Z coordinate of the placed block
+     */
+    public void onBlockPlaced(int x, int y, int z) {
+        World world = Game.getWorld();
+        if (world == null) return;
+
+        // Check all adjacent water blocks and queue them for update
+        Vector3i[] adjacentPositions = {
+            new Vector3i(x + 1, y, z),
+            new Vector3i(x - 1, y, z),
+            new Vector3i(x, y + 1, z),
+            new Vector3i(x, y - 1, z),
+            new Vector3i(x, y, z + 1),
+            new Vector3i(x, y, z - 1)
+        };
+
+        for (Vector3i adjPos : adjacentPositions) {
+            if (world.getBlockAt(adjPos.x, adjPos.y, adjPos.z) == BlockType.WATER) {
+                if (!waterBlocks.containsKey(adjPos)) {
+                    WaterBlock water = new WaterBlock();
+                    waterBlocks.put(adjPos, water);
+                }
+                activeWaterBlocks.add(adjPos);
+                waterUpdateQueue.offer(adjPos);
+            }
+        }
+    }
+
+    /**
      * Processes water flow using cellular automaton approach.
      */
     private void processWaterFlow() {
@@ -256,6 +344,9 @@ public class FlowSimulation {
                 // Check if there's a water block in the world we don't know about
                 if (world.getBlockAt(pos.x, pos.y, pos.z) == BlockType.WATER) {
                     water = new WaterBlock();
+                    // Try to determine distance from nearby water blocks
+                    int estimatedDistance = estimateDistanceFromSource(pos, world);
+                    water.setDistanceFromSource(estimatedDistance);
                     waterBlocks.put(pos, water);
                 } else {
                     activeWaterBlocks.remove(pos);
@@ -303,20 +394,28 @@ public class FlowSimulation {
             return;
         }
 
-        // Priority 1: Flow downward (gravity)
+        // Priority 1: Flow downward (gravity) - resets distance counter
         Vector3i down = new Vector3i(pos.x, pos.y - 1, pos.z);
         if (canFlowTo(down, world)) {
             WaterBlock targetWater = waterBlocks.get(down);
             float targetLevel = targetWater != null ? targetWater.getLevel() : 0;
-            int targetDistance = water.getDistanceFromSource(); // Same distance for vertical flow
+            int targetDistance = 0; // RESET DISTANCE for vertical flow - gravity creates new flow base
 
-            float maxTargetLevel = Math.max(0, WaterBlock.MAX_WATER_LEVEL - (targetDistance * LEVEL_DECAY_PER_BLOCK));
+            float maxTargetLevel = WaterBlock.MAX_WATER_LEVEL; // Full level allowed for vertical flow
 
-            if (targetLevel < maxTargetLevel) {
-                float flowAmount = Math.min(water.getLevel() * GRAVITY_FLOW_RATE / WaterBlock.MAX_WATER_LEVEL,
-                                          maxTargetLevel - targetLevel);
+            // For downward flow, be more aggressive - water should always try to flow down if there's space
+            if (targetLevel < maxTargetLevel && water.getLevel() > MIN_FLOW_AMOUNT) {
+                float flowAmount;
+                if (waterSources.contains(pos)) {
+                    // Sources flow aggressively downward
+                    flowAmount = maxTargetLevel - targetLevel;
+                } else {
+                    // Regular blocks flow most of their water downward
+                    flowAmount = Math.min(water.getLevel() * 0.8f, maxTargetLevel - targetLevel);
+                }
+
                 if (flowAmount >= MIN_FLOW_AMOUNT) {
-                    updates.add(new FlowUpdate(pos, down, flowAmount, true, targetDistance));
+                    updates.add(new FlowUpdate(pos, down, flowAmount, true, 0)); // Always 0 for vertical flow
                     return; // Prioritize vertical flow
                 }
             }
@@ -449,6 +548,11 @@ public class FlowSimulation {
      * Checks if water can flow to a position.
      */
     private boolean canFlowTo(Vector3i pos, World world) {
+        // Check bounds first
+        if (pos.y < 0 || pos.y >= WorldConfiguration.WORLD_HEIGHT) {
+            return false;
+        }
+
         BlockType block = world.getBlockAt(pos.x, pos.y, pos.z);
         return block == BlockType.AIR || block == BlockType.WATER;
     }
@@ -479,7 +583,16 @@ public class FlowSimulation {
 
         // Calculate target level based on distance from source
         int targetDistance = update.targetDistance;
-        float maxTargetLevel = Math.max(0, WaterBlock.MAX_WATER_LEVEL - (targetDistance * LEVEL_DECAY_PER_BLOCK));
+        float maxTargetLevel;
+
+        if (update.isVertical) {
+            // Vertical flow: always allow full level (distance resets)
+            maxTargetLevel = WaterBlock.MAX_WATER_LEVEL;
+            targetDistance = 0; // Reset distance for vertical flow
+        } else {
+            // Horizontal flow: respect distance-based decay
+            maxTargetLevel = Math.max(0, WaterBlock.MAX_WATER_LEVEL - (targetDistance * LEVEL_DECAY_PER_BLOCK));
+        }
 
         // Calculate how much water can actually be transferred
         float targetCapacity = Math.max(0, maxTargetLevel - target.getLevel());
@@ -497,8 +610,13 @@ public class FlowSimulation {
             }
 
             target.addWater(transferAmount);
-            target.setDistanceFromSource(targetDistance); // Set distance for level calculations
+            target.setDistanceFromSource(targetDistance); // Set distance (0 for vertical, calculated for horizontal)
             activeWaterBlocks.add(update.to);
+
+            // Force immediate neighbor update for vertical flow to ensure distance propagation
+            if (update.isVertical) {
+                queueNeighborsForDistanceUpdate(update.to);
+            }
 
             // Queue neighbors for update
             queueNeighbors(update.to);
@@ -551,6 +669,80 @@ public class FlowSimulation {
             this.amount = amount;
             this.isVertical = isVertical;
             this.targetDistance = targetDistance;
+        }
+    }
+
+    /**
+     * Estimates the distance from source for a water block by checking nearby blocks.
+     * For newly detected water, we assume it might be from vertical flow (distance 0) if uncertain.
+     */
+    private int estimateDistanceFromSource(Vector3i pos, World world) {
+        // Check for nearby water sources (only horizontal distance matters for sources)
+        for (Vector3i sourcePos : waterSources) {
+            int horizontalDistance = Math.abs(pos.x - sourcePos.x) + Math.abs(pos.z - sourcePos.z);
+            if (horizontalDistance <= MAX_FLOW_DISTANCE) {
+                return horizontalDistance; // Distance based on horizontal spread from source
+            }
+        }
+
+        // Check nearby water blocks for minimum distance
+        int minDistance = MAX_FLOW_DISTANCE;
+        Vector3i[] neighbors = {
+            new Vector3i(pos.x + 1, pos.y, pos.z),  // East
+            new Vector3i(pos.x - 1, pos.y, pos.z),  // West
+            new Vector3i(pos.x, pos.y, pos.z + 1),  // South
+            new Vector3i(pos.x, pos.y, pos.z - 1)   // North
+            // Note: Not checking vertical neighbors as they should reset distance
+        };
+
+        for (Vector3i neighbor : neighbors) {
+            WaterBlock neighborWater = waterBlocks.get(neighbor);
+            if (neighborWater != null) {
+                minDistance = Math.min(minDistance, neighborWater.getDistanceFromSource() + 1);
+            }
+        }
+
+        // If we can't determine distance and there's water above, assume this is from vertical flow
+        Vector3i above = new Vector3i(pos.x, pos.y + 1, pos.z);
+        if (world.getBlockAt(above.x, above.y, above.z) == BlockType.WATER) {
+            return 0; // Assume this is from vertical flow, reset distance
+        }
+
+        return Math.min(minDistance, MAX_FLOW_DISTANCE);
+    }
+
+    /**
+     * Queues neighbors specifically for distance updates after vertical flow.
+     * This ensures that water at distance 0 can immediately spread horizontally.
+     */
+    private void queueNeighborsForDistanceUpdate(Vector3i pos) {
+        Vector3i[] neighbors = {
+            new Vector3i(pos.x + 1, pos.y, pos.z),
+            new Vector3i(pos.x - 1, pos.y, pos.z),
+            new Vector3i(pos.x, pos.y, pos.z + 1),
+            new Vector3i(pos.x, pos.y, pos.z - 1)
+        };
+
+        World world = Game.getWorld();
+        if (world == null) return;
+
+        for (Vector3i neighbor : neighbors) {
+            // Only queue if it's empty space that water can flow into
+            BlockType blockType = world.getBlockAt(neighbor.x, neighbor.y, neighbor.z);
+            if (blockType == BlockType.AIR) {
+                // Add to update queue to check for potential flow
+                waterUpdateQueue.offer(pos); // Queue the source water block for re-evaluation
+            } else if (blockType == BlockType.WATER) {
+                // Queue existing water blocks to potentially update their distance
+                if (!waterBlocks.containsKey(neighbor)) {
+                    WaterBlock water = new WaterBlock();
+                    int estimatedDistance = estimateDistanceFromSource(neighbor, world);
+                    water.setDistanceFromSource(estimatedDistance);
+                    waterBlocks.put(neighbor, water);
+                }
+                activeWaterBlocks.add(neighbor);
+                waterUpdateQueue.offer(neighbor);
+            }
         }
     }
 
