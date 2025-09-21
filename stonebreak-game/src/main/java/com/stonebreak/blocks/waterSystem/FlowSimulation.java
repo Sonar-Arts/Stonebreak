@@ -399,24 +399,68 @@ public class FlowSimulation {
         if (canFlowTo(down, world)) {
             WaterBlock targetWater = waterBlocks.get(down);
             float targetLevel = targetWater != null ? targetWater.getLevel() : 0;
-            int targetDistance = 0; // RESET DISTANCE for vertical flow - gravity creates new flow base
 
-            float maxTargetLevel = WaterBlock.MAX_WATER_LEVEL; // Full level allowed for vertical flow
+            BlockType blockBelow = world.getBlockAt(down.x, down.y, down.z);
 
-            // For downward flow, be more aggressive - water should always try to flow down if there's space
-            if (targetLevel < maxTargetLevel && water.getLevel() > MIN_FLOW_AMOUNT) {
+            if (blockBelow == BlockType.WATER) {
+                // Water flowing into existing water
+                if (targetLevel < WaterBlock.MAX_WATER_LEVEL && water.getLevel() > MIN_FLOW_AMOUNT) {
+                    // Target water has space - flow normally
+                    float availableSpace = WaterBlock.MAX_WATER_LEVEL - targetLevel;
+                    float flowAmount;
+
+                    if (waterSources.contains(pos)) {
+                        // Sources flow unlimited water downward into available space
+                        flowAmount = availableSpace;
+                    } else {
+                        // Regular blocks flow water downward into available space
+                        flowAmount = Math.min(water.getLevel() * 0.8f, availableSpace);
+                    }
+
+                    if (flowAmount >= MIN_FLOW_AMOUNT) {
+                        // Reset distance when flowing into water below (creates new flow base)
+                        updates.add(new FlowUpdate(pos, down, flowAmount, true, 0));
+                        return; // Prioritize vertical flow into water
+                    }
+                } else if (targetLevel >= WaterBlock.MAX_WATER_LEVEL) {
+                    // Target water is full - merge/link the water blocks
+                    // Water above full water should merge and disappear (becomes part of the water column)
+                    if (!waterSources.contains(pos)) {
+                        // Non-source water merges into the water below and disappears from this level
+                        waterBlocks.remove(pos);
+                        activeWaterBlocks.remove(pos);
+                        waterSources.remove(pos); // Also remove from sources in case it was marked as one
+                        world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR);
+
+                        // The water below inherits any beneficial properties if needed
+                        WaterBlock belowWater = waterBlocks.get(down);
+                        if (belowWater != null) {
+                            // Ensure target maintains its distance (usually 0 for full water columns)
+                            belowWater.setDistanceFromSource(0);
+                        }
+
+                        // Remove from all queues to prevent recreation
+                        waterUpdateQueue.remove(pos);
+                        return; // Water has merged - no further processing needed
+                    }
+                    // Sources stay in place even above full water (infinite source behavior)
+                    return; // Don't process horizontal flow for water above full water
+                }
+            } else if (blockBelow == BlockType.AIR) {
+                // Water flowing into air - create new water block
                 float flowAmount;
                 if (waterSources.contains(pos)) {
-                    // Sources flow aggressively downward
-                    flowAmount = maxTargetLevel - targetLevel;
+                    // Sources create full water blocks in air
+                    flowAmount = WaterBlock.MAX_WATER_LEVEL;
                 } else {
-                    // Regular blocks flow most of their water downward
-                    flowAmount = Math.min(water.getLevel() * 0.8f, maxTargetLevel - targetLevel);
+                    // Regular blocks flow most of their water into air
+                    flowAmount = Math.min(water.getLevel() * 0.8f, WaterBlock.MAX_WATER_LEVEL);
                 }
 
                 if (flowAmount >= MIN_FLOW_AMOUNT) {
-                    updates.add(new FlowUpdate(pos, down, flowAmount, true, 0)); // Always 0 for vertical flow
-                    return; // Prioritize vertical flow
+                    // Reset distance when flowing into air (creates new flow base)
+                    updates.add(new FlowUpdate(pos, down, flowAmount, true, 0));
+                    return; // Prioritize vertical flow into air
                 }
             }
         }
@@ -477,7 +521,7 @@ public class FlowSimulation {
         for (Vector3i dir : directions) {
             Vector3i target = new Vector3i(pos).add(dir);
 
-            if (canFlowTo(target, world)) {
+            if (canFlowHorizontallyTo(target, world)) {
                 WaterBlock targetWater = waterBlocks.get(target);
                 float targetLevel = targetWater != null ? targetWater.getLevel() : 0;
 
@@ -489,6 +533,7 @@ public class FlowSimulation {
                 // 1. Target level is below what it should be at this distance
                 // 2. We have enough water to give
                 // 3. Target distance is within flow limits
+                // 4. We're not trying to flow across water surface (handled by canFlowHorizontallyTo)
                 if (targetDistance <= MAX_FLOW_DISTANCE &&
                     targetLevel < maxTargetLevel &&
                     water.getLevel() > targetLevel + MIN_FLOW_AMOUNT) {
@@ -558,6 +603,30 @@ public class FlowSimulation {
     }
 
     /**
+     * Checks if water can flow horizontally to a position.
+     * Water cannot flow horizontally across the surface of other water.
+     */
+    private boolean canFlowHorizontallyTo(Vector3i pos, World world) {
+        // Check bounds first
+        if (pos.y < 0 || pos.y >= WorldConfiguration.WORLD_HEIGHT) {
+            return false;
+        }
+
+        BlockType block = world.getBlockAt(pos.x, pos.y, pos.z);
+
+        if (block == BlockType.AIR) {
+            return true; // Can always flow into air
+        } else if (block == BlockType.WATER) {
+            // Can only flow into water if it's not full
+            WaterBlock targetWater = waterBlocks.get(pos);
+            float targetLevel = targetWater != null ? targetWater.getLevel() : WaterBlock.MAX_WATER_LEVEL;
+            return targetLevel < WaterBlock.MAX_WATER_LEVEL;
+        }
+
+        return false; // Cannot flow into solid blocks
+    }
+
+    /**
      * Applies a flow update to the world.
      */
     private void applyFlowUpdate(FlowUpdate update, World world) {
@@ -574,6 +643,16 @@ public class FlowSimulation {
         // Create or update target
         WaterBlock target = waterBlocks.get(update.to);
         if (target == null) {
+            // Check if we're trying to create water above full water (prevent recreation)
+            Vector3i below = new Vector3i(update.to.x, update.to.y - 1, update.to.z);
+            if (world.getBlockAt(below.x, below.y, below.z) == BlockType.WATER) {
+                WaterBlock waterBelow = waterBlocks.get(below);
+                if (waterBelow != null && waterBelow.getLevel() >= WaterBlock.MAX_WATER_LEVEL) {
+                    // Don't create water above full water - it should merge instead
+                    return;
+                }
+            }
+
             if (world.getBlockAt(update.to.x, update.to.y, update.to.z) == BlockType.AIR) {
                 world.setBlockAt(update.to.x, update.to.y, update.to.z, BlockType.WATER);
             }
