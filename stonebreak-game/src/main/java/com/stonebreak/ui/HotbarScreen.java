@@ -2,6 +2,7 @@ package com.stonebreak.ui;
 
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.Item;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import com.stonebreak.ui.hotbar.styling.HotbarTheme;
@@ -54,11 +55,11 @@ public class HotbarScreen {
     }
     
     /**
-     * Displays a tooltip for the selected hotbar item.
+     * Displays a tooltip for the selected hotbar item (supports all Item types).
      */
-    public void displayItemTooltip(BlockType blockType) {
-        if (blockType != null && blockType != BlockType.AIR) {
-            this.selectedItemName = blockType.getName();
+    public void displayItemTooltip(Item item) {
+        if (item != null && (!(item instanceof BlockType) || item != BlockType.AIR)) {
+            this.selectedItemName = item.getName();
             this.tooltipTimer = TOOLTIP_DISPLAY_DURATION + TOOLTIP_FADE_DURATION;
             this.tooltipAlpha = 1.0f;
         } else {
@@ -66,6 +67,28 @@ public class HotbarScreen {
             this.tooltipTimer = 0.0f;
             this.tooltipAlpha = 0.0f;
         }
+    }
+
+    /**
+     * Displays a tooltip for the selected hotbar item from an ItemStack.
+     */
+    public void displayItemTooltip(ItemStack itemStack) {
+        if (itemStack != null && !itemStack.isEmpty()) {
+            displayItemTooltip(itemStack.getItem());
+        } else {
+            this.selectedItemName = null;
+            this.tooltipTimer = 0.0f;
+            this.tooltipAlpha = 0.0f;
+        }
+    }
+
+    /**
+     * Displays a tooltip for the selected hotbar item (legacy BlockType support).
+     * @deprecated Use displayItemTooltip(Item) or displayItemTooltip(ItemStack) instead
+     */
+    @Deprecated
+    public void displayItemTooltip(BlockType blockType) {
+        displayItemTooltip((Item) blockType);
     }
     
     /**

@@ -421,12 +421,10 @@ public class Game {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
             // Now that inventoryScreen is created, give the inventory a reference to it.
             player.getInventory().setInventoryScreen(this.inventoryScreen);
-            // Trigger initial tooltip for the currently selected item
+            // Trigger initial tooltip for the currently selected item (supports all item types)
             ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
             if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
-                if (initialSelectedItem.getItem() instanceof BlockType blockType) {
-                    inventoryScreen.displayHotbarItemTooltip(blockType);
-                }
+                inventoryScreen.displayHotbarItemTooltip(initialSelectedItem);
             }
 
         } else {

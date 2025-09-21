@@ -68,6 +68,20 @@ public class InventoryScreen {
     }
 
     /**
+     * Call this when a hotbar item is selected to show its name (supports all Item types).
+     */
+    public void displayHotbarItemTooltip(com.stonebreak.items.Item item) {
+        controller.displayHotbarItemTooltip(item);
+    }
+
+    /**
+     * Call this when a hotbar item is selected to show its name from an ItemStack.
+     */
+    public void displayHotbarItemTooltip(com.stonebreak.items.ItemStack itemStack) {
+        controller.displayHotbarItemTooltip(itemStack);
+    }
+
+    /**
      * Gets the hotbar screen instance.
      */
     public HotbarScreen getHotbarScreen() {

@@ -108,6 +108,14 @@ public class InventoryController {
         hotbarScreen.displayItemTooltip(blockType);
     }
 
+    public void displayHotbarItemTooltip(com.stonebreak.items.Item item) {
+        hotbarScreen.displayItemTooltip(item);
+    }
+
+    public void displayHotbarItemTooltip(com.stonebreak.items.ItemStack itemStack) {
+        hotbarScreen.displayItemTooltip(itemStack);
+    }
+
     public void setRenderCoordinator(InventoryRenderCoordinator renderCoordinator) {
         this.renderCoordinator = renderCoordinator;
     }
