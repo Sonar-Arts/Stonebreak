@@ -31,8 +31,8 @@ public class SplashTextManager {
 
     private void loadSplashTexts() {
         String[] resourcePaths = {
-            "splash_text.json",  // Root resources directory (simple path)
-            "ui/mainMenu/splash_text.json"  // Original nested path
+                "ui/mainMenu/splash_text.json",  // Root resources directory (simple path)
+                "ui/mainMenu/splash_text.json"  // Original nested path
         };
 
         InputStream inputStream = null;
