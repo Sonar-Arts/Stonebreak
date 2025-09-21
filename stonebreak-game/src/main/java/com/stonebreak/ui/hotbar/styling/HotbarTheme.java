@@ -79,10 +79,12 @@ public final class HotbarTheme {
     // ==================== TYPOGRAPHY ====================
 
     public static final class Typography {
-        public static final String FONT_FAMILY = "sans";           // Font family
-        public static final float FONT_SIZE_NORMAL = 14.0f;        // Normal text size
-        public static final float FONT_SIZE_SMALL = 12.0f;         // Small text size
-        public static final float FONT_SIZE_COUNT = 12.0f;         // Item count size
+        // Use consistent font with inventory system
+        public static final String FONT_FAMILY = "minecraft";      // Minecraft font for consistency
+        public static final float FONT_SIZE_TOOLTIP = 16.0f;       // Tooltip text (BODY_LARGE)
+        public static final float FONT_SIZE_NORMAL = 14.0f;        // Normal text size (BODY_MEDIUM)
+        public static final float FONT_SIZE_SMALL = 12.0f;         // Small text size (BODY_SMALL)
+        public static final float FONT_SIZE_COUNT = 12.0f;         // Item count size (BODY_SMALL)
         public static final int TEXT_ALIGN_CENTER = 1;             // Text alignment constants
         public static final int TEXT_ALIGN_RIGHT = 2;
         public static final int TEXT_ALIGN_BOTTOM = 8;
