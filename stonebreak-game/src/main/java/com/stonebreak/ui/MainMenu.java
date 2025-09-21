@@ -12,13 +12,18 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.mainMenu.SplashTextManager;
 
 public class MainMenu {
     private final UIRenderer uiRenderer;
     private int selectedButton = -1; // -1 = no selection, 0 = Singleplayer, 1 = Settings, 2 = Quit Game
-    
+    private final SplashTextManager splashTextManager;
+    private String currentSplashText;
+
     public MainMenu(UIRenderer uiRenderer) {
         this.uiRenderer = uiRenderer;
+        this.splashTextManager = SplashTextManager.getInstance();
+        this.currentSplashText = splashTextManager.getRandomSplashText();
     }
     
     public void handleInput(long window) {
@@ -106,5 +111,18 @@ public class MainMenu {
     
     public int getSelectedButton() {
         return selectedButton;
+    }
+
+    public String getCurrentSplashText() {
+        return currentSplashText;
+    }
+
+    public void refreshSplashText() {
+        String oldText = this.currentSplashText;
+        this.currentSplashText = splashTextManager.getRandomSplashText();
+        // Debug output to verify randomization (can be removed in production)
+        if (!oldText.equals(this.currentSplashText)) {
+            System.out.println("Splash text changed: '" + oldText + "' -> '" + this.currentSplashText + "'");
+        }
     }
 }

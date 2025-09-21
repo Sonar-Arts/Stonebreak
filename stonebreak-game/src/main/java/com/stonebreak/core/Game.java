@@ -812,10 +812,15 @@ public class Game {
             this.previousGameState = this.currentState;
         }
         this.currentState = state;
-        
+
+        // Randomize splash text when transitioning to main menu
+        if (state == GameState.MAIN_MENU && mainMenu != null) {
+            mainMenu.refreshSplashText();
+        }
+
         // Update pause state based on game state
         updatePauseState(state);
-        
+
         // Update mouse capture state based on new game state
         if (mouseCaptureManager != null) {
             mouseCaptureManager.updateCaptureState();

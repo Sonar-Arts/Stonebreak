@@ -71,14 +71,20 @@ public class MenuRenderer extends BaseRenderer {
     public void renderMainMenu(int windowWidth, int windowHeight) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
-        
+
         drawDirtBackground(windowWidth, windowHeight, 60);
-        
+
         drawMinecraftTitle(centerX, centerY - 120, "STONEBREAK");
-        
+
         MainMenu mainMenu = Game.getInstance().getMainMenu();
         int selectedButton = mainMenu != null ? mainMenu.getSelectedButton() : -1;
-        
+
+        // Draw splash text
+        if (mainMenu != null) {
+            String splashText = mainMenu.getCurrentSplashText();
+            drawSplashText(centerX, centerY - 70, splashText);
+        }
+
         drawMinecraftButton("Singleplayer", centerX - UI_BUTTON_WIDTH/2, centerY - 20, UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, selectedButton == 0);
         drawMinecraftButton("Settings", centerX - UI_BUTTON_WIDTH/2, centerY + 30, UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, selectedButton == 1);
         drawMinecraftButton("Quit Game", centerX - UI_BUTTON_WIDTH/2, centerY + 80, UI_BUTTON_WIDTH, UI_BUTTON_HEIGHT, selectedButton == 2);
@@ -227,7 +233,52 @@ public class MenuRenderer extends BaseRenderer {
             }
         }
     }
-    
+
+    private void drawSplashText(float centerX, float centerY, String splashText) {
+        if (splashText == null || splashText.isEmpty()) {
+            return;
+        }
+
+        try (MemoryStack stack = stackPush()) {
+            String fontName = getFontName();
+
+            // Calculate animation time for pumping effect (2 Hz = 500ms cycle)
+            long currentTime = System.currentTimeMillis();
+            float animationTime = (currentTime % 500) / 500.0f;
+            float scale = 1.0f + (float)(Math.sin(animationTime * Math.PI * 2) * 0.05f);
+            float baseFontSize = 18;
+            float animatedFontSize = baseFontSize * scale;
+
+            // Apply scaling transformation
+            nvgSave(vg);
+            nvgTranslate(vg, centerX, centerY);
+            nvgScale(vg, scale, scale);
+            nvgTranslate(vg, -centerX, -centerY);
+
+            nvgFontSize(vg, animatedFontSize);
+            nvgFontFace(vg, fontName);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+
+            // Draw multiple shadow layers for depth effect (similar to title)
+            for (int i = 3; i >= 0; i--) {
+                switch (i) {
+                    case 0 -> nvgFillColor(vg, nvgRGBA(255, 255, 85, 255, NVGColor.malloc(stack)));
+                    case 1 -> nvgFillColor(vg, nvgRGBA(220, 220, 70, 255, NVGColor.malloc(stack)));
+                    default -> {
+                        int darkness = Math.max(20, 60 - (i * 20));
+                        nvgFillColor(vg, nvgRGBA(darkness, darkness, darkness, 180, NVGColor.malloc(stack)));
+                    }
+                }
+
+                float offsetX = i * 1.5f;
+                float offsetY = i * 1.5f;
+                nvgText(vg, centerX + offsetX, centerY + offsetY, splashText);
+            }
+
+            nvgRestore(vg);
+        }
+    }
+
     private void drawMinecraftButton(String text, float x, float y, float w, float h, boolean highlighted) {
         try (MemoryStack stack = stackPush()) {
             float bevelSize = 3.0f;
