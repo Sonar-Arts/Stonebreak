@@ -97,7 +97,7 @@ public class InventoryMouseHandler {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -117,7 +117,7 @@ public class InventoryMouseHandler {
         // Check hotbar slots
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 
@@ -239,7 +239,7 @@ public class InventoryMouseHandler {
             final int slotIndex = i; // Make effectively final for lambda
             int row = slotIndex / Inventory.MAIN_INVENTORY_COLS;
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -254,7 +254,7 @@ public class InventoryMouseHandler {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 

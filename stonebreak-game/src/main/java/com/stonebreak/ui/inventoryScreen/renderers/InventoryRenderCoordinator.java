@@ -198,7 +198,7 @@ public class InventoryRenderCoordinator {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -214,7 +214,7 @@ public class InventoryRenderCoordinator {
 
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 

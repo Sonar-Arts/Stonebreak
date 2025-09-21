@@ -86,7 +86,7 @@ public class InventoryDragDropHandler {
             final int slotIndex = i; // Make effectively final for lambda
             int row = slotIndex / Inventory.MAIN_INVENTORY_COLS;
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -105,7 +105,7 @@ public class InventoryDragDropHandler {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 

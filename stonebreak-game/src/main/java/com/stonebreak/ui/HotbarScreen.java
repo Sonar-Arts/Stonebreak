@@ -19,9 +19,9 @@ public class HotbarScreen {
     private static final float TOOLTIP_DISPLAY_DURATION = 1.5f; // seconds
     private static final float TOOLTIP_FADE_DURATION = 0.5f;   // seconds
     
-    // Hotbar visual constants
-    public static final int SLOT_SIZE = 48;
-    public static final int SLOT_PADDING = 4;
+    // Hotbar visual constants - synchronized with InventoryLayoutCalculator
+    public static final int SLOT_SIZE = 44;
+    public static final int SLOT_PADDING = 8;
     public static final int HOTBAR_Y_OFFSET = 50;
     
     public HotbarScreen(Inventory inventory) {

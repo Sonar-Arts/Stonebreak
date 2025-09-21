@@ -24,11 +24,14 @@ public class InventorySlotManager {
     public boolean tryPickUpFromMainInventory(float mouseX, float mouseY,
                                              InventoryLayoutCalculator.InventoryLayout layout,
                                              InventoryDragDropHandler.DragState dragState) {
+        // Calculate main inventory centering within the panel (same as rendering)
+        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
+        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
-                       col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotX = inventoryStartX + col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
@@ -49,10 +52,12 @@ public class InventorySlotManager {
     public boolean tryPickUpFromHotbar(float mouseX, float mouseY,
                                       InventoryLayoutCalculator.InventoryLayout layout,
                                       InventoryDragDropHandler.DragState dragState) {
+        // Calculate hotbar centering within the panel (same as rendering)
+        int hotbarWidth = Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
+        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-            int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
-                       col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotX = hotbarStartX + i * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
@@ -180,12 +185,15 @@ public class InventorySlotManager {
     public boolean tryDropOneToMainInventory(float mouseX, float mouseY,
                                             InventoryLayoutCalculator.InventoryLayout layout,
                                             InventoryDragDropHandler.DragState dragState) {
+        // Calculate main inventory centering within the panel (same as rendering)
+        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
+        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
             int row = slotIndex / Inventory.MAIN_INVENTORY_COLS;
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
-                       col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotX = inventoryStartX + col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
@@ -201,11 +209,13 @@ public class InventorySlotManager {
     public boolean tryDropOneToHotbar(float mouseX, float mouseY,
                                      InventoryLayoutCalculator.InventoryLayout layout,
                                      InventoryDragDropHandler.DragState dragState) {
+        // Calculate hotbar centering within the panel (same as rendering)
+        int hotbarWidth = Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
+        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
-            int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
-                       col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotX = hotbarStartX + slotIndex * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {

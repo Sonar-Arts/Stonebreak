@@ -13,6 +13,7 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
+import com.stonebreak.ui.inventoryScreen.styling.InventoryTheme;
 import com.stonebreak.ui.recipeScreen.renderers.RecipeUIStyleRenderer;
 import org.joml.Vector2f;
 import org.lwjgl.nanovg.NVGColor;
@@ -149,8 +150,8 @@ public class WorkbenchRenderCoordinator {
             int slotY = layout.craftingGridStartY +
                        r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
-            InventorySlotRenderer.drawInventorySlot(craftingInputSlots[i], slotX, slotY, false, -1,
-                                                  uiRenderer, renderer);
+            InventorySlotRenderer.drawInventorySlotWithHover(craftingInputSlots[i], slotX, slotY, false, -1,
+                                                          uiRenderer, renderer, inputHandler);
             checkHover(craftingInputSlots[i], slotX, slotY);
         }
     }
@@ -165,8 +166,8 @@ public class WorkbenchRenderCoordinator {
 
     private void renderCraftingOutputSlot(InventoryLayoutCalculator.InventoryLayout layout) {
         ItemStack craftingOutputSlot = craftingManager.getCraftingOutputSlot();
-        InventorySlotRenderer.drawInventorySlot(craftingOutputSlot, layout.outputSlotX, layout.outputSlotY,
-                                              false, -1, uiRenderer, renderer);
+        InventorySlotRenderer.drawInventorySlotWithHover(craftingOutputSlot, layout.outputSlotX, layout.outputSlotY,
+                                                      false, -1, uiRenderer, renderer, inputHandler);
         checkHover(craftingOutputSlot, layout.outputSlotX, layout.outputSlotY);
     }
 
@@ -200,13 +201,13 @@ public class WorkbenchRenderCoordinator {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
-            InventorySlotRenderer.drawInventorySlot(mainSlots[i], slotX, slotY, false, -1,
-                                                  uiRenderer, renderer);
+            InventorySlotRenderer.drawInventorySlotWithHover(mainSlots[i], slotX, slotY, false, -1,
+                                                          uiRenderer, renderer, inputHandler);
             checkHover(mainSlots[i], slotX, slotY);
         }
     }
@@ -216,12 +217,12 @@ public class WorkbenchRenderCoordinator {
 
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int col = i % Inventory.MAIN_INVENTORY_COLS;
-            int slotX = layout.panelStartX + InventoryLayoutCalculator.getSlotPadding() +
+            int slotX = layout.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() +
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 
-            InventorySlotRenderer.drawInventorySlot(hotbarSlots[i], slotX, slotY, true, i,
-                                                  uiRenderer, renderer);
+            InventorySlotRenderer.drawInventorySlotWithHover(hotbarSlots[i], slotX, slotY, true, i,
+                                                          uiRenderer, renderer, inputHandler);
             checkHover(hotbarSlots[i], slotX, slotY);
         }
     }
@@ -260,13 +261,13 @@ public class WorkbenchRenderCoordinator {
                 RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_SMALL);
                 nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
-                // Text shadow
-                nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
+                // Text shadow using modern theme colors
+                nvgFillColor(vg, InventoryTheme.Text.COUNT_SHADOW.toNVG(stack));
                 nvgText(vg, x + InventoryLayoutCalculator.getSlotSize() - 2,
                        y + InventoryLayoutCalculator.getSlotSize() - 2, countText);
 
-                // Main text
-                nvgFillColor(vg, nvgRGBA(255, 220, 0, 255, NVGColor.malloc(stack)));
+                // Main text using modern theme colors
+                nvgFillColor(vg, InventoryTheme.Text.COUNT.toNVG(stack));
                 nvgText(vg, x + InventoryLayoutCalculator.getSlotSize() - 3,
                        y + InventoryLayoutCalculator.getSlotSize() - 3, countText);
             }
