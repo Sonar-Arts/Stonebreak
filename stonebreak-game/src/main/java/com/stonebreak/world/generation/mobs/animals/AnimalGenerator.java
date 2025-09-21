@@ -35,7 +35,7 @@ public class AnimalGenerator {
     
     /**
      * Spawns animals in the given chunk based on registered animal types.
-     * 
+     *
      * @param world The world instance
      * @param chunk The chunk to spawn animals in
      * @param random Random number generator
@@ -48,7 +48,7 @@ public class AnimalGenerator {
                 synchronized (randomLock) {
                     spawnChance = random.nextDouble();
                 }
-                
+
                 if (spawnChance < animal.getSpawnProbability()) {
                     animal.spawn(world, chunk, random, randomLock);
                 }
@@ -57,9 +57,9 @@ public class AnimalGenerator {
     }
     
     /**
-     * Legacy method for spawning cows. 
+     * Legacy method for spawning cows.
      * Kept for backward compatibility - delegates to the new registry system.
-     * 
+     *
      * @param world The world instance
      * @param chunk The chunk to spawn cows in
      * @param random Random number generator
