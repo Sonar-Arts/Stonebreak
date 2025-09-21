@@ -264,7 +264,7 @@ public class WorldRenderer {
      */
     private void renderPlayerArm(Player player) {
         GameState currentState = Game.getInstance().getState();
-        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI || currentState == GameState.RECIPE_BOOK_UI) {
+        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI || currentState == GameState.RECIPE_BOOK_UI || currentState == GameState.WORKBENCH_UI) {
             playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
         }
     }

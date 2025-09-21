@@ -10,7 +10,7 @@ import com.stonebreak.ui.inventoryScreen.styling.InventoryTheme;
 public class InventoryLayoutCalculator {
 
     // Modern slot sizing for better visibility and interaction
-    private static final int SLOT_SIZE = 44; // Increased from 40 for better touch targets
+    private static final int SLOT_SIZE = 40; // Updated slot size
     private static final int SLOT_PADDING = 8; // Increased from 5 for better spacing
     private static final int SECTION_SPACING = 24; // Spacing between major sections
     private static final int TITLE_HEIGHT = 36; // Increased for better typography
