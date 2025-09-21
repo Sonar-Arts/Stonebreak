@@ -1,6 +1,9 @@
 package com.stonebreak.rendering.UI.components;
 
 import com.stonebreak.ui.HotbarScreen;
+import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
+import com.stonebreak.ui.hotbar.styling.HotbarTheme;
+import com.stonebreak.ui.hotbar.renderers.*;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Item;
 import com.stonebreak.blocks.BlockType;
@@ -15,19 +18,26 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * Specialized renderer component for the hotbar UI element.
- * Handles rendering of hotbar background, slots, items, and tooltips.
+ * Handles rendering of hotbar background, slots, items, and tooltips using modular components.
  */
 public class HotbarRenderer {
-    
+
     private long vg;
     private boolean initialized = false;
-    
-    // Hotbar visual constants - use the same as InventoryScreen for consistency
-    private static final int INVENTORY_SLOT_SIZE = 40;
-    private static final int INVENTORY_SLOT_PADDING = 5;
+
+    // Modular renderer components
+    private HotbarBackgroundRenderer backgroundRenderer;
+    private HotbarSlotRenderer slotRenderer;
+    private HotbarTooltipRenderer tooltipRenderer;
+    private HotbarItemCountRenderer itemCountRenderer;
     
     public HotbarRenderer(long vg) {
         this.vg = vg;
+        // Initialize modular components
+        this.backgroundRenderer = new HotbarBackgroundRenderer(vg);
+        this.slotRenderer = new HotbarSlotRenderer(vg);
+        this.tooltipRenderer = new HotbarTooltipRenderer(vg);
+        this.itemCountRenderer = new HotbarItemCountRenderer(vg);
     }
     
     /**
@@ -41,169 +51,109 @@ public class HotbarRenderer {
     }
     
     /**
-     * Renders the complete hotbar (background, slots, items, tooltips).
+     * Renders the complete hotbar (background, slots, items, tooltips) using modular components.
      */
-    public void renderHotbar(HotbarScreen hotbarScreen, int screenWidth, int screenHeight, 
+    public void renderHotbar(HotbarScreen hotbarScreen, int screenWidth, int screenHeight,
                            TextureAtlas textureAtlas, UIRenderer uiRenderer,
                            ShaderProgram shaderProgram) {
         if (!initialized) {
             initialize();
         }
-        
+
         // Safety checks
         if (hotbarScreen == null || uiRenderer == null) {
             return;
         }
-        
-        // Get layout from HotbarScreen for consistency
-        HotbarScreen.HotbarLayout layout = hotbarScreen.calculateLayout(screenWidth, screenHeight);
+
+        // Get layout using the new layout calculator
+        HotbarLayoutCalculator.HotbarLayout layout = hotbarScreen.calculateLayout(screenWidth, screenHeight);
         ItemStack[] hotbarItems = hotbarScreen.getHotbarSlots();
-        
-        // Render hotbar background
-        renderHotbarBackground(layout.startX, layout.startY - HotbarScreen.SLOT_PADDING, 
-                             layout.width, layout.height);
-        
-        // Render hotbar slots and items
+
+        // Render hotbar background using modular component
+        backgroundRenderer.renderBackground(layout);
+
+        // Render hotbar slots and items using modular components
         for (int i = 0; i < hotbarItems.length; i++) {
-            HotbarScreen.SlotPosition slotPos = hotbarScreen.calculateSlotPosition(i, layout);
-            renderHotbarSlot(hotbarItems[i], slotPos.x, slotPos.y, 
-                           hotbarScreen.getSelectedSlotIndex() == i,
-                           textureAtlas, uiRenderer, shaderProgram);
-        }
-    }
-    
-    /**
-     * Renders only the hotbar tooltip (for layered rendering).
-     */
-    public void renderHotbarTooltip(HotbarScreen hotbarScreen, int screenWidth, int screenHeight) {
-        if (hotbarScreen == null || !hotbarScreen.shouldShowTooltip()) {
-            return;
-        }
-        
-        HotbarScreen.HotbarLayout layout = hotbarScreen.calculateLayout(screenWidth, screenHeight);
-        
-        // Calculate tooltip position above selected slot
-        int selectedSlotIndex = hotbarScreen.getSelectedSlotIndex();
-        HotbarScreen.SlotPosition slotPos = hotbarScreen.calculateSlotPosition(selectedSlotIndex, layout);
-        float selectedSlotCenterX = slotPos.x + HotbarScreen.SLOT_SIZE / 2.0f;
-        
-        renderTooltip(hotbarScreen.getTooltipText(), selectedSlotCenterX, 
-                     layout.startY - 10, screenWidth, hotbarScreen.getTooltipAlpha());
-    }
-    
-    /**
-     * Renders the hotbar background using NanoVG.
-     */
-    private void renderHotbarBackground(int x, int y, int width, int height) {
-        try (MemoryStack stack = stackPush()) {
-            NVGColor color = NVGColor.malloc(stack);
-            
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, width, height, 8);
-            nvgFillColor(vg, nvgRGBA(40, 40, 40, 200, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, x, y, width, height, 8);
-            nvgStrokeColor(vg, nvgRGBA(80, 80, 80, 255, NVGColor.malloc(stack)));
-            nvgStrokeWidth(vg, 2);
-            nvgStroke(vg);
-        }
-    }
-    
-    /**
-     * Renders a single hotbar slot with its item.
-     */
-    private void renderHotbarSlot(ItemStack itemStack, int slotX, int slotY, boolean isSelected,
-                                TextureAtlas textureAtlas, UIRenderer uiRenderer,
-                                ShaderProgram shaderProgram) {
-        try (MemoryStack stack = stackPush()) {
-            NVGColor color = NVGColor.malloc(stack);
-            
-            // Render slot background
-            nvgBeginPath(vg);
-            nvgRect(vg, slotX, slotY, HotbarScreen.SLOT_SIZE, HotbarScreen.SLOT_SIZE);
-            nvgFillColor(vg, nvgRGBA(60, 60, 60, 180, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Render selection highlight
-            if (isSelected) {
-                // Scale highlight border based on slot size
-                float borderScale = HotbarScreen.SLOT_SIZE / 48.0f; // Base slot size is 48
-                int highlightPadding = Math.max(1, Math.round(2 * borderScale));
-                float strokeWidth = Math.max(1.0f, 2 * borderScale);
-                
-                nvgBeginPath(vg);
-                nvgRect(vg, slotX - highlightPadding, slotY - highlightPadding, 
-                       HotbarScreen.SLOT_SIZE + (highlightPadding * 2), 
-                       HotbarScreen.SLOT_SIZE + (highlightPadding * 2));
-                nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-                nvgStrokeWidth(vg, strokeWidth);
-                nvgStroke(vg);
-            }
-            
-            // Render slot border
-            nvgBeginPath(vg);
-            nvgRect(vg, slotX, slotY, HotbarScreen.SLOT_SIZE, HotbarScreen.SLOT_SIZE);
-            nvgStrokeColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
-            nvgStrokeWidth(vg, 1);
-            nvgStroke(vg);
-            
+            HotbarLayoutCalculator.SlotPosition slotPos = hotbarScreen.calculateSlotPosition(i, layout);
+            boolean isSelected = hotbarScreen.getSelectedSlotIndex() == i;
+
+            // Render slot background and effects
+            slotRenderer.renderSlot(slotPos, isSelected, false);
+
             // Render item if present
-            if (itemStack != null && !itemStack.isEmpty()) {
-                renderItemInSlot(itemStack, slotX, slotY, textureAtlas, uiRenderer, shaderProgram);
-                
+            if (hotbarItems[i] != null && !hotbarItems[i].isEmpty()) {
+                renderItemInSlot(hotbarItems[i], slotPos, textureAtlas, uiRenderer, shaderProgram);
+
                 // Render item count if > 1
-                if (itemStack.getCount() > 1) {
-                    renderItemCount(itemStack.getCount(), slotX, slotY);
+                if (hotbarItems[i].getCount() > 1) {
+                    itemCountRenderer.renderItemCount(hotbarItems[i].getCount(), slotPos);
                 }
             }
         }
     }
     
     /**
-     * Renders an item within a hotbar slot.
+     * Renders only the hotbar tooltip (for layered rendering) using modular component.
      */
-    private void renderItemInSlot(ItemStack itemStack, int slotX, int slotY,
+    public void renderHotbarTooltip(HotbarScreen hotbarScreen, int screenWidth, int screenHeight) {
+        if (hotbarScreen == null || !hotbarScreen.shouldShowTooltip()) {
+            return;
+        }
+
+        HotbarLayoutCalculator.HotbarLayout layout = hotbarScreen.calculateLayout(screenWidth, screenHeight);
+
+        // Calculate tooltip position using the modular tooltip renderer
+        int selectedSlotIndex = hotbarScreen.getSelectedSlotIndex();
+        String tooltipText = hotbarScreen.getTooltipText();
+        float alpha = hotbarScreen.getTooltipAlpha();
+
+        HotbarLayoutCalculator.TooltipPosition tooltipPos = tooltipRenderer.calculateTooltipDimensions(
+            tooltipText, selectedSlotIndex, layout, screenWidth);
+
+        tooltipRenderer.renderTooltip(tooltipText, tooltipPos, alpha);
+    }
+    
+    /**
+     * Renders an item within a hotbar slot using the new layout system.
+     */
+    private void renderItemInSlot(ItemStack itemStack, HotbarLayoutCalculator.SlotPosition position,
                                 TextureAtlas textureAtlas, UIRenderer uiRenderer,
                                 ShaderProgram shaderProgram) {
         // Safety checks
         if (itemStack == null || uiRenderer == null || textureAtlas == null || shaderProgram == null) {
             return;
         }
-        
-        // Get the item and check if it's a BlockType
+
+        // Get the item and check if it's renderable
         Item item = itemStack.getItem();
         if (item != null && item.getAtlasX() != -1 && item.getAtlasY() != -1) {
             try {
-                // End NanoVG frame temporarily to draw 3D item (same pattern as InventoryScreen)
+                // End NanoVG frame temporarily to draw 3D item
                 uiRenderer.endFrame();
-                
-                // Calculate icon size based on actual slot size for proper scaling
-                // Use a more generous padding that maintains good icon visibility
-                int iconPadding = Math.max(2, HotbarScreen.SLOT_SIZE / 12); // More generous padding ratio
-                int iconSize = HotbarScreen.SLOT_SIZE - (iconPadding * 2);
-                
+
+                // Calculate icon size and padding using layout calculator
+                int iconPadding = HotbarLayoutCalculator.calculateIconPadding();
+                int iconSize = HotbarLayoutCalculator.calculateIconSize();
+
                 if (item instanceof BlockType blockType) {
-                    // Use UIRenderer's 3D item rendering with scaled dimensions
+                    // Use UIRenderer's 3D item rendering with calculated dimensions
                     uiRenderer.draw3DItemInSlot(shaderProgram, blockType,
-                                              slotX + iconPadding, slotY + iconPadding, iconSize, iconSize,
-                                              textureAtlas);
+                                              position.x + iconPadding, position.y + iconPadding,
+                                              iconSize, iconSize, textureAtlas);
                 } else {
-                    // For ItemTypes, render a 2D sprite using UIRenderer with scaled dimensions
-                    uiRenderer.renderItemIcon(slotX + iconPadding, slotY + iconPadding, iconSize, iconSize,
-                                            item, textureAtlas);
+                    // For ItemTypes, render a 2D sprite using UIRenderer
+                    uiRenderer.renderItemIcon(position.x + iconPadding, position.y + iconPadding,
+                                            iconSize, iconSize, item, textureAtlas);
                 }
-                
+
                 // Restart NanoVG frame
-                uiRenderer.beginFrame(com.stonebreak.core.Game.getWindowWidth(), 
+                uiRenderer.beginFrame(com.stonebreak.core.Game.getWindowWidth(),
                                     com.stonebreak.core.Game.getWindowHeight(), 1.0f);
-                
+
             } catch (Exception e) {
                 // Try to recover by ensuring frame is restarted
                 try {
-                    uiRenderer.beginFrame(com.stonebreak.core.Game.getWindowWidth(), 
+                    uiRenderer.beginFrame(com.stonebreak.core.Game.getWindowWidth(),
                                         com.stonebreak.core.Game.getWindowHeight(), 1.0f);
                 } catch (Exception e2) {
                     System.err.println("Failed to recover NanoVG frame: " + e2.getMessage());
@@ -212,94 +162,13 @@ public class HotbarRenderer {
             }
         }
     }
-    
+
     /**
-     * Renders the item count number in the corner of a slot.
-     */
-    private void renderItemCount(int count, int slotX, int slotY) {
-        try (MemoryStack stack = stackPush()) {
-            NVGColor color = NVGColor.malloc(stack);
-            
-            String countText = String.valueOf(count);
-            
-            // Scale text size and positioning based on slot size
-            float textSizeScale = HotbarScreen.SLOT_SIZE / 48.0f; // Base slot size is 48
-            float fontSize = Math.max(10, 12 * textSizeScale); // Minimum font size of 10
-            float textOffsetX = Math.max(6, 8 * textSizeScale);
-            float textOffsetY = Math.max(3, 4 * textSizeScale);
-            
-            float textX = slotX + HotbarScreen.SLOT_SIZE - textOffsetX;
-            float textY = slotY + HotbarScreen.SLOT_SIZE - textOffsetY;
-            
-            nvgFontFace(vg, "sans");
-            nvgFontSize(vg, fontSize);
-            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-            nvgText(vg, textX, textY, countText);
-        }
-    }
-    
-    /**
-     * Renders a tooltip above the hotbar.
-     */
-    private void renderTooltip(String text, float centerX, float y, int screenWidth, float alpha) {
-        if (text == null || alpha <= 0) return;
-        
-        try (MemoryStack stack = stackPush()) {
-            NVGColor color = NVGColor.malloc(stack);
-            
-            // Calculate tooltip dimensions
-            nvgFontFace(vg, "sans");
-            nvgFontSize(vg, 14);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            
-            float[] bounds = new float[4];
-            nvgTextBounds(vg, 0, 0, text, bounds);
-            float tooltipWidth = bounds[2] - bounds[0] + 16;
-            float tooltipHeight = bounds[3] - bounds[1] + 12;
-            
-            // Position tooltip
-            float tooltipX = centerX - tooltipWidth / 2.0f;
-            float tooltipY = y - tooltipHeight - 10.0f;
-            
-            // Keep tooltip within screen bounds
-            if (tooltipX < 10) tooltipX = 10;
-            if (tooltipX + tooltipWidth > screenWidth - 10) {
-                tooltipX = screenWidth - tooltipWidth - 10;
-            }
-            
-            // Render tooltip background
-            int bgAlpha = (int)(alpha * 220);
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4);
-            nvgFillColor(vg, nvgRGBA(30, 30, 30, bgAlpha, NVGColor.malloc(stack)));
-            nvgFill(vg);
-            
-            // Render tooltip border
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4);
-            nvgStrokeColor(vg, nvgRGBA(100, 100, 100, (int)(alpha * 255), NVGColor.malloc(stack)));
-            nvgStrokeWidth(vg, 1);
-            nvgStroke(vg);
-            
-            // Render tooltip text
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, (int)(alpha * 255), NVGColor.malloc(stack)));
-            nvgText(vg, tooltipX + tooltipWidth / 2, tooltipY + tooltipHeight / 2, text);
-        }
-    }
-    
-    
-    /**
-     * Helper method to create NVGColor with proper byte casting.
-     */
-    private NVGColor nvgRGBA(int r, int g, int b, int a, NVGColor color) {
-        return org.lwjgl.nanovg.NanoVG.nvgRGBA((byte)r, (byte)g, (byte)b, (byte)a, color);
-    }
-    
-    /**
-     * Cleanup resources.
+     * Cleanup resources used by the hotbar renderer and its modular components.
      */
     public void cleanup() {
+        // The modular components don't require explicit cleanup as they don't manage OpenGL resources
+        // They only use NanoVG which is managed by the parent renderer
         initialized = false;
     }
 }
