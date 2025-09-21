@@ -147,8 +147,8 @@ public class InventoryRenderCoordinator {
             int slotY = layout.craftingGridStartY +
                        r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
-            InventorySlotRenderer.drawInventorySlot(craftingInputSlots[i], slotX, slotY, false, -1,
-                                                  uiRenderer, renderer);
+            InventorySlotRenderer.drawInventorySlotWithHover(craftingInputSlots[i], slotX, slotY, false, -1,
+                                                          uiRenderer, renderer, inputHandler);
             checkHover(craftingInputSlots[i], slotX, slotY);
         }
     }
@@ -163,8 +163,8 @@ public class InventoryRenderCoordinator {
 
     private void renderCraftingOutputSlot(InventoryLayoutCalculator.InventoryLayout layout) {
         ItemStack craftingOutputSlot = craftingManager.getCraftingOutputSlot();
-        InventorySlotRenderer.drawInventorySlot(craftingOutputSlot, layout.outputSlotX, layout.outputSlotY,
-                                              false, -1, uiRenderer, renderer);
+        InventorySlotRenderer.drawInventorySlotWithHover(craftingOutputSlot, layout.outputSlotX, layout.outputSlotY,
+                                                      false, -1, uiRenderer, renderer, inputHandler);
         checkHover(craftingOutputSlot, layout.outputSlotX, layout.outputSlotY);
     }
 
@@ -203,8 +203,8 @@ public class InventoryRenderCoordinator {
             int slotY = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding() +
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
-            InventorySlotRenderer.drawInventorySlot(mainSlots[i], slotX, slotY, false, -1,
-                                                  uiRenderer, renderer);
+            InventorySlotRenderer.drawInventorySlotWithHover(mainSlots[i], slotX, slotY, false, -1,
+                                                          uiRenderer, renderer, inputHandler);
             checkHover(mainSlots[i], slotX, slotY);
         }
     }
@@ -218,8 +218,8 @@ public class InventoryRenderCoordinator {
                        col * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
             int slotY = layout.hotbarRowY;
 
-            InventorySlotRenderer.drawInventorySlot(hotbarSlots[i], slotX, slotY, true, i,
-                                                  uiRenderer, renderer);
+            InventorySlotRenderer.drawInventorySlotWithHover(hotbarSlots[i], slotX, slotY, true, i,
+                                                          uiRenderer, renderer, inputHandler);
             checkHover(hotbarSlots[i], slotX, slotY);
         }
     }
