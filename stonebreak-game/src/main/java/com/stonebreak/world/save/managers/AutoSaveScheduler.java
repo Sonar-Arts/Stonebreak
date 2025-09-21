@@ -133,11 +133,14 @@ public class AutoSaveScheduler implements AutoCloseable {
                 .thenCompose(v -> saveManager.savePlayerState(playerState))
                 .thenCompose(v -> saveManager.saveWorldMetadata(worldMetadata))
                 .thenRun(() -> {
+                    // Mark saved chunks as clean to allow them to be unloaded
+                    markChunksAsClean(dirtyChunks);
+
                     long duration = System.currentTimeMillis() - startTime;
                     totalSaves.incrementAndGet();
                     lastSaveTime.set(System.currentTimeMillis());
 
-                    System.out.printf("Auto-save completed: %d chunks saved in %dms%n",
+                    System.out.printf("Auto-save completed: %d chunks saved and marked clean in %dms%n",
                         dirtyChunks.size(), duration);
                 })
                 .exceptionally(ex -> {
@@ -201,6 +204,28 @@ public class AutoSaveScheduler implements AutoCloseable {
         if (lastSaveTime.get() > 0) {
             long sessionTime = currentTime - lastSaveTime.get();
             metadata.addPlayTime(sessionTime);
+        }
+    }
+
+    /**
+     * Marks chunks as clean after successful save to allow unloading.
+     * This is critical for the dirty chunk protection system.
+     */
+    private void markChunksAsClean(Collection<Chunk> savedChunks) {
+        int cleanedCount = 0;
+        StringBuilder chunkList = new StringBuilder();
+
+        for (Chunk chunk : savedChunks) {
+            if (chunk.isDirty()) {
+                chunk.markClean();
+                cleanedCount++;
+                if (chunkList.length() > 0) chunkList.append(", ");
+                chunkList.append("(").append(chunk.getX()).append(",").append(chunk.getZ()).append(")");
+            }
+        }
+
+        if (cleanedCount > 0) {
+            System.out.println("[AUTO-SAVE] Marked " + cleanedCount + " chunks as CLEAN - now eligible for unloading: " + chunkList.toString());
         }
     }
 

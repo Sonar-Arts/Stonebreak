@@ -96,13 +96,51 @@ public class WorldMemoryManager {
     
     private int unloadChunks(List<World.ChunkPosition> chunksToUnload, int maxUnloadCount) {
         int unloadedCount = 0;
+        int protectedCount = 0;
+
         for (World.ChunkPosition pos : chunksToUnload) {
-            chunkStore.unloadChunk(pos.getX(), pos.getZ());
-            unloadedCount++;
-            
+            // Check if chunk is dirty before unloading
+            var chunk = chunkStore.getChunk(pos.getX(), pos.getZ());
+            if (chunk != null && chunk.isDirty()) {
+                // SAVE-THEN-UNLOAD: Save dirty chunk first, then unload it
+                saveAndUnloadDirtyChunk(pos);
+                protectedCount++; // Count as "protected" but actually handled
+                unloadedCount++; // Count toward unload limit
+            } else {
+                // Normal unload for clean chunks
+                try {
+                    chunkStore.unloadChunk(pos.getX(), pos.getZ());
+                    unloadedCount++;
+                } catch (Exception e) {
+                    System.err.println("Memory Manager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+                    // Continue with other chunks, don't let one failure stop memory management
+                }
+            }
+
             if (unloadedCount >= maxUnloadCount) break;
         }
+
+        if (protectedCount > 0) {
+            System.out.println("Memory Manager: Saved and unloaded " + protectedCount + " dirty chunks with player edits. Unloaded " + (unloadedCount - protectedCount) + " clean chunks.");
+        }
+
         return unloadedCount;
+    }
+
+    /**
+     * Saves a dirty chunk synchronously, then unloads it during memory pressure.
+     * This ensures player edits are preserved while managing memory.
+     */
+    private void saveAndUnloadDirtyChunk(World.ChunkPosition pos) {
+        try {
+            // The chunkStore.unloadChunk() method already handles saving dirty chunks
+            // via saveChunkOnUnload() before proceeding with unload
+            chunkStore.unloadChunk(pos.getX(), pos.getZ());
+            System.out.println("[MEMORY-SAVE-THEN-UNLOAD] Successfully saved and unloaded dirty chunk (" + pos.getX() + ", " + pos.getZ() + ")");
+        } catch (Exception e) {
+            System.err.println("Memory Manager: CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+            // Chunk remains in memory if save-then-unload failed
+        }
     }
     
     private void performPostUnloadCleanup(int unloadedCount) {

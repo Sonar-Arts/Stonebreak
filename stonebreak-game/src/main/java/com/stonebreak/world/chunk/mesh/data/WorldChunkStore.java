@@ -45,56 +45,84 @@ public class WorldChunkStore {
     public Chunk getOrCreateChunk(int x, int z) {
         World.ChunkPosition position = getCachedChunkPosition(x, z);
         Chunk chunk = chunks.get(position);
-        
+
         if (chunk == null) {
-            // Generate chunk immediately to avoid blocking
-            chunk = safelyGenerateAndRegisterChunk(x, z);
+            // NEW SAVE-FIRST APPROACH: Check save data before generation
+            chunk = loadChunkFromSaveOrGenerate(x, z, position);
+        }
 
-            // Try to load from save system asynchronously and replace if found
+        return chunk;
+    }
+
+    /**
+     * Implements save-first loading: load from save data if exists, otherwise generate and save.
+     * This prevents world generation from overriding player modifications.
+     */
+    private Chunk loadChunkFromSaveOrGenerate(int x, int z, World.ChunkPosition position) {
+        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+        var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
+
+        if (saveSystem != null && saveSystem.isInitialized()) {
             try {
-                com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-                var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
+                // Step 1: Check if saved chunk exists (synchronously)
+                Boolean chunkExists = saveSystem.chunkExists(x, z).get();
 
-                if (saveSystem != null && saveSystem.isInitialized()) {
-                    // Capture the final chunk reference for async operations
-                    final Chunk generatedChunk = chunk;
+                if (chunkExists != null && chunkExists) {
+                    // Step 2: Load saved chunk (synchronously)
+                    Chunk savedChunk = saveSystem.loadChunk(x, z).get();
 
-                    // Asynchronously check if saved chunk exists and load it
-                    saveSystem.chunkExists(x, z)
-                        .thenAccept(exists -> {
-                            if (exists != null && exists) {
-                                // Load the saved chunk asynchronously
-                                saveSystem.loadChunk(x, z)
-                                    .thenAccept(loaded -> {
-                                        if (loaded != null) {
-                                            // Replace generated chunk with loaded chunk
-                                            chunks.put(position, loaded);
-                                            System.out.println("[CHUNK-LOAD] Replaced generated chunk (" + x + ", " + z + ") with saved chunk");
+                    if (savedChunk != null) {
+                        // Step 3: Register saved chunk and return
+                        chunks.put(position, savedChunk);
 
-                                            // Ensure mesh is scheduled for build for loaded chunks
-                                            if (shouldQueueForMesh(x, z)) {
-                                                meshPipeline.scheduleConditionalMeshBuild(loaded);
-                                            }
-                                        }
-                                    })
-                                    .exceptionally(throwable -> {
-                                        System.err.println("Error loading chunk (" + x + ", " + z + ") from storage: " + throwable.getMessage());
-                                        return null;
-                                    });
-                            }
-                        })
-                        .exceptionally(throwable -> {
-                            System.err.println("Error checking chunk existence (" + x + ", " + z + "): " + throwable.getMessage());
-                            return null;
-                        });
+                        // Enhanced logging to track save state
+                        String chunkState = savedChunk.isDirty() ? "DIRTY" : "CLEAN";
+                        String featuresState = savedChunk.areFeaturesPopulated() ? "POPULATED" : "NOT_POPULATED";
+                        System.out.println("[SAVE-FIRST] Loaded chunk (" + x + ", " + z + ") from save data - State: " + chunkState + ", Features: " + featuresState);
+
+                        // Schedule mesh build for loaded chunk
+                        if (shouldQueueForMesh(x, z)) {
+                            meshPipeline.scheduleConditionalMeshBuild(savedChunk);
+                        }
+
+                        return savedChunk;
+                    } else {
+                        System.err.println("[SAVE-FIRST] WARNING: Chunk exists in storage but loaded as null (" + x + ", " + z + ")");
+                    }
                 }
             } catch (Exception e) {
-                // Non-fatal: generation already succeeded, just log the error
-                System.err.println("Error initiating async chunk load (" + x + ", " + z + "): " + e.getMessage());
+                System.err.println("Error loading chunk (" + x + ", " + z + ") from save data: " + e.getMessage());
+                System.out.println("Falling back to generation for chunk (" + x + ", " + z + ")");
             }
         }
-        
-        return chunk;
+
+        // Step 4: No save data exists or save system unavailable - generate new chunk
+        Chunk generatedChunk = safelyGenerateAndRegisterChunk(x, z);
+
+        // Step 5: Immediately save newly generated chunk to create baseline
+        if (generatedChunk != null && saveSystem != null && saveSystem.isInitialized()) {
+            try {
+                String featuresState = generatedChunk.areFeaturesPopulated() ? "POPULATED" : "NOT_POPULATED";
+                System.out.println("[SAVE-FIRST] Saving newly generated chunk (" + x + ", " + z + ") as baseline - Features: " + featuresState);
+
+                saveSystem.saveChunk(generatedChunk)
+                    .thenRun(() -> {
+                        generatedChunk.markClean(); // Mark as clean since it's saved
+                        System.out.println("[SAVE-FIRST] Successfully saved newly generated chunk (" + x + ", " + z + ") as baseline - chunk now CLEAN");
+                    })
+                    .exceptionally(ex -> {
+                        System.err.println("CRITICAL: Failed to save newly generated chunk (" + x + ", " + z + "): " + ex.getMessage());
+                        // Keep chunk dirty if save failed
+                        return null;
+                    });
+            } catch (Exception e) {
+                System.err.println("CRITICAL: Error saving newly generated chunk (" + x + ", " + z + "): " + e.getMessage());
+            }
+        } else {
+            System.err.println("[SAVE-FIRST] WARNING: Cannot save newly generated chunk (" + x + ", " + z + ") - save system not available");
+        }
+
+        return generatedChunk;
     }
     
     public void ensureChunkExists(int x, int z) {
@@ -128,20 +156,51 @@ public class WorldChunkStore {
     public void unloadChunk(int chunkX, int chunkZ) {
         World.ChunkPosition pos = getCachedChunkPosition(chunkX, chunkZ);
         Chunk chunk = chunks.remove(pos);
-        
+
         if (chunk != null) {
+            // Save dirty chunks before unloading to preserve player edits
+            if (chunk.isDirty()) {
+                saveChunkOnUnload(chunk);
+            }
+
             meshPipeline.removeChunkFromQueues(chunk);
             chunk.cleanupCpuResources();
             meshPipeline.addChunkForGpuCleanup(chunk);
-            
+
             Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
-            
+
             long key = ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
             chunkPositionCache.remove(key);
-            
+
             if ((chunkX + chunkZ) % WorldConfiguration.MEMORY_LOG_INTERVAL == 0) {
                 Game.logDetailedMemoryInfo("After unloading chunk (" + chunkX + ", " + chunkZ + ")");
             }
+        }
+    }
+
+    /**
+     * Saves a dirty chunk synchronously when it's being unloaded.
+     * This ensures player edits are preserved and save completes before unload.
+     * CRITICAL: This must be synchronous to prevent race conditions.
+     */
+    private void saveChunkOnUnload(Chunk chunk) {
+        var game = Game.getInstance();
+        var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
+
+        if (saveSystem != null && saveSystem.isInitialized()) {
+            try {
+                // Save the chunk SYNCHRONOUSLY to ensure completion before unload
+                saveSystem.saveChunk(chunk).get(); // Wait for save completion
+                chunk.markClean(); // Mark as clean only after successful save
+                System.out.println("[SYNC-SAVE] Saved dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") on unload - edits preserved");
+            } catch (Exception ex) {
+                System.err.println("CRITICAL: Failed to save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") on unload: " + ex.getMessage());
+                // Don't mark as clean if save failed - keep chunk dirty
+                throw new RuntimeException("Cannot safely unload chunk with unsaved edits at (" + chunk.getX() + ", " + chunk.getZ() + ")", ex);
+            }
+        } else {
+            System.err.println("CRITICAL: Cannot save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") on unload - save system not available");
+            throw new RuntimeException("Cannot safely unload chunk with unsaved edits - save system unavailable");
         }
     }
     

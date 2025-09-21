@@ -290,6 +290,14 @@ public class World {
     public int getLoadedChunkCount() {
         return chunkStore.getLoadedChunkCount();
     }
+
+    /**
+     * Returns the number of dirty chunks currently protected from unloading.
+     * This is used for monitoring the dirty chunk protection system.
+     */
+    public int getDirtyChunkCount() {
+        return chunkStore.getDirtyChunks().size();
+    }
     
     /**
      * Returns the number of chunks pending mesh build.
