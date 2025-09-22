@@ -77,11 +77,19 @@ public class ResourceManager {
                        float amp2 = 0.04;          // secondary amplitude
                        float wave = sin(worldPos.x * s + u_time * speed1) * cos(worldPos.z * s * 0.8 + u_time * speed1 * 0.9) * amp1
                                  + sin((worldPos.x + worldPos.z) * s * 1.7 + u_time * speed2) * amp2;
-                       // Favor top faces but still apply a small amount to sides to ensure visible motion
                        float topFactor = clamp(normal.y, 0.0, 1.0);
-                       float sideFactor = 0.15;
-                       float factor = max(topFactor, sideFactor);
-                       pos.y += wave * factor;
+                       bool isBottomFace = normal.y < -0.5;
+                       if (topFactor > 0.5) {
+                           // Top faces ride the full wave height
+                           pos.y += wave;
+                       } else if (!isBottomFace) {
+                           // Stretch side faces so their top edge follows the displaced surface
+                           float blockBaseY = floor(worldPos.y + 0.0001);
+                           float defaultWaterHeight = 0.875;
+                           float normalizedHeight = clamp((worldPos.y - blockBaseY) / max(defaultWaterHeight, 0.0001), 0.0, 1.0);
+                           float displacedTopY = blockBaseY + defaultWaterHeight + wave;
+                           pos.y = mix(blockBaseY, displacedTopY, normalizedHeight);
+                       }
                    }
                    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
                    if (u_transformUVsForItem) {
