@@ -17,39 +17,28 @@ public class FaceRenderingService {
      */
     public boolean shouldRenderFace(BlockType blockType, BlockType adjacentBlock, int lx, int ly, int lz, int face, int chunkX, int chunkZ) {
         if (blockType == BlockType.WATER) {
-            // For water blocks, always render faces except when adjacent to the same water level
             if (adjacentBlock == BlockType.WATER) {
-                // Check if we should render between water blocks based on water levels
-                WaterEffects waterEffects = Game.getWaterEffects();
-                if (waterEffects != null) {
-                    int worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
-                    int worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
-                    float currentWaterLevel = waterEffects.getWaterLevel(worldX, ly, worldZ);
-                    
-                    // Get adjacent block's world coordinates for level check
-                    int adjWorldX = worldX;
-                    int adjWorldY = ly;
-                    int adjWorldZ = worldZ;
-                    
-                    switch (face) {
-                        case 0 -> adjWorldY += 1; // Top
-                        case 1 -> adjWorldY -= 1; // Bottom
-                        case 2 -> adjWorldZ += 1; // Front
-                        case 3 -> adjWorldZ -= 1; // Back
-                        case 4 -> adjWorldX += 1; // Right
-                        case 5 -> adjWorldX -= 1; // Left
-                    }
-                    
-                    float adjacentWaterLevel = waterEffects.getWaterLevel(adjWorldX, adjWorldY, adjWorldZ);
-                    
-                    // Render face if water levels are different or if one is a source
-                    return currentWaterLevel != adjacentWaterLevel || 
-                           waterEffects.isWaterSource(worldX, ly, worldZ) ||
-                           waterEffects.isWaterSource(adjWorldX, adjWorldY, adjWorldZ);
-                } else {
-                    // Fallback: render all water faces if water effects not available
-                    return true;
+                int worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+                int worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+                int adjWorldX = worldX;
+                int adjWorldY = ly;
+                int adjWorldZ = worldZ;
+
+                switch (face) {
+                    case 0 -> adjWorldY += 1; // Top
+                    case 1 -> adjWorldY -= 1; // Bottom
+                    case 2 -> adjWorldZ += 1; // Front
+                    case 3 -> adjWorldZ -= 1; // Back
+                    case 4 -> adjWorldX += 1; // Right
+                    case 5 -> adjWorldX -= 1; // Left
                 }
+
+                World world = Game.getWorld();
+                if (world != null && world.getBlockAt(adjWorldX, adjWorldY, adjWorldZ) != BlockType.WATER) {
+                    return true; // Adjacent chunk not meshed yet, keep boundary face.
+                }
+
+                return false; // Cull shared faces between water blocks.
             } else {
                 // Water vs non-water: render if adjacent is transparent or air
                 return adjacentBlock.isTransparent();
