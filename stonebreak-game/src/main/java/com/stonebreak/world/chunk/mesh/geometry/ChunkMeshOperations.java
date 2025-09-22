@@ -155,14 +155,8 @@ public class ChunkMeshOperations {
         // Get visual height for blocks that can have variable heights
         float blockHeight = geometryGenerator.getBlockHeight(blockType, worldX, worldY, worldZ, world);
         
-        // Generate vertices using appropriate method based on block type
-        if (blockType == BlockType.WATER) {
-            // Use specialized water vertex generation for smooth slopes
-            vertexIndex += geometryGenerator.generateWaterFaceVertices(face, worldX, worldY, worldZ, tempVertices, vertexIndex);
-        } else {
-            // Use standard vertex generation for other blocks
-            vertexIndex += geometryGenerator.generateFaceVertices(face, worldX, worldY, worldZ, blockHeight, tempVertices, vertexIndex);
-        }
+        // Generate vertices and normals using the geometry service
+        vertexIndex += geometryGenerator.generateFaceVertices(face, worldX, worldY, worldZ, blockHeight, tempVertices, vertexIndex);
         normalIndex += geometryGenerator.generateFaceNormals(face, tempNormals, normalIndex);
         
         // Add texture coordinates and flags using the texture service

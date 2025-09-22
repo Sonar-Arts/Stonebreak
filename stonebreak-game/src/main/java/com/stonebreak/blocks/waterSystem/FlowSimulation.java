@@ -857,7 +857,7 @@ public class FlowSimulation {
                         WaterBlock waterBlock = new WaterBlock(estimateDepthFromSurroundings(checkPos, world));
                         waterBlocks.put(checkPos, waterBlock);
                         scheduleFlowUpdate(checkPos);
-                        System.out.println("DEBUG: Found and tracked nearby untracked water at " + checkPos.x + "," + checkPos.y + "," + checkPos.z);
+                        // System.out.println("DEBUG: Found and tracked nearby untracked water at " + checkPos.x + "," + checkPos.y + "," + checkPos.z);
                     }
                 }
             }

@@ -162,69 +162,55 @@ public class TextureCoordinateProcessor {
     /**
      * Adds special water texture coordinates with seamless tiling
      */
-    private void addWaterTextureCoordinates(int face, float worldX, float worldY, float worldZ, float blockHeight,
+    private void addWaterTextureCoordinates(int face, float worldX, float worldY, float worldZ, float blockHeight, 
                                           float texX, float texY, float texSize, float[] textureArray, int textureIndex) {
-        // For water blocks, use continuous texture mapping to eliminate grid seams
-        // Map world coordinates to the water texture region in the atlas
+        // For water blocks, use continuous world-space texture coordinates for completely seamless tiling
+        // This makes the texture flow continuously across all water blocks without any visible boundaries
+        float textureScale = 0.0625f; // Very small scale for large-area seamless appearance
+        
         float u_topLeft, v_topLeft, u_bottomLeft, v_bottomLeft;
         float u_bottomRight, v_bottomRight, u_topRight, v_topRight;
-
-        // Use a texture scale that makes the water texture repeat seamlessly
-        float textureRepeatScale = 1.0f; // 1 texture unit per block for clear water appearance
-
+        
         switch (face) {
-            case 0 -> { // Top face - use continuous X,Z mapping within atlas bounds
-                float baseU = worldX * textureRepeatScale;
-                float baseV = worldZ * textureRepeatScale;
-
-                // Map to the water texture region but with continuous coordinates
-                u_topLeft = texX + (baseU % 1.0f) * texSize;
-                v_topLeft = texY + (baseV % 1.0f) * texSize;
-                u_bottomLeft = texX + (baseU % 1.0f) * texSize;
-                v_bottomLeft = texY + ((baseV + 1.0f) % 1.0f) * texSize;
-                u_bottomRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_bottomRight = texY + ((baseV + 1.0f) % 1.0f) * texSize;
-                u_topRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_topRight = texY + (baseV % 1.0f) * texSize;
+            case 0 -> { // Top face - use X,Z world coordinates
+                u_topLeft = worldX * textureScale;
+                v_topLeft = worldZ * textureScale;
+                u_bottomLeft = worldX * textureScale;
+                v_bottomLeft = (worldZ + 1) * textureScale;
+                u_bottomRight = (worldX + 1) * textureScale;
+                v_bottomRight = (worldZ + 1) * textureScale;
+                u_topRight = (worldX + 1) * textureScale;
+                v_topRight = worldZ * textureScale;
             }
-            case 1 -> { // Bottom face - similar to top face
-                float baseU = worldX * textureRepeatScale;
-                float baseV = worldZ * textureRepeatScale;
-
-                u_topLeft = texX + (baseU % 1.0f) * texSize;
-                v_topLeft = texY + (baseV % 1.0f) * texSize;
-                u_bottomLeft = texX + (baseU % 1.0f) * texSize;
-                v_bottomLeft = texY + ((baseV + 1.0f) % 1.0f) * texSize;
-                u_bottomRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_bottomRight = texY + ((baseV + 1.0f) % 1.0f) * texSize;
-                u_topRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_topRight = texY + (baseV % 1.0f) * texSize;
+            case 1 -> { // Bottom face - use X,Z world coordinates
+                u_topLeft = worldX * textureScale;
+                v_topLeft = worldZ * textureScale;
+                u_bottomLeft = worldX * textureScale;
+                v_bottomLeft = (worldZ + 1) * textureScale;
+                u_bottomRight = (worldX + 1) * textureScale;
+                v_bottomRight = (worldZ + 1) * textureScale;
+                u_topRight = (worldX + 1) * textureScale;
+                v_topRight = worldZ * textureScale;
             }
-            case 2, 3 -> { // Front/Back faces - use X,Y mapping
-                float baseU = worldX * textureRepeatScale;
-                float baseV = (worldY + blockHeight) * textureRepeatScale;
-
-                u_topLeft = texX + (baseU % 1.0f) * texSize;
-                v_topLeft = texY + (baseV % 1.0f) * texSize;
-                u_bottomLeft = texX + (baseU % 1.0f) * texSize;
-                v_bottomLeft = texY + ((worldY * textureRepeatScale) % 1.0f) * texSize;
-                u_bottomRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_bottomRight = texY + ((worldY * textureRepeatScale) % 1.0f) * texSize;
-                u_topRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_topRight = texY + (baseV % 1.0f) * texSize;
+            case 2, 3 -> { // Front/Back faces - use X,Y world coordinates
+                u_topLeft = worldX * textureScale;
+                v_topLeft = (worldY + blockHeight) * textureScale;
+                u_bottomLeft = worldX * textureScale;
+                v_bottomLeft = worldY * textureScale;
+                u_bottomRight = (worldX + 1) * textureScale;
+                v_bottomRight = worldY * textureScale;
+                u_topRight = (worldX + 1) * textureScale;
+                v_topRight = (worldY + blockHeight) * textureScale;
             }
-            case 4, 5 -> { // Left/Right faces - use Z,Y mapping
-                float baseU = worldZ * textureRepeatScale;
-                float baseV = (worldY + blockHeight) * textureRepeatScale;
-
-                u_topLeft = texX + (baseU % 1.0f) * texSize;
-                v_topLeft = texY + (baseV % 1.0f) * texSize;
-                u_bottomLeft = texX + (baseU % 1.0f) * texSize;
-                v_bottomLeft = texY + ((worldY * textureRepeatScale) % 1.0f) * texSize;
-                u_bottomRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_bottomRight = texY + ((worldY * textureRepeatScale) % 1.0f) * texSize;
-                u_topRight = texX + ((baseU + 1.0f) % 1.0f) * texSize;
-                v_topRight = texY + (baseV % 1.0f) * texSize;
+            case 4, 5 -> { // Left/Right faces - use Z,Y world coordinates  
+                u_topLeft = worldZ * textureScale;
+                v_topLeft = (worldY + blockHeight) * textureScale;
+                u_bottomLeft = worldZ * textureScale;
+                v_bottomLeft = worldY * textureScale;
+                u_bottomRight = (worldZ + 1) * textureScale;
+                v_bottomRight = worldY * textureScale;
+                u_topRight = (worldZ + 1) * textureScale;
+                v_topRight = (worldY + blockHeight) * textureScale;
             }
             default -> {
                 // Fallback to regular texture coordinates
