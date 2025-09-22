@@ -130,7 +130,10 @@ public class TextureCoordinateProcessor {
         }
 
         // Add isWater flag for each of the 4 vertices of this face
-        float isWaterValue = (blockType == BlockType.WATER) ? 1.0f : 0.0f;
+        float isWaterValue = 0.0f;
+        if (blockType == BlockType.WATER) {
+            isWaterValue = Math.max(0.0f, Math.min(0.875f, blockHeight));
+        }
         isWaterFlags[flagIndex] = isWaterValue;
         isWaterFlags[flagIndex + 1] = isWaterValue;
         isWaterFlags[flagIndex + 2] = isWaterValue;

@@ -48,12 +48,12 @@ public class ResourceManager {
                layout (location=0) in vec3 position;
                layout (location=1) in vec2 texCoord;
                layout (location=2) in vec3 normal;
-               layout (location=3) in float isWater;
+               layout (location=3) in float waterHeight;
                layout (location=4) in float isAlphaTested;
                out vec2 outTexCoord;
                out vec3 outNormal;
                out vec3 fragPos;
-               out float v_isWater;
+               out float v_waterHeight;
                out float v_isAlphaTested;
                uniform mat4 projectionMatrix;
                uniform mat4 viewMatrix;
@@ -68,7 +68,7 @@ public class ResourceManager {
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;
                    // Apply GPU-side water surface displacement to avoid remeshing for waves
-                   if (isWater > 0.5 && !u_isUIElement) {
+                   if (waterHeight > 0.0 && !u_isUIElement) {
                        // World-space wave using simple, seamless functions
                        float s = 0.50;             // spatial scale
                        float speed1 = 1.5;         // primary speed
@@ -85,9 +85,11 @@ public class ResourceManager {
                        } else if (!isBottomFace) {
                            // Stretch side faces so their top edge follows the displaced surface
                            float blockBaseY = floor(worldPos.y + 0.0001);
-                           float defaultWaterHeight = 0.875;
-                           float normalizedHeight = clamp((worldPos.y - blockBaseY) / max(defaultWaterHeight, 0.0001), 0.0, 1.0);
-                           float displacedTopY = blockBaseY + defaultWaterHeight + wave;
+                           float normalizedHeight = 0.0;
+                           if (waterHeight > 0.0001) {
+                               normalizedHeight = clamp((worldPos.y - blockBaseY) / waterHeight, 0.0, 1.0);
+                           }
+                           float displacedTopY = blockBaseY + waterHeight + wave;
                            pos.y = mix(blockBaseY, displacedTopY, normalizedHeight);
                        }
                    }
@@ -99,7 +101,7 @@ public class ResourceManager {
                    }
                    outNormal = normal;
                    fragPos = (modelMatrix * vec4(pos, 1.0)).xyz;
-                   v_isWater = isWater;
+                   v_waterHeight = waterHeight;
                    v_isAlphaTested = isAlphaTested;
                }""";
     }
@@ -110,7 +112,7 @@ public class ResourceManager {
                in vec2 outTexCoord;
                in vec3 outNormal;
                in vec3 fragPos;
-               in float v_isWater;
+               in float v_waterHeight;
                in float v_isAlphaTested;
                out vec4 fragColor;
                uniform sampler2D texture_sampler;
@@ -138,7 +140,7 @@ public class ResourceManager {
                                discard;
                            }
                            fragColor = vec4(textureColor.rgb * brightness, 1.0);
-                       } else if (v_isWater > 0.5) {
+                       } else if (v_waterHeight > 0.0) {
                            if (u_renderPass == 0) {
                                discard;
                            } else {
