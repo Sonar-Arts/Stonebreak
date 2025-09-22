@@ -3,72 +3,84 @@ package com.stonebreak.blocks.waterSystem;
 import org.joml.Vector3f;
 
 /**
- * Represents a water block with enhanced properties for physics simulation.
- * Contains water level, pressure, flow direction, and other physical properties.
+ * Represents a water block following Minecraft's exact fluid mechanics.
+ * Uses integer depth values (0 = source, 1-7 = flowing) and implements
+ * Minecraft's flow direction weighting system.
  */
 public class WaterBlock {
 
-    public static final int MAX_WATER_LEVEL = 8;
+    public static final int SOURCE_DEPTH = 0;
+    public static final int MAX_FLOW_DEPTH = 7;
+    public static final int MAX_WATER_LEVEL = 8; // For backward compatibility
 
-    private float level = MAX_WATER_LEVEL;
-    private float pressure = 0;
-    private final Vector3f flowDirection = new Vector3f();
+    private int depth = SOURCE_DEPTH; // 0 = source, 1-7 = flowing water depth
     private boolean isSource = false;
+    private final Vector3f flowDirection = new Vector3f();
     private long lastUpdateTime = 0;
-    private int distanceFromSource = 0;
 
     /**
-     * Creates a new water block with full water level.
+     * Creates a new water source block (depth 0).
      */
     public WaterBlock() {
-        this.level = MAX_WATER_LEVEL;
-        this.distanceFromSource = 0;
+        this.depth = SOURCE_DEPTH;
+        this.isSource = true;
     }
 
     /**
-     * Creates a water block with specified initial level.
+     * Creates a water block with specified depth.
      *
-     * @param initialLevel Initial water level (0.0 to MAX_WATER_LEVEL)
+     * @param depth Water depth (0 = source, 1-7 = flowing)
      */
-    public WaterBlock(float initialLevel) {
-        this.level = Math.max(0, Math.min(MAX_WATER_LEVEL, initialLevel));
-        this.distanceFromSource = 0;
+    public WaterBlock(int depth) {
+        this.depth = Math.max(0, Math.min(MAX_FLOW_DEPTH, depth));
+        this.isSource = (depth == SOURCE_DEPTH);
     }
 
     /**
-     * Gets the current water level.
+     * Gets the water depth (Minecraft system: 0 = source, 1-7 = flowing).
+     *
+     * @return Water depth from 0 to MAX_FLOW_DEPTH
+     */
+    public int getDepth() {
+        return depth;
+    }
+
+    /**
+     * Sets the water depth.
+     *
+     * @param depth New water depth (0 = source, 1-7 = flowing)
+     */
+    public void setDepth(int depth) {
+        this.depth = Math.max(0, Math.min(MAX_FLOW_DEPTH, depth));
+        this.isSource = (depth == SOURCE_DEPTH);
+    }
+
+    /**
+     * Gets the current water level (backward compatibility).
      *
      * @return Water level from 0.0 to MAX_WATER_LEVEL
      */
     public float getLevel() {
-        return level;
+        return MAX_WATER_LEVEL - depth;
     }
 
     /**
-     * Sets the water level.
+     * Sets the water level (backward compatibility).
      *
-     * @param level New water level (will be clamped to valid range)
+     * @param level New water level (will be converted to depth)
      */
     public void setLevel(float level) {
-        this.level = Math.max(0, Math.min(MAX_WATER_LEVEL, level));
+        int newDepth = Math.max(0, Math.min(MAX_FLOW_DEPTH, MAX_WATER_LEVEL - (int)level));
+        setDepth(newDepth);
     }
 
     /**
-     * Gets the water pressure at this block.
+     * Gets the water pressure (calculated from depth).
      *
      * @return Current pressure value
      */
     public float getPressure() {
-        return pressure;
-    }
-
-    /**
-     * Sets the water pressure.
-     *
-     * @param pressure New pressure value
-     */
-    public void setPressure(float pressure) {
-        this.pressure = pressure;
+        return MAX_WATER_LEVEL - depth;
     }
 
     /**
@@ -106,9 +118,7 @@ public class WaterBlock {
     public void setSource(boolean source) {
         this.isSource = source;
         if (source) {
-            this.level = MAX_WATER_LEVEL;
-            this.pressure = MAX_WATER_LEVEL;
-            this.distanceFromSource = 0;
+            this.depth = SOURCE_DEPTH;
         }
     }
 
@@ -131,13 +141,15 @@ public class WaterBlock {
     }
 
     /**
-     * Gets the visual height for rendering (0.0 to 1.0).
+     * Gets the visual height for rendering based on depth (0.0 to 1.0).
      *
      * @return Visual height for rendering
      */
     public float getVisualHeight() {
-        if (level <= 0) return 0.0f;
-        return Math.max(0.125f, Math.min(0.875f, level / (float)MAX_WATER_LEVEL));
+        if (depth >= MAX_FLOW_DEPTH) return 0.0f;
+        // Source blocks and depth 1 = full height, depth increases = lower height
+        float heightRatio = (float)(MAX_WATER_LEVEL - depth) / MAX_WATER_LEVEL;
+        return Math.max(0.125f, Math.min(0.875f, heightRatio));
     }
 
     /**
@@ -146,57 +158,73 @@ public class WaterBlock {
      * @return Normalized water level
      */
     public float getNormalizedLevel() {
-        return level / (float)MAX_WATER_LEVEL;
+        return (float)(MAX_WATER_LEVEL - depth) / MAX_WATER_LEVEL;
     }
 
     /**
-     * Checks if this water block is empty.
+     * Checks if this water block is empty (depth 7 or higher).
      *
-     * @return true if water level is 0 or less
+     * @return true if water depth indicates empty
      */
     public boolean isEmpty() {
-        return level <= 0;
+        return depth >= MAX_FLOW_DEPTH;
     }
 
     /**
-     * Checks if this water block is full.
+     * Checks if this water block is full (source or depth 1).
      *
-     * @return true if water level is at maximum
+     * @return true if water block is at maximum level
      */
     public boolean isFull() {
-        return level >= MAX_WATER_LEVEL;
+        return depth <= 1;
     }
 
     /**
-     * Adds water to this block.
+     * Decreases water depth (increases water level).
      *
-     * @param amount Amount of water to add
-     * @return Amount actually added (may be less if block becomes full)
+     * @param depthReduction Amount to decrease depth
+     * @return Actual depth reduction applied
      */
-    public float addWater(float amount) {
-        float oldLevel = level;
-        level = Math.min(MAX_WATER_LEVEL, level + amount);
-        return level - oldLevel;
+    public int addWater(int depthReduction) {
+        int oldDepth = depth;
+        depth = Math.max(SOURCE_DEPTH, depth - depthReduction);
+        return oldDepth - depth;
     }
 
     /**
-     * Removes water from this block.
+     * Increases water depth (decreases water level).
      *
-     * @param amount Amount of water to remove
-     * @return Amount actually removed (may be less if block becomes empty)
+     * @param depthIncrease Amount to increase depth
+     * @return Actual depth increase applied
      */
-    public float removeWater(float amount) {
+    public int removeWater(int depthIncrease) {
         if (isSource) {
             return 0; // Source blocks don't lose water
         }
 
-        float oldLevel = level;
-        level = Math.max(0, level - amount);
-        return oldLevel - level;
+        int oldDepth = depth;
+        depth = Math.min(MAX_FLOW_DEPTH, depth + depthIncrease);
+        return depth - oldDepth;
     }
 
     /**
-     * Updates the flow direction based on pressure differentials.
+     * Backward compatibility: adds water using float amount.
+     */
+    public float addWater(float amount) {
+        int depthReduction = (int)amount;
+        return addWater(depthReduction);
+    }
+
+    /**
+     * Backward compatibility: removes water using float amount.
+     */
+    public float removeWater(float amount) {
+        int depthIncrease = (int)amount;
+        return removeWater(depthIncrease);
+    }
+
+    /**
+     * Updates the flow direction based on Minecraft's depth-based system.
      *
      * @param deltaTime Time elapsed since last update
      * @param neighbors Array of neighboring water blocks (can contain nulls)
@@ -209,11 +237,12 @@ public class WaterBlock {
         for (int i = 0; i < neighbors.length && i < directions.length; i++) {
             WaterBlock neighbor = neighbors[i];
             if (neighbor != null) {
-                float diff = this.level - neighbor.level;
-                if (diff > 0) {
+                // In Minecraft, water flows toward lower depth (higher level)
+                int depthDiff = neighbor.depth - this.depth;
+                if (depthDiff > 0) {
                     Vector3f directionToNeighbor = directions[i];
-                    newFlowDir.add(directionToNeighbor.x * diff, 0, directionToNeighbor.z * diff);
-                    totalFlow += diff;
+                    newFlowDir.add(directionToNeighbor.x * depthDiff, 0, directionToNeighbor.z * depthDiff);
+                    totalFlow += depthDiff;
                 }
             }
         }
@@ -225,38 +254,35 @@ public class WaterBlock {
     }
 
     /**
-     * Gets the distance from the nearest water source.
+     * Gets the distance from the nearest water source (same as depth for flowing water).
      *
      * @return Distance from source in blocks
      */
     public int getDistanceFromSource() {
-        return distanceFromSource;
+        return depth;
     }
 
     /**
-     * Sets the distance from the nearest water source.
+     * Sets the distance from the nearest water source (updates depth).
      *
      * @param distance Distance from source in blocks
      */
     public void setDistanceFromSource(int distance) {
-        this.distanceFromSource = Math.max(0, distance);
+        setDepth(distance);
     }
 
     /**
-     * Gets the maximum level this water block should have based on its distance from source.
+     * Gets the maximum level this water block should have based on its depth.
      *
-     * @return Maximum level based on distance
+     * @return Maximum level based on depth
      */
     public float getMaxLevelForDistance() {
-        if (isSource) {
-            return MAX_WATER_LEVEL;
-        }
-        return Math.max(0, MAX_WATER_LEVEL - distanceFromSource);
+        return MAX_WATER_LEVEL - depth;
     }
 
     @Override
     public String toString() {
-        return String.format("WaterBlock{level=%.2f, pressure=%.2f, source=%s, distance=%d, flow=%.2f}",
-                           level, pressure, isSource, distanceFromSource, flowDirection.length());
+        return String.format("WaterBlock{depth=%d, level=%.2f, source=%s, flow=%.2f}",
+                           depth, getLevel(), isSource, flowDirection.length());
     }
 }
