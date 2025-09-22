@@ -15,6 +15,7 @@ public class WaterBlock {
 
     private int depth = SOURCE_DEPTH; // 0 = source, 1-7 = flowing water depth
     private boolean isSource = false;
+    private boolean isOceanWater = false; // Flag for naturally generated ocean water
     private final Vector3f flowDirection = new Vector3f();
     private long lastUpdateTime = 0;
 
@@ -278,6 +279,28 @@ public class WaterBlock {
      */
     public float getMaxLevelForDistance() {
         return MAX_WATER_LEVEL - depth;
+    }
+
+    /**
+     * Checks if this is naturally generated ocean water.
+     *
+     * @return true if this is ocean water
+     */
+    public boolean isOceanWater() {
+        return isOceanWater;
+    }
+
+    /**
+     * Sets whether this is naturally generated ocean water.
+     * Ocean water is treated as a permanent, stable source.
+     *
+     * @param oceanWater true to mark as ocean water
+     */
+    public void setOceanWater(boolean oceanWater) {
+        this.isOceanWater = oceanWater;
+        if (oceanWater) {
+            setSource(true); // Ocean water is always a source
+        }
     }
 
     @Override

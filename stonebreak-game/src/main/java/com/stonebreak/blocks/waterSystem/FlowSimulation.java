@@ -3,6 +3,7 @@ package com.stonebreak.blocks.waterSystem;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -184,13 +185,101 @@ public class FlowSimulation {
     }
 
     /**
-     * Detects existing water blocks in the world and clears simulation.
+     * Detects existing water blocks in the world and initializes them in the simulation.
+     * This preserves naturally generated oceans and other pre-existing water.
      */
     public void detectExistingWater() {
-        waterBlocks.clear();
-        sourceBlocks.clear();
+        World world = Game.getWorld();
+        if (world == null) {
+            // Clear simulation data if no world exists
+            waterBlocks.clear();
+            sourceBlocks.clear();
+            flowUpdateQueue.clear();
+            scheduledUpdates.clear();
+            return;
+        }
+
+        System.out.println("DEBUG: Detecting and preserving existing water blocks in the world...");
+
+        // Clear only flow queues, but preserve existing water data for incremental updates
         flowUpdateQueue.clear();
         scheduledUpdates.clear();
+
+        // Get currently loaded chunks around player and scan for water
+        // Use a reasonable search area - get chunks in a large radius
+        int searchRadius = 16; // chunks in each direction
+        Map<World.ChunkPosition, Chunk> loadedChunks = new java.util.HashMap<>();
+
+        // Get player position to center the search
+        com.stonebreak.player.Player player = Game.getPlayer();
+        int centerChunkX = 0, centerChunkZ = 0;
+        if (player != null) {
+            centerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
+            centerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
+        }
+
+        // Get chunks in a wide area around the player (or origin if no player)
+        for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (int dz = -searchRadius; dz <= searchRadius; dz++) {
+                int chunkX = centerChunkX + dx;
+                int chunkZ = centerChunkZ + dz;
+                Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+                if (chunk != null) {
+                    loadedChunks.put(new World.ChunkPosition(chunkX, chunkZ), chunk);
+                }
+            }
+        }
+
+        int detectedWater = 0;
+        int preservedOceans = 0;
+
+        for (Chunk chunk : loadedChunks.values()) {
+            if (chunk == null) continue;
+
+            int chunkX = chunk.getChunkX();
+            int chunkZ = chunk.getChunkZ();
+
+            // Scan entire chunk for water blocks
+            for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+                for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
+                    for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                        if (chunk.getBlock(x, y, z) == BlockType.WATER) {
+                            int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
+                            int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
+                            Vector3i pos = new Vector3i(worldX, y, worldZ);
+
+                            // Only add if not already tracked
+                            if (!waterBlocks.containsKey(pos)) {
+                                // Determine if this is ocean water (at or below sea level)
+                                boolean isOceanWater = (y <= WorldConfiguration.SEA_LEVEL);
+
+                                if (isOceanWater) {
+                                    // Treat ocean water as stable source blocks
+                                    WaterBlock oceanWater = new WaterBlock(WaterBlock.SOURCE_DEPTH);
+                                    oceanWater.setSource(true);
+                                    oceanWater.setOceanWater(true); // Mark as ocean water
+                                    waterBlocks.put(pos, oceanWater);
+                                    sourceBlocks.add(pos);
+                                    preservedOceans++;
+                                } else {
+                                    // Regular water above sea level - estimate depth
+                                    int estimatedDepth = estimateDepthFromSurroundings(pos, world);
+                                    WaterBlock waterBlock = new WaterBlock(estimatedDepth);
+                                    waterBlocks.put(pos, waterBlock);
+
+                                    // Schedule for flow validation
+                                    scheduleFlowUpdate(pos);
+                                }
+                                detectedWater++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        System.out.println("DEBUG: Detected " + detectedWater + " existing water blocks, preserved " +
+                          preservedOceans + " ocean blocks as stable sources");
     }
 
     /**
@@ -716,8 +805,20 @@ public class FlowSimulation {
     /**
      * Checks if flowing water has a valid source.
      * Water can flow infinitely downward but only 7 blocks horizontally.
+     * Ocean water (at or below sea level) is always considered valid.
      */
     private boolean hasValidSource(Vector3i pos, World world) {
+        // First check if this is ocean water - ocean water is always valid
+        WaterBlock currentWater = waterBlocks.get(pos);
+        if (currentWater != null && currentWater.isOceanWater()) {
+            return true; // Ocean water is always valid and stable
+        }
+
+        // Check if this is at ocean level (at or below sea level) - treat as ocean water
+        if (pos.y <= WorldConfiguration.SEA_LEVEL) {
+            return true; // Water at ocean level is considered stable
+        }
+
         // Check if there's water directly above (infinite vertical flow)
         Vector3i abovePos = new Vector3i(pos.x, pos.y + 1, pos.z);
         BlockType aboveBlock = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
@@ -736,6 +837,11 @@ public class FlowSimulation {
         for (Vector3i neighbor : neighbors) {
             WaterBlock neighborWater = waterBlocks.get(neighbor);
             if (neighborWater != null) {
+                // Ocean water can support any adjacent water
+                if (neighborWater.isOceanWater()) {
+                    return true;
+                }
+
                 // Check if neighbor has lower or equal depth (can feed us)
                 int ourDepth = waterBlocks.get(pos) != null ? waterBlocks.get(pos).getDepth() : MAX_DEPTH;
                 if (neighborWater.getDepth() < ourDepth) {
