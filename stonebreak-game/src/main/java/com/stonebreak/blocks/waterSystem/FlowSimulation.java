@@ -17,16 +17,18 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * Key mechanics implemented:
  * - Water spreads 1 block every 5 game ticks (4 blocks per second)
  * - Source blocks have depth 0, flowing water has depth 1-7
- * - Maximum horizontal spread of 7 blocks from source
- * - Flow direction determined by pathfinding weights toward lowest elevation
+ * - Maximum horizontal spread of 7 blocks from source or reset point
+ * - Depth resets to 0 when water flows down to a new elevation
+ * - Flow prefers edges for aesthetic waterfall creation
  * - Diamond-shaped spread pattern (15 blocks point-to-point on flat surface)
  * - Vertical flow always takes priority over horizontal flow
- * - Source blocks provide infinite water
+ * - Water can flow infinitely downward but only 7 blocks horizontally
+ * - Source blocks only spread horizontally when they cannot flow down
  */
 public class FlowSimulation {
 
     // Minecraft-accurate flow timing (5 game ticks = 0.25 seconds at 20 TPS)
-    private static final float FLOW_UPDATE_INTERVAL = 0.25f; // 4 updates per second
+    private static final float FLOW_UPDATE_INTERVAL = 0.5f; // Slower updates to prevent chaos
     private static final int MAX_HORIZONTAL_DISTANCE = 7; // Water travels 7 blocks horizontally
     private static final int MAX_DEPTH = 7; // Depth values: 0 (source) to 7 (flowing)
     private static final int MIN_FLOW_WEIGHT = 1000; // Initial weight for flow calculations
@@ -79,7 +81,7 @@ public class FlowSimulation {
         // Schedule immediate flow update
         scheduleFlowUpdate(pos);
 
-        System.out.println("DEBUG: Added water source at " + x + "," + y + "," + z + " - scheduled for flow update");
+        // System.out.println("DEBUG: Added water source at " + x + "," + y + "," + z + " - scheduled for flow update");
     }
 
     /**
@@ -195,24 +197,118 @@ public class FlowSimulation {
      * Handles block broken events.
      */
     public void onBlockBroken(int x, int y, int z) {
-        // Schedule updates for water blocks that might flow into the empty space
-        scheduleNeighborUpdates(new Vector3i(x, y, z));
+        Vector3i brokenPos = new Vector3i(x, y, z);
+        World world = Game.getWorld();
+        if (world == null) return;
 
-        // Check for water above that might flow down
-        for (int dy = 1; dy <= 8; dy++) {
+        // Schedule updates for water blocks that might flow into the empty space
+        scheduleNeighborUpdates(brokenPos);
+
+        // Check for water above that might flow down (increased range for cascading water)
+        for (int dy = 1; dy <= 12; dy++) {
             Vector3i above = new Vector3i(x, y + dy, z);
-            if (waterBlocks.containsKey(above)) {
+            BlockType blockAbove = world.getBlockAt(above.x, above.y, above.z);
+
+            if (blockAbove == BlockType.WATER) {
+                // Ensure this water block is in the simulation
+                if (!waterBlocks.containsKey(above)) {
+                    WaterBlock waterBlock = new WaterBlock(estimateDepthFromSurroundings(above, world));
+                    waterBlocks.put(above, waterBlock);
+                    System.out.println("DEBUG: Re-initialized water above broken block at " + above.x + "," + above.y + "," + above.z);
+                }
                 scheduleFlowUpdate(above);
+            } else if (blockAbove != BlockType.AIR) {
+                // Stop checking if we hit a solid block
+                break;
             }
         }
+
+        // Check in a wider radius for water that can now flow into the space
+        // Water can flow from up to 7 blocks away horizontally
+        for (int radius = 1; radius <= MAX_HORIZONTAL_DISTANCE; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    // Skip if not on the perimeter of current radius
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
+
+                    // Check multiple heights
+                    for (int dy = -1; dy <= 2; dy++) {
+                        Vector3i checkPos = new Vector3i(x + dx, y + dy, z + dz);
+                        BlockType blockType = world.getBlockAt(checkPos.x, checkPos.y, checkPos.z);
+
+                        if (blockType == BlockType.WATER) {
+                            // Ensure this water block is tracked
+                            if (!waterBlocks.containsKey(checkPos)) {
+                                WaterBlock waterBlock = new WaterBlock(estimateDepthFromSurroundings(checkPos, world));
+                                waterBlocks.put(checkPos, waterBlock);
+                                System.out.println("DEBUG: Re-initialized water at distance " + radius + " from broken block");
+                            }
+
+                            // Schedule flow update
+                            scheduleFlowUpdate(checkPos);
+                        }
+                    }
+                }
+            }
+        }
+
+        System.out.println("DEBUG: Block broken at " + x + "," + y + "," + z + " - scheduled comprehensive water flow checks");
     }
 
     /**
      * Handles block placed events.
      */
     public void onBlockPlaced(int x, int y, int z) {
-        // Schedule updates for adjacent water blocks
-        scheduleNeighborUpdates(new Vector3i(x, y, z));
+        Vector3i placedPos = new Vector3i(x, y, z);
+        World world = Game.getWorld();
+        if (world == null) return;
+
+        // First schedule immediate neighbor updates
+        scheduleNeighborUpdates(placedPos);
+
+        // Check for water blocks above that need to re-route their flow
+        for (int dy = 1; dy <= 8; dy++) {
+            Vector3i above = new Vector3i(x, y + dy, z);
+            BlockType blockAbove = world.getBlockAt(above.x, above.y, above.z);
+
+            if (blockAbove == BlockType.WATER) {
+                // Ensure this water block is in the simulation
+                if (!waterBlocks.containsKey(above)) {
+                    // Re-initialize water block that exists in world but not in simulation
+                    WaterBlock waterBlock = new WaterBlock(estimateDepthFromSurroundings(above, world));
+                    waterBlocks.put(above, waterBlock);
+                    System.out.println("DEBUG: Re-initialized water block at " + above.x + "," + above.y + "," + above.z + " after block placement");
+                }
+                scheduleFlowUpdate(above);
+            }
+        }
+
+        // Check in a 3-block radius horizontally for water that might be affected
+        // This ensures water flows properly around newly placed obstacles
+        for (int dx = -3; dx <= 3; dx++) {
+            for (int dz = -3; dz <= 3; dz++) {
+                if (dx == 0 && dz == 0) continue;
+
+                for (int dy = -1; dy <= 2; dy++) {
+                    Vector3i checkPos = new Vector3i(x + dx, y + dy, z + dz);
+                    BlockType blockType = world.getBlockAt(checkPos.x, checkPos.y, checkPos.z);
+
+                    if (blockType == BlockType.WATER) {
+                        // Ensure this water block is tracked
+                        if (!waterBlocks.containsKey(checkPos)) {
+                            WaterBlock waterBlock = new WaterBlock(estimateDepthFromSurroundings(checkPos, world));
+                            waterBlocks.put(checkPos, waterBlock);
+                            System.out.println("DEBUG: Re-initialized nearby water at " + checkPos.x + "," + checkPos.y + "," + checkPos.z);
+                        }
+
+                        // Schedule update for this water block
+                        scheduleFlowUpdate(checkPos);
+                    }
+                }
+            }
+        }
+
+        System.out.println("DEBUG: Block placed at " + x + "," + y + "," + z + " - scheduled comprehensive water updates");
     }
 
     /**
@@ -223,14 +319,18 @@ public class FlowSimulation {
         if (world == null) return;
 
         Set<Vector3i> processedThisUpdate = new HashSet<>();
-        Queue<Vector3i> currentQueue = new ArrayDeque<>(flowUpdateQueue);
+
+        // Remove duplicates from the queue before processing
+        int originalSize = flowUpdateQueue.size();
+        Set<Vector3i> uniqueUpdates = new HashSet<>(flowUpdateQueue);
+        Queue<Vector3i> currentQueue = new ArrayDeque<>(uniqueUpdates);
         int queueSize = currentQueue.size();
         flowUpdateQueue.clear();
         scheduledUpdates.clear();
 
-        if (queueSize > 0) {
-            System.out.println("DEBUG: Processing " + queueSize + " flow updates");
-        }
+        // if (queueSize > 0) {
+        //     System.out.println("DEBUG: Processing " + queueSize + " unique flow updates (from " + originalSize + " total)");
+        // }
 
         while (!currentQueue.isEmpty()) {
             Vector3i pos = currentQueue.poll();
@@ -262,6 +362,10 @@ public class FlowSimulation {
             // Create water block for existing water in world
             waterBlock = new WaterBlock(estimateDepthFromSurroundings(pos, world));
             waterBlocks.put(pos, waterBlock);
+            // System.out.println("DEBUG: Created tracking for untracked water at " + pos.x + "," + pos.y + "," + pos.z);
+
+            // Also check and initialize nearby water blocks that might not be tracked
+            ensureNearbyWaterTracked(pos, world);
         }
 
         // Source blocks don't need flow processing
@@ -280,21 +384,23 @@ public class FlowSimulation {
      * Spreads water from a source block using Minecraft's algorithm.
      */
     private void spreadFromSource(Vector3i sourcePos, World world) {
-        System.out.println("DEBUG: Spreading from source at " + sourcePos.x + "," + sourcePos.y + "," + sourcePos.z);
+        // System.out.println("DEBUG: Spreading from source at " + sourcePos.x + "," + sourcePos.y + "," + sourcePos.z);
+
+        boolean flowedDown = false;
 
         // First, try to flow downward (infinite vertical flow)
         Vector3i downPos = new Vector3i(sourcePos.x, sourcePos.y - 1, sourcePos.z);
         if (canFlowTo(downPos, world)) {
-            // Flowing water from source has depth 1 (not source depth)
-            createOrUpdateWaterAt(downPos, 1, world);
+            // When water flows down, depth resets to 0 at the new elevation (Minecraft behavior)
+            createOrUpdateWaterAt(downPos, 0, world);
             scheduleFlowUpdate(downPos);
-            System.out.println("DEBUG: Created flowing water below source at " + downPos.x + "," + downPos.y + "," + downPos.z);
-        } else {
-            System.out.println("DEBUG: Cannot flow down from source - will spread horizontally instead");
+            flowedDown = true;
+            // System.out.println("DEBUG: Created flowing water below source at " + downPos.x + "," + downPos.y + "," + downPos.z + " with depth 0 (reset at new elevation)");
         }
 
-        // ALWAYS spread horizontally from sources (regardless of downward flow)
-        System.out.println("DEBUG: Starting horizontal spread from source");
+        // ALWAYS spread horizontally from sources (not just when they can't flow down)
+        // This matches Minecraft behavior where sources spread in all directions
+        // System.out.println("DEBUG: Source spreading horizontally" + (flowedDown ? " (also flowing down)" : ""));
         spreadHorizontally(sourcePos, WaterBlock.SOURCE_DEPTH, world);
     }
 
@@ -302,18 +408,24 @@ public class FlowSimulation {
      * Processes flowing water according to Minecraft mechanics.
      */
     private void processFlowingWater(Vector3i pos, WaterBlock waterBlock, World world) {
-        // Check if this flowing water should disappear
-        if (!hasValidSource(pos, world)) {
-            removeWaterAt(pos, world);
+        // Don't remove water immediately - let it persist unless truly invalid
+        // This prevents flickering when water is still valid but hasn't been updated
+
+        // Try to flow downward first - ALWAYS prioritize downward flow
+        Vector3i downPos = new Vector3i(pos.x, pos.y - 1, pos.z);
+        if (canFlowTo(downPos, world)) {
+            // When water flows down, depth resets to 0 at the new elevation (Minecraft behavior)
+            createOrUpdateWaterAt(downPos, 0, world);
+            scheduleFlowUpdate(downPos);
+
+            // Don't spread horizontally from falling water - this causes chaos
+            // Falling water should only fall, not spread sideways
             return;
         }
 
-        // Try to flow downward first
-        Vector3i downPos = new Vector3i(pos.x, pos.y - 1, pos.z);
-        if (canFlowTo(downPos, world)) {
-            // Flowing water creates depth 1 when flowing down (reset distance)
-            createOrUpdateWaterAt(downPos, 1, world);
-            scheduleFlowUpdate(downPos);
+        // Only check source validity for non-falling water
+        if (!hasValidSource(pos, world)) {
+            removeWaterAt(pos, world);
             return;
         }
 
@@ -321,6 +433,8 @@ public class FlowSimulation {
         int currentDepth = waterBlock.getDepth();
         if (currentDepth < MAX_DEPTH) {
             spreadHorizontally(pos, currentDepth, world);
+        } else {
+            // System.out.println("DEBUG: Water at " + pos.x + "," + pos.y + "," + pos.z + " has depth " + currentDepth + " (max reached, cannot spread)");
         }
     }
 
@@ -335,15 +449,15 @@ public class FlowSimulation {
             new Vector3i(0, 0, -1)   // North
         };
 
-        System.out.println("DEBUG: Calculating flow weights from " + pos.x + "," + pos.y + "," + pos.z + " with depth " + currentDepth);
+        // System.out.println("DEBUG: Calculating flow weights from " + pos.x + "," + pos.y + "," + pos.z + " with depth " + currentDepth);
 
         // Calculate flow weights for each direction
         Map<Vector3i, Integer> flowWeights = calculateFlowWeights(pos, directions, world);
 
-        System.out.println("DEBUG: Found " + flowWeights.size() + " possible flow directions");
+        // System.out.println("DEBUG: Found " + flowWeights.size() + " possible flow directions");
 
         if (flowWeights.isEmpty()) {
-            System.out.println("DEBUG: No valid flow directions found - all blocked or already have water");
+            // System.out.println("DEBUG: No valid flow directions found - all blocked or already have water");
             return;
         }
 
@@ -353,44 +467,49 @@ public class FlowSimulation {
             .min()
             .orElse(MIN_FLOW_WEIGHT);
 
-        System.out.println("DEBUG: Minimum flow weight is " + minWeight);
+        // System.out.println("DEBUG: Minimum flow weight is " + minWeight);
 
         // Flow to all directions with minimum weight
-        // In Minecraft, water flows horizontally regardless of weight if within range
+        // In Minecraft, water flows equally in all valid directions
         boolean isSource = (currentDepth == WaterBlock.SOURCE_DEPTH);
         int flowCount = 0;
 
         for (Map.Entry<Vector3i, Integer> entry : flowWeights.entrySet()) {
             Vector3i targetPos = entry.getKey();
-            int newDepth = currentDepth + 1;
+            int newDepth = isSource ? 1 : currentDepth + 1; // Sources create depth 1, flowing water increments
 
-            // Minecraft allows flow if:
-            // 1. We're a source (depth 0), OR
-            // 2. The new depth is within the 7-block limit, OR
-            // 3. We found a path to downward flow (weight < 1000)
-            boolean shouldFlow = isSource ||
-                               newDepth <= MAX_DEPTH ||
-                               entry.getValue() < MIN_FLOW_WEIGHT;
-
-            if (entry.getValue() == minWeight && shouldFlow && newDepth <= MAX_DEPTH) {
-                createOrUpdateWaterAt(targetPos, newDepth, world);
-                scheduleFlowUpdate(targetPos);
-                flowCount++;
-                System.out.println("DEBUG: Created water at " + targetPos.x + "," + targetPos.y + "," + targetPos.z + " with depth " + newDepth + " (reason: " +
-                    (isSource ? "source" : newDepth <= MAX_DEPTH ? "within range" : "path to down") + ")");
+            // Only flow if within the maximum depth range
+            if (newDepth <= MAX_DEPTH) {
+                // Flow to all directions with the minimum weight
+                // This ensures water spreads even when no edges are nearby
+                if (entry.getValue() == minWeight) {
+                    createOrUpdateWaterAt(targetPos, newDepth, world);
+                    scheduleFlowUpdate(targetPos);
+                    flowCount++;
+                    // System.out.println("DEBUG: Created water at " + targetPos.x + "," + targetPos.y + "," + targetPos.z +
+                    //     " with depth " + newDepth + " (weight=" + entry.getValue() + ")");
+                }
             }
         }
 
         if (flowCount == 0) {
-            System.out.println("DEBUG: No water was created - currentDepth=" + currentDepth + ", maxDepth=" + MAX_DEPTH + ", isSource=" + isSource + ", minWeight=" + minWeight);
+            // System.out.println("DEBUG: No water was created - currentDepth=" + currentDepth + ", maxDepth=" + MAX_DEPTH + ", isSource=" + isSource);
         }
     }
 
     /**
      * Calculates flow weights for each direction using Minecraft's algorithm.
+     * Water prefers to flow toward edges where it can create waterfalls.
      */
     private Map<Vector3i, Integer> calculateFlowWeights(Vector3i pos, Vector3i[] directions, World world) {
         Map<Vector3i, Integer> weights = new HashMap<>();
+
+        // First, check for edges within 5 blocks in all directions from current position
+        // This is how Minecraft determines flow preference
+        Map<Vector3i, Integer> edgeDistances = findEdgeDistances(pos, world, 5);
+        // if (!edgeDistances.isEmpty()) {
+        //     System.out.println("DEBUG: Found " + edgeDistances.size() + " edges from " + pos.x + "," + pos.y + "," + pos.z);
+        // }
 
         for (Vector3i dir : directions) {
             Vector3i targetPos = new Vector3i(pos).add(dir);
@@ -412,15 +531,22 @@ public class FlowSimulation {
                 }
             }
 
-            // Initial weight (high value means lower priority)
+            // Calculate weight based on distance to nearest edge
+            // Lower distance = lower weight = higher priority
             int weight = MIN_FLOW_WEIGHT;
 
-            // Find shortest path to downward flow within 4 blocks
-            int pathToDown = findShortestPathToDown(targetPos, world, 4);
-            if (pathToDown >= 0) {
-                weight = pathToDown; // Lower weight = higher priority
+            // Check if this direction leads toward an edge
+            if (edgeDistances.containsKey(targetPos)) {
+                weight = edgeDistances.get(targetPos);
+                // System.out.println("DEBUG: Direction to " + targetPos.x + "," + targetPos.y + "," + targetPos.z + " has edge at distance " + weight);
+            } else {
+                // Also check if moving in this direction gets us closer to any edge
+                int pathToDown = findShortestPathToDown(targetPos, world, 5);
+                if (pathToDown >= 0) {
+                    weight = pathToDown + 1; // Add 1 since we're one step further
+                    // System.out.println("DEBUG: Direction to " + targetPos.x + "," + targetPos.y + "," + targetPos.z + " leads to edge at distance " + weight);
+                }
             }
-            // If no downward path, still allow flow but with high weight
 
             weights.put(targetPos, weight);
         }
@@ -429,9 +555,74 @@ public class FlowSimulation {
     }
 
     /**
-     * Finds the shortest path to a downward flow opportunity.
+     * Finds all edges within a certain distance and returns their distances.
+     * This implements Minecraft's edge detection for flow direction preference.
+     */
+    private Map<Vector3i, Integer> findEdgeDistances(Vector3i startPos, World world, int maxDistance) {
+        Map<Vector3i, Integer> edgeDistances = new HashMap<>();
+
+        Queue<PathNode> queue = new ArrayDeque<>();
+        Set<Vector3i> visited = new HashSet<>();
+
+        queue.offer(new PathNode(startPos, 0));
+        visited.add(startPos);
+
+        Vector3i[] directions = {
+            new Vector3i(1, 0, 0), new Vector3i(-1, 0, 0),
+            new Vector3i(0, 0, 1), new Vector3i(0, 0, -1)
+        };
+
+        while (!queue.isEmpty()) {
+            PathNode current = queue.poll();
+
+            // Skip if we've exceeded the search distance
+            if (current.distance > maxDistance) {
+                continue;
+            }
+
+            // Check if this position is an edge (can flow down)
+            Vector3i downPos = new Vector3i(current.pos.x, current.pos.y - 1, current.pos.z);
+            if (current.distance > 0) { // Don't check the starting position itself
+                BlockType belowBlock = world.getBlockAt(downPos.x, downPos.y, downPos.z);
+                if (belowBlock == BlockType.AIR) {
+                    // This is an edge! Water can fall here
+                    edgeDistances.putIfAbsent(current.pos, current.distance);
+                    // System.out.println("DEBUG: Found edge at " + current.pos.x + "," + current.pos.y + "," + current.pos.z + " distance " + current.distance + " from origin");
+                }
+            }
+
+            // Continue searching if we haven't reached max distance
+            if (current.distance < maxDistance) {
+                for (Vector3i dir : directions) {
+                    Vector3i nextPos = new Vector3i(current.pos).add(dir);
+
+                    if (!visited.contains(nextPos)) {
+                        // Check if position is traversable (air or water)
+                        BlockType blockType = world.getBlockAt(nextPos.x, nextPos.y, nextPos.z);
+                        if (blockType == BlockType.AIR || blockType == BlockType.WATER) {
+                            visited.add(nextPos);
+                            queue.offer(new PathNode(nextPos, current.distance + 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        return edgeDistances;
+    }
+
+    /**
+     * Finds the shortest path to a downward flow opportunity (edge detection).
+     * This implements Minecraft's edge detection for creating waterfalls.
      */
     private int findShortestPathToDown(Vector3i startPos, World world, int maxDistance) {
+        // Check immediate down first
+        Vector3i immediateDown = new Vector3i(startPos.x, startPos.y - 1, startPos.z);
+        if (canFlowTo(immediateDown, world)) {
+            return 0; // Can flow down immediately
+        }
+
+        // Search within maxDistance blocks for edges (Minecraft behavior)
         Queue<PathNode> queue = new ArrayDeque<>();
         Set<Vector3i> visited = new HashSet<>();
 
@@ -450,9 +641,11 @@ public class FlowSimulation {
                 continue;
             }
 
-            // Check if we can flow down from this position
+            // Check if we can flow down from this position (edge detection)
             Vector3i downPos = new Vector3i(current.pos.x, current.pos.y - 1, current.pos.z);
-            if (canFlowTo(downPos, world)) {
+            BlockType belowBlock = world.getBlockAt(downPos.x, downPos.y, downPos.z);
+            if (belowBlock == BlockType.AIR) {
+                // System.out.println("DEBUG: findShortestPathToDown found edge at distance " + current.distance);
                 return current.distance;
             }
 
@@ -460,14 +653,18 @@ public class FlowSimulation {
             for (Vector3i dir : directions) {
                 Vector3i nextPos = new Vector3i(current.pos).add(dir);
 
-                if (!visited.contains(nextPos) && canFlowTo(nextPos, world)) {
-                    visited.add(nextPos);
-                    queue.offer(new PathNode(nextPos, current.distance + 1));
+                if (!visited.contains(nextPos)) {
+                    // Check if position is traversable (air or water)
+                    BlockType blockType = world.getBlockAt(nextPos.x, nextPos.y, nextPos.z);
+                    if (blockType == BlockType.AIR || blockType == BlockType.WATER) {
+                        visited.add(nextPos);
+                        queue.offer(new PathNode(nextPos, current.distance + 1));
+                    }
                 }
             }
         }
 
-        return -1; // No path to downward flow found
+        return -1; // No edge found within range
     }
 
     /**
@@ -518,31 +715,75 @@ public class FlowSimulation {
 
     /**
      * Checks if flowing water has a valid source.
+     * Water can flow infinitely downward but only 7 blocks horizontally.
      */
     private boolean hasValidSource(Vector3i pos, World world) {
-        // Check if there's a source within MAX_HORIZONTAL_DISTANCE
-        for (Vector3i sourcePos : sourceBlocks) {
-            int horizontalDistance = Math.abs(pos.x - sourcePos.x) + Math.abs(pos.z - sourcePos.z);
-            if (horizontalDistance <= MAX_HORIZONTAL_DISTANCE) {
-                // Check if there's a valid flow path
-                if (hasValidFlowPath(sourcePos, pos, world)) {
+        // Check if there's water directly above (infinite vertical flow)
+        Vector3i abovePos = new Vector3i(pos.x, pos.y + 1, pos.z);
+        BlockType aboveBlock = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
+        if (aboveBlock == BlockType.WATER) {
+            return true; // Water can flow infinitely downward
+        }
+
+        // Check for adjacent water blocks that could be feeding this one
+        Vector3i[] neighbors = {
+            new Vector3i(pos.x + 1, pos.y, pos.z),
+            new Vector3i(pos.x - 1, pos.y, pos.z),
+            new Vector3i(pos.x, pos.y, pos.z + 1),
+            new Vector3i(pos.x, pos.y, pos.z - 1)
+        };
+
+        for (Vector3i neighbor : neighbors) {
+            WaterBlock neighborWater = waterBlocks.get(neighbor);
+            if (neighborWater != null) {
+                // Check if neighbor has lower or equal depth (can feed us)
+                int ourDepth = waterBlocks.get(pos) != null ? waterBlocks.get(pos).getDepth() : MAX_DEPTH;
+                if (neighborWater.getDepth() < ourDepth) {
                     return true;
                 }
             }
         }
 
-        // Check if there's water above (vertical flow)
-        Vector3i abovePos = new Vector3i(pos.x, pos.y + 1, pos.z);
-        return waterBlocks.containsKey(abovePos);
+        // Check if there's a source block nearby
+        for (Vector3i sourcePos : sourceBlocks) {
+            int horizontalDistance = Math.abs(pos.x - sourcePos.x) + Math.abs(pos.z - sourcePos.z);
+            int verticalDistance = Math.abs(pos.y - sourcePos.y);
+
+            // Simple check: within 7 blocks horizontally and on same level or one below
+            if (horizontalDistance <= MAX_HORIZONTAL_DISTANCE && verticalDistance <= 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
      * Checks if there's a valid flow path between source and target.
+     * This considers both horizontal spread limits and vertical flow.
      */
     private boolean hasValidFlowPath(Vector3i source, Vector3i target, World world) {
-        // Simplified check: if target is within distance and reachable
+        // If target is directly below source, always valid (infinite vertical)
+        if (source.x == target.x && source.z == target.z && source.y > target.y) {
+            return true;
+        }
+
+        // For horizontal flow, check if within the 7-block limit
         int horizontalDistance = Math.abs(target.x - source.x) + Math.abs(target.z - source.z);
-        return horizontalDistance <= MAX_HORIZONTAL_DISTANCE;
+
+        // If on same level, simple distance check
+        if (source.y == target.y) {
+            return horizontalDistance <= MAX_HORIZONTAL_DISTANCE;
+        }
+
+        // If source is higher, water may have reset its depth when flowing down
+        // Each level down allows another 7 blocks of horizontal spread
+        if (source.y > target.y) {
+            // Check if the horizontal distance is reasonable for the vertical drop
+            return horizontalDistance <= MAX_HORIZONTAL_DISTANCE;
+        }
+
+        return false;
     }
 
     /**
@@ -593,6 +834,33 @@ public class FlowSimulation {
 
         for (Vector3i neighbor : neighbors) {
             scheduleFlowUpdate(neighbor);
+        }
+    }
+
+    /**
+     * Ensures nearby water blocks are tracked in the simulation.
+     * This helps recover from situations where water blocks exist in the world
+     * but aren't properly tracked in the flow simulation.
+     */
+    private void ensureNearbyWaterTracked(Vector3i centerPos, World world) {
+        // Check all blocks within a 2-block radius
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    if (dx == 0 && dy == 0 && dz == 0) continue;
+
+                    Vector3i checkPos = new Vector3i(centerPos.x + dx, centerPos.y + dy, centerPos.z + dz);
+                    BlockType blockType = world.getBlockAt(checkPos.x, checkPos.y, checkPos.z);
+
+                    if (blockType == BlockType.WATER && !waterBlocks.containsKey(checkPos)) {
+                        // Found untracked water block
+                        WaterBlock waterBlock = new WaterBlock(estimateDepthFromSurroundings(checkPos, world));
+                        waterBlocks.put(checkPos, waterBlock);
+                        scheduleFlowUpdate(checkPos);
+                        System.out.println("DEBUG: Found and tracked nearby untracked water at " + checkPos.x + "," + checkPos.y + "," + checkPos.z);
+                    }
+                }
+            }
         }
     }
 
