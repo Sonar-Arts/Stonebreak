@@ -1,7 +1,9 @@
 package com.stonebreak.world;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
+import com.stonebreak.core.Game;
 
 /**
  * Manages water level visual heights for rendering with distance-based decrease.
@@ -87,6 +89,8 @@ public class WaterLevelManager {
         // Check each cardinal direction
         int[][] directions = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
+        World world = Game.getWorld();
+
         for (int[] dir : directions) {
             int nx = x + dir[0];
             int nz = z + dir[1];
@@ -97,11 +101,32 @@ public class WaterLevelManager {
                 // Neighbor has water - use its height
                 float neighborHeight = neighbor.getVisualHeight();
                 heightSum = heightSum - baseHeight + neighborHeight;
-            } else {
-                // No water neighbor - this edge should be lower for slope effect
-                float edgeHeight = Math.max(0.125f, baseHeight - 0.125f);
-                heightSum = heightSum - baseHeight + edgeHeight;
+                continue;
             }
+
+            BlockType neighborType = BlockType.AIR;
+            if (world != null) {
+                neighborType = world.getBlockAt(nx, y, nz);
+            }
+
+            if (neighborType == BlockType.WATER) {
+                // Neighbor water exists in world but not simulation - fall back to visual height
+                float fallbackHeight = Water.getWaterVisualHeight(nx, y, nz);
+                if (fallbackHeight <= 0.0f) {
+                    fallbackHeight = baseHeight;
+                }
+                heightSum = heightSum - baseHeight + fallbackHeight;
+                continue;
+            }
+
+            if (!neighborType.isTransparent()) {
+                // Solid neighbor blocks the flow, keep current height to avoid visual gaps
+                continue;
+            }
+
+            // No water or solid neighbor - this edge should taper down for slope effect
+            float edgeHeight = Math.max(0.125f, baseHeight - 0.125f);
+            heightSum = heightSum - baseHeight + edgeHeight;
         }
 
         // Average the height influences for smooth transitions
