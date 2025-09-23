@@ -2,6 +2,10 @@ package com.stonebreak.blocks.waterSystem.flowSim.algorithms;
 
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.waterSystem.flowSim.core.FlowUpdateScheduler;
+import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
+import com.stonebreak.blocks.waterSystem.types.FlowWaterType;
+import com.stonebreak.blocks.waterSystem.types.SourceWaterType;
+import com.stonebreak.blocks.waterSystem.types.WaterType;
 import com.stonebreak.world.World;
 import org.joml.Vector3i;
 
@@ -38,7 +42,7 @@ public class FlowAlgorithm {
 
         // First, try to flow downward (infinite vertical flow)
         Vector3i downPos = new Vector3i(sourcePos.x, sourcePos.y - 1, sourcePos.z);
-        if (pathfindingService.canFlowTo(downPos, world)) {
+        if (FlowBlockInteraction.canFlowTo(downPos, world)) {
             // When water flows down, depth resets to 0 at the new elevation (Minecraft behavior)
             createOrUpdateWaterAt(downPos, 0, world);
             scheduler.scheduleFlowUpdate(downPos);
@@ -110,7 +114,7 @@ public class FlowAlgorithm {
         for (Vector3i dir : directions) {
             Vector3i targetPos = new Vector3i(pos).add(dir);
 
-            if (!pathfindingService.canFlowTo(targetPos, world)) {
+            if (!FlowBlockInteraction.canFlowTo(targetPos, world)) {
                 continue;
             }
 
@@ -149,23 +153,37 @@ public class FlowAlgorithm {
     }
 
     /**
-     * Creates or updates water at a position.
+     * Creates or updates water at a position with proper type system and flower breaking.
      */
     private void createOrUpdateWaterAt(Vector3i pos, int depth, World world) {
         WaterBlock existing = waterBlocks.get(pos);
 
         if (existing == null) {
-            // Create new water block
+            // Use FlowBlockInteraction to handle destructible blocks like flowers
+            FlowBlockInteraction.flowTo(pos, world);
+
+            // Create new water block with appropriate type
             if (world.getBlockAt(pos.x, pos.y, pos.z) == com.stonebreak.blocks.BlockType.AIR) {
                 world.setBlockAt(pos.x, pos.y, pos.z, com.stonebreak.blocks.BlockType.WATER);
             }
 
-            WaterBlock newWater = new WaterBlock(depth);
+            WaterType waterType = depth == WaterBlock.SOURCE_DEPTH ?
+                new SourceWaterType() : new FlowWaterType(depth);
+            WaterBlock newWater = WaterBlock.createWithType(waterType);
             waterBlocks.put(pos, newWater);
         } else {
-            // Update existing water block depth (take minimum for flowing water)
-            if (!existing.isSource() && depth < existing.getDepth()) {
-                existing.setDepth(depth);
+            WaterType existingType = existing.getWaterType();
+
+            // CRITICAL RULE: Flow blocks NEVER override source blocks
+            if (existingType instanceof SourceWaterType) {
+                return; // Source blocks remain unchanged
+            }
+
+            // For flow blocks, use averaging and respect type system
+            if (existingType instanceof FlowWaterType && depth < existing.getDepth()) {
+                // Average the depths for flow convergence
+                int averagedDepth = (existing.getDepth() + depth) / 2;
+                existing.setWaterType(new FlowWaterType(averagedDepth));
             }
         }
     }

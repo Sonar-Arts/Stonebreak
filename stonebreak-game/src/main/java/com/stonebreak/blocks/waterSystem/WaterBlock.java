@@ -1,5 +1,10 @@
 package com.stonebreak.blocks.waterSystem;
 
+import com.stonebreak.blocks.waterSystem.states.WaterState;
+import com.stonebreak.blocks.waterSystem.types.FlowWaterType;
+import com.stonebreak.blocks.waterSystem.types.OceanWaterType;
+import com.stonebreak.blocks.waterSystem.types.SourceWaterType;
+import com.stonebreak.blocks.waterSystem.types.WaterType;
 import org.joml.Vector3f;
 
 /**
@@ -19,12 +24,18 @@ public class WaterBlock {
     private final Vector3f flowDirection = new Vector3f();
     private long lastUpdateTime = 0;
 
+    // New type system fields
+    private WaterType waterType;
+    private WaterState waterState;
+
     /**
      * Creates a new water source block (depth 0).
      */
     public WaterBlock() {
         this.depth = SOURCE_DEPTH;
         this.isSource = true;
+        this.waterType = new SourceWaterType();
+        this.waterState = WaterState.STAGNANT;
     }
 
     /**
@@ -35,6 +46,7 @@ public class WaterBlock {
     public WaterBlock(int depth) {
         this.depth = Math.max(0, Math.min(MAX_FLOW_DEPTH, depth));
         this.isSource = (depth == SOURCE_DEPTH);
+        initializeWaterType(depth);
     }
 
     /**
@@ -300,12 +312,91 @@ public class WaterBlock {
         this.isOceanWater = oceanWater;
         if (oceanWater) {
             setSource(true); // Ocean water is always a source
+            this.waterType = new OceanWaterType();
         }
+    }
+
+    /**
+     * Gets the water type for this block.
+     *
+     * @return The water type (source, flow, or ocean)
+     */
+    public WaterType getWaterType() {
+        // Lazy initialization for backward compatibility
+        if (waterType == null) {
+            initializeWaterType(depth);
+        }
+        return waterType;
+    }
+
+    /**
+     * Sets the water type for this block.
+     *
+     * @param waterType The new water type
+     */
+    public void setWaterType(WaterType waterType) {
+        this.waterType = waterType;
+        // Keep depth and source flags in sync
+        this.depth = waterType.getDepth();
+        this.isSource = waterType.isSource();
+    }
+
+    /**
+     * Gets the current water state.
+     *
+     * @return The water state
+     */
+    public WaterState getWaterState() {
+        // Lazy initialization for backward compatibility
+        if (waterState == null) {
+            waterState = WaterState.getDefaultState(isSource);
+        }
+        return waterState;
+    }
+
+    /**
+     * Sets the water state for this block.
+     *
+     * @param waterState The new water state
+     */
+    public void setWaterState(WaterState waterState) {
+        this.waterState = waterState;
+    }
+
+    /**
+     * Initializes the water type based on depth and flags.
+     * Used for backward compatibility and new block creation.
+     */
+    private void initializeWaterType(int depth) {
+        if (isOceanWater) {
+            this.waterType = new OceanWaterType();
+            this.waterState = WaterState.STAGNANT;
+        } else if (depth == SOURCE_DEPTH) {
+            this.waterType = new SourceWaterType();
+            this.waterState = WaterState.STAGNANT;
+        } else {
+            this.waterType = new FlowWaterType(depth);
+            this.waterState = WaterState.FLOWING;
+        }
+    }
+
+    /**
+     * Creates a new water block with the specified type.
+     *
+     * @param waterType The water type to use
+     * @return A new water block with the specified type
+     */
+    public static WaterBlock createWithType(WaterType waterType) {
+        WaterBlock block = new WaterBlock(waterType.getDepth());
+        block.setWaterType(waterType);
+        block.setWaterState(WaterState.getDefaultState(waterType.isSource()));
+        return block;
     }
 
     @Override
     public String toString() {
-        return String.format("WaterBlock{depth=%d, level=%.2f, source=%s, flow=%.2f}",
-                           depth, getLevel(), isSource, flowDirection.length());
+        return String.format("WaterBlock{depth=%d, level=%.2f, source=%s, type=%s, state=%s, flow=%.2f}",
+                           depth, getLevel(), isSource, getWaterType().getClass().getSimpleName(),
+                           getWaterState(), flowDirection.length());
     }
 }

@@ -201,6 +201,14 @@ public enum BlockType implements Item {
     }
     
     /**
+     * Determines if this block type is a flower that can be broken by water flow.
+     * @return true if this is a flower block
+     */
+    public boolean isFlower() {
+        return this == ROSE || this == DANDELION;
+    }
+
+    /**
      * Get texture coordinates for the block type.
      * @param face The face of the block (0=top, 1=bottom, 2-5=sides)
      * @return Array with [x, y] coordinates in the texture atlas

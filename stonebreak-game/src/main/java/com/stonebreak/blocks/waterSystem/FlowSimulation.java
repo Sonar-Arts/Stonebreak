@@ -125,6 +125,13 @@ public class FlowSimulation {
     }
 
     /**
+     * Gets a water block at the specified position.
+     */
+    public WaterBlock getWaterBlock(Vector3i pos) {
+        return queryService.getWaterBlock(pos.x, pos.y, pos.z);
+    }
+
+    /**
      * Detects existing water blocks in the world and initializes them in the simulation.
      * This preserves naturally generated oceans and other pre-existing water.
      */

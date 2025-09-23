@@ -6,6 +6,13 @@ import com.stonebreak.blocks.waterSystem.flowSim.algorithms.FlowAlgorithm;
 import com.stonebreak.blocks.waterSystem.flowSim.algorithms.FlowValidator;
 import com.stonebreak.blocks.waterSystem.flowSim.management.WaterSourceManager;
 import com.stonebreak.blocks.waterSystem.flowSim.world.WorldWaterDetector;
+import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
+import com.stonebreak.blocks.waterSystem.states.WaterState;
+import com.stonebreak.blocks.waterSystem.states.WaterStateManager;
+import com.stonebreak.blocks.waterSystem.states.WaterStateManagerImpl;
+import com.stonebreak.blocks.waterSystem.types.FlowWaterType;
+import com.stonebreak.blocks.waterSystem.types.SourceWaterType;
+import com.stonebreak.blocks.waterSystem.types.WaterType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import org.joml.Vector3i;
@@ -32,6 +39,7 @@ public class FlowProcessor {
     private final FlowAlgorithm flowAlgorithm;
     private final FlowValidator validator;
     private final WorldWaterDetector detector;
+    private final WaterStateManager stateManager;
 
     private float timeSinceLastUpdate;
 
@@ -44,6 +52,7 @@ public class FlowProcessor {
         this.flowAlgorithm = flowAlgorithm;
         this.validator = validator;
         this.detector = detector;
+        this.stateManager = new WaterStateManagerImpl();
         this.timeSinceLastUpdate = 0.0f;
     }
 
@@ -107,10 +116,22 @@ public class FlowProcessor {
             detector.ensureNearbyWaterTracked(pos, world);
         }
 
+        // Ensure water block has proper type and state
+        if (waterBlock.getWaterType() == null) {
+            // Lazy initialization will handle this in getWaterType()
+            waterBlock.getWaterType(); // This triggers lazy initialization
+        }
+
         // Source blocks don't need flow processing
         if (sourceManager.isWaterSource(pos)) {
             waterBlock.setSource(true);
             waterBlock.setDepth(WaterBlock.SOURCE_DEPTH);
+            waterBlock.setWaterType(new SourceWaterType());
+
+            // Update state for source block
+            WaterState sourceState = stateManager.determineState(waterBlock, pos);
+            stateManager.updateState(waterBlock, sourceState, pos);
+
             flowAlgorithm.spreadFromSource(pos, world);
             return;
         }
@@ -121,8 +142,14 @@ public class FlowProcessor {
 
     /**
      * Processes flowing water according to Minecraft mechanics.
+     * Ensures flow blocks maintain FLOWING state permanently.
      */
     private void processFlowingWater(Vector3i pos, WaterBlock waterBlock, World world) {
+        // CRITICAL RULE: Ensure flow blocks always maintain FLOWING state
+        WaterType waterType = waterBlock.getWaterType();
+        if (waterType instanceof FlowWaterType) {
+            stateManager.updateState(waterBlock, WaterState.FLOWING, pos);
+        }
         // Try to flow downward first - ALWAYS prioritize downward flow
         Vector3i downPos = new Vector3i(pos.x, pos.y - 1, pos.z);
         if (canFlowTo(downPos, world)) {
@@ -150,34 +177,59 @@ public class FlowProcessor {
 
     /**
      * Checks if water can flow to a position.
+     * Now includes support for destroying flower blocks.
      */
     private boolean canFlowTo(Vector3i pos, World world) {
         if (pos.y < 0 || pos.y >= 256) { // Using fixed world height for now
             return false;
         }
 
-        BlockType blockType = world.getBlockAt(pos.x, pos.y, pos.z);
-        return blockType == BlockType.AIR || blockType == BlockType.WATER;
+        return FlowBlockInteraction.canFlowTo(pos, world);
     }
 
     /**
-     * Creates or updates water at a position.
+     * Creates or updates water at a position with proper type system integration.
+     * Implements flow averaging when multiple flows converge.
      */
     private void createOrUpdateWaterAt(Vector3i pos, int depth, World world) {
         WaterBlock existing = waterBlocks.get(pos);
 
         if (existing == null) {
-            // Create new water block
+            // Destroy any destructible blocks first
+            FlowBlockInteraction.flowTo(pos, world);
+
+            // Create new water block with appropriate type
             if (world.getBlockAt(pos.x, pos.y, pos.z) == BlockType.AIR) {
                 world.setBlockAt(pos.x, pos.y, pos.z, BlockType.WATER);
             }
 
-            WaterBlock newWater = new WaterBlock(depth);
+            WaterType waterType = depth == WaterBlock.SOURCE_DEPTH ?
+                new SourceWaterType() : new FlowWaterType(depth);
+            WaterBlock newWater = WaterBlock.createWithType(waterType);
+
+            // Set appropriate state
+            WaterState state = stateManager.determineState(newWater, pos);
+            stateManager.updateState(newWater, state, pos);
+
             waterBlocks.put(pos, newWater);
         } else {
-            // Update existing water block depth (take minimum for flowing water)
-            if (!existing.isSource() && depth < existing.getDepth()) {
-                existing.setDepth(depth);
+            WaterType existingType = existing.getWaterType();
+
+            // CRITICAL RULE: Flow blocks NEVER override source blocks
+            if (existingType instanceof SourceWaterType) {
+                // Source blocks remain unchanged when flows attempt to merge
+                return;
+            }
+
+            // For flow blocks, implement averaging behavior
+            if (existingType instanceof FlowWaterType && depth < existing.getDepth()) {
+                // Average the depths instead of just taking minimum
+                int averagedDepth = (existing.getDepth() + depth) / 2;
+                existing.setWaterType(new FlowWaterType(averagedDepth));
+
+                // Update state based on new conditions
+                WaterState newState = stateManager.determineState(existing, pos);
+                stateManager.updateState(existing, newState, pos);
             }
         }
     }
