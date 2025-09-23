@@ -159,15 +159,17 @@ public class ChunkMeshOperations {
         
         // Generate vertices and normals using the geometry service
         float[] waterCornerHeights = null;
+        float waterBottomHeight = worldY;
         if (blockType == BlockType.WATER) {
             int blockX = (int)Math.floor(worldX);
             int blockY = (int)Math.floor(worldY);
             int blockZ = (int)Math.floor(worldZ);
             waterCornerHeights = geometryGenerator.computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight, world);
+            waterBottomHeight = geometryGenerator.computeWaterBottomAttachmentHeight(worldX, worldY, worldZ, world);
         }
 
         vertexIndex += geometryGenerator.generateFaceVertices(face, blockType, worldX, worldY, worldZ,
-                                                             blockHeight, waterCornerHeights,
+                                                             blockHeight, waterCornerHeights, waterBottomHeight,
                                                              tempVertices, vertexIndex);
         normalIndex += geometryGenerator.generateFaceNormals(face, tempNormals, normalIndex);
 

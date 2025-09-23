@@ -12,14 +12,17 @@ import com.stonebreak.world.World;
 public class GeometryGenerator {
 
     private static final float MIN_DISPLAYED_WATER_HEIGHT = 0.125f;
+    private static final float WATER_ATTACHMENT_EPSILON = 0.001f;
     
     /**
      * Generates vertices for a specific face of a block.
      * Returns the number of vertices added (always 12 floats = 4 vertices * 3 components each).
      */
     public int generateFaceVertices(int face, BlockType blockType, float worldX, float worldY, float worldZ,
-                                    float blockHeight, float[] waterCornerHeights,
+                                    float blockHeight, float[] waterCornerHeights, float waterBottomY,
                                     float[] vertexArray, int vertexIndex) {
+        float bottomY = (blockType == BlockType.WATER) ? waterBottomY : worldY;
+
         switch (face) {
             case 0 -> { // Top face (y+1)
                 if (blockType == BlockType.WATER && waterCornerHeights != null) {
@@ -36,71 +39,71 @@ public class GeometryGenerator {
                 }
             }
             case 1 -> { // Bottom face (y-1)
-                vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY; vertexArray[vertexIndex++] = worldZ;
-                vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY; vertexArray[vertexIndex++] = worldZ + 1;
-                vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY; vertexArray[vertexIndex++] = worldZ + 1;
-                vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY; vertexArray[vertexIndex++] = worldZ;
+                vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ;
+                vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ + 1;
+                vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ + 1;
+                vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ;
             }
             case 2 -> { // Front face (z+1)
                 if (blockType == BlockType.WATER && waterCornerHeights != null) {
-                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ + 1;
                     vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY + waterCornerHeights[3]; vertexArray[vertexIndex++] = worldZ + 1;
                     vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY + waterCornerHeights[2]; vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ + 1;
                 } else {
                     float topY = worldY + blockHeight;
-                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ + 1;
                 }
             }
             case 3 -> { // Back face (z-1)
                 if (blockType == BlockType.WATER && waterCornerHeights != null) {
-                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ;
                     vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY + waterCornerHeights[1]; vertexArray[vertexIndex++] = worldZ;
                     vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY + waterCornerHeights[0]; vertexArray[vertexIndex++] = worldZ;
                 } else {
                     float topY = worldY + blockHeight;
-                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ;
                 }
             }
             case 4 -> { // Right face (x+1)
                 if (blockType == BlockType.WATER && waterCornerHeights != null) {
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ + 1;
                     vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY + waterCornerHeights[2]; vertexArray[vertexIndex++] = worldZ + 1;
                     vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY + waterCornerHeights[1]; vertexArray[vertexIndex++] = worldZ;
                 } else {
                     float topY = worldY + blockHeight;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX + 1;    vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ;
                 }
             }
             case 5 -> { // Left face (x-1)
                 if (blockType == BlockType.WATER && waterCornerHeights != null) {
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = worldY + waterCornerHeights[0]; vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = worldY + waterCornerHeights[3]; vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY + waterCornerHeights[0]; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = worldY + waterCornerHeights[3]; vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY;                         vertexArray[vertexIndex++] = worldZ + 1;
                 } else {
                     float topY = worldY + blockHeight;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = topY; vertexArray[vertexIndex++] = worldZ + 1;
-                    vertexArray[vertexIndex++] = worldX;    vertexArray[vertexIndex++] = worldY;     vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = topY;    vertexArray[vertexIndex++] = worldZ + 1;
+                    vertexArray[vertexIndex++] = worldX;        vertexArray[vertexIndex++] = bottomY; vertexArray[vertexIndex++] = worldZ + 1;
                 }
             }
         }
         return 12; // Always 12 floats added (4 vertices * 3 components each)
     }
-    
+
     /**
      * Generates normals for a specific face of a block.
      * Returns the number of normals added (always 12 floats = 4 normals * 3 components each).
@@ -211,6 +214,37 @@ public class GeometryGenerator {
         }
 
         return heights;
+    }
+
+    public float computeWaterBottomAttachmentHeight(float worldX, float worldY, float worldZ, World world) {
+        if (world == null) {
+            return worldY;
+        }
+
+        int blockX = (int)Math.floor(worldX);
+        int blockY = (int)Math.floor(worldY);
+        int blockZ = (int)Math.floor(worldZ);
+
+        if (blockY <= 0) {
+            return worldY;
+        }
+
+        int belowY = blockY - 1;
+        BlockType belowType = world.getBlockAt(blockX, belowY, blockZ);
+        if (belowType == null) {
+            return worldY;
+        }
+
+        float neighborHeight = getBlockHeight(belowType, blockX, belowY, blockZ, world);
+        neighborHeight = Math.max(0.0f, Math.min(1.0f, neighborHeight));
+
+        float attachmentHeight = Math.min(worldY, belowY + neighborHeight);
+        if (attachmentHeight >= worldY - WATER_ATTACHMENT_EPSILON) {
+            return worldY;
+        }
+
+        float adjustedAttachment = Math.max(belowY, attachmentHeight - WATER_ATTACHMENT_EPSILON);
+        return Math.max(worldY - 1.0f, adjustedAttachment);
     }
 
     private float resolveWaterHeight(int x, int y, int z, World world) {
