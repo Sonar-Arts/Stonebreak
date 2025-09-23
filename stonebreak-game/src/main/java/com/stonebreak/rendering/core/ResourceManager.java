@@ -82,11 +82,13 @@ public class ResourceManager {
                        float topFactor = clamp(normal.y, 0.0, 1.0);
                        bool isBottomFace = normal.y < -0.5;
                        if (topFactor > 0.5) {
-                           // Top faces ride the full wave height
-                           float baseHeightLocal = position.y;
-                           float minAllowed = max(MIN_WATER_SURFACE, baseHeightLocal - MAX_WAVE_DELTA);
-                           float maxAllowed = baseHeightLocal + MAX_WAVE_DELTA;
-                           pos.y = clamp(baseHeightLocal + wave, minAllowed, maxAllowed);
+                           // Top faces ride the full wave height without dipping below adjacent sides
+                           float blockBaseWorld = floor(worldPos.y + 0.0001);
+                           float minAllowedWorld = blockBaseWorld + max(MIN_WATER_SURFACE, waterHeight - MAX_WAVE_DELTA);
+                           float maxAllowedWorld = blockBaseWorld + min(0.875, waterHeight + MAX_WAVE_DELTA);
+                           float targetWorld = clamp(blockBaseWorld + waterHeight + wave, minAllowedWorld, maxAllowedWorld);
+                           float delta = targetWorld - worldPos.y;
+                           pos.y = position.y + delta;
                        } else if (!isBottomFace) {
                            // Stretch side faces so their top edge follows the displaced surface
                            float blockBaseY = floor(worldPos.y + 0.0001);
