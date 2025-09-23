@@ -12,6 +12,9 @@ import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureR
  */
 public class TextureCoordinateProcessor {
     
+    private static final float MIN_WATER_FACE_HEIGHT = 0.125f;
+    private static final float MAX_WATER_FACE_HEIGHT = 0.875f;
+
     /**
      * Maps internal face index to CBR face string.
      * 0: up, 1: down, 2: south(+Z), 3: north(-Z), 4: east(+X), 5: west(-X)
@@ -132,7 +135,7 @@ public class TextureCoordinateProcessor {
         // Add isWater flag for each of the 4 vertices of this face
         float isWaterValue = 0.0f;
         if (blockType == BlockType.WATER) {
-            isWaterValue = Math.max(0.0f, Math.min(0.875f, blockHeight));
+            isWaterValue = Math.max(MIN_WATER_FACE_HEIGHT, Math.min(MAX_WATER_FACE_HEIGHT, blockHeight));
         }
         isWaterFlags[flagIndex] = isWaterValue;
         isWaterFlags[flagIndex + 1] = isWaterValue;

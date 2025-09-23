@@ -69,6 +69,8 @@ public class ResourceManager {
                    vec3 pos = position;
                    // Apply GPU-side water surface displacement to avoid remeshing for waves
                    if (waterHeight > 0.0 && !u_isUIElement) {
+                       const float MIN_WATER_SURFACE = 0.125;
+                       const float MAX_WAVE_DELTA = 0.18;
                        // World-space wave using simple, seamless functions
                        float s = 0.50;             // spatial scale
                        float speed1 = 1.5;         // primary speed
@@ -81,7 +83,10 @@ public class ResourceManager {
                        bool isBottomFace = normal.y < -0.5;
                        if (topFactor > 0.5) {
                            // Top faces ride the full wave height
-                           pos.y += wave;
+                           float baseHeightLocal = position.y;
+                           float minAllowed = max(MIN_WATER_SURFACE, baseHeightLocal - MAX_WAVE_DELTA);
+                           float maxAllowed = baseHeightLocal + MAX_WAVE_DELTA;
+                           pos.y = clamp(baseHeightLocal + wave, minAllowed, maxAllowed);
                        } else if (!isBottomFace) {
                            // Stretch side faces so their top edge follows the displaced surface
                            float blockBaseY = floor(worldPos.y + 0.0001);
@@ -89,8 +94,12 @@ public class ResourceManager {
                            if (waterHeight > 0.0001) {
                                normalizedHeight = clamp((worldPos.y - blockBaseY) / waterHeight, 0.0, 1.0);
                            }
-                           float displacedTopY = blockBaseY + waterHeight + wave;
-                           pos.y = mix(blockBaseY, displacedTopY, normalizedHeight);
+                           float minAllowed = blockBaseY + max(MIN_WATER_SURFACE, waterHeight - MAX_WAVE_DELTA);
+                           float maxAllowed = blockBaseY + waterHeight + MAX_WAVE_DELTA;
+                           float displacedTopY = clamp(blockBaseY + waterHeight + wave, minAllowed, maxAllowed);
+                           float target = mix(blockBaseY, displacedTopY, normalizedHeight);
+                           float minInterpolated = blockBaseY + normalizedHeight * MIN_WATER_SURFACE;
+                           pos.y = max(target, minInterpolated);
                        }
                    }
                    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);

@@ -10,6 +10,8 @@ import com.stonebreak.world.World;
  * Follows Single Responsibility Principle by handling only geometry generation.
  */
 public class GeometryGenerator {
+
+    private static final float MIN_DISPLAYED_WATER_HEIGHT = 0.125f;
     
     /**
      * Generates vertices for a specific face of a block.
@@ -156,17 +158,16 @@ public class GeometryGenerator {
 
             WaterBlock waterBlock = Water.getWaterBlock(blockX, blockY, blockZ);
             if (waterBlock != null) {
-                float visualHeight = waterBlock.getVisualHeight();
-                return Math.max(0.0f, Math.min(0.875f, visualHeight));
+                return clampWaterHeight(waterBlock.getVisualHeight());
             }
 
             float level = Water.getWaterLevel(blockX, blockY, blockZ);
             if (level > 0.0f) {
-                return Math.max(0.0f, Math.min(0.875f, level * 0.875f));
+                return clampWaterHeight(level * 0.875f);
             }
 
             if (world != null && world.getBlockAt(blockX, blockY, blockZ) == BlockType.WATER) {
-                return 0.875f;
+                return clampWaterHeight(0.875f);
             }
 
             return 0.0f;
@@ -180,7 +181,8 @@ public class GeometryGenerator {
     }
 
     public float[] computeWaterCornerHeights(int blockX, int blockY, int blockZ, float blockHeight, World world) {
-        float[] heights = new float[] {blockHeight, blockHeight, blockHeight, blockHeight};
+        float initialHeight = clampWaterHeight(blockHeight);
+        float[] heights = new float[] {initialHeight, initialHeight, initialHeight, initialHeight};
 
         // Offsets of blocks contributing to each corner (dx, dz)
         int[][][] cornerOffsets = new int[][][] {
@@ -223,13 +225,13 @@ public class GeometryGenerator {
         }
 
         if (world != null && world.getBlockAt(x, y, z) == BlockType.WATER) {
-            return 0.875f;
+            return clampWaterHeight(0.875f);
         }
 
         return Float.NaN;
     }
 
     private float clampWaterHeight(float height) {
-        return Math.max(0.0f, Math.min(0.875f, height));
+        return Math.max(MIN_DISPLAYED_WATER_HEIGHT, Math.min(0.875f, height));
     }
 }
