@@ -35,6 +35,8 @@ public class FlowValidator {
      * Checks if flowing water has a valid source.
      * Water can flow infinitely downward but only 7 blocks horizontally.
      * Ocean water (at or below sea level) is always considered valid.
+     * Flow blocks cannot connect diagonally to source blocks.
+     * Source blocks must have at least one unblocked side face to feed flow blocks.
      */
     public boolean hasValidSource(Vector3i pos, World world) {
         // First check if this is ocean water - ocean water is always valid
@@ -79,13 +81,9 @@ public class FlowValidator {
             }
         }
 
-        // Check if there's a source block nearby
+        // Check if there's a source block nearby with valid connection
         for (Vector3i sourcePos : sourceBlocks) {
-            int horizontalDistance = Math.abs(pos.x - sourcePos.x) + Math.abs(pos.z - sourcePos.z);
-            int verticalDistance = Math.abs(pos.y - sourcePos.y);
-
-            // Simple check: within 7 blocks horizontally and on same level or one below
-            if (horizontalDistance <= MAX_HORIZONTAL_DISTANCE && verticalDistance <= 1) {
+            if (canSourceFeedFlowBlock(sourcePos, pos, world)) {
                 return true;
             }
         }
@@ -183,5 +181,150 @@ public class FlowValidator {
         if (!shouldWaterExist(pos, world)) {
             removeWaterAt(pos, world);
         }
+    }
+
+    /**
+     * Checks if a source block can feed a specific flow block.
+     * Prevents diagonal connections and ensures source has unblocked side faces.
+     *
+     * @param sourcePos Position of the source block
+     * @param flowPos Position of the flow block
+     * @param world The world instance
+     * @return true if the source can feed the flow block
+     */
+    public boolean canSourceFeedFlowBlock(Vector3i sourcePos, Vector3i flowPos, World world) {
+        // Calculate distance components
+        int dx = Math.abs(flowPos.x - sourcePos.x);
+        int dy = Math.abs(flowPos.y - sourcePos.y);
+        int dz = Math.abs(flowPos.z - sourcePos.z);
+        int horizontalDistance = dx + dz;
+
+        // Check distance limits
+        if (horizontalDistance > MAX_HORIZONTAL_DISTANCE || dy > 1) {
+            return false;
+        }
+
+        // Prevent diagonal connections - flow blocks can only connect through cardinal directions
+        if (isDiagonalConnection(sourcePos, flowPos)) {
+            return false;
+        }
+
+        // Check if source block has at least one unblocked side face
+        if (!hasUnblockedSideFaces(sourcePos, world)) {
+            return false;
+        }
+
+        // If flow block is directly below source, always valid (vertical flow)
+        if (sourcePos.x == flowPos.x && sourcePos.z == flowPos.z && sourcePos.y > flowPos.y) {
+            return true;
+        }
+
+        // For horizontal connections, ensure there's a valid path
+        return hasValidFlowPath(sourcePos, flowPos, world);
+    }
+
+    /**
+     * Checks if the connection between two positions is diagonal.
+     * Diagonal connections are not allowed between source and flow blocks.
+     *
+     * @param sourcePos Source block position
+     * @param flowPos Flow block position
+     * @return true if the connection is diagonal
+     */
+    private boolean isDiagonalConnection(Vector3i sourcePos, Vector3i flowPos) {
+        int dx = Math.abs(flowPos.x - sourcePos.x);
+        int dz = Math.abs(flowPos.z - sourcePos.z);
+
+        // Diagonal if both x and z components are non-zero (on same Y level)
+        // Vertical connections (only Y differs) are not diagonal
+        if (sourcePos.y == flowPos.y) {
+            return dx > 0 && dz > 0;
+        }
+
+        // For different Y levels, check if horizontal component is diagonal
+        return dx > 0 && dz > 0;
+    }
+
+    /**
+     * Checks if a source block has at least one unblocked side face.
+     * Source blocks need unblocked side faces to generate flow to adjacent blocks.
+     *
+     * @param sourcePos Position of the source block
+     * @param world The world instance
+     * @return true if the source has at least one unblocked side face
+     */
+    private boolean hasUnblockedSideFaces(Vector3i sourcePos, World world) {
+        // Check all four horizontal side faces (North, South, East, West)
+        Vector3i[] sideFaces = {
+            new Vector3i(sourcePos.x + 1, sourcePos.y, sourcePos.z), // East
+            new Vector3i(sourcePos.x - 1, sourcePos.y, sourcePos.z), // West
+            new Vector3i(sourcePos.x, sourcePos.y, sourcePos.z + 1), // South
+            new Vector3i(sourcePos.x, sourcePos.y, sourcePos.z - 1)  // North
+        };
+
+        for (Vector3i facePos : sideFaces) {
+            BlockType blockType = world.getBlockAt(facePos.x, facePos.y, facePos.z);
+
+            // Side face is considered unblocked if it's air, water, or a destructible block
+            if (blockType == BlockType.AIR ||
+                blockType == BlockType.WATER ||
+                canFlowToBlock(blockType)) {
+                return true;
+            }
+        }
+
+        return false; // All side faces are blocked
+    }
+
+    /**
+     * Checks if water can flow to a specific block type.
+     * Uses the same logic as FlowBlockInteraction for consistency.
+     *
+     * @param blockType The block type to check
+     * @return true if water can flow to this block type
+     */
+    private boolean canFlowToBlock(BlockType blockType) {
+        if (blockType == BlockType.AIR || blockType == BlockType.WATER) {
+            return true;
+        }
+
+        // Check if it's a destructible block (like flowers)
+        return blockType.isFlower(); // This matches FlowBlockInteraction.canFlowDestroy()
+    }
+
+    /**
+     * Test method to validate the diagonal connection prevention logic.
+     * This method can be used for debugging and testing the new behavior.
+     *
+     * @param sourcePos Source block position
+     * @param flowPos Flow block position
+     * @return Detailed validation result for testing
+     */
+    public String testDiagonalConnectionPrevention(Vector3i sourcePos, Vector3i flowPos, World world) {
+        StringBuilder result = new StringBuilder();
+        result.append("Testing connection from ").append(sourcePos).append(" to ").append(flowPos).append("\n");
+
+        // Check distance
+        int dx = Math.abs(flowPos.x - sourcePos.x);
+        int dy = Math.abs(flowPos.y - sourcePos.y);
+        int dz = Math.abs(flowPos.z - sourcePos.z);
+        int horizontalDistance = dx + dz;
+
+        result.append("Distance - dx:").append(dx).append(" dy:").append(dy).append(" dz:").append(dz)
+              .append(" horizontal:").append(horizontalDistance).append("\n");
+
+        // Check if diagonal
+        boolean isDiagonal = isDiagonalConnection(sourcePos, flowPos);
+        result.append("Is diagonal connection: ").append(isDiagonal).append("\n");
+
+        // Check source side faces
+        boolean hasUnblockedFaces = hasUnblockedSideFaces(sourcePos, world);
+        result.append("Source has unblocked side faces: ").append(hasUnblockedFaces).append("\n");
+
+        // Overall result
+        boolean canFeed = canSourceFeedFlowBlock(sourcePos, flowPos, world);
+        result.append("Can source feed flow block: ").append(canFeed).append("\n");
+
+        return result.toString();
     }
 }

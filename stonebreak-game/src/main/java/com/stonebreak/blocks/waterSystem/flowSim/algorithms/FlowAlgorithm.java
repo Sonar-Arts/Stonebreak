@@ -1,5 +1,6 @@
 package com.stonebreak.blocks.waterSystem.flowSim.algorithms;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.waterSystem.flowSim.core.FlowUpdateScheduler;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
@@ -103,6 +104,7 @@ public class FlowAlgorithm {
     /**
      * Calculates flow weights for each direction using Minecraft's algorithm.
      * Water prefers to flow toward edges where it can create waterfalls.
+     * Prevents diagonal flow from sources and ensures valid connections.
      */
     public Map<Vector3i, Integer> calculateFlowWeights(Vector3i pos, Vector3i[] directions, World world) {
         Map<Vector3i, Integer> weights = new HashMap<>();
@@ -111,11 +113,20 @@ public class FlowAlgorithm {
         // This is how Minecraft determines flow preference
         Map<Vector3i, Integer> edgeDistances = pathfindingService.findEdgeDistances(pos, world, 5);
 
+        // Check if current position is a source block
+        boolean isSourcePosition = waterBlocks.containsKey(pos) &&
+            waterBlocks.get(pos).getDepth() == WaterBlock.SOURCE_DEPTH;
+
         for (Vector3i dir : directions) {
             Vector3i targetPos = new Vector3i(pos).add(dir);
 
             if (!FlowBlockInteraction.canFlowTo(targetPos, world)) {
                 continue;
+            }
+
+            // If this is a source position, ensure it has unblocked side faces
+            if (isSourcePosition && !hasUnblockedSideFaceForDirection(pos, dir, world)) {
+                continue; // Source is blocked in this direction
             }
 
             // Check if target already has water - we can still flow if our depth is better
@@ -186,5 +197,25 @@ public class FlowAlgorithm {
                 existing.setWaterType(new FlowWaterType(averagedDepth));
             }
         }
+    }
+
+    /**
+     * Checks if a source block has an unblocked side face in a specific direction.
+     * This ensures that source blocks can only flow when their side faces are accessible.
+     *
+     * @param sourcePos Position of the source block
+     * @param direction Direction vector to check
+     * @param world The world instance
+     * @return true if the side face in this direction is unblocked
+     */
+    private boolean hasUnblockedSideFaceForDirection(Vector3i sourcePos, Vector3i direction, World world) {
+        // Calculate the position of the side face we're checking
+        Vector3i sideFacePos = new Vector3i(sourcePos).add(direction);
+        BlockType blockType = world.getBlockAt(sideFacePos.x, sideFacePos.y, sideFacePos.z);
+
+        // Side face is unblocked if it's air, water, or a destructible block
+        return blockType == BlockType.AIR ||
+               blockType == BlockType.WATER ||
+               FlowBlockInteraction.canFlowDestroy(blockType);
     }
 }
