@@ -209,13 +209,20 @@ public class WorldRenderer {
         glDepthMask(false); // Disable depth writing for transparent objects
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
- 
+
+        // Enable polygon offset to prevent Z-fighting with adjacent solid blocks
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-2.0f, -2.0f); // Stronger offset to eliminate Z-fighting completely
+
         // Sort chunks from back to front for transparent pass
         sortChunksBackToFront(visibleChunks, player);
 
         for (Chunk chunk : reusableSortedChunks) {
             chunk.render(); // Shader will discard non-water fragments
         }
+
+        // Disable polygon offset after water rendering
+        glDisable(GL_POLYGON_OFFSET_FILL);
     }
     
     /**
