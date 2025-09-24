@@ -445,7 +445,7 @@ public class TerrainGenerationSystem {
         // Process mob spawning for this chunk
         BiomeType chunkBiome = getBiomeType(chunkX * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2, chunkZ * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2);
         MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, random, randomLock);
-        
+
         chunk.setFeaturesPopulated(true);
     }
 }

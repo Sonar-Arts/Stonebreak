@@ -104,8 +104,8 @@ public class WorldWaterDetector {
                                 boolean isOceanWater = (y <= WorldConfiguration.SEA_LEVEL);
 
                                 if (isOceanWater) {
-                                    // Treat ocean water as stable source blocks
-                                    WaterBlock oceanWater = new WaterBlock(WaterBlock.SOURCE_DEPTH);
+                                    // Treat ocean water as stable source blocks with proper OceanWaterType
+                                    WaterBlock oceanWater = WaterBlock.createWithType(new com.stonebreak.blocks.waterSystem.types.OceanWaterType());
                                     oceanWater.setSource(true);
                                     oceanWater.setOceanWater(true); // Mark as ocean water
                                     waterBlocks.put(pos, oceanWater);

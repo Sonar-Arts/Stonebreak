@@ -7,6 +7,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3i;
 
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -326,5 +327,193 @@ public class FlowValidator {
         result.append("Can source feed flow block: ").append(canFeed).append("\n");
 
         return result.toString();
+    }
+
+    /**
+     * Enhanced validation for complex source-flow scenarios.
+     * Checks multiple source interactions and flow path conflicts.
+     *
+     * @param flowPos Position of the flow block to validate
+     * @param world The world instance
+     * @return ValidationResult with detailed information
+     */
+    public ValidationResult validateComplexSourceFlowConnection(Vector3i flowPos, World world) {
+        ValidationResult result = new ValidationResult();
+        result.flowPosition = new Vector3i(flowPos);
+        result.isValid = false;
+
+        // Find all potential source blocks that could feed this flow position
+        Set<Vector3i> potentialSources = new HashSet<>();
+        for (Vector3i sourcePos : sourceBlocks) {
+            if (canSourceFeedFlowBlock(sourcePos, flowPos, world)) {
+                potentialSources.add(new Vector3i(sourcePos));
+            }
+        }
+
+        result.feedingSources = potentialSources;
+        result.sourceCount = potentialSources.size();
+
+        if (potentialSources.isEmpty()) {
+            result.validationMessage = "No valid source blocks can feed this flow position";
+            return result;
+        }
+
+        // Check for conflicting flow paths
+        boolean hasConflicts = checkForFlowPathConflicts(flowPos, potentialSources, world);
+        result.hasConflicts = hasConflicts;
+
+        // Determine the dominant source (closest, highest priority)
+        Vector3i dominantSource = findDominantSource(flowPos, potentialSources, world);
+        result.dominantSource = dominantSource;
+
+        if (dominantSource != null) {
+            result.isValid = true;
+            result.validationMessage = String.format("Valid flow connection from dominant source at %s", dominantSource);
+        } else {
+            result.validationMessage = "Unable to determine dominant source due to conflicts";
+        }
+
+        return result;
+    }
+
+    /**
+     * Checks for conflicts between multiple flow paths converging at a position.
+     */
+    private boolean checkForFlowPathConflicts(Vector3i flowPos, Set<Vector3i> sources, World world) {
+        if (sources.size() <= 1) {
+            return false; // No conflicts with single source
+        }
+
+        // Check if sources are creating competing flow patterns
+        for (Vector3i source1 : sources) {
+            for (Vector3i source2 : sources) {
+                if (source1.equals(source2)) continue;
+
+                // Check if the two sources create conflicting flow directions
+                if (hasConflictingFlowDirections(source1, source2, flowPos)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks if two sources create conflicting flow directions at a target position.
+     */
+    private boolean hasConflictingFlowDirections(Vector3i source1, Vector3i source2, Vector3i target) {
+        // Calculate flow vectors from each source to target
+        Vector3i flow1 = new Vector3i(target).sub(source1);
+        Vector3i flow2 = new Vector3i(target).sub(source2);
+
+        // If flows are in completely opposite directions, they conflict
+        int dotProduct = flow1.x * flow2.x + flow1.y * flow2.y + flow1.z * flow2.z;
+        float magnitude1 = (float) Math.sqrt(flow1.x * flow1.x + flow1.y * flow1.y + flow1.z * flow1.z);
+        float magnitude2 = (float) Math.sqrt(flow2.x * flow2.x + flow2.y * flow2.y + flow2.z * flow2.z);
+
+        if (magnitude1 > 0 && magnitude2 > 0) {
+            float cosAngle = dotProduct / (magnitude1 * magnitude2);
+            return cosAngle < -0.5f; // Flows are more than 120 degrees apart
+        }
+
+        return false;
+    }
+
+    /**
+     * Finds the dominant source among multiple candidates.
+     * Priority: Ocean water > Closer sources > Higher sources
+     */
+    private Vector3i findDominantSource(Vector3i flowPos, Set<Vector3i> sources, World world) {
+        Vector3i dominantSource = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+
+        for (Vector3i source : sources) {
+            double score = calculateSourcePriority(source, flowPos, world);
+            if (score > bestScore) {
+                bestScore = score;
+                dominantSource = source;
+            }
+        }
+
+        return dominantSource;
+    }
+
+    /**
+     * Calculates priority score for a source block.
+     * Higher score = higher priority.
+     */
+    private double calculateSourcePriority(Vector3i source, Vector3i target, World world) {
+        double score = 0.0;
+
+        // Ocean water gets highest priority
+        WaterBlock sourceWater = waterBlocks.get(source);
+        if (sourceWater != null && sourceWater.isOceanWater()) {
+            score += 1000.0;
+        }
+
+        // Closer sources get higher priority
+        double distance = source.distance(target);
+        score += (MAX_HORIZONTAL_DISTANCE - distance) * 10.0;
+
+        // Higher sources get slightly higher priority (gravity)
+        score += (source.y - target.y) * 2.0;
+
+        // Sources with more unblocked faces get higher priority
+        int unblockedFaces = countUnblockedSideFaces(source, world);
+        score += unblockedFaces * 5.0;
+
+        return score;
+    }
+
+    /**
+     * Counts the number of unblocked side faces for a source block.
+     */
+    private int countUnblockedSideFaces(Vector3i sourcePos, World world) {
+        int count = 0;
+        Vector3i[] sideFaces = {
+            new Vector3i(sourcePos.x + 1, sourcePos.y, sourcePos.z),
+            new Vector3i(sourcePos.x - 1, sourcePos.y, sourcePos.z),
+            new Vector3i(sourcePos.x, sourcePos.y, sourcePos.z + 1),
+            new Vector3i(sourcePos.x, sourcePos.y, sourcePos.z - 1)
+        };
+
+        for (Vector3i facePos : sideFaces) {
+            BlockType blockType = world.getBlockAt(facePos.x, facePos.y, facePos.z);
+            if (canFlowToBlock(blockType)) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * Result class for complex source-flow validation.
+     */
+    public static class ValidationResult {
+        public Vector3i flowPosition;
+        public boolean isValid;
+        public String validationMessage;
+        public Set<Vector3i> feedingSources = new HashSet<>();
+        public int sourceCount;
+        public boolean hasConflicts;
+        public Vector3i dominantSource;
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("ValidationResult{");
+            sb.append("position=").append(flowPosition);
+            sb.append(", valid=").append(isValid);
+            sb.append(", sources=").append(sourceCount);
+            sb.append(", conflicts=").append(hasConflicts);
+            if (dominantSource != null) {
+                sb.append(", dominant=").append(dominantSource);
+            }
+            sb.append(", message='").append(validationMessage).append("'");
+            sb.append('}');
+            return sb.toString();
+        }
     }
 }
