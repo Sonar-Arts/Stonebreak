@@ -132,7 +132,12 @@ public class FlowProcessor {
             WaterState sourceState = stateManager.determineState(waterBlock, pos);
             stateManager.updateState(waterBlock, sourceState, pos);
 
-            flowAlgorithm.spreadFromSource(pos, world);
+            // Generate flows from active sources
+            if (sourceState == WaterState.FLOWING || sourceState.isActive()) {
+                flowAlgorithm.spreadFromSource(pos, world);
+                scheduler.scheduleFlowUpdate(pos);
+            }
+
             return;
         }
 

@@ -74,6 +74,7 @@ public class WaterSourceManager {
 
     /**
      * Removes a water source at the specified position.
+     * ENHANCED: Now triggers comprehensive flow network validation.
      */
     public void removeWaterSource(int x, int y, int z) {
         Vector3i pos = new Vector3i(x, y, z);
@@ -83,8 +84,70 @@ public class WaterSourceManager {
 
         if (waterBlock != null) {
             waterBlock.setSource(false);
-            scheduler.scheduleFlowUpdate(pos);
+
+            // Remove the water block from tracking immediately
+            waterBlocks.remove(pos);
+
+            // ARCHITECTURAL FIX: Cascade cleanup - find and remove all dependent flow blocks
+            removeOrphanedFlowBlocks(pos);
+
+            // Schedule immediate updates for neighbors
             scheduler.scheduleNeighborUpdates(pos);
+
+            System.out.println("DEBUG: Removed water source at " + x + "," + y + "," + z +
+                             " - cascaded cleanup completed");
+        }
+    }
+
+    /**
+     * ARCHITECTURAL FIX: Removes all flow blocks that depended on the removed source.
+     * This prevents orphaned water blocks from persisting in tracking data.
+     */
+    private void removeOrphanedFlowBlocks(Vector3i removedSourcePos) {
+        World world = Game.getWorld();
+        if (world == null) return;
+
+        Set<Vector3i> toRemove = new HashSet<>();
+
+        // Find all water blocks within influence range of the removed source
+        int searchRadius = 8; // MAX_HORIZONTAL_DISTANCE + 1 for safety
+
+        for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (int dy = -2; dy <= 2; dy++) { // Water can flow 1 block up/down from source
+                for (int dz = -searchRadius; dz <= searchRadius; dz++) {
+                    Vector3i checkPos = new Vector3i(
+                        removedSourcePos.x + dx,
+                        removedSourcePos.y + dy,
+                        removedSourcePos.z + dz
+                    );
+
+                    // Skip if this position is a source block
+                    if (sourceBlocks.contains(checkPos)) {
+                        continue;
+                    }
+
+                    // Check if this position has a water block in tracking but not in world
+                    WaterBlock waterBlock = waterBlocks.get(checkPos);
+                    if (waterBlock != null && !waterBlock.isSource()) {
+                        BlockType worldBlockType = world.getBlockAt(checkPos.x, checkPos.y, checkPos.z);
+
+                        // If tracking says it's water but world doesn't, remove it
+                        if (worldBlockType != BlockType.WATER) {
+                            toRemove.add(checkPos);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove all orphaned flow blocks
+        for (Vector3i pos : toRemove) {
+            waterBlocks.remove(pos);
+            System.out.println("DEBUG: Removed orphaned flow block at " + pos);
+        }
+
+        if (!toRemove.isEmpty()) {
+            System.out.println("DEBUG: Cascaded cleanup removed " + toRemove.size() + " orphaned flow blocks");
         }
     }
 

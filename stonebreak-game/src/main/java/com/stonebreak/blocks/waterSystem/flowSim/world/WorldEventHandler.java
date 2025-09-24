@@ -101,7 +101,13 @@ public class WorldEventHandler {
         World world = Game.getWorld();
         if (world == null) return;
 
-        // First schedule immediate neighbor updates
+        // ARCHITECTURAL FIX: Immediately clean up any stale water block data at this position
+        WaterBlock staleWaterBlock = waterBlocks.remove(placedPos);
+        if (staleWaterBlock != null) {
+            System.out.println("DEBUG: Removed stale water block data at placed position " + x + "," + y + "," + z);
+        }
+
+        // Schedule immediate neighbor updates
         scheduler.scheduleNeighborUpdates(placedPos);
 
         // Check for water blocks above that need to re-route their flow

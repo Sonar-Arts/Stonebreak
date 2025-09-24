@@ -39,19 +39,14 @@ public class FlowAlgorithm {
      * Spreads water from a source block using Minecraft's algorithm.
      */
     public void spreadFromSource(Vector3i sourcePos, World world) {
-        boolean flowedDown = false;
-
         // First, try to flow downward (infinite vertical flow)
         Vector3i downPos = new Vector3i(sourcePos.x, sourcePos.y - 1, sourcePos.z);
         if (FlowBlockInteraction.canFlowTo(downPos, world)) {
-            // When water flows down, depth resets to 0 at the new elevation (Minecraft behavior)
             createOrUpdateWaterAt(downPos, 0, world);
             scheduler.scheduleFlowUpdate(downPos);
-            flowedDown = true;
         }
 
-        // ALWAYS spread horizontally from sources (not just when they can't flow down)
-        // This matches Minecraft behavior where sources spread in all directions
+        // Always spread horizontally from sources
         spreadHorizontally(sourcePos, WaterBlock.SOURCE_DEPTH, world);
     }
 
@@ -103,17 +98,12 @@ public class FlowAlgorithm {
 
     /**
      * Calculates flow weights for each direction using Minecraft's algorithm.
-     * Water prefers to flow toward edges where it can create waterfalls.
-     * Prevents diagonal flow from sources and ensures valid connections.
      */
     public Map<Vector3i, Integer> calculateFlowWeights(Vector3i pos, Vector3i[] directions, World world) {
         Map<Vector3i, Integer> weights = new HashMap<>();
 
-        // First, check for edges within 5 blocks in all directions from current position
-        // This is how Minecraft determines flow preference
         Map<Vector3i, Integer> edgeDistances = pathfindingService.findEdgeDistances(pos, world, 5);
 
-        // Check if current position is a source block
         boolean isSourcePosition = waterBlocks.containsKey(pos) &&
             waterBlocks.get(pos).getDepth() == WaterBlock.SOURCE_DEPTH;
 
@@ -218,4 +208,5 @@ public class FlowAlgorithm {
                blockType == BlockType.WATER ||
                FlowBlockInteraction.canFlowDestroy(blockType);
     }
+
 }

@@ -166,9 +166,11 @@ public class FlowValidator {
             return false;
         }
 
-        // Source blocks always exist
+        // Source blocks always exist, but only if they're still water
         if (sourceBlocks.contains(pos)) {
-            return true;
+            // Double-check that the source block is actually still water
+            // (This handles race conditions where sourceBlocks hasn't been updated yet)
+            return blockType == BlockType.WATER;
         }
 
         // Check if it has a valid source
@@ -226,24 +228,33 @@ public class FlowValidator {
 
     /**
      * Checks if the connection between two positions is diagonal.
-     * Diagonal connections are not allowed between source and flow blocks.
+     * FIXED: Now allows valid downward diagonal flows while preventing invalid diagonal connections.
      *
      * @param sourcePos Source block position
      * @param flowPos Flow block position
-     * @return true if the connection is diagonal
+     * @return true if the connection is an invalid diagonal
      */
     private boolean isDiagonalConnection(Vector3i sourcePos, Vector3i flowPos) {
         int dx = Math.abs(flowPos.x - sourcePos.x);
         int dz = Math.abs(flowPos.z - sourcePos.z);
 
         // Diagonal if both x and z components are non-zero (on same Y level)
-        // Vertical connections (only Y differs) are not diagonal
+        // Horizontal diagonal connections are not allowed
         if (sourcePos.y == flowPos.y) {
             return dx > 0 && dz > 0;
         }
 
-        // For different Y levels, check if horizontal component is diagonal
-        return dx > 0 && dz > 0;
+        // FIXED: For different Y levels, allow downward diagonal flow
+        // Only block upward diagonal connections and horizontal diagonals
+        if (sourcePos.y > flowPos.y) {
+            // Downward diagonal flow is ALLOWED - this was the bug
+            return false;
+        } else if (sourcePos.y < flowPos.y) {
+            // Upward diagonal flow is not allowed (water doesn't flow upward diagonally)
+            return dx > 0 && dz > 0;
+        }
+
+        return false; // Same Y level handled above
     }
 
     /**
