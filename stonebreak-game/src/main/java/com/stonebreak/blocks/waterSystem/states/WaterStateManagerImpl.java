@@ -79,27 +79,12 @@ public class WaterStateManagerImpl implements WaterStateManager {
         return WaterState.STAGNANT;
     }
 
-    @Override
-    public boolean shouldBeVerticallyFlowing(WaterBlock waterBlock, Vector3i position) {
-        World world = Game.getWorld();
-        if (world == null) return false;
-
-        // Check if there's air below
-        Vector3i belowPos = new Vector3i(position.x, position.y - 1, position.z);
-        BlockType belowBlock = world.getBlockAt(belowPos.x, belowPos.y, belowPos.z);
-
-        return belowBlock == BlockType.AIR;
-    }
 
 
     /**
      * Determines the appropriate state for a source block.
      */
     private WaterState determineSourceState(WaterBlock waterBlock, Vector3i position) {
-        // Check if source should be vertically flowing
-        if (shouldBeVerticallyFlowing(waterBlock, position)) {
-            return WaterState.VERTICALLY_FLOWING;
-        }
 
         // Check if source can generate horizontal flows
         if (canGenerateHorizontalFlow(position)) {

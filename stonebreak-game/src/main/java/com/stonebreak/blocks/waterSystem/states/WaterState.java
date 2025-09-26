@@ -14,18 +14,12 @@ public enum WaterState {
 
     /**
      * Source block actively generating flows OR any flow block.
-     * This is the most common state for active water.
+     * This includes both horizontal and vertical (falling) water.
      *
      * CRITICAL RULE: Flow blocks ALWAYS remain in FLOWING state.
      * Flow blocks never exit this state once assigned.
      */
-    FLOWING,
-
-    /**
-     * Water that is flowing vertically (falling).
-     * Vertical flows have special depth reset behavior.
-     */
-    VERTICALLY_FLOWING;
+    FLOWING;
 
     /**
      * Checks if this state represents active water movement.

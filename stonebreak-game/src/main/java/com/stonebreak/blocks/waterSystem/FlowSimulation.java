@@ -30,8 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Depth resets to 0 when water flows down to a new elevation
  * - Flow prefers edges for aesthetic waterfall creation
  * - Diamond-shaped spread pattern (15 blocks point-to-point on flat surface)
- * - Vertical flow always takes priority over horizontal flow
- * - Water can flow infinitely downward but only 7 blocks horizontally
+ * - Downward flow always takes priority over horizontal flow
+ * - Water flows infinitely downward but only 7 blocks horizontally
  * - Source blocks only spread horizontally when they cannot flow down
  */
 public class FlowSimulation {

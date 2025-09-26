@@ -47,13 +47,5 @@ public interface WaterStateManager {
      */
     WaterState getDefaultState(WaterBlock waterBlock);
 
-    /**
-     * Checks if a water block should be in a vertical flowing state.
-     *
-     * @param waterBlock The water block
-     * @param position Position of the water block
-     * @return true if should be vertically flowing
-     */
-    boolean shouldBeVerticallyFlowing(WaterBlock waterBlock, Vector3i position);
 
 }

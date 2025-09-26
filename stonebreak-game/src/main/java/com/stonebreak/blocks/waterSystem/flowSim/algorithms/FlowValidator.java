@@ -51,7 +51,7 @@ public class FlowValidator {
             return true; // Water at ocean level is considered stable
         }
 
-        // Check if there's water directly above (infinite vertical flow)
+        // Check if there's water directly above (water falls down)
         Vector3i abovePos = new Vector3i(pos.x, pos.y + 1, pos.z);
         BlockType aboveBlock = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
         if (aboveBlock == BlockType.WATER) {
@@ -94,10 +94,10 @@ public class FlowValidator {
 
     /**
      * Checks if there's a valid flow path between source and target.
-     * This considers both horizontal spread limits and vertical flow.
+     * This considers both horizontal spread limits and downward flow.
      */
     public boolean hasValidFlowPath(Vector3i source, Vector3i target, World world) {
-        // If target is directly below source, always valid (infinite vertical)
+        // If target is directly below source, always valid (water falls down)
         if (source.x == target.x && source.z == target.z && source.y > target.y) {
             return true;
         }
@@ -217,7 +217,7 @@ public class FlowValidator {
             return false;
         }
 
-        // If flow block is directly below source, always valid (vertical flow)
+        // If flow block is directly below source, always valid (water falls down)
         if (sourcePos.x == flowPos.x && sourcePos.z == flowPos.z && sourcePos.y > flowPos.y) {
             return true;
         }

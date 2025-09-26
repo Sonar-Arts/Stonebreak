@@ -39,14 +39,14 @@ public class FlowAlgorithm {
      * Spreads water from a source block using Minecraft's algorithm.
      */
     public void spreadFromSource(Vector3i sourcePos, World world) {
-        // First, try to flow downward (infinite vertical flow)
+        // Always try downward flow first (water falls down)
         Vector3i downPos = new Vector3i(sourcePos.x, sourcePos.y - 1, sourcePos.z);
         if (FlowBlockInteraction.canFlowTo(downPos, world)) {
             createOrUpdateWaterAt(downPos, 0, world);
             scheduler.scheduleFlowUpdate(downPos);
         }
 
-        // Always spread horizontally from sources
+        // Then spread horizontally from sources
         spreadHorizontally(sourcePos, WaterBlock.SOURCE_DEPTH, world);
     }
 
