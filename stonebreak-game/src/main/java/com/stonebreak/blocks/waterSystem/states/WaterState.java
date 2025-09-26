@@ -25,13 +25,7 @@ public enum WaterState {
      * Water that is flowing vertically (falling).
      * Vertical flows have special depth reset behavior.
      */
-    VERTICALLY_FLOWING,
-
-    /**
-     * Water that is flowing over an edge, mid-air.
-     * Cresting water immediately spawns vertical flowing columns.
-     */
-    CRESTING;
+    VERTICALLY_FLOWING;
 
     /**
      * Checks if this state represents active water movement.

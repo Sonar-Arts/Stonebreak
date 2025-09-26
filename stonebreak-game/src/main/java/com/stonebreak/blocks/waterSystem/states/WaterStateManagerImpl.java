@@ -91,36 +91,6 @@ public class WaterStateManagerImpl implements WaterStateManager {
         return belowBlock == BlockType.AIR;
     }
 
-    @Override
-    public boolean shouldBeCresting(WaterBlock waterBlock, Vector3i position) {
-        World world = Game.getWorld();
-        if (world == null) return false;
-
-        // Check if this is at an edge with air below
-        if (!shouldBeVerticallyFlowing(waterBlock, position)) {
-            return false;
-        }
-
-        // Check if water is at the edge of a solid block
-        Vector3i[] directions = {
-            new Vector3i(1, 0, 0),   // East
-            new Vector3i(-1, 0, 0),  // West
-            new Vector3i(0, 0, 1),   // South
-            new Vector3i(0, 0, -1)   // North
-        };
-
-        for (Vector3i dir : directions) {
-            Vector3i neighborPos = new Vector3i(position).add(dir);
-            BlockType neighborBlock = world.getBlockAt(neighborPos.x, neighborPos.y, neighborPos.z);
-
-            // If there's a solid block adjacent, this could be cresting water
-            if (neighborBlock != BlockType.AIR && neighborBlock != BlockType.WATER) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     /**
      * Determines the appropriate state for a source block.
@@ -128,9 +98,6 @@ public class WaterStateManagerImpl implements WaterStateManager {
     private WaterState determineSourceState(WaterBlock waterBlock, Vector3i position) {
         // Check if source should be vertically flowing
         if (shouldBeVerticallyFlowing(waterBlock, position)) {
-            if (shouldBeCresting(waterBlock, position)) {
-                return WaterState.CRESTING;
-            }
             return WaterState.VERTICALLY_FLOWING;
         }
 

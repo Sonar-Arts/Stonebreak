@@ -56,12 +56,4 @@ public interface WaterStateManager {
      */
     boolean shouldBeVerticallyFlowing(WaterBlock waterBlock, Vector3i position);
 
-    /**
-     * Checks if a water block should be in a cresting state.
-     *
-     * @param waterBlock The water block
-     * @param position Position of the water block
-     * @return true if should be cresting
-     */
-    boolean shouldBeCresting(WaterBlock waterBlock, Vector3i position);
 }
