@@ -40,6 +40,7 @@ public class ResourceManager {
         shaderProgram.createUniform("u_renderPass");
         shaderProgram.createUniform("u_isUIElement");
         shaderProgram.createUniform("u_time");
+        shaderProgram.createUniform("u_waterDepthOffset");
     }
     
     private String getVertexShaderSource() {
@@ -63,6 +64,7 @@ public class ResourceManager {
                uniform vec2 u_atlasUVScale;
                uniform float u_time;
                uniform bool u_isUIElement;
+               uniform float u_waterDepthOffset;
                void main() {
                    // Compute world-space position first for stable, seamless waves
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
@@ -104,7 +106,13 @@ public class ResourceManager {
                            pos.y = max(target, minInterpolated);
                        }
                    }
-                   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
+
+                   // Apply depth offset for water blocks to prevent z-fighting
+                   vec4 clipPos = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
+                   if (waterHeight > 0.0 && u_waterDepthOffset != 0.0) {
+                       clipPos.z += u_waterDepthOffset * clipPos.w;
+                   }
+                   gl_Position = clipPos;
                    if (u_transformUVsForItem) {
                        outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;
                    } else {

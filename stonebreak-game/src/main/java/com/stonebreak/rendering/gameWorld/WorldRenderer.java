@@ -193,6 +193,7 @@ public class WorldRenderer {
      */
     private void renderOpaquePass(Map<World.ChunkPosition, Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
+        shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
 
@@ -206,13 +207,10 @@ public class WorldRenderer {
      */
     private void renderTransparentPass(Map<World.ChunkPosition, Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
+        shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glDepthMask(false); // Disable depth writing for transparent objects
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
-
-        // Enable polygon offset to prevent Z-fighting with adjacent solid blocks
-        glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-2.0f, -2.0f); // Stronger offset to eliminate Z-fighting completely
 
         // Sort chunks from back to front for transparent pass
         sortChunksBackToFront(visibleChunks, player);
@@ -220,9 +218,6 @@ public class WorldRenderer {
         for (Chunk chunk : reusableSortedChunks) {
             chunk.render(); // Shader will discard non-water fragments
         }
-
-        // Disable polygon offset after water rendering
-        glDisable(GL_POLYGON_OFFSET_FILL);
     }
     
     /**
