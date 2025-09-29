@@ -80,7 +80,9 @@ public class WorldChunkStore {
                         String featuresState = savedChunk.areFeaturesPopulated() ? "POPULATED" : "NOT_POPULATED";
                         System.out.println("[SAVE-FIRST] Loaded chunk (" + x + ", " + z + ") from save data - State: " + chunkState + ", Features: " + featuresState);
 
-                        // Schedule mesh build for loaded chunk
+                        // Force mesh build for loaded chunk to ensure visibility
+                        // Loaded chunks always need mesh rebuilds since they may have different states
+                        savedChunk.cleanupCpuResources(); // Reset mesh state to force regeneration
                         if (shouldQueueForMesh(x, z)) {
                             meshPipeline.scheduleConditionalMeshBuild(savedChunk);
                         }

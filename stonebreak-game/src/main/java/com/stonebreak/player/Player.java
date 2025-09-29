@@ -1326,14 +1326,13 @@ public class Player {      // Player settings
                 }
             }
         }
-        
+
         // Additional check: ensure the player's feet aren't in water
         // This helps catch boundary cases where the player is just at the edge
         int feetBlockX = (int) Math.floor(position.x);
         int feetBlockY = (int) Math.floor(position.y + 0.1f); // Just above feet
         int feetBlockZ = (int) Math.floor(position.z);
-        
-        // The redundant if was removed, directly returning the result of the check.
+
         return world.getBlockAt(feetBlockX, feetBlockY, feetBlockZ) == BlockType.WATER;
     }
     
