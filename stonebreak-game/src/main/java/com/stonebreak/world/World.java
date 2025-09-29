@@ -72,7 +72,7 @@ public class World {
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
-        waterSystem.tick();
+        waterSystem.tick(Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
         memoryManager.performMemoryManagement();

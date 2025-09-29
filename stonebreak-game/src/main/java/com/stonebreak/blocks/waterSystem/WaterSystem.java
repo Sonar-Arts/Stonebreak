@@ -6,14 +6,13 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.PriorityQueue;
 
 /**
  * Self-contained water simulation that mirrors Minecraft's water rules while
@@ -24,6 +23,10 @@ import java.util.Set;
 public final class WaterSystem {
 
     private static final int MAX_UPDATES_PER_TICK = 512;
+    private static final int MAX_TICKS_PER_FRAME = 8;
+    private static final int WATER_TICK_DELAY = 3; // Slightly faster cadence to keep up with render tick pacing
+    private static final int NEIGHBOR_TICK_DELAY = Math.max(1, WATER_TICK_DELAY - 1);
+    private static final float MC_TICK_INTERVAL = 1.0f / 20.0f;
     private static final int[][] HORIZONTAL_DIRECTIONS = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1}
     };
@@ -31,11 +34,13 @@ public final class WaterSystem {
 
     private final World world;
     private final Map<BlockPos, WaterBlock> cells = new HashMap<>();
-    private final Deque<BlockPos> pendingUpdates = new ArrayDeque<>();
-    private final Set<BlockPos> queued = new HashSet<>();
+    private final PriorityQueue<ScheduledUpdate> pendingUpdates = new PriorityQueue<>((a, b) -> Long.compare(a.scheduledTick(), b.scheduledTick()));
+    private final Map<BlockPos, Long> scheduledTicks = new HashMap<>();
     private final Set<Long> scannedChunks = new HashSet<>();
 
     private int suppressedCallbacks;
+    private float tickAccumulator;
+    private long logicalTick;
 
     public WaterSystem(World world) {
         this.world = Objects.requireNonNull(world, "world");
@@ -45,14 +50,44 @@ public final class WaterSystem {
      * Processes pending water updates with a default per-frame budget.
      */
     public void tick() {
-        processQueue(MAX_UPDATES_PER_TICK);
+        tick(MC_TICK_INTERVAL);
     }
 
     /**
      * Processes pending water updates using the supplied budget.
      */
     public void tick(int budget) {
-        processQueue(Math.max(0, budget));
+        advanceTicks(1, Math.max(0, budget));
+
+    }
+
+    /**
+     * Processes pending water updates using the elapsed time in seconds.
+     */
+    public void tick(float deltaTimeSeconds) {
+        float delta = Float.isFinite(deltaTimeSeconds) ? Math.max(0.0f, deltaTimeSeconds) : 0.0f;
+        tickAccumulator += delta;
+
+        int ticksToRun = 0;
+        while (tickAccumulator >= MC_TICK_INTERVAL && ticksToRun < MAX_TICKS_PER_FRAME) {
+            tickAccumulator -= MC_TICK_INTERVAL;
+            ticksToRun++;
+        }
+
+        if (ticksToRun == 0) {
+            return;
+        }
+
+        for (int i = 0; i < ticksToRun; i++) {
+            advanceTicks(1, MAX_UPDATES_PER_TICK);
+        }
+    }
+
+    private void advanceTicks(int ticks, int budgetPerTick) {
+        for (int i = 0; i < ticks; i++) {
+            logicalTick++;
+            processQueue(Math.max(1, budgetPerTick));
+        }
     }
 
     /**
@@ -76,7 +111,7 @@ public final class WaterSystem {
                         int worldZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE + localZ;
                         BlockPos pos = new BlockPos(worldX, y, worldZ);
                         cells.put(pos, WaterBlock.source());
-                        enqueue(pos);
+                        enqueueImmediate(pos);
                     }
                 }
             }
@@ -105,12 +140,14 @@ public final class WaterSystem {
             }
         }
 
-        pendingUpdates.removeIf(pos ->
-            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ);
-        queued.removeIf(pos ->
-            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ);
+        pendingUpdates.removeIf(update -> {
+            BlockPos pos = update.pos();
+            return Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                   Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ;
+        });
+        scheduledTicks.entrySet().removeIf(entry ->
+            Math.floorDiv(entry.getKey().x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(entry.getKey().z(), WorldConfiguration.CHUNK_SIZE) == chunkZ);
     }
 
     /**
@@ -125,14 +162,14 @@ public final class WaterSystem {
         BlockPos pos = new BlockPos(x, y, z);
         if (next == BlockType.WATER) {
             cells.putIfAbsent(pos, WaterBlock.source());
-            enqueue(pos);
+            enqueueImmediate(pos);
             scheduleNeighbors(pos);
             return;
         }
 
         WaterBlock removed = cells.remove(pos);
         if (removed != null || previous == BlockType.WATER) {
-            enqueue(pos);
+            enqueue(pos, NEIGHBOR_TICK_DELAY);
             scheduleNeighbors(pos);
         }
     }
@@ -142,16 +179,26 @@ public final class WaterSystem {
      */
     public void queueUpdate(int x, int y, int z) {
         if (isWithinWorld(y)) {
-            enqueue(new BlockPos(x, y, z));
+            enqueue(new BlockPos(x, y, z), NEIGHBOR_TICK_DELAY);
         }
     }
 
     private void processQueue(int budget) {
         int processed = 0;
         while (processed < budget && !pendingUpdates.isEmpty()) {
-            BlockPos pos = pendingUpdates.poll();
-            queued.remove(pos);
-            updateCell(pos);
+            ScheduledUpdate next = pendingUpdates.peek();
+            if (next.scheduledTick() > logicalTick) {
+                break;
+            }
+
+            pendingUpdates.poll();
+            Long trackedTick = scheduledTicks.get(next.pos());
+            if (trackedTick == null || trackedTick != next.scheduledTick()) {
+                continue; // Stale entry
+            }
+
+            scheduledTicks.remove(next.pos());
+            updateCell(next.pos());
             processed++;
         }
     }
@@ -323,7 +370,7 @@ public final class WaterSystem {
         }
 
         cells.put(pos, candidate);
-        enqueue(pos);
+        enqueue(pos, WATER_TICK_DELAY);
         return true;
     }
 
@@ -347,22 +394,34 @@ public final class WaterSystem {
         }
     }
 
-    private void enqueue(BlockPos pos) {
+    private void scheduleNeighbors(BlockPos pos) {
+        enqueue(pos, NEIGHBOR_TICK_DELAY);
+        for (int[] dir : HORIZONTAL_DIRECTIONS) {
+            enqueue(pos.offset(dir[0], 0, dir[1]), NEIGHBOR_TICK_DELAY);
+        }
+        enqueue(pos.above(), WATER_TICK_DELAY);
+        enqueue(pos.below(), WATER_TICK_DELAY);
+    }
+
+    private void enqueueImmediate(BlockPos pos) {
+        enqueue(pos, 0);
+    }
+
+    private void enqueue(BlockPos pos, int delayTicks) {
         if (!isWithinWorld(pos.y())) {
             return;
         }
-        if (queued.add(pos)) {
-            pendingUpdates.add(pos);
-        }
-    }
 
-    private void scheduleNeighbors(BlockPos pos) {
-        enqueue(pos);
-        for (int[] dir : HORIZONTAL_DIRECTIONS) {
-            enqueue(pos.offset(dir[0], 0, dir[1]));
+        int clampedDelay = Math.max(0, delayTicks);
+        long scheduledTick = logicalTick + clampedDelay;
+
+        Long existing = scheduledTicks.get(pos);
+        if (existing != null && existing <= scheduledTick) {
+            return;
         }
-        enqueue(pos.above());
-        enqueue(pos.below());
+
+        scheduledTicks.put(pos, scheduledTick);
+        pendingUpdates.add(new ScheduledUpdate(pos, scheduledTick));
     }
 
     private static long chunkKey(int chunkX, int chunkZ) {
@@ -425,4 +484,6 @@ public final class WaterSystem {
             return offset(0, -1, 0);
         }
     }
+
+    private record ScheduledUpdate(BlockPos pos, long scheduledTick) { }
 }
