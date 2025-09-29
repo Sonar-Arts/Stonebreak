@@ -6,8 +6,7 @@ import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
-import com.stonebreak.blocks.waterSystem.states.WaterState;
-import com.stonebreak.blocks.waterSystem.types.WaterType;
+import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.Camera;
 import com.stonebreak.world.World;
@@ -292,46 +291,25 @@ public class DebugOverlay {
         // Get water block data through the Water class
         WaterBlock waterBlock = Water.getWaterBlock(waterBlockPos.x, waterBlockPos.y, waterBlockPos.z);
         if (waterBlock == null) {
-            return "Water State: No water block data";
+            return "Water State: No tracked water";
         }
+
+        float fill = Water.getWaterLevel(waterBlockPos.x, waterBlockPos.y, waterBlockPos.z);
+        float visualHeight = Water.getWaterVisualHeight(waterBlockPos.x, waterBlockPos.y, waterBlockPos.z);
 
         StringBuilder waterInfo = new StringBuilder();
         waterInfo.append("─── Water State Monitor ───\n");
         waterInfo.append(String.format("Looking at: Water (%d, %d, %d)\n",
             waterBlockPos.x, waterBlockPos.y, waterBlockPos.z));
+        waterInfo.append(String.format("Level: %d (%s)\n",
+            waterBlock.level(), waterBlock.isSource() ? "Source" : "Flowing"));
+        waterInfo.append(String.format("Falling: %s\n", waterBlock.falling() ? "Yes" : "No"));
+        waterInfo.append(String.format("Fill: %.3f\n", fill));
+        waterInfo.append(String.format("Visual Height: %.3f\n", visualHeight));
 
-        // Get water type information
-        WaterType waterType = waterBlock.getWaterType();
-        if (waterType != null) {
-            String typeName = waterType.getClass().getSimpleName();
-            waterInfo.append(String.format("Type: %s\n", typeName));
-            waterInfo.append(String.format("Depth: %d\n", waterType.getDepth()));
-            waterInfo.append(String.format("Pressure: %d\n", waterType.getFlowPressure()));
-            waterInfo.append(String.format("Can Generate Flow: %s\n", waterType.canGenerateFlow() ? "Yes" : "No"));
-            waterInfo.append(String.format("Can Create Source: %s\n", waterType.canCreateSource() ? "Yes" : "No"));
-        } else {
-            waterInfo.append("Type: Unknown\n");
-        }
-
-        // Get water state information
-        WaterState waterState = waterBlock.getWaterState();
-        if (waterState != null) {
-            waterInfo.append(String.format("State: %s\n", waterState.name()));
-            waterInfo.append(String.format("Active: %s\n", waterState.isActive() ? "Yes" : "No"));
-        } else {
-            waterInfo.append("State: Unknown\n");
-        }
-
-        // Additional water properties
-        waterInfo.append(String.format("Visual Height: %.3f\n", waterBlock.getVisualHeight()));
-        waterInfo.append(String.format("Ocean Water: %s\n", waterBlock.isOceanWater() ? "Yes" : "No"));
-
-        // Flow direction
-        Vector3f flowDir = waterBlock.getFlowDirection();
-        if (flowDir.length() > 0.001f) {
-            waterInfo.append(String.format("Flow Dir: (%.2f, %.2f, %.2f)\n", flowDir.x, flowDir.y, flowDir.z));
-        } else {
-            waterInfo.append("Flow Dir: None\n");
+        WaterSystem system = world.getWaterSystem();
+        if (system != null) {
+            waterInfo.append(String.format("Tracked Water Blocks: %d\n", system.getTrackedWaterCount()));
         }
 
         return waterInfo.toString();

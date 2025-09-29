@@ -3,6 +3,7 @@ package com.stonebreak.world;
 import java.util.Map;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
@@ -30,6 +31,7 @@ public class World {
     private final WorldMemoryManager memoryManager;
     private final ChunkMeshBuildingPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
+    private final WaterSystem waterSystem;
 
     public World() {
         this(new WorldConfiguration());
@@ -50,6 +52,9 @@ public class World {
         this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, stateManager, config);
         this.memoryManager = new WorldMemoryManager(config, chunkStore);
         
+        this.waterSystem = new WaterSystem(this);
+        this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
+        
         this.chunkManager = new ChunkManager(this, config.getRenderDistance());
         
         System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
@@ -67,6 +72,7 @@ public class World {
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
+        waterSystem.tick();
         meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
         memoryManager.performMemoryManagement();
@@ -160,12 +166,22 @@ public class World {
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
         
+        BlockType previous = chunk.getBlock(localX, y, localZ);
+        if (previous == blockType) {
+            return true;
+        }
+
         chunk.setBlock(localX, y, localZ, blockType);
 
         stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
         neighborCoordinator.rebuildNeighborChunksScheduled(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        waterSystem.onBlockChanged(x, y, z, previous, blockType);
         
         return true;
+    }
+
+    public WaterSystem getWaterSystem() {
+        return waterSystem;
     }
     
     

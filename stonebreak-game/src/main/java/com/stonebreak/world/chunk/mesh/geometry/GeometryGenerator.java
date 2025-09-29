@@ -161,7 +161,8 @@ public class GeometryGenerator {
 
             WaterBlock waterBlock = Water.getWaterBlock(blockX, blockY, blockZ);
             if (waterBlock != null) {
-                return clampWaterHeight(waterBlock.getVisualHeight());
+                float height = waterBlock.level() == WaterBlock.SOURCE_LEVEL ? 0.875f : (8 - waterBlock.level()) * 0.875f / 8.0f;
+                return clampWaterHeight(height);
             }
 
             float level = Water.getWaterLevel(blockX, blockY, blockZ);
@@ -250,7 +251,8 @@ public class GeometryGenerator {
     private float resolveWaterHeight(int x, int y, int z, World world) {
         WaterBlock waterBlock = Water.getWaterBlock(x, y, z);
         if (waterBlock != null) {
-            return clampWaterHeight(waterBlock.getVisualHeight());
+            float height = waterBlock.level() == WaterBlock.SOURCE_LEVEL ? 0.875f : (8 - waterBlock.level()) * 0.875f / 8.0f;
+            return clampWaterHeight(height);
         }
 
         float level = Water.getWaterLevel(x, y, z);

@@ -11,6 +11,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 public class WorldChunkStore {
     private final Map<World.ChunkPosition, Chunk> chunks;
@@ -18,6 +19,8 @@ public class WorldChunkStore {
     private final TerrainGenerationSystem terrainSystem;
     private final WorldConfiguration config;
     private final ChunkMeshBuildingPipeline meshPipeline;
+    private Consumer<Chunk> chunkLoadListener;
+    private Consumer<Chunk> chunkUnloadListener;
     
     public WorldChunkStore(TerrainGenerationSystem terrainSystem, WorldConfiguration config, ChunkMeshBuildingPipeline meshPipeline) {
         this.chunks = new ConcurrentHashMap<>();
@@ -25,6 +28,11 @@ public class WorldChunkStore {
         this.terrainSystem = terrainSystem;
         this.config = config;
         this.meshPipeline = meshPipeline;
+    }
+
+    public void setChunkListeners(Consumer<Chunk> loadListener, Consumer<Chunk> unloadListener) {
+        this.chunkLoadListener = loadListener;
+        this.chunkUnloadListener = unloadListener;
     }
     
     public World.ChunkPosition getCachedChunkPosition(int x, int z) {
@@ -74,6 +82,9 @@ public class WorldChunkStore {
         Chunk chunk = chunks.remove(pos);
         
         if (chunk != null) {
+            if (chunkUnloadListener != null) {
+                chunkUnloadListener.accept(chunk);
+            }
             meshPipeline.removeChunkFromQueues(chunk);
             chunk.cleanupCpuResources();
             meshPipeline.addChunkForGpuCleanup(chunk);
@@ -153,6 +164,10 @@ public class WorldChunkStore {
             }
             
             chunks.put(position, newGeneratedChunk);
+
+            if (chunkLoadListener != null) {
+                chunkLoadListener.accept(newGeneratedChunk);
+            }
             
             if (shouldQueueForMesh(chunkX, chunkZ)) {
                 meshPipeline.scheduleConditionalMeshBuild(newGeneratedChunk);
