@@ -25,6 +25,13 @@ public class InventoryButtonRenderer {
      * Draws a modern recipe button with enhanced visual feedback and professional styling.
      */
     public static void drawRecipeButton(UIRenderer uiRenderer, InputHandler inputHandler, float x, float y, float w, float h, String text) {
+        drawRecipeButton(uiRenderer, inputHandler, x, y, w, h, text, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
+    }
+
+    /**
+     * Draws a modern recipe button with custom font size.
+     */
+    public static void drawRecipeButton(UIRenderer uiRenderer, InputHandler inputHandler, float x, float y, float w, float h, String text, float fontSize) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
 
@@ -37,7 +44,7 @@ public class InventoryButtonRenderer {
             drawModernButton(vg, x, y, w, h, isHovering, isPressed, stack);
 
             // Draw button text with enhanced typography
-            drawButtonText(vg, x, y, w, h, text, isPressed, stack);
+            drawButtonText(vg, x, y, w, h, text, isPressed, fontSize, stack);
         }
     }
 
@@ -150,13 +157,13 @@ public class InventoryButtonRenderer {
     /**
      * Draws button text with enhanced typography and subtle effects.
      */
-    private static void drawButtonText(long vg, float x, float y, float w, float h, String text, boolean isPressed, MemoryStack stack) {
+    private static void drawButtonText(long vg, float x, float y, float w, float h, String text, boolean isPressed, float fontSize, MemoryStack stack) {
         // Adjust text position for pressed state
         float textX = x + w / 2 + (isPressed ? 0.5f : 0);
         float textY = y + h / 2 + (isPressed ? 0.5f : 0);
 
         // Set font and alignment
-        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
+        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, fontSize);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
         // Draw text shadow for depth

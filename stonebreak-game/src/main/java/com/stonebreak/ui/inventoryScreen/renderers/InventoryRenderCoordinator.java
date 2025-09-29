@@ -191,12 +191,16 @@ public class InventoryRenderCoordinator {
             // Ensure button bounds are calculated before rendering
             inputManager.updateCraftAllButtonBoundsForRendering(layout);
 
+            // Use smaller font size for the compact button
+            float smallerFontSize = RecipeUIStyleRenderer.RecipeFonts.BODY_MEDIUM;
+
             InventoryButtonRenderer.drawRecipeButton(uiRenderer, inputHandler,
                                                     inputManager.getCraftAllButtonX(),
                                                     inputManager.getCraftAllButtonY(),
                                                     inputManager.getCraftAllButtonWidth(),
                                                     inputManager.getCraftAllButtonHeight(),
-                                                    "Craft All");
+                                                    "Craft All",
+                                                    smallerFontSize);
         }
     }
 
