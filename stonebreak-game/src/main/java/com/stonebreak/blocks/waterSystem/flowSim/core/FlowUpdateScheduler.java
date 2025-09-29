@@ -15,10 +15,27 @@ public class FlowUpdateScheduler {
 
     private final Queue<Vector3i> flowUpdateQueue;
     private final Set<Vector3i> scheduledUpdates;
+    private final PriorityQueue<DelayedRemoval> delayedRemovals;
+
+    private static class DelayedRemoval implements Comparable<DelayedRemoval> {
+        final Vector3i position;
+        final long removeTime;
+
+        DelayedRemoval(Vector3i position, long removeTime) {
+            this.position = new Vector3i(position);
+            this.removeTime = removeTime;
+        }
+
+        @Override
+        public int compareTo(DelayedRemoval other) {
+            return Long.compare(this.removeTime, other.removeTime);
+        }
+    }
 
     public FlowUpdateScheduler() {
         this.flowUpdateQueue = new ConcurrentLinkedQueue<>();
         this.scheduledUpdates = Collections.synchronizedSet(new HashSet<>());
+        this.delayedRemovals = new PriorityQueue<>();
     }
 
     /**
@@ -80,6 +97,7 @@ public class FlowUpdateScheduler {
     public void clear() {
         flowUpdateQueue.clear();
         scheduledUpdates.clear();
+        delayedRemovals.clear();
     }
 
     /**
@@ -87,5 +105,40 @@ public class FlowUpdateScheduler {
      */
     public boolean hasPendingUpdates() {
         return !flowUpdateQueue.isEmpty();
+    }
+
+    /**
+     * Schedules a delayed removal for falling water blocks.
+     *
+     * @param pos The position to remove water from
+     * @param delaySeconds The delay in seconds before removal
+     */
+    public void scheduleDelayedRemoval(Vector3i pos, float delaySeconds) {
+        long removeTime = System.currentTimeMillis() + (long)(delaySeconds * 1000);
+        delayedRemovals.offer(new DelayedRemoval(pos, removeTime));
+    }
+
+    /**
+     * Gets all delayed removals that are ready to be processed.
+     * Removes them from the delayed queue.
+     *
+     * @return List of positions ready for water removal
+     */
+    public List<Vector3i> getReadyRemovals() {
+        List<Vector3i> readyRemovals = new ArrayList<>();
+        long currentTime = System.currentTimeMillis();
+
+        while (!delayedRemovals.isEmpty() && delayedRemovals.peek().removeTime <= currentTime) {
+            readyRemovals.add(delayedRemovals.poll().position);
+        }
+
+        return readyRemovals;
+    }
+
+    /**
+     * Clears all delayed removals (used when clearing all scheduled updates).
+     */
+    public void clearDelayedRemovals() {
+        delayedRemovals.clear();
     }
 }

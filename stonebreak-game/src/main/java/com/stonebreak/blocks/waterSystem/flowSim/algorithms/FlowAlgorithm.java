@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.waterSystem.flowSim.core.FlowUpdateScheduler;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
+import com.stonebreak.blocks.waterSystem.types.FallingWaterType;
 import com.stonebreak.blocks.waterSystem.types.FlowWaterType;
 import com.stonebreak.blocks.waterSystem.types.SourceWaterType;
 import com.stonebreak.blocks.waterSystem.types.WaterType;
@@ -42,7 +43,7 @@ public class FlowAlgorithm {
         // Always try downward flow first (water falls down)
         Vector3i downPos = new Vector3i(sourcePos.x, sourcePos.y - 1, sourcePos.z);
         if (FlowBlockInteraction.canFlowTo(downPos, world)) {
-            createOrUpdateWaterAt(downPos, 0, world);
+            createOrUpdateFallingWaterAt(downPos, world);
             scheduler.scheduleFlowUpdate(downPos);
         }
 
@@ -156,6 +157,28 @@ public class FlowAlgorithm {
     /**
      * Creates or updates water at a position with proper type system and flower breaking.
      */
+    private void createOrUpdateFallingWaterAt(Vector3i pos, World world) {
+        WaterBlock existing = waterBlocks.get(pos);
+
+        if (existing == null) {
+            FlowBlockInteraction.flowTo(pos, world);
+
+            if (world.getBlockAt(pos.x, pos.y, pos.z) == BlockType.AIR) {
+                world.setBlockAt(pos.x, pos.y, pos.z, BlockType.WATER);
+            }
+
+            WaterBlock newWater = WaterBlock.createWithType(new FallingWaterType());
+            waterBlocks.put(pos, newWater);
+            return;
+        }
+
+        if (existing.getWaterType() instanceof SourceWaterType) {
+            return;
+        }
+
+        existing.setWaterType(new FallingWaterType());
+    }
+
     private void createOrUpdateWaterAt(Vector3i pos, int depth, World world) {
         WaterBlock existing = waterBlocks.get(pos);
 

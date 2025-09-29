@@ -40,25 +40,46 @@ public class FlowValidator {
      * Source blocks must have at least one unblocked side face to feed flow blocks.
      */
     public boolean hasValidSource(Vector3i pos, World world) {
-        // First check if this is ocean water - ocean water is always valid
+        return hasValidSourceInternal(pos, world, new HashSet<>());
+    }
+
+    private boolean hasValidSourceInternal(Vector3i pos, World world, Set<Vector3i> visitedPositions) {
+        Vector3i positionKey = new Vector3i(pos);
+        if (!visitedPositions.add(positionKey)) {
+            return false;
+        }
+
         WaterBlock currentWater = waterBlocks.get(pos);
-        if (currentWater != null && currentWater.isOceanWater()) {
-            return true; // Ocean water is always valid and stable
+        if (currentWater != null) {
+            if (currentWater.isOceanWater() || currentWater.isSource()) {
+                return true;
+            }
         }
 
-        // Check if this is at ocean level (at or below sea level) - treat as ocean water
+        if (sourceBlocks.contains(pos)) {
+            return true;
+        }
+
         if (pos.y <= WorldConfiguration.SEA_LEVEL) {
-            return true; // Water at ocean level is considered stable
+            return true;
         }
 
-        // Check if there's water directly above (water falls down)
         Vector3i abovePos = new Vector3i(pos.x, pos.y + 1, pos.z);
-        BlockType aboveBlock = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
-        if (aboveBlock == BlockType.WATER) {
-            return true; // Water can flow infinitely downward
+        WaterBlock aboveWater = waterBlocks.get(abovePos);
+        if (aboveWater != null) {
+            if (aboveWater.isOceanWater() || aboveWater.isSource() || sourceBlocks.contains(abovePos)) {
+                return true;
+            }
+
+            if (hasValidSourceInternal(abovePos, world, visitedPositions)) {
+                return true;
+            }
+        } else if (world.getBlockAt(abovePos.x, abovePos.y, abovePos.z) == BlockType.WATER
+                && sourceBlocks.contains(abovePos)) {
+            return true;
         }
 
-        // Check for adjacent water blocks that could be feeding this one
+        int ourDepth = currentWater != null ? currentWater.getDepth() : MAX_DEPTH;
         Vector3i[] neighbors = {
             new Vector3i(pos.x + 1, pos.y, pos.z),
             new Vector3i(pos.x - 1, pos.y, pos.z),
@@ -69,20 +90,17 @@ public class FlowValidator {
         for (Vector3i neighbor : neighbors) {
             WaterBlock neighborWater = waterBlocks.get(neighbor);
             if (neighborWater != null) {
-                // Ocean water can support any adjacent water
-                if (neighborWater.isOceanWater()) {
+                if (neighborWater.isOceanWater() || neighborWater.isSource() || sourceBlocks.contains(neighbor)) {
                     return true;
                 }
 
-                // Check if neighbor has lower or equal depth (can feed us)
-                int ourDepth = waterBlocks.get(pos) != null ? waterBlocks.get(pos).getDepth() : MAX_DEPTH;
-                if (neighborWater.getDepth() < ourDepth) {
+                if (neighborWater.getDepth() < ourDepth
+                        && hasValidSourceInternal(neighbor, world, visitedPositions)) {
                     return true;
                 }
             }
         }
 
-        // Check if there's a source block nearby with valid connection
         for (Vector3i sourcePos : sourceBlocks) {
             if (canSourceFeedFlowBlock(sourcePos, pos, world)) {
                 return true;
@@ -91,6 +109,7 @@ public class FlowValidator {
 
         return false;
     }
+
 
     /**
      * Checks if there's a valid flow path between source and target.

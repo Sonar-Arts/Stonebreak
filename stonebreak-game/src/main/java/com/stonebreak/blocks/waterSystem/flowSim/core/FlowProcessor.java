@@ -10,6 +10,7 @@ import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
 import com.stonebreak.blocks.waterSystem.states.WaterState;
 import com.stonebreak.blocks.waterSystem.states.WaterStateManager;
 import com.stonebreak.blocks.waterSystem.states.WaterStateManagerImpl;
+import com.stonebreak.blocks.waterSystem.types.FallingWaterType;
 import com.stonebreak.blocks.waterSystem.types.FlowWaterType;
 import com.stonebreak.blocks.waterSystem.types.SourceWaterType;
 import com.stonebreak.blocks.waterSystem.types.WaterType;
@@ -122,6 +123,13 @@ public class FlowProcessor {
             waterBlock.getWaterType(); // This triggers lazy initialization
         }
 
+        // Convert legacy or waterfall-created sources that are no longer tracked as true sources
+        if (!sourceManager.isWaterSource(pos) && !waterBlock.isOceanWater()
+                && waterBlock.getWaterType() instanceof SourceWaterType) {
+            waterBlock.setWaterType(new FallingWaterType());
+            waterBlock.setSource(false);
+        }
+
         // Source blocks don't need flow processing
         if (sourceManager.isWaterSource(pos)) {
             waterBlock.setSource(true);
@@ -159,7 +167,7 @@ public class FlowProcessor {
         Vector3i downPos = new Vector3i(pos.x, pos.y - 1, pos.z);
         if (canFlowTo(downPos, world)) {
             // When water flows down, depth resets to 0 at the new elevation (Minecraft behavior)
-            createOrUpdateWaterAt(downPos, 0, world);
+            createOrUpdateFallingWaterAt(downPos, world);
             scheduler.scheduleFlowUpdate(downPos);
 
             // Don't spread horizontally from falling water - this causes chaos
@@ -169,7 +177,7 @@ public class FlowProcessor {
 
         // Only check source validity for non-falling water
         if (!validator.hasValidSource(pos, world)) {
-            validator.removeWaterAt(pos, world);
+            applyDecayRemoval(pos, world);
             return;
         }
 
@@ -196,6 +204,46 @@ public class FlowProcessor {
      * Creates or updates water at a position with proper type system integration.
      * Implements flow averaging when multiple flows converge.
      */
+    private void createOrUpdateFallingWaterAt(Vector3i pos, World world) {
+        WaterBlock existing = waterBlocks.get(pos);
+
+        if (existing == null) {
+            FlowBlockInteraction.flowTo(pos, world);
+
+            if (world.getBlockAt(pos.x, pos.y, pos.z) == BlockType.AIR) {
+                world.setBlockAt(pos.x, pos.y, pos.z, BlockType.WATER);
+            }
+
+            WaterBlock newWater = WaterBlock.createWithType(new FallingWaterType());
+            WaterState state = stateManager.determineState(newWater, pos);
+            stateManager.updateState(newWater, state, pos);
+            waterBlocks.put(pos, newWater);
+            return;
+        }
+
+        if (existing.getWaterType() instanceof SourceWaterType && sourceManager.isWaterSource(pos)) {
+            return;
+        }
+
+        existing.setWaterType(new FallingWaterType());
+        WaterState newState = stateManager.determineState(existing, pos);
+        stateManager.updateState(existing, newState, pos);
+    }
+
+    private void applyDecayRemoval(Vector3i pos, World world) {
+        WaterBlock waterBlock = waterBlocks.get(pos);
+        if (waterBlock == null) {
+            validator.removeWaterAt(pos, world);
+            return;
+        }
+
+        if (waterBlock.getWaterType() instanceof FallingWaterType && !waterBlock.isSource()) {
+            scheduler.scheduleDelayedRemoval(pos, 0.6f);
+        } else {
+            validator.removeWaterAt(pos, world);
+        }
+    }
+
     private void createOrUpdateWaterAt(Vector3i pos, int depth, World world) {
         WaterBlock existing = waterBlocks.get(pos);
 
