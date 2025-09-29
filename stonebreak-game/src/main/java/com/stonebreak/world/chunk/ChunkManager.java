@@ -179,6 +179,18 @@ public class ChunkManager {
         for (int x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
             for (int z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
                 world.ensureChunkIsReadyForRender(x, z);
+
+                // PERIODIC VALIDATION: Double-check that chunks within close range have meshes
+                // This catches any chunks that slipped through mesh generation
+                int distance = Math.max(Math.abs(x - playerChunkX), Math.abs(z - playerChunkZ));
+                if (distance <= 3) { // Only validate chunks very close to player
+                    Chunk chunk = world.getChunkAt(x, z);
+                    if (chunk != null && chunk.areFeaturesPopulated() && !chunk.isMeshGenerated()
+                        && !chunk.isMeshDataGenerationScheduledOrInProgress()) {
+                        // Found an invisible chunk - force immediate retry
+                        world.ensureChunkIsReadyForRender(x, z);
+                    }
+                }
             }
         }
     }

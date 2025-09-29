@@ -346,6 +346,10 @@ public class Chunk {
          resourceManager.cleanupCpuResources(meshData);
          freeMeshDataArrays();
          indexCount = 0;
+
+         // CRITICAL FIX: Mark mesh as dirty to ensure regeneration is attempted
+         // Without this, chunks with cleared resources won't be queued for mesh rebuild
+         stateManager.markMeshDirty();
      }
  
      /**
