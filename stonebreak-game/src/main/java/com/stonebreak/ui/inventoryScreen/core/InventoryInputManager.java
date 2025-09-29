@@ -22,6 +22,9 @@ public class InventoryInputManager {
     // Recipe button properties
     private float recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight;
 
+    // Craft All button properties
+    private float craftAllButtonX, craftAllButtonY, craftAllButtonWidth, craftAllButtonHeight;
+
     public InventoryInputManager(InputHandler inputHandler,
                                 Inventory inventory,
                                 InventorySlotManager slotManager,
@@ -66,6 +69,13 @@ public class InventoryInputManager {
             // Check recipe button first
             if (isRecipeButtonClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().openRecipeBookScreen();
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                return;
+            }
+
+            // Check craft all button
+            if (isCraftAllButtonClicked(mouseX, mouseY, layout)) {
+                handleCraftAll();
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
@@ -115,6 +125,68 @@ public class InventoryInputManager {
         int spacingAfterOutput = InventoryLayoutCalculator.getSlotPadding() * 2;
         recipeButtonX = layout.outputSlotX + InventoryLayoutCalculator.getSlotSize() + spacingAfterOutput;
         recipeButtonY = layout.outputSlotY;
+    }
+
+    private boolean isCraftAllButtonClicked(float mouseX, float mouseY,
+                                           InventoryLayoutCalculator.InventoryLayout layout) {
+        updateCraftAllButtonBounds(layout);
+        return mouseX >= craftAllButtonX && mouseX <= craftAllButtonX + craftAllButtonWidth &&
+               mouseY >= craftAllButtonY && mouseY <= craftAllButtonY + craftAllButtonHeight;
+    }
+
+    private void updateCraftAllButtonBounds(InventoryLayoutCalculator.InventoryLayout layout) {
+        // Make button width smaller for compact layout
+        craftAllButtonWidth = Math.max(70, InventoryLayoutCalculator.getSlotSize() * 1.5f);
+        craftAllButtonHeight = InventoryLayoutCalculator.getSlotSize() / 2;
+
+        // Position button below the output slot
+        craftAllButtonX = layout.outputSlotX + (InventoryLayoutCalculator.getSlotSize() - craftAllButtonWidth) / 2;
+        craftAllButtonY = layout.outputSlotY + InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
+    }
+
+    private void handleCraftAll() {
+        if (craftingManager.getCraftingOutputSlot() != null &&
+            !craftingManager.getCraftingOutputSlot().isEmpty()) {
+
+            // Store all crafted items temporarily
+            java.util.List<com.stonebreak.items.ItemStack> craftedItems = new java.util.ArrayList<>();
+
+            // Craft as many as possible
+            while (!craftingManager.getCraftingOutputSlot().isEmpty()) {
+                // Store the output before consuming
+                com.stonebreak.items.ItemStack output = craftingManager.getCraftingOutputSlot().copy();
+
+                // Check if we still have materials
+                boolean canCraft = true;
+                for (com.stonebreak.items.ItemStack inputSlot : craftingManager.getCraftingInputSlots()) {
+                    if (inputSlot != null && !inputSlot.isEmpty() && inputSlot.getCount() < 1) {
+                        canCraft = false;
+                        break;
+                    }
+                }
+
+                if (!canCraft) {
+                    break;
+                }
+
+                // Consume ingredients
+                craftingManager.consumeCraftingIngredients();
+                craftedItems.add(output);
+
+                // Update output for next iteration
+                craftingManager.updateCraftingOutput();
+            }
+
+            // Try to add all crafted items to inventory
+            for (com.stonebreak.items.ItemStack stack : craftedItems) {
+                if (!inventory.addItem(stack)) {
+                    // If inventory is full, drop remaining items
+                    if (Game.getPlayer() != null) {
+                        com.stonebreak.util.DropUtil.dropItemFromPlayer(Game.getPlayer(), stack);
+                    }
+                }
+            }
+        }
     }
 
     private void tryPickUpItem(float mouseX, float mouseY,
@@ -206,11 +278,23 @@ public class InventoryInputManager {
     public float getRecipeButtonWidth() { return recipeButtonWidth; }
     public float getRecipeButtonHeight() { return recipeButtonHeight; }
 
+    public float getCraftAllButtonX() { return craftAllButtonX; }
+    public float getCraftAllButtonY() { return craftAllButtonY; }
+    public float getCraftAllButtonWidth() { return craftAllButtonWidth; }
+    public float getCraftAllButtonHeight() { return craftAllButtonHeight; }
+
     /**
      * Updates recipe button bounds for rendering. Should be called before rendering the button.
      */
     public void updateRecipeButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
         updateRecipeButtonBounds(layout);
+    }
+
+    /**
+     * Updates craft all button bounds for rendering. Should be called before rendering the button.
+     */
+    public void updateCraftAllButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
+        updateCraftAllButtonBounds(layout);
     }
 
     /**

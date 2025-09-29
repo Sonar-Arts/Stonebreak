@@ -134,6 +134,9 @@ public class InventoryRenderCoordinator {
 
         // Render recipe button
         renderRecipeButton(layout);
+
+        // Render craft all button
+        renderCraftAllButton(layout);
     }
 
     private void renderCraftingInputSlots(InventoryLayoutCalculator.InventoryLayout layout) {
@@ -178,6 +181,23 @@ public class InventoryRenderCoordinator {
                                                 inputManager.getRecipeButtonWidth(),
                                                 inputManager.getRecipeButtonHeight(),
                                                 RECIPE_BUTTON_TEXT);
+    }
+
+    private void renderCraftAllButton(InventoryLayoutCalculator.InventoryLayout layout) {
+        // Only render if there's something to craft
+        if (craftingManager.getCraftingOutputSlot() != null &&
+            !craftingManager.getCraftingOutputSlot().isEmpty()) {
+
+            // Ensure button bounds are calculated before rendering
+            inputManager.updateCraftAllButtonBoundsForRendering(layout);
+
+            InventoryButtonRenderer.drawRecipeButton(uiRenderer, inputHandler,
+                                                    inputManager.getCraftAllButtonX(),
+                                                    inputManager.getCraftAllButtonY(),
+                                                    inputManager.getCraftAllButtonWidth(),
+                                                    inputManager.getCraftAllButtonHeight(),
+                                                    "Craft All");
+        }
     }
 
     private void renderInventorySection(InventoryLayoutCalculator.InventoryLayout layout) {

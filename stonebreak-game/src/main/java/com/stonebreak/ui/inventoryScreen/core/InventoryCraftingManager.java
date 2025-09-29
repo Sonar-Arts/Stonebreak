@@ -101,4 +101,37 @@ public class InventoryCraftingManager {
     public int getCraftingGridSize() {
         return craftingGridSize;
     }
+
+    /**
+     * Attempts to craft as many items as possible from the current crafting grid.
+     * Returns the number of items crafted.
+     */
+    public int craftAll() {
+        int craftedCount = 0;
+
+        // Keep crafting while we have materials and a valid recipe
+        while (!craftingOutputSlot.isEmpty()) {
+            // Check if we have enough materials for one more craft
+            boolean canCraft = true;
+            for (ItemStack inputSlot : craftingInputSlots) {
+                if (inputSlot != null && !inputSlot.isEmpty() && inputSlot.getCount() < 1) {
+                    canCraft = false;
+                    break;
+                }
+            }
+
+            if (!canCraft) {
+                break;
+            }
+
+            // Consume ingredients and craft
+            consumeCraftingIngredients();
+            craftedCount += craftingOutputSlot.getCount();
+
+            // Update output for next iteration
+            updateCraftingOutput();
+        }
+
+        return craftedCount;
+    }
 }
