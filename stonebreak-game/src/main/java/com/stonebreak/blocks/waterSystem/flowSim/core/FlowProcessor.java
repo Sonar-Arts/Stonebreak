@@ -256,8 +256,10 @@ public class FlowProcessor {
                 world.setBlockAt(pos.x, pos.y, pos.z, BlockType.WATER);
             }
 
-            WaterType waterType = depth == WaterBlock.SOURCE_DEPTH ?
-                new SourceWaterType() : new FlowWaterType(depth);
+            // CRITICAL FIX: Always create FlowWaterType in createOrUpdateWaterAt
+            // This method is for creating flowing water, never source blocks
+            // Even if depth is 0, it should be flow water, not a source
+            WaterType waterType = new FlowWaterType(depth);
             WaterBlock newWater = WaterBlock.createWithType(waterType);
 
             // Set appropriate state

@@ -4,8 +4,9 @@ import com.stonebreak.blocks.waterSystem.WaterBlock;
 
 /**
  * Represents flowing water blocks created by source blocks.
- * Flow blocks have depth 1-7 and can participate in source creation
+ * Flow blocks have depth 0-7 and can participate in source creation
  * under specific collision conditions.
+ * NOTE: Flow blocks can have depth 0 without being source blocks.
  */
 public class FlowWaterType implements WaterType {
 
@@ -15,21 +16,23 @@ public class FlowWaterType implements WaterType {
     /**
      * Creates a flow water type with the specified depth.
      *
-     * @param depth Water depth (1-7 for flowing water)
+     * @param depth Water depth (0-7 for flowing water)
      */
     public FlowWaterType(int depth) {
-        this.depth = Math.max(1, Math.min(WaterBlock.MAX_FLOW_DEPTH, depth));
+        // CRITICAL FIX: Allow depth 0 for flow water - this is different from source blocks
+        this.depth = Math.max(0, Math.min(WaterBlock.MAX_FLOW_DEPTH, depth));
         this.sourceCreationEligible = true; // Most flows can create sources
     }
 
     /**
      * Creates a flow water type with depth and source creation eligibility.
      *
-     * @param depth Water depth (1-7 for flowing water)
+     * @param depth Water depth (0-7 for flowing water)
      * @param sourceCreationEligible Whether this flow can participate in source creation
      */
     public FlowWaterType(int depth, boolean sourceCreationEligible) {
-        this.depth = Math.max(1, Math.min(WaterBlock.MAX_FLOW_DEPTH, depth));
+        // CRITICAL FIX: Allow depth 0 for flow water - this is different from source blocks
+        this.depth = Math.max(0, Math.min(WaterBlock.MAX_FLOW_DEPTH, depth));
         this.sourceCreationEligible = sourceCreationEligible;
     }
 
@@ -46,10 +49,11 @@ public class FlowWaterType implements WaterType {
 
     @Override
     public boolean canCreateSource() {
-        // Only depth-1 flows that are source creation eligible can create sources
+        // Depth 0 and 1 flows that are source creation eligible can create sources
         // This implements the rule about partially vertical sources emitting
         // non-source-creating flows
-        return depth == 1 && sourceCreationEligible;
+        // UPDATED: Allow depth 0 flow water to participate in source creation
+        return (depth == 0 || depth == 1) && sourceCreationEligible;
     }
 
     @Override

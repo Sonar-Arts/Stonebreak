@@ -45,7 +45,9 @@ public class WaterBlock {
      */
     public WaterBlock(int depth) {
         this.depth = Math.max(0, Math.min(MAX_FLOW_DEPTH, depth));
-        this.isSource = (depth == SOURCE_DEPTH);
+        // CRITICAL FIX: Only explicitly created sources should be marked as source blocks
+        // Flow water that happens to reach depth 0 should remain as flow water
+        this.isSource = false; // Will be set to true only for explicit source blocks
         initializeWaterType(depth);
     }
 
@@ -65,7 +67,9 @@ public class WaterBlock {
      */
     public void setDepth(int depth) {
         this.depth = Math.max(0, Math.min(MAX_FLOW_DEPTH, depth));
-        this.isSource = (depth == SOURCE_DEPTH);
+        // CRITICAL FIX: Don't automatically make depth 0 blocks into source blocks
+        // The isSource flag should be managed independently through setSource() or explicit creation
+        // This allows flow water to reach depth 0 without becoming a source
     }
 
     /**
@@ -364,17 +368,20 @@ public class WaterBlock {
     }
 
     /**
-     * Initializes the water type based on depth and flags.
+     * Initializes the water type based on isSource flag and depth.
      * Used for backward compatibility and new block creation.
      */
     private void initializeWaterType(int depth) {
         if (isOceanWater) {
             this.waterType = new OceanWaterType();
             this.waterState = WaterState.STAGNANT;
-        } else if (depth == SOURCE_DEPTH) {
+        } else if (isSource) {
+            // CRITICAL FIX: Only create SourceWaterType for explicitly marked source blocks
+            // This prevents flow water with depth 0 from becoming source types
             this.waterType = new SourceWaterType();
             this.waterState = WaterState.STAGNANT;
         } else {
+            // Flow water can have any depth including 0
             this.waterType = new FlowWaterType(depth);
             this.waterState = WaterState.FLOWING;
         }
