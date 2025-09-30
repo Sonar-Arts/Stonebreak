@@ -22,10 +22,10 @@ import java.util.PriorityQueue;
  */
 public final class WaterSystem {
 
-    private static final int MAX_UPDATES_PER_TICK = 512;
-    private static final int MAX_TICKS_PER_FRAME = 8;
-    private static final int WATER_TICK_DELAY = 5; // Minecraft's water flow speed (5 ticks between updates)
-    private static final int NEIGHBOR_TICK_DELAY = 5; // Match Minecraft's neighbor update rate
+    private static final int MAX_UPDATES_PER_TICK = 128;
+    private static final int MAX_TICKS_PER_FRAME = 4;
+    private static final int WATER_TICK_DELAY = 10; // Slowed down for better cleanup performance
+    private static final int NEIGHBOR_TICK_DELAY = 10; // Match water delay
     private static final float MC_TICK_INTERVAL = 1.0f / 20.0f;
     private static final int[][] HORIZONTAL_DIRECTIONS = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1}
@@ -362,21 +362,11 @@ public final class WaterSystem {
             return Math.min(above.level(), minNeighbor + 1);
         }
 
-        // Edge case: All neighbors are level 7 (or no water neighbors found)
-        // Keep level 7 if it has ANY water neighbor, remove only if isolated
+        // Edge case: All neighbors are level 7 or weaker (or no water neighbors found)
+        // Level 7 blocks should only be maintained by stronger neighbors (level 6 or better)
+        // If all neighbors are level 7, remove this block to allow proper cleanup
         if (minNeighbor == WaterBlock.MAX_LEVEL) {
-            if (current.level() == WaterBlock.MAX_LEVEL) {
-                for (int[] dir : HORIZONTAL_DIRECTIONS) {
-                    BlockPos neighborPos = pos.offset(dir[0], 0, dir[1]);
-                    if (!isWithinWorld(neighborPos.y())) {
-                        continue;
-                    }
-                    if (cells.get(neighborPos) != null) {
-                        return WaterBlock.MAX_LEVEL; // Has water neighbor, maintain level 7
-                    }
-                }
-            }
-            return WaterBlock.EMPTY_LEVEL; // No water neighbors, remove
+            return WaterBlock.EMPTY_LEVEL; // No stronger neighbors, remove
         }
         return Math.min(minNeighbor + 1, WaterBlock.MAX_LEVEL);
     }
