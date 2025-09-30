@@ -281,7 +281,8 @@ public final class WaterSystem {
         }
 
         int clampedLevel = Math.min(targetLevel, WaterBlock.MAX_LEVEL);
-        boolean shouldFall = canFall && clampedLevel > WaterBlock.SOURCE_LEVEL;
+        // Water should be falling if there's space or falling water below
+        boolean shouldFall = canFall;
         WaterBlock updated = new WaterBlock(clampedLevel, shouldFall);
 
         if (!updated.equals(current)) {
@@ -304,6 +305,13 @@ public final class WaterSystem {
 
     private boolean tryFlowDown(BlockPos pos, WaterBlock current) {
         BlockPos below = pos.below();
+
+        // First check if there's already falling water below - if so, this block should also be falling
+        WaterBlock existing = cells.get(below);
+        if (existing != null && existing.falling()) {
+            return true;
+        }
+
         if (!canFlowInto(below)) {
             return false;
         }
@@ -315,8 +323,7 @@ public final class WaterSystem {
             return true;
         }
 
-        WaterBlock existing = cells.get(below);
-        return existing != null && existing.falling();
+        return false;
     }
 
     private int computeTargetLevel(BlockPos pos, WaterBlock current) {
@@ -385,7 +392,11 @@ public final class WaterSystem {
 
         for (int[] dir : HORIZONTAL_DIRECTIONS) {
             BlockPos neighbor = pos.offset(dir[0], 0, dir[1]);
-            if (tryFill(neighbor, new WaterBlock(spreadLevel, false))) {
+
+            // Check if the target position has air below - if so, water should be falling
+            boolean shouldBeFalling = canFlowInto(neighbor.below());
+
+            if (tryFill(neighbor, new WaterBlock(spreadLevel, shouldBeFalling))) {
                 scheduleNeighbors(neighbor);
             }
         }

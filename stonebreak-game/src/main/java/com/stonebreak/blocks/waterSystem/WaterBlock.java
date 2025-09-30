@@ -50,7 +50,8 @@ public record WaterBlock(int level, boolean falling) {
         if (level != other.level) {
             return level < other.level;
         }
-        return !falling && other.falling();
+        // Falling water is stronger than non-falling at the same level (prioritize vertical flow)
+        return falling && !other.falling();
     }
 
     public WaterBlock asFalling() {
