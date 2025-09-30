@@ -24,8 +24,8 @@ public final class WaterSystem {
 
     private static final int MAX_UPDATES_PER_TICK = 512;
     private static final int MAX_TICKS_PER_FRAME = 8;
-    private static final int WATER_TICK_DELAY = 4; // Minecraft's water flow speed (4 ticks between updates)
-    private static final int NEIGHBOR_TICK_DELAY = 4; // Match Minecraft's neighbor update rate
+    private static final int WATER_TICK_DELAY = 5; // Minecraft's water flow speed (5 ticks between updates)
+    private static final int NEIGHBOR_TICK_DELAY = 5; // Match Minecraft's neighbor update rate
     private static final float MC_TICK_INTERVAL = 1.0f / 20.0f;
     private static final int[][] HORIZONTAL_DIRECTIONS = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1}
@@ -199,6 +199,21 @@ public final class WaterSystem {
             enqueue(pos, NEIGHBOR_TICK_DELAY);
             scheduleNeighbors(pos);
         }
+
+        // If a non-water block was removed (changed to air/replaceable), check neighbors for water sources
+        // This ensures water sources resume flowing when obstructions are removed
+        if (previous != BlockType.AIR && previous != BlockType.WATER && FlowBlockInteraction.canDisplace(next)) {
+            for (int[] dir : HORIZONTAL_DIRECTIONS) {
+                BlockPos neighbor = pos.offset(dir[0], 0, dir[1]);
+                if (cells.get(neighbor) != null) {
+                    enqueueImmediate(neighbor);
+                }
+            }
+            BlockPos above = pos.above();
+            if (cells.get(above) != null) {
+                enqueueImmediate(above);
+            }
+        }
     }
 
     /**
@@ -339,25 +354,21 @@ public final class WaterSystem {
             return Math.min(above.level(), minNeighbor + 1);
         }
 
-        // If minNeighbor is still MAX_LEVEL, no neighbors with level 0-6 were found
-        // For level 7: if it has ANY level 7 neighbors, it could be part of a valid flow edge
-        // Only remove if completely isolated (no water neighbors at all)
+        // Edge case: All neighbors are level 7 (or no water neighbors found)
+        // Keep level 7 if it has ANY water neighbor, remove only if isolated
         if (minNeighbor == WaterBlock.MAX_LEVEL) {
             if (current.level() == WaterBlock.MAX_LEVEL) {
-                // Level 7 can stay if it has water neighbors (even if they're also level 7)
-                // This prevents edge flickering while flow distance is still enforced by spread logic
                 for (int[] dir : HORIZONTAL_DIRECTIONS) {
                     BlockPos neighborPos = pos.offset(dir[0], 0, dir[1]);
                     if (!isWithinWorld(neighborPos.y())) {
                         continue;
                     }
-                    WaterBlock neighbor = cells.get(neighborPos);
-                    if (neighbor != null) {
-                        return WaterBlock.MAX_LEVEL; // Has a water neighbor, stay at level 7
+                    if (cells.get(neighborPos) != null) {
+                        return WaterBlock.MAX_LEVEL; // Has water neighbor, maintain level 7
                     }
                 }
             }
-            return WaterBlock.EMPTY_LEVEL;
+            return WaterBlock.EMPTY_LEVEL; // No water neighbors, remove
         }
         return Math.min(minNeighbor + 1, WaterBlock.MAX_LEVEL);
     }
