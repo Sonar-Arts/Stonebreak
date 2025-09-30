@@ -24,8 +24,8 @@ public final class WaterSystem {
 
     private static final int MAX_UPDATES_PER_TICK = 512;
     private static final int MAX_TICKS_PER_FRAME = 8;
-    private static final int WATER_TICK_DELAY = 3; // Slightly faster cadence to keep up with render tick pacing
-    private static final int NEIGHBOR_TICK_DELAY = Math.max(1, WATER_TICK_DELAY - 1);
+    private static final int WATER_TICK_DELAY = 4; // Minecraft's water flow speed (4 ticks between updates)
+    private static final int NEIGHBOR_TICK_DELAY = 4; // Match Minecraft's neighbor update rate
     private static final float MC_TICK_INTERVAL = 1.0f / 20.0f;
     private static final int[][] HORIZONTAL_DIRECTIONS = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1}
@@ -69,9 +69,12 @@ public final class WaterSystem {
         tickAccumulator += delta;
 
         int ticksToRun = 0;
-        while (tickAccumulator >= MC_TICK_INTERVAL && ticksToRun < MAX_TICKS_PER_FRAME) {
+        while (tickAccumulator >= MC_TICK_INTERVAL) {
             tickAccumulator -= MC_TICK_INTERVAL;
             ticksToRun++;
+            if (ticksToRun >= MAX_TICKS_PER_FRAME) {
+                break; // Safety limit to prevent runaway ticks
+            }
         }
 
         if (ticksToRun == 0) {
@@ -92,6 +95,7 @@ public final class WaterSystem {
 
     /**
      * Registers existing water when a chunk finishes generation.
+     * Only enqueues water blocks that need immediate evaluation (surface/flowing water).
      */
     public void onChunkLoaded(Chunk chunk) {
         if (chunk == null) {
@@ -110,8 +114,31 @@ public final class WaterSystem {
                         int worldX = chunk.getChunkX() * WorldConfiguration.CHUNK_SIZE + localX;
                         int worldZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE + localZ;
                         BlockPos pos = new BlockPos(worldX, y, worldZ);
+
+                        // Check if this is a water block that needs processing
+                        boolean needsUpdate = false;
+
+                        // Check if there's air below (flowing water)
+                        if (y > 0 && blocks[localX][y - 1][localZ] == BlockType.AIR) {
+                            needsUpdate = true;
+                        }
+
+                        // Check if there's air beside (surface water)
+                        if (!needsUpdate && (
+                            (localX > 0 && blocks[localX - 1][y][localZ] == BlockType.AIR) ||
+                            (localX < WorldConfiguration.CHUNK_SIZE - 1 && blocks[localX + 1][y][localZ] == BlockType.AIR) ||
+                            (localZ > 0 && blocks[localX][y][localZ - 1] == BlockType.AIR) ||
+                            (localZ < WorldConfiguration.CHUNK_SIZE - 1 && blocks[localX][y][localZ + 1] == BlockType.AIR)
+                        )) {
+                            needsUpdate = true;
+                        }
+
                         cells.put(pos, WaterBlock.source());
-                        enqueueImmediate(pos);
+
+                        // Only enqueue water that needs to flow
+                        if (needsUpdate) {
+                            enqueueImmediate(pos);
+                        }
                     }
                 }
             }
