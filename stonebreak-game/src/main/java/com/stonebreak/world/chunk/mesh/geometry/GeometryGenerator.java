@@ -192,12 +192,17 @@ public class GeometryGenerator {
         WaterBlock waterAbove = Water.getWaterBlock(blockX, blockY + 1, blockZ);
         WaterBlock waterBelow = Water.getWaterBlock(blockX, blockY - 1, blockZ);
         BlockType blockBelow = (blockY > 0) ? world.getBlockAt(blockX, blockY - 1, blockZ) : BlockType.AIR;
+        WaterBlock currentWater = Water.getWaterBlock(blockX, blockY, blockZ);
 
         // If there's water above that's flowing down, corners should be full height
         boolean hasWaterAbove = waterAbove != null;
 
         // If there's water below and this water can flow down, adjust bottom connection
         boolean shouldConnectBelow = waterBelow != null || blockBelow == BlockType.WATER;
+
+        // Check if this is a flow above a source block - needs smooth downward curve
+        boolean isFlowAboveSource = (currentWater != null && !currentWater.isSource()) &&
+                                     (waterBelow != null && waterBelow.isSource());
 
         // Offsets of blocks contributing to each corner (dx, dz)
         int[][][] cornerOffsets = new int[][][] {
@@ -262,8 +267,6 @@ public class GeometryGenerator {
             }
 
             // Calculate final corner height with improved blending
-            WaterBlock currentWater = Water.getWaterBlock(blockX, blockY, blockZ);
-
             if (solidNeighborCount > 0) {
                 // Corner is against one or more walls
                 if (allSourceBlocks && currentWater != null && currentWater.isSource()) {
@@ -289,7 +292,29 @@ public class GeometryGenerator {
                 }
             } else {
                 // Open corner (no walls) - use minimum height for natural flow appearance
-                heights[corner] = hasWater ? clampWaterHeight(minHeight) : 0.0f;
+                float baseHeight = hasWater ? clampWaterHeight(minHeight) : 0.0f;
+
+                // Check if any neighboring positions (for this corner) have source blocks below them
+                // This handles both: current block above source AND edge cases where neighbor is above source
+                int sourcesBelow = 0;
+                for (int[] offset : cornerOffsets[corner]) {
+                    int sampleX = blockX + offset[0];
+                    int sampleZ = blockZ + offset[1];
+                    WaterBlock neighborBelow = Water.getWaterBlock(sampleX, blockY - 1, sampleZ);
+                    if (neighborBelow != null && neighborBelow.isSource()) {
+                        sourcesBelow++;
+                    }
+                }
+
+                // If there are sources below (either current block or neighbors), create smooth downward curve
+                if (sourcesBelow > 0) {
+                    // More sources below = stronger downward pull for smooth curve
+                    // This creates a natural "waterfall edge" appearance
+                    float downwardPull = Math.min(1.0f, sourcesBelow / 4.0f);
+                    baseHeight = baseHeight * (1.0f - downwardPull * 0.5f);
+                }
+
+                heights[corner] = baseHeight;
             }
         }
 

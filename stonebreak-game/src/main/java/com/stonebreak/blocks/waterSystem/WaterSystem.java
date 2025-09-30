@@ -319,8 +319,14 @@ public final class WaterSystem {
             return true;
         }
 
-        if (!canFlowInto(below)) {
+        // Check if there's space below (treats source blocks as space for edge detection)
+        if (!hasSpaceBelow(below)) {
             return false;
+        }
+
+        // Actually try to fill the space below (canFlowInto prevents entering sources)
+        if (!canFlowInto(below)) {
+            return true; // Space exists but can't enter (e.g., source block) - still counts as "can fall"
         }
 
         // Falling water always starts at level 1, regardless of source level
@@ -390,8 +396,8 @@ public final class WaterSystem {
         for (int[] dir : HORIZONTAL_DIRECTIONS) {
             BlockPos neighbor = pos.offset(dir[0], 0, dir[1]);
 
-            // Check if the target position has air below - if so, water should be falling
-            boolean shouldBeFalling = canFlowInto(neighbor.below());
+            // Check if the target position has space below (treats sources as space) - if so, water should be falling
+            boolean shouldBeFalling = hasSpaceBelow(neighbor.below());
 
             if (tryFill(neighbor, new WaterBlock(spreadLevel, shouldBeFalling))) {
                 scheduleNeighbors(neighbor);
@@ -413,10 +419,10 @@ public final class WaterSystem {
         boolean levelChanged = false;
 
         if (existing != null) {
-            // CRITICAL: Source blocks can only be replaced by other sources (via 2-source rule or player placement)
-            // Flows and falling water must NEVER replace source blocks
+            // CRITICAL: Source blocks should not be replaced by flows or falling water
+            // They can coexist - the source remains, and flows/falling water simply merge
             if (existing.isSource() && !candidate.isSource()) {
-                return false; // Flows cannot override sources
+                return false; // Keep the source, don't replace it with flow/falling water
             }
             if (!candidate.isStrongerThan(existing)) {
                 if (existing.falling() && !candidate.falling() && existing.level() == candidate.level()) {
@@ -516,7 +522,32 @@ public final class WaterSystem {
     }
 
     private boolean canFlowInto(BlockPos pos) {
-        return isWithinWorld(pos.y()) && FlowBlockInteraction.canDisplace(world.getBlockAt(pos.x(), pos.y(), pos.z()));
+        if (!isWithinWorld(pos.y())) {
+            return false;
+        }
+        // Water cannot flow into positions occupied by source blocks
+        WaterBlock existing = cells.get(pos);
+        if (existing != null && existing.isSource()) {
+            return false;
+        }
+        return FlowBlockInteraction.canDisplace(world.getBlockAt(pos.x(), pos.y(), pos.z()));
+    }
+
+    /**
+     * Checks if there's empty space below for water to fall into.
+     * Treats source blocks as "space" for falling logic (water should fall over sources like edges).
+     */
+    private boolean hasSpaceBelow(BlockPos pos) {
+        if (!isWithinWorld(pos.y())) {
+            return false;
+        }
+        BlockType blockType = world.getBlockAt(pos.x(), pos.y(), pos.z());
+        // Treat source blocks as space below (so water recognizes edge and falls)
+        WaterBlock existing = cells.get(pos);
+        if (existing != null && existing.isSource()) {
+            return true; // Source = space for falling purposes
+        }
+        return FlowBlockInteraction.canDisplace(blockType);
     }
 
     private boolean isWithinWorld(int y) {
