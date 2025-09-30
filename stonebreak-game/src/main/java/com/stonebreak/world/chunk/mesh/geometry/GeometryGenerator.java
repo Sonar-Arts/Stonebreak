@@ -11,7 +11,7 @@ import com.stonebreak.world.World;
  */
 public class GeometryGenerator {
 
-    private static final float MIN_DISPLAYED_WATER_HEIGHT = 0.125f;
+    private static final float MIN_DISPLAYED_WATER_HEIGHT = 0.0625f; // 1/16th block - allows level 7 to render properly
     private static final float WATER_ATTACHMENT_EPSILON = 0.001f;
     
     /**

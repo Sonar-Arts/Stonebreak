@@ -339,7 +339,24 @@ public final class WaterSystem {
             return Math.min(above.level(), minNeighbor + 1);
         }
 
+        // If minNeighbor is still MAX_LEVEL, no neighbors with level 0-6 were found
+        // For level 7: if it has ANY level 7 neighbors, it could be part of a valid flow edge
+        // Only remove if completely isolated (no water neighbors at all)
         if (minNeighbor == WaterBlock.MAX_LEVEL) {
+            if (current.level() == WaterBlock.MAX_LEVEL) {
+                // Level 7 can stay if it has water neighbors (even if they're also level 7)
+                // This prevents edge flickering while flow distance is still enforced by spread logic
+                for (int[] dir : HORIZONTAL_DIRECTIONS) {
+                    BlockPos neighborPos = pos.offset(dir[0], 0, dir[1]);
+                    if (!isWithinWorld(neighborPos.y())) {
+                        continue;
+                    }
+                    WaterBlock neighbor = cells.get(neighborPos);
+                    if (neighbor != null) {
+                        return WaterBlock.MAX_LEVEL; // Has a water neighbor, stay at level 7
+                    }
+                }
+            }
             return WaterBlock.EMPTY_LEVEL;
         }
         return Math.min(minNeighbor + 1, WaterBlock.MAX_LEVEL);
@@ -350,9 +367,9 @@ public final class WaterSystem {
             return; // Falling water does not spread sideways until it lands
         }
 
-        int spreadLevel = state.isSource() ? 1 : Math.min(state.level() + 1, WaterBlock.MAX_LEVEL);
+        int spreadLevel = state.isSource() ? 1 : state.level() + 1;
         if (spreadLevel > WaterBlock.MAX_LEVEL) {
-            return;
+            return; // Don't spread beyond max level
         }
 
         for (int[] dir : HORIZONTAL_DIRECTIONS) {
