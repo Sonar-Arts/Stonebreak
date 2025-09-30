@@ -40,8 +40,12 @@ public class FaceRenderingService {
 
                 return false; // Cull shared faces between water blocks.
             } else {
-                // Water vs non-water: render if adjacent is transparent or air
-                return adjacentBlock.isTransparent();
+                // Water vs non-water: render top face when adjacent to opaque blocks, other faces when transparent (but not water)
+                if (face == 0) { // Top face
+                    return !adjacentBlock.isTransparent() || adjacentBlock == BlockType.AIR;
+                } else {
+                    return adjacentBlock.isTransparent() && adjacentBlock != BlockType.WATER;
+                }
             }
         } else {
             // For non-water blocks, use the original logic
