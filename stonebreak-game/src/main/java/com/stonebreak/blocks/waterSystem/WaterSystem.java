@@ -350,7 +350,7 @@ public final class WaterSystem {
         }
 
         WaterBlock above = cells.get(pos.above());
-        if (above != null && above.falling()) {
+        if (above != null) {
             return Math.min(above.level(), minNeighbor + 1);
         }
 
