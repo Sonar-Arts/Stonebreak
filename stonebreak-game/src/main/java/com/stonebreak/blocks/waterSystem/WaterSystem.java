@@ -276,6 +276,7 @@ public final class WaterSystem {
             // When falling water lands, reset depth to level 1 (fresh flow starting point)
             current = WaterBlock.flowing(1);
             cells.put(pos, current);
+            notifyChunkUpdate(pos); // Visual update when falling water lands
         }
 
         int targetLevel = computeTargetLevel(pos, current);
@@ -293,6 +294,7 @@ public final class WaterSystem {
         if (!updated.equals(current)) {
             cells.put(pos, updated);
             scheduleNeighbors(pos);
+            notifyChunkUpdate(pos); // Visual update when water level changes
         }
 
         spreadHorizontally(pos, updated);
@@ -408,6 +410,8 @@ public final class WaterSystem {
         }
 
         WaterBlock existing = cells.get(pos);
+        boolean levelChanged = false;
+
         if (existing != null) {
             // CRITICAL: Source blocks can only be replaced by other sources (via 2-source rule or player placement)
             // Flows and falling water must NEVER replace source blocks
@@ -421,6 +425,8 @@ public final class WaterSystem {
                     return false;
                 }
             }
+            // Check if the water level is actually changing
+            levelChanged = (existing.level() != candidate.level() || existing.falling() != candidate.falling());
         }
 
         if (FlowBlockInteraction.isFragile(blockType)) {
@@ -428,12 +434,19 @@ public final class WaterSystem {
             setBlockType(pos, BlockType.AIR);
         }
 
-        if (blockType != BlockType.WATER) {
+        boolean blockTypeChanged = (blockType != BlockType.WATER);
+        if (blockTypeChanged) {
             setBlockType(pos, BlockType.WATER);
         }
 
         cells.put(pos, candidate);
         enqueue(pos, WATER_TICK_DELAY);
+
+        // Trigger visual update if water level changed (even if block type stayed WATER)
+        if (levelChanged && !blockTypeChanged) {
+            notifyChunkUpdate(pos);
+        }
+
         return true;
     }
 
@@ -455,6 +468,17 @@ public final class WaterSystem {
         } finally {
             suppressedCallbacks--;
         }
+    }
+
+    /**
+     * Notifies the world that a water block's visual state has changed,
+     * triggering a chunk mesh rebuild for proper visual updates.
+     */
+    private void notifyChunkUpdate(BlockPos pos) {
+        if (!isWithinWorld(pos.y())) {
+            return;
+        }
+        world.triggerChunkRebuild(pos.x(), pos.y(), pos.z());
     }
 
     private void scheduleNeighbors(BlockPos pos) {
