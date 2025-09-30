@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
@@ -87,28 +88,34 @@ public class BlockDrop extends Entity {
      */
     private void applyDropPhysics(float deltaTime) {
         age += deltaTime;
-        
+
+        // Apply water flow forces if in water
+        if (inWater) {
+            WaterFlowPhysics.applyWaterFlowForce(world, position, velocity,
+                deltaTime, width, height);
+        }
+
         // Apply custom light gravity for extremely floaty effect
         if (!onGround && !inWater) {
             velocity.y -= DROP_GRAVITY * deltaTime;
         }
-        
+
         // Apply minimal air resistance for floaty movement
         velocity.mul(DROP_AIR_RESISTANCE);
-        
+
         // Update position based on velocity
         Vector3f movement = new Vector3f(velocity).mul(deltaTime);
         Vector3f oldPosition = new Vector3f(position);
         position.add(movement);
-        
+
         // Simple collision detection with world
         checkWorldCollision(oldPosition);
-        
+
         // Apply reduced friction if on ground
         if (onGround) {
             velocity.x *= DROP_FRICTION;
             velocity.z *= DROP_FRICTION;
-            
+
             // Stop very small movements (lower threshold for floaty effect)
             if (Math.abs(velocity.x) < 0.005f) velocity.x = 0;
             if (Math.abs(velocity.z) < 0.005f) velocity.z = 0;
@@ -123,14 +130,14 @@ public class BlockDrop extends Entity {
         int blockX = (int) Math.floor(position.x);
         int blockY = (int) Math.floor(position.y - height/2);
         int blockZ = (int) Math.floor(position.z);
-        
+
         // Check if there's a solid block below
         if (world != null) {
             BlockType blockBelow = world.getBlockAt(blockX, blockY, blockZ);
             if (blockBelow != null && blockBelow != BlockType.AIR && blockBelow != BlockType.WATER) {
                 onGround = true;
                 position.y = blockY + 1.0f + height/2; // Place on top of block
-                
+
                 // Custom bounce effect for floaty drops
                 if (velocity.y < 0) {
                     velocity.y = -velocity.y * DROP_BOUNCE;
@@ -141,6 +148,10 @@ public class BlockDrop extends Entity {
             } else {
                 onGround = false;
             }
+
+            // Check if the drop is in water
+            BlockType blockAtPosition = world.getBlockAt(blockX, (int) Math.floor(position.y), blockZ);
+            inWater = (blockAtPosition == BlockType.WATER);
         }
     }
     

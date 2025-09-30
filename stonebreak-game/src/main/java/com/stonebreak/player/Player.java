@@ -13,6 +13,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.world.World;
 import com.stonebreak.core.Game;
 import com.stonebreak.blocks.Water;
+import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.util.DropUtil;
 
 /**
@@ -143,6 +144,12 @@ public class Player {      // Player settings
             }
         }
 
+        // Apply water flow forces if in water
+        if (physicallyInWater && !isFlying) {
+            WaterFlowPhysics.applyWaterFlowForce(world, position, velocity,
+                Game.getDeltaTime(), PLAYER_WIDTH, PLAYER_HEIGHT);
+        }
+
         // Apply gravity (unless flying)
         if (!onGround && !isFlying) {
             if (physicallyInWater) {
@@ -153,7 +160,7 @@ public class Player {      // Player settings
                 } else {
                     velocity.y -= GRAVITY * Game.getDeltaTime();
                 }
-                
+
                 // Safety check for water exit period
                 if (velocity.y > 0.1f && !physicallyInWater && isInWaterExitAntiFloatPeriod) {
                     velocity.y = 0.0f;

@@ -5,6 +5,8 @@ import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.Water;
+import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 
 /**
  * Base class for all living entities that can move, interact, and have AI behavior.
@@ -71,13 +73,19 @@ public abstract class LivingEntity extends Entity {
                 invulnerabilityTimer = 0;
             }
         }
-        
+
+        // Check if entity is in water and apply flow forces
+        if (isInWater()) {
+            WaterFlowPhysics.applyWaterFlowForce(world, position, velocity,
+                deltaTime, width, height);
+        }
+
         // Update movement state
         isMoving = velocity.length() > 0.1f;
-        
+
         // Apply basic physics
         applyPhysics(deltaTime);
-        
+
         // Update AI behavior (to be implemented in future phases)
         updateAI(deltaTime);
     }
