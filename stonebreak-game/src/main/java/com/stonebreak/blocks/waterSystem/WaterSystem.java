@@ -271,6 +271,13 @@ public final class WaterSystem {
             cells.put(pos, current);
         }
 
+        // Source blocks never change state - they only produce falling water below them
+        if (current.isSource()) {
+            tryFlowDown(pos, current); // Generate falling water below if needed
+            spreadHorizontally(pos, current); // Spread horizontally
+            return; // Source blocks remain unchanged
+        }
+
         boolean canFall = tryFlowDown(pos, current);
         if (!canFall && current.falling()) {
             // When falling water lands, reset depth to level 1 (fresh flow starting point)
@@ -322,6 +329,11 @@ public final class WaterSystem {
         // Check if there's space below (treats source blocks as space for edge detection)
         if (!hasSpaceBelow(below)) {
             return false;
+        }
+
+        // If there's a source block below, don't create water column - just maintain falling state visually
+        if (existing != null && existing.isSource()) {
+            return true; // Falling state for visual merge, but don't create water blocks below
         }
 
         // Actually try to fill the space below (canFlowInto prevents entering sources)
