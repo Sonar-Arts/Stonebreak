@@ -18,45 +18,8 @@ public class FaceRenderingService {
     public boolean shouldRenderFace(BlockType blockType, BlockType adjacentBlock, int lx, int ly, int lz, int face, int chunkX, int chunkZ) {
         if (blockType == BlockType.WATER) {
             if (adjacentBlock == BlockType.WATER) {
-                int worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
-                int worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
-                int adjWorldX = worldX;
-                int adjWorldY = ly;
-                int adjWorldZ = worldZ;
-
-                switch (face) {
-                    case 0 -> adjWorldY += 1; // Top
-                    case 1 -> adjWorldY -= 1; // Bottom
-                    case 2 -> adjWorldZ += 1; // Front
-                    case 3 -> adjWorldZ -= 1; // Back
-                    case 4 -> adjWorldX += 1; // Right
-                    case 5 -> adjWorldX -= 1; // Left
-                }
-
-                World world = Game.getWorld();
-                if (world != null && world.getBlockAt(adjWorldX, adjWorldY, adjWorldZ) != BlockType.WATER) {
-                    return true; // Adjacent chunk not meshed yet, keep boundary face.
-                }
-
-                // For side faces (not top/bottom), check if we need to render due to water level differences
-                if (face >= 2 && face <= 5 && world != null) {
-                    com.stonebreak.blocks.waterSystem.WaterBlock currentWater = com.stonebreak.blocks.Water.getWaterBlock(worldX, ly, worldZ);
-                    com.stonebreak.blocks.waterSystem.WaterBlock adjacentWater = com.stonebreak.blocks.Water.getWaterBlock(adjWorldX, adjWorldY, adjWorldZ);
-
-                    if (currentWater != null && adjacentWater != null) {
-                        // If water levels differ significantly, render the face for visual separation
-                        if (Math.abs(currentWater.level() - adjacentWater.level()) > 1) {
-                            return true;
-                        }
-
-                        // If one is falling and the other isn't, render the face
-                        if (currentWater.falling() != adjacentWater.falling()) {
-                            return true;
-                        }
-                    }
-                }
-
-                return false; // Cull shared faces between similar water blocks.
+                // Never render faces between water blocks - they should blend seamlessly
+                return false;
             } else {
                 // Water vs non-water: render top face when adjacent to opaque blocks, other faces when transparent (but not water)
                 if (face == 0) { // Top face
