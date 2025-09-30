@@ -269,7 +269,8 @@ public final class WaterSystem {
 
         boolean canFall = tryFlowDown(pos, current);
         if (!canFall && current.falling()) {
-            current = current.withoutFalling();
+            // When falling water lands, reset depth to level 1 (fresh flow starting point)
+            current = WaterBlock.flowing(1);
             cells.put(pos, current);
         }
 
@@ -316,8 +317,8 @@ public final class WaterSystem {
             return false;
         }
 
-        int level = current.isSource() ? 1 : Math.max(1, current.level());
-        boolean filled = tryFill(below, WaterBlock.falling(level));
+        // Falling water always starts at level 1, regardless of source level
+        boolean filled = tryFill(below, WaterBlock.falling(1));
         if (filled) {
             scheduleNeighbors(below);
             return true;
