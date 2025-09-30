@@ -22,10 +22,11 @@ import java.util.PriorityQueue;
  */
 public final class WaterSystem {
 
-    private static final int MAX_UPDATES_PER_TICK = 128;
-    private static final int MAX_TICKS_PER_FRAME = 4;
+    private static final int MAX_UPDATES_PER_TICK = 64;
+    private static final int MAX_TICKS_PER_FRAME = 2;
     private static final int WATER_TICK_DELAY = 10; // Slowed down for better cleanup performance
     private static final int NEIGHBOR_TICK_DELAY = 10; // Match water delay
+    private static final int IMMEDIATE_UPDATE_DELAY = 2; // Small delay for "immediate" updates to prevent instant spreading
     private static final float MC_TICK_INTERVAL = 1.0f / 20.0f;
     private static final int[][] HORIZONTAL_DIRECTIONS = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1}
@@ -63,6 +64,8 @@ public final class WaterSystem {
 
     /**
      * Processes pending water updates using the elapsed time in seconds.
+     * Accumulates deltaTime and processes logical ticks at 20 TPS (Minecraft rate).
+     * Limited to MAX_TICKS_PER_FRAME (2) and MAX_UPDATES_PER_TICK (64) for smooth performance.
      */
     public void tick(float deltaTimeSeconds) {
         float delta = Float.isFinite(deltaTimeSeconds) ? Math.max(0.0f, deltaTimeSeconds) : 0.0f;
@@ -73,7 +76,7 @@ public final class WaterSystem {
             tickAccumulator -= MC_TICK_INTERVAL;
             ticksToRun++;
             if (ticksToRun >= MAX_TICKS_PER_FRAME) {
-                break; // Safety limit to prevent runaway ticks
+                break; // Safety limit: max 2 logical ticks per frame (prevents burst spreading)
             }
         }
 
@@ -461,7 +464,7 @@ public final class WaterSystem {
     }
 
     private void enqueueImmediate(BlockPos pos) {
-        enqueue(pos, 0);
+        enqueue(pos, IMMEDIATE_UPDATE_DELAY);
     }
 
     private void enqueue(BlockPos pos, int delayTicks) {
