@@ -38,7 +38,25 @@ public class FaceRenderingService {
                     return true; // Adjacent chunk not meshed yet, keep boundary face.
                 }
 
-                return false; // Cull shared faces between water blocks.
+                // For side faces (not top/bottom), check if we need to render due to water level differences
+                if (face >= 2 && face <= 5 && world != null) {
+                    com.stonebreak.blocks.waterSystem.WaterBlock currentWater = com.stonebreak.blocks.Water.getWaterBlock(worldX, ly, worldZ);
+                    com.stonebreak.blocks.waterSystem.WaterBlock adjacentWater = com.stonebreak.blocks.Water.getWaterBlock(adjWorldX, adjWorldY, adjWorldZ);
+
+                    if (currentWater != null && adjacentWater != null) {
+                        // If water levels differ significantly, render the face for visual separation
+                        if (Math.abs(currentWater.level() - adjacentWater.level()) > 1) {
+                            return true;
+                        }
+
+                        // If one is falling and the other isn't, render the face
+                        if (currentWater.falling() != adjacentWater.falling()) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false; // Cull shared faces between similar water blocks.
             } else {
                 // Water vs non-water: render top face when adjacent to opaque blocks, other faces when transparent (but not water)
                 if (face == 0) { // Top face

@@ -188,6 +188,17 @@ public class GeometryGenerator {
         float initialHeight = clampWaterHeight(blockHeight);
         float[] heights = new float[] {initialHeight, initialHeight, initialHeight, initialHeight};
 
+        // Check if water exists above or below for vertical blending
+        WaterBlock waterAbove = Water.getWaterBlock(blockX, blockY + 1, blockZ);
+        WaterBlock waterBelow = Water.getWaterBlock(blockX, blockY - 1, blockZ);
+        BlockType blockBelow = (blockY > 0) ? world.getBlockAt(blockX, blockY - 1, blockZ) : BlockType.AIR;
+
+        // If there's water above that's flowing down, corners should be full height
+        boolean hasWaterAbove = waterAbove != null;
+
+        // If there's water below and this water can flow down, adjust bottom connection
+        boolean shouldConnectBelow = waterBelow != null || blockBelow == BlockType.WATER;
+
         // Offsets of blocks contributing to each corner (dx, dz)
         int[][][] cornerOffsets = new int[][][] {
             { {0, 0}, {-1, 0}, {0, -1}, {-1, -1} }, // Corner 0 (x, z)
@@ -199,19 +210,87 @@ public class GeometryGenerator {
         for (int corner = 0; corner < 4; corner++) {
             float minHeight = clampWaterHeight(blockHeight);
             boolean hasWater = true; // current block is always water
+            int waterNeighborCount = 0;
+            int solidNeighborCount = 0;
+            boolean allSourceBlocks = true;
+            float heightSum = 0.0f;
 
+            // Sample horizontal neighbors
             for (int[] offset : cornerOffsets[corner]) {
                 int sampleX = blockX + offset[0];
                 int sampleZ = blockZ + offset[1];
 
+                // Check if this is a solid block (wall)
+                BlockType neighborType = world.getBlockAt(sampleX, blockY, sampleZ);
+                if (neighborType != null && !neighborType.isTransparent() && neighborType != BlockType.WATER) {
+                    solidNeighborCount++;
+                    continue; // Skip solid blocks in height calculation
+                }
+
                 float height = resolveWaterHeight(sampleX, blockY, sampleZ, world);
                 if (!Float.isNaN(height)) {
+                    waterNeighborCount++;
+                    heightSum += height;
+
+                    // Check if this is a source block
+                    WaterBlock neighborWater = Water.getWaterBlock(sampleX, blockY, sampleZ);
+                    if (neighborWater == null || !neighborWater.isSource()) {
+                        allSourceBlocks = false;
+                    }
+
                     minHeight = Math.min(minHeight, height);
                     hasWater = true;
                 }
+
+                // Also check diagonally adjacent water blocks above for better blending
+                if (hasWaterAbove && (offset[0] != 0 || offset[1] != 0)) {
+                    float heightAbove = resolveWaterHeight(sampleX, blockY + 1, sampleZ, world);
+                    if (!Float.isNaN(heightAbove)) {
+                        // Blend with water above if it exists diagonally
+                        minHeight = Math.max(minHeight, heightAbove * 0.5f);
+                    }
+                }
+
+                // Check diagonally adjacent water blocks below for better downward connections
+                if (shouldConnectBelow && (offset[0] != 0 || offset[1] != 0)) {
+                    float heightBelow = resolveWaterHeight(sampleX, blockY - 1, sampleZ, world);
+                    if (!Float.isNaN(heightBelow)) {
+                        // Ensure smooth connection to water below
+                        minHeight = Math.min(minHeight, Math.max(minHeight, heightBelow * 0.75f));
+                    }
+                }
             }
 
-            heights[corner] = hasWater ? clampWaterHeight(minHeight) : 0.0f;
+            // Calculate final corner height with improved blending
+            WaterBlock currentWater = Water.getWaterBlock(blockX, blockY, blockZ);
+
+            if (solidNeighborCount > 0) {
+                // Corner is against one or more walls
+                if (allSourceBlocks && currentWater != null && currentWater.isSource()) {
+                    // All water neighbors are sources - maintain full height
+                    heights[corner] = clampWaterHeight(blockHeight);
+                } else if (waterNeighborCount > 0) {
+                    // Flowing water against walls - use minimal blending to prevent bulging
+                    // Calculate average but only apply small correction to minimum height
+                    float avgHeight = heightSum / waterNeighborCount;
+
+                    // Only lift the corner slightly above minimum if there's a wall
+                    // This prevents both sharp dips AND unnatural bulging
+                    float targetHeight = minHeight;
+
+                    // If the average is significantly higher than minimum, lift corner slightly
+                    if (avgHeight - minHeight > 0.05f) {
+                        targetHeight = minHeight + (avgHeight - minHeight) * 0.25f;
+                    }
+
+                    heights[corner] = clampWaterHeight(targetHeight);
+                } else {
+                    heights[corner] = clampWaterHeight(blockHeight);
+                }
+            } else {
+                // Open corner (no walls) - use minimum height for natural flow appearance
+                heights[corner] = hasWater ? clampWaterHeight(minHeight) : 0.0f;
+            }
         }
 
         return heights;
@@ -234,6 +313,20 @@ public class GeometryGenerator {
         BlockType belowType = world.getBlockAt(blockX, belowY, blockZ);
         if (belowType == null) {
             return worldY;
+        }
+
+        // If there's water below, ensure seamless connection
+        if (belowType == BlockType.WATER) {
+            WaterBlock waterBelow = Water.getWaterBlock(blockX, belowY, blockZ);
+            if (waterBelow != null) {
+                // Connect to the top of the water below
+                float waterBelowHeight = waterBelow.level() == WaterBlock.SOURCE_LEVEL ?
+                    0.875f : (8 - waterBelow.level()) * 0.875f / 8.0f;
+                waterBelowHeight = clampWaterHeight(waterBelowHeight);
+
+                // Return the top of the water block below, ensuring smooth connection
+                return belowY + waterBelowHeight;
+            }
         }
 
         float neighborHeight = getBlockHeight(belowType, blockX, belowY, blockZ, world);
