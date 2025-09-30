@@ -133,20 +133,32 @@ public class World {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return BlockType.AIR;
         }
-        
+
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = getChunkAt(chunkX, chunkZ);
-        
+
         if (chunk == null) {
             return BlockType.AIR;
         }
-        
+
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         return chunk.getBlock(localX, y, localZ);
+    }
+
+    /**
+     * Checks if the specified world position is underwater (contains a water block).
+     * @param x World X coordinate
+     * @param y World Y coordinate
+     * @param z World Z coordinate
+     * @return true if the position contains water, false otherwise
+     */
+    public boolean isPositionUnderwater(int x, int y, int z) {
+        BlockType block = getBlockAt(x, y, z);
+        return block == BlockType.WATER;
     }
     
     /**

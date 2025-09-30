@@ -70,27 +70,62 @@ public class DropRenderer {
      * to ensure drops render underneath the UI.
      */
     public void renderDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix) {
+        renderDrops(drops, shaderProgram, projectionMatrix, viewMatrix, null, null);
+    }
+
+    /**
+     * Renders all drops in the world with underwater fog support.
+     * @param drops List of drop entities to render
+     * @param shaderProgram Shader program to use
+     * @param projectionMatrix Projection matrix
+     * @param viewMatrix View matrix
+     * @param world World instance for underwater detection (can be null)
+     * @param cameraPos Camera position for fog distance calculation (can be null)
+     */
+    public void renderDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix,
+                           World world, Vector3f cameraPos) {
         if (drops == null || drops.isEmpty()) {
             return;
         }
-        
+
         // Ensure shader is bound
         shaderProgram.bind();
-        
+
         // Set common uniforms
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_isText", false);
-        
+
+        // Calculate underwater fog parameters once for all drops
+        float fogDensity = 0.0f;
+        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f); // Blue-cyan water color
+
+        if (world != null && cameraPos != null) {
+            int camX = (int) Math.floor(cameraPos.x);
+            int camY = (int) Math.floor(cameraPos.y);
+            int camZ = (int) Math.floor(cameraPos.z);
+            boolean cameraUnderwater = world.isPositionUnderwater(camX, camY, camZ);
+
+            // Apply fog if camera is underwater (affects all drops)
+            if (cameraUnderwater) {
+                fogDensity = 0.15f; // Moderate fog density for nice underwater effect
+            }
+        }
+
+        // Set underwater fog uniforms (applied to all drops)
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
+        shaderProgram.setUniform("u_underwaterFogColor", fogColor);
+
         // Bind texture atlas
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
-        
+
         // Enable depth testing for proper rendering
         glEnable(GL_DEPTH_TEST);
 
         // Note: Blending will be handled per-drop based on transparency requirements
-        
+
         // Render each drop (skip compressed ones)
         for (Entity drop : drops) {
             if (drop.isAlive() && isDropEntity(drop)) {
@@ -101,19 +136,19 @@ public class DropRenderer {
                 } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop itemDrop) {
                     shouldRender = itemDrop.shouldRender();
                 }
-                
+
                 if (shouldRender) {
-                    renderDrop(drop, shaderProgram, viewMatrix);
+                    renderDrop(drop, shaderProgram, viewMatrix, world);
                 }
             }
         }
-        
+
         // Clean up state - restore blending for UI elements
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        
+
         // Reset UI element mode back to false for world rendering
         shaderProgram.setUniform("u_isUIElement", false);
     }
@@ -121,14 +156,14 @@ public class DropRenderer {
     /**
      * Renders a single drop entity.
      */
-    private void renderDrop(Entity drop, ShaderProgram shaderProgram, Matrix4f viewMatrix) {
+    private void renderDrop(Entity drop, ShaderProgram shaderProgram, Matrix4f viewMatrix, World world) {
         // Create model matrix for the drop
         Vector3f dropPos = drop.getPosition();
         float dropAge = drop.getAge();
-        
+
         // Apply bobbing animation
         float bobOffset = (float) Math.sin(dropAge * 2.0f) * 0.1f;
-        
+
         if (isItemDrop(drop)) {
             // For 3D voxelized items, create standard transformation with spinning rotation
             float rotationY = dropAge * 30.0f; // Slower rotation for voxelized items
@@ -143,20 +178,20 @@ public class DropRenderer {
         } else {
             // For block drops, keep spinning rotation
             float rotationY = dropAge * 50.0f; // Rotate 50 degrees per second
-            
+
             dropModelMatrix.identity()
                 .translate(dropPos.x, dropPos.y + bobOffset, dropPos.z)
                 .scale(0.25f); // Make drops smaller than full blocks
-            
+
             // Apply rotation for spinning effect
             rotationMatrix.identity().rotateY((float) Math.toRadians(rotationY));
             dropModelMatrix.mul(rotationMatrix);
         }
-        
+
         // Combine with view matrix
         Matrix4f modelViewMatrix = new Matrix4f(viewMatrix).mul(dropModelMatrix);
         shaderProgram.setUniform("viewMatrix", modelViewMatrix);
-        
+
         // Render based on drop type
         if (isBlockDrop(drop)) {
             renderBlockDrop(drop, shaderProgram);

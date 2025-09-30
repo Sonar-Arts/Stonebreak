@@ -41,6 +41,9 @@ public class ResourceManager {
         shaderProgram.createUniform("u_isUIElement");
         shaderProgram.createUniform("u_time");
         shaderProgram.createUniform("u_waterDepthOffset");
+        shaderProgram.createUniform("u_cameraPos");
+        shaderProgram.createUniform("u_underwaterFogDensity");
+        shaderProgram.createUniform("u_underwaterFogColor");
     }
     
     private String getVertexShaderSource() {
@@ -140,6 +143,9 @@ public class ResourceManager {
                uniform bool u_isText;
                uniform bool u_isUIElement;
                uniform int u_renderPass;
+               uniform vec3 u_cameraPos;
+               uniform float u_underwaterFogDensity;
+               uniform vec3 u_underwaterFogColor;
                void main() {
                    if (u_isText) {
                        float alpha = texture(texture_sampler, outTexCoord).a;
@@ -171,6 +177,16 @@ public class ResourceManager {
                            } else {
                                discard;
                            }
+                       }
+
+                       // Apply underwater fog effect if not UI element and fog density > 0
+                       if (!u_isUIElement && u_underwaterFogDensity > 0.0) {
+                           float distance = length(fragPos - u_cameraPos);
+                           float fogFactor = exp(-u_underwaterFogDensity * distance);
+                           fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+                           // Blend fragment color with fog color, preserving alpha
+                           fragColor = mix(vec4(u_underwaterFogColor, fragColor.a), fragColor, fogFactor);
                        }
                    }
                }""";

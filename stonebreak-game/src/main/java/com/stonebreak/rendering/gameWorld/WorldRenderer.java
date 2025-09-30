@@ -158,6 +158,11 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
         shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
+
+        // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
+        shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
+        shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0, 0, 0));
     }
     
     /**
@@ -352,33 +357,40 @@ public class WorldRenderer {
                 }
             }
             
-            // Render all drops at once
+            // Render all drops at once with underwater fog support
             if (!drops.isEmpty()) {
-                dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix());
+                World world = Game.getWorld();
+                // Get camera position (at eye level, not feet)
+                Vector3f cameraPos = player.getCamera().getPosition();
+                dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
         }
     }
-    
+
     /**
      * Helper method to check if an entity is a drop entity.
      * This would need to be updated when actual drop entity classes are implemented.
      */
     private boolean isDropEntity(com.stonebreak.mobs.entities.Entity entity) {
-        return entity instanceof com.stonebreak.mobs.entities.BlockDrop || 
+        return entity instanceof com.stonebreak.mobs.entities.BlockDrop ||
                entity instanceof com.stonebreak.mobs.entities.ItemDrop;
     }
-    
+
     /**
      * Render all entities using the entity sub-renderer.
      */
     private void renderEntities(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        
+
         if (entityManager != null && entityRenderer != null) {
-            // Get all entities and render them using the sub-renderer
+            World world = Game.getWorld();
+            // Get camera position (at eye level, not feet)
+            Vector3f cameraPos = player.getCamera().getPosition();
+
+            // Get all entities and render them using the sub-renderer with underwater fog support
             for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
                 if (entity.isAlive() && !isDropEntity(entity)) { // Exclude drops as they're rendered separately
-                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
+                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
                 }
             }
         }
