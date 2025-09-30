@@ -191,7 +191,8 @@ public final class WaterSystem {
 
         BlockPos pos = new BlockPos(x, y, z);
         if (next == BlockType.WATER) {
-            cells.putIfAbsent(pos, WaterBlock.source());
+            // Player-placed water always becomes a source block, even if replacing a flow
+            cells.put(pos, WaterBlock.source());
             enqueueImmediate(pos);
             scheduleNeighbors(pos);
             return;
@@ -408,8 +409,10 @@ public final class WaterSystem {
 
         WaterBlock existing = cells.get(pos);
         if (existing != null) {
-            if (existing.isSource()) {
-                return false; // Never replace a true source block
+            // CRITICAL: Source blocks can only be replaced by other sources (via 2-source rule or player placement)
+            // Flows and falling water must NEVER replace source blocks
+            if (existing.isSource() && !candidate.isSource()) {
+                return false; // Flows cannot override sources
             }
             if (!candidate.isStrongerThan(existing)) {
                 if (existing.falling() && !candidate.falling() && existing.level() == candidate.level()) {

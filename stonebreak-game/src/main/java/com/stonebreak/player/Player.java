@@ -937,11 +937,25 @@ public class Player {      // Player settings
                     return;
                 }
                 
-                // If replacing water, remove it from water simulation first
+                // Special handling for placing water on existing water
+                if (blockAtPos == BlockType.WATER && selectedBlockType == BlockType.WATER) {
+                    // Check if it's already a source
+                    if (!Water.isWaterSource(placePos.x, placePos.y, placePos.z)) {
+                        // Convert flow to source by triggering world block change
+                        // This will call WaterSystem.onBlockChanged which uses cells.put() to force source
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                        inventory.removeItem(selectedItem.getItem(), 1);
+                    }
+                    // If already a source, don't consume the bucket
+                    return;
+                }
+
+                // If replacing water with non-water block, remove it from water simulation first
                 if (blockAtPos == BlockType.WATER) {
                     Water.removeWaterSource(placePos.x, placePos.y, placePos.z);
                 }
-                
+
                 // All checks passed, place the block.
                 if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
