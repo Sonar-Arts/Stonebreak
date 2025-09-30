@@ -105,20 +105,21 @@ public class WorldRenderer {
         // Render opaque pass
         renderOpaquePass(visibleChunks);
 
-        // Render transparent pass  
+        // Render entities after opaque blocks but before transparent water
+        // This allows water to blend over entities when viewing through water
+        renderEntities(player);
+
+        // Render transparent pass (water blends over entities correctly)
         renderTransparentPass(visibleChunks, player);
-        
+
+        // Render drops after transparent water (drops are semi-transparent)
+        renderDrops(player);
+
         // Restore OpenGL state after passes
         restoreGLStateAfterPasses();
 
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
-
-        // Render entities first (solid objects should render before transparent ones)
-        renderEntities(player);
-        
-        // Render drops after entities (transparent objects render last)
-        renderDrops(player);
 
         // Render water particles
         renderWaterParticles();
