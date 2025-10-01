@@ -13,12 +13,15 @@ import java.util.List;
 public class ChatMessageManager {
     private static final int MAX_MESSAGES = 100;
     private static final int MAX_VISIBLE_MESSAGES = 10;
+    private static final int MAX_HISTORY_MESSAGES = 20;
 
     private final List<ChatMessage> messages;
+    private final List<ChatMessage> chatHistory;
     private final TextWrapper textWrapper;
 
     public ChatMessageManager(TextWrapper textWrapper) {
         this.messages = new ArrayList<>();
+        this.chatHistory = new ArrayList<>();
         this.textWrapper = textWrapper;
     }
 
@@ -39,21 +42,33 @@ public class ChatMessageManager {
 
         String[] wrappedLines = textWrapper.wrapText(text);
         for (String line : wrappedLines) {
-            messages.add(new ChatMessage(line, color));
+            ChatMessage message = new ChatMessage(line, color);
+            messages.add(message);
+            addToHistory(message);
         }
 
         pruneOldMessages();
     }
 
     /**
-     * Update message lifecycle (remove expired messages)
+     * Update message lifecycle (remove expired messages only when chat is closed)
      */
     public void update() {
-        Iterator<ChatMessage> iterator = messages.iterator();
-        while (iterator.hasNext()) {
-            ChatMessage message = iterator.next();
-            if (message.shouldRemove()) {
-                iterator.remove();
+        update(false);
+    }
+
+    /**
+     * Update message lifecycle with chat state
+     */
+    public void update(boolean isChatOpen) {
+        // Only remove old messages when chat is closed
+        if (!isChatOpen) {
+            Iterator<ChatMessage> iterator = messages.iterator();
+            while (iterator.hasNext()) {
+                ChatMessage message = iterator.next();
+                if (message.shouldRemove()) {
+                    iterator.remove();
+                }
             }
         }
     }
@@ -62,8 +77,15 @@ public class ChatMessageManager {
      * Get visible messages based on chat state
      */
     public List<ChatMessage> getVisibleMessages(boolean isChatOpen) {
+        return getVisibleMessages(isChatOpen, 0);
+    }
+
+    /**
+     * Get visible messages based on chat state with scroll offset
+     */
+    public List<ChatMessage> getVisibleMessages(boolean isChatOpen, int scrollOffset) {
         if (isChatOpen) {
-            return getRecentMessages();
+            return getHistoryMessages(scrollOffset);
         } else {
             return getNonFadedMessages();
         }
@@ -84,13 +106,60 @@ public class ChatMessageManager {
     }
 
     /**
+     * Get chat history count
+     */
+    public int getHistoryCount() {
+        return chatHistory.size();
+    }
+
+    /**
      * Get recent messages (up to MAX_VISIBLE_MESSAGES)
      */
     private List<ChatMessage> getRecentMessages() {
+        return getRecentMessages(0);
+    }
+
+    /**
+     * Get recent messages with scroll offset (up to MAX_VISIBLE_MESSAGES)
+     */
+    private List<ChatMessage> getRecentMessages(int scrollOffset) {
         List<ChatMessage> visible = new ArrayList<>();
-        int startIndex = Math.max(0, messages.size() - MAX_VISIBLE_MESSAGES);
-        for (int i = startIndex; i < messages.size(); i++) {
+
+        // Calculate the range of messages to display
+        // scrollOffset = 0 means showing the most recent messages
+        // scrollOffset > 0 means scrolling up in history
+        int endIndex = messages.size() - scrollOffset;
+        int startIndex = Math.max(0, endIndex - MAX_VISIBLE_MESSAGES);
+
+        // Clamp endIndex to valid range
+        endIndex = Math.min(endIndex, messages.size());
+        endIndex = Math.max(endIndex, 0);
+
+        for (int i = startIndex; i < endIndex; i++) {
             visible.add(messages.get(i));
+        }
+        return visible;
+    }
+
+    /**
+     * Get history messages with scroll offset (up to MAX_VISIBLE_MESSAGES)
+     * Used when chat is open to display from the 20-message history
+     */
+    private List<ChatMessage> getHistoryMessages(int scrollOffset) {
+        List<ChatMessage> visible = new ArrayList<>();
+
+        // Calculate the range of messages to display from history
+        // scrollOffset = 0 means showing the most recent messages
+        // scrollOffset > 0 means scrolling up in history
+        int endIndex = chatHistory.size() - scrollOffset;
+        int startIndex = Math.max(0, endIndex - MAX_VISIBLE_MESSAGES);
+
+        // Clamp endIndex to valid range
+        endIndex = Math.min(endIndex, chatHistory.size());
+        endIndex = Math.max(endIndex, 0);
+
+        for (int i = startIndex; i < endIndex; i++) {
+            visible.add(chatHistory.get(i));
         }
         return visible;
     }
@@ -121,5 +190,24 @@ public class ChatMessageManager {
         while (messages.size() > MAX_MESSAGES) {
             messages.remove(0);
         }
+    }
+
+    /**
+     * Add message to chat history, maintaining max history size
+     */
+    private void addToHistory(ChatMessage message) {
+        chatHistory.add(message);
+
+        // Prune history to maintain max size
+        while (chatHistory.size() > MAX_HISTORY_MESSAGES) {
+            chatHistory.remove(0);
+        }
+    }
+
+    /**
+     * Get chat history (past 20 messages)
+     */
+    public List<ChatMessage> getChatHistory() {
+        return new ArrayList<>(chatHistory);
     }
 }

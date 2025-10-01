@@ -567,10 +567,11 @@ public class InputHandler {
     private void handleScroll(double yOffset) {
         // Store scroll offset for UI screens that need it (like RecipeBookScreen)
         this.scrollYOffset = yOffset;
-        
-        // Block scroll input if chat is open
+
+        // Handle chat scrolling if chat is open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
+            chatSystem.handleScroll(yOffset);
             return;
         }
         

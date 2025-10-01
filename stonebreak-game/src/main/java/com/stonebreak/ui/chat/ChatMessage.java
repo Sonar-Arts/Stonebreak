@@ -37,8 +37,18 @@ public class ChatMessage {
     }
     
     public float getAlpha() {
+        return getAlpha(false);
+    }
+
+    public float getAlpha(boolean isChatOpen) {
+        // When chat is open, messages never fade
+        if (isChatOpen) {
+            return color[3]; // Full alpha always
+        }
+
+        // When chat is closed, apply normal fading
         float age = getAge();
-        
+
         if (age < fadeStartTime) {
             return color[3]; // Full alpha during display time
         } else if (age < MESSAGE_DISPLAY_TIME) {
