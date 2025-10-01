@@ -199,6 +199,21 @@ public enum BlockType implements Item {
         }
         return AIR; // Default to air
     }
+
+    /**
+     * Gets block type by name (case-insensitive).
+     * @param name The block name to look up
+     * @return The BlockType with the given name, or null if not found
+     */
+    public static BlockType getByName(String name) {
+        if (name == null) return null;
+        for (BlockType type : values()) {
+            if (type.name.equalsIgnoreCase(name)) {
+                return type;
+            }
+        }
+        return null;
+    }
     
     /**
      * Determines if this block type is a flower that can be broken by water flow.

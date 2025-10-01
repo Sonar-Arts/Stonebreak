@@ -26,6 +26,7 @@ public class ChatCommandExecutor {
     private void registerCommands() {
         registerCommand(new CheatsCommand());
         registerCommand(new FlyCommand());
+        registerCommand(new ObtainCommand());
         registerCommand(new SpawnSoundEmitCommand());
         registerCommand(new Test3DAudioCommand());
         registerCommand(new Test3DNearCommand());
@@ -96,5 +97,20 @@ public class ChatCommandExecutor {
             .filter(cmd -> cmd.startsWith(lowerPrefix))
             .sorted()
             .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Get autocomplete suggestions for command arguments
+     * @param commandName The command name
+     * @param args Current arguments (excluding command name)
+     * @param currentArg The argument currently being typed
+     * @return List of suggestions for the current argument
+     */
+    public java.util.List<String> getArgumentSuggestions(String commandName, String[] args, String currentArg) {
+        ChatCommand command = commands.get(commandName.toLowerCase());
+        if (command == null) {
+            return java.util.Collections.emptyList();
+        }
+        return command.getAutocompleteSuggestions(args, currentArg);
     }
 }
