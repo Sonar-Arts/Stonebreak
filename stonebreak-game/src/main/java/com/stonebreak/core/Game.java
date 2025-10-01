@@ -5,7 +5,6 @@ import java.util.concurrent.*;
 
 import com.stonebreak.audio.*;
 import com.stonebreak.blocks.*;
-import com.stonebreak.chat.*;
 import com.stonebreak.config.*;
 import com.stonebreak.crafting.*;
 import com.stonebreak.input.*;
@@ -15,6 +14,7 @@ import com.stonebreak.rendering.*;
 import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;

@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.UI.components;
 
-import com.stonebreak.chat.ChatMessage;
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatMessage;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.rendering.UI.core.BaseRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;

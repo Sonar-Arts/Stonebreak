@@ -18,6 +18,7 @@ import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -227,7 +228,7 @@ public class Renderer {
      * @param windowWidth Window width
      * @param windowHeight Window height
      */
-    public void renderChat(com.stonebreak.chat.ChatSystem chatSystem, int windowWidth, int windowHeight) {
+    public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {
         if (uiRenderer != null) {
             uiRenderer.renderChat(chatSystem, windowWidth, windowHeight);
         }

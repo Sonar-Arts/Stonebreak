@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI;
 import java.nio.FloatBuffer;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;

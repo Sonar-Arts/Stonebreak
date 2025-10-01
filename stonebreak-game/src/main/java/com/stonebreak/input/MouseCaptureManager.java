@@ -1,12 +1,10 @@
 package com.stonebreak.input;
 
 import static org.lwjgl.glfw.GLFW.*;
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.player.Camera;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 
 /**
  * Mouse capture management system for handling cursor modes and camera movement.

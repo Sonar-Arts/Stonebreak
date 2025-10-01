@@ -1,4 +1,4 @@
-package com.stonebreak.chat;
+package com.stonebreak.ui.chat;
 
 public class ChatMessage {
     private final String text;

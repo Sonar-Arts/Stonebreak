@@ -1,4 +1,4 @@
-package com.stonebreak.chat;
+package com.stonebreak.ui.chat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +9,6 @@ import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import org.joml.Vector3f;
-import org.lwjgl.glfw.GLFW;
 
 import static org.lwjgl.glfw.GLFW.glfwGetClipboardString;
 import static org.lwjgl.glfw.GLFW.glfwSetClipboardString;

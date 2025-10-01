@@ -7,7 +7,7 @@ import org.joml.Vector3f;
 import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;

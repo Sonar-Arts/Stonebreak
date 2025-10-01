@@ -3,7 +3,7 @@ package com.stonebreak.core;
 
 import java.nio.IntBuffer;
 
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.config.Settings;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.input.MouseCaptureManager;
