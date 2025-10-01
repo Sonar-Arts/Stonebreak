@@ -1,32 +1,35 @@
 package com.stonebreak.core;
 
-import java.nio.*;
 
+import java.nio.IntBuffer;
+
+import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.config.Settings;
+import com.stonebreak.input.InputHandler;
+import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.player.Player;
+import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.textures.atlas.TextureAtlasBuilder;
+import com.stonebreak.ui.DebugOverlay;
+import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
-import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.util.MemoryProfiler;
+import com.stonebreak.world.World;
 import org.lwjgl.Version;
 import org.lwjgl.glfw.*;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.system.MemoryStack;
+
 import static org.lwjgl.glfw.GLFW.*;
-import org.lwjgl.opengl.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
-import org.lwjgl.system.*;
-import static org.lwjgl.system.MemoryStack.*;
-
-import com.stonebreak.chat.*;
-import com.stonebreak.config.*;
-import com.stonebreak.input.*;
-import com.stonebreak.player.*;
-import com.stonebreak.rendering.*;
-import com.stonebreak.textures.atlas.TextureAtlasBuilder;
-import com.stonebreak.ui.*;
-import com.stonebreak.util.*;
-import com.stonebreak.world.*;
+import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * Main class for the Stonebreak game - a voxel-based sandbox.
