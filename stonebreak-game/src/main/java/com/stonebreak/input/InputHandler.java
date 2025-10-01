@@ -469,9 +469,36 @@ public class InputHandler {
         // Check if chat is open - if so, handle chat-specific interactions
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
-            // Handle tab switching and command button clicks
-            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                handleChatClick(chatSystem);
+            if (button == GLFW_MOUSE_BUTTON_LEFT) {
+                if (action == GLFW_PRESS) {
+                    // Handle scrollbar clicks first
+                    UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                        int windowWidth = Game.getWindowWidth();
+                        int windowHeight = Game.getWindowHeight();
+
+                        // Try chat scrollbar
+                        if (uiRenderer.getChatRenderer().handleChatScrollbarPress(
+                                chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                            return; // Handled by scrollbar
+                        }
+
+                        // Try commands scrollbar
+                        if (uiRenderer.getChatRenderer().handleCommandScrollbarPress(
+                                chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                            return; // Handled by scrollbar
+                        }
+                    }
+
+                    // If not scrollbar, handle tab switching and command button clicks
+                    handleChatClick(chatSystem);
+                } else if (action == GLFW_RELEASE) {
+                    // Handle scrollbar release
+                    UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                        uiRenderer.getChatRenderer().handleScrollbarRelease();
+                    }
+                }
             }
             return;
         }
@@ -676,12 +703,17 @@ public class InputHandler {
             }
         }
 
-        // Update chat renderer hover states
+        // Update chat renderer hover states and scrollbar dragging
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
             if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
                 uiRenderer.getChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
+
+                // Handle scrollbar dragging
+                if (uiRenderer.getChatRenderer().isDraggingScrollbar()) {
+                    uiRenderer.getChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
+                }
             }
         }
     }

@@ -25,6 +25,11 @@ public class ChatRenderer extends BaseRenderer {
     private float lastMouseX = 0;
     private float lastMouseY = 0;
 
+    // Scrollbar dragging state
+    private boolean isDraggingChatScrollbar = false;
+    private boolean isDraggingCommandScrollbar = false;
+    private float scrollbarDragStartY = 0;
+
     public ChatRenderer(long vg) {
         super(vg);
         loadFonts();
@@ -700,5 +705,215 @@ public class ChatRenderer extends BaseRenderer {
         }
 
         return null;
+    }
+
+    /**
+     * Handle scrollbar mouse press for Chat tab
+     * @return true if the click was on the scrollbar
+     */
+    public boolean handleChatScrollbarPress(ChatSystem chatSystem, float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        if (!chatSystem.isOpen() || chatSystem.getCurrentTab() != ChatSystem.ChatTab.CHAT) {
+            return false;
+        }
+
+        int maxScroll = chatSystem.getMaxScroll();
+        if (maxScroll <= 0) {
+            return false;
+        }
+
+        // Calculate scrollbar area
+        float backgroundPadding = 10;
+        float maxChatWidth = windowWidth * 0.4f;
+        float inputBoxHeight = 25;
+        float inputBoxMargin = 10;
+        float lineHeight = 20;
+        float chatAreaHeight = (MAX_VISIBLE_LINES * lineHeight) + inputBoxHeight + inputBoxMargin + (backgroundPadding * 2);
+
+        float backgroundY = windowHeight - chatAreaHeight;
+        float backgroundX = 20 - backgroundPadding;
+        float backgroundWidth = maxChatWidth + (backgroundPadding * 2);
+
+        float scrollbarWidth = 6.0f;
+        float scrollbarX = backgroundX + backgroundWidth - scrollbarWidth - 5;
+        float scrollbarPadding = 5.0f;
+
+        float messagesAreaHeight = chatAreaHeight - inputBoxHeight - inputBoxMargin - scrollbarPadding;
+        float scrollbarTrackY = backgroundY + scrollbarPadding;
+        float scrollbarTrackHeight = messagesAreaHeight - scrollbarPadding;
+
+        // Check if click is on scrollbar track
+        if (mouseX >= scrollbarX && mouseX <= scrollbarX + scrollbarWidth &&
+            mouseY >= scrollbarTrackY && mouseY <= scrollbarTrackY + scrollbarTrackHeight) {
+
+            // Calculate thumb position and size
+            int currentScroll = chatSystem.getScrollOffset();
+            float visibleRatio = 10.0f / (10.0f + maxScroll);
+            float thumbHeight = Math.max(20.0f, scrollbarTrackHeight * visibleRatio);
+            float scrollRatio = (float) currentScroll / maxScroll;
+            float thumbY = scrollbarTrackY + (scrollbarTrackHeight - thumbHeight) * scrollRatio;
+
+            // Check if clicking on thumb
+            if (mouseY >= thumbY && mouseY <= thumbY + thumbHeight) {
+                isDraggingChatScrollbar = true;
+                scrollbarDragStartY = mouseY - thumbY;
+                return true;
+            }
+
+            // Click on track - jump to position
+            float clickRatio = (mouseY - scrollbarTrackY) / scrollbarTrackHeight;
+            int newScroll = Math.round(clickRatio * maxScroll);
+            chatSystem.handleScroll(newScroll > currentScroll ? 1 : -1);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle scrollbar mouse press for Commands tab
+     * @return true if the click was on the scrollbar
+     */
+    public boolean handleCommandScrollbarPress(ChatSystem chatSystem, float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        if (!chatSystem.isOpen() || chatSystem.getCurrentTab() != ChatSystem.ChatTab.COMMANDS) {
+            return false;
+        }
+
+        int maxScroll = chatSystem.getMaxCommandScroll();
+        if (maxScroll <= 0) {
+            return false;
+        }
+
+        // Calculate scrollbar area
+        float backgroundPadding = 10;
+        float maxChatWidth = windowWidth * 0.4f;
+        float inputBoxHeight = 25;
+        float inputBoxMargin = 10;
+        float lineHeight = 20;
+        float chatAreaHeight = (MAX_VISIBLE_LINES * lineHeight) + inputBoxHeight + inputBoxMargin + (backgroundPadding * 2);
+
+        float backgroundY = windowHeight - chatAreaHeight;
+        float backgroundX = 20 - backgroundPadding;
+        float backgroundWidth = maxChatWidth + (backgroundPadding * 2);
+
+        float scrollbarWidth = 6.0f;
+        float scrollbarX = backgroundX + backgroundWidth - scrollbarWidth - 5;
+        float scrollbarPadding = 5.0f;
+
+        float commandsAreaHeight = chatAreaHeight - inputBoxHeight - inputBoxMargin - scrollbarPadding - 15;
+        float scrollbarTrackY = backgroundY + scrollbarPadding + 15;
+        float scrollbarTrackHeight = commandsAreaHeight - scrollbarPadding;
+
+        // Check if click is on scrollbar track
+        if (mouseX >= scrollbarX && mouseX <= scrollbarX + scrollbarWidth &&
+            mouseY >= scrollbarTrackY && mouseY <= scrollbarTrackY + scrollbarTrackHeight) {
+
+            // Calculate thumb position and size
+            int currentScroll = chatSystem.getCommandScrollOffset();
+            int totalCommands = chatSystem.getCommandExecutor().getCommands().size();
+            int visibleCommands = 6;
+            float visibleRatio = (float) visibleCommands / totalCommands;
+            float thumbHeight = Math.max(20.0f, scrollbarTrackHeight * visibleRatio);
+            float scrollRatio = (float) currentScroll / maxScroll;
+            float thumbY = scrollbarTrackY + (scrollbarTrackHeight - thumbHeight) * scrollRatio;
+
+            // Check if clicking on thumb
+            if (mouseY >= thumbY && mouseY <= thumbY + thumbHeight) {
+                isDraggingCommandScrollbar = true;
+                scrollbarDragStartY = mouseY - thumbY;
+                return true;
+            }
+
+            // Click on track - jump to position
+            float clickRatio = (mouseY - scrollbarTrackY) / scrollbarTrackHeight;
+            int newScroll = Math.round(clickRatio * maxScroll);
+            chatSystem.handleScroll(newScroll > currentScroll ? 1 : -1);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle scrollbar mouse drag
+     */
+    public void handleScrollbarDrag(ChatSystem chatSystem, float mouseY, int windowHeight) {
+        if (!isDraggingChatScrollbar && !isDraggingCommandScrollbar) {
+            return;
+        }
+
+        // Calculate scrollbar area
+        float backgroundPadding = 10;
+        float inputBoxHeight = 25;
+        float inputBoxMargin = 10;
+        float lineHeight = 20;
+        float chatAreaHeight = (MAX_VISIBLE_LINES * lineHeight) + inputBoxHeight + inputBoxMargin + (backgroundPadding * 2);
+        float backgroundY = windowHeight - chatAreaHeight;
+
+        if (isDraggingChatScrollbar) {
+            int maxScroll = chatSystem.getMaxScroll();
+            if (maxScroll > 0) {
+                float scrollbarPadding = 5.0f;
+                float messagesAreaHeight = chatAreaHeight - inputBoxHeight - inputBoxMargin - scrollbarPadding;
+                float scrollbarTrackY = backgroundY + scrollbarPadding;
+                float scrollbarTrackHeight = messagesAreaHeight - scrollbarPadding;
+
+                float visibleRatio = 10.0f / (10.0f + maxScroll);
+                float thumbHeight = Math.max(20.0f, scrollbarTrackHeight * visibleRatio);
+
+                // Calculate new scroll position
+                float thumbY = mouseY - scrollbarDragStartY;
+                float scrollRatio = (thumbY - scrollbarTrackY) / (scrollbarTrackHeight - thumbHeight);
+                scrollRatio = Math.max(0, Math.min(1, scrollRatio));
+                int newScroll = Math.round(scrollRatio * maxScroll);
+
+                // Set scroll directly via multiple scroll events
+                int currentScroll = chatSystem.getScrollOffset();
+                int delta = newScroll - currentScroll;
+                for (int i = 0; i < Math.abs(delta); i++) {
+                    chatSystem.handleScroll(delta > 0 ? 1 : -1);
+                }
+            }
+        } else if (isDraggingCommandScrollbar) {
+            int maxScroll = chatSystem.getMaxCommandScroll();
+            if (maxScroll > 0) {
+                float scrollbarPadding = 5.0f;
+                float commandsAreaHeight = chatAreaHeight - inputBoxHeight - inputBoxMargin - scrollbarPadding - 15;
+                float scrollbarTrackY = backgroundY + scrollbarPadding + 15;
+                float scrollbarTrackHeight = commandsAreaHeight - scrollbarPadding;
+
+                int totalCommands = chatSystem.getCommandExecutor().getCommands().size();
+                int visibleCommands = 6;
+                float visibleRatio = (float) visibleCommands / totalCommands;
+                float thumbHeight = Math.max(20.0f, scrollbarTrackHeight * visibleRatio);
+
+                // Calculate new scroll position
+                float thumbY = mouseY - scrollbarDragStartY;
+                float scrollRatio = (thumbY - scrollbarTrackY) / (scrollbarTrackHeight - thumbHeight);
+                scrollRatio = Math.max(0, Math.min(1, scrollRatio));
+                int newScroll = Math.round(scrollRatio * maxScroll);
+
+                // Set scroll directly via multiple scroll events
+                int currentScroll = chatSystem.getCommandScrollOffset();
+                int delta = newScroll - currentScroll;
+                for (int i = 0; i < Math.abs(delta); i++) {
+                    chatSystem.handleScroll(delta > 0 ? 1 : -1);
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle scrollbar mouse release
+     */
+    public void handleScrollbarRelease() {
+        isDraggingChatScrollbar = false;
+        isDraggingCommandScrollbar = false;
+    }
+
+    /**
+     * Check if currently dragging a scrollbar
+     */
+    public boolean isDraggingScrollbar() {
+        return isDraggingChatScrollbar || isDraggingCommandScrollbar;
     }
 }
