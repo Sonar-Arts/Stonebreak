@@ -30,12 +30,13 @@ public class OverlayRenderer {
     
     /**
      * Renders all overlay UI elements for the current game state.
-     * This includes tooltips, underwater overlay, and other elements that should appear above all other UI.
+     * This includes tooltips and other elements that should appear above all other UI.
      * This should be called after all other UI rendering is complete.
+     * Note: Underwater overlay is NOT rendered here - it's rendered earlier in the pipeline before UI.
      */
     public void renderOverlay(Game game, int windowWidth, int windowHeight) {
         if (game == null) return;
-        
+
         // Render inventory tooltips (both full inventory and hotbar)
         renderInventoryTooltips(game, windowWidth, windowHeight);
 
@@ -47,9 +48,6 @@ public class OverlayRenderer {
 
         // Render dragged items last (highest z-index) so they appear above everything
         renderDraggedItems(game, windowWidth, windowHeight);
-
-        // Render underwater overlay if player is underwater
-        renderUnderwaterOverlay(game, windowWidth, windowHeight);
     }
     
     /**
@@ -106,8 +104,10 @@ public class OverlayRenderer {
 
     /**
      * Renders the underwater overlay effect if the player is underwater.
+     * This is a public method that should be called BEFORE UI rendering, not after.
+     * It updates and renders the underwater tint effect behind all UI elements.
      */
-    private void renderUnderwaterOverlay(Game game, int windowWidth, int windowHeight) {
+    public void renderUnderwaterOverlay(Game game, int windowWidth, int windowHeight) {
         Player player = game.getPlayer();
         if (player != null) {
             underwaterOverlayRenderer.update(player, game.getDeltaTime());

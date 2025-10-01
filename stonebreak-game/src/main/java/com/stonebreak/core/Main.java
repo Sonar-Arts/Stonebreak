@@ -449,11 +449,15 @@ public class Main {
 
     private void render3DGameState(Game game, Renderer renderer) {
         logFirstRender(game);
-        
+
         if (!resetOpenGLState()) return;
-        
+
         render3DWorld(game, renderer);
         renderDeferredElements();
+
+        // Render underwater overlay BEFORE UI so it doesn't tint the hotbar/menus
+        renderer.getOverlayRenderer().renderUnderwaterOverlay(game, width, height);
+
         renderGameUI(game, renderer);
         renderFullscreenMenus(game);
         renderer.renderOverlay(game, width, height);
