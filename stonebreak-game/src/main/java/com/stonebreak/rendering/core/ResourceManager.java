@@ -40,6 +40,7 @@ public class ResourceManager {
         shaderProgram.createUniform("u_renderPass");
         shaderProgram.createUniform("u_isUIElement");
         shaderProgram.createUniform("u_time");
+        shaderProgram.createUniform("u_waterAnimationEnabled");
         shaderProgram.createUniform("u_waterDepthOffset");
         shaderProgram.createUniform("u_cameraPos");
         shaderProgram.createUniform("u_underwaterFogDensity");
@@ -66,6 +67,7 @@ public class ResourceManager {
                uniform vec2 u_atlasUVOffset;
                uniform vec2 u_atlasUVScale;
                uniform float u_time;
+               uniform bool u_waterAnimationEnabled;
                uniform bool u_isUIElement;
                uniform float u_waterDepthOffset;
                void main() {
@@ -73,7 +75,7 @@ public class ResourceManager {
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;
                    // Apply GPU-side water surface displacement to avoid remeshing for waves
-                   if (waterHeight > 0.0 && !u_isUIElement) {
+                   if (waterHeight > 0.0 && !u_isUIElement && u_waterAnimationEnabled) {
                        const float MIN_WATER_SURFACE = 0.125;
                        const float MAX_WAVE_DELTA = 0.18;
                        // World-space wave using simple, seamless functions
