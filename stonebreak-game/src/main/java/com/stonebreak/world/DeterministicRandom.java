@@ -25,26 +25,41 @@ public class DeterministicRandom {
     /**
      * Gets a deterministic Random instance for the given world coordinates.
      * The same coordinates will always produce the same Random sequence.
-     * 
+     * Uses a high-quality hash function to eliminate coordinate patterns.
+     *
      * @param x World X coordinate
      * @param z World Z coordinate
      * @param feature Feature identifier (e.g., "tree", "ore", "flower") to separate random streams
      * @return A Random instance seeded deterministically for this position and feature
      */
     public Random getRandomForPosition(int x, int z, String feature) {
-        // Combine world seed, coordinates, and feature hash to create a unique seed
-        long positionSeed = worldSeed;
-        positionSeed = positionSeed * 31L + x;
-        positionSeed = positionSeed * 31L + z;
-        positionSeed = positionSeed * 31L + feature.hashCode();
-        
-        return new Random(positionSeed);
+        // Use a high-quality hash function to eliminate coordinate patterns
+        // Based on Wang hash algorithm for better distribution
+        long hash = worldSeed;
+
+        // Mix in X coordinate with large prime and bit manipulation
+        hash ^= (long)x * 0x9e3779b9L;
+        hash ^= hash >>> 16;
+
+        // Mix in Z coordinate with different large prime
+        hash ^= (long)z * 0x85ebca6bL;
+        hash ^= hash >>> 13;
+
+        // Mix in feature hash with another large prime
+        hash ^= (long)feature.hashCode() * 0xc2b2ae35L;
+        hash ^= hash >>> 16;
+
+        // Final avalanche to ensure good distribution
+        hash ^= hash >>> 32;
+
+        return new Random(hash);
     }
     
     /**
      * Gets a deterministic Random instance for the given world coordinates and Y level.
      * Useful for 3D features like ore generation that need Y-coordinate dependency.
-     * 
+     * Uses a high-quality hash function to eliminate coordinate patterns.
+     *
      * @param x World X coordinate
      * @param y World Y coordinate
      * @param z World Z coordinate
@@ -52,13 +67,30 @@ public class DeterministicRandom {
      * @return A Random instance seeded deterministically for this 3D position and feature
      */
     public Random getRandomForPosition3D(int x, int y, int z, String feature) {
-        long positionSeed = worldSeed;
-        positionSeed = positionSeed * 31L + x;
-        positionSeed = positionSeed * 31L + y;
-        positionSeed = positionSeed * 31L + z;
-        positionSeed = positionSeed * 31L + feature.hashCode();
-        
-        return new Random(positionSeed);
+        // Use a high-quality hash function to eliminate coordinate patterns
+        // Extended version of Wang hash for 3D coordinates
+        long hash = worldSeed;
+
+        // Mix in X coordinate with large prime and bit manipulation
+        hash ^= (long)x * 0x9e3779b9L;
+        hash ^= hash >>> 16;
+
+        // Mix in Y coordinate with different large prime
+        hash ^= (long)y * 0x8f8f8f8fL;
+        hash ^= hash >>> 11;
+
+        // Mix in Z coordinate with another large prime
+        hash ^= (long)z * 0x85ebca6bL;
+        hash ^= hash >>> 13;
+
+        // Mix in feature hash with yet another large prime
+        hash ^= (long)feature.hashCode() * 0xc2b2ae35L;
+        hash ^= hash >>> 16;
+
+        // Final avalanche to ensure good distribution
+        hash ^= hash >>> 32;
+
+        return new Random(hash);
     }
     
     /**

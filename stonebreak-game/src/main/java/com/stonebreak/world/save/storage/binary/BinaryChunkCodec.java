@@ -58,14 +58,19 @@ public class BinaryChunkCodec {
             byte[] compressedBody = compressor.compress(body);
             boolean useCompression = compressedBody.length < body.length * 0.9;
 
+            // Calculate flags: bit 0 = dirty, bit 1 = featuresPopulated
+            byte flags = 0;
+            if (chunk.isDirty()) flags |= 0x01;
+            if (chunk.areFeaturesPopulated()) flags |= 0x02;
+
             if (useCompression) {
                 ByteBuffer finalBuffer = ByteBuffer.allocate(CHUNK_HEADER_SIZE + compressedBody.length);
-                writeChunkHeader(finalBuffer, chunk, palette, body.length, COMPRESSION_LZ4, (byte) (chunk.isDirty() ? 1 : 0));
+                writeChunkHeader(finalBuffer, chunk, palette, body.length, COMPRESSION_LZ4, flags);
                 finalBuffer.put(compressedBody);
                 return finalBuffer.array();
             } else {
                 ByteBuffer finalBuffer = ByteBuffer.allocate(CHUNK_HEADER_SIZE + body.length);
-                writeChunkHeader(finalBuffer, chunk, palette, 0, COMPRESSION_NONE, (byte) (chunk.isDirty() ? 1 : 0));
+                writeChunkHeader(finalBuffer, chunk, palette, 0, COMPRESSION_NONE, flags);
                 finalBuffer.put(body);
                 return finalBuffer.array();
             }
@@ -120,6 +125,11 @@ public class BinaryChunkCodec {
             // Set dirty flag based on header
             if ((header.flags & 0x01) != 0) {
                 chunk.markDirty();
+            }
+
+            // Set features populated flag based on header (bit 1)
+            if ((header.flags & 0x02) != 0) {
+                chunk.setFeaturesPopulated(true);
             }
 
             return chunk;

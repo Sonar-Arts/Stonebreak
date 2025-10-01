@@ -2,7 +2,7 @@ package com.stonebreak.world.save.storage.providers;
 
 import com.stonebreak.world.save.core.PlayerState;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.stonebreak.world.save.util.JsonMapperUtil;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -24,15 +24,16 @@ public class PlayerDataProvider {
 
     public PlayerDataProvider(String worldPath) {
         this.worldPath = worldPath;
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.registerModule(new JavaTimeModule());
+        this.objectMapper = JsonMapperUtil.getSharedMapper();
 
-        // Ensure world directory exists
-        try {
-            Files.createDirectories(Paths.get(worldPath));
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create world directory: " + worldPath, e);
-        }
+        // Async directory creation to avoid blocking initialization
+        CompletableFuture.runAsync(() -> {
+            try {
+                Files.createDirectories(Paths.get(worldPath));
+            } catch (Exception e) {
+                System.err.println("[INIT-WARNING] Failed to create world directory: " + worldPath + " - " + e.getMessage());
+            }
+        });
     }
 
     /**
@@ -173,7 +174,7 @@ public class PlayerDataProvider {
                 }
                 root.put("inventory", inv);
 
-                String jsonContent = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+                String jsonContent = JsonMapperUtil.getPrettyWriter().writeValueAsString(root);
                 if (jsonContent == null || jsonContent.trim().isEmpty()) {
                     throw new RuntimeException("Serialized player state is empty");
                 }

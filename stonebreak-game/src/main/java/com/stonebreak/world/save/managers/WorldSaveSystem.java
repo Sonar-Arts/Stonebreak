@@ -28,6 +28,9 @@ public class WorldSaveSystem implements AutoCloseable {
     private volatile Player currentPlayer;
     private volatile WorldMetadata currentWorldMetadata;
 
+    // Cache for chunk existence to improve save-first loading performance
+    private final java.util.concurrent.ConcurrentHashMap<String, Boolean> chunkExistenceCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     public WorldSaveSystem(String worldPath) {
         this.worldPath = worldPath;
         this.saveManager = new WorldSaveManager(worldPath);
@@ -52,6 +55,30 @@ public class WorldSaveSystem implements AutoCloseable {
      */
     public boolean isInitialized() {
         return currentWorld != null && currentPlayer != null && currentWorldMetadata != null;
+    }
+
+    /**
+     * Updates the world and player references without losing existing metadata or state.
+     * This is used when world/player objects are recreated but we want to preserve
+     * the save system's initialization state and metadata.
+     */
+    public void updateReferences(World newWorld, Player newPlayer) {
+        if (isInitialized()) {
+            this.currentWorld = newWorld;
+            this.currentPlayer = newPlayer;
+            System.out.println("[SAVE-SYSTEM] Updated object references to maintain save system functionality");
+        } else {
+            // If save system isn't fully initialized but we have metadata, complete initialization
+            if (currentWorldMetadata != null && newWorld != null && newPlayer != null) {
+                System.out.println("[SAVE-SYSTEM] Completing initialization with new references");
+                initialize(newWorld, newPlayer, currentWorldMetadata);
+            } else {
+                // Store references for later initialization
+                this.currentWorld = newWorld;
+                this.currentPlayer = newPlayer;
+                System.out.println("[SAVE-SYSTEM] Stored references for later initialization (world=" + (newWorld != null) + ", player=" + (newPlayer != null) + ", metadata=" + (currentWorldMetadata != null) + ")");
+            }
+        }
     }
 
     /**
@@ -119,10 +146,37 @@ public class WorldSaveSystem implements AutoCloseable {
     }
 
     /**
-     * Checks if a given chunk exists in storage.
+     * Saves a single chunk immediately and updates existence cache.
+     */
+    public CompletableFuture<Void> saveChunk(com.stonebreak.world.chunk.Chunk chunk) {
+        return saveManager.saveChunk(chunk)
+            .thenRun(() -> {
+                // Update cache to reflect that chunk now exists
+                String cacheKey = chunk.getX() + "," + chunk.getZ();
+                chunkExistenceCache.put(cacheKey, true);
+            });
+    }
+
+    /**
+     * Checks if a given chunk exists in storage with caching for performance.
      */
     public java.util.concurrent.CompletableFuture<Boolean> chunkExists(int chunkX, int chunkZ) {
-        return loadManager.chunkExists(chunkX, chunkZ);
+        String cacheKey = chunkX + "," + chunkZ;
+
+        // Check cache first
+        Boolean cachedResult = chunkExistenceCache.get(cacheKey);
+        if (cachedResult != null) {
+            return CompletableFuture.completedFuture(cachedResult);
+        }
+
+        // Not in cache, check storage and cache the result
+        return loadManager.chunkExists(chunkX, chunkZ)
+            .thenApply(exists -> {
+                if (exists != null) {
+                    chunkExistenceCache.put(cacheKey, exists);
+                }
+                return exists;
+            });
     }
 
     /**
@@ -273,6 +327,9 @@ public class WorldSaveSystem implements AutoCloseable {
     @Override
     public void close() {
         stopAutoSave();
+
+        // Clear chunk existence cache
+        chunkExistenceCache.clear();
 
         try {
             autoSaveScheduler.close();

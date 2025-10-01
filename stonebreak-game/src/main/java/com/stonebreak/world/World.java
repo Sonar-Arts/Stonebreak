@@ -106,7 +106,15 @@ public class World {
         }
 
         boolean isMeshReady = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
-        if (!isMeshReady) {
+        boolean isMeshGenerating = chunk.isMeshDataGenerationScheduledOrInProgress();
+
+        // CRITICAL FIX: If chunk has features but no mesh and isn't generating, force retry
+        // This handles cases where mesh generation silently failed or was never attempted
+        if (chunk.areFeaturesPopulated() && !isMeshReady && !isMeshGenerating) {
+            // Force reset mesh state to allow retry
+            stateManager.resetMeshGenerationState(chunk);
+            meshPipeline.scheduleConditionalMeshBuild(chunk);
+        } else if (!isMeshReady) {
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
 
@@ -289,6 +297,14 @@ public class World {
      */
     public int getLoadedChunkCount() {
         return chunkStore.getLoadedChunkCount();
+    }
+
+    /**
+     * Returns the number of dirty chunks currently protected from unloading.
+     * This is used for monitoring the dirty chunk protection system.
+     */
+    public int getDirtyChunkCount() {
+        return chunkStore.getDirtyChunks().size();
     }
     
     /**
