@@ -1,16 +1,9 @@
 package com.stonebreak.world.chunk;
 
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
 import com.stonebreak.world.World;
-import com.stonebreak.world.operations.WorldConfiguration;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.system.MemoryUtil;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
@@ -43,6 +36,7 @@ public class Chunk {
     private ChunkBufferState bufferState = ChunkBufferState.empty();
     private int indexCount;
     private boolean meshGenerated;
+    private ChunkMeshData pendingMeshData;
     
     // State management
     private final ChunkInternalStateManager stateManager = new ChunkInternalStateManager();
@@ -135,25 +129,21 @@ public class Chunk {
             return; // Data not ready yet or already processed
         }
 
-        // Case 1: Chunk has become empty or has no renderable data
-        if (vertexData == null || vertexData.length == 0 || indexData == null || indexData.length == 0 || indexCount == 0) {
-            if (this.meshGenerated) { // If there was an old mesh
-                bufferOperations.deleteBuffers(bufferState);
-                bufferState = ChunkBufferState.empty();
-                this.meshGenerated = false;
-            }
-            stateManager.removeState(ChunkState.MESH_CPU_READY); // Data processed
-            return;
-        }
-
-        // Case 2: We have new mesh data to apply.
+        final ChunkMeshData meshData = pendingMeshData != null ? pendingMeshData : ChunkMeshData.empty();
         final boolean hasExistingMesh = this.meshGenerated && bufferState.isValid();
 
         try {
-            // Create ChunkMeshData from current arrays
-            ChunkMeshData meshData = new ChunkMeshData(vertexData, textureData, normalData, 
-                                                      isWaterData, isAlphaTestedData, indexData, indexCount);
-            
+            if (meshData.isEmpty()) {
+                if (this.meshGenerated) {
+                    bufferOperations.deleteBuffers(bufferState);
+                    bufferState = ChunkBufferState.empty();
+                    this.meshGenerated = false;
+                }
+                this.indexCount = 0;
+                stateManager.removeState(ChunkState.MESH_GPU_UPLOADED);
+                return;
+            }
+
             if (hasExistingMesh) {
                 // Fast path: update buffer contents in-place
                 bufferOperations.updateBuffers(bufferState, meshData);
@@ -162,13 +152,9 @@ public class Chunk {
                 bufferState = bufferOperations.createBuffers(meshData);
                 this.meshGenerated = true; // New mesh is now active and ready for rendering.
             }
-            
-            // Mark as uploaded to GPU
+
+            this.indexCount = meshData.getIndexCount();
             stateManager.markMeshGpuUploaded();
-            
-            // CRITICAL FIX: Free mesh data arrays after successful GL upload
-            // The data is now safely stored in GPU buffers and no longer needed in RAM
-            freeMeshDataArrays();
         } catch (Exception e) {
             logger.log(Level.SEVERE, () ->
                 "CRITICAL: Error during " + (hasExistingMesh ? "updateBuffers" : "createBuffers") +
@@ -176,15 +162,16 @@ public class Chunk {
                 "Time=" + java.time.LocalDateTime.now() +
                 " Thread=" + Thread.currentThread().getName() +
                 " BufferState=" + bufferState +
-                " IndexCount=" + indexCount +
+                " PendingIndexCount=" + meshData.getIndexCount() +
                 " MemMB=" + ((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024));
-            
+
             if (!hasExistingMesh) {
                 // Creation failed; ensure we don't hold partially created GL objects
                 bufferState = resourceManager.handleBufferUploadFailure(bufferState);
                 this.meshGenerated = false;
             }
-       } finally {
+        } finally {
+            pendingMeshData = null;
             stateManager.removeState(ChunkState.MESH_CPU_READY); // Data has been processed (or attempt failed)
         }
     }
@@ -192,25 +179,9 @@ public class Chunk {
      * Updates mesh data from ChunkMeshData result
      */
     private void updateMeshDataFromResult(ChunkMeshData meshData) {
-        // Free old mesh data arrays before assigning new ones
-        freeMeshDataArrays();
-        
-        vertexData = meshData.getVertexData();
-        textureData = meshData.getTextureData();
-        normalData = meshData.getNormalData();
-        isWaterData = meshData.getIsWaterData();
-        isAlphaTestedData = meshData.getIsAlphaTestedData();
-        indexData = meshData.getIndexData();
-        indexCount = meshData.getIndexCount();
+        // Stage the mesh for GPU upload without disturbing the currently rendered data
+        pendingMeshData = meshData;
     }
-    
-    // Mesh data
-    private float[] vertexData;
-    private float[] textureData;
-    private float[] normalData;
-    private float[] isWaterData;
-    private float[] isAlphaTestedData; // New array for isAlphaTested flags
-    private int[] indexData;
       /**
      * Renders the chunk.
      */
@@ -315,11 +286,7 @@ public class Chunk {
      * @return Current mesh data, or empty mesh data if no mesh exists
      */
     private ChunkMeshData getCurrentMeshData() {
-        if (vertexData == null || indexData == null || indexCount == 0) {
-            return ChunkMeshData.empty();
-        }
-        return new ChunkMeshData(vertexData, textureData, normalData, 
-                               isWaterData, isAlphaTestedData, indexData, indexCount);
+        return pendingMeshData != null ? pendingMeshData : ChunkMeshData.empty();
     }
      /**
       * Cleans up CPU-side resources. Safe to call from any thread.
@@ -327,7 +294,7 @@ public class Chunk {
      public void cleanupCpuResources() {
          ChunkMeshData meshData = getCurrentMeshData();
          resourceManager.cleanupCpuResources(meshData);
-         freeMeshDataArrays();
+         pendingMeshData = null;
          indexCount = 0;
      }
  
@@ -341,16 +308,4 @@ public class Chunk {
          // Clean up buffer operations resources
          bufferOperations.cleanup();
      }
-    /**
-     * Frees mesh data arrays to reduce memory usage.
-     * This is critical for preventing memory leaks when mesh data is regenerated.
-     */
-    private void freeMeshDataArrays() {
-        vertexData = null;
-        textureData = null;
-        normalData = null;
-        isWaterData = null;
-        isAlphaTestedData = null;
-        indexData = null;
-    }
 }
