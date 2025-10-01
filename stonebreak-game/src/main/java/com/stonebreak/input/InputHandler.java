@@ -750,6 +750,10 @@ public class InputHandler {
                     case GLFW_KEY_T -> {
                         // T key does nothing when chat is already open
                     }
+                    case GLFW_KEY_TAB -> {
+                        // Handle Tab for command autocomplete
+                        chatSystem.handleTab();
+                    }
                 }
             }
             return; // Block all other key processing when chat is open

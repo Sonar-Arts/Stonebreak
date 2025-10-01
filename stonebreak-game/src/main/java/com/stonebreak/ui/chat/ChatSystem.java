@@ -97,6 +97,12 @@ public class ChatSystem {
         }
     }
 
+    public void handleTab() {
+        if (isOpen) {
+            inputHandler.handleTab(commandExecutor);
+        }
+    }
+
     public void copyMessageToClipboard(String message) {
         inputHandler.copyToClipboard(message);
     }
@@ -129,6 +135,17 @@ public class ChatSystem {
             return input + cursorState.getDisplayCursor();
         }
         return input;
+    }
+
+    /**
+     * Get ghost text suggestion for autocomplete display
+     * @return Ghost text to show in lighter color, or empty string
+     */
+    public String getGhostText() {
+        if (!isOpen) {
+            return "";
+        }
+        return inputHandler.getGhostText(commandExecutor);
     }
 
     public List<ChatMessage> getVisibleMessages() {

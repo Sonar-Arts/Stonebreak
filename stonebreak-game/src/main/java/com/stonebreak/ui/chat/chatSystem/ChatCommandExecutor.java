@@ -84,4 +84,17 @@ public class ChatCommandExecutor {
     public Map<String, ChatCommand> getCommands() {
         return new HashMap<>(commands);
     }
+
+    /**
+     * Get matching command names for autocomplete
+     * @param prefix The command prefix (without leading slash)
+     * @return List of matching command names
+     */
+    public java.util.List<String> getMatchingCommands(String prefix) {
+        String lowerPrefix = prefix.toLowerCase();
+        return commands.keySet().stream()
+            .filter(cmd -> cmd.startsWith(lowerPrefix))
+            .sorted()
+            .collect(java.util.stream.Collectors.toList());
+    }
 }

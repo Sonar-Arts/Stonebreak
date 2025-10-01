@@ -15,6 +15,8 @@ public class ChatInputHandler {
     private static final char MAX_VALID_CHAR = 126;
 
     private final StringBuilder currentInput;
+    private int autocompleteIndex = -1; // Track current autocomplete suggestion index
+    private java.util.List<String> autocompleteSuggestions = null; // Cache of current suggestions
 
     public ChatInputHandler() {
         this.currentInput = new StringBuilder();
@@ -26,6 +28,7 @@ public class ChatInputHandler {
     public void handleCharInput(char character) {
         if (isValidCharacter(character) && hasSpaceForInput()) {
             currentInput.append(character);
+            resetAutocomplete(); // Reset autocomplete when typing
         }
     }
 
@@ -35,6 +38,7 @@ public class ChatInputHandler {
     public void handleBackspace() {
         if (currentInput.length() > 0) {
             currentInput.setLength(currentInput.length() - 1);
+            resetAutocomplete(); // Reset autocomplete when deleting
         }
     }
 
@@ -90,6 +94,7 @@ public class ChatInputHandler {
      */
     public void clear() {
         currentInput.setLength(0);
+        resetAutocomplete();
     }
 
     /**
@@ -97,6 +102,57 @@ public class ChatInputHandler {
      */
     public String getCurrentInput() {
         return currentInput.toString();
+    }
+
+    /**
+     * Get ghost text suggestion for autocomplete
+     * @param commandExecutor The command executor to get suggestions from
+     * @return The ghost text to display, or empty string if no suggestion
+     */
+    public String getGhostText(ChatCommandExecutor commandExecutor) {
+        String input = getCurrentInput();
+
+        // Only show ghost text if input starts with '/'
+        if (!input.startsWith("/") || input.isEmpty()) {
+            return "";
+        }
+
+        // Extract command name (everything after '/' until first space or end)
+        String commandPart = input.substring(1); // Remove leading '/'
+        int spaceIndex = commandPart.indexOf(' ');
+        if (spaceIndex != -1) {
+            // Don't show ghost text if already has arguments
+            return "";
+        }
+
+        // If empty command part, return empty
+        if (commandPart.isEmpty()) {
+            return "";
+        }
+
+        // Get matching commands
+        java.util.List<String> matches = commandExecutor.getMatchingCommands(commandPart);
+
+        if (matches.isEmpty()) {
+            return "";
+        }
+
+        // Return the first match (or show the current autocomplete suggestion if cycling)
+        String suggestion;
+        if (autocompleteSuggestions != null && !autocompleteSuggestions.isEmpty() && autocompleteIndex >= 0) {
+            // Show current cycling suggestion
+            suggestion = autocompleteSuggestions.get(autocompleteIndex);
+        } else {
+            // Show first match
+            suggestion = matches.get(0);
+        }
+
+        // Only return the part that extends beyond current input
+        if (suggestion.startsWith(commandPart)) {
+            return suggestion.substring(commandPart.length());
+        }
+
+        return "";
     }
 
     /**
@@ -140,5 +196,55 @@ public class ChatInputHandler {
         }
 
         currentInput.append(text);
+    }
+
+    /**
+     * Handle Tab key for command autocomplete
+     * @param commandExecutor The command executor to get suggestions from
+     * @return true if autocomplete was performed, false otherwise
+     */
+    public boolean handleTab(ChatCommandExecutor commandExecutor) {
+        String input = getCurrentInput();
+
+        // Only autocomplete if input starts with '/'
+        if (!input.startsWith("/")) {
+            return false;
+        }
+
+        // Extract command name (everything after '/' until first space or end)
+        String commandPart = input.substring(1); // Remove leading '/'
+        int spaceIndex = commandPart.indexOf(' ');
+        if (spaceIndex != -1) {
+            // Don't autocomplete if already has arguments
+            return false;
+        }
+
+        // Get or update suggestions
+        if (autocompleteSuggestions == null) {
+            autocompleteSuggestions = commandExecutor.getMatchingCommands(commandPart);
+            autocompleteIndex = -1;
+        }
+
+        if (autocompleteSuggestions.isEmpty()) {
+            return false;
+        }
+
+        // Cycle through suggestions
+        autocompleteIndex = (autocompleteIndex + 1) % autocompleteSuggestions.size();
+        String suggestion = autocompleteSuggestions.get(autocompleteIndex);
+
+        // Replace current input with suggestion
+        currentInput.setLength(0);
+        currentInput.append('/').append(suggestion);
+
+        return true;
+    }
+
+    /**
+     * Reset autocomplete state
+     */
+    private void resetAutocomplete() {
+        autocompleteIndex = -1;
+        autocompleteSuggestions = null;
     }
 }

@@ -176,13 +176,13 @@ public class ChatRenderer extends BaseRenderer {
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
 
         String displayText = chatSystem.getDisplayInput();
+        String ghostText = chatSystem.getGhostText();
+
         if (displayText.isEmpty()) {
             nvgFillColor(vg, InventoryTheme.Text.SECONDARY.withAlpha(128).toNVG(stack));
             nvgText(vg, x, y + inputHeight/2, "Type a message...");
         } else {
-            nvgFillColor(vg, InventoryTheme.Text.PRIMARY.toNVG(stack));
-
-            // Measure the full text width
+            // Measure the full text width (including cursor)
             float[] bounds = new float[4];
             nvgTextBounds(vg, 0, 0, displayText, bounds);
             float textWidth = bounds[2] - bounds[0];
@@ -193,8 +193,24 @@ public class ChatRenderer extends BaseRenderer {
                 scrollOffset = textWidth - availableTextWidth;
             }
 
-            // Render text with horizontal offset to scroll left
+            // Render main text with horizontal offset to scroll left
+            nvgFillColor(vg, InventoryTheme.Text.PRIMARY.toNVG(stack));
             nvgText(vg, x - scrollOffset, y + inputHeight/2, displayText);
+
+            // Render ghost text if available (autocomplete suggestion)
+            if (!ghostText.isEmpty()) {
+                // Measure text up to cursor position (without cursor character)
+                String textWithoutCursor = chatSystem.getCurrentInput();
+                float[] cursorBounds = new float[4];
+                nvgTextBounds(vg, 0, 0, textWithoutCursor, cursorBounds);
+                float cursorX = cursorBounds[2] - cursorBounds[0];
+
+                // Only show ghost text if it's within visible area
+                if (cursorX - scrollOffset >= 0 && cursorX - scrollOffset < availableTextWidth) {
+                    nvgFillColor(vg, InventoryTheme.Text.SECONDARY.withAlpha(100).toNVG(stack));
+                    nvgText(vg, x + cursorX - scrollOffset, y + inputHeight/2, ghostText);
+                }
+            }
         }
 
         // Reset scissoring
