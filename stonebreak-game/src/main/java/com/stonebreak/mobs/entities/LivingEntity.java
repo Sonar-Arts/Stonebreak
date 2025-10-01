@@ -302,6 +302,7 @@ public abstract class LivingEntity extends Entity {
     public float getMoveSpeed() { return moveSpeed; }
     public float getTurnSpeed() { return turnSpeed; }
     public boolean isInvulnerable() { return invulnerable; }
+    public float getInvulnerabilityTimer() { return invulnerabilityTimer; }
     public boolean isMoving() { return isMoving; }
     public float getInteractionRange() { return interactionRange; }
     public Vector3f getTargetDirection() { return new Vector3f(targetDirection); }

@@ -806,4 +806,13 @@ public class TextureAtlas {
         this.atlasPixelBuffer_cached.rewind();
         return this.atlasPixelBuffer_cached;
     }
+
+    /**
+     * Gets the atlas metadata cache for dynamic texture coordinate lookups.
+     * Used by BlockType for atlas-based texture rendering.
+     * @return The atlas metadata cache instance
+     */
+    public AtlasMetadataCache getMetadataCache() {
+        return metadataCache;
+    }
 }

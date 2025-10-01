@@ -16,6 +16,8 @@ import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
+import org.lwjgl.*;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
@@ -50,8 +52,6 @@ public class Main {
     private boolean firstRender = true;
     
     // Game components
-    private World world;
-    private Player player;
     private Renderer renderer;
     private InputHandler inputHandler;
 
@@ -71,7 +71,7 @@ public class Main {
         new Main().run();
     }
     
-    
+
     private void run() {
         instance = this; // Set the instance
         System.out.println("Starting Stonebreak with LWJGL " + Version.getVersion());
@@ -122,16 +122,32 @@ public class Main {
         }
           // Setup key callback
         keyCallback = GLFWKeyCallback.create((win, key, scancode, action, mods) -> {
+        glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
+            Game game = Game.getInstance();
+
+            // Handle world select screen key input
+            if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                game.getWorldSelectScreen().handleKeyInput(key, action, mods);
+            }
             // Pass key events to InputHandler for chat handling
-            if (inputHandler != null) {
-                inputHandler.handleKeyInput(key, action);
+            else if (inputHandler != null) {
+                inputHandler.handleKeyInput(key, action, mods);
             }
         });
         glfwSetKeyCallback(window, keyCallback);
-        
+
         // Setup character callback for chat text input
         charCallback = GLFWCharCallback.create((win, codepoint) -> {
             if (inputHandler != null) {
+        glfwSetCharCallback(window, (win, codepoint) -> {
+            Game game = Game.getInstance();
+
+            // Handle world select screen character input
+            if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                game.getWorldSelectScreen().handleCharacterInput((char) codepoint);
+            }
+            // Pass character input to InputHandler for chat handling
+            else if (inputHandler != null) {
                 inputHandler.handleCharacterInput((char) codepoint);
             }
         });
@@ -163,6 +179,16 @@ public class Main {
                         if (game.getMainMenu() != null) {
                             game.getMainMenu().handleMouseClick(xpos.get(), ypos.get(), width, height);
                         }
+                    }
+                }
+            } else if (game != null && game.getState() == GameState.WORLD_SELECT) {
+                // Handle world select screen clicks
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getWorldSelectScreen() != null) {
+                        game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
                 }
             } else if (game != null && game.getState() == GameState.SETTINGS) {
@@ -199,13 +225,29 @@ public class Main {
             if (game.getState() == GameState.MAIN_MENU && game.getMainMenu() != null) {
                 game.getMainMenu().handleMouseMove(xpos, ypos, width, height);
             }
+            // Handle world select screen hover events
+            else if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                game.getWorldSelectScreen().handleMouseMove(xpos, ypos, width, height);
+            }
             // Handle settings menu hover events
             else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
                 game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             }
         });
         glfwSetCursorPosCallback(window, cursorPosCallback);
-        
+
+
+        // Setup scroll callback for world select screen and hotbar selection
+        glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
+            Game game = Game.getInstance();
+            if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
+                game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            } else if (inputHandler != null) {
+                // Forward scroll events to InputHandler for hotbar selection and other UI interactions
+                inputHandler.handleScroll(yoffset);
+            }
+        });
+
         // Setup window focus callback to handle mouse capture on focus changes
         windowFocusCallback = GLFWWindowFocusCallback.create((win, focused) -> {
             Game game = Game.getInstance();
@@ -219,14 +261,14 @@ public class Main {
             }
         });
         glfwSetWindowFocusCallback(window, windowFocusCallback);
-        
+
         // Setup window close callback to handle X button clicks
         windowCloseCallback = GLFWWindowCloseCallback.create(win -> {
             System.out.println("Window close requested - initiating shutdown...");
             running = false;
         });
         glfwSetWindowCloseCallback(window, windowCloseCallback);
-        
+
         // Get the thread stack and push a new frame
         try (MemoryStack stack = stackPush()) {
             IntBuffer pWidth = stack.mallocInt(1);
@@ -279,41 +321,35 @@ public class Main {
       private void initializeGameComponents() {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
-          
+
           // Check if texture atlas needs regeneration
           regenerateAtlasIfNeeded();
-          
+
           // Initialize the renderer with window dimensions
           renderer = new Renderer(width, height);
           profiler.takeSnapshot("after_renderer_init");
-          
+
           // Initialize the input handler
           inputHandler = new InputHandler(window);
-          
-          // Initialize the world
-          world = new World();
-          profiler.takeSnapshot("after_world_init");
-          
-          // Initialize the player
-          player = new Player(world);
-          
-          // Set initial camera position
-          player.setPosition(0, 100, 0);
-  
+
           // Initialize TextureAtlas (used by Renderer and potentially UI)
           TextureAtlas textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
 
             // Initialize the Game singleton
           // Pass inputHandler to Game's init method
           Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler, window);
+          textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
+
+          // Initialize the Game singleton with core components only (no world/player)
+          Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window);
           Game.getInstance().setWindowDimensions(width, height);
           profiler.takeSnapshot("after_game_init");
-          
+
           running = true;
-          
+
           // Log memory usage after initialization
-          Game.logDetailedMemoryInfo("Game components initialized");
-          
+          Game.logDetailedMemoryInfo("Core game components initialized - no world created");
+
           // Compare memory usage
           profiler.compareSnapshots("before_initialization", "after_game_init");
       }
@@ -354,9 +390,17 @@ public class Main {
                         game.getMainMenu().handleInput(window);
                     }
                 }
+                case WORLD_SELECT -> {
+                    // Handle world select screen input
+                    if (game.getWorldSelectScreen() != null) {
+                        game.getWorldSelectScreen().handleInput(window);
+                    }
+                }
                 case LOADING -> {
-                    // Loading screen - no input handling needed
-                    // User should wait for world generation to complete
+                    // Handle loading screen input (primarily for error recovery)
+                    if (game.getLoadingScreen() != null) {
+                        game.getLoadingScreen().handleInput(window);
+                    }
                 }
                 case SETTINGS -> {
                     // Handle settings menu input
@@ -378,7 +422,10 @@ public class Main {
                         }
                         // General player input handling (movement, interaction) happens if not paused for UI.
                         // InputHandler's own logic + Game.update() decides if player/world updates proceed.
-                        inputHandler.handleInput(player);
+                        Player player = game.getPlayer();
+                        if (player != null) {
+                            inputHandler.handleInput(player);
+                        }
                     }
                 }
                 default -> {
@@ -425,6 +472,7 @@ public class Main {
         
         switch (game.getState()) {
             case MAIN_MENU -> renderUIState(renderer, game.getMainMenu());
+            case WORLD_SELECT -> renderUIState(renderer, game.getWorldSelectScreen());
             case LOADING -> renderUIState(renderer, game.getLoadingScreen());
             case SETTINGS -> renderUIState(renderer, game.getSettingsMenu());
             default -> render3DGameState(game, renderer);
@@ -439,6 +487,8 @@ public class Main {
         renderer.beginUIFrame(width, height, 1.0f);
         if (screen instanceof com.stonebreak.ui.MainMenu mainMenu) {
             mainMenu.render(width, height);
+        } else if (screen instanceof WorldSelectScreen worldSelectScreen) {
+            worldSelectScreen.render(width, height);
         } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);
         } else if (screen instanceof SettingsMenu settingsMenu) {
@@ -495,7 +545,7 @@ public class Main {
             glDisable(GL_SCISSOR_TEST);
             glDisable(GL_STENCIL_TEST);
             glDisable(GL_CULL_FACE);
-            
+
             glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
             glDepthMask(true);
@@ -515,7 +565,11 @@ public class Main {
 
     private void render3DWorld(Game game, Renderer renderer) {
         try {
-            renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+            World world = game.getWorld();
+            Player player = game.getPlayer();
+            if (world != null && player != null) {
+                renderer.renderWorld(world, player, game.getTotalTimeElapsed());
+            }
         } catch (Exception e) {
             logRenderCrash(game, e);
             throw new RuntimeException("Render crash - see crash_log.txt", e);
@@ -523,6 +577,9 @@ public class Main {
     }
 
     private void logRenderCrash(Game game, Exception e) {
+        World world = game.getWorld();
+        Player player = game.getPlayer();
+
         System.err.println("CRITICAL CRASH: Exception in renderWorld() - State: " + game.getState());
         System.err.println("Time: " + java.time.LocalDateTime.now());
         System.err.println("Player pos: " + (player != null ? player.getPosition().x + ", " + player.getPosition().y + ", " + player.getPosition().z : "null"));
@@ -530,7 +587,7 @@ public class Main {
         System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
         System.err.println("Exception: " + e.getMessage());
         System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
-        
+
         try (java.io.FileWriter fw = new java.io.FileWriter("crash_log.txt", true)) {
             fw.write("=== CRASH LOG " + java.time.LocalDateTime.now() + " ===\n");
             fw.write("State: " + game.getState() + "\n");
@@ -707,6 +764,7 @@ public class Main {
           }
           
           // Clean up world resources
+          World world = Game.getInstance().getWorld();
           if (world != null) {
               world.cleanup();
               Game.logDetailedMemoryInfo("After world cleanup");
@@ -727,7 +785,7 @@ public class Main {
           }
       }
     
-    
+
 
     /**
      * Return the window handle.

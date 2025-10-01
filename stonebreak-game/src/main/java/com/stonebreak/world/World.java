@@ -1,7 +1,9 @@
 package com.stonebreak.world;
 
 import java.util.Map;
+import java.util.List;
 
+import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
@@ -24,6 +26,9 @@ public class World {
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     
+    // World spawn position
+    private Vector3f spawnPosition = new Vector3f(0, 100, 0);
+    
     // Modular components
     private final WorldChunkStore chunkStore;
     private final ChunkStateManager stateManager;
@@ -36,11 +41,14 @@ public class World {
     public World() {
         this(new WorldConfiguration());
     }
-    
+
     public World(WorldConfiguration config) {
+        this(config, System.currentTimeMillis());
+    }
+
+    public World(WorldConfiguration config, long seed) {
         this.config = config;
-        
-        long seed = System.currentTimeMillis();
+
         this.terrainSystem = new TerrainGenerationSystem(seed);
         this.snowLayerManager = new SnowLayerManager();
         
@@ -104,7 +112,15 @@ public class World {
         }
 
         boolean isMeshReady = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
-        if (!isMeshReady) {
+        boolean isMeshGenerating = chunk.isMeshDataGenerationScheduledOrInProgress();
+
+        // CRITICAL FIX: If chunk has features but no mesh and isn't generating, force retry
+        // This handles cases where mesh generation silently failed or was never attempted
+        if (chunk.areFeaturesPopulated() && !isMeshReady && !isMeshGenerating) {
+            // Force reset mesh state to allow retry
+            stateManager.resetMeshGenerationState(chunk);
+            meshPipeline.scheduleConditionalMeshBuild(chunk);
+        } else if (!isMeshReady) {
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
 
@@ -235,6 +251,15 @@ public class World {
         
         return visibleChunks;
     }
+
+    /**
+     * Get all dirty chunks that need to be saved.
+     * @return List of chunks that have been modified and need saving
+     */
+    public List<Chunk> getDirtyChunks() {
+        return chunkStore.getDirtyChunks();
+    }
+    
     /**
      * Unloads a chunk at a specific position, cleaning up its resources.
      * This is now called by the ChunkLoader.
@@ -254,13 +279,60 @@ public class World {
         meshPipeline.processGpuCleanupQueue();
         chunkStore.cleanup();
     }
-    
+
+    /**
+     * Clears world data for switching between worlds without shutting down critical systems.
+     * This preserves thread pools and rendering systems while clearing chunks, caches, and queues.
+     */
+    public void clearWorldData() {
+        // Clear chunks and caches without shutting down thread pools
+        if (chunkStore != null) {
+            chunkStore.cleanup();
+        }
+
+        // Reset world state using available methods
+        if (stateManager != null) {
+            // Reset mesh generation states for all chunks
+            for (Chunk chunk : chunkStore.getAllChunks()) {
+                stateManager.resetMeshGenerationState(chunk);
+            }
+        }
+
+        // Clear memory management caches using available methods
+        if (memoryManager != null) {
+            // Perform aggressive memory cleanup by unloading distant chunks
+            memoryManager.forceUnloadDistantChunks(400);
+        }
+
+        // Process any pending GPU cleanup without shutting down the pipeline
+        if (meshPipeline != null) {
+            meshPipeline.processGpuCleanupQueue();
+        }
+
+        // Reset spawn position to default for world isolation
+        spawnPosition.set(0, 100, 0);
+
+        // Clear any additional world state that may persist between worlds
+        // Note: TerrainGenerationSystem seed cannot be changed, so fresh World instances
+        // should be used for complete isolation instead
+
+        System.out.println("World data cleared for world switching");
+    }
+
     /**
      * Returns the total number of loaded chunks.
      * This is used for debugging purposes.
      */
     public int getLoadedChunkCount() {
         return chunkStore.getLoadedChunkCount();
+    }
+
+    /**
+     * Returns the number of dirty chunks currently protected from unloading.
+     * This is used for monitoring the dirty chunk protection system.
+     */
+    public int getDirtyChunkCount() {
+        return chunkStore.getDirtyChunks().size();
     }
     
     /**
@@ -342,7 +414,54 @@ public class World {
         }
     }
     
+    /**
+     * Gets the seed used for world generation
+     */
+    public long getSeed() {
+        return terrainSystem.getSeed();
+    }
     
+    /**
+     * Sets the seed for world generation (used during world loading)
+     */
+    public void setSeed(long seed) {
+        // Note: This method is primarily for save/load compatibility
+        // The terrain system seed cannot be changed after construction
+        // This will log a warning if attempting to change an existing seed
+        if (terrainSystem.getSeed() != seed) {
+            System.err.println("Warning: Attempting to set seed " + seed + 
+                " but terrain system already has seed " + terrainSystem.getSeed() + 
+                ". Seed cannot be changed after world creation.");
+        }
+    }
+    
+    /**
+     * Gets the world spawn position
+     */
+    public Vector3f getSpawnPosition() {
+        return new Vector3f(spawnPosition);
+    }
+    
+    /**
+     * Sets the world spawn position
+     */
+    public void setSpawnPosition(Vector3f newSpawnPosition) {
+        this.spawnPosition.set(newSpawnPosition);
+    }
+    
+    /**
+     * Sets the world spawn position with coordinates
+     */
+    public void setSpawnPosition(float x, float y, float z) {
+        this.spawnPosition.set(x, y, z);
+    }
+    
+    /**
+     * Sets a chunk at the given position (used for world loading)
+     */
+    public void setChunk(int x, int z, Chunk chunk) {
+        chunkStore.setChunk(x, z, chunk);
+    }
     
     
     /**

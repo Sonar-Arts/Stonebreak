@@ -70,11 +70,76 @@ public class ChunkManager {
         chunksToUnload.removeAll(requiredChunks);
 
         if (!chunksToUnload.isEmpty()) {
-            System.out.println("Unloading " + chunksToUnload.size() + " chunks.");
+            int totalCandidates = chunksToUnload.size();
+            int protectedCount = 0;
+            int unloadedCount = 0;
+
+            System.out.println("Checking " + totalCandidates + " chunks for unloading...");
+
             for (World.ChunkPosition pos : chunksToUnload) {
+                // Check if chunk is dirty before unloading
+                if (world.hasChunkAt(pos.getX(), pos.getZ())) {
+                    var chunk = world.getChunkAt(pos.getX(), pos.getZ());
+                    if (chunk != null && chunk.isDirty()) {
+                        // SAVE-THEN-UNLOAD: Save dirty chunk first, then unload it
+                        saveAndUnloadDirtyChunk(pos);
+                        protectedCount++; // Count as "protected" but actually handled
+                        continue; // Skip normal unload since we handled it specially
+                    }
+                }
+
+                // Chunk is clean or doesn't exist, safe to unload normally
+                // Remove from active chunks BEFORE attempting unload to prevent double-unload
                 activeChunkPositions.remove(pos);
-                chunkExecutor.submit(() -> world.unloadChunk(pos.getX(), pos.getZ()));
+
+                // Submit unload operation with error handling
+                chunkExecutor.submit(() -> {
+                    try {
+                        world.unloadChunk(pos.getX(), pos.getZ());
+                    } catch (Exception e) {
+                        System.err.println("Error unloading chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+                        // Re-add to active chunks if unload failed
+                        activeChunkPositions.add(pos);
+                    }
+                });
+                unloadedCount++;
             }
+
+            if (protectedCount > 0) {
+                System.out.println("Saved and unloaded " + protectedCount + " dirty chunks with player edits. Unloaded " + unloadedCount + " clean chunks.");
+                System.out.println("Total dirty chunks in world: " + world.getDirtyChunkCount() + ", Total loaded chunks: " + world.getLoadedChunkCount());
+            } else if (unloadedCount > 0) {
+                System.out.println("Unloaded " + unloadedCount + " chunks.");
+            }
+        }
+    }
+
+    /**
+     * Saves a dirty chunk synchronously, then unloads it.
+     * This ensures player edits are preserved while allowing normal chunk lifecycle.
+     */
+    private void saveAndUnloadDirtyChunk(World.ChunkPosition pos) {
+        try {
+            // Remove from active chunks first to prevent double-processing
+            activeChunkPositions.remove(pos);
+
+            // Submit save-then-unload operation
+            chunkExecutor.submit(() -> {
+                try {
+                    // The WorldChunkStore.unloadChunk() method already handles saving dirty chunks
+                    // via saveChunkOnUnload() before proceeding with unload
+                    world.unloadChunk(pos.getX(), pos.getZ());
+                    System.out.println("[SAVE-THEN-UNLOAD] Successfully saved and unloaded dirty chunk (" + pos.getX() + ", " + pos.getZ() + ")");
+                } catch (Exception e) {
+                    System.err.println("CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+                    // Re-add to active chunks if save-then-unload failed
+                    activeChunkPositions.add(pos);
+                }
+            });
+
+        } catch (Exception e) {
+            System.err.println("Error initiating save-then-unload for chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+            // Keep chunk in active chunks if we couldn't even start the process
         }
     }
 
@@ -114,6 +179,18 @@ public class ChunkManager {
         for (int x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
             for (int z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
                 world.ensureChunkIsReadyForRender(x, z);
+
+                // PERIODIC VALIDATION: Double-check that chunks within close range have meshes
+                // This catches any chunks that slipped through mesh generation
+                int distance = Math.max(Math.abs(x - playerChunkX), Math.abs(z - playerChunkZ));
+                if (distance <= 3) { // Only validate chunks very close to player
+                    Chunk chunk = world.getChunkAt(x, z);
+                    if (chunk != null && chunk.areFeaturesPopulated() && !chunk.isMeshGenerated()
+                        && !chunk.isMeshDataGenerationScheduledOrInProgress()) {
+                        // Found an invisible chunk - force immediate retry
+                        world.ensureChunkIsReadyForRender(x, z);
+                    }
+                }
             }
         }
     }

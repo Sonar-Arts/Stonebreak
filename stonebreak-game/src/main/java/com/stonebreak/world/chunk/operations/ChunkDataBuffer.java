@@ -7,7 +7,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Immutable data container for chunk block data.
  * Represents the 3D block array and metadata for a chunk.
  */
-public class ChunkData {
+public class ChunkDataBuffer {
     
     private final int chunkX;
     private final int chunkZ;
@@ -18,7 +18,7 @@ public class ChunkData {
      * @param chunkX The chunk's X coordinate
      * @param chunkZ The chunk's Z coordinate
      */
-    public ChunkData(int chunkX, int chunkZ) {
+    public ChunkDataBuffer(int chunkX, int chunkZ) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.blocks = new BlockType[WorldConfiguration.CHUNK_SIZE][WorldConfiguration.WORLD_HEIGHT][WorldConfiguration.CHUNK_SIZE];
@@ -84,13 +84,33 @@ public class ChunkData {
         if (!ChunkCoordinateUtils.isValidLocalCoordinate(localX, localY, localZ)) {
             return false;
         }
-        
+
         BlockType currentBlock = blocks[localX][localY][localZ];
         if (currentBlock == blockType) {
             return false; // No change
         }
-        
+
         blocks[localX][localY][localZ] = blockType;
         return true;
+    }
+
+    /**
+     * Sets the entire block array. Used by the save/load system.
+     * This replaces all existing block data.
+     * @param newBlocks The new block array to set
+     */
+    public void setBlocks(BlockType[][][] newBlocks) {
+        if (newBlocks == null) {
+            throw new IllegalArgumentException("Block array cannot be null");
+        }
+
+        // Copy the new blocks into our internal array
+        for (int x = 0; x < Math.min(blocks.length, newBlocks.length); x++) {
+            for (int y = 0; y < Math.min(blocks[x].length, newBlocks[x].length); y++) {
+                for (int z = 0; z < Math.min(blocks[x][y].length, newBlocks[x][y].length); z++) {
+                    blocks[x][y][z] = newBlocks[x][y][z] != null ? newBlocks[x][y][z] : BlockType.AIR;
+                }
+            }
+        }
     }
 }
