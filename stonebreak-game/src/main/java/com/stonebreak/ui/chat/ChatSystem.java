@@ -19,6 +19,7 @@ public class ChatSystem {
     private final ChatCommandExecutor commandExecutor;
     private boolean isOpen;
     private int scrollOffset = 0; // Number of messages scrolled up from bottom
+    private int commandScrollOffset = 0; // Number of commands scrolled down from top
 
     // Tab system
     public enum ChatTab {
@@ -136,6 +137,13 @@ public class ChatSystem {
         return inputHandler.getCurrentInput();
     }
 
+    /**
+     * Set the current chat input to a specific value (for populating from command buttons)
+     */
+    public void setInput(String text) {
+        inputHandler.setInput(text);
+    }
+
     public String getDisplayInput() {
         String input = getCurrentInput();
         if (isOpen) {
@@ -167,16 +175,31 @@ public class ChatSystem {
             return;
         }
 
-        // Use history count when chat is open
-        int totalMessages = messageManager.getHistoryCount();
+        // Handle scrolling based on active tab
+        if (currentTab == ChatTab.CHAT) {
+            // Chat tab - scroll through messages
+            int totalMessages = messageManager.getHistoryCount();
 
-        // Scroll up (positive offset increases scroll)
-        if (yOffset > 0) {
-            scrollOffset = Math.min(scrollOffset + 1, Math.max(0, totalMessages - MAX_VISIBLE_MESSAGES));
-        }
-        // Scroll down (negative offset decreases scroll)
-        else if (yOffset < 0) {
-            scrollOffset = Math.max(scrollOffset - 1, 0);
+            // Scroll up (positive offset increases scroll)
+            if (yOffset > 0) {
+                scrollOffset = Math.min(scrollOffset + 1, Math.max(0, totalMessages - MAX_VISIBLE_MESSAGES));
+            }
+            // Scroll down (negative offset decreases scroll)
+            else if (yOffset < 0) {
+                scrollOffset = Math.max(scrollOffset - 1, 0);
+            }
+        } else if (currentTab == ChatTab.COMMANDS) {
+            // Commands tab - scroll through command buttons
+            int maxScroll = getMaxCommandScroll();
+
+            // Scroll down (positive offset increases scroll)
+            if (yOffset > 0) {
+                commandScrollOffset = Math.min(commandScrollOffset + 1, maxScroll);
+            }
+            // Scroll up (negative offset decreases scroll)
+            else if (yOffset < 0) {
+                commandScrollOffset = Math.max(commandScrollOffset - 1, 0);
+            }
         }
     }
 
@@ -204,6 +227,24 @@ public class ChatSystem {
     }
 
     /**
+     * Get current command scroll offset (for scrollbar rendering)
+     */
+    public int getCommandScrollOffset() {
+        return commandScrollOffset;
+    }
+
+    /**
+     * Get maximum command scroll value (for scrollbar rendering)
+     */
+    public int getMaxCommandScroll() {
+        int totalCommands = commandExecutor.getCommands().size();
+        // Assuming button height of 25px + 5px padding = 30px per button
+        // And visible area of approximately 6-7 buttons
+        int maxVisibleCommands = 6;
+        return Math.max(0, totalCommands - maxVisibleCommands);
+    }
+
+    /**
      * Get the current active tab
      */
     public ChatTab getCurrentTab() {
@@ -217,6 +258,7 @@ public class ChatSystem {
         this.currentTab = tab;
         // Reset scroll when switching tabs
         this.scrollOffset = 0;
+        this.commandScrollOffset = 0;
     }
 
     /**

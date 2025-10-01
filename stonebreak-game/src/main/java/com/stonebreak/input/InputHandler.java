@@ -746,9 +746,10 @@ public class InputHandler {
                     chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
 
                 if (clickedCommand != null) {
-                    // Execute the command
-                    chatSystem.getCommandExecutor().executeCommand("/" + clickedCommand);
-                    chatSystem.closeChat();
+                    // Populate the chat input with the command instead of executing it
+                    chatSystem.setInput("/" + clickedCommand + " ");
+                    // Switch back to Chat tab to show the input
+                    chatSystem.setCurrentTab(ChatSystem.ChatTab.CHAT);
                 }
             }
         }

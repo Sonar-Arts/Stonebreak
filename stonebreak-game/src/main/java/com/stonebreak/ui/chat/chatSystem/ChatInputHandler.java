@@ -105,6 +105,19 @@ public class ChatInputHandler {
     }
 
     /**
+     * Set the current input to a specific value
+     * @param text The text to set as the current input
+     */
+    public void setInput(String text) {
+        currentInput.setLength(0);
+        if (text != null && !text.isEmpty()) {
+            String filteredText = filterText(text);
+            appendWithLimit(filteredText);
+        }
+        resetAutocomplete();
+    }
+
+    /**
      * Get ghost text suggestion for autocomplete
      * @param commandExecutor The command executor to get suggestions from
      * @return The ghost text to display, or empty string if no suggestion

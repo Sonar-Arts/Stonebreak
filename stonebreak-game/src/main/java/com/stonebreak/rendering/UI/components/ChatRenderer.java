@@ -162,11 +162,16 @@ public class ChatRenderer extends BaseRenderer {
                 float inputBoxY = windowHeight - inputBoxHeight - inputBoxMargin;
                 renderChatInputBox(chatSystem, chatX, inputBoxY, maxChatWidth, stack);
 
-                // Render scrollbar if there are more messages than can be displayed (only for chat tab)
+                // Render scrollbar based on active tab
                 if (currentTab == ChatSystem.ChatTab.CHAT) {
                     int maxScroll = chatSystem.getMaxScroll();
                     if (maxScroll > 0) {
                         renderScrollbar(chatSystem, backgroundX, backgroundY, backgroundWidth, chatAreaHeight, stack);
+                    }
+                } else if (currentTab == ChatSystem.ChatTab.COMMANDS) {
+                    int maxCommandScroll = chatSystem.getMaxCommandScroll();
+                    if (maxCommandScroll > 0) {
+                        renderCommandScrollbar(chatSystem, backgroundX, backgroundY, backgroundWidth, chatAreaHeight, stack);
                     }
                 }
             }
@@ -250,6 +255,59 @@ public class ChatRenderer extends BaseRenderer {
 
         // Reset scissoring
         nvgResetScissor(vg);
+    }
+
+    private void renderCommandScrollbar(ChatSystem chatSystem, float chatX, float chatY, float chatWidth, float chatHeight, MemoryStack stack) {
+        float scrollbarWidth = 6.0f;
+        float scrollbarX = chatX + chatWidth - scrollbarWidth - 5;
+        float scrollbarPadding = 5.0f;
+
+        // Exclude input box from scrollbar area
+        float inputBoxHeight = 25;
+        float inputBoxMargin = 10;
+        float commandsAreaHeight = chatHeight - inputBoxHeight - inputBoxMargin - scrollbarPadding - 15; // Extra padding for tab area
+
+        float scrollbarTrackY = chatY + scrollbarPadding + 15; // Offset for visual alignment
+        float scrollbarTrackHeight = commandsAreaHeight - scrollbarPadding;
+
+        // Draw scrollbar track with modern styling
+        nvgBeginPath(vg);
+        nvgRoundedRect(vg, scrollbarX, scrollbarTrackY, scrollbarWidth, scrollbarTrackHeight,
+                      InventoryTheme.Measurements.CORNER_RADIUS_SMALL);
+        nvgFillColor(vg, InventoryTheme.Slot.BACKGROUND.darken(0.3f).toNVG(stack));
+        nvgFill(vg);
+
+        // Calculate scrollbar thumb size and position
+        int currentScroll = chatSystem.getCommandScrollOffset();
+        int maxScroll = chatSystem.getMaxCommandScroll();
+
+        if (maxScroll > 0) {
+            int totalCommands = chatSystem.getCommandExecutor().getCommands().size();
+            int visibleCommands = 6; // Approximately 6 visible commands
+
+            // Thumb height proportional to visible content vs total content
+            float visibleRatio = (float) visibleCommands / totalCommands;
+            float thumbHeight = Math.max(20.0f, scrollbarTrackHeight * visibleRatio);
+
+            // Thumb position based on scroll offset
+            float scrollRatio = (float) currentScroll / maxScroll;
+            float thumbY = scrollbarTrackY + (scrollbarTrackHeight - thumbHeight) * scrollRatio;
+
+            // Draw scrollbar thumb with modern styling
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, scrollbarX, thumbY, scrollbarWidth, thumbHeight,
+                          InventoryTheme.Measurements.CORNER_RADIUS_SMALL);
+            nvgFillColor(vg, InventoryTheme.Slot.BORDER_HOVER.toNVG(stack));
+            nvgFill(vg);
+
+            // Add subtle highlight to thumb
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, scrollbarX, thumbY, scrollbarWidth, thumbHeight,
+                          InventoryTheme.Measurements.CORNER_RADIUS_SMALL);
+            nvgStrokeWidth(vg, InventoryTheme.Measurements.BORDER_WIDTH_THIN);
+            nvgStrokeColor(vg, InventoryTheme.Slot.BORDER_SELECTED.withAlpha(150).toNVG(stack));
+            nvgStroke(vg);
+        }
     }
 
     private void renderScrollbar(ChatSystem chatSystem, float chatX, float chatY, float chatWidth, float chatHeight, MemoryStack stack) {
@@ -520,8 +578,12 @@ public class ChatRenderer extends BaseRenderer {
         float buttonWidth = width - 20;
         float buttonHeight = 25;
         float buttonPadding = 5;
-        float currentY = y + 10;
         float cornerRadius = InventoryTheme.Measurements.CORNER_RADIUS_SMALL;
+
+        // Apply scroll offset
+        int scrollOffset = chatSystem.getCommandScrollOffset();
+        float scrollOffsetY = scrollOffset * (buttonHeight + buttonPadding);
+        float currentY = y + 10 - scrollOffsetY;
 
         // Enable scissoring to clip buttons to commands area
         nvgScissor(vg, x, y, width, height);
@@ -530,9 +592,10 @@ public class ChatRenderer extends BaseRenderer {
             String commandName = entry.getKey();
             ChatCommand command = entry.getValue();
 
-            // Check if button is visible in the area
-            if (currentY + buttonHeight > y + height) {
-                break; // Stop rendering if we're past the visible area
+            // Check if button is visible in the area (including partial visibility)
+            if (currentY + buttonHeight < y || currentY > y + height) {
+                currentY += buttonHeight + buttonPadding;
+                continue; // Skip rendering if completely out of view
             }
 
             boolean isHovered = commandName.equals(hoveredCommand);
@@ -595,7 +658,7 @@ public class ChatRenderer extends BaseRenderer {
             return null;
         }
 
-        // Calculate command button area
+        // Calculate command button area (updated to match new tab positioning)
         float backgroundPadding = 10;
         float maxChatWidth = windowWidth * 0.4f;
         float inputBoxHeight = 25;
@@ -607,23 +670,24 @@ public class ChatRenderer extends BaseRenderer {
         float backgroundX = 20 - backgroundPadding;
         float backgroundWidth = maxChatWidth + (backgroundPadding * 2);
 
-        float tabY = backgroundY + backgroundPadding;
-        float commandsY = tabY + 35;
-        float commandsHeight = chatAreaHeight - 70 - inputBoxHeight - inputBoxMargin;
+        // Commands area starts inside the panel
+        float commandsY = backgroundY + backgroundPadding + 10;
+        float commandsHeight = chatAreaHeight - backgroundPadding * 2 - 10 - inputBoxHeight - inputBoxMargin;
 
         // Check if click is within commands area
         if (mouseX < backgroundX + 10 || mouseX > backgroundX + backgroundWidth - 10) {
             return null;
         }
-        if (mouseY < commandsY + 10 || mouseY > commandsY + commandsHeight) {
+        if (mouseY < commandsY || mouseY > commandsY + commandsHeight) {
             return null;
         }
 
-        // Calculate which button was clicked
+        // Calculate which button was clicked, accounting for scroll offset
         float buttonHeight = 25;
         float buttonPadding = 5;
-        float relativeY = mouseY - (commandsY + 10);
-        int buttonIndex = (int) (relativeY / (buttonHeight + buttonPadding));
+        int scrollOffset = chatSystem.getCommandScrollOffset();
+        float relativeY = mouseY - commandsY;
+        int buttonIndex = scrollOffset + (int) (relativeY / (buttonHeight + buttonPadding));
 
         // Get the command at that index
         ChatCommandExecutor executor = chatSystem.getCommandExecutor();
