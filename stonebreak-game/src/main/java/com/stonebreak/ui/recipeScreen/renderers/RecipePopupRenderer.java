@@ -132,17 +132,31 @@ public class RecipePopupRenderer {
         // Beveled border for 3D button effect
         RecipeUIStyleRenderer.drawBeveledBorder(vg, closeButtonX, closeButtonY, closeButtonSize, closeButtonSize, stack, true);
 
-        // Draw X symbol with Minecraft styling
-        RecipeUIStyleRenderer.RecipeFonts.setBodyFont(vg, RecipeUIStyleRenderer.RecipeFonts.BODY_LARGE);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        // Draw X shape using vector graphics
+        float centerX = closeButtonX + closeButtonSize / 2.0f;
+        float centerY = closeButtonY + closeButtonSize / 2.0f;
+        float xSize = closeButtonSize * 0.4f;
 
-        // Text shadow for depth
-        nvgFillColor(vg, nvgRGBA(0, 0, 0, 180, NVGColor.malloc(stack)));
-        nvgText(vg, closeButtonX + closeButtonSize / 2.0f + 1, closeButtonY + closeButtonSize / 2.0f + 1, "×");
+        nvgStrokeWidth(vg, 2.5f);
+        nvgLineCap(vg, NVG_ROUND);
 
-        // Main text (bright red for visibility)
-        nvgFillColor(vg, nvgRGBA(255, 85, 85, 255, NVGColor.malloc(stack)));
-        nvgText(vg, closeButtonX + closeButtonSize / 2.0f, closeButtonY + closeButtonSize / 2.0f, "×");
+        // Draw shadow for depth (diagonal lines)
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, centerX - xSize + 1, centerY - xSize + 1);
+        nvgLineTo(vg, centerX + xSize + 1, centerY + xSize + 1);
+        nvgMoveTo(vg, centerX + xSize + 1, centerY - xSize + 1);
+        nvgLineTo(vg, centerX - xSize + 1, centerY + xSize + 1);
+        nvgStrokeColor(vg, nvgRGBA(0, 0, 0, 180, NVGColor.malloc(stack)));
+        nvgStroke(vg);
+
+        // Draw main X (bright red for visibility)
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, centerX - xSize, centerY - xSize);
+        nvgLineTo(vg, centerX + xSize, centerY + xSize);
+        nvgMoveTo(vg, centerX + xSize, centerY - xSize);
+        nvgLineTo(vg, centerX - xSize, centerY + xSize);
+        nvgStrokeColor(vg, nvgRGBA(255, 85, 85, 255, NVGColor.malloc(stack)));
+        nvgStroke(vg);
     }
 
     /**
@@ -247,22 +261,47 @@ public class RecipePopupRenderer {
         // Beveled border for 3D effect
         RecipeUIStyleRenderer.drawBeveledBorder(vg, x, y, size, size, stack, enabled);
 
-        // Button symbol
-        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_SMALL);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        // Draw chevron arrow using vector graphics
+        float centerX = x + size / 2.0f;
+        float centerY = y + size / 2.0f;
+        float chevronSize = size * 0.35f;
+        boolean isLeft = symbol.equals("‹");
 
         if (!enabled) {
-            // Disabled text (darker)
-            nvgFillColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
+            // Disabled chevron (darker)
+            drawChevron(vg, centerX, centerY, chevronSize, isLeft, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)), stack);
         } else {
-            // Text shadow
-            nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
-            nvgText(vg, x + size / 2.0f + 1, y + size / 2.0f + 1, symbol);
+            // Draw shadow
+            drawChevron(vg, centerX + 1, centerY + 1, chevronSize, isLeft, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)), stack);
 
-            // Main text (white for good contrast)
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            // Draw main chevron (white for good contrast)
+            drawChevron(vg, centerX, centerY, chevronSize, isLeft, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)), stack);
         }
-        nvgText(vg, x + size / 2.0f, y + size / 2.0f, symbol);
+    }
+
+    /**
+     * Helper method to draw a chevron arrow shape.
+     */
+    private static void drawChevron(long vg, float centerX, float centerY, float size, boolean pointLeft, NVGColor color, MemoryStack stack) {
+        nvgBeginPath(vg);
+
+        if (pointLeft) {
+            // Left-pointing chevron
+            nvgMoveTo(vg, centerX + size * 0.3f, centerY - size);
+            nvgLineTo(vg, centerX - size * 0.3f, centerY);
+            nvgLineTo(vg, centerX + size * 0.3f, centerY + size);
+        } else {
+            // Right-pointing chevron
+            nvgMoveTo(vg, centerX - size * 0.3f, centerY - size);
+            nvgLineTo(vg, centerX + size * 0.3f, centerY);
+            nvgLineTo(vg, centerX - size * 0.3f, centerY + size);
+        }
+
+        nvgStrokeWidth(vg, 2.5f);
+        nvgLineCap(vg, NVG_ROUND);
+        nvgLineJoin(vg, NVG_ROUND);
+        nvgStrokeColor(vg, color);
+        nvgStroke(vg);
     }
 
     /**
@@ -371,17 +410,30 @@ public class RecipePopupRenderer {
 
         RecipeUIStyleRenderer.drawBeveledBorder(vg, arrowX, arrowY, arrowWidth, arrowHeight, stack, false);
 
-        // Arrow symbol with shadow
-        RecipeUIStyleRenderer.RecipeFonts.setTitleFont(vg, RecipeUIStyleRenderer.RecipeFonts.TITLE_MEDIUM);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        // Draw arrow shape using vector graphics
+        float centerY = arrowY + arrowHeight / 2.0f;
+        float arrowTip = arrowX + arrowWidth - 6;
+        float arrowBodyEnd = arrowX + arrowWidth * 0.6f;
+        float arrowHeadHeight = arrowHeight * 0.5f;
 
-        // Arrow shadow
-        nvgFillColor(vg, nvgRGBA(0, 0, 0, 200, NVGColor.malloc(stack)));
-        nvgText(vg, arrowX + arrowWidth / 2.0f + 1, arrowY + arrowHeight / 2.0f + 1, "→");
+        // Arrow body (rectangle)
+        nvgBeginPath(vg);
+        nvgRect(vg, arrowX + 6, centerY - arrowHeight * 0.12f, arrowWidth * 0.5f, arrowHeight * 0.24f);
 
-        // Main arrow (bright for visibility)
+        // Arrow head (triangle)
+        nvgMoveTo(vg, arrowBodyEnd, centerY - arrowHeadHeight / 2);
+        nvgLineTo(vg, arrowTip, centerY);
+        nvgLineTo(vg, arrowBodyEnd, centerY + arrowHeadHeight / 2);
+        nvgClosePath(vg);
+
+        // Fill arrow with white color for visibility
         nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
-        nvgText(vg, arrowX + arrowWidth / 2.0f, arrowY + arrowHeight / 2.0f, "→");
+        nvgFill(vg);
+
+        // Add subtle border for definition
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStrokeColor(vg, nvgRGBA(200, 200, 200, 150, NVGColor.malloc(stack)));
+        nvgStroke(vg);
     }
 
     /**
