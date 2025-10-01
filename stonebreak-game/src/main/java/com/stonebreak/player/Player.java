@@ -75,6 +75,10 @@ public class Player {      // Player settings
     // Player health
     private float health = 20.0f; // Player health (full health)
 
+    // Walking sound state (if needed for future sound system)
+    private float walkingSoundTimer = 0.0f;
+    private boolean wasMovingLastFrame = false;
+
     /**
      * Creates a new player in the specified world.
      */
@@ -1522,10 +1526,6 @@ public class Player {      // Player settings
      */
     public Vector3f getVelocity() {
         return velocity;
-    }
-
-    public boolean isOnGround() {
-        return onGround;
     }
 
     /**

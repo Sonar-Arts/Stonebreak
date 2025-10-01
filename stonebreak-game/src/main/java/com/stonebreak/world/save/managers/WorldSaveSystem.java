@@ -1,6 +1,7 @@
 package com.stonebreak.world.save.managers;
 
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.save.core.WorldMetadata;
 import com.stonebreak.world.save.core.PlayerState;

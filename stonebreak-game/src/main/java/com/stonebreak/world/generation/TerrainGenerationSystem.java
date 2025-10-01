@@ -23,24 +23,27 @@ public class TerrainGenerationSystem {
     public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     
     private final long seed;
+    private final Random random;
     private final Random animalRandom;
     private final DeterministicRandom deterministicRandom;
     private final NoiseGenerator terrainNoise;
     private final NoiseGenerator temperatureNoise;
     private final NoiseGenerator continentalnessNoise;
     private final SplineInterpolator terrainSpline;
+    private final Object randomLock = new Object();
     private final Object animalRandomLock = new Object();
     private final Object treeRandomLock = new Object();
     
     public TerrainGenerationSystem(long seed) {
         this.seed = seed;
+        this.random = new Random(seed); // Deterministic random for terrain features
         this.animalRandom = new Random(); // Use current time for truly random animal spawning
         this.deterministicRandom = new DeterministicRandom(seed);
         this.terrainNoise = new NoiseGenerator(seed);
         this.temperatureNoise = new NoiseGenerator(seed + 1);
         this.continentalnessNoise = new NoiseGenerator(seed + 2);
         this.terrainSpline = new SplineInterpolator();
-        
+
         initializeTerrainSpline();
     }
     

@@ -10,7 +10,7 @@ import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
 import com.stonebreak.world.chunk.operations.ChunkCoordinateUtils;
 import com.stonebreak.world.chunk.operations.ChunkInternalStateManager;
 import com.stonebreak.world.chunk.operations.ChunkState;
-import com.stonebreak.world.chunk.operations.ChunkData;
+import com.stonebreak.world.chunk.operations.ChunkDataBuffer;
 import com.stonebreak.world.chunk.operations.ChunkDataOperations;
 import com.stonebreak.world.chunk.operations.ChunkMeshData;
 import com.stonebreak.world.chunk.operations.ChunkBufferState;
@@ -23,26 +23,29 @@ import com.stonebreak.world.chunk.operations.ChunkResourceManager;
 public class Chunk {
     
     private static final Logger logger = Logger.getLogger(Chunk.class.getName());
-    
+
     private final int x;
     private final int z;
-    
+
     // Block data storage and operations
-    private final ChunkData chunkData;
+    private final ChunkDataBuffer chunkData;
     private final ChunkDataOperations dataOperations;
-    
+
     // Buffer operations and state
     private final ChunkBufferOperations bufferOperations = new ChunkBufferOperations();
     private ChunkBufferState bufferState = ChunkBufferState.empty();
     private int indexCount;
     private boolean meshGenerated;
     private ChunkMeshData pendingMeshData;
-    
+
     // State management
     private final ChunkInternalStateManager stateManager = new ChunkInternalStateManager();
-    
+
     // Resource management
     private final ChunkResourceManager resourceManager;
+
+    // Metadata for save system
+    private java.time.LocalDateTime lastModified = java.time.LocalDateTime.now();
     
     /**
      * Creates a new chunk at the specified position.
@@ -53,7 +56,7 @@ public class Chunk {
         this.meshGenerated = false;
         
         // Initialize data and operations
-        this.chunkData = new ChunkData(x, z);
+        this.chunkData = new ChunkDataBuffer(x, z);
         this.dataOperations = new ChunkDataOperations(chunkData, stateManager);
         
         // Initialize resource management
@@ -269,16 +272,88 @@ public class Chunk {
      * Gets the chunk data for this chunk.
      * @return The chunk's data
      */
-    public ChunkData getChunkData() {
+    public ChunkDataBuffer getChunkData() {
         return chunkData;
     }
-    
+
     /**
      * Gets the resource manager for this chunk.
      * @return The chunk's resource manager
      */
     public ChunkResourceManager getResourceManager() {
         return resourceManager;
+    }
+
+    /**
+     * Gets the chunk's X coordinate.
+     * @return The chunk X coordinate
+     */
+    public int getX() {
+        return x;
+    }
+
+    /**
+     * Gets the chunk's Z coordinate.
+     * @return The chunk Z coordinate
+     */
+    public int getZ() {
+        return z;
+    }
+
+    /**
+     * Gets the block array. Used by save system.
+     * @return The 3D block array
+     */
+    public BlockType[][][] getBlocks() {
+        return chunkData.getBlocks();
+    }
+
+    /**
+     * Sets the block array. Used by save system during chunk loading.
+     * @param blocks The new block array
+     */
+    public void setBlocks(BlockType[][][] blocks) {
+        chunkData.setBlocks(blocks);
+        stateManager.markMeshDirty();
+    }
+
+    /**
+     * Checks if the chunk has been modified since last save.
+     * @return true if chunk is dirty
+     */
+    public boolean isDirty() {
+        return stateManager.isMeshDirty();
+    }
+
+    /**
+     * Marks the chunk as dirty (needing to be saved).
+     */
+    public void markDirty() {
+        stateManager.markMeshDirty();
+        lastModified = java.time.LocalDateTime.now();
+    }
+
+    /**
+     * Marks the chunk as clean (saved to disk).
+     */
+    public void markClean() {
+        stateManager.clearMeshDirty();
+    }
+
+    /**
+     * Gets the last modification timestamp.
+     * @return The last modified time
+     */
+    public java.time.LocalDateTime getLastModified() {
+        return lastModified;
+    }
+
+    /**
+     * Sets the last modification timestamp. Used by save system.
+     * @param lastModified The last modified time
+     */
+    public void setLastModified(java.time.LocalDateTime lastModified) {
+        this.lastModified = lastModified;
     }
     
     /**

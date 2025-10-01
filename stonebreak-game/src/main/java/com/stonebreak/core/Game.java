@@ -103,17 +103,13 @@ public class Game {
         }
         return instance;
     }
-      /**     * Initializes game components.
-      */
-     public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
-        this.window = window; // Store window handle for clipboard operations
-        this.world = world;
-        this.player = player;
+
     /**
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
     public void initCoreComponents(Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+        this.window = window; // Store window handle for clipboard operations
         this.renderer = renderer;
         this.textureAtlas = textureAtlas; // Store TextureAtlas
         this.inputHandler = inputHandler; // Store InputHandler
@@ -156,6 +152,9 @@ public class Game {
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
+
+        // Initialize sound emitter manager
+        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
 
         // Initialize memory leak detector
         this.memoryLeakDetector = MemoryLeakDetector.getInstance();
@@ -228,9 +227,15 @@ public class Game {
 
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
-            this.recipeBookScreen = new RecipeBookScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
+            this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
+        }
+
+        // Initialize player sounds
+        if (soundSystem != null) {
+            soundSystem.initializePlayerSounds(world);
+            System.out.println("Player sound system initialized");
         }
 
         System.out.println("[WORLD-CREATION] World components initialized for new world");
@@ -498,29 +503,6 @@ public class Game {
         this.craftingManager.registerRecipe(elmWoodenBucketRecipe);
         System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
 
-        // Initialize chat system
-        this.chatSystem = new ChatSystem();
-        this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
-
-        // Initialize sound emitter manager
-        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
-
-        // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
-        if (renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
-            // Now that inventoryScreen is created, give the inventory a reference to it.
-            player.getInventory().setInventoryScreen(this.inventoryScreen);
-            // Trigger initial tooltip for the currently selected item (supports all item types)
-            ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
-            if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
-                inventoryScreen.displayHotbarItemTooltip(initialSelectedItem);
-            }
-
-        } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
-            // Handle error appropriately, maybe throw an exception or set inventoryScreen to a safe non-functional state
-        }
-        // Add remaining recipes... (truncated for brevity - would include all existing recipes)
         System.out.println("All crafting recipes initialized");
     }
 
@@ -535,6 +517,10 @@ public class Game {
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
             this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
+        } else {
+            System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
+        }
+
         // Then initialize world-specific components
         if (world != null && player != null) {
             initWorldComponents(world, player);

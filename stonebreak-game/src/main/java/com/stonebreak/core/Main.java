@@ -104,24 +104,26 @@ public class Main {
         if (!glfwInit()) {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
-          // Configure GLFW
+
+        // Configure GLFW
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-        
+
         // Request a compatible profile - this allows OpenGL 3.2 features in case it's available
         // but falls back to compatibility profile if needed
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
-          // Create the window
+
+        // Create the window
         String title = "Stonebreak";
         window = glfwCreateWindow(width, height, title, 0, 0);
         if (window == 0) {
             throw new RuntimeException("Failed to create the GLFW window");
         }
-          // Setup key callback
-        keyCallback = GLFWKeyCallback.create((win, key, scancode, action, mods) -> {
+
+        // Setup key callback
         glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
             Game game = Game.getInstance();
 
@@ -134,11 +136,8 @@ public class Main {
                 inputHandler.handleKeyInput(key, action, mods);
             }
         });
-        glfwSetKeyCallback(window, keyCallback);
 
         // Setup character callback for chat text input
-        charCallback = GLFWCharCallback.create((win, codepoint) -> {
-            if (inputHandler != null) {
         glfwSetCharCallback(window, (win, codepoint) -> {
             Game game = Game.getInstance();
 
@@ -151,9 +150,9 @@ public class Main {
                 inputHandler.handleCharacterInput((char) codepoint);
             }
         });
-        glfwSetCharCallback(window, charCallback);
-          // Setup window resize callback
-        framebufferSizeCallback = GLFWFramebufferSizeCallback.create((win, w, h) -> {
+
+        // Setup window resize callback
+        glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
             this.width = w;
             this.height = h;
             glViewport(0, 0, w, h);
@@ -163,11 +162,11 @@ public class Main {
             // Update the Game singleton with new dimensions
             Game.getInstance().setWindowDimensions(w, h);
         });
-        glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+
         // Setup mouse button callback
         // This now directly calls InputHandler's processMouseButton method.
         // InputHandler will then decide how to process the click based on game state (paused, inventory open, etc.)
-        mouseButtonCallback = GLFWMouseButtonCallback.create((win, button, action, mods) -> {
+        glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
             Game game = Game.getInstance();
             if (game != null && game.getState() == GameState.MAIN_MENU) {
                 // Handle main menu clicks
@@ -205,9 +204,9 @@ public class Main {
                 inputHandler.processMouseButton(button, action, mods);
             }
         });
-        glfwSetMouseButtonCallback(window, mouseButtonCallback);
-          // Setup cursor position callback
-        cursorPosCallback = GLFWCursorPosCallback.create((win, xpos, ypos) -> {
+
+        // Setup cursor position callback
+        glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
             Game game = Game.getInstance();
 
             // Process mouse movement for camera look (if mouse is captured)
@@ -234,8 +233,6 @@ public class Main {
                 game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
             }
         });
-        glfwSetCursorPosCallback(window, cursorPosCallback);
-
 
         // Setup scroll callback for world select screen and hotbar selection
         glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
@@ -249,7 +246,7 @@ public class Main {
         });
 
         // Setup window focus callback to handle mouse capture on focus changes
-        windowFocusCallback = GLFWWindowFocusCallback.create((win, focused) -> {
+        glfwSetWindowFocusCallback(window, (win, focused) -> {
             Game game = Game.getInstance();
             MouseCaptureManager mouseCaptureManager = game.getMouseCaptureManager();
             if (mouseCaptureManager != null) {
@@ -260,14 +257,12 @@ public class Main {
                 }
             }
         });
-        glfwSetWindowFocusCallback(window, windowFocusCallback);
 
         // Setup window close callback to handle X button clicks
-        windowCloseCallback = GLFWWindowCloseCallback.create(win -> {
+        glfwSetWindowCloseCallback(window, win -> {
             System.out.println("Window close requested - initiating shutdown...");
             running = false;
         });
-        glfwSetWindowCloseCallback(window, windowCloseCallback);
 
         // Get the thread stack and push a new frame
         try (MemoryStack stack = stackPush()) {
@@ -294,31 +289,32 @@ public class Main {
                 // For now, we just don't center it.
             }
         }
-          // Make the OpenGL context current
+
+        // Make the OpenGL context current
         glfwMakeContextCurrent(window);
-        
+
         // Disable v-sync since we're implementing our own FPS limiter
         glfwSwapInterval(0);
-        
-        
+
         // Make the window visible
         glfwShowWindow(window);
-        
+
         // This line is critical for LWJGL's interoperation with GLFW's
         // OpenGL context, or any context that is managed externally.
         // LWJGL detects the context that is current in the current thread,
         // creates the GLCapabilities instance and makes the OpenGL
         // bindings available for use.
         GL.createCapabilities();
-        
+
         // Set up OpenGL state
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE); // Disable face culling for proper double-sided rendering
-        
+
         // Initialize game components
         initializeGameComponents();
     }
-      private void initializeGameComponents() {
+
+    private void initializeGameComponents() {
           MemoryProfiler profiler = MemoryProfiler.getInstance();
           profiler.takeSnapshot("before_initialization");
 
@@ -335,11 +331,6 @@ public class Main {
           // Initialize TextureAtlas (used by Renderer and potentially UI)
           TextureAtlas textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
 
-            // Initialize the Game singleton
-          // Pass inputHandler to Game's init method
-          Game.getInstance().init(world, player, renderer, textureAtlas, inputHandler, window);
-          textureAtlas = renderer.getTextureAtlas(); // Get it from renderer after it's created
-
           // Initialize the Game singleton with core components only (no world/player)
           Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window);
           Game.getInstance().setWindowDimensions(width, height);
@@ -353,8 +344,9 @@ public class Main {
           // Compare memory usage
           profiler.compareSnapshots("before_initialization", "after_game_init");
       }
-      @SuppressWarnings("BusyWait")
-      private void loop() {
+
+    @SuppressWarnings("BusyWait")
+    private void loop() {
         // Set the clear color
         glClearColor(0.5f, 0.8f, 1.0f, 0.0f);
         
@@ -381,7 +373,8 @@ public class Main {
             
             // Display debug info periodically (includes memory usage)
             Game.displayDebugInfo();
-              // Handle input based on game state
+
+            // Handle input based on game state
             Game game = Game.getInstance();
             switch (game.getState()) {
                 case MAIN_MENU -> {
@@ -741,49 +734,40 @@ public class Main {
         }
     }
     
-      private void cleanup() {
-          Game.logDetailedMemoryInfo("Before cleanup");
+    private void cleanup() {
+        Game.logDetailedMemoryInfo("Before cleanup");
 
-          // Free individual callbacks
-          if (keyCallback != null) keyCallback.free();
-          if (charCallback != null) charCallback.free();
-          if (framebufferSizeCallback != null) framebufferSizeCallback.free();
-          if (mouseButtonCallback != null) mouseButtonCallback.free();
-          if (cursorPosCallback != null) cursorPosCallback.free();
-          if (windowFocusCallback != null) windowFocusCallback.free();
-          if (windowCloseCallback != null) windowCloseCallback.free();
+        // Destroy the window
+        glfwDestroyWindow(window);
+        Game.logDetailedMemoryInfo("After GLFW cleanup");
 
-          // Destroy the window
-          glfwDestroyWindow(window);
-          Game.logDetailedMemoryInfo("After GLFW cleanup");
-          
-          // Clean up renderer resources
-          if (renderer != null) {
-              renderer.cleanup();
-              Game.logDetailedMemoryInfo("After renderer cleanup");
-          }
-          
-          // Clean up world resources
-          World world = Game.getInstance().getWorld();
-          if (world != null) {
-              world.cleanup();
-              Game.logDetailedMemoryInfo("After world cleanup");
-          }
-          
-          // Clean up game resources
-          Game.getInstance().cleanup();
-          Game.logDetailedMemoryInfo("After game cleanup");
-          
-          // Force garbage collection and report
-          Game.forceGCAndReport("Final cleanup");
-          
-          // Terminate GLFW and free the error callback
-          glfwTerminate();
-          GLFWErrorCallback prevCallback = glfwSetErrorCallback(null);
-          if (prevCallback != null) {
-              prevCallback.free();
-          }
-      }
+        // Clean up renderer resources
+        if (renderer != null) {
+            renderer.cleanup();
+            Game.logDetailedMemoryInfo("After renderer cleanup");
+        }
+
+        // Clean up world resources
+        World world = Game.getInstance().getWorld();
+        if (world != null) {
+            world.cleanup();
+            Game.logDetailedMemoryInfo("After world cleanup");
+        }
+
+        // Clean up game resources
+        Game.getInstance().cleanup();
+        Game.logDetailedMemoryInfo("After game cleanup");
+
+        // Force garbage collection and report
+        Game.forceGCAndReport("Final cleanup");
+
+        // Terminate GLFW and free the error callback
+        glfwTerminate();
+        GLFWErrorCallback prevCallback = glfwSetErrorCallback(null);
+        if (prevCallback != null) {
+            prevCallback.free();
+        }
+    }
     
 
 

@@ -147,6 +147,21 @@ public class ChunkInternalStateManager {
             return newSet;
         });
     }
+
+    /**
+     * Clears the mesh dirty flag. Used by save system after chunk is saved.
+     */
+    public void clearMeshDirty() {
+        removeState(ChunkState.MESH_DIRTY);
+    }
+
+    /**
+     * Checks if the chunk's mesh is dirty.
+     * @return true if chunk has unsaved changes
+     */
+    public boolean isMeshDirty() {
+        return hasState(ChunkState.MESH_DIRTY);
+    }
     
     /**
      * Marks mesh generation as started.
