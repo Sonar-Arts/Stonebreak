@@ -87,8 +87,9 @@ public class WorldRenderer {
         
         // Set common uniforms for world rendering
         setupWorldUniforms(player);
-        // Animate water waves in the vertex shader without remeshing
-        shaderProgram.setUniform("u_time", totalTime);
+        // Animate water waves in the vertex shader without remeshing (only if water shader is enabled)
+        float waterTime = com.stonebreak.config.Settings.getInstance().getWaterShaderEnabled() ? totalTime : 0.0f;
+        shaderProgram.setUniform("u_time", waterTime);
         checkGLError("After setting uniforms");
         
         // Bind texture atlas once before passes

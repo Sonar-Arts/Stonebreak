@@ -63,7 +63,8 @@ public class SettingsMenu {
             actionHandler::onCrosshairStyleChange,
             actionHandler::onVolumeChange,
             actionHandler::onCrosshairSizeChange,
-            actionHandler::toggleLeafTransparency
+            actionHandler::toggleLeafTransparency,
+            actionHandler::toggleWaterShader
         );
         
         // Connect MouseHandler with the scrollable container

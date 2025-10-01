@@ -50,6 +50,7 @@ public class ActionHandler {
             case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggleDropdown();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
+            case WATER_SHADER -> toggleWaterShader();
             case APPLY -> applySettings();
             case BACK -> goBack();
         }
@@ -170,5 +171,14 @@ public class ActionHandler {
         } catch (Exception e) {
             System.err.println("Failed to rebuild chunks after leaf transparency change: " + e.getMessage());
         }
+    }
+
+    /**
+     * Toggles the water shader setting.
+     */
+    public void toggleWaterShader() {
+        boolean currentValue = settings.getWaterShaderEnabled();
+        settings.setWaterShaderEnabled(!currentValue);
+        System.out.println("Water animation toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
 }

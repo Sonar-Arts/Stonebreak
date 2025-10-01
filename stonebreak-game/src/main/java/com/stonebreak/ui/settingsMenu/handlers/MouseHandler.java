@@ -72,6 +72,7 @@ public class MouseHandler {
         stateManager.getArmModelButton().updateHover(mouseX, mouseY);
         stateManager.getCrosshairStyleButton().updateHover(mouseX, mouseY);
         stateManager.getLeafTransparencyButton().updateHover(mouseX, mouseY);
+        stateManager.getWaterShaderButton().updateHover(mouseX, mouseY);
         stateManager.getApplyButton().updateHover(mouseX, mouseY);
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         
@@ -149,8 +150,11 @@ public class MouseHandler {
                 case LEAF_TRANSPARENCY:
                     wasClicked = stateManager.getLeafTransparencyButton().handleClick(mouseXf, mouseYf);
                     break;
+                case WATER_SHADER:
+                    wasClicked = stateManager.getWaterShaderButton().handleClick(mouseXf, mouseYf);
+                    break;
             }
-            
+
             if (wasClicked) {
                 stateManager.setSelectedSettingInCategory(i);
                 return;

@@ -32,6 +32,7 @@ public class StateManager {
     private Slider volumeSlider;
     private Slider crosshairSizeSlider;
     private Button leafTransparencyButton;
+    private Button waterShaderButton;
     
     // ===== CATEGORY COMPONENTS =====
     private List<CategoryButton> categoryButtons;
@@ -141,6 +142,10 @@ public class StateManager {
         // Initialize leaf transparency button
         String leafTransparencyText = "Leaf Transparency: " + (settings.getLeafTransparency() ? "ON" : "OFF");
         leafTransparencyButton = new Button(leafTransparencyText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
+
+        // Initialize water shader button
+        String waterShaderText = "Water Animation: " + (settings.getWaterShaderEnabled() ? "ON" : "OFF");
+        waterShaderButton = new Button(waterShaderText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
     }
     
     /**
@@ -149,7 +154,7 @@ public class StateManager {
     public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction,
                            Runnable armModelAction, Runnable crosshairStyleAction,
                            java.util.function.Consumer<Float> volumeAction, java.util.function.Consumer<Float> crosshairSizeAction,
-                           Runnable leafTransparencyAction) {
+                           Runnable leafTransparencyAction, Runnable waterShaderAction) {
         applyButton.setOnClickAction(applyAction);
         backButton.setOnClickAction(backAction);
         resolutionButton.setOnSelectionChangeAction(resolutionAction);
@@ -158,6 +163,7 @@ public class StateManager {
         volumeSlider.setOnValueChangeAction(volumeAction);
         crosshairSizeSlider.setOnValueChangeAction(crosshairSizeAction);
         leafTransparencyButton.setOnClickAction(leafTransparencyAction);
+        waterShaderButton.setOnClickAction(waterShaderAction);
         
         // Set category button callbacks - each will set the selected category
         for (CategoryButton button : categoryButtons) {
@@ -276,6 +282,7 @@ public class StateManager {
     public Slider getVolumeSlider() { return volumeSlider; }
     public Slider getCrosshairSizeSlider() { return crosshairSizeSlider; }
     public Button getLeafTransparencyButton() { return leafTransparencyButton; }
+    public Button getWaterShaderButton() { return waterShaderButton; }
     public List<CategoryButton> getCategoryButtons() { return categoryButtons; }
     
     // ===== SCROLL MANAGER GETTERS =====
