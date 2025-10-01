@@ -1,0 +1,18 @@
+{
+  "item_type": "WOODEN_BUCKET",
+  "texture_name": "wooden_bucket_base",
+  "description": "Empty wooden bucket with wood planks and metal bands",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["TOOL_TEXTURE", "ITEM_ICON"],
+    "atlas_coordinates": {"x": 0, "y": 4}
+  },
+  "metadata": {
+    "created_from": "wooden_bucket_base.png",
+    "atlas_coordinates": {"x": 0, "y": 4},
+    "purpose": "Empty wooden bucket item texture",
+    "version": "1.0",
+    "design_notes": "Empty bucket for collecting and transporting water"
+  }
+}

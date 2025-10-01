@@ -231,6 +231,10 @@ public class SpriteVoxelizer {
                 return "Items/Textures/wooden_axe_texture.png";
             case STICK:
                 return "Items/Textures/stick_texture.png";
+            case WOODEN_BUCKET:
+                return "Items/Textures/wooden_bucket_base.png";
+            case WOODEN_BUCKET_WATER:
+                return "Items/Textures/wooden_bucket_water.png";
             default:
                 return null;
         }

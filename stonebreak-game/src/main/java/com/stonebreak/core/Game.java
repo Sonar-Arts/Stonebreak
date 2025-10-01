@@ -409,6 +409,51 @@ public class Game {
         this.craftingManager.registerRecipe(elmWoodenAxeRecipe);
         System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_AXE");
 
+        // Recipe 16: Wooden Bucket (Regular Wood Planks)
+        // Pattern: wSw / wxw / xwx (w = wood planks, S = stick, x = empty)
+        List<List<ItemStack>> woodenBucketPattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), null, new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), null)
+        );
+        Recipe woodenBucketRecipe = new Recipe(
+            "wooden_bucket",
+            woodenBucketPattern,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1)
+        );
+        this.craftingManager.registerRecipe(woodenBucketRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS + STICK -> WOODEN_BUCKET");
+
+        // Recipe 17: Wooden Bucket (Pine Wood Planks variant)
+        // Pattern: wSw / wxw / xwx (w = pine planks, S = stick, x = empty)
+        List<List<ItemStack>> pineWoodenBucketPattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), null, new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), null)
+        );
+        Recipe pineWoodenBucketRecipe = new Recipe(
+            "pine_wooden_bucket",
+            pineWoodenBucketPattern,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1)
+        );
+        this.craftingManager.registerRecipe(pineWoodenBucketRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
+
+        // Recipe 18: Wooden Bucket (Elm Wood Planks variant)
+        // Pattern: wSw / wxw / xwx (w = elm planks, S = stick, x = empty)
+        List<List<ItemStack>> elmWoodenBucketPattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), null, new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), null)
+        );
+        Recipe elmWoodenBucketRecipe = new Recipe(
+            "elm_wooden_bucket",
+            elmWoodenBucketPattern,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1)
+        );
+        this.craftingManager.registerRecipe(elmWoodenBucketRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
+
         // Initialize chat system
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message

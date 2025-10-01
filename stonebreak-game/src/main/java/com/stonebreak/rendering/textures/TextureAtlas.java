@@ -693,11 +693,13 @@ public class TextureAtlas {
      */
     private String getItemTextureName(ItemType itemType) {
         if (itemType == null) return null;
-        
+
         switch (itemType) {
             case STICK: return "stick";
             case WOODEN_PICKAXE: return "wooden_pickaxe";
             case WOODEN_AXE: return "wooden_axe";
+            case WOODEN_BUCKET: return "wooden_bucket_base";
+            case WOODEN_BUCKET_WATER: return "wooden_bucket_water";
             default: return itemType.name().toLowerCase();
         }
     }

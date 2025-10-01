@@ -862,6 +862,60 @@ public class Player {      // Player settings
             return;
         }
 
+        // Handle bucket interactions
+        if (selectedItem.isTool()) {
+            ItemType itemType = selectedItem.asItemType();
+
+            // Handle empty bucket picking up water
+            if (itemType == ItemType.WOODEN_BUCKET) {
+                Vector3i targetBlock = raycastIncludingWater();
+                if (targetBlock != null) {
+                    BlockType blockType = world.getBlockAt(targetBlock.x, targetBlock.y, targetBlock.z);
+                    if (blockType == BlockType.WATER) {
+                        // Check if it's a water source block
+                        if (Water.isWaterSource(targetBlock.x, targetBlock.y, targetBlock.z)) {
+                            // Remove the water source block
+                            world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR);
+                            Water.onBlockPlaced(targetBlock.x, targetBlock.y, targetBlock.z);
+
+                            // Replace empty bucket with water bucket
+                            inventory.removeItem(ItemType.WOODEN_BUCKET, 1);
+                            inventory.addItem(ItemType.WOODEN_BUCKET_WATER, 1);
+                        }
+                    }
+                }
+                return; // Empty bucket doesn't place blocks
+            }
+
+            // Handle water bucket placing water
+            if (itemType == ItemType.WOODEN_BUCKET_WATER) {
+                Vector3i hitBlockPos = raycastForPlacement();
+                Vector3i placePos = null;
+
+                if (hitBlockPos != null) {
+                    placePos = findPlacePosition(hitBlockPos);
+                }
+
+                if (placePos != null) {
+                    BlockType blockAtPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
+
+                    // Can only place water in air blocks
+                    if (blockAtPos == BlockType.AIR) {
+                        // Place water source block
+                        if (world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER)) {
+                            // Mark as water source
+                            Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
+
+                            // Replace water bucket with empty bucket
+                            inventory.removeItem(ItemType.WOODEN_BUCKET_WATER, 1);
+                            inventory.addItem(ItemType.WOODEN_BUCKET, 1);
+                        }
+                    }
+                }
+                return; // Water bucket doesn't place regular blocks
+            }
+        }
+
         // Check if this item can be placed as a block
         if (!selectedItem.isPlaceable()) {
             return; // Cannot place tools or other non-placeable items
@@ -1222,6 +1276,37 @@ public class Player {      // Player settings
 
             // For placement, skip air and water blocks - only return solid blocks
             if (blockType != BlockType.AIR && blockType != BlockType.WATER) {
+                return new Vector3i(blockX, blockY, blockZ);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Performs a raycast that includes water blocks.
+     * Used for bucket interactions to detect water blocks.
+     * @return The position of the first non-air block hit by ray, or null if no block was hit.
+     */
+    private Vector3i raycastIncludingWater() {
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+        Vector3f rayDirection = camera.getFront();
+
+        // Use a smaller step size for more accurate raycasting
+        float stepSize = 0.025f;
+
+        // Perform ray marching
+        for (float distance = 0; distance < RAY_CAST_DISTANCE; distance += stepSize) {
+            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
+
+            int blockX = (int) Math.floor(point.x);
+            int blockY = (int) Math.floor(point.y);
+            int blockZ = (int) Math.floor(point.z);
+
+            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
+
+            // Return first non-air block (including water)
+            if (blockType != BlockType.AIR) {
                 return new Vector3i(blockX, blockY, blockZ);
             }
         }

@@ -299,7 +299,11 @@ public class TextureAtlasBuilder {
         try {
             // Load known item textures based on Item_ids.JSON
             String[] knownItemTextures = {
-                "stick_texture.png", "wooden_pickaxe_texture.png", "wooden_axe_texture.png"
+                "stick_texture.png",
+                "wooden_pickaxe_texture.png",
+                "wooden_axe_texture.png",
+                "wooden_bucket_base.png",
+                "wooden_bucket_water.png"
             };
             
             for (String fileName : knownItemTextures) {
