@@ -345,7 +345,14 @@ public class UIRenderer {
     public ItemIconRenderer getItemIconRenderer() {
         return itemIconRenderer;
     }
-    
+
+    /**
+     * Get the chat renderer for chat-specific interactions.
+     */
+    public ChatRenderer getChatRenderer() {
+        return chatRenderer;
+    }
+
     public void cleanup() {
         // Cleanup OpenGL quad renderer
         if (openGLQuadRenderer != null) {

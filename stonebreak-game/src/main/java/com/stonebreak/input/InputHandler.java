@@ -466,9 +466,13 @@ public class InputHandler {
             }
         }
 
-        // Check if chat is open - if so, don't process any mouse buttons for game interactions
+        // Check if chat is open - if so, handle chat-specific interactions
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
+            // Handle tab switching and command button clicks
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                handleChatClick(chatSystem);
+            }
             return;
         }
 
@@ -662,13 +666,90 @@ public class InputHandler {
     public void updateMousePosition(float xpos, float ypos) {
         currentMouseX = xpos;
         currentMouseY = ypos;
-        
+
         // Update UI hover states
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
             if (uiRenderer != null) {
                 pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
+            }
+        }
+
+        // Update chat renderer hover states
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                uiRenderer.getChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
+            }
+        }
+    }
+
+    /**
+     * Handle chat click interactions (tab switching and command buttons)
+     */
+    private void handleChatClick(ChatSystem chatSystem) {
+        int windowWidth = Game.getWindowWidth();
+        int windowHeight = Game.getWindowHeight();
+
+        // Calculate tab button areas (matching ChatRenderer folder-style tabs)
+        float backgroundPadding = 10;
+        float maxChatWidth = windowWidth * 0.4f;
+        float inputBoxHeight = 25;
+        float inputBoxMargin = 10;
+        float lineHeight = 20;
+        float chatAreaHeight = (10 * lineHeight) + inputBoxHeight + inputBoxMargin + (backgroundPadding * 2);
+
+        float backgroundY = windowHeight - chatAreaHeight;
+        float backgroundX = 20 - backgroundPadding;
+
+        // Tabs are positioned ABOVE the panel
+        float tabHeight = 22;
+        float tabSpacing = 2;
+        float tabY = backgroundY - tabHeight - tabSpacing;
+        float tabWidth = 70; // Compact tab width
+        float tabGap = 3; // Gap between tabs
+        float startX = backgroundX + 5; // Upper left corner offset
+
+        // Chat tab hitbox
+        float chatTabX = startX;
+        float chatTabY = tabY;
+        float chatTabEndX = chatTabX + tabWidth;
+        float chatTabEndY = chatTabY + tabHeight;
+
+        // Commands tab hitbox
+        float commandsTabX = startX + tabWidth + tabGap;
+        float commandsTabY = tabY;
+        float commandsTabEndX = commandsTabX + tabWidth;
+        float commandsTabEndY = commandsTabY + tabHeight;
+
+        // Check if clicked on Chat tab
+        if (currentMouseX >= chatTabX && currentMouseX <= chatTabEndX &&
+            currentMouseY >= chatTabY && currentMouseY <= chatTabEndY) {
+            chatSystem.setCurrentTab(ChatSystem.ChatTab.CHAT);
+            return;
+        }
+
+        // Check if clicked on Commands tab
+        if (currentMouseX >= commandsTabX && currentMouseX <= commandsTabEndX &&
+            currentMouseY >= commandsTabY && currentMouseY <= commandsTabEndY) {
+            chatSystem.setCurrentTab(ChatSystem.ChatTab.COMMANDS);
+            return;
+        }
+
+        // Check if clicked on a command button (only if Commands tab is active)
+        if (chatSystem.getCurrentTab() == ChatSystem.ChatTab.COMMANDS) {
+            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                String clickedCommand = uiRenderer.getChatRenderer().getClickedCommand(
+                    chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
+
+                if (clickedCommand != null) {
+                    // Execute the command
+                    chatSystem.getCommandExecutor().executeCommand("/" + clickedCommand);
+                    chatSystem.closeChat();
+                }
             }
         }
     }
