@@ -188,4 +188,11 @@ public class ChatSystem {
         int totalMessages = messageManager.getHistoryCount();
         return Math.max(0, totalMessages - MAX_VISIBLE_MESSAGES);
     }
+
+    /**
+     * Get the command executor (for help command)
+     */
+    public ChatCommandExecutor getCommandExecutor() {
+        return commandExecutor;
+    }
 }
