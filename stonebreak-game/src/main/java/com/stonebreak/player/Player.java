@@ -878,9 +878,18 @@ public class Player {      // Player settings
                             world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR);
                             Water.onBlockPlaced(targetBlock.x, targetBlock.y, targetBlock.z);
 
-                            // Replace empty bucket with water bucket
-                            inventory.removeItem(ItemType.WOODEN_BUCKET, 1);
-                            inventory.addItem(ItemType.WOODEN_BUCKET_WATER, 1);
+                            // Replace empty bucket with water bucket in the same slot
+                            int currentSlot = inventory.getSelectedHotbarSlotIndex();
+                            int currentCount = selectedItem.getCount();
+
+                            if (currentCount == 1) {
+                                // Replace the single bucket with water bucket
+                                inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET_WATER, 1));
+                            } else {
+                                // Decrease count by 1 and try to add water bucket
+                                inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1));
+                                inventory.addItem(ItemType.WOODEN_BUCKET_WATER, 1);
+                            }
                         }
                     }
                 }
@@ -906,9 +915,18 @@ public class Player {      // Player settings
                             // Mark as water source
                             Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
 
-                            // Replace water bucket with empty bucket
-                            inventory.removeItem(ItemType.WOODEN_BUCKET_WATER, 1);
-                            inventory.addItem(ItemType.WOODEN_BUCKET, 1);
+                            // Replace water bucket with empty bucket in the same slot
+                            int currentSlot = inventory.getSelectedHotbarSlotIndex();
+                            int currentCount = selectedItem.getCount();
+
+                            if (currentCount == 1) {
+                                // Replace the single water bucket with empty bucket
+                                inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET, 1));
+                            } else {
+                                // Decrease count by 1 and try to add empty bucket
+                                inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET_WATER, currentCount - 1));
+                                inventory.addItem(ItemType.WOODEN_BUCKET, 1);
+                            }
                         }
                     }
                 }
