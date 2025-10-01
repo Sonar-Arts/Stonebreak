@@ -40,9 +40,12 @@ public class ChatMessageManager {
             return;
         }
 
+        // Generate a unique message ID for all wrapped lines from this message
+        long messageId = System.nanoTime();
+
         String[] wrappedLines = textWrapper.wrapText(text);
         for (String line : wrappedLines) {
-            ChatMessage message = new ChatMessage(line, color);
+            ChatMessage message = new ChatMessage(line, color, messageId);
             messages.add(message);
             addToHistory(message);
         }

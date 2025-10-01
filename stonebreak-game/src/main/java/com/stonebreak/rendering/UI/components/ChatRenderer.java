@@ -69,6 +69,8 @@ public class ChatRenderer extends BaseRenderer {
             }
 
             float currentY = chatStartY;
+            Long previousMessageId = null;
+
             for (int i = visibleMessages.size() - 1; i >= 0; i--) {
                 ChatMessage message = visibleMessages.get(i);
                 float alpha = message.getAlpha(isChatOpen);
@@ -77,21 +79,26 @@ public class ChatRenderer extends BaseRenderer {
                     continue;
                 }
 
+                boolean isNewMessage = previousMessageId != null && previousMessageId != message.getMessageId();
+
                 if (isChatOpen) {
+                    // Draw divider line between different messages
+                    if (isNewMessage) {
+                        float dividerY = currentY - lineHeight + 2;
+                        nvgBeginPath(vg);
+                        nvgMoveTo(vg, chatX - 5, dividerY);
+                        nvgLineTo(vg, chatX + maxChatWidth + 5, dividerY);
+                        nvgStrokeWidth(vg, 1.0f);
+                        nvgStrokeColor(vg, InventoryTheme.Slot.BORDER_NORMAL.withAlpha((int)(alpha * 0.3f * 255)).toNVG(stack));
+                        nvgStroke(vg);
+                    }
+
                     // Modern message background with depth
                     nvgBeginPath(vg);
                     nvgRoundedRect(vg, chatX - 5, currentY - lineHeight + 2, maxChatWidth + 10, lineHeight,
                                    InventoryTheme.Measurements.CORNER_RADIUS_SMALL);
                     nvgFillColor(vg, InventoryTheme.Slot.BACKGROUND.withAlpha((int)(alpha * 255)).toNVG(stack));
                     nvgFill(vg);
-
-                    // Subtle border for message separation
-                    nvgBeginPath(vg);
-                    nvgRoundedRect(vg, chatX - 5, currentY - lineHeight + 2, maxChatWidth + 10, lineHeight,
-                                   InventoryTheme.Measurements.CORNER_RADIUS_SMALL);
-                    nvgStrokeWidth(vg, InventoryTheme.Measurements.BORDER_WIDTH_THIN);
-                    nvgStrokeColor(vg, InventoryTheme.Slot.BORDER_NORMAL.withAlpha((int)(alpha * 0.5f * 255)).toNVG(stack));
-                    nvgStroke(vg);
                 }
 
                 nvgFontSize(vg, 14);
@@ -108,6 +115,7 @@ public class ChatRenderer extends BaseRenderer {
                 ));
 
                 nvgText(vg, chatX, currentY - lineHeight/2, message.getText());
+                previousMessageId = message.getMessageId();
                 currentY -= lineHeight;
             }
 
@@ -133,6 +141,8 @@ public class ChatRenderer extends BaseRenderer {
     private void renderChatInputBox(ChatSystem chatSystem, float x, float y, float width, MemoryStack stack) {
         float inputHeight = 25;
         float cornerRadius = InventoryTheme.Measurements.CORNER_RADIUS_SMALL;
+        float textPadding = 5;
+        float availableTextWidth = width;
 
         // Input box background with gradient
         nvgBeginPath(vg);
@@ -158,6 +168,9 @@ public class ChatRenderer extends BaseRenderer {
         nvgStrokeColor(vg, InventoryTheme.Slot.BORDER_HOVER.toNVG(stack));
         nvgStroke(vg);
 
+        // Enable scissoring to clip text to input box
+        nvgScissor(vg, x - 5, y, width + 10, inputHeight);
+
         nvgFontSize(vg, 14);
         nvgFontFace(vg, fontRegular != -1 ? "sans" : "default");
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
@@ -168,8 +181,24 @@ public class ChatRenderer extends BaseRenderer {
             nvgText(vg, x, y + inputHeight/2, "Type a message...");
         } else {
             nvgFillColor(vg, InventoryTheme.Text.PRIMARY.toNVG(stack));
-            nvgText(vg, x, y + inputHeight/2, displayText);
+
+            // Measure the full text width
+            float[] bounds = new float[4];
+            nvgTextBounds(vg, 0, 0, displayText, bounds);
+            float textWidth = bounds[2] - bounds[0];
+
+            // Calculate scroll offset to keep the end of text visible
+            float scrollOffset = 0;
+            if (textWidth > availableTextWidth) {
+                scrollOffset = textWidth - availableTextWidth;
+            }
+
+            // Render text with horizontal offset to scroll left
+            nvgText(vg, x - scrollOffset, y + inputHeight/2, displayText);
         }
+
+        // Reset scissoring
+        nvgResetScissor(vg);
     }
 
     private void renderScrollbar(ChatSystem chatSystem, float chatX, float chatY, float chatWidth, float chatHeight, MemoryStack stack) {

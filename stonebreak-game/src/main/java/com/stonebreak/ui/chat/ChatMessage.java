@@ -5,19 +5,25 @@ public class ChatMessage {
     private final long timestamp;
     private final float[] color;
     private final float fadeStartTime;
-    
+    private final long messageId;
+
     public static final float MESSAGE_DISPLAY_TIME = 10.0f; // 10 seconds like Minecraft
     public static final float MESSAGE_FADE_TIME = 2.0f; // 2 seconds fade out
-    
+
     public ChatMessage(String text) {
-        this(text, new float[]{1.0f, 1.0f, 1.0f, 1.0f}); // White by default
+        this(text, new float[]{1.0f, 1.0f, 1.0f, 1.0f}, System.nanoTime()); // White by default
     }
-    
+
     public ChatMessage(String text, float[] color) {
+        this(text, color, System.nanoTime());
+    }
+
+    public ChatMessage(String text, float[] color, long messageId) {
         this.text = text;
         this.timestamp = System.currentTimeMillis();
         this.color = color.clone();
         this.fadeStartTime = MESSAGE_DISPLAY_TIME - MESSAGE_FADE_TIME;
+        this.messageId = messageId;
     }
     
     public String getText() {
@@ -62,5 +68,9 @@ public class ChatMessage {
     
     public boolean shouldRemove() {
         return getAge() >= MESSAGE_DISPLAY_TIME;
+    }
+
+    public long getMessageId() {
+        return messageId;
     }
 }
