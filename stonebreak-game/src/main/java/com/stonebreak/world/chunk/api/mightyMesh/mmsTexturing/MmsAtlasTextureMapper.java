@@ -1,8 +1,6 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
 
@@ -10,19 +8,22 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
  * Mighty Mesh System - Texture atlas-based texture coordinate mapper.
  *
  * Generates texture coordinates by resolving block types to texture atlas positions.
- * Integrates with the CBR API for proper texture coordinate resolution.
+ * Uses TextureAtlas directly for face-specific texture coordinate lookups.
  *
  * Design Philosophy:
- * - DRY: Reuses existing CBR infrastructure
- * - KISS: Simple delegation to CBR lookups
- * - Performance: Cached atlas coordinates via CBR
+ * - KISS: Direct delegation to TextureAtlas for face-specific UVs
+ * - Performance: Cached atlas coordinates via TextureAtlas
+ * - Correctness: Proper per-face texture coordinate resolution
+ *
+ * Note: CBR integration was removed because CBR's resolveBlockType() method
+ * does not support face-specific texture coordinate lookups, which caused
+ * all block faces to receive identical texture coordinates.
  *
  * @since MMS 1.0
  */
 public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
     private final TextureAtlas textureAtlas;
-    private final boolean useCBR;
 
     // Water flag constants
     private static final float WATER_FLAG_EPSILON = 0.0001f;
@@ -37,13 +38,7 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
             throw new IllegalArgumentException("Texture atlas cannot be null");
         }
         this.textureAtlas = textureAtlas;
-        this.useCBR = CBRResourceManager.isInitialized();
-
-        if (useCBR) {
-            System.out.println("[MmsAtlasTextureMapper] Using CBR API for texture coordinates");
-        } else {
-            System.out.println("[MmsAtlasTextureMapper] CBR not initialized, using TextureAtlas directly");
-        }
+        System.out.println("[MmsAtlasTextureMapper] Initialized with TextureAtlas for face-specific coordinate lookups");
     }
 
     @Override
@@ -201,57 +196,41 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
     }
 
     /**
-     * Gets block face UVs from the texture atlas.
-     * Uses CBR API if available, otherwise delegates to TextureAtlas.
+     * Gets face-specific texture coordinates from the texture atlas.
+     *
+     * This method correctly handles blocks with different textures per face
+     * (e.g., grass blocks with green top, dirt sides, and dirt bottom).
      *
      * @param blockType Type of block
-     * @param face Face index (0-5)
+     * @param face Face index (0-5: TOP, BOTTOM, NORTH, SOUTH, EAST, WEST)
      * @return UV array [u1, v1, u2, v2]
+     * @throws IllegalStateException if TextureAtlas returns null coordinates
      */
     private float[] getBlockFaceUVs(BlockType blockType, int face) {
-        float[] result;
-
-        if (useCBR) {
-            try {
-                CBRResourceManager cbrManager = CBRResourceManager.getInstance();
-                TextureResourceManager.TextureCoordinates coords =
-                    cbrManager.getTextureManager().resolveBlockType(blockType);
-                result = coords.toArray();
-
-                // Debug: Log first lookup only
-                if (debugLogCount < 5) {
-                    System.out.println("[MmsAtlasTextureMapper] CBR lookup for " + blockType +
-                        " face=" + face + " -> UVs: [" + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3] + "]");
-                    debugLogCount++;
-                }
-
-                return result;
-            } catch (Exception e) {
-                System.err.println("[MmsAtlasTextureMapper] CBR lookup failed for " + blockType + ": " + e.getMessage());
-                // Fall through to legacy method
-            }
-        }
-
-        // Legacy fallback
+        // Convert face index to BlockType.Face enum for TextureAtlas lookup
         BlockType.Face faceEnum = convertFaceIndexToEnum(face);
-        result = textureAtlas.getBlockFaceUVs(blockType, faceEnum);
+
+        // Get face-specific texture coordinates from atlas
+        float[] result = textureAtlas.getBlockFaceUVs(blockType, faceEnum);
 
         // Validate result
         if (result == null) {
-            throw new IllegalStateException("TextureAtlas returned null UVs for " + blockType + " face " + faceEnum);
+            throw new IllegalStateException(
+                String.format("TextureAtlas returned null UVs for %s face %s (index %d)",
+                    blockType, faceEnum, face)
+            );
         }
 
-        // Debug: Log first lookup only
-        if (debugLogCount < 5) {
-            System.out.println("[MmsAtlasTextureMapper] Legacy lookup for " + blockType +
-                " face=" + face + " -> UVs: [" + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3] + "]");
-            debugLogCount++;
+        // Validate UV coordinate ranges
+        if (result.length != 4) {
+            throw new IllegalStateException(
+                String.format("Invalid UV array length for %s face %s: expected 4, got %d",
+                    blockType, faceEnum, result.length)
+            );
         }
 
         return result;
     }
-
-    private int debugLogCount = 0;
 
     /**
      * Converts a face index (0-5) to BlockType.Face enum.

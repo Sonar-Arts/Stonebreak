@@ -308,7 +308,9 @@ public class Main {
 
         // Set up OpenGL state
         glEnable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE); // Disable face culling for proper double-sided rendering
+        glEnable(GL_CULL_FACE);  // Enable face culling for performance
+        glCullFace(GL_BACK);      // Cull back faces
+        glFrontFace(GL_CCW);      // Front faces are counter-clockwise
 
         // Initialize game components
         initializeGameComponents();

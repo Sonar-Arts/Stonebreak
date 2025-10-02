@@ -174,6 +174,7 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
         shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
+        shaderProgram.setUniform("u_transformUVsForItem", false); // Chunks use atlas UVs directly
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));

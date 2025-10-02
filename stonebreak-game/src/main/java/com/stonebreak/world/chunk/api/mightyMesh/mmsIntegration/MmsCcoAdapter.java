@@ -254,7 +254,13 @@ public class MmsCcoAdapter {
     }
 
     /**
-     * Gets adjacent block, handling chunk boundaries.
+     * Gets adjacent block, handling chunk boundaries by querying world.
+     *
+     * @param adjX Adjacent block X coordinate (local chunk space)
+     * @param adjY Adjacent block Y coordinate (world space)
+     * @param adjZ Adjacent block Z coordinate (local chunk space)
+     * @param chunkData Current chunk data
+     * @return Block type at adjacent position
      */
     private BlockType getAdjacentBlock(int adjX, int adjY, int adjZ, CcoChunkData chunkData) {
         // Check if within current chunk bounds
@@ -264,13 +270,33 @@ public class MmsCcoAdapter {
             return chunkData.getBlock(adjX, adjY, adjZ);
         }
 
-        // Out of bounds - would need to query world/neighboring chunks
-        // For now, assume air (will render the face)
+        // Out of bounds - query neighboring chunk via world
+        if (world != null && adjY >= 0 && adjY < WorldConfiguration.WORLD_HEIGHT) {
+            // Convert to world coordinates
+            int worldX = adjX + chunkData.getChunkX() * WorldConfiguration.CHUNK_SIZE;
+            int worldZ = adjZ + chunkData.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
+
+            // Query world for block at this position
+            BlockType adjacentBlock = world.getBlockAt(worldX, adjY, worldZ);
+            return adjacentBlock != null ? adjacentBlock : BlockType.AIR;
+        }
+
+        // Out of world bounds or no world reference - assume air
         return BlockType.AIR;
     }
 
     /**
      * Determines if a face should render against an adjacent block.
+     *
+     * Culling Rules:
+     * 1. Always render against AIR
+     * 2. Transparent blocks render against different block types (e.g., water doesn't cull against water)
+     * 3. Opaque blocks cull against other opaque blocks
+     * 4. Opaque blocks render against transparent blocks
+     *
+     * @param blockType The block being rendered
+     * @param adjacentBlock The neighboring block
+     * @return true if face should be rendered
      */
     private boolean shouldRenderAgainst(BlockType blockType, BlockType adjacentBlock) {
         // Always render if adjacent is air
@@ -278,21 +304,33 @@ public class MmsCcoAdapter {
             return true;
         }
 
-        // Transparent blocks render against different block types
+        // Transparent blocks (water, leaves, flowers) render against different block types
+        // This prevents water-to-water face culling, allowing water to blend correctly
         if (isTransparent(blockType)) {
             return blockType != adjacentBlock;
         }
 
-        // Opaque blocks don't render against other opaque blocks
+        // Opaque blocks don't render against other opaque blocks (standard culling)
+        // But DO render against transparent blocks (e.g., grass underwater should be visible)
         return isTransparent(adjacentBlock);
     }
 
     /**
-     * Checks if a block is transparent.
+     * Checks if a block type is transparent and requires special culling.
+     *
+     * Transparent blocks:
+     * - Water: Semi-transparent liquid
+     * - Leaves: Alpha-tested foliage (all tree types)
+     * - Flowers: Cross-section blocks with alpha testing
+     *
+     * @param blockType Block type to check
+     * @return true if block is transparent
      */
     private boolean isTransparent(BlockType blockType) {
         return blockType == BlockType.WATER ||
                blockType == BlockType.LEAVES ||
+               blockType == BlockType.PINE_LEAVES ||
+               blockType == BlockType.ELM_LEAVES ||
                blockType == BlockType.ROSE ||
                blockType == BlockType.DANDELION;
     }
