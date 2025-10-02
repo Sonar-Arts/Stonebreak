@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  * Key improvements:
  * - CCO atomic state management for thread-safe operations
  * - Unified dirty tracking through CCO API
- * - Neighbor coordination via ChunkNeighborCoordinator
+ * - Neighbor coordination via CcoNeighborCoordinator (CCO API)
  * - Lock-free state queries and transitions
  */
 public class ChunkManager {
