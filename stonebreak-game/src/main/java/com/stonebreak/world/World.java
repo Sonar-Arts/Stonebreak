@@ -251,10 +251,16 @@ public class World {
 
     /**
      * Returns chunks around the specified position within render distance.
+     * This method performs side effects:
+     * - Populates chunks with features if needed (trees, structures)
+     * - Schedules mesh generation for unpopulated chunks
+     * - Ensures border chunks exist for neighbor meshing
+     *
+     * Use this method when preparing chunks for rendering.
      */
     public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
         Map<ChunkPosition, Chunk> visibleChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
-        
+
         // Populate chunks that need features
         for (Chunk chunk : visibleChunks.values()) {
             if (!chunk.areFeaturesPopulated()) {
@@ -263,10 +269,10 @@ public class World {
                 meshPipeline.scheduleConditionalMeshBuild(chunk);
             }
         }
-        
+
         // Ensure border chunks exist for meshing purposes
         neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
-        
+
         return visibleChunks;
     }
 
