@@ -38,6 +38,7 @@ public final class WaterSystem {
     private final PriorityQueue<ScheduledUpdate> pendingUpdates = new PriorityQueue<>((a, b) -> Long.compare(a.scheduledTick(), b.scheduledTick()));
     private final Map<BlockPos, Long> scheduledTicks = new HashMap<>();
     private final Set<Long> scannedChunks = new HashSet<>();
+    private final Set<Long> dirtyChunks = new HashSet<>(); // Batched mesh updates
 
     private int suppressedCallbacks;
     private float tickAccumulator;
@@ -93,6 +94,7 @@ public final class WaterSystem {
         for (int i = 0; i < ticks; i++) {
             logicalTick++;
             processQueue(Math.max(1, budgetPerTick));
+            flushDirtyChunks(); // Apply batched mesh updates after each logical tick
         }
     }
 
@@ -283,7 +285,7 @@ public final class WaterSystem {
             // When falling water lands, reset depth to level 1 (fresh flow starting point)
             current = WaterBlock.flowing(1);
             cells.put(pos, current);
-            notifyChunkUpdate(pos); // Visual update when falling water lands
+            markChunkDirty(pos); // Batched visual update when falling water lands
         }
 
         int targetLevel = computeTargetLevel(pos, current);
@@ -301,7 +303,7 @@ public final class WaterSystem {
         if (!updated.equals(current)) {
             cells.put(pos, updated);
             scheduleNeighbors(pos);
-            notifyChunkUpdate(pos); // Visual update when water level changes
+            markChunkDirty(pos); // Batched visual update when water level changes
         }
 
         spreadHorizontally(pos, updated);
@@ -460,9 +462,9 @@ public final class WaterSystem {
         cells.put(pos, candidate);
         enqueue(pos, WATER_TICK_DELAY);
 
-        // Trigger visual update if water level changed (even if block type stayed WATER)
+        // Trigger batched visual update if water level changed (even if block type stayed WATER)
         if (levelChanged && !blockTypeChanged) {
-            notifyChunkUpdate(pos);
+            markChunkDirty(pos);
         }
 
         return true;
@@ -489,14 +491,39 @@ public final class WaterSystem {
     }
 
     /**
-     * Notifies the world that a water block's visual state has changed,
-     * triggering a chunk mesh rebuild for proper visual updates.
+     * Marks a chunk as needing a mesh rebuild due to water changes.
+     * Updates are batched and applied at the end of each logical tick.
      */
-    private void notifyChunkUpdate(BlockPos pos) {
+    private void markChunkDirty(BlockPos pos) {
         if (!isWithinWorld(pos.y())) {
             return;
         }
-        world.triggerChunkRebuild(pos.x(), pos.y(), pos.z());
+        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        dirtyChunks.add(chunkKey(chunkX, chunkZ));
+    }
+
+    /**
+     * Applies all batched mesh updates to chunks.
+     * Called once per logical tick after processing all water updates.
+     */
+    private void flushDirtyChunks() {
+        if (dirtyChunks.isEmpty()) {
+            return;
+        }
+
+        for (Long chunkKey : dirtyChunks) {
+            int chunkX = (int) (chunkKey >> 32);
+            int chunkZ = (int) (chunkKey & 0xFFFFFFFFL);
+
+            // Trigger mesh rebuild for this chunk
+            // Using world coordinates from chunk center for the rebuild call
+            int worldX = chunkX * WorldConfiguration.CHUNK_SIZE;
+            int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
+            world.triggerChunkRebuild(worldX, 0, worldZ);
+        }
+
+        dirtyChunks.clear();
     }
 
     private void scheduleNeighbors(BlockPos pos) {
