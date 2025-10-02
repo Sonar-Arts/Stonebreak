@@ -172,4 +172,31 @@ public final class CcoCoordinates {
         int dz = chunkZ2 - chunkZ1;
         return dx * dx + dz * dz;
     }
+
+    /**
+     * Checks if the given local coordinates are valid within a chunk.
+     *
+     * @param localX Local X coordinate
+     * @param localY Local Y coordinate
+     * @param localZ Local Z coordinate
+     * @return true if coordinates are within chunk bounds
+     */
+    public static boolean isValidLocalCoordinate(int localX, int localY, int localZ) {
+        return localX >= 0 && localX < WorldConfiguration.CHUNK_SIZE &&
+               localY >= 0 && localY < WorldConfiguration.WORLD_HEIGHT &&
+               localZ >= 0 && localZ < WorldConfiguration.CHUNK_SIZE;
+    }
+
+    /**
+     * Converts 1D array index back to 3D local coordinates.
+     *
+     * @param index 1D array index
+     * @return Array containing [localX, localY, localZ]
+     */
+    public static int[] indexToCoordinate(int index) {
+        int localX = indexToX(index);
+        int localY = indexToY(index);
+        int localZ = indexToZ(index);
+        return new int[]{localX, localY, localZ};
+    }
 }

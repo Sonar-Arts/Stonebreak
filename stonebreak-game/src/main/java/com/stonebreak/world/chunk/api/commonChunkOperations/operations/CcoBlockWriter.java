@@ -16,17 +16,30 @@ import java.util.Objects;
 public final class CcoBlockWriter {
 
     private final CcoBlockArray blocks;
+    private final CcoBounds bounds;
     private final CcoDirtyTracker dirtyTracker;
 
     /**
      * Creates a block writer with dirty tracking.
      *
      * @param blocks Block array to write to
+     * @param bounds Boundary validator
+     * @param dirtyTracker Dirty tracker for automatic marking
+     */
+    public CcoBlockWriter(CcoBlockArray blocks, CcoBounds bounds, CcoDirtyTracker dirtyTracker) {
+        this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
+        this.bounds = Objects.requireNonNull(bounds, "bounds cannot be null");
+        this.dirtyTracker = Objects.requireNonNull(dirtyTracker, "dirtyTracker cannot be null");
+    }
+
+    /**
+     * Creates a block writer with dirty tracking (simple constructor).
+     *
+     * @param blocks Block array to write to
      * @param dirtyTracker Dirty tracker for automatic marking
      */
     public CcoBlockWriter(CcoBlockArray blocks, CcoDirtyTracker dirtyTracker) {
-        this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
-        this.dirtyTracker = Objects.requireNonNull(dirtyTracker, "dirtyTracker cannot be null");
+        this(blocks, new CcoBounds(), dirtyTracker);
     }
 
     /**

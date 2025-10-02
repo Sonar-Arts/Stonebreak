@@ -20,6 +20,10 @@ public final class CcoStateTransition {
     static {
         VALID_TRANSITIONS = new EnumMap<>(CcoChunkState.class);
 
+        // EMPTY can transition to CREATED or UNLOADING
+        VALID_TRANSITIONS.put(CcoChunkState.EMPTY,
+                EnumSet.of(CcoChunkState.CREATED, CcoChunkState.UNLOADING));
+
         // CREATED can transition to BLOCKS_POPULATED or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.CREATED,
                 EnumSet.of(CcoChunkState.BLOCKS_POPULATED, CcoChunkState.UNLOADING));
@@ -44,14 +48,26 @@ public final class CcoStateTransition {
         VALID_TRANSITIONS.put(CcoChunkState.MESH_CPU_READY,
                 EnumSet.of(CcoChunkState.MESH_GPU_UPLOADED, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
 
-        // MESH_GPU_UPLOADED can transition to MESH_DIRTY (if blocks changed) or UNLOADING
+        // MESH_GPU_UPLOADED can transition to READY, MESH_DIRTY (if blocks changed), or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.MESH_GPU_UPLOADED,
-                EnumSet.of(CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+                EnumSet.of(CcoChunkState.READY, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+
+        // READY can transition to ACTIVE, MESH_DIRTY, or UNLOADING
+        VALID_TRANSITIONS.put(CcoChunkState.READY,
+                EnumSet.of(CcoChunkState.ACTIVE, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+
+        // ACTIVE can transition back to READY, MESH_DIRTY, or UNLOADING
+        VALID_TRANSITIONS.put(CcoChunkState.ACTIVE,
+                EnumSet.of(CcoChunkState.READY, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
 
         // DATA_MODIFIED is a flag state that can coexist with others - no specific transitions
 
-        // UNLOADING is terminal - no transitions out
-        VALID_TRANSITIONS.put(CcoChunkState.UNLOADING, EnumSet.noneOf(CcoChunkState.class));
+        // UNLOADING can transition to UNLOADED
+        VALID_TRANSITIONS.put(CcoChunkState.UNLOADING,
+                EnumSet.of(CcoChunkState.UNLOADED));
+
+        // UNLOADED is terminal - no transitions out
+        VALID_TRANSITIONS.put(CcoChunkState.UNLOADED, EnumSet.noneOf(CcoChunkState.class));
     }
 
     private CcoStateTransition() {

@@ -109,11 +109,11 @@ public final class WaterSystem {
             return; // Already scanned this chunk
         }
 
-        BlockType[][][] blocks = chunk.getChunkData().getBlocks();
+        var reader = chunk.getBlockReader();
         for (int localX = 0; localX < WorldConfiguration.CHUNK_SIZE; localX++) {
             for (int localZ = 0; localZ < WorldConfiguration.CHUNK_SIZE; localZ++) {
                 for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if (blocks[localX][y][localZ] == BlockType.WATER) {
+                    if (reader.get(localX, y, localZ) == BlockType.WATER) {
                         int worldX = chunk.getChunkX() * WorldConfiguration.CHUNK_SIZE + localX;
                         int worldZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE + localZ;
                         BlockPos pos = new BlockPos(worldX, y, worldZ);
@@ -122,16 +122,16 @@ public final class WaterSystem {
                         boolean needsUpdate = false;
 
                         // Check if there's air below (flowing water)
-                        if (y > 0 && blocks[localX][y - 1][localZ] == BlockType.AIR) {
+                        if (y > 0 && reader.isAir(localX, y - 1, localZ)) {
                             needsUpdate = true;
                         }
 
                         // Check if there's air beside (surface water)
                         if (!needsUpdate && (
-                            (localX > 0 && blocks[localX - 1][y][localZ] == BlockType.AIR) ||
-                            (localX < WorldConfiguration.CHUNK_SIZE - 1 && blocks[localX + 1][y][localZ] == BlockType.AIR) ||
-                            (localZ > 0 && blocks[localX][y][localZ - 1] == BlockType.AIR) ||
-                            (localZ < WorldConfiguration.CHUNK_SIZE - 1 && blocks[localX][y][localZ + 1] == BlockType.AIR)
+                            (localX > 0 && reader.isAir(localX - 1, y, localZ)) ||
+                            (localX < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(localX + 1, y, localZ)) ||
+                            (localZ > 0 && reader.isAir(localX, y, localZ - 1)) ||
+                            (localZ < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(localX, y, localZ + 1))
                         )) {
                             needsUpdate = true;
                         }

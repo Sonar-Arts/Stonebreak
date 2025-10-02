@@ -6,6 +6,7 @@ import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Inventory;
 import org.joml.Vector3f;
@@ -97,29 +98,31 @@ public final class StateConverter {
     }
 
     /**
-     * Converts Chunk to ChunkData.
+     * Converts Chunk to ChunkData using CCO snapshot API.
      */
     public static ChunkData toChunkData(Chunk chunk) {
-        return ChunkData.builder()
-            .chunkX(chunk.getX())
-            .chunkZ(chunk.getZ())
-            .blocks(chunk.getBlocks())
-            .lastModified(chunk.getLastModified())
-            .featuresPopulated(chunk.areFeaturesPopulated())
-            .build();
+        CcoSerializableSnapshot snapshot = chunk.createSnapshot();
+        return snapshot.toChunkData();
     }
 
     /**
-     * Applies ChunkData to Chunk.
+     * Applies ChunkData to Chunk using CCO snapshot API.
      */
     public static void applyChunkData(Chunk chunk, ChunkData data) {
-        chunk.setBlocks(data.getBlocks());
-        chunk.setLastModified(data.getLastModified());
-        if (data.isFeaturesPopulated()) {
-            chunk.setFeaturesPopulated(true);
-        }
+        // Convert ChunkData back to CCO snapshot
+        CcoSerializableSnapshot snapshot = new CcoSerializableSnapshot(
+            data.getChunkX(),
+            data.getChunkZ(),
+            data.getBlocks(),
+            data.getLastModified(),
+            data.isFeaturesPopulated()
+        );
+
+        // Load from snapshot
+        chunk.loadFromSnapshot(snapshot);
+
         // NOTE: Do NOT call markClean() here!
-        // setBlocks() marks the chunk as MESH_DIRTY, which is correct - loaded chunks need mesh regeneration.
+        // loadFromSnapshot() marks the chunk as MESH_DIRTY, which is correct - loaded chunks need mesh regeneration.
         // markClean() should ONLY be called after a successful save, not after loading.
     }
 

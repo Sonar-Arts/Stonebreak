@@ -13,14 +13,26 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoBlockArray;
 public final class CcoBlockReader {
 
     private final CcoBlockArray blocks;
+    private final CcoBounds bounds;
 
     /**
      * Creates a block reader for the given block array.
      *
      * @param blocks Block array to read from
+     * @param bounds Boundary validator (not currently used, reserved for future validation)
+     */
+    public CcoBlockReader(CcoBlockArray blocks, CcoBounds bounds) {
+        this.blocks = blocks;
+        this.bounds = bounds;
+    }
+
+    /**
+     * Creates a block reader for the given block array (simple constructor).
+     *
+     * @param blocks Block array to read from
      */
     public CcoBlockReader(CcoBlockArray blocks) {
-        this.blocks = blocks;
+        this(blocks, new CcoBounds());
     }
 
     /**

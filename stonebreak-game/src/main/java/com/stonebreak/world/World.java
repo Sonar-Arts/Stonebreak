@@ -14,7 +14,6 @@ import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
 import com.stonebreak.world.chunk.mesh.data.ChunkNeighborCoordinator;
 import com.stonebreak.world.chunk.mesh.data.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
-import com.stonebreak.world.memory.WorldMemoryManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -34,7 +33,6 @@ public class World {
     private final WorldChunkStore chunkStore;
     private final ChunkStateManager stateManager;
     private final ChunkNeighborCoordinator neighborCoordinator;
-    private final WorldMemoryManager memoryManager;
     private final ChunkMeshBuildingPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
@@ -59,8 +57,7 @@ public class World {
         this.meshPipeline = new ChunkMeshBuildingPipeline(config, stateManager, errorReporter);
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
         this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, stateManager, config);
-        this.memoryManager = new WorldMemoryManager(config, chunkStore);
-        
+
         this.waterSystem = new WaterSystem(this);
         this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
         
@@ -84,7 +81,6 @@ public class World {
         waterSystem.tick(Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
-        memoryManager.performMemoryManagement();
         meshPipeline.processChunkMeshBuildRequests(this);
     }
 
@@ -297,12 +293,6 @@ public class World {
             for (Chunk chunk : chunkStore.getAllChunks()) {
                 stateManager.resetMeshGenerationState(chunk);
             }
-        }
-
-        // Clear memory management caches using available methods
-        if (memoryManager != null) {
-            // Perform aggressive memory cleanup by unloading distant chunks
-            memoryManager.forceUnloadDistantChunks(400);
         }
 
         // Process any pending GPU cleanup without shutting down the pipeline

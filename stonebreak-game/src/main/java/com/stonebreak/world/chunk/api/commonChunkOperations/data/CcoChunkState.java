@@ -8,6 +8,11 @@ package com.stonebreak.world.chunk.api.commonChunkOperations.data;
  */
 public enum CcoChunkState {
     /**
+     * Empty/uninitialized state - chunk object exists but has no data.
+     */
+    EMPTY,
+
+    /**
      * Chunk has been created but blocks not yet populated.
      */
     CREATED,
@@ -51,5 +56,20 @@ public enum CcoChunkState {
     /**
      * Chunk is being unloaded and should not be processed.
      */
-    UNLOADING
+    UNLOADING,
+
+    /**
+     * Chunk is fully ready for gameplay (all data populated, mesh uploaded).
+     */
+    READY,
+
+    /**
+     * Chunk is actively being used in gameplay.
+     */
+    ACTIVE,
+
+    /**
+     * Chunk has been fully unloaded and resources freed.
+     */
+    UNLOADED
 }
