@@ -176,16 +176,16 @@ public final class MmsMeshBuilder {
             );
         }
 
-        // Generate quad indices (2 triangles)
-        // Triangle 1: v0, v1, v2
+        // Generate quad indices (2 triangles) with correct winding
+        // Triangle 1: v0, v2, v1 (reversed for outward-facing normals)
         indices.add(currentFaceVertexStart);
+        indices.add(currentFaceVertexStart + 2);
         indices.add(currentFaceVertexStart + 1);
-        indices.add(currentFaceVertexStart + 2);
 
-        // Triangle 2: v0, v2, v3
+        // Triangle 2: v0, v3, v2 (reversed for outward-facing normals)
         indices.add(currentFaceVertexStart);
-        indices.add(currentFaceVertexStart + 2);
         indices.add(currentFaceVertexStart + 3);
+        indices.add(currentFaceVertexStart + 2);
 
         currentFaceVertexStart = -1;
         return this;
