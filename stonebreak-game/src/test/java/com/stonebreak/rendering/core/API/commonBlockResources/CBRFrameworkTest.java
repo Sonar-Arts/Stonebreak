@@ -3,15 +3,22 @@ package com.stonebreak.rendering.core.API.commonBlockResources;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.stonebreak.rendering.core.API.commonBlockResources.meshing.MeshManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Optional;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL20.GL_SHADING_LANGUAGE_VERSION;
 import static org.lwjgl.system.MemoryUtil.*;
 
 /**

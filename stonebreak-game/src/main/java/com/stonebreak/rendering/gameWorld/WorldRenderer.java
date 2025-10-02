@@ -16,6 +16,7 @@ import static org.lwjgl.opengl.GL11.*;
 
 // Project Imports
 import com.stonebreak.core.Game;
+import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.WaterEffects;
@@ -86,10 +87,10 @@ public class WorldRenderer {
         
         // Set common uniforms for world rendering
         setupWorldUniforms(player);
-        // Animate water waves in the vertex shader without remeshing
+        // Animate water waves in the vertex shader without remeshing (only if water shader is enabled)
+        boolean waterAnimationEnabled = com.stonebreak.config.Settings.getInstance().getWaterShaderEnabled();
         shaderProgram.setUniform("u_time", totalTime);
-        // Enable water waves for world rendering
-        shaderProgram.setUniform("u_disableWaterWaves", false);
+        shaderProgram.setUniform("u_waterAnimationEnabled", waterAnimationEnabled);
         checkGLError("After setting uniforms");
         
         // Bind texture atlas once before passes
@@ -106,20 +107,21 @@ public class WorldRenderer {
         // Render opaque pass
         renderOpaquePass(visibleChunks);
 
-        // Render transparent pass  
+        // Render entities after opaque blocks but before transparent water
+        // This allows water to blend over entities when viewing through water
+        renderEntities(player);
+
+        // Render transparent pass (water blends over entities correctly)
         renderTransparentPass(visibleChunks, player);
-        
+
+        // Render drops after transparent water (drops are semi-transparent)
+        renderDrops(player);
+
         // Restore OpenGL state after passes
         restoreGLStateAfterPasses();
 
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
-
-        // Render entities first (solid objects should render before transparent ones)
-        renderEntities(player);
-        
-        // Render drops after entities (transparent objects render last)
-        renderDrops(player);
 
         // Render water particles
         renderWaterParticles();
@@ -158,6 +160,12 @@ public class WorldRenderer {
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
+        shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
+
+        // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
+        shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
+        shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0, 0, 0));
     }
     
     /**
@@ -193,6 +201,7 @@ public class WorldRenderer {
      */
     private void renderOpaquePass(Map<World.ChunkPosition, Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
+        shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
 
@@ -206,10 +215,11 @@ public class WorldRenderer {
      */
     private void renderTransparentPass(Map<World.ChunkPosition, Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
+        shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glDepthMask(false); // Disable depth writing for transparent objects
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
- 
+
         // Sort chunks from back to front for transparent pass
         sortChunksBackToFront(visibleChunks, player);
 
@@ -260,10 +270,11 @@ public class WorldRenderer {
     }
     
     /**
-     * Render player arm if not paused.
+     * Render player arm in appropriate game states.
      */
     private void renderPlayerArm(Player player) {
-        if (!Game.getInstance().isPaused()) {
+        GameState currentState = Game.getInstance().getState();
+        if (currentState == GameState.PLAYING || currentState == GameState.INVENTORY_UI || currentState == GameState.RECIPE_BOOK_UI || currentState == GameState.WORKBENCH_UI) {
             playerArmRenderer.renderPlayerArm(player); // This method binds its own shader and texture
         }
     }
@@ -349,33 +360,40 @@ public class WorldRenderer {
                 }
             }
             
-            // Render all drops at once
+            // Render all drops at once with underwater fog support
             if (!drops.isEmpty()) {
-                dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix());
+                World world = Game.getWorld();
+                // Get camera position (at eye level, not feet)
+                Vector3f cameraPos = player.getCamera().getPosition();
+                dropRenderer.renderDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
             }
         }
     }
-    
+
     /**
      * Helper method to check if an entity is a drop entity.
      * This would need to be updated when actual drop entity classes are implemented.
      */
     private boolean isDropEntity(com.stonebreak.mobs.entities.Entity entity) {
-        return entity instanceof com.stonebreak.mobs.entities.BlockDrop || 
+        return entity instanceof com.stonebreak.mobs.entities.BlockDrop ||
                entity instanceof com.stonebreak.mobs.entities.ItemDrop;
     }
-    
+
     /**
      * Render all entities using the entity sub-renderer.
      */
     private void renderEntities(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
-        
+
         if (entityManager != null && entityRenderer != null) {
-            // Get all entities and render them using the sub-renderer
+            World world = Game.getWorld();
+            // Get camera position (at eye level, not feet)
+            Vector3f cameraPos = player.getCamera().getPosition();
+
+            // Get all entities and render them using the sub-renderer with underwater fog support
             for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
                 if (entity.isAlive() && !isDropEntity(entity)) { // Exclude drops as they're rendered separately
-                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix);
+                    entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
                 }
             }
         }

@@ -31,6 +31,8 @@ public class StateManager {
     private DropdownButton crosshairStyleButton;
     private Slider volumeSlider;
     private Slider crosshairSizeSlider;
+    private Button leafTransparencyButton;
+    private Button waterShaderButton;
     
     // ===== CATEGORY COMPONENTS =====
     private List<CategoryButton> categoryButtons;
@@ -134,16 +136,25 @@ public class StateManager {
         volumeSlider = new Slider("Master Volume", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT, 
                                 SettingsConfig.MIN_VOLUME, SettingsConfig.MAX_VOLUME, settings.getMasterVolume(), null);
         
-        crosshairSizeSlider = new Slider("Crosshair Size", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT, 
+        crosshairSizeSlider = new Slider("Crosshair Size", 0, 0, SettingsConfig.SLIDER_WIDTH, SettingsConfig.SLIDER_HEIGHT,
                                        SettingsConfig.MIN_CROSSHAIR_SIZE, SettingsConfig.MAX_CROSSHAIR_SIZE, settings.getCrosshairSize(), null);
+
+        // Initialize leaf transparency button
+        String leafTransparencyText = "Leaf Transparency: " + (settings.getLeafTransparency() ? "ON" : "OFF");
+        leafTransparencyButton = new Button(leafTransparencyText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
+
+        // Initialize water shader button
+        String waterShaderText = "Water Animation: " + (settings.getWaterShaderEnabled() ? "ON" : "OFF");
+        waterShaderButton = new Button(waterShaderText, 0, 0, SettingsConfig.BUTTON_WIDTH, SettingsConfig.BUTTON_HEIGHT, null);
     }
     
     /**
      * Sets the callback actions for components after ActionHandler is created.
      */
-    public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction, 
-                           Runnable armModelAction, Runnable crosshairStyleAction, 
-                           java.util.function.Consumer<Float> volumeAction, java.util.function.Consumer<Float> crosshairSizeAction) {
+    public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction,
+                           Runnable armModelAction, Runnable crosshairStyleAction,
+                           java.util.function.Consumer<Float> volumeAction, java.util.function.Consumer<Float> crosshairSizeAction,
+                           Runnable leafTransparencyAction, Runnable waterShaderAction) {
         applyButton.setOnClickAction(applyAction);
         backButton.setOnClickAction(backAction);
         resolutionButton.setOnSelectionChangeAction(resolutionAction);
@@ -151,13 +162,14 @@ public class StateManager {
         crosshairStyleButton.setOnSelectionChangeAction(crosshairStyleAction);
         volumeSlider.setOnValueChangeAction(volumeAction);
         crosshairSizeSlider.setOnValueChangeAction(crosshairSizeAction);
+        leafTransparencyButton.setOnClickAction(leafTransparencyAction);
+        waterShaderButton.setOnClickAction(waterShaderAction);
         
         // Set category button callbacks - each will set the selected category
         for (CategoryButton button : categoryButtons) {
             final CategoryState category = button.getCategory();
             button.setOnClickAction(() -> {
-                selectedCategory = category;
-                selectedSettingInCategory = 0; // Reset to first setting in category
+                setSelectedCategory(category); // Use the setter method to trigger dropdown closing
             });
         }
     }
@@ -218,10 +230,13 @@ public class StateManager {
     // ===== GETTERS AND SETTERS =====
     
     public CategoryState getSelectedCategory() { return selectedCategory; }
-    public void setSelectedCategory(CategoryState selectedCategory) { 
-        this.selectedCategory = selectedCategory; 
+    public void setSelectedCategory(CategoryState selectedCategory) {
+        this.selectedCategory = selectedCategory;
         this.selectedSettingInCategory = 0; // Reset to first setting in category
-        
+
+        // Close all open dropdowns when switching categories
+        closeAllDropdowns();
+
         // Switch to the scroll manager for the new category
         currentScrollManager = scrollManagers.get(selectedCategory);
         if (currentScrollManager != null) {
@@ -266,6 +281,8 @@ public class StateManager {
     public DropdownButton getCrosshairStyleButton() { return crosshairStyleButton; }
     public Slider getVolumeSlider() { return volumeSlider; }
     public Slider getCrosshairSizeSlider() { return crosshairSizeSlider; }
+    public Button getLeafTransparencyButton() { return leafTransparencyButton; }
+    public Button getWaterShaderButton() { return waterShaderButton; }
     public List<CategoryButton> getCategoryButtons() { return categoryButtons; }
     
     // ===== SCROLL MANAGER GETTERS =====
@@ -276,8 +293,26 @@ public class StateManager {
     }
     public UIRenderer getUIRenderer() { return uiRenderer; }
     
+    // ===== DROPDOWN MANAGEMENT =====
+
+    /**
+     * Closes all open dropdown menus. This is called when switching categories
+     * to ensure no dropdown remains open from the previous category.
+     */
+    private void closeAllDropdowns() {
+        if (resolutionButton != null) {
+            resolutionButton.closeDropdown();
+        }
+        if (armModelButton != null) {
+            armModelButton.closeDropdown();
+        }
+        if (crosshairStyleButton != null) {
+            crosshairStyleButton.closeDropdown();
+        }
+    }
+
     // ===== NAVIGATION METHODS =====
-    
+
     /**
      * Navigates to the next category in the list.
      */
@@ -286,6 +321,7 @@ public class StateManager {
         int nextIndex = (currentIndex + 1) % CategoryState.values().length;
         selectedCategory = CategoryState.fromIndex(nextIndex);
         selectedSettingInCategory = 0;
+        closeAllDropdowns();
     }
     
     /**
@@ -296,6 +332,7 @@ public class StateManager {
         int prevIndex = (currentIndex - 1 + CategoryState.values().length) % CategoryState.values().length;
         selectedCategory = CategoryState.fromIndex(prevIndex);
         selectedSettingInCategory = 0;
+        closeAllDropdowns();
     }
     
     /**

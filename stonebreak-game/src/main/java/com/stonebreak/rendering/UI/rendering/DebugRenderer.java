@@ -24,6 +24,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.stonebreak.rendering.emitters.SoundEmitterRenderer;
+import com.stonebreak.audio.emitters.SoundEmitter;
 
 /**
  * Specialized renderer for debug visualizations including wireframe bounding boxes and paths.
@@ -33,11 +35,15 @@ public class DebugRenderer {
     private ShaderProgram shaderProgram;
     private Matrix4f projectionMatrix;
     private int wireframeVao;
+    private SoundEmitterRenderer soundEmitterRenderer;
 
     public DebugRenderer(ShaderProgram shaderProgram, Matrix4f projectionMatrix) {
         this.shaderProgram = shaderProgram;
         this.projectionMatrix = projectionMatrix;
         createWireframe();
+
+        // Initialize sound emitter renderer
+        this.soundEmitterRenderer = new SoundEmitterRenderer(shaderProgram, projectionMatrix);
     }
     
     /**
@@ -220,5 +226,48 @@ public class DebugRenderer {
         
         // Unbind shader
         shaderProgram.unbind();
+    }
+
+    /**
+     * Renders all sound emitters as yellow triangle wireframes when debug mode is enabled.
+     * @param debugMode Whether debug mode is currently enabled
+     */
+    public void renderSoundEmitters(boolean debugMode) {
+        if (!debugMode) {
+            return;
+        }
+
+        com.stonebreak.audio.emitters.SoundEmitterManager emitterManager = Game.getSoundEmitterManager();
+        if (emitterManager != null && soundEmitterRenderer != null) {
+            List<SoundEmitter> emitters = emitterManager.getDebugVisibleEmitters();
+            soundEmitterRenderer.renderSoundEmitters(emitters, debugMode);
+        }
+    }
+
+    /**
+     * Renders a single sound emitter with optional color override.
+     * @param emitter The sound emitter to render
+     * @param color Custom color for this emitter (null to use default yellow)
+     * @param debugMode Whether debug mode is enabled
+     */
+    public void renderSingleSoundEmitter(SoundEmitter emitter, Vector3f color, boolean debugMode) {
+        if (soundEmitterRenderer != null) {
+            soundEmitterRenderer.renderSingleEmitter(emitter, color, debugMode);
+        }
+    }
+
+    /**
+     * Cleanup method to free OpenGL resources.
+     * Should be called when the renderer is no longer needed.
+     */
+    public void cleanup() {
+        if (wireframeVao != 0) {
+            GL30.glDeleteVertexArrays(wireframeVao);
+            wireframeVao = 0;
+        }
+
+        if (soundEmitterRenderer != null) {
+            soundEmitterRenderer.cleanup();
+        }
     }
 }

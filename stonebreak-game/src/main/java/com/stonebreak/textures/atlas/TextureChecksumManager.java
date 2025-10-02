@@ -189,7 +189,7 @@ public class TextureChecksumManager {
         
         // Process block textures
         File blockTextureDir = new File(System.getProperty("user.dir"), 
-                                      "stonebreak-game/src/main/resources/Blocks/Textures");
+                                      "stonebreak-game/src/main/resources/blocks/Textures");
         for (String fileName : blockTextures) {
             File textureFile = new File(blockTextureDir, fileName);
             TextureChecksum checksum = calculateChecksumForFile(textureFile, "blocks/" + fileName);
@@ -267,7 +267,7 @@ public class TextureChecksumManager {
         
         // Check block textures
         File blockTextureDir = new File(System.getProperty("user.dir"), 
-                                      "stonebreak-game/src/main/resources/Blocks/Textures");
+                                      "stonebreak-game/src/main/resources/blocks/Textures");
         for (String fileName : blockTextures) {
             checkedFiles.add(fileName);
             File textureFile = new File(blockTextureDir, fileName);

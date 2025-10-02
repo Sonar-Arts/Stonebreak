@@ -273,7 +273,10 @@ public class TextureResourceManager implements AutoCloseable {
             case "dirt": return BlockType.DIRT;
             case "stone": return BlockType.STONE;
             case "cobblestone": return BlockType.COBBLESTONE;
+            case "red_sand_cobblestone": return BlockType.RED_SAND_COBBLESTONE;
+            case "sand_cobblestone": return BlockType.SAND_COBBLESTONE;
             case "gravel": return BlockType.GRAVEL;
+            case "clay": return BlockType.CLAY;
             case "bedrock": return BlockType.BEDROCK;
             case "sand": return BlockType.SAND;
             case "red_sand": return BlockType.RED_SAND;
@@ -295,7 +298,7 @@ public class TextureResourceManager implements AutoCloseable {
             case "pine_wood_planks": return BlockType.PINE_WOOD_PLANKS;
             case "elm_wood_planks": return BlockType.ELM_WOOD_PLANKS;
             case "leaves": return BlockType.LEAVES;
-            case "snowy_leaves": return BlockType.SNOWY_LEAVES;
+            case "pine_leaves": return BlockType.PINE_LEAVES;
             case "elm_leaves": return BlockType.ELM_LEAVES;
             
             // Flowers

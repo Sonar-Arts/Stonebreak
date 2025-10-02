@@ -7,6 +7,8 @@ import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResou
 import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
 import com.stonebreak.rendering.player.geometry.ArmGeometry;
 import com.stonebreak.rendering.player.geometry.HandBlockGeometry;
+import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
+import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import org.joml.Vector4f;
@@ -26,12 +28,14 @@ public class HandItemRenderer {
     private final TextureAtlas textureAtlas;
     private final HandBlockGeometry handBlockGeometry;
     private final BlockRenderer blockRenderer;
+    private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
     
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas) {
         this.shaderProgram = shaderProgram;
         this.textureAtlas = textureAtlas;
         this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
         this.blockRenderer = new BlockRenderer();
+        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
     }
     
     public HandItemRenderer(ShaderProgram shaderProgram, TextureAtlas textureAtlas, BlockDefinitionRegistry blockRegistry) {
@@ -39,6 +43,7 @@ public class HandItemRenderer {
         this.textureAtlas = textureAtlas;
         this.handBlockGeometry = new HandBlockGeometry(textureAtlas);
         this.blockRenderer = new BlockRenderer(textureAtlas, blockRegistry);
+        this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram, textureAtlas);
     }
     
     /**
@@ -59,8 +64,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        // Disable water waves for held blocks to prevent animation
-        shaderProgram.setUniform("u_disableWaterWaves", true);
+        // Enable UI element mode to disable water waves for held blocks
+        shaderProgram.setUniform("u_isUIElement", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -69,18 +74,29 @@ public class HandItemRenderer {
         
         // No tint for block texture
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Disable blending to prevent transparency issues
-        glDisable(GL_BLEND);
+
+        // Handle leaf transparency - enable blending only for transparent leaf blocks
+        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
+        if (isLeafBlock && blockType.isTransparent()) {
+            // Enable blending for transparent leaves
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        } else {
+            // Disable blending for opaque blocks (including opaque leaves)
+            glDisable(GL_BLEND);
+        }
         
         // Get or create block-specific cube with proper face textures
         int blockSpecificVao = handBlockGeometry.getHandBlockVao(blockType);
         GL30.glBindVertexArray(blockSpecificVao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
         
-        // Re-enable blending for other elements
+        // Re-enable blending for other elements (restore standard UI blending)
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**
@@ -91,8 +107,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        // Disable water waves for held blocks to prevent animation
-        shaderProgram.setUniform("u_disableWaterWaves", true);
+        // Enable UI element mode to disable water waves for held blocks
+        shaderProgram.setUniform("u_isUIElement", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -114,6 +130,9 @@ public class HandItemRenderer {
         CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
         resource.getMesh().bind();
         glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
     /**
@@ -189,9 +208,29 @@ public class HandItemRenderer {
     */
     
     /**
-     * Renders tools as 2D sprites in the player's hand.
+     * Renders tools in the player's hand using appropriate rendering method.
+     * Uses 3D voxelized rendering for supported items, falls back to 2D sprites.
      */
     public void renderToolInHand(ItemType itemType) {
+        // Check if this item can be rendered as a voxelized 3D sprite
+        if (SpriteVoxelizer.isVoxelizable(itemType)) {
+            renderVoxelizedToolInHand(itemType);
+        } else {
+            render2DToolInHand(itemType);
+        }
+    }
+
+    /**
+     * Renders tools as 3D voxelized sprites in the player's hand.
+     */
+    private void renderVoxelizedToolInHand(ItemType itemType) {
+        voxelizedSpriteRenderer.renderVoxelizedSprite(itemType);
+    }
+
+    /**
+     * Renders tools as 2D sprites in the player's hand (fallback method).
+     */
+    private void render2DToolInHand(ItemType itemType) {
         // Get UV coordinates for the item
         float[] uvCoords = textureAtlas.getTextureCoordinatesForItem(itemType.getId());
         
@@ -200,8 +239,8 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_isText", false); 
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        // Disable water waves for held tools to prevent animation
-        shaderProgram.setUniform("u_disableWaterWaves", true);
+        // Enable UI element mode to disable water waves for held tools
+        shaderProgram.setUniform("u_isUIElement", true);
         
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -231,13 +270,62 @@ public class HandItemRenderer {
         
         // Restore OpenGL state
         glEnable(GL_CULL_FACE);
+
+        // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
     }
     
+    /**
+     * Preloads voxel meshes for all supported items.
+     * Call this during initialization to reduce hitches during gameplay.
+     */
+    public void preloadVoxelMeshes() {
+        voxelizedSpriteRenderer.preloadAllVoxelMeshes();
+    }
+
+    /**
+     * Gets statistics about the voxelized sprite renderer.
+     */
+    public String getVoxelizationStatistics() {
+        return voxelizedSpriteRenderer.getStatistics();
+    }
+
+    /**
+     * Checks if an item uses voxelized rendering.
+     */
+    public boolean usesVoxelizedRendering(ItemType itemType) {
+        return SpriteVoxelizer.isVoxelizable(itemType);
+    }
+
+    /**
+     * Tests the complete hand item rendering system including voxelization.
+     * This verifies that sprites can be loaded, voxelized, and prepared for rendering.
+     */
+    public void testHandItemRendering() {
+        System.out.println("=== Hand Item Renderer Test ===");
+
+        // Test voxelization system
+        voxelizedSpriteRenderer.testVoxelizedRendering();
+
+        // Report which items use which rendering method
+        System.out.println("\nItem Rendering Methods:");
+        for (ItemType itemType : ItemType.values()) {
+            if (usesVoxelizedRendering(itemType)) {
+                System.out.println("  " + itemType.getName() + ": 3D Voxelized");
+            } else {
+                System.out.println("  " + itemType.getName() + ": 2D Sprite");
+            }
+        }
+
+        System.out.println("=== Hand Item Renderer Test Complete ===");
+    }
+
     /**
      * Cleanup resources when the renderer is destroyed.
      */
     public void cleanup() {
         handBlockGeometry.cleanup();
         blockRenderer.cleanup();
+        voxelizedSpriteRenderer.cleanup();
     }
 }

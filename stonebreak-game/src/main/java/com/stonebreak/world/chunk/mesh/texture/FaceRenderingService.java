@@ -17,42 +17,16 @@ public class FaceRenderingService {
      */
     public boolean shouldRenderFace(BlockType blockType, BlockType adjacentBlock, int lx, int ly, int lz, int face, int chunkX, int chunkZ) {
         if (blockType == BlockType.WATER) {
-            // For water blocks, always render faces except when adjacent to the same water level
             if (adjacentBlock == BlockType.WATER) {
-                // Check if we should render between water blocks based on water levels
-                WaterEffects waterEffects = Game.getWaterEffects();
-                if (waterEffects != null) {
-                    int worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
-                    int worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
-                    float currentWaterLevel = waterEffects.getWaterLevel(worldX, ly, worldZ);
-                    
-                    // Get adjacent block's world coordinates for level check
-                    int adjWorldX = worldX;
-                    int adjWorldY = ly;
-                    int adjWorldZ = worldZ;
-                    
-                    switch (face) {
-                        case 0 -> adjWorldY += 1; // Top
-                        case 1 -> adjWorldY -= 1; // Bottom
-                        case 2 -> adjWorldZ += 1; // Front
-                        case 3 -> adjWorldZ -= 1; // Back
-                        case 4 -> adjWorldX += 1; // Right
-                        case 5 -> adjWorldX -= 1; // Left
-                    }
-                    
-                    float adjacentWaterLevel = waterEffects.getWaterLevel(adjWorldX, adjWorldY, adjWorldZ);
-                    
-                    // Render face if water levels are different or if one is a source
-                    return currentWaterLevel != adjacentWaterLevel || 
-                           waterEffects.isWaterSource(worldX, ly, worldZ) ||
-                           waterEffects.isWaterSource(adjWorldX, adjWorldY, adjWorldZ);
-                } else {
-                    // Fallback: render all water faces if water effects not available
-                    return true;
-                }
+                // Never render faces between water blocks - they should blend seamlessly
+                return false;
             } else {
-                // Water vs non-water: render if adjacent is transparent or air
-                return adjacentBlock.isTransparent();
+                // Water vs non-water: render top face when adjacent to opaque blocks, other faces when transparent (but not water)
+                if (face == 0) { // Top face
+                    return !adjacentBlock.isTransparent() || adjacentBlock == BlockType.AIR;
+                } else {
+                    return adjacentBlock.isTransparent() && adjacentBlock != BlockType.WATER;
+                }
             }
         } else {
             // For non-water blocks, use the original logic

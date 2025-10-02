@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,8 +30,8 @@ public class TextureAtlasBuilder {
     // Resource paths
     private static final String BLOCKS_TEXTURE_PATH = "/blocks/Textures/";
     private static final String ITEMS_TEXTURE_PATH = "/Items/Textures/";
-    private static final String BLOCK_IDS_PATH = "stonebreak-game/src/main/resources/Blocks/Block_ids.JSON";
-    private static final String ATLAS_OUTPUT_DIR = "stonebreak-game/src/main/resources/Texture Atlas/";
+    private static final Path BLOCK_IDS_PATH = Paths.get("stonebreak-game", "src", "main", "resources", "blocks", "Block_ids.JSON");
+    private static final Path ATLAS_OUTPUT_DIR = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas");
     private static final String ATLAS_IMAGE_NAME = "TextureAtlas.png";
     private static final String ATLAS_METADATA_NAME = "atlas_metadata.json";
     
@@ -147,8 +146,8 @@ public class TextureAtlasBuilder {
     public boolean shouldRegenerateAtlas() {
         try {
             // Check if atlas files exist
-            Path atlasImagePath = Paths.get(ATLAS_OUTPUT_DIR, ATLAS_IMAGE_NAME);
-            Path atlasMetadataPath = Paths.get(ATLAS_OUTPUT_DIR, ATLAS_METADATA_NAME);
+            Path atlasImagePath = ATLAS_OUTPUT_DIR.resolve(ATLAS_IMAGE_NAME);
+            Path atlasMetadataPath = ATLAS_OUTPUT_DIR.resolve(ATLAS_METADATA_NAME);
             
             if (!Files.exists(atlasImagePath) || !Files.exists(atlasMetadataPath)) {
                 System.out.println("Atlas files missing, regeneration required");
@@ -211,14 +210,14 @@ public class TextureAtlasBuilder {
         
         try {
             // Load block definitions from Block_ids.JSON
-            File blockIdsFile = new File(BLOCK_IDS_PATH);
-            if (!blockIdsFile.exists()) {
-                System.err.println("Block_ids.JSON not found at: " + BLOCK_IDS_PATH);
+            Path blockIdsFile = BLOCK_IDS_PATH;
+            if (!Files.exists(blockIdsFile)) {
+                System.err.println("Block_ids.JSON not found at: " + blockIdsFile.toAbsolutePath());
                 return loadBlockTexturesFallback(); // Use fallback method
             }
             
             Map<String, EnhancedJSONLoader.BlockDefinition> blockDefinitions = 
-                EnhancedJSONLoader.loadBlockDefinitions(blockIdsFile);
+                EnhancedJSONLoader.loadBlockDefinitions(blockIdsFile.toFile());
             
             Set<String> textureNames = new HashSet<>();
             
@@ -270,7 +269,7 @@ public class TextureAtlasBuilder {
             "iron_ore_texture.png", "red_sand_texture.png", "magma_texture.png",
             "crystal_texture.png", "sandstone_texture.png", "red_sandstone_texture.png",
             "rose_texture.png", "dandelion_texture.png", "snowy_dirt_texture.png",
-            "pine_wood_texture.png", "ice_texture.png", "snowy_leaves_texture.png",
+            "pine_wood_texture.png", "ice_texture.png", "pine_leaves_texture.png",
             "snow_texture.png", "workbench_custom_texture.png", "wood_planks_custom_texture.png",
             "pine_wood_planks_custom_texture.png", "elm_wood_log_texture.png", 
             "elm_wood_planks_custom_texture.png", "elm_leaves_texture.png", "cobblestone_texture.png", "Errockson.gif"
@@ -299,7 +298,11 @@ public class TextureAtlasBuilder {
         try {
             // Load known item textures based on Item_ids.JSON
             String[] knownItemTextures = {
-                "stick_texture.png", "wooden_pickaxe_texture.png", "wooden_axe_texture.png"
+                "stick_texture.png",
+                "wooden_pickaxe_texture.png",
+                "wooden_axe_texture.png",
+                "wooden_bucket_base.png",
+                "wooden_bucket_water.png"
             };
             
             for (String fileName : knownItemTextures) {
@@ -397,7 +400,7 @@ public class TextureAtlasBuilder {
      * Save atlas image to file.
      */
     private void saveAtlasImage(BufferedImage atlasImage) throws IOException {
-        Path atlasPath = Paths.get(ATLAS_OUTPUT_DIR, ATLAS_IMAGE_NAME);
+        Path atlasPath = ATLAS_OUTPUT_DIR.resolve(ATLAS_IMAGE_NAME);
         ImageIO.write(atlasImage, "PNG", atlasPath.toFile());
         System.out.println("Atlas image saved: " + atlasPath);
     }
@@ -427,7 +430,7 @@ public class TextureAtlasBuilder {
         metadata.set("textures", objectMapper.valueToTree(coordinates));
         
         // Save metadata file
-        Path metadataPath = Paths.get(ATLAS_OUTPUT_DIR, ATLAS_METADATA_NAME);
+        Path metadataPath = ATLAS_OUTPUT_DIR.resolve(ATLAS_METADATA_NAME);
         objectMapper.writerWithDefaultPrettyPrinter().writeValue(metadataPath.toFile(), metadata);
         
         System.out.println("Atlas metadata saved: " + metadataPath);
@@ -449,7 +452,7 @@ public class TextureAtlasBuilder {
      */
     private void ensureOutputDirectory() {
         try {
-            Path outputDir = Paths.get(ATLAS_OUTPUT_DIR);
+            Path outputDir = ATLAS_OUTPUT_DIR;
             if (!Files.exists(outputDir)) {
                 Files.createDirectories(outputDir);
                 System.out.println("Created output directory: " + outputDir);

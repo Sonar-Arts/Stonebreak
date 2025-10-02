@@ -9,15 +9,19 @@ import org.joml.Vector3f;
 import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.PauseMenu;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.World;
 
@@ -27,6 +31,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F7;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F8;
 
 /**
  * Handles player input for movement and interaction.
@@ -58,7 +63,8 @@ public class InputHandler {
     private boolean f5KeyPressed = false; // Added for detailed memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
     private boolean f7KeyPressed = false; // Added for manual save
-    
+    private boolean f8KeyPressed = false; // Added for save system diagnostic
+
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
     
@@ -136,8 +142,8 @@ public class InputHandler {
             }
 
             // Handle system-level toggles first, as they might change the active UI
-            handleEscapeKey();      // Toggles pauseMenu and game 'paused' state, sets cursor
-            handleInventoryKey();   // Toggles inventoryScreen, game 'paused' state, sets cursor via Game.toggleInventoryScreen
+            handleEscapeKey();      // Toggles pauseMenu and game state transitions
+            handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
             handleChatKey();        // Opens chatSystem, sets cursor
             handleDropKey();        // Drops selected item when Q is pressed
             handleDebugKeys();      // Handle debug and memory profiling keys
@@ -148,39 +154,30 @@ public class InputHandler {
             // Cache expensive calls to avoid repeated method calls
             Game gameInstance = Game.getInstance();
             InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();
-            boolean isGamePaused = gameInstance.isPaused();
-                        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-            RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
+            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
 
             // UI screens take precedence for input if active
-            if (currentGameState == GameState.RECIPE_BOOK_UI && recipeBookScreen != null && recipeBookScreen.isVisible()) {
-                recipeBookScreen.handleInput();
+            if (currentGameState == GameState.RECIPE_BOOK_UI && recipeScreen != null && recipeScreen.isVisible()) {
+                recipeScreen.handleInput();
                 return; // Recipe Book UI has full input control
             }
             if (currentGameState == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
                 workbenchScreen.handleInput(this);
                 return; // Workbench UI has full input control
             }
-            // Player inventory screen: if it's visible, it means we are in "PLAYING" state but with UI up.
-            // Game.isPaused() will be true.
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            // Handle inventory screen input when in INVENTORY_UI state
+            if (currentGameState == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // Cache window dimensions to avoid repeated calls
                 int windowWidth = Game.getWindowWidth();
                 int windowHeight = Game.getWindowHeight();
                 inventoryScreen.handleMouseInput(windowWidth, windowHeight);
             }
 
-            // If the game is paused (either by pause menu or inventory), don't process movement/block selection
-            // UNLESS only the inventory is open, in which case some actions might still be allowed (handled by InventoryScreen)
-            if (isGamePaused && (inventoryScreen == null || !inventoryScreen.isVisible())) { // If paused by menu, not just inventory
-                return;
-            }
-            if (isGamePaused && inventoryScreen != null && inventoryScreen.isVisible()){
-                // Movement is blocked, but other non-movement inputs might be processed by inventory screen
-                // The return above handles if pause menu is open.
-                // If only inventory is open, we skip player movement below but allow inventory interaction.
-            } else {
-                 // Process movement inputs only if not paused by menu and inventory is not open
+            // Only process movement in PLAYING state
+            // Block movement in UI states (PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, etc.)
+            if (currentGameState == GameState.PLAYING) {
+                // Process movement inputs
                 boolean moveForward = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
                 boolean moveBackward = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
                 boolean moveLeft = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
@@ -212,10 +209,12 @@ public class InputHandler {
                 }
             }
             
-            // Handle number keys for hotbar slot selection
-            for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
-                if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
-                    selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
+            // Handle number keys for hotbar slot selection (only allow in PLAYING state)
+            if (currentGameState == GameState.PLAYING) {
+                for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
+                    if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
+                        selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
+                    }
                 }
             }
         } catch (Exception e) {
@@ -233,7 +232,7 @@ public class InputHandler {
 
             Game game = Game.getInstance();
             ChatSystem chatSystem = game.getChatSystem();
-            RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
+            RecipeScreen recipeScreen = game.getRecipeBookScreen();
             WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
             InventoryScreen inventoryScreen = game.getInventoryScreen();
             // PauseMenu pauseMenu = game.getPauseMenu(); // Get the PauseMenu instance // Removed as unused
@@ -247,7 +246,7 @@ public class InputHandler {
             }
 
             // 2. Close Recipe Book
-            if (recipeBookScreen != null && recipeBookScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
+            if (recipeScreen != null && recipeScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
                 game.closeRecipeBookScreen(); // This should set state and handle cursor via Game.setState
                 return; // Action taken
             }
@@ -259,7 +258,7 @@ public class InputHandler {
             }
 
             // 4. Close Inventory
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            if (game.getState() == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
                 // This covers case where Inventory is open directly, or under Recipe Book if Recipe Book was closed in a prior step this frame
                 game.toggleInventoryScreen(); // This toggles visibility and handles pause/cursor
                 return; // Action taken
@@ -282,13 +281,31 @@ public class InputHandler {
 
         if (isInventoryKeyPressed && !inventoryKeyPressed) {
             inventoryKeyPressed = true;
-            
+
+            // Check if inventory is already open (INVENTORY_UI state)
+            if (Game.getInstance().getState() == GameState.INVENTORY_UI) {
+                Game.getInstance().toggleInventoryScreen();
+                return;
+            }
+
             // Don't open inventory if chat is open
             ChatSystem chatSystem = Game.getInstance().getChatSystem();
             if (chatSystem != null && chatSystem.isOpen()) {
                 return;
             }
-            
+
+            // Don't open inventory if workbench is open
+            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+            if (workbenchScreen != null && workbenchScreen.isVisible()) {
+                return;
+            }
+
+            // Don't open inventory if recipe book is open
+            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+            if (recipeScreen != null && recipeScreen.isVisible()) {
+                return;
+            }
+
             Game.getInstance().toggleInventoryScreen();
             // Cursor state is handled by Game.toggleInventoryScreen()
         } else if (!isInventoryKeyPressed) {
@@ -302,8 +319,9 @@ public class InputHandler {
         if (isChatKeyPressed && !chatKeyPressed) {
             chatKeyPressed = true;
             
-            // Don't open chat if pause menu is open or if inventory is open
-            if (Game.getInstance().isPaused()) {
+            // Don't open chat if in states other than PLAYING, INVENTORY_UI, or RECIPE_BOOK_UI
+            GameState currentState = Game.getInstance().getState();
+            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI && currentState != GameState.RECIPE_BOOK_UI) {
                 return;
             }
             
@@ -328,8 +346,9 @@ public class InputHandler {
         if (isQKeyPressed && !qKeyPressed) {
             qKeyPressed = true;
             
-            // Don't drop items if any UI is open
-            if (Game.getInstance().isPaused()) {
+            // Only allow dropping items in PLAYING, INVENTORY_UI, and RECIPE_BOOK_UI states
+            GameState currentState = Game.getInstance().getState();
+            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI && currentState != GameState.RECIPE_BOOK_UI) {
                 return;
             }
             
@@ -432,7 +451,7 @@ public class InputHandler {
         } else if (!isF6Pressed) {
             f6KeyPressed = false;
         }
-        
+
         // F7 - Manual save
         boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
         if (isF7Pressed && !f7KeyPressed) {
@@ -440,18 +459,10 @@ public class InputHandler {
 
             Game game = Game.getInstance();
             if (game != null) {
-                com.stonebreak.world.save.managers.WorldSaveSystem saveSystem = game.getWorldSaveSystem();
+                com.stonebreak.world.save.SaveService saveService = game.getSaveService();
                 ChatSystem chatSystem = game.getChatSystem();
 
-                if (saveSystem != null) {
-                    if (!saveSystem.isInitialized()) {
-                        System.out.println("[MANUAL-SAVE] Save system not yet initialized - world still loading");
-                        if (chatSystem != null) {
-                            chatSystem.addMessage("World still loading, Hold your horses...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
-                        }
-                        return;
-                    }
-
+                if (saveService != null) {
                     try {
                         System.out.println("[MANUAL-SAVE] Starting manual save...");
 
@@ -460,7 +471,7 @@ public class InputHandler {
                             chatSystem.addMessage("Saving world...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
                         }
 
-                        saveSystem.saveWorldNow()
+                        saveService.saveAll()
                             .thenRun(() -> {
                                 System.out.println("[MANUAL-SAVE] Manual save completed successfully");
                                 if (chatSystem != null) {
@@ -493,8 +504,66 @@ public class InputHandler {
         } else if (!isF7Pressed) {
             f7KeyPressed = false;
         }
+
+        // F8 - Save System Diagnostic
+        boolean isF8Pressed = glfwGetKey(window, GLFW_KEY_F8) == GLFW_PRESS;
+        if (isF8Pressed && !f8KeyPressed) {
+            f8KeyPressed = true;
+
+            Game game = Game.getInstance();
+            if (game != null) {
+                Player player = game.getPlayer();
+                ChatSystem chatSystem = game.getChatSystem();
+
+                if (player != null) {
+                    // Get player's current position
+                    Vector3f pos = player.getPosition();
+                    int worldX = (int) Math.floor(pos.x);
+                    int worldY = (int) Math.floor(pos.y);
+                    int worldZ = (int) Math.floor(pos.z);
+
+                    int chunkX = Math.floorDiv(worldX, 16);
+                    int chunkZ = Math.floorDiv(worldZ, 16);
+
+                    System.out.println("\n[F8-DIAGNOSTIC] Running save system diagnostic at player position...");
+                    System.out.println("[F8-DIAGNOSTIC] Player world pos: (" + worldX + ", " + worldY + ", " + worldZ + ")");
+                    System.out.println("[F8-DIAGNOSTIC] Chunk coords: (" + chunkX + ", " + chunkZ + ")");
+
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Running save diagnostic...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                    }
+
+                    // Run quick diagnostic
+                    com.stonebreak.world.save.SaveSystemDiagnostics.quickDiagnostic();
+
+                    // Get current world name from save service
+                    String worldName = "unknown";
+                    var saveService = game.getSaveService();
+                    if (saveService != null) {
+                        String worldPath = saveService.getWorldPath();
+                        if (worldPath != null && worldPath.startsWith("worlds/")) {
+                            worldName = worldPath.substring(7); // Remove "worlds/" prefix
+                        }
+                    }
+
+                    // Run comprehensive chunk diagnostic for current chunk
+                    com.stonebreak.world.save.SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
+
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Diagnostic complete - check console", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                    }
+                } else {
+                    System.out.println("[F8-DIAGNOSTIC] Player is null");
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Diagnostic failed - no player", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
+                }
+            }
+        } else if (!isF8Pressed) {
+            f8KeyPressed = false;
+        }
     }
- 
+
 
     /**
      * Called by GLFW's mouse button callback (likely from Main.java).
@@ -512,9 +581,40 @@ public class InputHandler {
             }
         }
 
-        // Check if chat is open - if so, don't process any mouse buttons for game interactions
+        // Check if chat is open - if so, handle chat-specific interactions
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT) {
+                if (action == GLFW_PRESS) {
+                    // Handle scrollbar clicks first
+                    UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                        int windowWidth = Game.getWindowWidth();
+                        int windowHeight = Game.getWindowHeight();
+
+                        // Try chat scrollbar
+                        if (uiRenderer.getChatRenderer().handleChatScrollbarPress(
+                                chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                            return; // Handled by scrollbar
+                        }
+
+                        // Try commands scrollbar
+                        if (uiRenderer.getChatRenderer().handleCommandScrollbarPress(
+                                chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
+                            return; // Handled by scrollbar
+                        }
+                    }
+
+                    // If not scrollbar, handle tab switching and command button clicks
+                    handleChatClick(chatSystem);
+                } else if (action == GLFW_RELEASE) {
+                    // Handle scrollbar release
+                    UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+                    if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                        uiRenderer.getChatRenderer().handleScrollbarRelease();
+                    }
+                }
+            }
             return;
         }
 
@@ -524,8 +624,8 @@ public class InputHandler {
         // This processMouseButton method updates the state for those checks.
         // The 'return' here stops further processing for THIS mouse event in THIS method (e.g., world interaction).
 
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible() && Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() && Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
             // RecipeBookScreen.handleInput should manage its clicks. This prevents world clicks.
             return;
         }
@@ -575,8 +675,9 @@ public class InputHandler {
             return; // Pause menu handled or ignored the click
         }
 
-        // If game is not paused by any UI or the main pause menu, handle world interaction
-        if (!Game.getInstance().isPaused()) {
+        // Only allow world interaction in PLAYING state
+        GameState currentState = Game.getInstance().getState();
+        if (currentState == GameState.PLAYING) {
             if (action == GLFW_PRESS) { // Only react on initial press for world actions
                 Player player = Game.getPlayer();
                 if (player != null) {
@@ -614,23 +715,36 @@ public class InputHandler {
     public void handleScroll(double yOffset) {
         // Store scroll offset for UI screens that need it (like RecipeBookScreen)
         this.scrollYOffset = yOffset;
-        
-        // Block scroll input if chat is open
+
+        // Handle chat scrolling if chat is open
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
+            chatSystem.handleScroll(yOffset);
             return;
         }
         
         // If recipe book is open, let it handle scrolling and don't process hotbar scroll
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible()) {
             return; // RecipeBookScreen will use getAndResetScrollY()
         }
         
         InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-        // Allow scroll for hotbar selection even if inventory screen is open, but not if pause menu is.
-        if (Game.getInstance().isPaused() && (inventoryScreen == null || !inventoryScreen.isVisible())) {
-            return; // Paused by menu, not just inventory
+        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
+
+        // Block hotbar scroll if inventory or workbench screen is open
+        if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            return; // Inventory screen is open, block hotbar selection
+        }
+
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            return; // Workbench screen is open, block hotbar selection
+        }
+
+        // Only allow hotbar scrolling in PLAYING state
+        GameState currentState = Game.getInstance().getState();
+        if (currentState != GameState.PLAYING) {
+            return; // Block hotbar scroll in UI states
         }
         
         int newSelectedIndex = currentSelectedHotbarIndex;
@@ -696,13 +810,96 @@ public class InputHandler {
     public void updateMousePosition(float xpos, float ypos) {
         currentMouseX = xpos;
         currentMouseY = ypos;
-        
+
         // Update UI hover states
         PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
             UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
             if (uiRenderer != null) {
                 pauseMenu.updateHover(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight());
+            }
+        }
+
+        // Update chat renderer hover states and scrollbar dragging
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        if (chatSystem != null && chatSystem.isOpen()) {
+            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                uiRenderer.getChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
+
+                // Handle scrollbar dragging
+                if (uiRenderer.getChatRenderer().isDraggingScrollbar()) {
+                    uiRenderer.getChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle chat click interactions (tab switching and command buttons)
+     */
+    private void handleChatClick(ChatSystem chatSystem) {
+        int windowWidth = Game.getWindowWidth();
+        int windowHeight = Game.getWindowHeight();
+
+        // Calculate tab button areas (matching ChatRenderer folder-style tabs)
+        float backgroundPadding = 10;
+        float maxChatWidth = windowWidth * 0.4f;
+        float inputBoxHeight = 25;
+        float inputBoxMargin = 10;
+        float lineHeight = 20;
+        float chatAreaHeight = (10 * lineHeight) + inputBoxHeight + inputBoxMargin + (backgroundPadding * 2);
+
+        float backgroundY = windowHeight - chatAreaHeight;
+        float backgroundX = 20 - backgroundPadding;
+
+        // Tabs are positioned ABOVE the panel
+        float tabHeight = 22;
+        float tabSpacing = 2;
+        float tabY = backgroundY - tabHeight - tabSpacing;
+        float tabWidth = 70; // Compact tab width
+        float tabGap = 3; // Gap between tabs
+        float startX = backgroundX + 5; // Upper left corner offset
+
+        // Chat tab hitbox
+        float chatTabX = startX;
+        float chatTabY = tabY;
+        float chatTabEndX = chatTabX + tabWidth;
+        float chatTabEndY = chatTabY + tabHeight;
+
+        // Commands tab hitbox
+        float commandsTabX = startX + tabWidth + tabGap;
+        float commandsTabY = tabY;
+        float commandsTabEndX = commandsTabX + tabWidth;
+        float commandsTabEndY = commandsTabY + tabHeight;
+
+        // Check if clicked on Chat tab
+        if (currentMouseX >= chatTabX && currentMouseX <= chatTabEndX &&
+            currentMouseY >= chatTabY && currentMouseY <= chatTabEndY) {
+            chatSystem.setCurrentTab(ChatSystem.ChatTab.CHAT);
+            return;
+        }
+
+        // Check if clicked on Commands tab
+        if (currentMouseX >= commandsTabX && currentMouseX <= commandsTabEndX &&
+            currentMouseY >= commandsTabY && currentMouseY <= commandsTabEndY) {
+            chatSystem.setCurrentTab(ChatSystem.ChatTab.COMMANDS);
+            return;
+        }
+
+        // Check if clicked on a command button (only if Commands tab is active)
+        if (chatSystem.getCurrentTab() == ChatSystem.ChatTab.COMMANDS) {
+            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
+            if (uiRenderer != null && uiRenderer.getChatRenderer() != null) {
+                String clickedCommand = uiRenderer.getChatRenderer().getClickedCommand(
+                    chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
+
+                if (clickedCommand != null) {
+                    // Populate the chat input with the command instead of executing it
+                    chatSystem.setInput("/" + clickedCommand + " ");
+                    // Switch back to Chat tab to show the input
+                    chatSystem.setCurrentTab(ChatSystem.ChatTab.CHAT);
+                }
             }
         }
     }
@@ -743,7 +940,7 @@ public class InputHandler {
             worldSelectScreen.handleCharacterInput(character);
             return;
         }
-        
+
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatSystem.handleCharInput(character);
@@ -751,10 +948,10 @@ public class InputHandler {
         }
         
         // Handle recipe book search input
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() &&
             Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
-            recipeBookScreen.handleCharacterInput(character);
+            recipeScreen.handleCharacterInput(character);
         }
     }
     
@@ -768,7 +965,7 @@ public class InputHandler {
             worldSelectScreen.handleKeyInput(key, action, mods);
             return;
         }
-        
+
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             // When chat is open, only process chat-related keys
@@ -781,8 +978,26 @@ public class InputHandler {
                     case GLFW_KEY_ESCAPE -> {
                         chatSystem.closeChat();
                     }
+                    case GLFW_KEY_V -> {
+                        // Handle Ctrl+V for paste
+                        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
+                            chatSystem.handlePaste();
+                        }
+                    }
+                    case GLFW_KEY_C -> {
+                        // Handle Ctrl+C for copy
+                        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
+                            chatSystem.handleCopy();
+                        }
+                    }
                     case GLFW_KEY_T -> {
                         // T key does nothing when chat is already open
+                    }
+                    case GLFW_KEY_TAB -> {
+                        // Handle Tab for command autocomplete
+                        chatSystem.handleTab();
                     }
                 }
             }
@@ -790,11 +1005,11 @@ public class InputHandler {
         }
         
         // Handle recipe book search input
-        RecipeBookScreen recipeBookScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible() && 
+        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() &&
             Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
             if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-                recipeBookScreen.handleKeyInput(key, action);
+                recipeScreen.handleKeyInput(key, action);
             }
         }
         

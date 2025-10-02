@@ -4,7 +4,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.worldSelect.config.WorldSelectConfig;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.world.save.core.WorldMetadata;
+import com.stonebreak.world.save.model.WorldData;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -169,21 +169,22 @@ public class WorldListRenderer {
      * Renders additional world information (last played, etc.).
      */
     private void renderWorldInfo(String worldName, float x, float y, MemoryStack stack) {
-        WorldMetadata metadata = discoveryManager.getWorldMetadata(worldName);
-        if (metadata == null) return;
+        WorldData worldData = discoveryManager.getWorldData(worldName);
+        if (worldData == null) return;
 
         long vg = uiRenderer.getVG();
 
         // Format world info
         StringBuilder info = new StringBuilder();
 
-        if (metadata.getLastPlayedMillis() > 0) {
-            info.append("Last played: ").append(formatTimestamp(metadata.getLastPlayedMillis()));
+        if (worldData.getLastPlayed() != null) {
+            long lastPlayedMillis = worldData.getLastPlayed().toEpochSecond(java.time.ZoneOffset.UTC) * 1000;
+            info.append("Last played: ").append(formatTimestamp(lastPlayedMillis));
         }
 
-        if (metadata.getSeed() != 0) {
+        if (worldData.getSeed() != 0) {
             if (info.length() > 0) info.append(" | ");
-            info.append("Seed: ").append(metadata.getSeed());
+            info.append("Seed: ").append(worldData.getSeed());
         }
 
         if (info.length() > 0) {

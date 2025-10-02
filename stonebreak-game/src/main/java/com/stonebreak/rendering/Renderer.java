@@ -18,6 +18,7 @@ import com.stonebreak.rendering.UI.components.OverlayRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.Font;
 import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -84,8 +85,13 @@ public class Renderer {
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
         
-        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas());
-        
+        dropRenderer = new DropRenderer(blockRenderer, resourceManager.getTextureAtlas(), resourceManager.getShaderProgram());
+
+        // Test the new voxelized item drop system
+        System.out.println("[Renderer] Testing voxelized item drop system...");
+        dropRenderer.testDropRendering();
+        System.out.println("[Renderer] Voxelized item drop system test complete.");
+
         worldRenderer = new WorldRenderer(resourceManager.getShaderProgram(), 
                                          resourceManager.getTextureAtlas(), 
                                          configManager.getProjectionMatrix(),
@@ -222,7 +228,7 @@ public class Renderer {
      * @param windowWidth Window width
      * @param windowHeight Window height
      */
-    public void renderChat(com.stonebreak.chat.ChatSystem chatSystem, int windowWidth, int windowHeight) {
+    public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {
         if (uiRenderer != null) {
             uiRenderer.renderChat(chatSystem, windowWidth, windowHeight);
         }
@@ -497,8 +503,16 @@ public class Renderer {
     public void renderWireframePath(List<Vector3f> pathPoints, Vector3f color) {
         debugRenderer.renderWireframePath(pathPoints, color);
     }
-    
-    
+
+    /**
+     * Renders all sound emitters as yellow triangle wireframes when debug mode is enabled.
+     * @param debugMode Whether debug mode is currently enabled
+     */
+    public void renderSoundEmitters(boolean debugMode) {
+        debugRenderer.renderSoundEmitters(debugMode);
+    }
+
+
     /**
      * Checks for OpenGL errors and logs them with context information.
      */

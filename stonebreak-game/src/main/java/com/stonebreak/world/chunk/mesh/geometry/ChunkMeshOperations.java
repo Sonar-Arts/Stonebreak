@@ -41,6 +41,8 @@ public class ChunkMeshOperations {
     private static final float[] tempIsWaterFlags = new float[131072]; // Match vertex capacity / 2
     private static final float[] tempIsAlphaTestedFlags = new float[131072]; // Match vertex capacity / 2
     private static final int[] tempIndices = new int[393216]; // 1.5x vertices for indices
+
+    private static final float WATER_FLAG_EPSILON = 0.0001f;
     
     private int vertexIndex = 0;
     private int textureIndex = 0;
@@ -156,13 +158,29 @@ public class ChunkMeshOperations {
         float blockHeight = geometryGenerator.getBlockHeight(blockType, worldX, worldY, worldZ, world);
         
         // Generate vertices and normals using the geometry service
-        vertexIndex += geometryGenerator.generateFaceVertices(face, worldX, worldY, worldZ, blockHeight, tempVertices, vertexIndex);
+        float[] waterCornerHeights = null;
+        float waterBottomHeight = worldY;
+        if (blockType == BlockType.WATER) {
+            int blockX = (int)Math.floor(worldX);
+            int blockY = (int)Math.floor(worldY);
+            int blockZ = (int)Math.floor(worldZ);
+            waterCornerHeights = geometryGenerator.computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight, world);
+            waterBottomHeight = geometryGenerator.computeWaterBottomAttachmentHeight(worldX, worldY, worldZ, world);
+        }
+
+        vertexIndex += geometryGenerator.generateFaceVertices(face, blockType, worldX, worldY, worldZ,
+                                                             blockHeight, waterCornerHeights, waterBottomHeight,
+                                                             tempVertices, vertexIndex);
         normalIndex += geometryGenerator.generateFaceNormals(face, tempNormals, normalIndex);
-        
+
         // Add texture coordinates and flags using the texture service
+        int faceFlagIndex = flagIndex;
         textureProcessor.addTextureCoordinatesAndFlags(blockType, face, worldX, worldY, worldZ, blockHeight,
-                                                     tempTextureCoords, textureIndex, tempIsWaterFlags, 
+                                                     tempTextureCoords, textureIndex, tempIsWaterFlags,
                                                      tempIsAlphaTestedFlags, flagIndex);
+        if (blockType == BlockType.WATER && waterCornerHeights != null) {
+            applyWaterVertexHeights(face, waterCornerHeights, tempIsWaterFlags, faceFlagIndex);
+        }
         textureIndex += 8; // 4 vertices * 2 texture coordinates each
         flagIndex += 4; // 4 flags for each vertex
         
@@ -176,6 +194,51 @@ public class ChunkMeshOperations {
         tempIndices[indexIndex++] = index + 3;
         
         return index + 4;
+    }
+
+    private void applyWaterVertexHeights(int face, float[] waterCornerHeights, float[] isWaterFlags, int flagIndex) {
+        switch (face) {
+            case 0 -> {
+                isWaterFlags[flagIndex] = encodeWaterHeight(waterCornerHeights[0]);
+                isWaterFlags[flagIndex + 1] = encodeWaterHeight(waterCornerHeights[1]);
+                isWaterFlags[flagIndex + 2] = encodeWaterHeight(waterCornerHeights[2]);
+                isWaterFlags[flagIndex + 3] = encodeWaterHeight(waterCornerHeights[3]);
+            }
+            case 2 -> {
+                isWaterFlags[flagIndex] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 1] = encodeWaterHeight(waterCornerHeights[3]);
+                isWaterFlags[flagIndex + 2] = encodeWaterHeight(waterCornerHeights[2]);
+                isWaterFlags[flagIndex + 3] = WATER_FLAG_EPSILON;
+            }
+            case 3 -> {
+                isWaterFlags[flagIndex] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 1] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 2] = encodeWaterHeight(waterCornerHeights[1]);
+                isWaterFlags[flagIndex + 3] = encodeWaterHeight(waterCornerHeights[0]);
+            }
+            case 4 -> {
+                isWaterFlags[flagIndex] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 1] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 2] = encodeWaterHeight(waterCornerHeights[2]);
+                isWaterFlags[flagIndex + 3] = encodeWaterHeight(waterCornerHeights[1]);
+            }
+            case 5 -> {
+                isWaterFlags[flagIndex] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 1] = encodeWaterHeight(waterCornerHeights[0]);
+                isWaterFlags[flagIndex + 2] = encodeWaterHeight(waterCornerHeights[3]);
+                isWaterFlags[flagIndex + 3] = WATER_FLAG_EPSILON;
+            }
+            default -> {
+                isWaterFlags[flagIndex] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 1] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 2] = WATER_FLAG_EPSILON;
+                isWaterFlags[flagIndex + 3] = WATER_FLAG_EPSILON;
+            }
+        }
+    }
+
+    private float encodeWaterHeight(float height) {
+        return height > WATER_FLAG_EPSILON ? height : WATER_FLAG_EPSILON;
     }
 
     

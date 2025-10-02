@@ -1,7 +1,7 @@
 package com.stonebreak.items;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.ui.InventoryScreen;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 
 
 /**
@@ -528,8 +528,9 @@ public class Inventory {
             this.selectedHotbarSlotIndex = selectedHotbarSlotIndex;
             if (changed && inventoryScreen != null) {
                 ItemStack newItem = hotbarSlots[this.selectedHotbarSlotIndex];
-                if (newItem.getItem() instanceof BlockType blockType) {
-                    inventoryScreen.displayHotbarItemTooltip(blockType);
+                // Support all item types, not just BlockType
+                if (newItem != null && !newItem.isEmpty()) {
+                    inventoryScreen.displayHotbarItemTooltip(newItem);
                 }
             }
         }

@@ -1,17 +1,9 @@
 package com.stonebreak.world.chunk;
 
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.time.LocalDateTime;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
 import com.stonebreak.world.World;
-import com.stonebreak.world.operations.WorldConfiguration;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.system.MemoryUtil;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
@@ -31,30 +23,29 @@ import com.stonebreak.world.chunk.operations.ChunkResourceManager;
 public class Chunk {
     
     private static final Logger logger = Logger.getLogger(Chunk.class.getName());
-    
+
     private final int x;
     private final int z;
-    
+
     // Block data storage and operations
     private final ChunkDataBuffer chunkData;
     private final ChunkDataOperations dataOperations;
-    
+
     // Buffer operations and state
     private final ChunkBufferOperations bufferOperations = new ChunkBufferOperations();
     private ChunkBufferState bufferState = ChunkBufferState.empty();
     private int indexCount;
     private boolean meshGenerated;
-    
+    private ChunkMeshData pendingMeshData;
+
     // State management
     private final ChunkInternalStateManager stateManager = new ChunkInternalStateManager();
-    
+
     // Resource management
     private final ChunkResourceManager resourceManager;
-    
-    // Save/load tracking fields
-    private boolean isDirty = false;
-    private LocalDateTime lastModified = LocalDateTime.now();
-    private boolean generatedByPlayer = false;
+
+    // Metadata for save system
+    private java.time.LocalDateTime lastModified = java.time.LocalDateTime.now();
     
     /**
      * Creates a new chunk at the specified position.
@@ -86,10 +77,7 @@ public class Chunk {
      * Sets the block type at the specified local position.
      */
     public void setBlock(int x, int y, int z, BlockType blockType) {
-        boolean changed = dataOperations.setBlock(x, y, z, blockType);
-        if (changed) {
-            setDirty(true); // Mark chunk as dirty for saving when block data changes
-        }
+        dataOperations.setBlock(x, y, z, blockType);
     }
     
     // Chunk mesh operations instance for generating mesh data
@@ -144,25 +132,21 @@ public class Chunk {
             return; // Data not ready yet or already processed
         }
 
-        // Case 1: Chunk has become empty or has no renderable data
-        if (vertexData == null || vertexData.length == 0 || indexData == null || indexData.length == 0 || indexCount == 0) {
-            if (this.meshGenerated) { // If there was an old mesh
-                bufferOperations.deleteBuffers(bufferState);
-                bufferState = ChunkBufferState.empty();
-                this.meshGenerated = false;
-            }
-            stateManager.removeState(ChunkState.MESH_CPU_READY); // Data processed
-            return;
-        }
-
-        // Case 2: We have new mesh data to apply.
+        final ChunkMeshData meshData = pendingMeshData != null ? pendingMeshData : ChunkMeshData.empty();
         final boolean hasExistingMesh = this.meshGenerated && bufferState.isValid();
 
         try {
-            // Create ChunkMeshData from current arrays
-            ChunkMeshData meshData = new ChunkMeshData(vertexData, textureData, normalData, 
-                                                      isWaterData, isAlphaTestedData, indexData, indexCount);
-            
+            if (meshData.isEmpty()) {
+                if (this.meshGenerated) {
+                    bufferOperations.deleteBuffers(bufferState);
+                    bufferState = ChunkBufferState.empty();
+                    this.meshGenerated = false;
+                }
+                this.indexCount = 0;
+                stateManager.removeState(ChunkState.MESH_GPU_UPLOADED);
+                return;
+            }
+
             if (hasExistingMesh) {
                 // Fast path: update buffer contents in-place
                 bufferOperations.updateBuffers(bufferState, meshData);
@@ -171,13 +155,9 @@ public class Chunk {
                 bufferState = bufferOperations.createBuffers(meshData);
                 this.meshGenerated = true; // New mesh is now active and ready for rendering.
             }
-            
-            // Mark as uploaded to GPU
+
+            this.indexCount = meshData.getIndexCount();
             stateManager.markMeshGpuUploaded();
-            
-            // CRITICAL FIX: Free mesh data arrays after successful GL upload
-            // The data is now safely stored in GPU buffers and no longer needed in RAM
-            freeMeshDataArrays();
         } catch (Exception e) {
             logger.log(Level.SEVERE, () ->
                 "CRITICAL: Error during " + (hasExistingMesh ? "updateBuffers" : "createBuffers") +
@@ -185,15 +165,16 @@ public class Chunk {
                 "Time=" + java.time.LocalDateTime.now() +
                 " Thread=" + Thread.currentThread().getName() +
                 " BufferState=" + bufferState +
-                " IndexCount=" + indexCount +
+                " PendingIndexCount=" + meshData.getIndexCount() +
                 " MemMB=" + ((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024));
-            
+
             if (!hasExistingMesh) {
                 // Creation failed; ensure we don't hold partially created GL objects
                 bufferState = resourceManager.handleBufferUploadFailure(bufferState);
                 this.meshGenerated = false;
             }
-       } finally {
+        } finally {
+            pendingMeshData = null;
             stateManager.removeState(ChunkState.MESH_CPU_READY); // Data has been processed (or attempt failed)
         }
     }
@@ -201,25 +182,9 @@ public class Chunk {
      * Updates mesh data from ChunkMeshData result
      */
     private void updateMeshDataFromResult(ChunkMeshData meshData) {
-        // Free old mesh data arrays before assigning new ones
-        freeMeshDataArrays();
-        
-        vertexData = meshData.getVertexData();
-        textureData = meshData.getTextureData();
-        normalData = meshData.getNormalData();
-        isWaterData = meshData.getIsWaterData();
-        isAlphaTestedData = meshData.getIsAlphaTestedData();
-        indexData = meshData.getIndexData();
-        indexCount = meshData.getIndexCount();
+        // Stage the mesh for GPU upload without disturbing the currently rendered data
+        pendingMeshData = meshData;
     }
-    
-    // Mesh data
-    private float[] vertexData;
-    private float[] textureData;
-    private float[] normalData;
-    private float[] isWaterData;
-    private float[] isAlphaTestedData; // New array for isAlphaTested flags
-    private int[] indexData;
       /**
      * Renders the chunk.
      */
@@ -250,14 +215,6 @@ public class Chunk {
     }
 
     public int getChunkZ() {
-        return this.z;
-    }
-
-    public int getX() {
-        return this.x;
-    }
-
-    public int getZ() {
         return this.z;
     }
 
@@ -318,7 +275,7 @@ public class Chunk {
     public ChunkDataBuffer getChunkData() {
         return chunkData;
     }
-    
+
     /**
      * Gets the resource manager for this chunk.
      * @return The chunk's resource manager
@@ -326,17 +283,88 @@ public class Chunk {
     public ChunkResourceManager getResourceManager() {
         return resourceManager;
     }
+
+    /**
+     * Gets the chunk's X coordinate.
+     * @return The chunk X coordinate
+     */
+    public int getX() {
+        return x;
+    }
+
+    /**
+     * Gets the chunk's Z coordinate.
+     * @return The chunk Z coordinate
+     */
+    public int getZ() {
+        return z;
+    }
+
+    /**
+     * Gets the block array. Used by save system.
+     * @return The 3D block array
+     */
+    public BlockType[][][] getBlocks() {
+        return chunkData.getBlocks();
+    }
+
+    /**
+     * Sets the block array. Used by save system during chunk loading.
+     * NOTE: This marks the chunk as MESH_DIRTY because the mesh needs regeneration.
+     * The chunk will remain dirty until a mesh is generated and rendered.
+     * The save system only calls markClean() after successfully saving, not after loading.
+     * @param blocks The new block array
+     */
+    public void setBlocks(BlockType[][][] blocks) {
+        chunkData.setBlocks(blocks);
+        stateManager.markMeshDirty();
+    }
+
+    /**
+     * Checks if the chunk has been modified since last save.
+     * @return true if chunk data has been modified and needs saving
+     */
+    public boolean isDirty() {
+        return stateManager.isDataModified();
+    }
+
+    /**
+     * Marks the chunk as dirty (needing to be saved).
+     */
+    public void markDirty() {
+        stateManager.markDataModified();
+        lastModified = java.time.LocalDateTime.now();
+    }
+
+    /**
+     * Marks the chunk as clean (saved to disk).
+     */
+    public void markClean() {
+        stateManager.clearDataModified();
+    }
+
+    /**
+     * Gets the last modification timestamp.
+     * @return The last modified time
+     */
+    public java.time.LocalDateTime getLastModified() {
+        return lastModified;
+    }
+
+    /**
+     * Sets the last modification timestamp. Used by save system.
+     * @param lastModified The last modified time
+     */
+    public void setLastModified(java.time.LocalDateTime lastModified) {
+        this.lastModified = lastModified;
+    }
     
     /**
      * Gets the current mesh data as a ChunkMeshData object.
      * @return Current mesh data, or empty mesh data if no mesh exists
      */
     private ChunkMeshData getCurrentMeshData() {
-        if (vertexData == null || indexData == null || indexCount == 0) {
-            return ChunkMeshData.empty();
-        }
-        return new ChunkMeshData(vertexData, textureData, normalData, 
-                               isWaterData, isAlphaTestedData, indexData, indexCount);
+        return pendingMeshData != null ? pendingMeshData : ChunkMeshData.empty();
     }
      /**
       * Cleans up CPU-side resources. Safe to call from any thread.
@@ -344,12 +372,8 @@ public class Chunk {
      public void cleanupCpuResources() {
          ChunkMeshData meshData = getCurrentMeshData();
          resourceManager.cleanupCpuResources(meshData);
-         freeMeshDataArrays();
+         pendingMeshData = null;
          indexCount = 0;
-
-         // CRITICAL FIX: Mark mesh as dirty to ensure regeneration is attempted
-         // Without this, chunks with cleared resources won't be queued for mesh rebuild
-         stateManager.markMeshDirty();
      }
  
      /**
@@ -362,105 +386,4 @@ public class Chunk {
          // Clean up buffer operations resources
          bufferOperations.cleanup();
      }
-    /**
-     * Frees mesh data arrays to reduce memory usage.
-     * This is critical for preventing memory leaks when mesh data is regenerated.
-     */
-    private void freeMeshDataArrays() {
-        vertexData = null;
-        textureData = null;
-        normalData = null;
-        isWaterData = null;
-        isAlphaTestedData = null;
-        indexData = null;
-    }
-    
-    // ===== Save/Load Methods =====
-    
-    /**
-     * Gets whether this chunk has been modified and needs saving.
-     */
-    public boolean isDirty() {
-        return isDirty;
-    }
-    
-    /**
-     * Sets whether this chunk has been modified and needs saving.
-     */
-    public void setDirty(boolean isDirty) {
-        this.isDirty = isDirty;
-        if (isDirty) {
-            this.lastModified = LocalDateTime.now();
-        }
-    }
-    
-    /**
-     * Marks this chunk as clean (not needing to be saved).
-     */
-    public void markClean() {
-        this.isDirty = false;
-        this.lastModified = LocalDateTime.now();
-    }
-    
-    /**
-     * Gets the last modification timestamp of this chunk.
-     */
-    public LocalDateTime getLastModified() {
-        return lastModified;
-    }
-    
-    /**
-     * Sets the last modification timestamp of this chunk.
-     */
-    public void setLastModified(LocalDateTime lastModified) {
-        this.lastModified = lastModified;
-    }
-    
-    /**
-     * Gets whether this chunk was generated by player actions.
-     */
-    public boolean isGeneratedByPlayer() {
-        return generatedByPlayer;
-    }
-    
-    /**
-     * Sets whether this chunk was generated by player actions.
-     */
-    public void setGeneratedByPlayer(boolean generatedByPlayer) {
-        this.generatedByPlayer = generatedByPlayer;
-    }
-    
-    /**
-     * Gets whether features have been populated in this chunk.
-     * Renamed from areFeaturesPopulated for consistency with ChunkData.
-     */
-    public boolean isFeaturesPopulated() {
-        return stateManager.hasState(ChunkState.FEATURES_POPULATED);
-    }
-
-    /**
-     * Gets the block array for this chunk.
-     * Used by binary save/load system.
-     * @return The 3D block array
-     */
-    public BlockType[][][] getBlocks() {
-        return chunkData.getBlocks();
-    }
-
-    /**
-     * Sets the block array for this chunk.
-     * Used by binary save/load system.
-     * @param blocks The 3D block array to set
-     */
-    public void setBlocks(BlockType[][][] blocks) {
-        chunkData.setBlocks(blocks);
-    }
-
-    /**
-     * Marks this chunk as dirty.
-     * Alias for setDirty(true) used by binary save/load system.
-     */
-    public void markDirty() {
-        setDirty(true);
-    }
 }

@@ -2,9 +2,11 @@ package com.stonebreak.world;
 
 import java.util.Map;
 import java.util.List;
+import java.util.Collection;
 
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
@@ -35,6 +37,7 @@ public class World {
     private final WorldMemoryManager memoryManager;
     private final ChunkMeshBuildingPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
+    private final WaterSystem waterSystem;
 
     public World() {
         this(new WorldConfiguration());
@@ -58,6 +61,9 @@ public class World {
         this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, stateManager, config);
         this.memoryManager = new WorldMemoryManager(config, chunkStore);
         
+        this.waterSystem = new WaterSystem(this);
+        this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
+        
         this.chunkManager = new ChunkManager(this, config.getRenderDistance());
         
         System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
@@ -75,6 +81,7 @@ public class World {
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
+        waterSystem.tick(Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
         memoryManager.performMemoryManagement();
@@ -143,20 +150,32 @@ public class World {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return BlockType.AIR;
         }
-        
+
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = getChunkAt(chunkX, chunkZ);
-        
+
         if (chunk == null) {
             return BlockType.AIR;
         }
-        
+
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         return chunk.getBlock(localX, y, localZ);
+    }
+
+    /**
+     * Checks if the specified world position is underwater (contains a water block).
+     * @param x World X coordinate
+     * @param y World Y coordinate
+     * @param z World Z coordinate
+     * @return true if the position contains water, false otherwise
+     */
+    public boolean isPositionUnderwater(int x, int y, int z) {
+        BlockType block = getBlockAt(x, y, z);
+        return block == BlockType.WATER;
     }
     
     /**
@@ -176,12 +195,22 @@ public class World {
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
         
+        BlockType previous = chunk.getBlock(localX, y, localZ);
+        if (previous == blockType) {
+            return true;
+        }
+
         chunk.setBlock(localX, y, localZ, blockType);
 
         stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
         neighborCoordinator.rebuildNeighborChunksScheduled(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        waterSystem.onBlockChanged(x, y, z, previous, blockType);
         
         return true;
+    }
+
+    public WaterSystem getWaterSystem() {
+        return waterSystem;
     }
     
     
@@ -306,7 +335,15 @@ public class World {
     public int getDirtyChunkCount() {
         return chunkStore.getDirtyChunks().size();
     }
-    
+
+    /**
+     * Returns all currently loaded chunks.
+     * This is used for diagnostics and debugging.
+     */
+    public Collection<Chunk> getAllChunks() {
+        return chunkStore.getAllChunks();
+    }
+
     /**
      * Returns the number of chunks pending mesh build.
      * This is used for debugging purposes.
@@ -356,10 +393,33 @@ public class World {
     public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
         int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
         if (chunk != null) {
             stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        }
+    }
+
+    /**
+     * Triggers a mesh rebuild for all loaded chunks.
+     * Use this when global visual settings change that affect block rendering.
+     * This method requires a player position to determine which chunks are currently loaded.
+     */
+    public void rebuildAllLoadedChunks(int playerChunkX, int playerChunkZ) {
+        try {
+            // Get all chunks currently loaded around the player
+            Map<ChunkPosition, Chunk> loadedChunks = getChunksAroundPlayer(playerChunkX, playerChunkZ);
+
+            // Mark all loaded chunks for mesh rebuild
+            for (Chunk chunk : loadedChunks.values()) {
+                if (chunk != null) {
+                    stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                }
+            }
+
+            System.out.println("Marked " + loadedChunks.size() + " chunks for mesh rebuild due to settings change");
+        } catch (Exception e) {
+            System.err.println("Error rebuilding all chunks: " + e.getMessage());
         }
     }
     

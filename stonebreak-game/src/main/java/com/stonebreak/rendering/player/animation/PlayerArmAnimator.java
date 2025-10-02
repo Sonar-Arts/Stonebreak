@@ -28,28 +28,35 @@ public class PlayerArmAnimator {
      * Applies all appropriate animations to the arm transformation matrix.
      */
     public void applyAnimations(Matrix4f armTransform, Player player) {
+        applyAnimations(armTransform, player, null);
+    }
+
+    /**
+     * Applies all appropriate animations to the arm transformation matrix with item context.
+     */
+    public void applyAnimations(Matrix4f armTransform, Player player, com.stonebreak.items.ItemStack heldItem) {
         float totalTime = Game.getInstance().getTotalTimeElapsed();
         boolean isWalking = isPlayerWalking(player);
-        
+
         // Apply base positioning
         applyBasePosition(armTransform);
-        
+
         // Apply movement-based animations
         if (isWalking) {
             applyWalkingAnimation(armTransform, totalTime);
         } else {
             applyIdleAnimation(armTransform, totalTime);
         }
-        
+
         // Apply breathing animation (always active)
         applyBreathingAnimation(armTransform, totalTime);
-        
+
         // Apply base rotations for Minecraft-style positioning
         applyBaseRotations(armTransform);
-        
+
         // Apply attack animation if attacking
         if (player.isAttacking()) {
-            applyAttackAnimation(armTransform, player.getAttackAnimationProgress());
+            applyAttackAnimation(armTransform, player.getAttackAnimationProgress(), heldItem);
         }
     }
     
@@ -115,23 +122,75 @@ public class PlayerArmAnimator {
     }
     
     /**
-     * Applies attack animation with diagonal swing motion.
+     * Applies appropriate attack animation based on held item type.
      */
-    private void applyAttackAnimation(Matrix4f armTransform, float attackProgress) {
+    private void applyAttackAnimation(Matrix4f armTransform, float attackProgress, com.stonebreak.items.ItemStack heldItem) {
+        // Determine animation type based on held item
+        if (heldItem != null && !heldItem.isEmpty()) {
+            if (heldItem.isPlaceable()) {
+                // Use old diagonal swing for blocks
+                applyBlockAttackAnimation(armTransform, attackProgress);
+            } else {
+                // Use new TotalMiner-style overhead swing for items (tools, materials)
+                applyItemAttackAnimation(armTransform, attackProgress);
+            }
+        } else {
+            // Default to block animation when no item is held
+            applyBlockAttackAnimation(armTransform, attackProgress);
+        }
+    }
+
+    /**
+     * Applies original diagonal swing animation for blocks.
+     */
+    private void applyBlockAttackAnimation(Matrix4f armTransform, float attackProgress) {
         float progress = 1.0f - attackProgress; // Reverse the progress
-        
-        // Diagonal swing motion towards center of screen
+
+        // Original diagonal swing motion towards center of screen
         float swingAngle = (float) (Math.sin(progress * Math.PI) * 45.0f);
         float diagonalAngle = (float) (Math.sin(progress * Math.PI) * 30.0f);
         float swingLift = (float) (Math.sin(progress * Math.PI * 0.5f) * 0.08f);
-        
-        // Apply diagonal swing rotation
+
+        // Apply original diagonal swing rotation
         armTransform.rotate((float) Math.toRadians(-swingAngle * 0.7f), 1.0f, 0.0f, 0.0f);
         armTransform.rotate((float) Math.toRadians(-diagonalAngle), 0.0f, 1.0f, 0.0f);
         armTransform.rotate((float) Math.toRadians(swingAngle * 0.2f), 0.0f, 0.0f, 1.0f);
-        
+
         // Translate towards center of screen during swing
         armTransform.translate(progress * -0.1f, swingLift, progress * -0.05f);
+    }
+
+    /**
+     * Applies smooth, gentle swing animation for items (tools, materials).
+     * Less violent and more fluid than the original overhead swing.
+     */
+    private void applyItemAttackAnimation(Matrix4f armTransform, float attackProgress) {
+        float progress = 1.0f - attackProgress; // Reverse the progress for natural swing
+
+        // Smooth swing with gentle arc motion
+        // Use smoother easing functions for more fluid motion
+        float smoothProgress = (float) (1.0f - Math.cos(progress * Math.PI)) * 0.5f; // Smooth ease-in-out
+
+        // Forward swing motion - starts high and swings forward/down
+        float windupAngle = smoothProgress * 35.0f; // Positive angle to start high/back
+        float swingAngle = (float) (Math.sin(progress * Math.PI) * -65.0f); // Negative angle to swing forward/down
+
+        // Enhanced motion for large outward swing
+        float verticalMotion = (float) (Math.sin(progress * Math.PI) * 0.2f); // Increased for more dramatic motion
+        float forwardMotion = (float) (Math.sin(progress * Math.PI) * 0.25f); // Increased for more forward reach
+        float outwardMotion = (float) (Math.sin(progress * Math.PI) * 0.3f); // New outward translation
+
+        // Apply smooth rotation (X-axis for vertical swing)
+        armTransform.rotate((float) Math.toRadians(windupAngle + swingAngle), 1.0f, 0.0f, 0.0f);
+
+        // No Y-axis rotation - outward motion achieved purely through translation
+
+        // Apply smooth translation with large outward swing motion (negative X for outward)
+        armTransform.translate(-outwardMotion, verticalMotion, forwardMotion);
+
+        // Minimal twist for subtle realism (Z-axis)
+        float swingTwist = (float) (Math.sin(progress * Math.PI) * 3.0f); // Reduced from 8.0f to 3.0f
+        armTransform.rotate((float) Math.toRadians(swingTwist), 0.0f, 0.0f, 1.0f);
     }
     
     /**

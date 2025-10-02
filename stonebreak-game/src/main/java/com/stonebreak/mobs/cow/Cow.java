@@ -8,6 +8,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.AnimationController;
+import com.stonebreak.audio.CowSounds;
 
 /**
  * Cow mob implementation - the first living entity in Stonebreak.
@@ -22,10 +23,6 @@ public class Cow extends LivingEntity {
     private boolean isGrazing;
     private float grazingTimer;
     
-    // Sound system
-    private float mooTimer;
-    private static final float MIN_MOO_INTERVAL = 15.0f;
-    private static final float MAX_MOO_INTERVAL = 45.0f;
     
     // Milk system (basic implementation)
     private boolean canBeMilked;
@@ -43,6 +40,9 @@ public class Cow extends LivingEntity {
     private float animationTransitionTime;
     private static final float ANIMATION_TRANSITION_DURATION = 0.5f;
     private final AnimationController animationController;
+
+    // Sound system
+    private final CowSounds cowSounds;
     
     /**
      * Creates a new cow at the specified position with default texture variant.
@@ -66,8 +66,6 @@ public class Cow extends LivingEntity {
         this.isGrazing = false;
         this.grazingTimer = 0.0f;
         
-        // Initialize sound timer
-        this.mooTimer = MIN_MOO_INTERVAL + (float)(Math.random() * (MAX_MOO_INTERVAL - MIN_MOO_INTERVAL));
         
         // Initialize milk system
         this.canBeMilked = true;
@@ -80,10 +78,13 @@ public class Cow extends LivingEntity {
         this.currentAnimation = "IDLE";
         this.animationTransitionTime = 0.0f;
         this.animationController = new AnimationController(this);
-        
+
+        // Initialize sound system
+        this.cowSounds = new CowSounds(world);
+
         // Set interaction range for cows
         this.interactionRange = 2.5f;
-        
+
         // Set faster turning speed for cows
         this.turnSpeed = 180.0f; // Faster rotation for more responsive movement
     }
@@ -98,7 +99,6 @@ public class Cow extends LivingEntity {
         
         // Update cow-specific systems
         updateMilkSystem(deltaTime);
-        updateSoundSystem(deltaTime);
         updateBehaviorTimers(deltaTime);
         
         // Update AI behavior
@@ -109,6 +109,11 @@ public class Cow extends LivingEntity {
         // Update animation system
         updateAnimationState(deltaTime);
         animationController.updateAnimations(deltaTime);
+
+        // Update cow sounds
+        if (cowSounds != null) {
+            cowSounds.updateSounds(position, velocity, isOnGround());
+        }
     }
     
     /**
@@ -124,19 +129,6 @@ public class Cow extends LivingEntity {
         }
     }
     
-    /**
-     * Updates the cow's mooing sound system.
-     */
-    private void updateSoundSystem(float deltaTime) {
-        mooTimer -= deltaTime;
-        if (mooTimer <= 0) {
-            // Play cow moo sound (placeholder - will be implemented with actual sound system)
-            playMooSound();
-            
-            // Reset timer with random interval
-            mooTimer = MIN_MOO_INTERVAL + (float)(Math.random() * (MAX_MOO_INTERVAL - MIN_MOO_INTERVAL));
-        }
-    }
     
     /**
      * Updates behavior-related timers.
@@ -192,24 +184,6 @@ public class Cow extends LivingEntity {
     
     
     
-    /**
-     * Plays a cow moo sound.
-     */
-    private void playMooSound() {
-        // TODO: Add cow moo sound file and implement proper sound playback
-        // For now, using grass walk sound as placeholder
-        try {
-            var game = com.stonebreak.core.Game.getInstance();
-            if (game != null) {
-                var soundSystem = com.stonebreak.core.Game.getSoundSystem();
-                if (soundSystem != null) {
-                    soundSystem.playSoundWithVariation("grasswalk", 0.2f);
-                }
-            }
-        } catch (Exception e) {
-            // Silently handle sound system errors
-        }
-    }
     
     /**
      * Renders the cow using a basic model (placeholder implementation).
@@ -236,8 +210,6 @@ public class Cow extends LivingEntity {
         
         // Basic interaction - petting the cow
         
-        // Play happy cow sound
-        playMooSound();
     }
     
     /**
@@ -256,6 +228,11 @@ public class Cow extends LivingEntity {
         // Cleanup AI state and references
         if (cowAI != null) {
             cowAI.cleanup();
+        }
+
+        // Reset sound system state
+        if (cowSounds != null) {
+            cowSounds.reset();
         }
     }
     
@@ -306,6 +283,13 @@ public class Cow extends LivingEntity {
      */
     public String getTextureVariant() {
         return textureVariant;
+    }
+
+    /**
+     * Gets the cow's sound system.
+     */
+    public CowSounds getCowSounds() {
+        return cowSounds;
     }
     
     

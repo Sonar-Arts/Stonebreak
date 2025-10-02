@@ -23,24 +23,27 @@ public class TerrainGenerationSystem {
     public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     
     private final long seed;
+    private final Random random;
     private final Random animalRandom;
     private final DeterministicRandom deterministicRandom;
     private final NoiseGenerator terrainNoise;
     private final NoiseGenerator temperatureNoise;
     private final NoiseGenerator continentalnessNoise;
     private final SplineInterpolator terrainSpline;
+    private final Object randomLock = new Object();
     private final Object animalRandomLock = new Object();
     private final Object treeRandomLock = new Object();
     
     public TerrainGenerationSystem(long seed) {
         this.seed = seed;
+        this.random = new Random(seed); // Deterministic random for terrain features
         this.animalRandom = new Random(); // Use current time for truly random animal spawning
         this.deterministicRandom = new DeterministicRandom(seed);
         this.terrainNoise = new NoiseGenerator(seed);
         this.temperatureNoise = new NoiseGenerator(seed + 1);
         this.continentalnessNoise = new NoiseGenerator(seed + 2);
         this.terrainSpline = new SplineInterpolator();
-        
+
         initializeTerrainSpline();
     }
     
@@ -120,7 +123,7 @@ public class TerrainGenerationSystem {
             }
         }
     }
-    
+
     
     /**
      * Gets the world seed.
@@ -142,7 +145,7 @@ public class TerrainGenerationSystem {
     public Object getAnimalRandomLock() {
         return animalRandomLock;
     }
-    
+
     /**
      * Updates loading progress during world generation.
      */
@@ -359,6 +362,54 @@ public class TerrainGenerationSystem {
                         }
                     }
                 }
+
+                // Generate Clay patches in RED_SAND_DESERT biome
+                if (biome == BiomeType.RED_SAND_DESERT && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.RED_SAND) {
+                        float clayChance;
+                        synchronized (randomLock) {
+                            clayChance = random.nextFloat();
+                        }
+
+                        if (clayChance < 0.008) { // 0.8% chance for clay patches (much rarer)
+                            // Create organic-looking clay patches
+                            int centerX = worldX;
+                            int centerZ = worldZ;
+                            int radius;
+                            synchronized (randomLock) {
+                                radius = 1 + random.nextInt(2); // Radius 1-2 blocks
+                            }
+
+                            // Generate circular/organic patch with some randomness
+                            for (int dx = -radius; dx <= radius; dx++) {
+                                for (int dz = -radius; dz <= radius; dz++) {
+                                    int patchWorldX = centerX + dx;
+                                    int patchWorldZ = centerZ + dz;
+
+                                    // Calculate distance from center
+                                    double distance = Math.sqrt(dx * dx + dz * dz);
+
+                                    // Only place clay within radius with some randomness for organic shape
+                                    if (distance <= radius) {
+                                        float placeChance;
+                                        synchronized (randomLock) {
+                                            // Higher chance near center, lower chance at edges
+                                            placeChance = 1.0f - (float)(distance / radius) * 0.4f;
+                                            if (random.nextFloat() < placeChance) {
+                                                int patchY = generateTerrainHeight(patchWorldX, patchWorldZ) - 1;
+
+                                                // Only place clay if the spot is red sand
+                                                if (world.getBlockAt(patchWorldX, patchY, patchWorldZ) == BlockType.RED_SAND) {
+                                                    world.setBlockAt(patchWorldX, patchY, patchWorldZ, BlockType.CLAY);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 // No trees in DESERT or VOLCANIC biomes by default
             }
         }
@@ -366,7 +417,6 @@ public class TerrainGenerationSystem {
         // Process mob spawning for this chunk
         BiomeType chunkBiome = getBiomeType(chunkX * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2, chunkZ * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2);
         MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, animalRandom, animalRandomLock);
-        
         chunk.setFeaturesPopulated(true);
     }
 }

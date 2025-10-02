@@ -114,6 +114,8 @@ XMLInspectionParser.java
 
 # Dev Test Folder
 DevTests/
+
+# Node.JS modules
 /node_modules/
 
 # Codex
@@ -121,7 +123,8 @@ AGENTS.md
 
 # Crash Logs
 Crash_log.txt
-crash_log.txt
+
+# W.I.P. Textures not integrated into game
 /DevTextures/
 
 # Git ignored files (Johnny)
@@ -130,3 +133,4 @@ crash_log.txt
 # World data and Backups
 /backups/
 /worlds/
+/Dev Working/

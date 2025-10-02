@@ -97,7 +97,23 @@ public class ChunkManager {
                     try {
                         world.unloadChunk(pos.getX(), pos.getZ());
                     } catch (Exception e) {
-                        System.err.println("Error unloading chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+                        // Extract meaningful error message
+                        String errorMsg = e.getMessage();
+                        if (errorMsg == null && e.getCause() != null) {
+                            errorMsg = e.getCause().getMessage();
+                        }
+                        if (errorMsg == null || errorMsg.isEmpty()) {
+                            errorMsg = e.getClass().getSimpleName();
+                            if (e.getCause() != null) {
+                                errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                            }
+                        }
+
+                        System.err.println("Memory Manager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                        if (e.getCause() != null && e.getCause().getMessage() != null) {
+                            System.err.println("  Caused by: " + e.getCause().getMessage());
+                        }
+
                         // Re-add to active chunks if unload failed
                         activeChunkPositions.add(pos);
                     }
@@ -131,7 +147,25 @@ public class ChunkManager {
                     world.unloadChunk(pos.getX(), pos.getZ());
                     System.out.println("[SAVE-THEN-UNLOAD] Successfully saved and unloaded dirty chunk (" + pos.getX() + ", " + pos.getZ() + ")");
                 } catch (Exception e) {
-                    System.err.println("CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+                    // Extract meaningful error message
+                    String errorMsg = e.getMessage();
+                    if (errorMsg == null && e.getCause() != null) {
+                        errorMsg = e.getCause().getMessage();
+                    }
+                    if (errorMsg == null || errorMsg.isEmpty()) {
+                        errorMsg = e.getClass().getSimpleName();
+                        if (e.getCause() != null) {
+                            errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                        }
+                    }
+
+                    System.err.println("Memory Manager: CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                    if (e.getCause() != null && e.getCause().getMessage() != null) {
+                        System.err.println("  Caused by: " + e.getCause().getMessage());
+                    }
+                    System.err.println("Full stack trace:");
+                    e.printStackTrace();
+
                     // Re-add to active chunks if save-then-unload failed
                     activeChunkPositions.add(pos);
                 }

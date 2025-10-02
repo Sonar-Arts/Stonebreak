@@ -6,6 +6,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.managers.SettingsManager;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import org.joml.Vector3f;
 
 /**
  * Handles action execution and navigation for the settings menu.
@@ -47,6 +49,8 @@ public class ActionHandler {
             case ARM_MODEL -> stateManager.getArmModelButton().toggleDropdown();
             case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggleDropdown();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
+            case LEAF_TRANSPARENCY -> toggleLeafTransparency();
+            case WATER_SHADER -> toggleWaterShader();
             case APPLY -> applySettings();
             case BACK -> goBack();
         }
@@ -87,11 +91,6 @@ public class ActionHandler {
         // Resume game directly for cleaner user experience
         game.setState(GameState.PLAYING);
         game.getPauseMenu().setVisible(false);
-        
-        // Ensure game is unpaused
-        if (game.isPaused()) {
-            game.togglePauseMenu();
-        }
     }
     
     /**
@@ -142,5 +141,44 @@ public class ActionHandler {
      */
     public void onCrosshairSizeChange(Float newSize) {
         settings.setCrosshairSize(newSize);
+    }
+
+    /**
+     * Toggles the leaf transparency setting.
+     */
+    public void toggleLeafTransparency() {
+        boolean currentValue = settings.getLeafTransparency();
+        settings.setLeafTransparency(!currentValue);
+
+        // Refresh leaf block definitions immediately so the setting preview updates in the settings menu
+        // This is safer than full reinitialization as it doesn't dispose OpenGL resources
+        try {
+            CBRResourceManager.refreshLeafDefinitions();
+            System.out.println("Leaf transparency toggled to: " + (!currentValue ? "ON" : "OFF"));
+        } catch (Exception e) {
+            System.err.println("Failed to refresh leaf definitions: " + e.getMessage());
+        }
+
+        // Force rebuild of all loaded chunks since transparency affects face culling and render layers
+        // This ensures the world view is updated immediately if visible behind the settings menu
+        try {
+            if (Game.getWorld() != null && Game.getPlayer() != null) {
+                Vector3f playerPos = Game.getPlayer().getPosition();
+                int playerChunkX = (int) Math.floor(playerPos.x / 16);
+                int playerChunkZ = (int) Math.floor(playerPos.z / 16);
+                Game.getWorld().rebuildAllLoadedChunks(playerChunkX, playerChunkZ);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to rebuild chunks after leaf transparency change: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Toggles the water shader setting.
+     */
+    public void toggleWaterShader() {
+        boolean currentValue = settings.getWaterShaderEnabled();
+        settings.setWaterShaderEnabled(!currentValue);
+        System.out.println("Water animation toggled to: " + (!currentValue ? "ON" : "OFF"));
     }
 }
