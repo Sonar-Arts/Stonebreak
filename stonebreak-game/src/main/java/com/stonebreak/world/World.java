@@ -3,12 +3,14 @@ package com.stonebreak.world;
 import java.util.Map;
 import java.util.List;
 import java.util.Collection;
+import java.util.function.Consumer;
 
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
 import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
 import com.stonebreak.world.chunk.mesh.data.ChunkNeighborCoordinator;
@@ -31,7 +33,6 @@ public class World {
     
     // Modular components
     private final WorldChunkStore chunkStore;
-    private final ChunkStateManager stateManager;
     private final ChunkNeighborCoordinator neighborCoordinator;
     private final ChunkMeshBuildingPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
@@ -50,11 +51,10 @@ public class World {
 
         this.terrainSystem = new TerrainGenerationSystem(seed);
         this.snowLayerManager = new SnowLayerManager();
-        
+
         // Initialize modular components
-        this.stateManager = new ChunkStateManager();
         this.errorReporter = new ChunkErrorReporter();
-        this.meshPipeline = new ChunkMeshBuildingPipeline(config, stateManager, errorReporter);
+        this.meshPipeline = new ChunkMeshBuildingPipeline(config, errorReporter);
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
         this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, config);
 
@@ -104,7 +104,7 @@ public class World {
 
         if (!chunk.areFeaturesPopulated()) {
             terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-            stateManager.markChunkForPopulation(chunk);
+            markChunkForMeshRebuild(chunk);
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
 
@@ -115,7 +115,7 @@ public class World {
         // This handles cases where mesh generation silently failed or was never attempted
         if (chunk.areFeaturesPopulated() && !isMeshReady && !isMeshGenerating) {
             // Force reset mesh state to allow retry
-            stateManager.resetMeshGenerationState(chunk);
+            resetMeshGenerationState(chunk);
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         } else if (!isMeshReady) {
             meshPipeline.scheduleConditionalMeshBuild(chunk);
@@ -198,7 +198,7 @@ public class World {
 
         chunk.setBlock(localX, y, localZ, blockType);
 
-        stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
         neighborCoordinator.rebuildNeighborChunksScheduled(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
         
@@ -238,7 +238,7 @@ public class World {
         for (Chunk chunk : visibleChunks.values()) {
             if (!chunk.areFeaturesPopulated()) {
                 terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-                stateManager.markChunkForPopulation(chunk);
+                markChunkForMeshRebuild(chunk);
                 meshPipeline.scheduleConditionalMeshBuild(chunk);
             }
         }
@@ -285,14 +285,6 @@ public class World {
         // Clear chunks and caches without shutting down thread pools
         if (chunkStore != null) {
             chunkStore.cleanup();
-        }
-
-        // Reset world state using available methods
-        if (stateManager != null) {
-            // Reset mesh generation states for all chunks
-            for (Chunk chunk : chunkStore.getAllChunks()) {
-                stateManager.resetMeshGenerationState(chunk);
-            }
         }
 
         // Process any pending GPU cleanup without shutting down the pipeline
@@ -386,7 +378,7 @@ public class World {
 
         Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
         if (chunk != null) {
-            stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
         }
     }
 
@@ -403,7 +395,7 @@ public class World {
             // Mark all loaded chunks for mesh rebuild
             for (Chunk chunk : loadedChunks.values()) {
                 if (chunk != null) {
-                    stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                    markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
                 }
             }
 
@@ -448,6 +440,32 @@ public class World {
         this.spawnPosition.set(newSpawnPosition);
     }
     
+    /**
+     * Marks a chunk for mesh rebuild using CCO state management.
+     */
+    private void markChunkForMeshRebuild(Chunk chunk) {
+        synchronized (chunk) {
+            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
+        }
+    }
+
+    /**
+     * Marks a chunk for mesh rebuild and schedules it using CCO state management.
+     */
+    private void markChunkForMeshRebuildWithScheduling(Chunk chunk, Consumer<Chunk> meshBuildScheduler) {
+        markChunkForMeshRebuild(chunk);
+        meshBuildScheduler.accept(chunk);
+    }
+
+    /**
+     * Resets mesh generation state using CCO state management.
+     */
+    private void resetMeshGenerationState(Chunk chunk) {
+        synchronized (chunk) {
+            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
+        }
+    }
+
     /**
      * Sets the world spawn position with coordinates
      */
