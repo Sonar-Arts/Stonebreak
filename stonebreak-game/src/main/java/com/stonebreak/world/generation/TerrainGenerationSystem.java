@@ -8,7 +8,6 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
-import com.stonebreak.world.features.TreeGenerator;
 import com.stonebreak.world.generation.mobs.MobGenerator;
 import com.stonebreak.world.DeterministicRandom;
 

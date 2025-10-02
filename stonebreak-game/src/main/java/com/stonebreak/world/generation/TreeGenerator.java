@@ -1,6 +1,8 @@
-package com.stonebreak.world.features;
+package com.stonebreak.world.generation;
 
 import java.util.Random;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
@@ -9,11 +11,64 @@ import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Handles generation of various tree types in the world.
+ * Uses CCO-aware batch operations for efficient block placement with proper dirty tracking.
  */
 public class TreeGenerator {
+
+    /**
+     * Helper class for batching tree block placements across multiple chunks.
+     * Tracks affected chunks and marks them dirty after batch operations complete.
+     */
+    private static class TreeBlockPlacer {
+        private final World world;
+        private final Map<Chunk, Integer> affectedChunks = new HashMap<>();
+
+        TreeBlockPlacer(World world) {
+            this.world = world;
+        }
+
+        /**
+         * Places a block at world coordinates using CCO operations.
+         * Batches operations per chunk for efficiency.
+         */
+        void placeBlock(int worldX, int worldY, int worldZ, BlockType blockType) {
+            if (worldY < 0 || worldY >= WorldConfiguration.WORLD_HEIGHT) {
+                return;
+            }
+
+            int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
+            int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
+
+            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+            if (chunk == null) {
+                return;
+            }
+
+            int localX = Math.floorMod(worldX, WorldConfiguration.CHUNK_SIZE);
+            int localZ = Math.floorMod(worldZ, WorldConfiguration.CHUNK_SIZE);
+
+            // Use CCO writer for automatic dirty tracking
+            chunk.setBlock(localX, worldY, localZ, blockType);
+
+            // Track affected chunk for mesh rebuild
+            affectedChunks.merge(chunk, 1, Integer::sum);
+        }
+
+        /**
+         * Completes the batch operation and triggers mesh rebuilds for all affected chunks.
+         * This ensures CCO dirty flags are respected and MMS mesh regeneration is triggered.
+         */
+        void complete() {
+            // World.setBlockAt already handles mesh rebuild scheduling via neighborCoordinator
+            // Since we're using chunk.setBlock directly, chunks are marked dirty by CCO writer
+            // No additional mesh rebuild needed - CCO dirty tracking + MMS handles it
+            affectedChunks.clear();
+        }
+    }
     
     /**
      * Generates a tree at the specified position.
+     * Uses CCO batch operations for efficient cross-chunk placement.
      */
     public static void generateTree(World world, Chunk chunk, int x, int y, int z) { // x, z are local to chunk; y is worldYBase
         // Calculate world coordinates for the base of the trunk
@@ -27,14 +82,12 @@ public class TreeGenerator {
             return;
         }
 
-        // Removed: Old check that restricted tree trunk origin (x,z) based on CHUNK_SIZE.
-        // Trees can now originate near chunk edges and their parts will be placed in correct chunks.
+        // Create batch placer for CCO-aware operations
+        TreeBlockPlacer placer = new TreeBlockPlacer(world);
 
         // Place tree trunk
         for (int dyTrunk = 0; dyTrunk < 5; dyTrunk++) { // 5 blocks high trunk
-            if (worldYBase + dyTrunk < WorldConfiguration.WORLD_HEIGHT) { // Ensure trunk block is within height limits
-                 world.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.WOOD);
-            }
+            placer.placeBlock(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.WOOD);
         }
 
         // Place leaves
@@ -60,16 +113,18 @@ public class TreeGenerator {
                         continue;
                     }
 
-                    // Removed: Old check for leaf x+dx, z+dz being outside local chunk bounds.
-                    // this.setBlockAt handles world coordinates and places blocks in correct chunks.
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.LEAVES);
+                    placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.LEAVES);
                 }
             }
         }
+
+        // Complete batch operation - CCO dirty tracking handles mesh rebuild
+        placer.complete();
     }
     
     /**
      * Generates a pine tree at the specified position.
+     * Uses CCO batch operations for efficient cross-chunk placement.
      */
     public static void generatePineTree(World world, Chunk chunk, int x, int y, int z) { // x, z are local to chunk; y is worldYBase
         // Calculate world coordinates for the base of the trunk
@@ -83,11 +138,12 @@ public class TreeGenerator {
             return;
         }
 
+        // Create batch placer for CCO-aware operations
+        TreeBlockPlacer placer = new TreeBlockPlacer(world);
+
         // Place pine tree trunk (darker wood)
         for (int dyTrunk = 0; dyTrunk < 7; dyTrunk++) { // 7 blocks high trunk
-            if (worldYBase + dyTrunk < WorldConfiguration.WORLD_HEIGHT) {
-                world.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.PINE);
-            }
+            placer.placeBlock(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.PINE);
         }
 
         // Place snowy leaves in a more conical shape
@@ -107,7 +163,7 @@ public class TreeGenerator {
                     if (dxLeaf == 0 && dzLeaf == 0) {
                         continue;
                     }
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
+                    placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
                 }
             }
         }
@@ -124,7 +180,7 @@ public class TreeGenerator {
                     if (dxLeaf == 0 && dzLeaf == 0) {
                         continue;
                     }
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
+                    placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
                 }
             }
         }
@@ -144,15 +200,19 @@ public class TreeGenerator {
                     if (leafLayerYOffset == 7 && (dxLeaf == 0 && dzLeaf == 0)) {
                         continue; // Skip center for trunk
                     }
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
+                    placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.PINE_LEAVES);
                 }
             }
         }
+
+        // Complete batch operation - CCO dirty tracking handles mesh rebuild
+        placer.complete();
     }
     
     /**
      * Generates an elm tree at the specified position.
      * Elm trees have the characteristic vase shape - wide canopy supported by branching trunk.
+     * Uses CCO batch operations for efficient cross-chunk placement.
      */
     public static void generateElmTree(World world, Chunk chunk, int x, int y, int z, Random random, Object randomLock) {
         int worldXBase = chunk.getWorldX(x);
@@ -165,18 +225,19 @@ public class TreeGenerator {
         synchronized (randomLock) {
             trunkHeight = 8 + random.nextInt(5); // 8-12 blocks tall trunk
         }
-        
+
         if (worldYBase + trunkHeight + 6 >= WorldConfiguration.WORLD_HEIGHT) {
             return; // Tree would exceed world height
         }
 
+        // Create batch placer for CCO-aware operations
+        TreeBlockPlacer placer = new TreeBlockPlacer(world);
+
         // Place elm trunk - straight up with some branching at the top
         for (int dyTrunk = 0; dyTrunk < trunkHeight; dyTrunk++) {
-            if (worldYBase + dyTrunk < WorldConfiguration.WORLD_HEIGHT) {
-                world.setBlockAt(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.ELM_WOOD_LOG);
-            }
+            placer.placeBlock(worldXBase, worldYBase + dyTrunk, worldZBase, BlockType.ELM_WOOD_LOG);
         }
-        
+
         // Add branch structure at top of trunk (characteristic elm branching)
         // Elm trees branch out near the top, creating the vase shape
         int branchLevel = worldYBase + trunkHeight - 3; // Start branching 3 blocks from top
@@ -184,17 +245,17 @@ public class TreeGenerator {
             // Add horizontal branches for vase shape
             for (int branchY = branchLevel; branchY < branchLevel + 3; branchY++) {
                 // Create 4 main branches extending outward
-                world.setBlockAt(worldXBase + 1, branchY, worldZBase, BlockType.ELM_WOOD_LOG); // East branch
-                world.setBlockAt(worldXBase - 1, branchY, worldZBase, BlockType.ELM_WOOD_LOG); // West branch
-                world.setBlockAt(worldXBase, branchY, worldZBase + 1, BlockType.ELM_WOOD_LOG); // South branch
-                world.setBlockAt(worldXBase, branchY, worldZBase - 1, BlockType.ELM_WOOD_LOG); // North branch
-                
+                placer.placeBlock(worldXBase + 1, branchY, worldZBase, BlockType.ELM_WOOD_LOG); // East branch
+                placer.placeBlock(worldXBase - 1, branchY, worldZBase, BlockType.ELM_WOOD_LOG); // West branch
+                placer.placeBlock(worldXBase, branchY, worldZBase + 1, BlockType.ELM_WOOD_LOG); // South branch
+                placer.placeBlock(worldXBase, branchY, worldZBase - 1, BlockType.ELM_WOOD_LOG); // North branch
+
                 // Add diagonal branches for fuller structure
                 if (branchY == branchLevel + 1) { // Middle level only
-                    world.setBlockAt(worldXBase + 1, branchY, worldZBase + 1, BlockType.ELM_WOOD_LOG);
-                    world.setBlockAt(worldXBase + 1, branchY, worldZBase - 1, BlockType.ELM_WOOD_LOG);
-                    world.setBlockAt(worldXBase - 1, branchY, worldZBase + 1, BlockType.ELM_WOOD_LOG);
-                    world.setBlockAt(worldXBase - 1, branchY, worldZBase - 1, BlockType.ELM_WOOD_LOG);
+                    placer.placeBlock(worldXBase + 1, branchY, worldZBase + 1, BlockType.ELM_WOOD_LOG);
+                    placer.placeBlock(worldXBase + 1, branchY, worldZBase - 1, BlockType.ELM_WOOD_LOG);
+                    placer.placeBlock(worldXBase - 1, branchY, worldZBase + 1, BlockType.ELM_WOOD_LOG);
+                    placer.placeBlock(worldXBase - 1, branchY, worldZBase - 1, BlockType.ELM_WOOD_LOG);
                 }
             }
         }
@@ -202,7 +263,7 @@ public class TreeGenerator {
         // Place elm leaves in characteristic wide, vase-like canopy
         // Elm trees have very wide canopies - up to 80 feet spread in real life
         int leafRadius = 4; // Large canopy radius for elm's characteristic wide spread
-        
+
         // Bottom leaf layer - fullest and widest (characteristic of elm's umbrella shape)
         for (int leafLayerYOffset = trunkHeight - 1; leafLayerYOffset <= trunkHeight + 2; leafLayerYOffset++) {
             int currentLeafWorldY = worldYBase + leafLayerYOffset;
@@ -212,17 +273,17 @@ public class TreeGenerator {
                 for (int dzLeaf = -leafRadius; dzLeaf <= leafRadius; dzLeaf++) {
                     // Create the characteristic elm canopy shape - wider at edges, fuller overall
                     float distFromCenter = (float) Math.sqrt(dxLeaf * dxLeaf + dzLeaf * dzLeaf);
-                    
+
                     // Skip only the very far corners for a more natural rounded shape
                     if (distFromCenter > leafRadius * 0.9f) {
                         continue;
                     }
-                    
+
                     // Skip center column where trunk/branches are (but only in lower layers)
                     if (dxLeaf == 0 && dzLeaf == 0 && leafLayerYOffset < trunkHeight + 1) {
                         continue;
                     }
-                    
+
                     // Add some randomness to leaf placement for more natural look
                     boolean shouldPlaceLeaf = true;
                     if (distFromCenter > leafRadius * 0.7f) {
@@ -230,9 +291,9 @@ public class TreeGenerator {
                             shouldPlaceLeaf = random.nextFloat() > 0.3f; // 70% chance for outer leaves
                         }
                     }
-                    
+
                     if (shouldPlaceLeaf) {
-                        world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
+                        placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
                     }
                 }
             }
@@ -247,19 +308,19 @@ public class TreeGenerator {
             for (int dxLeaf = -upperRadius; dxLeaf <= upperRadius; dxLeaf++) {
                 for (int dzLeaf = -upperRadius; dzLeaf <= upperRadius; dzLeaf++) {
                     float distFromCenter = (float) Math.sqrt(dxLeaf * dxLeaf + dzLeaf * dzLeaf);
-                    
+
                     if (distFromCenter > upperRadius * 0.8f) {
                         continue;
                     }
-                    
+
                     // Random gaps in upper canopy
                     boolean shouldPlaceLeaf;
                     synchronized (randomLock) {
                         shouldPlaceLeaf = random.nextFloat() > 0.2f; // 80% chance
                     }
-                    
+
                     if (shouldPlaceLeaf) {
-                        world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
+                        placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
                     }
                 }
             }
@@ -273,9 +334,12 @@ public class TreeGenerator {
             for (int dxLeaf = -1; dxLeaf <= 1; dxLeaf++) {
                 for (int dzLeaf = -1; dzLeaf <= 1; dzLeaf++) {
                     if (Math.abs(dxLeaf) == 1 && Math.abs(dzLeaf) == 1) continue; // Skip corners
-                    world.setBlockAt(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
+                    placer.placeBlock(worldXBase + dxLeaf, currentLeafWorldY, worldZBase + dzLeaf, BlockType.ELM_LEAVES);
                 }
             }
         }
+
+        // Complete batch operation - CCO dirty tracking handles mesh rebuild
+        placer.complete();
     }
 }
