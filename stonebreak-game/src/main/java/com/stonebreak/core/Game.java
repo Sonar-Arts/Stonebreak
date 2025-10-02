@@ -186,19 +186,20 @@ public class Game {
      * This should be called when a world is created/loaded.
      *
      * NOTE: MmsAPI must be initialized BEFORE World is created (World constructor depends on it).
+     * NOTE: World reference is automatically set in MmsAPI during World construction via createMeshPipeline().
      */
     public void initWorldComponents(World world, Player player) {
         this.world = world;
         this.player = player;
 
-        // MmsAPI should already be initialized before World creation
-        // This is just a safety check
+        // MmsAPI should already be initialized and have its world reference set
+        // (happens automatically in World constructor via createMeshPipeline)
         if (!com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
+            System.err.println("[MMS-API] WARNING: MmsAPI not initialized - this should not happen!");
+            // Emergency fallback
             if (textureAtlas != null && world != null) {
                 com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
-                System.out.println("[MMS-API] Mighty Mesh System initialized for world (late initialization)");
-            } else {
-                System.err.println("[MMS-API] Failed to initialize - textureAtlas or world is null");
+                System.out.println("[MMS-API] Emergency initialization performed");
             }
         }
 

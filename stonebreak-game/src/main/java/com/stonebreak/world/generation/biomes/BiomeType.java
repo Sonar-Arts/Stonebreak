@@ -1,4 +1,4 @@
-package com.stonebreak.world.biomes;
+package com.stonebreak.world.generation.biomes;
 
 /**
  * Defines the different biome types in the game.

@@ -3,7 +3,7 @@ package com.stonebreak.world.generation;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.util.SplineInterpolator;
-import com.stonebreak.world.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
@@ -157,35 +157,36 @@ public class TerrainGenerationSystem {
     
     /**
      * Generates only the bare terrain for a new chunk (no features like ores or trees).
-     * Uses chunk.setBlock() for local block placement.
+     * Uses chunk.setBlock() which internally uses CCO API for block operations.
+     * Generates mesh using MMS API after terrain generation is complete.
      */
     public Chunk generateBareChunk(int chunkX, int chunkZ) {
         updateLoadingProgress("Generating Base Terrain Shape");
         Chunk chunk = new Chunk(chunkX, chunkZ);
-        
-        // Generate terrain
+
+        // Generate terrain - chunk.setBlock() uses CCO BlockWriter internally
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                 // Calculate absolute world coordinates
                 int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
                 int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
-                
+
                 // Generate height map using noise
                 int height = generateTerrainHeight(worldX, worldZ);
-                
+
                 // Update progress for biome determination
                 if (x == 0 && z == 0) {
                     updateLoadingProgress("Determining Biomes");
                 }
                 BiomeType biome = getBiomeType(worldX, worldZ);
-                
+
                 // Generate blocks based on height and biome
                 if (x == 8 && z == 8) { // Update progress mid-chunk
                     updateLoadingProgress("Applying Biome Materials");
                 }
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     BlockType blockType;
-                    
+
                     if (y == 0) {
                         blockType = BlockType.BEDROCK;
                     } else if (y < height - 4) {
@@ -223,18 +224,21 @@ public class TerrainGenerationSystem {
                     } else {
                         blockType = BlockType.AIR;
                     }
-                    chunk.setBlock(x, y, z, blockType); // Local placement
+                    chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
                 }
                 // Trees and other features will be generated in populateChunkWithFeatures
             }
         }
+
+        // Mesh generation happens automatically via CCO dirty tracking when chunk is rendered
         chunk.setFeaturesPopulated(false); // Explicitly mark as not populated
         return chunk;
     }
 
     /**
      * Populates an existing chunk with features like ores and trees.
-     * Uses world.setBlockAt() for global block placement.
+     * Uses world.setBlockAt() which internally uses CCO API for global block placement.
+     * Mesh regeneration happens automatically via CCO dirty tracking.
      */
     public void populateChunkWithFeatures(World world, Chunk chunk, SnowLayerManager snowLayerManager) {
         if (chunk == null || chunk.areFeaturesPopulated()) {
@@ -242,7 +246,7 @@ public class TerrainGenerationSystem {
         }
 
         updateLoadingProgress("Adding Surface Decorations & Details");
-        
+
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
@@ -416,6 +420,8 @@ public class TerrainGenerationSystem {
         // Process mob spawning for this chunk
         BiomeType chunkBiome = getBiomeType(chunkX * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2, chunkZ * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2);
         MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, animalRandom, animalRandomLock);
+
+        // Mesh regeneration happens automatically via CCO dirty tracking when chunk is rendered
         chunk.setFeaturesPopulated(true);
     }
 }

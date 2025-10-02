@@ -33,26 +33,38 @@ public class MmsCcoAdapter {
     private final MmsGeometryService cuboidGenerator;
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
-    private final World world;
+    private World world; // Not final - can be set after construction
 
     /**
      * Creates a CCO adapter with the specified services.
      *
      * @param textureMapper Texture coordinate mapper
-     * @param world World instance for neighbor lookups
+     * @param world World instance for neighbor lookups (can be null initially, set later via setWorld)
      */
     public MmsCcoAdapter(MmsTextureMapper textureMapper, World world) {
         if (textureMapper == null) {
             throw new IllegalArgumentException("Texture mapper cannot be null");
         }
-        if (world == null) {
-            throw new IllegalArgumentException("World cannot be null");
-        }
+        // World can be null during initialization - it will be set later when world is created
 
         this.cuboidGenerator = new MmsCuboidGenerator();
         this.crossGenerator = new MmsCrossGenerator();
         this.textureMapper = textureMapper;
         this.world = world;
+    }
+
+    /**
+     * Sets the world instance after construction.
+     * Used when MMS is initialized before World is created.
+     *
+     * @param world World instance
+     */
+    public void setWorld(World world) {
+        if (world == null) {
+            throw new IllegalArgumentException("World cannot be null when setting");
+        }
+        this.world = world;
+        System.out.println("[MmsCcoAdapter] World instance set successfully");
     }
 
     /**
@@ -129,22 +141,22 @@ public class MmsCcoAdapter {
         float worldY = ly;
         float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
 
-        // Generate geometry
+        // Generate geometry (16 vertices = 2 planes × 2 faces × 4 vertices)
         float[] vertices = crossGenerator.generateCrossVertices(worldX, worldY, worldZ);
         float[] normals = crossGenerator.generateCrossNormals();
 
-        // Generate texture coordinates
+        // Generate texture coordinates (16 vertices)
         float[] texCoords = textureMapper.generateCrossTextureCoordinates(blockType);
 
         // Generate flags (cross blocks always use alpha testing, never water)
-        float[] waterFlags = new float[8]; // All zeros
-        float[] alphaFlags = new float[8];
-        for (int i = 0; i < 8; i++) {
+        float[] waterFlags = new float[16]; // All zeros
+        float[] alphaFlags = new float[16];
+        for (int i = 0; i < 16; i++) {
             alphaFlags[i] = 1.0f; // Cross blocks need alpha testing
         }
 
-        // Add vertices to builder
-        for (int i = 0; i < 8; i++) {
+        // Add vertices to builder (16 vertices)
+        for (int i = 0; i < 16; i++) {
             int vIdx = i * 3;
             int tIdx = i * 2;
 
@@ -157,13 +169,12 @@ public class MmsCcoAdapter {
         }
 
         // Add indices for cross (4 quads = 24 indices)
-        int baseVertex = builder.getVertexCount() - 8;
+        int baseVertex = builder.getVertexCount() - 16;
         int[] crossIndices = crossGenerator.generateCrossIndices(baseVertex);
 
-        // Indices are added automatically by the builder's face methods
-        // For cross blocks, we need to manually construct quads
-        for (int quad = 0; quad < 4; quad++) {
-            // Each quad already has 4 vertices added, builder tracks this
+        // Add all 24 indices to the builder
+        for (int index : crossIndices) {
+            builder.addIndex(index);
         }
     }
 
@@ -281,7 +292,6 @@ public class MmsCcoAdapter {
      */
     private boolean isTransparent(BlockType blockType) {
         return blockType == BlockType.WATER ||
-               blockType == BlockType.GLASS ||
                blockType == BlockType.LEAVES ||
                blockType == BlockType.ROSE ||
                blockType == BlockType.DANDELION;

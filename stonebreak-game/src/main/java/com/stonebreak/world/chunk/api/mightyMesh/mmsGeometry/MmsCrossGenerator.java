@@ -24,12 +24,12 @@ public class MmsCrossGenerator implements MmsGeometryService {
     private static final int VERTICES_PER_SIDE = 4;
 
     /**
-     * Generates complete cross geometry (8 vertices for 2 intersecting quads).
+     * Generates complete cross geometry (16 vertices for 2 intersecting quads with front and back faces).
      *
      * @param worldX World X coordinate
      * @param worldY World Y coordinate
      * @param worldZ World Z coordinate
-     * @return Array of vertex positions for entire cross (24 floats = 8 vertices * 3 components)
+     * @return Array of vertex positions for entire cross (48 floats = 16 vertices * 3 components)
      */
     public float[] generateCrossVertices(float worldX, float worldY, float worldZ) {
         float[] vertices = new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.POSITION_SIZE];
@@ -37,28 +37,29 @@ public class MmsCrossGenerator implements MmsGeometryService {
         // Cross pattern uses diagonal planes
         // Plane 1: Southwest to Northeast (diagonal \)
         // Plane 2: Northwest to Southeast (diagonal /)
+        // Each plane has front and back faces (4 vertices each)
 
         int idx = 0;
 
-        // Plane 1 - Front face
+        // Plane 1 - Front face (vertices 0-3)
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.85f;
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.15f;
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.15f;
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.85f;
 
-        // Plane 1 - Back face
+        // Plane 1 - Back face (vertices 4-7)
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.15f;
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.85f;
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.85f;
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.15f;
 
-        // Plane 2 - Front face
+        // Plane 2 - Front face (vertices 8-11)
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.85f;
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.15f;
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.15f;
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.85f;
 
-        // Plane 2 - Back face
+        // Plane 2 - Back face (vertices 12-15)
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.15f;
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY; vertices[idx++] = worldZ + 0.85f;
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.85f;
@@ -71,7 +72,7 @@ public class MmsCrossGenerator implements MmsGeometryService {
      * Generates normals for cross geometry.
      * Each plane has distinct normals for proper lighting.
      *
-     * @return Array of normal vectors (24 floats = 8 vertices * 3 components)
+     * @return Array of normal vectors (48 floats = 16 vertices * 3 components)
      */
     public float[] generateCrossNormals() {
         float[] normals = new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.NORMAL_SIZE];
@@ -87,22 +88,22 @@ public class MmsCrossGenerator implements MmsGeometryService {
 
         int idx = 0;
 
-        // Plane 1 - Front face
+        // Plane 1 - Front face (vertices 0-3)
         for (int i = 0; i < VERTICES_PER_SIDE; i++) {
             normals[idx++] = nx1; normals[idx++] = 0; normals[idx++] = nz1;
         }
 
-        // Plane 1 - Back face
+        // Plane 1 - Back face (vertices 4-7)
         for (int i = 0; i < VERTICES_PER_SIDE; i++) {
             normals[idx++] = -nx1; normals[idx++] = 0; normals[idx++] = -nz1;
         }
 
-        // Plane 2 - Front face
+        // Plane 2 - Front face (vertices 8-11)
         for (int i = 0; i < VERTICES_PER_SIDE; i++) {
             normals[idx++] = nx2; normals[idx++] = 0; normals[idx++] = nz2;
         }
 
-        // Plane 2 - Back face
+        // Plane 2 - Back face (vertices 12-15)
         for (int i = 0; i < VERTICES_PER_SIDE; i++) {
             normals[idx++] = -nx2; normals[idx++] = 0; normals[idx++] = -nz2;
         }
@@ -114,26 +115,53 @@ public class MmsCrossGenerator implements MmsGeometryService {
      * Generates indices for cross geometry (4 quads = 24 indices).
      *
      * @param baseVertexIndex Base vertex index to offset from
-     * @return Array of 24 indices for 4 quads
+     * @return Array of 24 indices for 4 quads (2 planes with front and back faces)
      */
     public int[] generateCrossIndices(int baseVertexIndex) {
         int[] indices = new int[MmsBufferLayout.INDICES_PER_CROSS];
         int idx = 0;
 
-        // Generate indices for 4 quads (2 planes * 2 sides)
-        for (int quad = 0; quad < 4; quad++) {
-            int base = baseVertexIndex + (quad * VERTICES_PER_SIDE);
+        // Cross uses 16 vertices (2 planes × 2 faces × 4 vertices each)
+        // Plane 1 Front: vertices 0-3
+        // Plane 1 Back: vertices 4-7
+        // Plane 2 Front: vertices 8-11
+        // Plane 2 Back: vertices 12-15
 
-            // Triangle 1
-            indices[idx++] = base;
-            indices[idx++] = base + 1;
-            indices[idx++] = base + 2;
+        // Plane 1 - Front face (vertices 0-3)
+        indices[idx++] = baseVertexIndex + 0;
+        indices[idx++] = baseVertexIndex + 1;
+        indices[idx++] = baseVertexIndex + 2;
 
-            // Triangle 2
-            indices[idx++] = base;
-            indices[idx++] = base + 2;
-            indices[idx++] = base + 3;
-        }
+        indices[idx++] = baseVertexIndex + 0;
+        indices[idx++] = baseVertexIndex + 2;
+        indices[idx++] = baseVertexIndex + 3;
+
+        // Plane 1 - Back face (vertices 4-7)
+        indices[idx++] = baseVertexIndex + 4;
+        indices[idx++] = baseVertexIndex + 5;
+        indices[idx++] = baseVertexIndex + 6;
+
+        indices[idx++] = baseVertexIndex + 4;
+        indices[idx++] = baseVertexIndex + 6;
+        indices[idx++] = baseVertexIndex + 7;
+
+        // Plane 2 - Front face (vertices 8-11)
+        indices[idx++] = baseVertexIndex + 8;
+        indices[idx++] = baseVertexIndex + 9;
+        indices[idx++] = baseVertexIndex + 10;
+
+        indices[idx++] = baseVertexIndex + 8;
+        indices[idx++] = baseVertexIndex + 10;
+        indices[idx++] = baseVertexIndex + 11;
+
+        // Plane 2 - Back face (vertices 12-15)
+        indices[idx++] = baseVertexIndex + 12;
+        indices[idx++] = baseVertexIndex + 13;
+        indices[idx++] = baseVertexIndex + 14;
+
+        indices[idx++] = baseVertexIndex + 12;
+        indices[idx++] = baseVertexIndex + 14;
+        indices[idx++] = baseVertexIndex + 15;
 
         return indices;
     }

@@ -62,7 +62,7 @@ public class World {
         if (!MmsAPI.isInitialized()) {
             throw new IllegalStateException("MmsAPI must be initialized before creating World");
         }
-        this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(config, errorReporter);
+        this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(this, config, errorReporter);
 
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
 

@@ -127,9 +127,18 @@ public final class CcoStateTransition {
             return false;
         }
 
-        // UNLOADING cannot coexist with non-terminal states
+        // UNLOADING can be added from any state (it's a terminal transition request)
+        // The chunk lifecycle allows transitioning to UNLOADING from any non-terminal state
         if (state == CcoChunkState.UNLOADING) {
-            return currentStates.isEmpty();
+            // Don't allow adding UNLOADING if already UNLOADING or UNLOADED
+            return !currentStates.contains(CcoChunkState.UNLOADING) &&
+                   !currentStates.contains(CcoChunkState.UNLOADED);
+        }
+
+        // Cannot add any state if already UNLOADING or UNLOADED
+        if (currentStates.contains(CcoChunkState.UNLOADING) ||
+            currentStates.contains(CcoChunkState.UNLOADED)) {
+            return false;
         }
 
         // Mesh states are mutually exclusive

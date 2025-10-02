@@ -66,8 +66,20 @@ public class ChunkErrorReporter {
             // Use CCO metadata if available
             String chunkInfo = formatChunkInfo(chunk);
 
-            // Log to console (reduced verbosity)
+            // Log to console with full cause chain for debugging
             System.err.println(context + " for " + chunkInfo + ": " + e.getMessage());
+            // Print full cause chain
+            Throwable cause = e.getCause();
+            int depth = 1;
+            while (cause != null && depth <= 5) {
+                System.err.println("  " + "  ".repeat(depth-1) + "Caused by: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
+                // Print first stack frame of root cause for location info
+                if (cause.getStackTrace().length > 0 && depth == 1) {
+                    System.err.println("  " + "  ".repeat(depth) + "at " + cause.getStackTrace()[0]);
+                }
+                cause = cause.getCause();
+                depth++;
+            }
 
             // Queue for batched file write
             queueError(new ErrorEntry(ErrorType.MESH_BUILD, chunkInfo, e, context, null));

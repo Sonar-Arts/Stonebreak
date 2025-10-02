@@ -191,6 +191,18 @@ public final class MmsMeshBuilder {
     }
 
     /**
+     * Adds a custom index to the mesh.
+     * This is useful for cross-section blocks that need custom index patterns.
+     *
+     * @param index Vertex index to add
+     * @return this builder for chaining
+     */
+    public MmsMeshBuilder addIndex(int index) {
+        indices.add(index);
+        return this;
+    }
+
+    /**
      * Adds a pre-built quad face with all vertex data.
      * This is more efficient than using beginFace()/addVertex()/endFace().
      *

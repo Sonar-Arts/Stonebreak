@@ -60,7 +60,7 @@ public final class MmsAPI {
     private final MmsTextureMapper textureMapper;
     private final MmsCcoAdapter ccoAdapter;
     private final MmsStatistics statistics;
-    private final World world;
+    private World world; // Not final - can be set after initialization
 
     // Advanced features (MMS 1.1)
     private final MmsMeshCache meshCache;
@@ -152,6 +152,24 @@ public final class MmsAPI {
     public static boolean isInitialized() {
         MmsAPI current = instance;
         return current != null && current.initialized;
+    }
+
+    /**
+     * Sets the world instance after initialization.
+     * Used when MMS is initialized before World is created.
+     *
+     * @param world World instance
+     */
+    public void setWorld(World world) {
+        ensureInitialized();
+        if (world == null) {
+            throw new IllegalArgumentException("World cannot be null");
+        }
+        this.world = world;
+        if (ccoAdapter != null) {
+            ccoAdapter.setWorld(world);
+            System.out.println("[MmsAPI] World instance updated in MmsAPI and CCO adapter");
+        }
     }
 
     // === High-Level API Methods ===
@@ -539,21 +557,38 @@ public final class MmsAPI {
     /**
      * Creates and initializes a mesh pipeline for this world.
      * Should be called once during world initialization.
+     * If a pipeline already exists, it will be shut down and replaced.
      *
+     * @param world World instance for the pipeline
      * @param config World configuration
      * @param errorReporter Error reporter for diagnostics
      * @return Created mesh pipeline
      */
     public MmsMeshPipeline createMeshPipeline(
+            World world,
             com.stonebreak.world.operations.WorldConfiguration config,
             ChunkErrorReporter errorReporter) {
         ensureInitialized();
 
+        if (world == null) {
+            throw new IllegalArgumentException("World cannot be null when creating mesh pipeline");
+        }
+
+        // Shut down existing pipeline if it exists (world switching)
         if (meshPipeline != null) {
-            throw new IllegalStateException("Mesh pipeline already created");
+            System.out.println("[MmsAPI] Shutting down existing mesh pipeline for world switch");
+            meshPipeline.shutdown();
+            meshPipeline = null;
+        }
+
+        // Update world reference
+        this.world = world;
+        if (ccoAdapter != null) {
+            ccoAdapter.setWorld(world);
         }
 
         meshPipeline = new MmsMeshPipeline(world, config, errorReporter);
+        System.out.println("[MmsAPI] Created new mesh pipeline for world");
         return meshPipeline;
     }
 
