@@ -67,6 +67,9 @@ public class SingleChunkVisualTest {
     private float lastFrame = 0.0f;
     private float cameraSpeed = 5.0f;
 
+    // Face label toggle
+    private boolean showFaceLabels = true;
+
     public static void main(String[] args) {
         SingleChunkVisualTest visualTest = new SingleChunkVisualTest();
         visualTest.run();
@@ -78,7 +81,16 @@ public class SingleChunkVisualTest {
         System.out.println("  WASD - Move camera");
         System.out.println("  SPACE/SHIFT - Move up/down");
         System.out.println("  Mouse - Look around");
+        System.out.println("  L - Toggle face labels (color-coded)");
         System.out.println("  ESC - Exit");
+        System.out.println();
+        System.out.println("Face Colors:");
+        System.out.println("  Top (Y+) = GREEN");
+        System.out.println("  Bottom (Y-) = BROWN");
+        System.out.println("  North (Z-) = BLUE");
+        System.out.println("  South (Z+) = RED");
+        System.out.println("  East (X+) = YELLOW");
+        System.out.println("  West (X-) = MAGENTA");
         System.out.println("======================================\n");
 
         try {
@@ -139,6 +151,10 @@ public class SingleChunkVisualTest {
         glfwSetKeyCallback(window, (window, key, scancode, action, mods) -> {
             if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE) {
                 glfwSetWindowShouldClose(window, true);
+            }
+            if (key == GLFW_KEY_L && action == GLFW_PRESS) {
+                showFaceLabels = !showFaceLabels;
+                System.out.println("Face labels: " + (showFaceLabels ? "ON" : "OFF"));
             }
             if (key >= 0 && key < keys.length) {
                 if (action == GLFW_PRESS) {
@@ -201,9 +217,10 @@ public class SingleChunkVisualTest {
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        // Disable face culling - winding order needs more work
-        // TODO: Fix vertex winding order in MmsCuboidGenerator and index generation in MmsMeshBuilder
-        glDisable(GL_CULL_FACE);
+        // Enable face culling with CCW front faces (OpenGL default)
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
 
         // Enable alpha blending for transparent textures
         glEnable(GL_BLEND);
@@ -215,7 +232,7 @@ public class SingleChunkVisualTest {
         System.out.println("✓ OpenGL initialized");
         System.out.println("  OpenGL Version: " + glGetString(GL_VERSION));
         System.out.println("  GLSL Version: " + glGetString(GL_SHADING_LANGUAGE_VERSION));
-        System.out.println("  Face culling: ENABLED (CCW front faces)");
+        System.out.println("  Face culling: ENABLED (CCW front faces, culling back faces)");
     }
 
     private void initializeMMS() {
@@ -249,7 +266,7 @@ public class SingleChunkVisualTest {
             }
             """;
 
-        // Fragment shader source
+        // Fragment shader source - with face direction indicators
         String fragmentShaderSource = """
             #version 330 core
             out vec4 FragColor;
@@ -258,6 +275,7 @@ public class SingleChunkVisualTest {
             in vec3 FragPos;
 
             uniform sampler2D ourTexture;
+            uniform bool showFaceLabels;
 
             void main() {
                 vec4 texColor = texture(ourTexture, TexCoord);
@@ -267,12 +285,43 @@ public class SingleChunkVisualTest {
                     discard;
                 }
 
-                // Simple lighting based on fragment position derivatives
+                // Calculate face normal from derivatives
                 vec3 normal = normalize(cross(dFdx(FragPos), dFdy(FragPos)));
+
+                // Color-code faces by direction for debugging
+                vec3 faceColor = vec3(1.0);
+                if (showFaceLabels) {
+                    float threshold = 0.9;
+                    if (normal.y > threshold) {
+                        // Top face - GREEN with 'T'
+                        faceColor = vec3(0.3, 1.0, 0.3);
+                    } else if (normal.y < -threshold) {
+                        // Bottom face - BROWN with 'B'
+                        faceColor = vec3(0.6, 0.4, 0.2);
+                    } else if (normal.z < -threshold) {
+                        // North face (-Z) - BLUE with 'N'
+                        faceColor = vec3(0.3, 0.3, 1.0);
+                    } else if (normal.z > threshold) {
+                        // South face (+Z) - RED with 'S'
+                        faceColor = vec3(1.0, 0.3, 0.3);
+                    } else if (normal.x > threshold) {
+                        // East face (+X) - YELLOW with 'E'
+                        faceColor = vec3(1.0, 1.0, 0.3);
+                    } else if (normal.x < -threshold) {
+                        // West face (-X) - MAGENTA with 'W'
+                        faceColor = vec3(1.0, 0.3, 1.0);
+                    }
+                }
+
+                // Simple lighting
                 float light = abs(normal.y) * 0.3 + 0.7;
 
-                // Apply lighting
-                FragColor = texColor * vec4(vec3(light), 1.0);
+                // Apply lighting and face color
+                vec3 finalColor = showFaceLabels ?
+                    mix(texColor.rgb, faceColor, 0.5) * light :
+                    texColor.rgb * light;
+
+                FragColor = vec4(finalColor, texColor.a);
             }
             """;
 
@@ -471,6 +520,7 @@ public class SingleChunkVisualTest {
         setMatrix4f("view", view);
         setMatrix4f("model", model);
         setUniform1i("ourTexture", 0);
+        setUniform1i("showFaceLabels", showFaceLabels ? 1 : 0);
 
         // Render the chunk
         if (renderableHandle != null) {
@@ -487,6 +537,10 @@ public class SingleChunkVisualTest {
 
     private void setUniform1i(String name, int value) {
         glUniform1i(glGetUniformLocation(shaderProgram, name), value);
+    }
+
+    private void setUniform1b(String name, boolean value) {
+        glUniform1i(glGetUniformLocation(shaderProgram, name), value ? 1 : 0);
     }
 
     private void cleanup() {

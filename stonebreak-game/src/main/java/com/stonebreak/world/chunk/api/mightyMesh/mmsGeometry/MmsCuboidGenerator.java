@@ -39,29 +39,47 @@ public class MmsCuboidGenerator implements MmsGeometryService {
     /**
      * Face vertex offsets for standard cube.
      * Each face has 4 vertices with (x, y, z) offsets from block origin.
-     * Vertices are ordered counter-clockwise when viewed from OUTSIDE the cube.
      *
-     * With index pattern [0,1,2] and [0,2,3] creating two triangles:
-     * - Triangle 1: vertices 0 -> 1 -> 2 (CCW from outside)
-     * - Triangle 2: vertices 0 -> 2 -> 3 (CCW from outside)
+     * CRITICAL: Vertices MUST be in counter-clockwise order when viewed from OUTSIDE.
+     * With index pattern [0,1,2] and [0,2,3], the quad is split like this:
+     *   v3 --- v2
+     *   |  \   |
+     *   |   \  |
+     *   v0 --- v1
+     * Triangle 1: v0->v1->v2 (CCW)
+     * Triangle 2: v0->v2->v3 (CCW)
      */
     private static final float[][][] FACE_VERTEX_OFFSETS = {
-        // Top face (+Y) - looking down at top, CCW = bottom-left, bottom-right, top-right, top-left
-        {{0, 1, 0}, {1, 1, 0}, {1, 1, 1}, {0, 1, 1}},
+        // Top face (+Y): Looking down from above (normal points UP)
+        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // In Z-axis terms: far-left, far-right, near-right, near-left (Z+ is "far", Z- is "near" when viewing from above)
+        // v0=(0,1,1) v1=(1,1,1) v2=(1,1,0) v3=(0,1,0)
+        {{0, 1, 1}, {1, 1, 1}, {1, 1, 0}, {0, 1, 0}},
 
-        // Bottom face (-Y) - looking up from below, CCW = bottom-left, bottom-right, top-right, top-left
+        // Bottom face (-Y): Looking up from below (normal points DOWN)
+        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // In Z-axis terms when looking up: near-left, near-right, far-right, far-left
+        // v0=(0,0,0) v1=(1,0,0) v2=(1,0,1) v3=(0,0,1)
         {{0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {0, 0, 1}},
 
-        // North face (-Z) - looking at front (z=0), CCW = bottom-left, bottom-right, top-right, top-left
-        {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}},
+        // North face (-Z): Looking from outside at z=0 plane (normal points -Z)
+        // Matches CBR Back face: When viewed from -Z direction (outside), X direction is reversed
+        // v0=(1,0,0) v1=(0,0,0) v2=(0,1,0) v3=(1,1,0)
+        {{1, 0, 0}, {0, 0, 0}, {0, 1, 0}, {1, 1, 0}},
 
-        // South face (+Z) - looking at back (z=1), CCW = bottom-left, bottom-right, top-right, top-left
-        {{1, 0, 1}, {0, 0, 1}, {0, 1, 1}, {1, 1, 1}},
+        // South face (+Z): Looking from outside at z=1 plane (normal points +Z)
+        // Matches CBR Front face: bottom-left, bottom-right, top-right, top-left
+        // v0=(0,0,1) v1=(1,0,1) v2=(1,1,1) v3=(0,1,1)
+        {{0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}},
 
-        // East face (+X) - looking at right side (x=1), CCW = bottom-left, bottom-right, top-right, top-left
+        // East face (+X): Looking from outside at x=1 plane (normal points +X)
+        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // v0=(1,0,1) v1=(1,0,0) v2=(1,1,0) v3=(1,1,1)
         {{1, 0, 1}, {1, 0, 0}, {1, 1, 0}, {1, 1, 1}},
 
-        // West face (-X) - looking at left side (x=0), CCW = bottom-left, bottom-right, top-right, top-left
+        // West face (-X): Looking from outside at x=0 plane (normal points -X)
+        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // v0=(0,0,0) v1=(0,0,1) v2=(0,1,1) v3=(0,1,0)
         {{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 1, 0}}
     };
 
@@ -128,26 +146,32 @@ public class MmsCuboidGenerator implements MmsGeometryService {
     /**
      * Maps a vertex index on a side face to a water corner height index.
      *
+     * Water corner indices: 0=(0,0), 1=(1,0), 2=(1,1), 3=(0,1)
+     *
      * @param face Side face index (2-5)
      * @param vertexIndex Vertex index on that face (0-3)
      * @return Corner index (0-3) or -1 if not applicable
      */
     private int getWaterCornerIndexForSideFace(int face, int vertexIndex) {
         // Map side face vertices to water corner heights
-        // Corner order: [0,0], [1,0], [1,1], [0,1]
+        // Only top vertices (indices 2 and 3) need water surface adjustment
         switch (face) {
-            case 2: // North (-Z): z=0
-                return (vertexIndex == 2 || vertexIndex == 3) ?
-                    (vertexIndex == 2 ? 1 : 0) : -1; // Top vertices only
-            case 3: // South (+Z): z=1
-                return (vertexIndex == 2 || vertexIndex == 3) ?
-                    (vertexIndex == 2 ? 2 : 3) : -1;
-            case 4: // East (+X): x=1
-                return (vertexIndex == 2 || vertexIndex == 3) ?
-                    (vertexIndex == 2 ? 2 : 1) : -1;
-            case 5: // West (-X): x=0
-                return (vertexIndex == 2 || vertexIndex == 3) ?
-                    (vertexIndex == 2 ? 3 : 0) : -1;
+            case 2: // North (-Z): z=0, vertices are (1,0,0), (0,0,0), (0,1,0), (1,1,0)
+                if (vertexIndex == 2) return 0; // (0,1,0) -> corner 0=(0,0)
+                if (vertexIndex == 3) return 1; // (1,1,0) -> corner 1=(1,0)
+                return -1;
+            case 3: // South (+Z): z=1, vertices are (0,0,1), (1,0,1), (1,1,1), (0,1,1)
+                if (vertexIndex == 2) return 2; // (1,1,1) -> corner 2=(1,1)
+                if (vertexIndex == 3) return 3; // (0,1,1) -> corner 3=(0,1)
+                return -1;
+            case 4: // East (+X): x=1, vertices are (1,0,1), (1,0,0), (1,1,0), (1,1,1)
+                if (vertexIndex == 2) return 1; // (1,1,0) -> corner 1=(1,0)
+                if (vertexIndex == 3) return 2; // (1,1,1) -> corner 2=(1,1)
+                return -1;
+            case 5: // West (-X): x=0, vertices are (0,0,0), (0,0,1), (0,1,1), (0,1,0)
+                if (vertexIndex == 2) return 3; // (0,1,1) -> corner 3=(0,1)
+                if (vertexIndex == 3) return 0; // (0,1,0) -> corner 0=(0,0)
+                return -1;
             default:
                 return -1;
         }
