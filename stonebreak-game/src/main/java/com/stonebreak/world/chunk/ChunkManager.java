@@ -1,5 +1,12 @@
 package com.stonebreak.world.chunk;
 
+import com.stonebreak.core.Game;
+import com.stonebreak.player.Player;
+import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
+import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
+import com.stonebreak.world.operations.WorldConfiguration;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -7,24 +14,29 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import com.stonebreak.player.Player;
-import com.stonebreak.core.Game;
-import com.stonebreak.world.World;
-import com.stonebreak.world.operations.WorldConfiguration;
-
+/**
+ * CCO-optimized chunk manager for efficient chunk lifecycle management.
+ * Uses Common Chunk Operations API for atomic state tracking and coordination.
+ *
+ * Key improvements:
+ * - CCO atomic state management for thread-safe operations
+ * - Unified dirty tracking through CCO API
+ * - Neighbor coordination via ChunkNeighborCoordinator
+ * - Lock-free state queries and transitions
+ */
 public class ChunkManager {
-    
+
     private final World world;
     private final int renderDistance;
     private final Set<World.ChunkPosition> activeChunkPositions = Collections.synchronizedSet(new HashSet<>());
     private float updateTimer = 0.0f;
-    
+
     private final ExecutorService chunkExecutor = Executors.newFixedThreadPool(2);
     private static final float UPDATE_INTERVAL = 1.0f; // Update every second
     private static volatile boolean optimizationsEnabled = true;
     private static long lastMemoryCheck = 0;
     private static boolean highMemoryPressure = false;
-    
+
     // Simple configuration
     private static final long MEMORY_CHECK_INTERVAL = 2000; // 2 seconds
     private static final double HIGH_MEMORY_THRESHOLD = 0.8; // 80% memory usage
@@ -77,14 +89,24 @@ public class ChunkManager {
             System.out.println("Checking " + totalCandidates + " chunks for unloading...");
 
             for (World.ChunkPosition pos : chunksToUnload) {
-                // Check if chunk is dirty before unloading
+                // Use CCO API to check if chunk exists and needs saving
                 if (world.hasChunkAt(pos.getX(), pos.getZ())) {
-                    var chunk = world.getChunkAt(pos.getX(), pos.getZ());
-                    if (chunk != null && chunk.isDirty()) {
-                        // SAVE-THEN-UNLOAD: Save dirty chunk first, then unload it
-                        saveAndUnloadDirtyChunk(pos);
-                        protectedCount++; // Count as "protected" but actually handled
-                        continue; // Skip normal unload since we handled it specially
+                    Chunk chunk = world.getChunkAt(pos.getX(), pos.getZ());
+                    if (chunk != null) {
+                        CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+
+                        // Check if chunk is already being unloaded
+                        if (stateManager.hasState(CcoChunkState.UNLOADING)) {
+                            continue; // Skip chunks already unloading
+                        }
+
+                        // Use CCO dirty tracker to check if save is needed
+                        if (stateManager.needsSave()) {
+                            // SAVE-THEN-UNLOAD: Save dirty chunk first, then unload it
+                            saveAndUnloadDirtyChunk(pos, chunk);
+                            protectedCount++; // Count as "protected" but actually handled
+                            continue; // Skip normal unload since we handled it specially
+                        }
                     }
                 }
 
@@ -109,7 +131,7 @@ public class ChunkManager {
                             }
                         }
 
-                        System.err.println("Memory Manager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                        System.err.println("ChunkManager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
                         if (e.getCause() != null && e.getCause().getMessage() != null) {
                             System.err.println("  Caused by: " + e.getCause().getMessage());
                         }
@@ -132,10 +154,19 @@ public class ChunkManager {
 
     /**
      * Saves a dirty chunk synchronously, then unloads it.
+     * Uses CCO state management to ensure proper lifecycle transitions.
      * This ensures player edits are preserved while allowing normal chunk lifecycle.
      */
-    private void saveAndUnloadDirtyChunk(World.ChunkPosition pos) {
+    private void saveAndUnloadDirtyChunk(World.ChunkPosition pos, Chunk chunk) {
         try {
+            CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+
+            // Mark chunk as unloading using CCO state transition
+            if (!stateManager.addState(CcoChunkState.UNLOADING)) {
+                System.err.println("ChunkManager: Failed to transition chunk to UNLOADING state: (" + pos.getX() + ", " + pos.getZ() + ")");
+                return; // Can't unload if state transition failed
+            }
+
             // Remove from active chunks first to prevent double-processing
             activeChunkPositions.remove(pos);
 
@@ -145,7 +176,7 @@ public class ChunkManager {
                     // The WorldChunkStore.unloadChunk() method already handles saving dirty chunks
                     // via saveChunkOnUnload() before proceeding with unload
                     world.unloadChunk(pos.getX(), pos.getZ());
-                    System.out.println("[SAVE-THEN-UNLOAD] Successfully saved and unloaded dirty chunk (" + pos.getX() + ", " + pos.getZ() + ")");
+                    System.out.println("[CCO-SAVE-UNLOAD] Successfully saved and unloaded dirty chunk (" + pos.getX() + ", " + pos.getZ() + ")");
                 } catch (Exception e) {
                     // Extract meaningful error message
                     String errorMsg = e.getMessage();
@@ -159,7 +190,7 @@ public class ChunkManager {
                         }
                     }
 
-                    System.err.println("Memory Manager: CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                    System.err.println("ChunkManager: CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
                     if (e.getCause() != null && e.getCause().getMessage() != null) {
                         System.err.println("  Caused by: " + e.getCause().getMessage());
                     }
@@ -168,11 +199,14 @@ public class ChunkManager {
 
                     // Re-add to active chunks if save-then-unload failed
                     activeChunkPositions.add(pos);
+
+                    // Remove UNLOADING state since we failed
+                    stateManager.removeState(CcoChunkState.UNLOADING);
                 }
             });
 
         } catch (Exception e) {
-            System.err.println("Error initiating save-then-unload for chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
+            System.err.println("ChunkManager: Error initiating save-then-unload for chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
             // Keep chunk in active chunks if we couldn't even start the process
         }
     }
@@ -187,13 +221,21 @@ public class ChunkManager {
                     chunkExecutor.submit(() -> {
                         try {
                             long startTime = System.currentTimeMillis();
-                            world.getChunkAt(pos.getX(), pos.getZ());
+                            Chunk chunk = world.getChunkAt(pos.getX(), pos.getZ());
                             long endTime = System.currentTimeMillis();
-                            
+
                             // Log slow chunk loading
                             if (endTime - startTime > 500) { // More than 500ms
                                 System.err.println("SLOW CHUNK LOAD: Chunk (" + pos.getX() + ", " + pos.getZ() + ") took " + (endTime - startTime) + "ms");
                                 System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
+                            }
+
+                            // Verify chunk was loaded properly using CCO states
+                            if (chunk != null) {
+                                CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+                                if (!stateManager.hasAnyState(CcoChunkState.BLOCKS_POPULATED, CcoChunkState.FEATURES_POPULATED)) {
+                                    System.err.println("WARNING: Chunk (" + pos.getX() + ", " + pos.getZ() + ") loaded but not populated. States: " + stateManager.getCurrentStates());
+                                }
                             }
                         } catch (Exception e) {
                             System.err.println("CRITICAL: Exception loading chunk (" + pos.getX() + ", " + pos.getZ() + ")");
@@ -215,14 +257,23 @@ public class ChunkManager {
                 world.ensureChunkIsReadyForRender(x, z);
 
                 // PERIODIC VALIDATION: Double-check that chunks within close range have meshes
-                // This catches any chunks that slipped through mesh generation
+                // Uses CCO state management for accurate state queries
                 int distance = Math.max(Math.abs(x - playerChunkX), Math.abs(z - playerChunkZ));
                 if (distance <= 3) { // Only validate chunks very close to player
                     Chunk chunk = world.getChunkAt(x, z);
-                    if (chunk != null && chunk.areFeaturesPopulated() && !chunk.isMeshGenerated()
-                        && !chunk.isMeshDataGenerationScheduledOrInProgress()) {
-                        // Found an invisible chunk - force immediate retry
-                        world.ensureChunkIsReadyForRender(x, z);
+                    if (chunk != null) {
+                        CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+
+                        // Check if chunk is populated but mesh not ready
+                        boolean isPopulated = stateManager.hasState(CcoChunkState.FEATURES_POPULATED);
+                        boolean isMeshReady = stateManager.isRenderable();
+                        boolean isMeshGenerating = stateManager.hasState(CcoChunkState.MESH_GENERATING);
+
+                        if (isPopulated && !isMeshReady && !isMeshGenerating) {
+                            // Found an invisible chunk - force immediate retry
+                            System.out.println("CCO-VALIDATION: Chunk (" + x + ", " + z + ") populated but not renderable. Scheduling mesh generation.");
+                            world.ensureChunkIsReadyForRender(x, z);
+                        }
                     }
                 }
             }
@@ -233,69 +284,78 @@ public class ChunkManager {
         if (!optimizationsEnabled) {
             return 32;
         }
-        
+
         updateMemoryPressure();
-        
+
         float deltaTime = Game.getDeltaTime();
         int baseBatchSize = getExistingBatchSize();
-        
+
         if (!highMemoryPressure && deltaTime < 0.016f) {
             return Math.min(64, baseBatchSize * 2);
         }
-        
+
         if (deltaTime > 0.025f) {
             return Math.max(2, baseBatchSize / 2);
         }
-        
+
         return baseBatchSize;
     }
-    
+
     private static int getExistingBatchSize() {
         long heapUsed = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
         long heapMax = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax();
         double memoryUsage = (double) heapUsed / heapMax;
-        
+
         if (memoryUsage > 0.9) return 4;
         if (memoryUsage > 0.8) return 8;
         if (memoryUsage > 0.7) return 16;
         return 32;
     }
-    
+
     private static void updateMemoryPressure() {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastMemoryCheck < MEMORY_CHECK_INTERVAL) {
             return;
         }
-        
+
         lastMemoryCheck = currentTime;
-        
+
         Runtime runtime = Runtime.getRuntime();
         long usedMemory = runtime.totalMemory() - runtime.freeMemory();
         long maxMemory = runtime.maxMemory();
         double memoryUsage = (double) usedMemory / maxMemory;
-        
+
         boolean previousPressure = highMemoryPressure;
         highMemoryPressure = memoryUsage > HIGH_MEMORY_THRESHOLD;
-        
+
         if (highMemoryPressure && !previousPressure) {
             System.out.println("ChunkManager: High memory pressure, reducing GL batch sizes.");
         } else if (!highMemoryPressure && previousPressure) {
             System.out.println("ChunkManager: Memory pressure relieved, resuming normal batch sizes.");
         }
     }
-    
+
+    /**
+     * Determines if distant chunk mesh generation should be skipped.
+     * Uses CCO state management for accurate chunk state queries.
+     */
     public static boolean shouldSkipDistantChunkMesh(Chunk chunk, int playerChunkX, int playerChunkZ) {
         if (!optimizationsEnabled) {
             return false;
         }
-        
+
         updateMemoryPressure();
-        
+
         if (highMemoryPressure) {
+            // Check if chunk is already being unloaded using CCO state
+            if (chunk.getCcoStateManager().hasState(CcoChunkState.UNLOADING)) {
+                return true; // Don't generate mesh for unloading chunks
+            }
+
             int distance = Math.max(Math.abs(chunk.getChunkX() - playerChunkX), Math.abs(chunk.getChunkZ() - playerChunkZ));
             return distance > 6;
         }
-        
+
         return false;
     }
 
@@ -303,12 +363,12 @@ public class ChunkManager {
         updateMemoryPressure();
         return highMemoryPressure;
     }
-    
+
     public static void setOptimizationsEnabled(boolean enabled) {
         optimizationsEnabled = enabled;
         System.out.println("ChunkManager Optimizations: " + (enabled ? "Enabled" : "Disabled"));
     }
-    
+
     public static boolean areOptimizationsEnabled() {
         return optimizationsEnabled;
     }
