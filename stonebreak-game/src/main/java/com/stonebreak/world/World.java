@@ -5,17 +5,17 @@ import java.util.List;
 import java.util.Collection;
 import java.util.function.Consumer;
 
+import com.stonebreak.world.chunk.utils.ChunkManager;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
-import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
-import com.stonebreak.world.chunk.mesh.data.WorldChunkStore;
+import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
+import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;
 

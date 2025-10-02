@@ -1,10 +1,10 @@
-package com.stonebreak.world.chunk.mesh.data;
+package com.stonebreak.world.chunk.utils;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;

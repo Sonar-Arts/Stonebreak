@@ -66,4 +66,6 @@ module stonebreak.game {
     exports com.stonebreak.world.chunk to org.junit.platform.commons;
     opens com.stonebreak.world.save to org.junit.platform.commons;
     opens com.stonebreak.world.chunk to org.junit.platform.commons;
+    exports com.stonebreak.world.chunk.utils to org.junit.platform.commons;
+    opens com.stonebreak.world.chunk.utils to org.junit.platform.commons;
 }

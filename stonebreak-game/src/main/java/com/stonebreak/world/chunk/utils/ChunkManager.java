@@ -1,8 +1,9 @@
-package com.stonebreak.world.chunk;
+package com.stonebreak.world.chunk.utils;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
 import com.stonebreak.world.operations.WorldConfiguration;

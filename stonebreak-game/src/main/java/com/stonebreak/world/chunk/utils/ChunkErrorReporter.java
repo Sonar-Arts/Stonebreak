@@ -1,4 +1,4 @@
-package com.stonebreak.world.chunk.mesh.util;
+package com.stonebreak.world.chunk.utils;
 
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;

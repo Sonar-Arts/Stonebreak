@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.api.commonChunkOperations.core.CcoChunkData;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkMetadata;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
@@ -545,7 +546,7 @@ public final class MmsAPI {
      */
     public MmsMeshPipeline createMeshPipeline(
             com.stonebreak.world.operations.WorldConfiguration config,
-            com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter errorReporter) {
+            ChunkErrorReporter errorReporter) {
         ensureInitialized();
 
         if (meshPipeline != null) {
