@@ -43,26 +43,26 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
         float[] texCoords = new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
 
         // Get atlas coordinates for this block/face combination
-        TextureAtlas.TextureRegion region = getTextureRegion(blockType, face);
+        float[] uvs = getBlockFaceUVs(blockType, face);
 
         // Generate quad texture coordinates (counter-clockwise winding)
         int idx = 0;
 
         // Vertex 0: Bottom-left
-        texCoords[idx++] = region.u1;
-        texCoords[idx++] = region.v2;
+        texCoords[idx++] = uvs[0]; // u1
+        texCoords[idx++] = uvs[3]; // v2
 
         // Vertex 1: Bottom-right
-        texCoords[idx++] = region.u2;
-        texCoords[idx++] = region.v2;
+        texCoords[idx++] = uvs[2]; // u2
+        texCoords[idx++] = uvs[3]; // v2
 
         // Vertex 2: Top-right
-        texCoords[idx++] = region.u2;
-        texCoords[idx++] = region.v1;
+        texCoords[idx++] = uvs[2]; // u2
+        texCoords[idx++] = uvs[1]; // v1
 
         // Vertex 3: Top-left
-        texCoords[idx++] = region.u1;
-        texCoords[idx++] = region.v1;
+        texCoords[idx++] = uvs[0]; // u1
+        texCoords[idx++] = uvs[1]; // v1
 
         return texCoords;
     }
@@ -75,28 +75,28 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
         float[] texCoords = new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_CROSS];
 
-        // Get atlas coordinates for cross block
-        TextureAtlas.TextureRegion region = getTextureRegion(blockType, 0); // Cross blocks use single texture
+        // Get atlas coordinates for cross block (use face 0 for cross blocks)
+        float[] uvs = getBlockFaceUVs(blockType, 0);
 
         int idx = 0;
 
         // All 4 quads (2 planes * 2 sides) use the same texture coordinates
         for (int quad = 0; quad < 4; quad++) {
             // Vertex 0: Bottom-left
-            texCoords[idx++] = region.u1;
-            texCoords[idx++] = region.v2;
+            texCoords[idx++] = uvs[0]; // u1
+            texCoords[idx++] = uvs[3]; // v2
 
             // Vertex 1: Bottom-right
-            texCoords[idx++] = region.u2;
-            texCoords[idx++] = region.v2;
+            texCoords[idx++] = uvs[2]; // u2
+            texCoords[idx++] = uvs[3]; // v2
 
             // Vertex 2: Top-right
-            texCoords[idx++] = region.u2;
-            texCoords[idx++] = region.v1;
+            texCoords[idx++] = uvs[2]; // u2
+            texCoords[idx++] = uvs[1]; // v1
 
             // Vertex 3: Top-left
-            texCoords[idx++] = region.u1;
-            texCoords[idx++] = region.v1;
+            texCoords[idx++] = uvs[0]; // u1
+            texCoords[idx++] = uvs[1]; // v1
         }
 
         return texCoords;
@@ -190,16 +190,35 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
     }
 
     /**
-     * Gets the texture region from the atlas for a given block and face.
+     * Gets block face UVs from the texture atlas.
+     * Delegates to TextureAtlas which handles directional blocks automatically.
      *
      * @param blockType Type of block
      * @param face Face index (0-5)
-     * @return Texture region with UV coordinates
+     * @return UV array [u1, v1, u2, v2]
      */
-    private TextureAtlas.TextureRegion getTextureRegion(BlockType blockType, int face) {
-        // Delegate to the texture atlas to resolve coordinates
-        // The atlas handles directional blocks (grass, logs) automatically
-        return textureAtlas.getTextureCoordinates(blockType, face);
+    private float[] getBlockFaceUVs(BlockType blockType, int face) {
+        BlockType.Face faceEnum = convertFaceIndexToEnum(face);
+        return textureAtlas.getBlockFaceUVs(blockType, faceEnum);
+    }
+
+    /**
+     * Converts a face index (0-5) to BlockType.Face enum.
+     *
+     * @param faceIndex Face index (0=TOP, 1=BOTTOM, 2=NORTH, 3=SOUTH, 4=EAST, 5=WEST)
+     * @return Corresponding BlockType.Face enum value
+     */
+    private BlockType.Face convertFaceIndexToEnum(int faceIndex) {
+        switch (faceIndex) {
+            case 0: return BlockType.Face.TOP;
+            case 1: return BlockType.Face.BOTTOM;
+            case 2: return BlockType.Face.SIDE_NORTH;
+            case 3: return BlockType.Face.SIDE_SOUTH;
+            case 4: return BlockType.Face.SIDE_EAST;
+            case 5: return BlockType.Face.SIDE_WEST;
+            default:
+                throw new IllegalArgumentException("Invalid face index: " + faceIndex);
+        }
     }
 
     /**
