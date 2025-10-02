@@ -118,6 +118,10 @@ public class ResourceManager {
                    if (waterHeight > 0.01 && u_waterDepthOffset != 0.0) {
                        clipPos.z += u_waterDepthOffset * clipPos.w;
                    }
+                   if (isAlphaTested > 0.5 && !u_isUIElement) {
+                       const float ALPHA_DEPTH_OFFSET = -0.0006;
+                       clipPos.z += ALPHA_DEPTH_OFFSET * clipPos.w;
+                   }
                    gl_Position = clipPos;
                    if (u_transformUVsForItem) {
                        outTexCoord = u_atlasUVOffset + texCoord * u_atlasUVScale;

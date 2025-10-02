@@ -31,6 +31,8 @@ public class MmsCrossGenerator implements MmsGeometryService {
      * @param worldZ World Z coordinate
      * @return Array of vertex positions for entire cross (48 floats = 16 vertices * 3 components)
      */
+    private static final float FACE_DEPTH_EPSILON = 0.0008f;
+
     public float[] generateCrossVertices(float worldX, float worldY, float worldZ) {
         float[] vertices = new float[MmsBufferLayout.VERTICES_PER_CROSS * MmsBufferLayout.POSITION_SIZE];
 
@@ -65,7 +67,23 @@ public class MmsCrossGenerator implements MmsGeometryService {
         vertices[idx++] = worldX + 0.85f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.85f;
         vertices[idx++] = worldX + 0.15f; vertices[idx++] = worldY + 1.0f; vertices[idx++] = worldZ + 0.15f;
 
+        // Apply tiny offsets along each face normal to avoid z-fighting between back/front quads
+        applyFaceOffset(vertices, 0, 0.7071f, -0.7071f);   // Plane 1 - Front
+        applyFaceOffset(vertices, 4, -0.7071f, 0.7071f);   // Plane 1 - Back
+        applyFaceOffset(vertices, 8, -0.7071f, -0.7071f);  // Plane 2 - Front
+        applyFaceOffset(vertices, 12, 0.7071f, 0.7071f);   // Plane 2 - Back
+
         return vertices;
+    }
+
+    private void applyFaceOffset(float[] vertices, int startVertex, float nx, float nz) {
+        float offsetX = nx * FACE_DEPTH_EPSILON;
+        float offsetZ = nz * FACE_DEPTH_EPSILON;
+        for (int i = 0; i < VERTICES_PER_SIDE; i++) {
+            int base = (startVertex + i) * MmsBufferLayout.POSITION_SIZE;
+            vertices[base] += offsetX;
+            vertices[base + 2] += offsetZ;
+        }
     }
 
     /**

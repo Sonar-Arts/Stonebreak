@@ -61,7 +61,9 @@ public interface MmsTextureMapper {
     default boolean requiresAlphaTesting(BlockType blockType) {
         return blockType == BlockType.ROSE ||
                blockType == BlockType.DANDELION ||
-               blockType == BlockType.LEAVES;
+               blockType == BlockType.LEAVES ||
+               blockType == BlockType.PINE_LEAVES ||
+               blockType == BlockType.ELM_LEAVES;
     }
 
     /**

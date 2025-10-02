@@ -15,8 +15,7 @@ import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL30;
+
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
