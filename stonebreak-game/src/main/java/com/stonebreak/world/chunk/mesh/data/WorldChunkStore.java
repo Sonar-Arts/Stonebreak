@@ -8,141 +8,84 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.save.SaveService;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+/**
+ * Manages chunk storage and lifecycle following SOLID principles.
+ *
+ * Single Responsibility: Stores chunks and coordinates their lifecycle
+ * Open/Closed: Extensible through listeners
+ * Liskov Substitution: N/A (no inheritance)
+ * Interface Segregation: Focused public API
+ * Dependency Inversion: Depends on abstractions (interfaces/injected dependencies)
+ */
 public class WorldChunkStore {
-    private final Map<World.ChunkPosition, Chunk> chunks;
-    private final Map<Long, World.ChunkPosition> chunkPositionCache;
+    // Dependencies (injected, following DI principle)
     private final TerrainGenerationSystem terrainSystem;
     private final WorldConfiguration config;
     private final ChunkMeshBuildingPipeline meshPipeline;
+
+    // Core storage
+    private final Map<World.ChunkPosition, Chunk> chunks;
+    private final ChunkPositionCache positionCache;
+
+    // Lifecycle listeners (optional, following Open/Closed)
     private Consumer<Chunk> chunkLoadListener;
     private Consumer<Chunk> chunkUnloadListener;
 
-    public WorldChunkStore(TerrainGenerationSystem terrainSystem, WorldConfiguration config, ChunkMeshBuildingPipeline meshPipeline) {
-        this.chunks = new ConcurrentHashMap<>();
-        this.chunkPositionCache = new ConcurrentHashMap<>();
+    public WorldChunkStore(TerrainGenerationSystem terrainSystem,
+                          WorldConfiguration config,
+                          ChunkMeshBuildingPipeline meshPipeline) {
         this.terrainSystem = terrainSystem;
         this.config = config;
         this.meshPipeline = meshPipeline;
+        this.chunks = new ConcurrentHashMap<>();
+        this.positionCache = new ChunkPositionCache();
     }
+
+    // ========== Lifecycle Listeners ==========
 
     public void setChunkListeners(Consumer<Chunk> loadListener, Consumer<Chunk> unloadListener) {
         this.chunkLoadListener = loadListener;
         this.chunkUnloadListener = unloadListener;
     }
 
-    public World.ChunkPosition getCachedChunkPosition(int x, int z) {
-        long key = ((long) x << 32) | (z & 0xFFFFFFFFL);
-        
-        if (chunkPositionCache.size() > WorldConfiguration.MAX_CHUNK_POSITION_CACHE_SIZE) {
-            cleanupChunkPositionCache();
-        }
-        
-        return chunkPositionCache.computeIfAbsent(key, k -> new World.ChunkPosition(x, z));
-    }
-    
+    // ========== Chunk Access ==========
+
     public Chunk getChunk(int x, int z) {
-        World.ChunkPosition position = getCachedChunkPosition(x, z);
+        World.ChunkPosition position = positionCache.get(x, z);
         return chunks.get(position);
     }
-    
+
     public Chunk getOrCreateChunk(int x, int z) {
-        World.ChunkPosition position = getCachedChunkPosition(x, z);
+        World.ChunkPosition position = positionCache.get(x, z);
         Chunk chunk = chunks.get(position);
 
         if (chunk == null) {
-            // NEW SAVE-FIRST APPROACH: Check save data before generation
-            chunk = loadChunkFromSaveOrGenerate(x, z, position);
+            chunk = loadOrGenerateChunk(x, z, position);
         }
 
         return chunk;
     }
 
-    /**
-     * Implements save-first loading: load from save data if exists, otherwise generate and save.
-     * This prevents world generation from overriding player modifications.
-     */
-    private Chunk loadChunkFromSaveOrGenerate(int x, int z, World.ChunkPosition position) {
-        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-        var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
-
-        if (saveSystem != null && saveSystem.isInitialized()) {
-            try {
-                // Step 1: Check if saved chunk exists (synchronously)
-                Boolean chunkExists = saveSystem.chunkExists(x, z).get();
-
-                if (chunkExists != null && chunkExists) {
-                    // Step 2: Load saved chunk (synchronously)
-                    Chunk savedChunk = saveSystem.loadChunk(x, z).get();
-
-                    if (savedChunk != null) {
-                        // Step 3: Register saved chunk and return
-                        chunks.put(position, savedChunk);
-
-                        // Enhanced logging to track save state
-                        String chunkState = savedChunk.isDirty() ? "DIRTY" : "CLEAN";
-                        String featuresState = savedChunk.areFeaturesPopulated() ? "POPULATED" : "NOT_POPULATED";
-                        System.out.println("[SAVE-FIRST] Loaded chunk (" + x + ", " + z + ") from save data - State: " + chunkState + ", Features: " + featuresState);
-
-                        // Force mesh build for loaded chunk to ensure visibility
-                        // Loaded chunks always need mesh rebuilds since they may have different states
-                        savedChunk.cleanupCpuResources(); // Reset mesh state to force regeneration
-                        if (shouldQueueForMesh(x, z)) {
-                            meshPipeline.scheduleConditionalMeshBuild(savedChunk);
-                        }
-
-                        return savedChunk;
-                    } else {
-                        System.err.println("[SAVE-FIRST] WARNING: Chunk exists in storage but loaded as null (" + x + ", " + z + ")");
-                    }
-                }
-            } catch (Exception e) {
-                System.err.println("Error loading chunk (" + x + ", " + z + ") from save data: " + e.getMessage());
-                System.out.println("Falling back to generation for chunk (" + x + ", " + z + ")");
-            }
-        }
-
-        // Step 4: No save data exists or save system unavailable - generate new chunk
-        Chunk generatedChunk = safelyGenerateAndRegisterChunk(x, z);
-
-        // Step 5: Immediately save newly generated chunk to create baseline
-        if (generatedChunk != null && saveSystem != null && saveSystem.isInitialized()) {
-            try {
-                String featuresState = generatedChunk.areFeaturesPopulated() ? "POPULATED" : "NOT_POPULATED";
-                System.out.println("[SAVE-FIRST] Saving newly generated chunk (" + x + ", " + z + ") as baseline - Features: " + featuresState);
-
-                saveSystem.saveChunk(generatedChunk)
-                    .thenRun(() -> {
-                        generatedChunk.markClean(); // Mark as clean since it's saved
-                        System.out.println("[SAVE-FIRST] Successfully saved newly generated chunk (" + x + ", " + z + ") as baseline - chunk now CLEAN");
-                    })
-                    .exceptionally(ex -> {
-                        System.err.println("CRITICAL: Failed to save newly generated chunk (" + x + ", " + z + "): " + ex.getMessage());
-                        // Keep chunk dirty if save failed
-                        return null;
-                    });
-            } catch (Exception e) {
-                System.err.println("CRITICAL: Error saving newly generated chunk (" + x + ", " + z + "): " + e.getMessage());
-            }
-        } else {
-            System.err.println("[SAVE-FIRST] WARNING: Cannot save newly generated chunk (" + x + ", " + z + ") - save system not available");
-        }
-
-        return generatedChunk;
+    public boolean hasChunk(int x, int z) {
+        return chunks.containsKey(positionCache.get(x, z));
     }
 
     public void ensureChunkExists(int x, int z) {
         getOrCreateChunk(x, z);
     }
-    
-    public boolean hasChunk(int x, int z) {
-        return chunks.containsKey(getCachedChunkPosition(x, z));
+
+    public World.ChunkPosition getCachedChunkPosition(int x, int z) {
+        return positionCache.get(x, z);
     }
-    
+
+    // ========== Chunk Collections ==========
+
     public Set<World.ChunkPosition> getAllChunkPositions() {
         return new HashSet<>(chunks.keySet());
     }
@@ -151,169 +94,6 @@ public class WorldChunkStore {
         return new ArrayList<>(chunks.values());
     }
 
-    public int getLoadedChunkCount() {
-        return chunks.size();
-    }
-    
-    /**
-     * Sets a chunk at the given position (used for world loading)
-     */
-    public void setChunk(int x, int z, Chunk chunk) {
-        World.ChunkPosition position = getCachedChunkPosition(x, z);
-        chunks.put(position, chunk);
-    }
-
-    public void unloadChunk(int chunkX, int chunkZ) {
-        World.ChunkPosition pos = getCachedChunkPosition(chunkX, chunkZ);
-        Chunk chunk = chunks.remove(pos);
-
-        if (chunk != null) {
-            if (chunkUnloadListener != null) {
-                chunkUnloadListener.accept(chunk);
-            }
-            // Save dirty chunks before unloading to preserve player edits
-            if (chunk.isDirty()) {
-                saveChunkOnUnload(chunk);
-            }
-
-            meshPipeline.removeChunkFromQueues(chunk);
-            chunk.cleanupCpuResources();
-            meshPipeline.addChunkForGpuCleanup(chunk);
-
-            Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
-
-            long key = ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
-            chunkPositionCache.remove(key);
-
-            if ((chunkX + chunkZ) % WorldConfiguration.MEMORY_LOG_INTERVAL == 0) {
-                Game.logDetailedMemoryInfo("After unloading chunk (" + chunkX + ", " + chunkZ + ")");
-            }
-        }
-    }
-
-    /**
-     * Saves a dirty chunk synchronously when it's being unloaded.
-     * This ensures player edits are preserved and save completes before unload.
-     * CRITICAL: This must be synchronous to prevent race conditions.
-     */
-    private void saveChunkOnUnload(Chunk chunk) {
-        var game = Game.getInstance();
-        var saveSystem = (game != null) ? game.getWorldSaveSystem() : null;
-
-        if (saveSystem != null && saveSystem.isInitialized()) {
-            try {
-                // Save the chunk SYNCHRONOUSLY to ensure completion before unload
-                saveSystem.saveChunk(chunk).get(); // Wait for save completion
-                chunk.markClean(); // Mark as clean only after successful save
-                System.out.println("[SYNC-SAVE] Saved dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") on unload - edits preserved");
-            } catch (Exception ex) {
-                System.err.println("CRITICAL: Failed to save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") on unload: " + ex.getMessage());
-                // Don't mark as clean if save failed - keep chunk dirty
-                throw new RuntimeException("Cannot safely unload chunk with unsaved edits at (" + chunk.getX() + ", " + chunk.getZ() + ")", ex);
-            }
-        } else {
-            System.err.println("CRITICAL: Cannot save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") on unload - save system not available");
-            throw new RuntimeException("Cannot safely unload chunk with unsaved edits - save system unavailable");
-        }
-    }
-
-    public Map<World.ChunkPosition, Chunk> getChunksInRenderDistance(int playerChunkX, int playerChunkZ) {
-        Map<World.ChunkPosition, Chunk> visibleChunks = new HashMap<>();
-        int renderDistance = config.getRenderDistance();
-        
-        for (int x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
-            for (int z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
-                World.ChunkPosition position = getCachedChunkPosition(x, z);
-                Chunk chunk = getOrCreateChunk(x, z);
-                
-                if (chunk != null) {
-                    visibleChunks.put(position, chunk);
-                }
-            }
-        }
-        
-        return visibleChunks;
-    }
-    
-    public void cleanupPositionCacheIfNeeded(int loadedChunks) {
-        if (chunkPositionCache.size() > loadedChunks * 2) {
-            cleanupChunkPositionCache();
-            System.out.println("WARNING: " + loadedChunks + " chunks loaded, cleaned position cache");
-        }
-    }
-    
-    public void clearPositionCacheIfLarge(int threshold) {
-        if (chunkPositionCache.size() > threshold) {
-            chunkPositionCache.clear();
-        }
-    }
-    
-    private void cleanupChunkPositionCache() {
-        System.out.println("Cleaning chunk position cache (size: " + chunkPositionCache.size() + ")");
-        
-        Set<Long> loadedChunkKeys = new HashSet<>();
-        for (World.ChunkPosition pos : chunks.keySet()) {
-            long key = ((long) pos.getX() << 32) | (pos.getZ() & 0xFFFFFFFFL);
-            loadedChunkKeys.add(key);
-        }
-        
-        chunkPositionCache.entrySet().removeIf(entry -> !loadedChunkKeys.contains(entry.getKey()));
-        
-        System.out.println("Chunk position cache cleaned (new size: " + chunkPositionCache.size() + ")");
-        MemoryProfiler.getInstance().takeSnapshot("after_chunk_position_cache_cleanup");
-    }
-    
-    private Chunk safelyGenerateAndRegisterChunk(int chunkX, int chunkZ) {
-        World.ChunkPosition position = getCachedChunkPosition(chunkX, chunkZ);
-        
-        if (chunks.containsKey(position)) {
-            return chunks.get(position);
-        }
-        
-        try {
-            MemoryProfiler.getInstance().incrementAllocation("Chunk");
-            
-            Chunk newGeneratedChunk = terrainSystem.generateBareChunk(chunkX, chunkZ);
-            
-            if (newGeneratedChunk == null) {
-                System.err.println("CRITICAL: generateChunk returned null for position (" + chunkX + ", " + chunkZ + ")");
-                return null;
-            }
-            
-            chunks.put(position, newGeneratedChunk);
-
-            if (chunkLoadListener != null) {
-                chunkLoadListener.accept(newGeneratedChunk);
-            }
-
-            if (shouldQueueForMesh(chunkX, chunkZ)) {
-                meshPipeline.scheduleConditionalMeshBuild(newGeneratedChunk);
-            }
-            
-            return newGeneratedChunk;
-        } catch (Exception e) {
-            System.err.println("Exception during chunk generation or registration at (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
-            System.err.println("Stack trace: " + Arrays.toString(e.getStackTrace()));
-            chunks.remove(position);
-            return null;
-        }
-    }
-    
-    private boolean shouldQueueForMesh(int chunkX, int chunkZ) {
-        Player player = Game.getPlayer();
-        if (player == null) return true;
-        
-        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        int distanceToPlayer = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
-        
-        return distanceToPlayer <= config.getBorderChunkDistance();
-    }
-    
-    /**
-     * Get all chunks that are dirty and need to be saved.
-     * @return List of dirty chunks
-     */
     public List<Chunk> getDirtyChunks() {
         List<Chunk> dirtyChunks = new ArrayList<>();
         for (Chunk chunk : chunks.values()) {
@@ -324,12 +104,295 @@ public class WorldChunkStore {
         return dirtyChunks;
     }
 
-    public void cleanup() {
-        for (Chunk chunk : new HashMap<>(chunks).values()) {
-            chunk.cleanupGpuResources();
+    public int getLoadedChunkCount() {
+        return chunks.size();
+    }
+
+    // ========== Render Distance Management ==========
+
+    public Map<World.ChunkPosition, Chunk> getChunksInRenderDistance(int playerChunkX, int playerChunkZ) {
+        Map<World.ChunkPosition, Chunk> visibleChunks = new HashMap<>();
+        int renderDistance = config.getRenderDistance();
+
+        for (int x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
+            for (int z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
+                Chunk chunk = getOrCreateChunk(x, z);
+                if (chunk != null) {
+                    World.ChunkPosition position = positionCache.get(x, z);
+                    visibleChunks.put(position, chunk);
+                }
+            }
         }
-        
+
+        return visibleChunks;
+    }
+
+    // ========== Chunk Unloading ==========
+
+    public void unloadChunk(int chunkX, int chunkZ) {
+        World.ChunkPosition pos = positionCache.get(chunkX, chunkZ);
+        Chunk chunk = chunks.remove(pos);
+
+        if (chunk == null) return;
+
+        // Notify listener
+        notifyUnload(chunk);
+
+        // Save if dirty
+        saveIfDirty(chunk);
+
+        // Cleanup resources
+        cleanupChunkResources(chunk, chunkX, chunkZ);
+
+        // Remove from cache
+        positionCache.remove(chunkX, chunkZ);
+
+        // Optional memory logging
+        logMemoryIfNeeded(chunkX, chunkZ);
+    }
+
+    // ========== Direct Chunk Setting (for loading) ==========
+
+    public void setChunk(int x, int z, Chunk chunk) {
+        World.ChunkPosition position = positionCache.get(x, z);
+        chunks.put(position, chunk);
+    }
+
+    // ========== Cleanup ==========
+
+    public void cleanup() {
+        for (Chunk chunk : chunks.values()) {
+            if (chunk != null) {
+                chunk.cleanupGpuResources();
+            }
+        }
         chunks.clear();
-        chunkPositionCache.clear();
+        positionCache.clear();
+    }
+
+    // ========== Position Cache Management ==========
+
+    public void cleanupPositionCacheIfNeeded(int loadedChunks) {
+        if (positionCache.size() > loadedChunks * 2) {
+            positionCache.cleanupUnusedPositions(chunks.keySet());
+            System.out.println("WARNING: " + loadedChunks + " chunks loaded, cleaned position cache");
+        }
+    }
+
+    public void clearPositionCacheIfLarge(int threshold) {
+        if (positionCache.size() > threshold) {
+            positionCache.clear();
+        }
+    }
+
+    // ========== Private Helper Methods (KISS - each does one thing) ==========
+
+    /**
+     * Load from save if available, otherwise generate new chunk.
+     */
+    private Chunk loadOrGenerateChunk(int x, int z, World.ChunkPosition position) {
+        SaveService saveService = getSaveSystem();
+
+        if (saveService != null) {
+            Chunk savedChunk = tryLoadFromSave(x, z, saveService);
+            if (savedChunk != null) {
+                registerLoadedChunk(position, savedChunk);
+                return savedChunk;
+            }
+        }
+
+        return generateNewChunk(x, z);
+    }
+
+    private Chunk tryLoadFromSave(int x, int z, SaveService saveService) {
+        try {
+            Chunk chunk = saveService.loadChunk(x, z).get();
+            if (chunk != null) {
+                prepareLoadedChunk(chunk);
+                return chunk;
+            }
+        } catch (Exception e) {
+            System.err.println("[LOAD] Failed to load chunk (" + x + ", " + z + "): " + e.getMessage());
+        }
+        return null;
+    }
+
+    private void prepareLoadedChunk(Chunk chunk) {
+        // Ensure features flag is set to prevent regeneration
+        if (!chunk.areFeaturesPopulated()) {
+            chunk.setFeaturesPopulated(true);
+        }
+
+        // Force mesh rebuild
+        chunk.cleanupCpuResources();
+        meshPipeline.scheduleConditionalMeshBuild(chunk);
+    }
+
+    private void registerLoadedChunk(World.ChunkPosition position, Chunk chunk) {
+        chunks.put(position, chunk);
+        notifyLoad(chunk);
+    }
+
+    private Chunk generateNewChunk(int x, int z) {
+        World.ChunkPosition position = positionCache.get(x, z);
+
+        // Double-check to prevent race condition
+        if (chunks.containsKey(position)) {
+            return chunks.get(position);
+        }
+
+        try {
+            MemoryProfiler.getInstance().incrementAllocation("Chunk");
+
+            Chunk chunk = terrainSystem.generateBareChunk(x, z);
+            if (chunk == null) {
+                System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
+                return null;
+            }
+
+            chunks.put(position, chunk);
+            notifyLoad(chunk);
+
+            if (shouldQueueForMesh(x, z)) {
+                meshPipeline.scheduleConditionalMeshBuild(chunk);
+            }
+
+            return chunk;
+        } catch (Exception e) {
+            System.err.println("Exception generating chunk (" + x + ", " + z + "): " + e.getMessage());
+            chunks.remove(position);
+            return null;
+        }
+    }
+
+    private boolean shouldQueueForMesh(int chunkX, int chunkZ) {
+        Player player = Game.getPlayer();
+        if (player == null) return true;
+
+        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
+        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
+        int distance = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
+
+        return distance <= config.getBorderChunkDistance();
+    }
+
+    private void saveIfDirty(Chunk chunk) {
+        if (!chunk.isDirty()) return;
+
+        SaveService saveService = getSaveSystem();
+        if (saveService == null) {
+            System.err.println("CRITICAL: Cannot save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") - save system unavailable");
+            throw new RuntimeException("Cannot safely unload chunk with unsaved edits - save system is null");
+        }
+
+        try {
+            saveService.saveChunk(chunk).get(); // Synchronous save
+            System.out.println("[SAVE] Saved dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ")");
+        } catch (Exception e) {
+            String error = extractErrorMessage(e);
+            System.err.println("CRITICAL: Failed to save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + "): " + error);
+            System.err.println("Full exception details:");
+            e.printStackTrace();
+            throw new RuntimeException("Cannot safely unload chunk with unsaved edits: " + error, e);
+        }
+    }
+
+    private void cleanupChunkResources(Chunk chunk, int chunkX, int chunkZ) {
+        meshPipeline.removeChunkFromQueues(chunk);
+        chunk.cleanupCpuResources();
+        meshPipeline.addChunkForGpuCleanup(chunk);
+        Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
+    }
+
+    private void notifyLoad(Chunk chunk) {
+        if (chunkLoadListener != null) {
+            chunkLoadListener.accept(chunk);
+        }
+    }
+
+    private void notifyUnload(Chunk chunk) {
+        if (chunkUnloadListener != null) {
+            chunkUnloadListener.accept(chunk);
+        }
+    }
+
+    private void logMemoryIfNeeded(int chunkX, int chunkZ) {
+        if ((chunkX + chunkZ) % WorldConfiguration.MEMORY_LOG_INTERVAL == 0) {
+            Game.logDetailedMemoryInfo("After unloading chunk (" + chunkX + ", " + chunkZ + ")");
+        }
+    }
+
+    private SaveService getSaveSystem() {
+        Game game = Game.getInstance();
+        return (game != null) ? game.getSaveService() : null;
+    }
+
+    private String extractErrorMessage(Exception e) {
+        // Try to get the most descriptive error message available
+        String msg = e.getMessage();
+
+        if (msg == null || msg.isEmpty()) {
+            if (e.getCause() != null) {
+                msg = e.getCause().getMessage();
+            }
+        }
+
+        if (msg == null || msg.isEmpty()) {
+            // Provide a descriptive fallback
+            msg = e.getClass().getSimpleName();
+            if (e.getCause() != null) {
+                msg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+            }
+        }
+
+        return msg;
+    }
+
+    // ========== Inner Class: Position Cache (SRP) ==========
+
+    private static class ChunkPositionCache {
+        private static final int MAX_SIZE = WorldConfiguration.MAX_CHUNK_POSITION_CACHE_SIZE;
+        private final Map<Long, World.ChunkPosition> cache = new ConcurrentHashMap<>();
+
+        World.ChunkPosition get(int x, int z) {
+            long key = makeKey(x, z);
+
+            if (cache.size() > MAX_SIZE) {
+                System.out.println("WARNING: Position cache exceeded max size, clearing");
+                cache.clear();
+            }
+
+            return cache.computeIfAbsent(key, k -> new World.ChunkPosition(x, z));
+        }
+
+        void remove(int x, int z) {
+            cache.remove(makeKey(x, z));
+        }
+
+        void clear() {
+            cache.clear();
+        }
+
+        int size() {
+            return cache.size();
+        }
+
+        void cleanupUnusedPositions(Set<World.ChunkPosition> loadedPositions) {
+            System.out.println("Cleaning chunk position cache (size: " + cache.size() + ")");
+
+            Set<Long> loadedKeys = new HashSet<>();
+            for (World.ChunkPosition pos : loadedPositions) {
+                loadedKeys.add(makeKey(pos.getX(), pos.getZ()));
+            }
+
+            cache.entrySet().removeIf(entry -> !loadedKeys.contains(entry.getKey()));
+
+            System.out.println("Chunk position cache cleaned (new size: " + cache.size() + ")");
+            MemoryProfiler.getInstance().takeSnapshot("after_chunk_position_cache_cleanup");
+        }
+
+        private long makeKey(int x, int z) {
+            return ((long) x << 32) | (z & 0xFFFFFFFFL);
+        }
     }
 }

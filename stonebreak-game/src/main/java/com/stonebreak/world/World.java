@@ -2,6 +2,7 @@ package com.stonebreak.world;
 
 import java.util.Map;
 import java.util.List;
+import java.util.Collection;
 
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
@@ -334,7 +335,15 @@ public class World {
     public int getDirtyChunkCount() {
         return chunkStore.getDirtyChunks().size();
     }
-    
+
+    /**
+     * Returns all currently loaded chunks.
+     * This is used for diagnostics and debugging.
+     */
+    public Collection<Chunk> getAllChunks() {
+        return chunkStore.getAllChunks();
+    }
+
     /**
      * Returns the number of chunks pending mesh build.
      * This is used for debugging purposes.

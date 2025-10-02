@@ -310,6 +310,9 @@ public class Chunk {
 
     /**
      * Sets the block array. Used by save system during chunk loading.
+     * NOTE: This marks the chunk as MESH_DIRTY because the mesh needs regeneration.
+     * The chunk will remain dirty until a mesh is generated and rendered.
+     * The save system only calls markClean() after successfully saving, not after loading.
      * @param blocks The new block array
      */
     public void setBlocks(BlockType[][][] blocks) {
@@ -319,17 +322,17 @@ public class Chunk {
 
     /**
      * Checks if the chunk has been modified since last save.
-     * @return true if chunk is dirty
+     * @return true if chunk data has been modified and needs saving
      */
     public boolean isDirty() {
-        return stateManager.isMeshDirty();
+        return stateManager.isDataModified();
     }
 
     /**
      * Marks the chunk as dirty (needing to be saved).
      */
     public void markDirty() {
-        stateManager.markMeshDirty();
+        stateManager.markDataModified();
         lastModified = java.time.LocalDateTime.now();
     }
 
@@ -337,7 +340,7 @@ public class Chunk {
      * Marks the chunk as clean (saved to disk).
      */
     public void markClean() {
-        stateManager.clearMeshDirty();
+        stateManager.clearDataModified();
     }
 
     /**

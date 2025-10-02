@@ -42,16 +42,19 @@ public class ChunkDataOperations {
      */
     public boolean setBlock(int localX, int localY, int localZ, BlockType blockType) {
         boolean changed = chunkData.setBlock(localX, localY, localZ, blockType);
-        
+
         if (changed) {
-            // Mark chunk as dirty when block data changes
+            // Mark chunk mesh as dirty for rendering
             stateManager.markMeshDirty();
-            
+
+            // Mark chunk data as modified for saving
+            stateManager.markDataModified();
+
             // TODO: Handle neighbor chunk notifications for edge blocks
             // This would be implemented when we have access to the World/chunk manager
             handleNeighborUpdates(localX, localY, localZ);
         }
-        
+
         return changed;
     }
     
@@ -83,11 +86,12 @@ public class ChunkDataOperations {
         
         if (anyChanged) {
             stateManager.markMeshDirty();
+            stateManager.markDataModified();
         }
-        
+
         return changedCount;
     }
-    
+
     /**
      * Replaces all blocks of one type with another type.
      * @param fromType The block type to replace
@@ -97,7 +101,7 @@ public class ChunkDataOperations {
     public int replaceBlocks(BlockType fromType, BlockType toType) {
         int changedCount = 0;
         boolean anyChanged = false;
-        
+
         BlockType[][][] blocks = chunkData.getBlocks();
         for (int x = 0; x < blocks.length; x++) {
             for (int y = 0; y < blocks[x].length; y++) {
@@ -111,11 +115,12 @@ public class ChunkDataOperations {
                 }
             }
         }
-        
+
         if (anyChanged) {
             stateManager.markMeshDirty();
+            stateManager.markDataModified();
         }
-        
+
         return changedCount;
     }
     

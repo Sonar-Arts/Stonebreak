@@ -4,8 +4,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.world.save.managers.WorldSaveSystem;
-import com.stonebreak.world.save.core.WorldMetadata;
+import com.stonebreak.world.save.model.WorldData;
 import org.joml.Vector3f;
 
 import java.time.LocalDateTime;
@@ -65,18 +64,18 @@ public class WorldActionHandler {
         try {
             System.out.println("Loading world: " + worldName);
 
-            // Note: WorldSaveSystem is created per-world, not a singleton
+            // Note: SaveService is created per-world, not a singleton
             // The actual world loading will be handled by Game.startWorldGeneration
 
             // Get world metadata to retrieve the seed
-            WorldMetadata metadata = discoveryManager.getWorldMetadata(worldName);
+            WorldData worldData = discoveryManager.getWorldData(worldName);
             long seed;
 
-            if (metadata != null && metadata.getSeed() != 0) {
-                seed = metadata.getSeed();
+            if (worldData != null && worldData.getSeed() != 0) {
+                seed = worldData.getSeed();
                 System.out.println("Using existing world seed: " + seed);
             } else {
-                // If no metadata or seed, generate a random one for new worlds
+                // If no world data or seed, generate a random one for new worlds
                 seed = new Random().nextLong();
                 System.out.println("Generated new world seed: " + seed);
             }
@@ -180,14 +179,15 @@ public class WorldActionHandler {
         try {
             System.out.println("Creating new world: " + worldName + " with seed: " + seed);
 
-            // Create world metadata
-            WorldMetadata metadata = new WorldMetadata();
-            metadata.setWorldName(worldName);
-            metadata.setSeed(seed);
-            metadata.setSpawnPosition(new Vector3f(0, 100, 0)); // Default spawn
-            metadata.setCreatedTime(LocalDateTime.now());
-            metadata.setLastPlayed(LocalDateTime.now());
-            metadata.setTotalPlayTime(0);
+            // Create world data
+            WorldData worldData = WorldData.builder()
+                .worldName(worldName)
+                .seed(seed)
+                .spawnPosition(new Vector3f(0, 100, 0))
+                .createdTime(LocalDateTime.now())
+                .lastPlayed(LocalDateTime.now())
+                .totalPlayTimeMillis(0)
+                .build();
 
             // Create world directory
             if (!discoveryManager.ensureWorldsDirectoryExists()) {
@@ -195,45 +195,27 @@ public class WorldActionHandler {
                 return false;
             }
 
-            // Create world directory and save metadata file
+            // Create world directory and save world data file
             try {
                 java.nio.file.Path worldDir = java.nio.file.Paths.get("worlds", worldName);
                 java.nio.file.Files.createDirectories(worldDir);
 
-                // Create chunks directory (required by WorldDiscoveryManager validation)
-                java.nio.file.Path chunksDir = worldDir.resolve("chunks");
-                java.nio.file.Files.createDirectories(chunksDir);
+                // Create regions directory (required by new save system)
+                java.nio.file.Path regionsDir = worldDir.resolve("regions");
+                java.nio.file.Files.createDirectories(regionsDir);
 
-                // Save metadata to JSON file (to match discoveryManager expectations)
-                java.nio.file.Path metadataFile = worldDir.resolve("metadata.json");
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+                // Save world data using the JsonWorldSerializer
+                com.stonebreak.world.save.serialization.JsonWorldSerializer serializer =
+                    new com.stonebreak.world.save.serialization.JsonWorldSerializer();
 
-                // Convert WorldMetadata to a JSON-compatible format
-                java.util.Map<String, Object> metadataMap = new java.util.HashMap<>();
-                metadataMap.put("worldName", metadata.getWorldName());
-                metadataMap.put("seed", metadata.getSeed());
-                metadataMap.put("spawnPosition", java.util.Map.of(
-                    "x", metadata.getSpawnPosition().x,
-                    "y", metadata.getSpawnPosition().y,
-                    "z", metadata.getSpawnPosition().z
-                ));
-                metadataMap.put("creationTime", java.time.LocalDateTime.ofInstant(
-                    java.time.Instant.ofEpochMilli(metadata.getCreatedTimeMillis()),
-                    java.time.ZoneId.systemDefault()
-                ));
-                metadataMap.put("lastPlayed", java.time.LocalDateTime.ofInstant(
-                    java.time.Instant.ofEpochMilli(metadata.getLastPlayedMillis()),
-                    java.time.ZoneId.systemDefault()
-                ));
-                metadataMap.put("totalPlayTimeMillis", metadata.getTotalPlayTime());
-
-                mapper.writeValue(metadataFile.toFile(), metadataMap);
+                java.nio.file.Path worldDataFile = worldDir.resolve("world.json");
+                byte[] jsonBytes = serializer.serialize(worldData);
+                java.nio.file.Files.write(worldDataFile, jsonBytes);
 
                 System.out.println("World created successfully: " + worldName);
                 return true;
             } catch (java.io.IOException ioEx) {
-                System.err.println("Error creating world directory or metadata: " + ioEx.getMessage());
+                System.err.println("Error creating world directory or data file: " + ioEx.getMessage());
                 return false;
             }
 
@@ -308,10 +290,10 @@ public class WorldActionHandler {
     }
 
     /**
-     * Gets metadata for a specific world.
+     * Gets world data for a specific world.
      */
-    public WorldMetadata getWorldMetadata(String worldName) {
-        return discoveryManager.getWorldMetadata(worldName);
+    public WorldData getWorldData(String worldName) {
+        return discoveryManager.getWorldData(worldName);
     }
 
     /**

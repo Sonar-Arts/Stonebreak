@@ -162,6 +162,29 @@ public class ChunkInternalStateManager {
     public boolean isMeshDirty() {
         return hasState(ChunkState.MESH_DIRTY);
     }
+
+    /**
+     * Marks chunk data as modified and needing save.
+     * This is SEPARATE from mesh dirty - data can be modified without mesh changes.
+     */
+    public void markDataModified() {
+        addState(ChunkState.DATA_MODIFIED);
+    }
+
+    /**
+     * Clears the data modified flag after successful save.
+     */
+    public void clearDataModified() {
+        removeState(ChunkState.DATA_MODIFIED);
+    }
+
+    /**
+     * Checks if chunk data has been modified and needs saving.
+     * @return true if chunk has unsaved data changes
+     */
+    public boolean isDataModified() {
+        return hasState(ChunkState.DATA_MODIFIED);
+    }
     
     /**
      * Marks mesh generation as started.

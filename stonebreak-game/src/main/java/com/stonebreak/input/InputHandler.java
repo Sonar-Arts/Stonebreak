@@ -31,6 +31,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F7;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F8;
 
 /**
  * Handles player input for movement and interaction.
@@ -62,6 +63,7 @@ public class InputHandler {
     private boolean f5KeyPressed = false; // Added for detailed memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
     private boolean f7KeyPressed = false; // Added for manual save
+    private boolean f8KeyPressed = false; // Added for save system diagnostic
 
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
@@ -457,18 +459,10 @@ public class InputHandler {
 
             Game game = Game.getInstance();
             if (game != null) {
-                com.stonebreak.world.save.managers.WorldSaveSystem saveSystem = game.getWorldSaveSystem();
+                com.stonebreak.world.save.SaveService saveService = game.getSaveService();
                 ChatSystem chatSystem = game.getChatSystem();
 
-                if (saveSystem != null) {
-                    if (!saveSystem.isInitialized()) {
-                        System.out.println("[MANUAL-SAVE] Save system not yet initialized - world still loading");
-                        if (chatSystem != null) {
-                            chatSystem.addMessage("World still loading, Hold your horses...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
-                        }
-                        return;
-                    }
-
+                if (saveService != null) {
                     try {
                         System.out.println("[MANUAL-SAVE] Starting manual save...");
 
@@ -477,7 +471,7 @@ public class InputHandler {
                             chatSystem.addMessage("Saving world...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
                         }
 
-                        saveSystem.saveWorldNow()
+                        saveService.saveAll()
                             .thenRun(() -> {
                                 System.out.println("[MANUAL-SAVE] Manual save completed successfully");
                                 if (chatSystem != null) {
@@ -510,8 +504,66 @@ public class InputHandler {
         } else if (!isF7Pressed) {
             f7KeyPressed = false;
         }
+
+        // F8 - Save System Diagnostic
+        boolean isF8Pressed = glfwGetKey(window, GLFW_KEY_F8) == GLFW_PRESS;
+        if (isF8Pressed && !f8KeyPressed) {
+            f8KeyPressed = true;
+
+            Game game = Game.getInstance();
+            if (game != null) {
+                Player player = game.getPlayer();
+                ChatSystem chatSystem = game.getChatSystem();
+
+                if (player != null) {
+                    // Get player's current position
+                    Vector3f pos = player.getPosition();
+                    int worldX = (int) Math.floor(pos.x);
+                    int worldY = (int) Math.floor(pos.y);
+                    int worldZ = (int) Math.floor(pos.z);
+
+                    int chunkX = Math.floorDiv(worldX, 16);
+                    int chunkZ = Math.floorDiv(worldZ, 16);
+
+                    System.out.println("\n[F8-DIAGNOSTIC] Running save system diagnostic at player position...");
+                    System.out.println("[F8-DIAGNOSTIC] Player world pos: (" + worldX + ", " + worldY + ", " + worldZ + ")");
+                    System.out.println("[F8-DIAGNOSTIC] Chunk coords: (" + chunkX + ", " + chunkZ + ")");
+
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Running save diagnostic...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                    }
+
+                    // Run quick diagnostic
+                    com.stonebreak.world.save.SaveSystemDiagnostics.quickDiagnostic();
+
+                    // Get current world name from save service
+                    String worldName = "unknown";
+                    var saveService = game.getSaveService();
+                    if (saveService != null) {
+                        String worldPath = saveService.getWorldPath();
+                        if (worldPath != null && worldPath.startsWith("worlds/")) {
+                            worldName = worldPath.substring(7); // Remove "worlds/" prefix
+                        }
+                    }
+
+                    // Run comprehensive chunk diagnostic for current chunk
+                    com.stonebreak.world.save.SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
+
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Diagnostic complete - check console", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                    }
+                } else {
+                    System.out.println("[F8-DIAGNOSTIC] Player is null");
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Diagnostic failed - no player", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
+                }
+            }
+        } else if (!isF8Pressed) {
+            f8KeyPressed = false;
+        }
     }
- 
+
 
     /**
      * Called by GLFW's mouse button callback (likely from Main.java).
