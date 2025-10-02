@@ -11,9 +11,9 @@ import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
+import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
 import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
 import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
-import com.stonebreak.world.chunk.mesh.data.ChunkNeighborCoordinator;
 import com.stonebreak.world.chunk.mesh.data.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -33,7 +33,7 @@ public class World {
     
     // Modular components
     private final WorldChunkStore chunkStore;
-    private final ChunkNeighborCoordinator neighborCoordinator;
+    private final CcoNeighborCoordinator neighborCoordinator;
     private final ChunkMeshBuildingPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
@@ -56,7 +56,19 @@ public class World {
         this.errorReporter = new ChunkErrorReporter();
         this.meshPipeline = new ChunkMeshBuildingPipeline(config, errorReporter);
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
-        this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, config);
+
+        // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider
+        this.neighborCoordinator = new CcoNeighborCoordinator(new CcoNeighborCoordinator.ChunkProvider() {
+            @Override
+            public Chunk getChunk(int chunkX, int chunkZ) {
+                return chunkStore.getChunk(chunkX, chunkZ);
+            }
+
+            @Override
+            public void ensureChunkExists(int chunkX, int chunkZ) {
+                chunkStore.ensureChunkExists(chunkX, chunkZ);
+            }
+        }, config);
 
         this.waterSystem = new WaterSystem(this);
         this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
@@ -199,7 +211,7 @@ public class World {
         chunk.setBlock(localX, y, localZ, blockType);
 
         markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-        neighborCoordinator.rebuildNeighborChunksScheduled(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
         
         return true;
