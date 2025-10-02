@@ -39,20 +39,30 @@ public class MmsCuboidGenerator implements MmsGeometryService {
     /**
      * Face vertex offsets for standard cube.
      * Each face has 4 vertices with (x, y, z) offsets from block origin.
+     * Vertices are ordered counter-clockwise when viewed from OUTSIDE the cube.
+     *
+     * With index pattern [0,1,2] and [0,2,3] creating two triangles:
+     * - Triangle 1: vertices 0 -> 1 -> 2 (CCW from outside)
+     * - Triangle 2: vertices 0 -> 2 -> 3 (CCW from outside)
      */
     private static final float[][][] FACE_VERTEX_OFFSETS = {
-        // Top face (+Y) - vertices in counter-clockwise order
+        // Top face (+Y) - looking down at top, CCW = bottom-left, bottom-right, top-right, top-left
         {{0, 1, 0}, {1, 1, 0}, {1, 1, 1}, {0, 1, 1}},
-        // Bottom face (-Y)
-        {{0, 0, 1}, {1, 0, 1}, {1, 0, 0}, {0, 0, 0}},
-        // North face (-Z)
+
+        // Bottom face (-Y) - looking up from below, CCW = bottom-left, bottom-right, top-right, top-left
+        {{0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {0, 0, 1}},
+
+        // North face (-Z) - looking at front (z=0), CCW = bottom-left, bottom-right, top-right, top-left
         {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}},
-        // South face (+Z)
+
+        // South face (+Z) - looking at back (z=1), CCW = bottom-left, bottom-right, top-right, top-left
         {{1, 0, 1}, {0, 0, 1}, {0, 1, 1}, {1, 1, 1}},
-        // East face (+X)
-        {{1, 0, 0}, {1, 0, 1}, {1, 1, 1}, {1, 1, 0}},
-        // West face (-X)
-        {{0, 0, 1}, {0, 0, 0}, {0, 1, 0}, {0, 1, 1}}
+
+        // East face (+X) - looking at right side (x=1), CCW = bottom-left, bottom-right, top-right, top-left
+        {{1, 0, 1}, {1, 0, 0}, {1, 1, 0}, {1, 1, 1}},
+
+        // West face (-X) - looking at left side (x=0), CCW = bottom-left, bottom-right, top-right, top-left
+        {{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 1, 0}}
     };
 
     @Override

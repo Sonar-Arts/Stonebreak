@@ -69,10 +69,16 @@ public class WorldRenderer {
      * Renders the 3D world including chunks, entities, and world effects.
      */
     public void renderWorld(World world, Player player, float totalTime) {
+        // Debug: Log first call
+        if (debugRenderWorldCount < 1) {
+            System.out.println("[WorldRenderer.renderWorld] Called! world=" + (world != null) + " player=" + (player != null));
+            debugRenderWorldCount++;
+        }
+
         // Clear any pending OpenGL errors from previous operations
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
-        
+
         // Render sky first (before world geometry for proper depth testing)
         skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime);
         checkGLError("After sky rendering");
@@ -104,6 +110,12 @@ public class WorldRenderer {
         
         // Get visible chunks
         Map<ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
+
+        // Debug: Log chunk count
+        if (debugVisibleChunksCount < 1) {
+            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks");
+            debugVisibleChunksCount++;
+        }
 
         // Render opaque pass
         renderOpaquePass(visibleChunks);
@@ -206,10 +218,18 @@ public class WorldRenderer {
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
 
+        // Debug: Log first time
+        if (debugOpaquePassCount < 1) {
+            System.out.println("[WorldRenderer.renderOpaquePass] Rendering " + visibleChunks.size() + " chunks");
+            debugOpaquePassCount++;
+        }
+
         for (Chunk chunk : visibleChunks.values()) {
             chunk.render(); // Shader will discard water fragments
         }
     }
+
+    private static int debugOpaquePassCount = 0;
     
     /**
      * Render transparent pass (water parts of chunks).
@@ -400,6 +420,9 @@ public class WorldRenderer {
         }
     }
     
+    private static int debugRenderWorldCount = 0;
+    private static int debugVisibleChunksCount = 0;
+
     /**
      * Checks for OpenGL errors and logs them with context information.
      */

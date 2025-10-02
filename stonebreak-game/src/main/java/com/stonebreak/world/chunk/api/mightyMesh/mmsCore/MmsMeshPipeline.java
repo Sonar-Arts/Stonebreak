@@ -141,7 +141,19 @@ public final class MmsMeshPipeline {
      */
     public void processChunkMeshBuildRequests(World world) {
         if (chunksToGenerateMesh.isEmpty() || shutdown) {
+            // Debug: Log if empty
+            if (debugProcessCallCount < 3 && chunksToGenerateMesh.isEmpty()) {
+                System.out.println("[MmsMeshPipeline.processChunkMeshBuildRequests] Queue is empty");
+                debugProcessCallCount++;
+            }
             return;
+        }
+
+        // Debug: Log processing
+        if (debugProcessCallCount < 3) {
+            System.out.println("[MmsMeshPipeline.processChunkMeshBuildRequests] Processing " +
+                chunksToGenerateMesh.size() + " chunks");
+            debugProcessCallCount++;
         }
 
         // Batch all pending chunks
@@ -153,6 +165,10 @@ public final class MmsMeshPipeline {
             meshGenerationExecutor.submit(() -> processMeshGenerationTask(world, chunk));
         }
     }
+
+    private static int debugProcessCallCount = 0;
+    private static int debugGLUploadCount = 0;
+    private static int debugGLUploadSuccessCount = 0;
 
     /**
      * Mesh generation worker task.
@@ -247,6 +263,13 @@ public final class MmsMeshPipeline {
             return;
         }
 
+        // Debug: Log first few calls
+        if (debugGLUploadCount < 3) {
+            System.out.println("[MmsMeshPipeline.applyPendingGLUpdates] Called with " +
+                meshesReadyForGLUpload.size() + " meshes ready for upload");
+            debugGLUploadCount++;
+        }
+
         MeshUploadTask task;
         int updatesThisFrame = 0;
         int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
@@ -257,6 +280,13 @@ public final class MmsMeshPipeline {
             try {
                 // Upload mesh to GPU using MMS API
                 MmsRenderableHandle handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
+
+                // Debug: Log first few uploads
+                if (debugGLUploadSuccessCount < 3) {
+                    System.out.println("[MmsMeshPipeline] Uploaded chunk (" + task.chunk.getChunkX() + "," +
+                        task.chunk.getChunkZ() + ") with " + handle.getIndexCount() + " indices");
+                    debugGLUploadSuccessCount++;
+                }
 
                 // Store handle in chunk for rendering
                 synchronized (task.chunk) {
@@ -270,6 +300,14 @@ public final class MmsMeshPipeline {
                     task.chunk.setMmsRenderableHandle(handle);
                     task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
+
+                    // Debug: Verify it was set
+                    if (debugGLUploadSuccessCount <= 3) {
+                        System.out.println("[MmsMeshPipeline] Chunk (" + task.chunk.getChunkX() + "," +
+                            task.chunk.getChunkZ() + ") now has handle=" + (task.chunk.getMmsRenderableHandle() != null) +
+                            " meshGen=" + task.chunk.isMeshGenerated() +
+                            " renderable=" + task.chunk.getCcoStateManager().isRenderable());
+                    }
                 }
 
                 updatesThisFrame++;

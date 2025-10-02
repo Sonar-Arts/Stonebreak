@@ -1,6 +1,8 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.texturing.TextureResourceManager;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
 
@@ -8,18 +10,19 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
  * Mighty Mesh System - Texture atlas-based texture coordinate mapper.
  *
  * Generates texture coordinates by resolving block types to texture atlas positions.
- * Integrates with the existing TextureAtlas system.
+ * Integrates with the CBR API for proper texture coordinate resolution.
  *
  * Design Philosophy:
- * - DRY: Reuses existing TextureAtlas infrastructure
- * - KISS: Simple delegation to atlas lookups
- * - Performance: Cached atlas coordinates
+ * - DRY: Reuses existing CBR infrastructure
+ * - KISS: Simple delegation to CBR lookups
+ * - Performance: Cached atlas coordinates via CBR
  *
  * @since MMS 1.0
  */
 public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
     private final TextureAtlas textureAtlas;
+    private final boolean useCBR;
 
     // Water flag constants
     private static final float WATER_FLAG_EPSILON = 0.0001f;
@@ -34,6 +37,13 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
             throw new IllegalArgumentException("Texture atlas cannot be null");
         }
         this.textureAtlas = textureAtlas;
+        this.useCBR = CBRResourceManager.isInitialized();
+
+        if (useCBR) {
+            System.out.println("[MmsAtlasTextureMapper] Using CBR API for texture coordinates");
+        } else {
+            System.out.println("[MmsAtlasTextureMapper] CBR not initialized, using TextureAtlas directly");
+        }
     }
 
     @Override
@@ -46,21 +56,22 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
         float[] uvs = getBlockFaceUVs(blockType, face);
 
         // Generate quad texture coordinates (counter-clockwise winding)
+        // Note: uvs format is [u1, v1, u2, v2] where v1 is top, v2 is bottom
         int idx = 0;
 
-        // Vertex 0: Bottom-left
+        // Vertex 0: Bottom-left (world space) → (u1, v2)
         texCoords[idx++] = uvs[0]; // u1
         texCoords[idx++] = uvs[3]; // v2
 
-        // Vertex 1: Bottom-right
+        // Vertex 1: Bottom-right (world space) → (u2, v2)
         texCoords[idx++] = uvs[2]; // u2
         texCoords[idx++] = uvs[3]; // v2
 
-        // Vertex 2: Top-right
+        // Vertex 2: Top-right (world space) → (u2, v1)
         texCoords[idx++] = uvs[2]; // u2
         texCoords[idx++] = uvs[1]; // v1
 
-        // Vertex 3: Top-left
+        // Vertex 3: Top-left (world space) → (u1, v1)
         texCoords[idx++] = uvs[0]; // u1
         texCoords[idx++] = uvs[1]; // v1
 
@@ -191,16 +202,56 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
     /**
      * Gets block face UVs from the texture atlas.
-     * Delegates to TextureAtlas which handles directional blocks automatically.
+     * Uses CBR API if available, otherwise delegates to TextureAtlas.
      *
      * @param blockType Type of block
      * @param face Face index (0-5)
      * @return UV array [u1, v1, u2, v2]
      */
     private float[] getBlockFaceUVs(BlockType blockType, int face) {
+        float[] result;
+
+        if (useCBR) {
+            try {
+                CBRResourceManager cbrManager = CBRResourceManager.getInstance();
+                TextureResourceManager.TextureCoordinates coords =
+                    cbrManager.getTextureManager().resolveBlockType(blockType);
+                result = coords.toArray();
+
+                // Debug: Log first lookup only
+                if (debugLogCount < 5) {
+                    System.out.println("[MmsAtlasTextureMapper] CBR lookup for " + blockType +
+                        " face=" + face + " -> UVs: [" + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3] + "]");
+                    debugLogCount++;
+                }
+
+                return result;
+            } catch (Exception e) {
+                System.err.println("[MmsAtlasTextureMapper] CBR lookup failed for " + blockType + ": " + e.getMessage());
+                // Fall through to legacy method
+            }
+        }
+
+        // Legacy fallback
         BlockType.Face faceEnum = convertFaceIndexToEnum(face);
-        return textureAtlas.getBlockFaceUVs(blockType, faceEnum);
+        result = textureAtlas.getBlockFaceUVs(blockType, faceEnum);
+
+        // Validate result
+        if (result == null) {
+            throw new IllegalStateException("TextureAtlas returned null UVs for " + blockType + " face " + faceEnum);
+        }
+
+        // Debug: Log first lookup only
+        if (debugLogCount < 5) {
+            System.out.println("[MmsAtlasTextureMapper] Legacy lookup for " + blockType +
+                " face=" + face + " -> UVs: [" + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3] + "]");
+            debugLogCount++;
+        }
+
+        return result;
     }
+
+    private int debugLogCount = 0;
 
     /**
      * Converts a face index (0-5) to BlockType.Face enum.
@@ -251,6 +302,21 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
      */
     private boolean isCrossBlock(BlockType blockType) {
         return blockType == BlockType.ROSE || blockType == BlockType.DANDELION;
+    }
+
+    /**
+     * Checks if a block type requires alpha testing.
+     *
+     * @param blockType Type of block
+     * @return true if requires alpha testing
+     */
+    @Override
+    public boolean requiresAlphaTesting(BlockType blockType) {
+        // Cross blocks (flowers) and leaves need alpha testing
+        return isCrossBlock(blockType) ||
+               blockType == BlockType.LEAVES ||
+               blockType == BlockType.PINE_LEAVES ||
+               blockType == BlockType.ELM_LEAVES;
     }
 
     /**

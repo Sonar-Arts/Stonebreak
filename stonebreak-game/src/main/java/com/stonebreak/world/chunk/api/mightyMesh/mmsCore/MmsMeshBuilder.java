@@ -133,6 +133,12 @@ public final class MmsMeshBuilder {
                                      float u, float v,
                                      float nx, float ny, float nz,
                                      float waterFlag, float alphaFlag) {
+        // Debug: Log first few vertices with texture coordinates
+        if (totalVertices < 3) {
+            System.out.println("[MmsMeshBuilder] Adding vertex " + totalVertices +
+                ": pos=(" + x + "," + y + "," + z + ") tex=(" + u + "," + v + ") water=" + waterFlag + " alpha=" + alphaFlag);
+        }
+
         // Add position
         positions.add(x);
         positions.add(y);

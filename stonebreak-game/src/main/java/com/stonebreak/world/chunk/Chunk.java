@@ -189,12 +189,31 @@ public class Chunk {
      * Renders the chunk using MMS API.
      */
     public void render() {
+        // Debug: Always log first few chunks
+        if (debugRenderCallCount < 5) {
+            System.out.println("[Chunk.render] Called for (" + x + "," + z + "): " +
+                "renderable=" + stateManager.isRenderable() +
+                " meshGen=" + meshGenerated +
+                " handle=" + (renderableHandle != null));
+            debugRenderCallCount++;
+        }
+
         if (!stateManager.isRenderable() || !meshGenerated || renderableHandle == null) {
             return;
         }
 
+        // Debug first few successful renders
+        if (debugRenderSuccessCount < 3) {
+            System.out.println("[Chunk.render] SUCCESS: Rendering chunk at (" + x + "," + z + ") with " +
+                renderableHandle.getIndexCount() + " indices");
+            debugRenderSuccessCount++;
+        }
+
         renderableHandle.render();
     }
+
+    private static int debugRenderCallCount = 0;
+    private static int debugRenderSuccessCount = 0;
 
     // ===== Coordinate Operations =====
 
@@ -417,5 +436,8 @@ public class Chunk {
      */
     public void setMmsRenderableHandle(MmsRenderableHandle handle) {
         this.renderableHandle = handle;
+        if (handle != null) {
+            this.meshGenerated = true;
+        }
     }
 }
