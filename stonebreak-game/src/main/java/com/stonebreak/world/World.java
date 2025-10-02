@@ -12,7 +12,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
-import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
+import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
 import com.stonebreak.world.chunk.mesh.data.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
@@ -34,7 +35,7 @@ public class World {
     // Modular components
     private final WorldChunkStore chunkStore;
     private final CcoNeighborCoordinator neighborCoordinator;
-    private final ChunkMeshBuildingPipeline meshPipeline;
+    private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSystem waterSystem;
 
@@ -54,7 +55,14 @@ public class World {
 
         // Initialize modular components
         this.errorReporter = new ChunkErrorReporter();
-        this.meshPipeline = new ChunkMeshBuildingPipeline(config, errorReporter);
+
+        // Create MMS mesh pipeline using MmsAPI
+        // MmsAPI is initialized in Game.initCoreComponents() before any World is created
+        if (!MmsAPI.isInitialized()) {
+            throw new IllegalStateException("MmsAPI must be initialized before creating World");
+        }
+        this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(config, errorReporter);
+
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
 
         // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider

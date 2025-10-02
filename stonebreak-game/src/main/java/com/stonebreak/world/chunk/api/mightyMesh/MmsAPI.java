@@ -12,6 +12,7 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshCache;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferPool;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsAsyncUploader;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsLodLevel;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsMetrics.MmsStatistics;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsAtlasTextureMapper;
@@ -64,6 +65,7 @@ public final class MmsAPI {
     private final MmsMeshCache meshCache;
     private final MmsBufferPool bufferPool;
     private final MmsAsyncUploader asyncUploader;
+    private MmsMeshPipeline meshPipeline;
 
     // Configuration
     private boolean greedyMeshingEnabled = true;
@@ -79,17 +81,14 @@ public final class MmsAPI {
      * Private constructor for singleton pattern.
      *
      * @param textureAtlas Texture atlas for coordinate lookups
-     * @param world World instance for neighbor queries
+     * @param world World instance for neighbor queries (can be null initially, set later)
      */
     private MmsAPI(TextureAtlas textureAtlas, World world) {
         if (textureAtlas == null) {
             throw new IllegalArgumentException("Texture atlas cannot be null");
         }
-        if (world == null) {
-            throw new IllegalArgumentException("World cannot be null");
-        }
 
-        this.world = world;
+        this.world = world; // Can be null initially
         this.textureMapper = new MmsAtlasTextureMapper(textureAtlas);
         this.ccoAdapter = new MmsCcoAdapter(textureMapper, world);
         this.statistics = new MmsStatistics();
@@ -525,6 +524,38 @@ public final class MmsAPI {
         return asyncUploader;
     }
 
+    /**
+     * Gets the mesh pipeline instance.
+     * Will be null until pipeline is created via createMeshPipeline().
+     *
+     * @return Mesh pipeline or null
+     */
+    public MmsMeshPipeline getMeshPipeline() {
+        ensureInitialized();
+        return meshPipeline;
+    }
+
+    /**
+     * Creates and initializes a mesh pipeline for this world.
+     * Should be called once during world initialization.
+     *
+     * @param config World configuration
+     * @param errorReporter Error reporter for diagnostics
+     * @return Created mesh pipeline
+     */
+    public MmsMeshPipeline createMeshPipeline(
+            com.stonebreak.world.operations.WorldConfiguration config,
+            com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter errorReporter) {
+        ensureInitialized();
+
+        if (meshPipeline != null) {
+            throw new IllegalStateException("Mesh pipeline already created");
+        }
+
+        meshPipeline = new MmsMeshPipeline(world, config, errorReporter);
+        return meshPipeline;
+    }
+
     // === Lifecycle ===
 
     /**
@@ -544,6 +575,12 @@ public final class MmsAPI {
     public static void shutdown() {
         synchronized (LOCK) {
             if (instance != null) {
+                // Shutdown mesh pipeline first
+                if (instance.meshPipeline != null) {
+                    instance.meshPipeline.shutdown();
+                    instance.meshPipeline = null;
+                }
+
                 // Clean up advanced features
                 if (instance.meshCache != null) {
                     instance.meshCache.clear();

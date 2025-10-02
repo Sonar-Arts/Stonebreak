@@ -173,23 +173,33 @@ public class Game {
         CowTextureAtlas.initialize();
         System.out.println("Cow texture atlas initialized");
 
+        // Initialize MMS API early (before World creation)
+        // World will be null at this point, but that's okay - it will be set when World is created
+        com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, null);
+        System.out.println("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
+
         System.out.println("[STARTUP] Core components initialized (no world/player yet)");
     }
 
     /**
      * Initializes components that require a world and player.
      * This should be called when a world is created/loaded.
+     *
+     * NOTE: MmsAPI must be initialized BEFORE World is created (World constructor depends on it).
      */
     public void initWorldComponents(World world, Player player) {
         this.world = world;
         this.player = player;
 
-        // Initialize MMS API for mesh generation
-        if (textureAtlas != null && world != null) {
-            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
-            System.out.println("[MMS-API] Mighty Mesh System initialized for world");
-        } else {
-            System.err.println("[MMS-API] Failed to initialize - textureAtlas or world is null");
+        // MmsAPI should already be initialized before World creation
+        // This is just a safety check
+        if (!com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
+            if (textureAtlas != null && world != null) {
+                com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
+                System.out.println("[MMS-API] Mighty Mesh System initialized for world (late initialization)");
+            } else {
+                System.err.println("[MMS-API] Failed to initialize - textureAtlas or world is null");
+            }
         }
 
         // Initialize save service if it exists but hasn't been initialized yet
@@ -1271,6 +1281,8 @@ public class Game {
 
     /**
      * Creates a fresh World instance with the specified seed for complete world isolation.
+     *
+     * NOTE: MmsAPI should already be initialized in initCoreComponents().
      */
     private World createFreshWorldInstance(long seed) {
         WorldConfiguration config = new WorldConfiguration();

@@ -5,7 +5,7 @@ import com.stonebreak.player.Player;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.SaveService;
@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 public class WorldChunkStore {
     private final TerrainGenerationSystem terrainSystem;
     private final WorldConfiguration config;
-    private final ChunkMeshBuildingPipeline meshPipeline;
+    private final MmsMeshPipeline meshPipeline;
     private final Map<World.ChunkPosition, Chunk> chunks;
     private final PositionCache positionCache;
 
@@ -30,7 +30,7 @@ public class WorldChunkStore {
 
     public WorldChunkStore(TerrainGenerationSystem terrainSystem,
                           WorldConfiguration config,
-                          ChunkMeshBuildingPipeline meshPipeline) {
+                          MmsMeshPipeline meshPipeline) {
         this.terrainSystem = terrainSystem;
         this.config = config;
         this.meshPipeline = meshPipeline;

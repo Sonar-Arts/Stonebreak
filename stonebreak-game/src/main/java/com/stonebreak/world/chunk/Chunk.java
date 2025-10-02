@@ -387,4 +387,26 @@ public class Chunk {
     public CcoDirtyTracker getCcoDirtyTracker() {
         return dirtyTracker;
     }
+
+    // ===== MMS Mesh Handle Management =====
+
+    /**
+     * Gets the MMS renderable handle for this chunk.
+     * Used by MmsMeshPipeline for managing GPU resources.
+     *
+     * @return Renderable handle or null if not uploaded
+     */
+    public MmsRenderableHandle getMmsRenderableHandle() {
+        return renderableHandle;
+    }
+
+    /**
+     * Sets the MMS renderable handle for this chunk.
+     * Used by MmsMeshPipeline after GPU upload.
+     *
+     * @param handle Renderable handle
+     */
+    public void setMmsRenderableHandle(MmsRenderableHandle handle) {
+        this.renderableHandle = handle;
+    }
 }
