@@ -2,6 +2,7 @@ package com.stonebreak.world.chunk.api.commonChunkOperations.serialization;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
+import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
 import com.stonebreak.world.save.model.ChunkData;
 
 import java.util.Objects;

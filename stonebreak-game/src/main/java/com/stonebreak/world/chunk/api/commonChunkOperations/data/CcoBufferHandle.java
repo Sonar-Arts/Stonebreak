@@ -3,57 +3,70 @@ package com.stonebreak.world.chunk.api.commonChunkOperations.data;
 import java.util.Objects;
 
 /**
- * Immutable handle to OpenGL buffer resources for CCO chunks.
- * Contains VAO and VBO IDs with validation.
+ * Immutable handle to a single OpenGL buffer resource for CCO chunks.
+ * Represents either a VBO (Vertex Buffer Object) or EBO (Element Buffer Object).
  *
  * Thread-safe through immutability.
  * Designed for efficient buffer lifecycle management.
  */
 public final class CcoBufferHandle {
-    private final int vaoId;
-    private final int vertexVboId;
-    private final int textureVboId;
-    private final int normalVboId;
-    private final int isWaterVboId;
-    private final int isAlphaTestedVboId;
-    private final int indexVboId;
+    /**
+     * Buffer types supported by CCO system
+     */
+    public enum BufferType {
+        VBO,  // Vertex Buffer Object (GL_ARRAY_BUFFER)
+        EBO   // Element Buffer Object (GL_ELEMENT_ARRAY_BUFFER)
+    }
+
+    /** Invalid handle constant */
+    public static final CcoBufferHandle INVALID_HANDLE = new CcoBufferHandle(-1, BufferType.VBO);
+
+    private final int bufferId;
+    private final BufferType type;
 
     /**
-     * Creates a buffer handle with OpenGL resource IDs.
+     * Creates a buffer handle with OpenGL buffer ID and type.
      *
-     * @param vaoId Vertex Array Object ID
-     * @param vertexVboId Vertex buffer ID
-     * @param textureVboId Texture coordinate buffer ID
-     * @param normalVboId Normal vector buffer ID
-     * @param isWaterVboId Water flag buffer ID
-     * @param isAlphaTestedVboId Alpha test flag buffer ID
-     * @param indexVboId Index buffer ID
+     * @param bufferId OpenGL buffer ID
+     * @param type Buffer type (VBO or EBO)
      */
-    public CcoBufferHandle(int vaoId, int vertexVboId, int textureVboId, int normalVboId,
-                           int isWaterVboId, int isAlphaTestedVboId, int indexVboId) {
-        this.vaoId = vaoId;
-        this.vertexVboId = vertexVboId;
-        this.textureVboId = textureVboId;
-        this.normalVboId = normalVboId;
-        this.isWaterVboId = isWaterVboId;
-        this.isAlphaTestedVboId = isAlphaTestedVboId;
-        this.indexVboId = indexVboId;
+    private CcoBufferHandle(int bufferId, BufferType type) {
+        this.bufferId = bufferId;
+        this.type = type;
+    }
+
+    /**
+     * Creates a VBO handle.
+     *
+     * @param bufferId OpenGL buffer ID
+     * @return VBO handle
+     */
+    public static CcoBufferHandle createVbo(int bufferId) {
+        return new CcoBufferHandle(bufferId, BufferType.VBO);
+    }
+
+    /**
+     * Creates an EBO handle.
+     *
+     * @param bufferId OpenGL buffer ID
+     * @return EBO handle
+     */
+    public static CcoBufferHandle createEbo(int bufferId) {
+        return new CcoBufferHandle(bufferId, BufferType.EBO);
     }
 
     /**
      * Creates an empty/invalid handle (no resources allocated).
      */
     public static CcoBufferHandle empty() {
-        return new CcoBufferHandle(0, 0, 0, 0, 0, 0, 0);
+        return INVALID_HANDLE;
     }
 
     /**
      * Checks if this handle represents valid allocated resources.
      */
     public boolean isValid() {
-        return vaoId > 0 && vertexVboId > 0 && textureVboId > 0 &&
-               normalVboId > 0 && isWaterVboId > 0 &&
-               isAlphaTestedVboId > 0 && indexVboId > 0;
+        return bufferId > 0;
     }
 
     /**
@@ -63,32 +76,18 @@ public final class CcoBufferHandle {
         return !isValid();
     }
 
-    public int getVaoId() {
-        return vaoId;
+    /**
+     * Gets the OpenGL buffer ID.
+     */
+    public int getBufferId() {
+        return bufferId;
     }
 
-    public int getVertexVboId() {
-        return vertexVboId;
-    }
-
-    public int getTextureVboId() {
-        return textureVboId;
-    }
-
-    public int getNormalVboId() {
-        return normalVboId;
-    }
-
-    public int getIsWaterVboId() {
-        return isWaterVboId;
-    }
-
-    public int getIsAlphaTestedVboId() {
-        return isAlphaTestedVboId;
-    }
-
-    public int getIndexVboId() {
-        return indexVboId;
+    /**
+     * Gets the buffer type (VBO or EBO).
+     */
+    public BufferType getType() {
+        return type;
     }
 
     @Override
@@ -96,28 +95,19 @@ public final class CcoBufferHandle {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         CcoBufferHandle that = (CcoBufferHandle) o;
-        return vaoId == that.vaoId &&
-               vertexVboId == that.vertexVboId &&
-               textureVboId == that.textureVboId &&
-               normalVboId == that.normalVboId &&
-               isWaterVboId == that.isWaterVboId &&
-               isAlphaTestedVboId == that.isAlphaTestedVboId &&
-               indexVboId == that.indexVboId;
+        return bufferId == that.bufferId && type == that.type;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(vaoId, vertexVboId, textureVboId, normalVboId,
-                isWaterVboId, isAlphaTestedVboId, indexVboId);
+        return Objects.hash(bufferId, type);
     }
 
     @Override
     public String toString() {
         if (isEmpty()) {
-            return "CcoBufferHandle{empty}";
+            return "CcoBufferHandle{invalid}";
         }
-        return String.format("CcoBufferHandle{VAO=%d, VBOs=[%d,%d,%d,%d,%d,%d]}",
-                vaoId, vertexVboId, textureVboId, normalVboId,
-                isWaterVboId, isAlphaTestedVboId, indexVboId);
+        return String.format("CcoBufferHandle{id=%d, type=%s}", bufferId, type);
     }
 }

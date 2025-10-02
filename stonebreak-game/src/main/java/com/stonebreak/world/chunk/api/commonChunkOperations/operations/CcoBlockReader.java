@@ -82,11 +82,13 @@ public final class CcoBlockReader {
      */
     public boolean isOpaque(int x, int y, int z) {
         BlockType block = get(x, y, z);
-        // Most blocks are opaque except AIR, WATER, GLASS, LEAVES
+        // Most blocks are opaque except AIR, WATER, ICE, LEAVES
         return block != BlockType.AIR &&
                block != BlockType.WATER &&
-               block != BlockType.GLASS &&
-               block != BlockType.LEAVES;
+               block != BlockType.ICE &&
+               block != BlockType.LEAVES &&
+               block != BlockType.PINE_LEAVES &&
+               block != BlockType.ELM_LEAVES;
     }
 
     /**

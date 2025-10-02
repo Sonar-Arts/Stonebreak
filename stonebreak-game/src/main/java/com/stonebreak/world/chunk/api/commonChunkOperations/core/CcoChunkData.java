@@ -50,7 +50,7 @@ public interface CcoChunkData {
      * @return Chunk X coordinate
      */
     default int getChunkX() {
-        return getMetadata().chunkX();
+        return getMetadata().getChunkX();
     }
 
     /**
@@ -59,6 +59,6 @@ public interface CcoChunkData {
      * @return Chunk Z coordinate
      */
     default int getChunkZ() {
-        return getMetadata().chunkZ();
+        return getMetadata().getChunkZ();
     }
 }

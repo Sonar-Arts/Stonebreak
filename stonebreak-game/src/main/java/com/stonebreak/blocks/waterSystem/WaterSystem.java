@@ -517,7 +517,7 @@ public final class WaterSystem {
             int chunkX = (int) (chunkKey >> 32);
             int chunkZ = (int) (chunkKey & 0xFFFFFFFFL);
 
-            Chunk chunk = world.getChunk(chunkX, chunkZ);
+            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
             if (chunk != null) {
                 // Mark chunk dirty for both mesh and data using CCO dirty tracker
                 // This ensures water changes are both rendered AND saved to disk
