@@ -98,8 +98,8 @@ public final class MmsMeshPipeline {
         this.handlesPendingGpuCleanup = new ConcurrentLinkedQueue<>();
         this.chunkRetryCount = new ConcurrentHashMap<>();
 
-        System.out.println("[MmsMeshPipeline] Created mesh pipeline with " +
-            config.getChunkBuildThreads() + " threads");
+        // System.out.println("[MmsMeshPipeline] Created mesh pipeline with " +
+        //     config.getChunkBuildThreads() + " threads");
     }
 
     // === Pipeline Stage 1: Mesh Generation Scheduling ===
@@ -282,11 +282,11 @@ public final class MmsMeshPipeline {
                 MmsRenderableHandle handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
 
                 // Debug: Log first few uploads
-                if (debugGLUploadSuccessCount < 3) {
-                    System.out.println("[MmsMeshPipeline] Uploaded chunk (" + task.chunk.getChunkX() + "," +
-                        task.chunk.getChunkZ() + ") with " + handle.getIndexCount() + " indices");
-                    debugGLUploadSuccessCount++;
-                }
+                // if (debugGLUploadSuccessCount < 3) {
+                //     System.out.println("[MmsMeshPipeline] Uploaded chunk (" + task.chunk.getChunkX() + "," +
+                //         task.chunk.getChunkZ() + ") with " + handle.getIndexCount() + " indices");
+                //     debugGLUploadSuccessCount++;
+                // }
 
                 // Store handle in chunk for rendering
                 synchronized (task.chunk) {
@@ -304,12 +304,12 @@ public final class MmsMeshPipeline {
                     task.chunk.getCcoDirtyTracker().clearMeshDirty();
 
                     // Debug: Verify it was set
-                    if (debugGLUploadSuccessCount <= 3) {
-                        System.out.println("[MmsMeshPipeline] Chunk (" + task.chunk.getChunkX() + "," +
-                            task.chunk.getChunkZ() + ") now has handle=" + (task.chunk.getMmsRenderableHandle() != null) +
-                            " meshGen=" + task.chunk.isMeshGenerated() +
-                            " renderable=" + task.chunk.getCcoStateManager().isRenderable());
-                    }
+                    // if (debugGLUploadSuccessCount <= 3) {
+                    //     System.out.println("[MmsMeshPipeline] Chunk (" + task.chunk.getChunkX() + "," +
+                    //         task.chunk.getChunkZ() + ") now has handle=" + (task.chunk.getMmsRenderableHandle() != null) +
+                    //         " meshGen=" + task.chunk.isMeshGenerated() +
+                    //         " renderable=" + task.chunk.getCcoStateManager().isRenderable());
+                    // }
                 }
 
                 updatesThisFrame++;
@@ -354,10 +354,10 @@ public final class MmsMeshPipeline {
             }
         }
 
-        if (cleaned > WorldConfiguration.GPU_CLEANUP_LOG_THRESHOLD) {
-            System.out.println("[MmsMeshPipeline] Cleaned up " + cleaned +
-                " GPU mesh resources");
-        }
+        // if (cleaned > WorldConfiguration.GPU_CLEANUP_LOG_THRESHOLD) {
+        //     System.out.println("[MmsMeshPipeline] Cleaned up " + cleaned +
+        //         " GPU mesh resources");
+        // }
     }
 
     /**
@@ -517,7 +517,7 @@ public final class MmsMeshPipeline {
         // Clear all queues
         clearQueues();
 
-        System.out.println("[MmsMeshPipeline] Pipeline shut down");
+        // System.out.println("[MmsMeshPipeline] Pipeline shut down");
     }
 
     /**

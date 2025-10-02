@@ -155,8 +155,9 @@ public final class WaterSystem {
 
     /**
      * Removes cached water data when a chunk is unloaded.
+     * Thread-safe: synchronized to prevent concurrent modification from multiple unload threads.
      */
-    public void onChunkUnloaded(Chunk chunk) {
+    public synchronized void onChunkUnloaded(Chunk chunk) {
         if (chunk == null) {
             return;
         }
@@ -167,23 +168,25 @@ public final class WaterSystem {
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
-        Iterator<BlockPos> iter = cells.keySet().iterator();
-        while (iter.hasNext()) {
-            BlockPos pos = iter.next();
-            if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-                Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
-                iter.remove();
-            }
-        }
+        // Remove water cells in the unloaded chunk
+        // Synchronized method ensures thread-safety during iteration
+        cells.keySet().removeIf(pos ->
+            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        );
 
+        // Remove pending updates for the unloaded chunk
         pendingUpdates.removeIf(update -> {
             BlockPos pos = update.pos();
             return Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
                    Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ;
         });
-        scheduledTicks.entrySet().removeIf(entry ->
-            Math.floorDiv(entry.getKey().x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(entry.getKey().z(), WorldConfiguration.CHUNK_SIZE) == chunkZ);
+
+        // Remove scheduled ticks for the unloaded chunk
+        scheduledTicks.keySet().removeIf(pos ->
+            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        );
     }
 
     /**
