@@ -1,19 +1,21 @@
 package com.stonebreak.world.chunk.mesh.data;
 
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.ChunkStateManager;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.function.Consumer;
 
+/**
+ * Coordinates neighbor chunk operations using CCO API.
+ * Handles edge block changes and neighbor mesh rebuilds without direct WorldChunkStore access.
+ */
 public class ChunkNeighborCoordinator {
     private final WorldChunkStore chunkStore;
-    private final ChunkStateManager stateManager;
     private final WorldConfiguration config;
-    
-    public ChunkNeighborCoordinator(WorldChunkStore chunkStore, ChunkStateManager stateManager, WorldConfiguration config) {
+
+    public ChunkNeighborCoordinator(WorldChunkStore chunkStore, WorldConfiguration config) {
         this.chunkStore = chunkStore;
-        this.stateManager = stateManager;
         this.config = config;
     }
     
@@ -52,20 +54,38 @@ public class ChunkNeighborCoordinator {
     
     public void ensureNeighborsReadyForRender(int centerChunkX, int centerChunkZ, Consumer<Chunk> meshBuildScheduler) {
         int[][] neighborOffsets = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-        
+
         for (int[] offset : neighborOffsets) {
             int neighborX = centerChunkX + offset[0];
             int neighborZ = centerChunkZ + offset[1];
-            
+
             Chunk neighbor = chunkStore.getChunk(neighborX, neighborZ);
-            
-            if (neighbor != null && neighbor.areFeaturesPopulated()) {
-                boolean isNeighborMeshReady = neighbor.isMeshGenerated() && neighbor.isDataReadyForGL();
-                if (!isNeighborMeshReady) {
+
+            if (neighbor != null && isChunkPopulated(neighbor)) {
+                if (!isChunkMeshReady(neighbor)) {
                     meshBuildScheduler.accept(neighbor);
                 }
             }
         }
+    }
+
+    /**
+     * Checks if chunk is populated using CCO state.
+     */
+    private boolean isChunkPopulated(Chunk chunk) {
+        return chunk.getCcoStateManager().hasAnyState(
+            CcoChunkState.BLOCKS_POPULATED,
+            CcoChunkState.FEATURES_POPULATED,
+            CcoChunkState.READY,
+            CcoChunkState.ACTIVE
+        );
+    }
+
+    /**
+     * Checks if chunk mesh is ready for rendering using CCO state.
+     */
+    private boolean isChunkMeshReady(Chunk chunk) {
+        return chunk.getCcoStateManager().isRenderable();
     }
     
     public void ensureBorderChunksExist(int playerChunkX, int playerChunkZ) {
@@ -88,14 +108,24 @@ public class ChunkNeighborCoordinator {
     private void rebuildNeighborChunk(int chunkX, int chunkZ) {
         Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
         if (neighbor != null) {
-            stateManager.markForMeshRebuild(neighbor);
+            markChunkForMeshRebuild(neighbor);
         }
     }
 
     private void rebuildNeighborChunkScheduled(int chunkX, int chunkZ, Consumer<Chunk> meshBuildScheduler) {
         Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
         if (neighbor != null) {
-            stateManager.markForMeshRebuildWithScheduling(neighbor, meshBuildScheduler);
+            markChunkForMeshRebuild(neighbor);
+            meshBuildScheduler.accept(neighbor);
+        }
+    }
+
+    /**
+     * Marks a chunk for mesh rebuild using CCO state management.
+     */
+    private void markChunkForMeshRebuild(Chunk chunk) {
+        synchronized (chunk) {
+            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
         }
     }
 }

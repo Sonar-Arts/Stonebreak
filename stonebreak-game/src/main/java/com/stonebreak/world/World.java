@@ -56,7 +56,7 @@ public class World {
         this.errorReporter = new ChunkErrorReporter();
         this.meshPipeline = new ChunkMeshBuildingPipeline(config, stateManager, errorReporter);
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
-        this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, stateManager, config);
+        this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, config);
 
         this.waterSystem = new WaterSystem(this);
         this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
