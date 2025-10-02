@@ -86,8 +86,9 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
         int idx = 0;
 
-        // All 4 quads (2 planes * 2 sides) use the same texture coordinates
-        for (int quad = 0; quad < 4; quad++) {
+        // 2 planes (8 vertices total), each plane uses the same texture coordinates
+        // Index winding handles double-sided rendering (no need for separate back face textures)
+        for (int plane = 0; plane < 2; plane++) {
             // Vertex 0: Bottom-left
             texCoords[idx++] = uvs[0]; // u1
             texCoords[idx++] = uvs[3]; // v2

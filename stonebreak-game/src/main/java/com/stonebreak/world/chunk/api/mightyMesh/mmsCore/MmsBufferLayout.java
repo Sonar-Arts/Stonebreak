@@ -119,8 +119,8 @@ public final class MmsBufferLayout {
     /** Number of indices per cube (6 faces * 6 indices) */
     public static final int INDICES_PER_CUBE = FACES_PER_CUBE * INDICES_PER_QUAD; // 36
 
-    /** Number of vertices per cross (flower blocks: 2 planes * 2 sides * 4 vertices each) */
-    public static final int VERTICES_PER_CROSS = 16;
+    /** Number of vertices per cross (flower blocks: 2 planes * 4 vertices, double-sided via index winding) */
+    public static final int VERTICES_PER_CROSS = 8;
 
     /** Number of indices per cross (2 planes * 2 sides * 2 triangles * 3 indices) */
     public static final int INDICES_PER_CROSS = 24;

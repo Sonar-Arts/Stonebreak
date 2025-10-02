@@ -6,6 +6,7 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.core.CcoChunkData;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoDirtyTracker;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshBuilder;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCuboidGenerator;
@@ -141,22 +142,22 @@ public class MmsCcoAdapter {
         float worldY = ly;
         float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
 
-        // Generate geometry (16 vertices = 2 planes × 2 faces × 4 vertices)
+        // Generate geometry (8 vertices = 2 planes × 4 vertices, double-sided via index winding)
         float[] vertices = crossGenerator.generateCrossVertices(worldX, worldY, worldZ);
         float[] normals = crossGenerator.generateCrossNormals();
 
-        // Generate texture coordinates (16 vertices)
+        // Generate texture coordinates (8 vertices)
         float[] texCoords = textureMapper.generateCrossTextureCoordinates(blockType);
 
         // Generate flags (cross blocks always use alpha testing, never water)
-        float[] waterFlags = new float[16]; // All zeros
-        float[] alphaFlags = new float[16];
-        for (int i = 0; i < 16; i++) {
+        float[] waterFlags = new float[MmsBufferLayout.VERTICES_PER_CROSS]; // All zeros
+        float[] alphaFlags = new float[MmsBufferLayout.VERTICES_PER_CROSS];
+        for (int i = 0; i < MmsBufferLayout.VERTICES_PER_CROSS; i++) {
             alphaFlags[i] = 1.0f; // Cross blocks need alpha testing
         }
 
-        // Add vertices to builder (16 vertices)
-        for (int i = 0; i < 16; i++) {
+        // Add vertices to builder (8 vertices)
+        for (int i = 0; i < MmsBufferLayout.VERTICES_PER_CROSS; i++) {
             int vIdx = i * 3;
             int tIdx = i * 2;
 
@@ -168,8 +169,8 @@ public class MmsCcoAdapter {
             );
         }
 
-        // Add indices for cross (4 quads = 24 indices)
-        int baseVertex = builder.getVertexCount() - 16;
+        // Add indices for cross (2 planes with double-sided rendering via index winding = 24 indices)
+        int baseVertex = builder.getVertexCount() - MmsBufferLayout.VERTICES_PER_CROSS;
         int[] crossIndices = crossGenerator.generateCrossIndices(baseVertex);
 
         // Add all 24 indices to the builder
