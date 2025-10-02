@@ -11,7 +11,9 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockR
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockWriter;
 import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.CcoSnapshotBuilder;
 import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
-import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
+import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 
@@ -42,16 +44,10 @@ public class Chunk {
     private final CcoAtomicStateManager stateManager;
     private final CcoDirtyTracker dirtyTracker;
 
-    // Mesh data and buffers
-    private CcoMeshData pendingMeshData;
-    private int vaoId = 0;
-    private int vboId = 0;
-    private int eboId = 0;
-    private int indexCount = 0;
+    // Mesh data and buffers (MMS-based)
+    private MmsMeshData pendingMmsMeshData;
+    private MmsRenderableHandle renderableHandle;
     private boolean meshGenerated = false;
-
-    // Mesh generation helper
-    private final ChunkMeshOperations chunkMeshOperations = new ChunkMeshOperations();
 
     /**
      * Creates a new chunk at the specified position using CCO API.
@@ -110,7 +106,7 @@ public class Chunk {
     // ===== Mesh Operations (CCO-based) =====
 
     /**
-     * Builds the mesh data for this chunk. This is CPU-intensive and can be run on a worker thread.
+     * Builds the mesh data for this chunk using MMS API. This is CPU-intensive and can be run on a worker thread.
      */
     public void buildAndPrepareMeshData(World world) {
         try {
@@ -120,21 +116,17 @@ public class Chunk {
                 game.getLoadingScreen().updateProgress("Meshing Chunk");
             }
 
-            // Generate mesh data
-            ChunkMeshOperations.MeshData oldMeshData = chunkMeshOperations.generateMeshData(
-                blocks.getUnderlyingArray(), x, z, world);
+            // Generate mesh data using MMS API
+            if (!MmsAPI.isInitialized()) {
+                logger.log(Level.SEVERE, "MMS API not initialized for chunk (" + x + ", " + z + ")");
+                stateManager.removeState(CcoChunkState.MESH_GENERATING);
+                dirtyTracker.markMeshDirtyOnly();
+                return;
+            }
 
-            // Convert to CCO mesh data format
-            pendingMeshData = new CcoMeshData(
-                oldMeshData.vertexData,
-                oldMeshData.textureData,
-                oldMeshData.normalData,
-                oldMeshData.isWaterData,
-                oldMeshData.isAlphaTestedData,
-                oldMeshData.indexData,
-                oldMeshData.indexCount
-            );
+            pendingMmsMeshData = MmsAPI.getInstance().generateChunkMesh(this);
 
+            // MMS API already updates state, but ensure consistency
             // Mark mesh as ready for GPU upload
             stateManager.removeState(CcoChunkState.MESH_GENERATING);
             stateManager.addState(CcoChunkState.MESH_CPU_READY);
@@ -148,7 +140,7 @@ public class Chunk {
     }
 
     /**
-     * Applies the prepared mesh data to OpenGL. This must be called on the main GL thread.
+     * Applies the prepared mesh data to OpenGL using MMS API. This must be called on the main GL thread.
      */
     public void applyPreparedDataToGL() {
         if (!stateManager.hasState(CcoChunkState.MESH_CPU_READY)) {
@@ -156,29 +148,27 @@ public class Chunk {
         }
 
         try {
-            if (pendingMeshData == null || pendingMeshData.isEmpty()) {
-                // Empty mesh - clean up existing buffers
-                if (meshGenerated) {
-                    deleteGLBuffers();
+            if (pendingMmsMeshData == null || pendingMmsMeshData.isEmpty()) {
+                // Empty mesh - clean up existing resources
+                if (meshGenerated && renderableHandle != null) {
+                    renderableHandle.close();
+                    renderableHandle = null;
                     meshGenerated = false;
                 }
-                indexCount = 0;
                 stateManager.removeState(CcoChunkState.MESH_CPU_READY);
                 stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
                 return;
             }
 
-            // Create or update GL buffers
-            if (meshGenerated) {
-                // Update existing buffers
-                updateGLBuffers(pendingMeshData);
-            } else {
-                // Create new buffers
-                createGLBuffers(pendingMeshData);
-                meshGenerated = true;
+            // Upload mesh to GPU using MMS API
+            if (meshGenerated && renderableHandle != null) {
+                // Clean up old handle before creating new one
+                renderableHandle.close();
             }
 
-            indexCount = pendingMeshData.getIndexCount();
+            renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
+            meshGenerated = true;
+
             stateManager.removeState(CcoChunkState.MESH_CPU_READY);
             stateManager.addState(CcoChunkState.MESH_GPU_UPLOADED);
 
@@ -190,149 +180,19 @@ public class Chunk {
             stateManager.removeState(CcoChunkState.MESH_CPU_READY);
             dirtyTracker.markMeshDirtyOnly();
         } finally {
-            pendingMeshData = null;
+            pendingMmsMeshData = null;
         }
     }
 
     /**
-     * Creates new GL buffers and uploads mesh data.
-     */
-    private void createGLBuffers(CcoMeshData meshData) {
-        // Create VAO
-        vaoId = GL30.glGenVertexArrays();
-        GL30.glBindVertexArray(vaoId);
-
-        // Create and bind VBO
-        vboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
-
-        // Interleave all vertex data: position(3) + texture(2) + normal(3) + water(1) + alpha(1) = 10 floats/vertex
-        int vertexCount = meshData.getVertexCount();
-        float[] interleavedData = new float[vertexCount * 10];
-
-        float[] vertices = meshData.getVertexData();
-        float[] texCoords = meshData.getTextureData();
-        float[] normals = meshData.getNormalData();
-        float[] water = meshData.getIsWaterData();
-        float[] alpha = meshData.getIsAlphaTestedData();
-
-        for (int i = 0; i < vertexCount; i++) {
-            int offset = i * 10;
-            // Position
-            interleavedData[offset] = vertices[i * 3];
-            interleavedData[offset + 1] = vertices[i * 3 + 1];
-            interleavedData[offset + 2] = vertices[i * 3 + 2];
-            // Texture
-            interleavedData[offset + 3] = texCoords[i * 2];
-            interleavedData[offset + 4] = texCoords[i * 2 + 1];
-            // Normal
-            interleavedData[offset + 5] = normals[i * 3];
-            interleavedData[offset + 6] = normals[i * 3 + 1];
-            interleavedData[offset + 7] = normals[i * 3 + 2];
-            // Water and alpha flags
-            interleavedData[offset + 8] = water[i];
-            interleavedData[offset + 9] = alpha[i];
-        }
-
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, interleavedData, GL15.GL_STATIC_DRAW);
-
-        // Setup vertex attributes
-        int stride = 10 * Float.BYTES;
-        GL30.glEnableVertexAttribArray(0); // position
-        GL30.glVertexAttribPointer(0, 3, GL15.GL_FLOAT, false, stride, 0);
-        GL30.glEnableVertexAttribArray(1); // texCoord
-        GL30.glVertexAttribPointer(1, 2, GL15.GL_FLOAT, false, stride, 3 * Float.BYTES);
-        GL30.glEnableVertexAttribArray(2); // normal
-        GL30.glVertexAttribPointer(2, 3, GL15.GL_FLOAT, false, stride, 5 * Float.BYTES);
-        GL30.glEnableVertexAttribArray(3); // isWater
-        GL30.glVertexAttribPointer(3, 1, GL15.GL_FLOAT, false, stride, 8 * Float.BYTES);
-        GL30.glEnableVertexAttribArray(4); // isAlphaTested
-        GL30.glVertexAttribPointer(4, 1, GL15.GL_FLOAT, false, stride, 9 * Float.BYTES);
-
-        // Create and bind EBO
-        eboId = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, meshData.getIndexData(), GL15.GL_STATIC_DRAW);
-
-        // Unbind
-        GL30.glBindVertexArray(0);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-
-    /**
-     * Updates existing GL buffers with new mesh data.
-     */
-    private void updateGLBuffers(CcoMeshData meshData) {
-        GL30.glBindVertexArray(vaoId);
-
-        // Re-upload VBO data
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
-
-        int vertexCount = meshData.getVertexCount();
-        float[] interleavedData = new float[vertexCount * 10];
-
-        float[] vertices = meshData.getVertexData();
-        float[] texCoords = meshData.getTextureData();
-        float[] normals = meshData.getNormalData();
-        float[] water = meshData.getIsWaterData();
-        float[] alpha = meshData.getIsAlphaTestedData();
-
-        for (int i = 0; i < vertexCount; i++) {
-            int offset = i * 10;
-            interleavedData[offset] = vertices[i * 3];
-            interleavedData[offset + 1] = vertices[i * 3 + 1];
-            interleavedData[offset + 2] = vertices[i * 3 + 2];
-            interleavedData[offset + 3] = texCoords[i * 2];
-            interleavedData[offset + 4] = texCoords[i * 2 + 1];
-            interleavedData[offset + 5] = normals[i * 3];
-            interleavedData[offset + 6] = normals[i * 3 + 1];
-            interleavedData[offset + 7] = normals[i * 3 + 2];
-            interleavedData[offset + 8] = water[i];
-            interleavedData[offset + 9] = alpha[i];
-        }
-
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, interleavedData, GL15.GL_STATIC_DRAW);
-
-        // Re-upload EBO data
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, meshData.getIndexData(), GL15.GL_STATIC_DRAW);
-
-        // Unbind
-        GL30.glBindVertexArray(0);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-
-    /**
-     * Deletes GL buffers.
-     */
-    private void deleteGLBuffers() {
-        if (vaoId != 0) {
-            GL30.glDeleteVertexArrays(vaoId);
-            vaoId = 0;
-        }
-        if (vboId != 0) {
-            GL15.glDeleteBuffers(vboId);
-            vboId = 0;
-        }
-        if (eboId != 0) {
-            GL15.glDeleteBuffers(eboId);
-            eboId = 0;
-        }
-    }
-
-    /**
-     * Renders the chunk.
+     * Renders the chunk using MMS API.
      */
     public void render() {
-        if (!stateManager.isRenderable() || indexCount == 0 || !meshGenerated) {
+        if (!stateManager.isRenderable() || !meshGenerated || renderableHandle == null) {
             return;
         }
 
-        GL30.glBindVertexArray(vaoId);
-        GL15.glDrawElements(GL15.GL_TRIANGLES, indexCount, GL15.GL_UNSIGNED_INT, 0);
-        GL30.glBindVertexArray(0);
+        renderableHandle.render();
     }
 
     // ===== Coordinate Operations =====
@@ -490,15 +350,17 @@ public class Chunk {
      * Cleans up CPU-side resources. Safe to call from any thread.
      */
     public void cleanupCpuResources() {
-        pendingMeshData = null;
-        indexCount = 0;
+        pendingMmsMeshData = null;
     }
 
     /**
-     * Cleans up GPU resources. MUST be called from the main OpenGL thread.
+     * Cleans up GPU resources using MMS API. MUST be called from the main OpenGL thread.
      */
     public void cleanupGpuResources() {
-        deleteGLBuffers();
+        if (renderableHandle != null) {
+            renderableHandle.close();
+            renderableHandle = null;
+        }
         meshGenerated = false;
     }
 

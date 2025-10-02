@@ -184,6 +184,14 @@ public class Game {
         this.world = world;
         this.player = player;
 
+        // Initialize MMS API for mesh generation
+        if (textureAtlas != null && world != null) {
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
+            System.out.println("[MMS-API] Mighty Mesh System initialized for world");
+        } else {
+            System.err.println("[MMS-API] Failed to initialize - textureAtlas or world is null");
+        }
+
         // Initialize save service if it exists but hasn't been initialized yet
         if (saveService != null && currentWorldData != null) {
             System.out.println("[SAVE-SYSTEM] Updating save service references during world component initialization");
@@ -1297,13 +1305,21 @@ public class Game {
      */
     private void cleanupStaticResources() {
         try {
+            // Shutdown MMS API
+            System.out.println("Shutting down MMS API...");
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.shutdown();
+        } catch (Exception e) {
+            System.err.println("Error shutting down MMS API: " + e.getMessage());
+        }
+
+        try {
             // Shutdown ModelLoader async executor
             System.out.println("Shutting down ModelLoader executor...");
             com.stonebreak.model.ModelLoader.shutdown();
         } catch (Exception e) {
             System.err.println("Error shutting down ModelLoader: " + e.getMessage());
         }
-        
+
         try {
             // Shutdown CowTextureAtlas if it has any background resources
             System.out.println("Cleaning up CowTextureAtlas...");
