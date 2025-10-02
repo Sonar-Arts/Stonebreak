@@ -61,9 +61,9 @@ public final class CcoDeserializer {
         CcoChunkMetadata metadata = toMetadata(chunkData);
         CcoBlockArray blockArray = toBlockArray(chunkData);
 
-        // Create fresh state and dirty trackers for loaded chunk
-        CcoAtomicStateManager stateManager = new CcoAtomicStateManager();
+        // Create fresh dirty tracker and integrated state manager for loaded chunk
         CcoDirtyTracker dirtyTracker = new CcoDirtyTracker();
+        CcoAtomicStateManager stateManager = new CcoAtomicStateManager(dirtyTracker);
 
         // Set appropriate initial states
         stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
@@ -71,7 +71,7 @@ public final class CcoDeserializer {
             stateManager.addState(CcoChunkState.FEATURES_POPULATED);
         }
         // Loaded chunks need mesh generation
-        stateManager.addState(CcoChunkState.MESH_DIRTY);
+        dirtyTracker.markMeshDirtyOnly();
 
         return new DeserializedChunk(metadata, blockArray, stateManager, dirtyTracker);
     }

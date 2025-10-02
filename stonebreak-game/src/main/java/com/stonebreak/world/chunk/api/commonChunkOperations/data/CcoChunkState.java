@@ -28,11 +28,6 @@ public enum CcoChunkState {
     FEATURES_POPULATED,
 
     /**
-     * Block data has been modified and mesh needs regeneration.
-     */
-    MESH_DIRTY,
-
-    /**
      * Mesh generation is currently scheduled or in progress.
      */
     MESH_GENERATING,
@@ -46,12 +41,6 @@ public enum CcoChunkState {
      * Mesh has been uploaded to GPU and is ready for rendering.
      */
     MESH_GPU_UPLOADED,
-
-    /**
-     * Block data has been modified by player and needs to be saved.
-     * This is SEPARATE from MESH_DIRTY which is for rendering only.
-     */
-    DATA_MODIFIED,
 
     /**
      * Chunk is being unloaded and should not be processed.

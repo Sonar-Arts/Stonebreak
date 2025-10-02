@@ -178,7 +178,7 @@ public class ChunkMeshBuildingPipeline {
 
         synchronized (chunk) {
             // Ready if dirty and not already generating
-            return chunk.getCcoStateManager().hasState(CcoChunkState.MESH_DIRTY) &&
+            return chunk.getCcoDirtyTracker().isMeshDirty() &&
                    !chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GENERATING);
         }
     }
@@ -199,7 +199,7 @@ public class ChunkMeshBuildingPipeline {
             // If generation completed successfully, it should transition to CPU_READY
             // If not, mark as dirty to retry
             if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_CPU_READY)) {
-                chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
+                chunk.getCcoDirtyTracker().markMeshDirtyOnly();
             }
         }
     }
@@ -207,9 +207,7 @@ public class ChunkMeshBuildingPipeline {
     private void resetMeshGenerationState(Chunk chunk) {
         if (chunk == null) return;
 
-        synchronized (chunk) {
-            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
-        }
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
     }
 
     // Debug methods

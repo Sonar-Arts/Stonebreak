@@ -28,39 +28,33 @@ public final class CcoStateTransition {
         VALID_TRANSITIONS.put(CcoChunkState.CREATED,
                 EnumSet.of(CcoChunkState.BLOCKS_POPULATED, CcoChunkState.UNLOADING));
 
-        // BLOCKS_POPULATED can transition to FEATURES_POPULATED, MESH_DIRTY, or UNLOADING
+        // BLOCKS_POPULATED can transition to FEATURES_POPULATED, MESH_GENERATING, or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.BLOCKS_POPULATED,
-                EnumSet.of(CcoChunkState.FEATURES_POPULATED, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+                EnumSet.of(CcoChunkState.FEATURES_POPULATED, CcoChunkState.MESH_GENERATING, CcoChunkState.UNLOADING));
 
-        // FEATURES_POPULATED can transition to MESH_DIRTY or UNLOADING
+        // FEATURES_POPULATED can transition to MESH_GENERATING or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.FEATURES_POPULATED,
-                EnumSet.of(CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
-
-        // MESH_DIRTY can transition to MESH_GENERATING or UNLOADING
-        VALID_TRANSITIONS.put(CcoChunkState.MESH_DIRTY,
                 EnumSet.of(CcoChunkState.MESH_GENERATING, CcoChunkState.UNLOADING));
 
-        // MESH_GENERATING can transition to MESH_CPU_READY, MESH_DIRTY (if interrupted), or UNLOADING
+        // MESH_GENERATING can transition to MESH_CPU_READY or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.MESH_GENERATING,
-                EnumSet.of(CcoChunkState.MESH_CPU_READY, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+                EnumSet.of(CcoChunkState.MESH_CPU_READY, CcoChunkState.UNLOADING));
 
-        // MESH_CPU_READY can transition to MESH_GPU_UPLOADED, MESH_DIRTY (if blocks changed), or UNLOADING
+        // MESH_CPU_READY can transition to MESH_GPU_UPLOADED or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.MESH_CPU_READY,
-                EnumSet.of(CcoChunkState.MESH_GPU_UPLOADED, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+                EnumSet.of(CcoChunkState.MESH_GPU_UPLOADED, CcoChunkState.UNLOADING));
 
-        // MESH_GPU_UPLOADED can transition to READY, MESH_DIRTY (if blocks changed), or UNLOADING
+        // MESH_GPU_UPLOADED can transition to READY or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.MESH_GPU_UPLOADED,
-                EnumSet.of(CcoChunkState.READY, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+                EnumSet.of(CcoChunkState.READY, CcoChunkState.UNLOADING));
 
-        // READY can transition to ACTIVE, MESH_DIRTY, or UNLOADING
+        // READY can transition to ACTIVE or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.READY,
-                EnumSet.of(CcoChunkState.ACTIVE, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
+                EnumSet.of(CcoChunkState.ACTIVE, CcoChunkState.UNLOADING));
 
-        // ACTIVE can transition back to READY, MESH_DIRTY, or UNLOADING
+        // ACTIVE can transition back to READY or UNLOADING
         VALID_TRANSITIONS.put(CcoChunkState.ACTIVE,
-                EnumSet.of(CcoChunkState.READY, CcoChunkState.MESH_DIRTY, CcoChunkState.UNLOADING));
-
-        // DATA_MODIFIED is a flag state that can coexist with others - no specific transitions
+                EnumSet.of(CcoChunkState.READY, CcoChunkState.UNLOADING));
 
         // UNLOADING can transition to UNLOADED
         VALID_TRANSITIONS.put(CcoChunkState.UNLOADING,
@@ -133,11 +127,6 @@ public final class CcoStateTransition {
             return false;
         }
 
-        // DATA_MODIFIED can coexist with any state
-        if (state == CcoChunkState.DATA_MODIFIED) {
-            return true;
-        }
-
         // UNLOADING cannot coexist with non-terminal states
         if (state == CcoChunkState.UNLOADING) {
             return currentStates.isEmpty();
@@ -145,7 +134,6 @@ public final class CcoStateTransition {
 
         // Mesh states are mutually exclusive
         Set<CcoChunkState> meshStates = EnumSet.of(
-                CcoChunkState.MESH_DIRTY,
                 CcoChunkState.MESH_GENERATING,
                 CcoChunkState.MESH_CPU_READY,
                 CcoChunkState.MESH_GPU_UPLOADED

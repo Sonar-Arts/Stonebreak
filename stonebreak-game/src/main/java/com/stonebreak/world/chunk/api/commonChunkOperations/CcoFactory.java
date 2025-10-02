@@ -100,13 +100,14 @@ public final class CcoFactory {
     }
 
     /**
-     * Create atomic state manager
+     * Create atomic state manager with integrated dirty tracker
      *
      * @param initialState Initial chunk state
+     * @param dirtyTracker Dirty flag tracker to integrate
      * @return Lock-free state manager
      */
-    public static CcoAtomicStateManager createStateManager(CcoChunkState initialState) {
-        return new CcoAtomicStateManager(java.util.EnumSet.of(initialState));
+    public static CcoAtomicStateManager createStateManager(CcoChunkState initialState, CcoDirtyTracker dirtyTracker) {
+        return new CcoAtomicStateManager(java.util.EnumSet.of(initialState), dirtyTracker);
     }
 
     /**
@@ -333,7 +334,7 @@ public final class CcoFactory {
 
             CcoBlockArray blockArray = createBlockArray(blocks);
             CcoDirtyTracker dirtyTracker = createDirtyTracker();
-            CcoAtomicStateManager stateManager = createStateManager(initialState);
+            CcoAtomicStateManager stateManager = createStateManager(initialState, dirtyTracker);
 
             CcoBlockReader reader = createBlockReader(blockArray);
             CcoBlockWriter writer = createBlockWriter(blockArray, dirtyTracker);

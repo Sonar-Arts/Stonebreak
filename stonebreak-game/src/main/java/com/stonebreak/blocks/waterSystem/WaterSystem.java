@@ -504,8 +504,9 @@ public final class WaterSystem {
     }
 
     /**
-     * Applies all batched mesh updates to chunks.
+     * Applies all batched mesh and data updates to chunks.
      * Called once per logical tick after processing all water updates.
+     * Marks chunks dirty for both mesh regeneration AND data saving.
      */
     private void flushDirtyChunks() {
         if (dirtyChunks.isEmpty()) {
@@ -516,11 +517,17 @@ public final class WaterSystem {
             int chunkX = (int) (chunkKey >> 32);
             int chunkZ = (int) (chunkKey & 0xFFFFFFFFL);
 
-            // Trigger mesh rebuild for this chunk
-            // Using world coordinates from chunk center for the rebuild call
-            int worldX = chunkX * WorldConfiguration.CHUNK_SIZE;
-            int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
-            world.triggerChunkRebuild(worldX, 0, worldZ);
+            Chunk chunk = world.getChunk(chunkX, chunkZ);
+            if (chunk != null) {
+                // Mark chunk dirty for both mesh and data using CCO dirty tracker
+                // This ensures water changes are both rendered AND saved to disk
+                chunk.getCcoDirtyTracker().markBlockChanged();
+
+                // Trigger mesh rebuild using world's scheduling system
+                int worldX = chunkX * WorldConfiguration.CHUNK_SIZE;
+                int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
+                world.triggerChunkRebuild(worldX, 0, worldZ);
+            }
         }
 
         dirtyChunks.clear();

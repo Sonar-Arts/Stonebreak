@@ -441,16 +441,14 @@ public class World {
     }
     
     /**
-     * Marks a chunk for mesh rebuild using CCO state management.
+     * Marks a chunk for mesh rebuild using CCO dirty tracker.
      */
     private void markChunkForMeshRebuild(Chunk chunk) {
-        synchronized (chunk) {
-            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
-        }
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
     }
 
     /**
-     * Marks a chunk for mesh rebuild and schedules it using CCO state management.
+     * Marks a chunk for mesh rebuild and schedules it using CCO dirty tracker.
      */
     private void markChunkForMeshRebuildWithScheduling(Chunk chunk, Consumer<Chunk> meshBuildScheduler) {
         markChunkForMeshRebuild(chunk);
@@ -458,12 +456,10 @@ public class World {
     }
 
     /**
-     * Resets mesh generation state using CCO state management.
+     * Resets mesh generation state using CCO dirty tracker.
      */
     private void resetMeshGenerationState(Chunk chunk) {
-        synchronized (chunk) {
-            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
-        }
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
     }
 
     /**

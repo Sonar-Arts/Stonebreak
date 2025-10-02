@@ -84,17 +84,18 @@ public final class CcoMetadataSync {
     }
 
     /**
-     * Checks if chunk needs saving based on metadata and state.
+     * Checks if chunk needs saving based on metadata and state manager.
+     * Uses the state manager's integrated dirty tracker.
      *
      * @param metadata Chunk metadata
-     * @param stateManager State manager
+     * @param stateManager State manager with integrated dirty tracker
      * @return true if chunk should be saved
      */
     public static boolean needsSave(CcoChunkMetadata metadata, CcoAtomicStateManager stateManager) {
         Objects.requireNonNull(metadata, "metadata cannot be null");
         Objects.requireNonNull(stateManager, "stateManager cannot be null");
 
-        // Check if data modified flag is set
+        // Check if data modified flag is set (delegates to integrated dirty tracker)
         if (stateManager.needsSave()) {
             return true;
         }
@@ -110,13 +111,13 @@ public final class CcoMetadataSync {
 
     /**
      * Updates state manager after successful save.
-     * Clears data modified flag.
+     * Clears data modified flag via integrated dirty tracker.
      *
      * @param stateManager State manager to update
      */
     public static void markSaved(CcoAtomicStateManager stateManager) {
         Objects.requireNonNull(stateManager, "stateManager cannot be null");
-        stateManager.removeState(CcoChunkState.DATA_MODIFIED);
+        stateManager.getDirtyTracker().clearDataDirty();
     }
 
     /**

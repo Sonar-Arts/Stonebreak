@@ -121,11 +121,9 @@ public class ChunkNeighborCoordinator {
     }
 
     /**
-     * Marks a chunk for mesh rebuild using CCO state management.
+     * Marks a chunk for mesh rebuild using CCO dirty tracker.
      */
     private void markChunkForMeshRebuild(Chunk chunk) {
-        synchronized (chunk) {
-            chunk.getCcoStateManager().addState(CcoChunkState.MESH_DIRTY);
-        }
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
     }
 }

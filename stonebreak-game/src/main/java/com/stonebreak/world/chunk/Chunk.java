@@ -143,7 +143,7 @@ public class Chunk {
             logger.log(Level.SEVERE, "CRITICAL: Exception during mesh generation for chunk (" + x + ", " + z + "): "
                 + e.getMessage(), e);
             stateManager.removeState(CcoChunkState.MESH_GENERATING);
-            stateManager.addState(CcoChunkState.MESH_DIRTY);
+            dirtyTracker.markMeshDirtyOnly();
         }
     }
 
@@ -188,7 +188,7 @@ public class Chunk {
         } catch (Exception e) {
             logger.log(Level.SEVERE, "CRITICAL: Error during GL buffer upload for chunk (" + x + ", " + z + ")", e);
             stateManager.removeState(CcoChunkState.MESH_CPU_READY);
-            stateManager.addState(CcoChunkState.MESH_DIRTY);
+            dirtyTracker.markMeshDirtyOnly();
         } finally {
             pendingMeshData = null;
         }
@@ -456,7 +456,6 @@ public class Chunk {
         dirtyTracker.markBlockChanged();
         stateManager.removeState(CcoChunkState.MESH_GPU_UPLOADED);
         stateManager.removeState(CcoChunkState.MESH_CPU_READY);
-        stateManager.addState(CcoChunkState.MESH_DIRTY);
     }
 
 
@@ -518,5 +517,12 @@ public class Chunk {
      */
     public CcoBlockReader getBlockReader() {
         return reader;
+    }
+
+    /**
+     * Gets the CCO dirty tracker for this chunk.
+     */
+    public CcoDirtyTracker getCcoDirtyTracker() {
+        return dirtyTracker;
     }
 }

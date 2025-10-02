@@ -1,6 +1,7 @@
 package com.stonebreak.world.chunk.api.commonChunkOperations.state;
 
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoDirtyTracker;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -9,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Lock-free atomic state manager for CCO chunks.
  * Uses AtomicReference with EnumSet for thread-safe state transitions.
+ * Integrates with CcoDirtyTracker for unified chunk state management.
  *
  * Performance: Lock-free, < 200ns per operation.
  * Thread-safe for concurrent reads and writes.
@@ -16,25 +18,30 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class CcoAtomicStateManager {
 
     private final AtomicReference<EnumSet<CcoChunkState>> stateSet;
+    private final CcoDirtyTracker dirtyTracker;
 
     /**
      * Creates a state manager with initial CREATED state.
+     *
+     * @param dirtyTracker Dirty flag tracker for this chunk
      */
-    public CcoAtomicStateManager() {
-        this(EnumSet.of(CcoChunkState.CREATED));
+    public CcoAtomicStateManager(CcoDirtyTracker dirtyTracker) {
+        this(EnumSet.of(CcoChunkState.CREATED), dirtyTracker);
     }
 
     /**
      * Creates a state manager with custom initial states.
      *
      * @param initialStates Initial state set
+     * @param dirtyTracker Dirty flag tracker for this chunk
      */
-    public CcoAtomicStateManager(Set<CcoChunkState> initialStates) {
+    public CcoAtomicStateManager(Set<CcoChunkState> initialStates, CcoDirtyTracker dirtyTracker) {
         this.stateSet = new AtomicReference<>(
                 initialStates != null && !initialStates.isEmpty()
                         ? EnumSet.copyOf(initialStates)
                         : EnumSet.of(CcoChunkState.CREATED)
         );
+        this.dirtyTracker = dirtyTracker != null ? dirtyTracker : new CcoDirtyTracker();
     }
 
     /**
@@ -223,13 +230,14 @@ public final class CcoAtomicStateManager {
 
     /**
      * Checks if mesh needs generation.
+     * @deprecated Use CcoDirtyTracker.isMeshDirty() instead
      *
-     * @return true if dirty and not already generating or unloading
+     * @return true if not already generating or unloading
      */
+    @Deprecated
     public boolean needsMeshGeneration() {
         Set<CcoChunkState> current = stateSet.get();
-        return current.contains(CcoChunkState.MESH_DIRTY) &&
-               !current.contains(CcoChunkState.MESH_GENERATING) &&
+        return !current.contains(CcoChunkState.MESH_GENERATING) &&
                !current.contains(CcoChunkState.UNLOADING);
     }
 
@@ -244,11 +252,21 @@ public final class CcoAtomicStateManager {
 
     /**
      * Checks if chunk data needs saving.
+     * Delegates to the integrated dirty tracker.
      *
      * @return true if data modified flag is set
      */
     public boolean needsSave() {
-        return hasState(CcoChunkState.DATA_MODIFIED);
+        return dirtyTracker.isDataDirty();
+    }
+
+    /**
+     * Gets the integrated dirty tracker.
+     *
+     * @return The dirty tracker for this state manager
+     */
+    public CcoDirtyTracker getDirtyTracker() {
+        return dirtyTracker;
     }
 
     @Override
