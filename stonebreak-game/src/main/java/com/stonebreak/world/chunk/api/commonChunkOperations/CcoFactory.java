@@ -3,28 +3,23 @@ package com.stonebreak.world.chunk.api.commonChunkOperations;
 import com.stonebreak.world.chunk.api.commonChunkOperations.buffers.CcoBufferAllocator;
 import com.stonebreak.world.chunk.api.commonChunkOperations.buffers.CcoBufferPool;
 import com.stonebreak.world.chunk.api.commonChunkOperations.coordinates.CcoBounds;
-import com.stonebreak.world.chunk.api.commonChunkOperations.coordinates.CcoCoordinates;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockReader;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockWriter;
 import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBulkOperations;
 import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.*;
 import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
-import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoStateTransition;
 import com.stonebreak.blocks.BlockType;
 
 /**
  * CCO Factory - Component factory with builder pattern
- *
  * Responsibilities:
  * - Create CCO components with proper initialization
  * - Provide builder pattern for complex component creation
  * - Manage component dependencies and lifecycles
  * - Centralize CCO object creation
- *
  * Design: Factory + Builder pattern for flexible construction
  * Performance: Minimal overhead, focuses on correctness
- *
  * Usage:
  * 1. Simple creation: CcoFactory.createMetadata(...)
  * 2. Builder pattern: CcoFactory.builder().withBlocks(...).build()
@@ -92,7 +87,7 @@ public final class CcoFactory {
      * @return Zero-copy block array wrapper
      */
     public static CcoBlockArray createBlockArray(BlockType[][][] blocks) {
-        return new CcoBlockArray(blocks);
+        return CcoBlockArray.wrap(blocks);
     }
 
     /**
@@ -111,44 +106,39 @@ public final class CcoFactory {
      * @return Lock-free state manager
      */
     public static CcoAtomicStateManager createStateManager(CcoChunkState initialState) {
-        return new CcoAtomicStateManager(initialState);
+        return new CcoAtomicStateManager(java.util.EnumSet.of(initialState));
     }
 
     /**
      * Create block reader
      *
      * @param blocks Block array
-     * @param bounds Boundary validator
      * @return Fast block query operations
      */
-    public static CcoBlockReader createBlockReader(CcoBlockArray blocks, CcoBounds bounds) {
-        return new CcoBlockReader(blocks, bounds);
+    public static CcoBlockReader createBlockReader(CcoBlockArray blocks) {
+        return new CcoBlockReader(blocks);
     }
 
     /**
      * Create block writer
      *
      * @param blocks Block array
-     * @param bounds Boundary validator
      * @param dirtyTracker Dirty flag tracker
      * @return Dirty-tracking block writes
      */
-    public static CcoBlockWriter createBlockWriter(CcoBlockArray blocks, CcoBounds bounds,
-                                                   CcoDirtyTracker dirtyTracker) {
-        return new CcoBlockWriter(blocks, bounds, dirtyTracker);
+    public static CcoBlockWriter createBlockWriter(CcoBlockArray blocks, CcoDirtyTracker dirtyTracker) {
+        return new CcoBlockWriter(blocks, dirtyTracker);
     }
 
     /**
      * Create bulk operations handler
      *
      * @param blocks Block array
-     * @param bounds Boundary validator
      * @param dirtyTracker Dirty flag tracker
      * @return Batch block operations
      */
-    public static CcoBulkOperations createBulkOperations(CcoBlockArray blocks, CcoBounds bounds,
-                                                         CcoDirtyTracker dirtyTracker) {
-        return new CcoBulkOperations(blocks, bounds, dirtyTracker);
+    public static CcoBulkOperations createBulkOperations(CcoBlockArray blocks, CcoDirtyTracker dirtyTracker) {
+        return new CcoBulkOperations(blocks, dirtyTracker);
     }
 
     /**
@@ -160,7 +150,7 @@ public final class CcoFactory {
      */
     public static CcoSnapshotBuilder createSnapshotBuilder(CcoBlockArray blocks,
                                                            CcoChunkMetadata metadata) {
-        return new CcoSnapshotBuilder(blocks, metadata);
+        return CcoSnapshotBuilder.from(metadata, blocks);
     }
 
     /**
@@ -184,15 +174,29 @@ public final class CcoFactory {
     /**
      * Create mesh data container
      *
-     * @param vbo VBO handle
-     * @param ebo EBO handle
-     * @param vertexCount Number of vertices
-     * @param indexCount Number of indices
+     * @param vertexData Vertex positions (x,y,z per vertex)
+     * @param textureData Texture coordinates (u,v per vertex)
+     * @param normalData Normal vectors (nx,ny,nz per vertex)
+     * @param isWaterData Water flags (1 float per vertex)
+     * @param isAlphaTestedData Alpha test flags (1 float per vertex)
+     * @param indexData Triangle indices
+     * @param indexCount Number of valid indices
      * @return Immutable mesh data
      */
-    public static CcoMeshData createMeshData(CcoBufferHandle vbo, CcoBufferHandle ebo,
-                                             int vertexCount, int indexCount) {
-        return new CcoMeshData(vbo, ebo, vertexCount, indexCount);
+    public static CcoMeshData createMeshData(float[] vertexData, float[] textureData, float[] normalData,
+                                             float[] isWaterData, float[] isAlphaTestedData,
+                                             int[] indexData, int indexCount) {
+        return new CcoMeshData(vertexData, textureData, normalData, isWaterData, isAlphaTestedData,
+                               indexData, indexCount);
+    }
+
+    /**
+     * Create empty mesh data
+     *
+     * @return Empty mesh with no geometry
+     */
+    public static CcoMeshData createEmptyMeshData() {
+        return CcoMeshData.empty();
     }
 
     /**
@@ -206,7 +210,6 @@ public final class CcoFactory {
 
     /**
      * Builder for complex CCO component initialization
-     *
      * Usage:
      * <pre>
      * var chunk = CcoFactory.builder()
@@ -331,18 +334,16 @@ public final class CcoFactory {
             CcoBlockArray blockArray = createBlockArray(blocks);
             CcoDirtyTracker dirtyTracker = createDirtyTracker();
             CcoAtomicStateManager stateManager = createStateManager(initialState);
-            CcoBounds bounds = new CcoBounds();
 
-            CcoBlockReader reader = createBlockReader(blockArray, bounds);
-            CcoBlockWriter writer = createBlockWriter(blockArray, bounds, dirtyTracker);
-            CcoBulkOperations bulkOps = createBulkOperations(blockArray, bounds, dirtyTracker);
+            CcoBlockReader reader = createBlockReader(blockArray);
+            CcoBlockWriter writer = createBlockWriter(blockArray, dirtyTracker);
+            CcoBulkOperations bulkOps = createBulkOperations(blockArray, dirtyTracker);
 
             return new ComponentBundle(
                 metadata,
                 blockArray,
                 dirtyTracker,
                 stateManager,
-                bounds,
                 reader,
                 writer,
                 bulkOps
@@ -361,7 +362,6 @@ public final class CcoFactory {
 
     /**
      * Bundle of CCO components for a chunk
-     *
      * Provides all components needed for chunk operations
      */
     public static class ComponentBundle {
@@ -369,20 +369,18 @@ public final class CcoFactory {
         public final CcoBlockArray blocks;
         public final CcoDirtyTracker dirtyTracker;
         public final CcoAtomicStateManager stateManager;
-        public final CcoBounds bounds;
         public final CcoBlockReader reader;
         public final CcoBlockWriter writer;
         public final CcoBulkOperations bulkOps;
 
         private ComponentBundle(CcoChunkMetadata metadata, CcoBlockArray blocks,
                                CcoDirtyTracker dirtyTracker, CcoAtomicStateManager stateManager,
-                               CcoBounds bounds, CcoBlockReader reader, CcoBlockWriter writer,
+                               CcoBlockReader reader, CcoBlockWriter writer,
                                CcoBulkOperations bulkOps) {
             this.metadata = metadata;
             this.blocks = blocks;
             this.dirtyTracker = dirtyTracker;
             this.stateManager = stateManager;
-            this.bounds = bounds;
             this.reader = reader;
             this.writer = writer;
             this.bulkOps = bulkOps;
@@ -400,7 +398,6 @@ public final class CcoFactory {
 
     /**
      * Shutdown factory and cleanup resources
-     *
      * Call on game shutdown to free pooled buffers
      */
     public static void shutdown() {
