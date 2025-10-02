@@ -358,9 +358,13 @@ public class SingleChunkVisualTest {
 
     private void createTestChunk() {
         System.out.println("Creating test chunk...");
+        System.out.println("=== DIAGNOSTIC: Testing chunk mesh generation workflow ===\n");
 
         // Create chunk at origin
         chunk = new Chunk(0, 0);
+
+        System.out.println("STEP 1: Initial chunk state after creation:");
+        printChunkState(chunk);
 
         // Fill with interesting terrain
         for (int x = 0; x < 16; x++) {
@@ -409,9 +413,18 @@ public class SingleChunkVisualTest {
             }
         }
 
-        System.out.println("✓ Test chunk created with varied terrain");
+        System.out.println("\nSTEP 2: Chunk state after terrain generation:");
+        printChunkState(chunk);
 
-        // Generate mesh using MMS
+        // Mark chunk as mesh dirty (this is what the game should do!)
+        System.out.println("\nSTEP 3: Marking chunk as mesh dirty...");
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+        printChunkState(chunk);
+
+        System.out.println("\n✓ Test chunk created with varied terrain");
+
+        // Generate mesh using MMS (this simulates what the mesh pipeline does)
+        System.out.println("\nSTEP 4: Generating mesh data (CPU)...");
         long startTime = System.currentTimeMillis();
         meshData = mmsAPI.generateChunkMesh(chunk);
         long genTime = System.currentTimeMillis() - startTime;
@@ -421,15 +434,54 @@ public class SingleChunkVisualTest {
         System.out.println("  Triangles: " + meshData.getTriangleCount());
         System.out.println("  Memory: " + meshData.getMemoryUsageBytes() + " bytes");
 
-        // Upload to GPU
+        // Upload to GPU (this simulates what applyPendingGLUpdates does)
+        System.out.println("\nSTEP 5: Uploading mesh to GPU...");
         startTime = System.currentTimeMillis();
         renderableHandle = mmsAPI.uploadMeshToGPU(meshData);
         long uploadTime = System.currentTimeMillis() - startTime;
 
         System.out.println("✓ Mesh uploaded to GPU in " + uploadTime + "ms");
 
+        // Set the handle on the chunk (this simulates what the pipeline does)
+        System.out.println("\nSTEP 6: Setting renderable handle on chunk...");
+        chunk.setMmsRenderableHandle(renderableHandle);
+
+        // Update CCO state to MESH_GPU_UPLOADED (this is what the pipeline does!)
+        // CRITICAL: Must remove MESH_CPU_READY FIRST because mesh states are mutually exclusive!
+        chunk.getCcoStateManager().removeState(com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState.MESH_CPU_READY);
+        chunk.getCcoStateManager().addState(com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState.MESH_GPU_UPLOADED);
+        chunk.getCcoDirtyTracker().clearMeshDirty();
+
+        printChunkState(chunk);
+
+        System.out.println("\nSTEP 7: Final check - Can chunk render?");
+        boolean canRender = chunk.getCcoStateManager().isRenderable() &&
+                            chunk.isMeshGenerated() &&
+                            chunk.getMmsRenderableHandle() != null;
+        System.out.println("  Can render: " + canRender);
+        if (!canRender) {
+            System.err.println("  WARNING: Chunk is NOT ready to render!");
+            System.err.println("    - isRenderable: " + chunk.getCcoStateManager().isRenderable());
+            System.err.println("    - isMeshGenerated: " + chunk.isMeshGenerated());
+            System.err.println("    - hasHandle: " + (chunk.getMmsRenderableHandle() != null));
+        }
+
         // Print MMS statistics
+        System.out.println("\n=== MMS Statistics ===");
         mmsAPI.printStatistics();
+        System.out.println("=== End Diagnostic ===\n");
+    }
+
+    /**
+     * Helper method to print chunk state for diagnostics
+     */
+    private void printChunkState(Chunk chunk) {
+        System.out.println("  CCO State: " + chunk.getCcoStateManager().getCurrentStates());
+        System.out.println("  Mesh Dirty: " + chunk.getCcoDirtyTracker().isMeshDirty());
+        System.out.println("  Data Dirty: " + chunk.getCcoDirtyTracker().isDataDirty());
+        System.out.println("  Is Renderable: " + chunk.getCcoStateManager().isRenderable());
+        System.out.println("  Mesh Generated: " + chunk.isMeshGenerated());
+        System.out.println("  Has Handle: " + (chunk.getMmsRenderableHandle() != null));
     }
 
     private void runRenderLoop() {

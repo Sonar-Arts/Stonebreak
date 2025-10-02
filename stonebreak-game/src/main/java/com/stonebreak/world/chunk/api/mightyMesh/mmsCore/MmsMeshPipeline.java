@@ -298,8 +298,10 @@ public final class MmsMeshPipeline {
 
                     // Set new handle and mark GPU ready
                     task.chunk.setMmsRenderableHandle(handle);
-                    task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
+                    // CRITICAL: Remove MESH_CPU_READY first because mesh states are mutually exclusive!
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
+                    task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
+                    task.chunk.getCcoDirtyTracker().clearMeshDirty();
 
                     // Debug: Verify it was set
                     if (debugGLUploadSuccessCount <= 3) {
