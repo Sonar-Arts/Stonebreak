@@ -29,7 +29,7 @@ public class ChunkManager {
 
     private final World world;
     private final int renderDistance;
-    private final Set<World.ChunkPosition> activeChunkPositions = Collections.synchronizedSet(new HashSet<>());
+    private final Set<ChunkPosition> activeChunkPositions = Collections.synchronizedSet(new HashSet<>());
     private float updateTimer = 0.0f;
 
     private final ExecutorService chunkExecutor = Executors.newFixedThreadPool(2);
@@ -61,14 +61,14 @@ public class ChunkManager {
         int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
 
-        Set<World.ChunkPosition> requiredChunks = calculateRequiredChunks(playerChunkX, playerChunkZ);
+        Set<ChunkPosition> requiredChunks = calculateRequiredChunks(playerChunkX, playerChunkZ);
         unloadExitedChunks(requiredChunks);
         loadEnteredChunks(requiredChunks);
         ensureVisibleChunksAreReady(playerChunkX, playerChunkZ);
     }
 
-    private Set<World.ChunkPosition> calculateRequiredChunks(int playerChunkX, int playerChunkZ) {
-        Set<World.ChunkPosition> required = new HashSet<>();
+    private Set<ChunkPosition> calculateRequiredChunks(int playerChunkX, int playerChunkZ) {
+        Set<ChunkPosition> required = new HashSet<>();
         int loadDistance = renderDistance + 1;
         for (int x = playerChunkX - loadDistance; x <= playerChunkX + loadDistance; x++) {
             for (int z = playerChunkZ - loadDistance; z <= playerChunkZ + loadDistance; z++) {
@@ -78,8 +78,8 @@ public class ChunkManager {
         return required;
     }
 
-    private void unloadExitedChunks(Set<World.ChunkPosition> requiredChunks) {
-        Set<World.ChunkPosition> chunksToUnload = new HashSet<>(activeChunkPositions);
+    private void unloadExitedChunks(Set<ChunkPosition> requiredChunks) {
+        Set<ChunkPosition> chunksToUnload = new HashSet<>(activeChunkPositions);
         chunksToUnload.removeAll(requiredChunks);
 
         if (!chunksToUnload.isEmpty()) {
@@ -89,7 +89,7 @@ public class ChunkManager {
 
             System.out.println("Checking " + totalCandidates + " chunks for unloading...");
 
-            for (World.ChunkPosition pos : chunksToUnload) {
+            for (ChunkPosition pos : chunksToUnload) {
                 // Use CCO API to check if chunk exists and needs saving
                 if (world.hasChunkAt(pos.getX(), pos.getZ())) {
                     Chunk chunk = world.getChunkAt(pos.getX(), pos.getZ());
@@ -158,7 +158,7 @@ public class ChunkManager {
      * Uses CCO state management to ensure proper lifecycle transitions.
      * This ensures player edits are preserved while allowing normal chunk lifecycle.
      */
-    private void saveAndUnloadDirtyChunk(World.ChunkPosition pos, Chunk chunk) {
+    private void saveAndUnloadDirtyChunk(ChunkPosition pos, Chunk chunk) {
         try {
             CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
 
@@ -212,12 +212,12 @@ public class ChunkManager {
         }
     }
 
-    private void loadEnteredChunks(Set<World.ChunkPosition> requiredChunks) {
-        Set<World.ChunkPosition> chunksToLoad = new HashSet<>(requiredChunks);
+    private void loadEnteredChunks(Set<ChunkPosition> requiredChunks) {
+        Set<ChunkPosition> chunksToLoad = new HashSet<>(requiredChunks);
         chunksToLoad.removeAll(activeChunkPositions);
 
         if (!chunksToLoad.isEmpty()) {
-            for (World.ChunkPosition pos : chunksToLoad) {
+            for (ChunkPosition pos : chunksToLoad) {
                 if (activeChunkPositions.add(pos)) {
                     chunkExecutor.submit(() -> {
                         try {

@@ -268,7 +268,7 @@ public final class MmsMeshPipeline {
 
                     // Set new handle and mark GPU ready
                     task.chunk.setMmsRenderableHandle(handle);
-                    task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_READY);
+                    task.chunk.getCcoStateManager().addState(CcoChunkState.MESH_GPU_UPLOADED);
                     task.chunk.getCcoStateManager().removeState(CcoChunkState.MESH_CPU_READY);
                 }
 
@@ -336,7 +336,7 @@ public final class MmsMeshPipeline {
             if (handle != null) {
                 handlesPendingGpuCleanup.offer(handle);
                 chunk.setMmsRenderableHandle(null);
-                chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GPU_READY);
+                chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GPU_UPLOADED);
             }
         }
     }

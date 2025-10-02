@@ -14,6 +14,7 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicState
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
+import com.stonebreak.world.chunk.utils.ChunkPosition;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 
@@ -196,6 +197,14 @@ public class Chunk {
     }
 
     // ===== Coordinate Operations =====
+
+    /**
+     * Gets the position of this chunk as a ChunkPosition object.
+     * This is the preferred method for accessing chunk coordinates following SOLID principles.
+     */
+    public ChunkPosition getPosition() {
+        return new ChunkPosition(x, z);
+    }
 
     /**
      * Converts a local X coordinate to a world X coordinate.

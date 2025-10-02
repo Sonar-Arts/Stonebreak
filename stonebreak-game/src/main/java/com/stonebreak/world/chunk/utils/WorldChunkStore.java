@@ -3,7 +3,6 @@ package com.stonebreak.world.chunk.utils;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.util.MemoryProfiler;
-import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
@@ -22,7 +21,7 @@ public class WorldChunkStore {
     private final TerrainGenerationSystem terrainSystem;
     private final WorldConfiguration config;
     private final MmsMeshPipeline meshPipeline;
-    private final Map<World.ChunkPosition, Chunk> chunks;
+    private final Map<ChunkPosition, Chunk> chunks;
     private final PositionCache positionCache;
 
     private Consumer<Chunk> loadListener;
@@ -50,7 +49,7 @@ public class WorldChunkStore {
     }
 
     public Chunk getOrCreateChunk(int x, int z) {
-        World.ChunkPosition pos = positionCache.get(x, z);
+        ChunkPosition pos = positionCache.get(x, z);
         return chunks.computeIfAbsent(pos, p -> loadOrGenerate(x, z));
     }
 
@@ -66,7 +65,7 @@ public class WorldChunkStore {
         return new ArrayList<>(chunks.values());
     }
 
-    public Set<World.ChunkPosition> getAllChunkPositions() {
+    public Set<ChunkPosition> getAllChunkPositions() {
         return new HashSet<>(chunks.keySet());
     }
 
@@ -84,8 +83,8 @@ public class WorldChunkStore {
         return chunks.size();
     }
 
-    public Map<World.ChunkPosition, Chunk> getChunksInRenderDistance(int playerChunkX, int playerChunkZ) {
-        Map<World.ChunkPosition, Chunk> visible = new HashMap<>();
+    public Map<ChunkPosition, Chunk> getChunksInRenderDistance(int playerChunkX, int playerChunkZ) {
+        Map<ChunkPosition, Chunk> visible = new HashMap<>();
         int renderDist = config.getRenderDistance();
 
         for (int x = playerChunkX - renderDist; x <= playerChunkX + renderDist; x++) {
@@ -100,7 +99,7 @@ public class WorldChunkStore {
     }
 
     public void unloadChunk(int chunkX, int chunkZ) {
-        World.ChunkPosition pos = positionCache.get(chunkX, chunkZ);
+        ChunkPosition pos = positionCache.get(chunkX, chunkZ);
         Chunk chunk = chunks.remove(pos);
         if (chunk == null) return;
 
@@ -126,7 +125,7 @@ public class WorldChunkStore {
         positionCache.clear();
     }
 
-    public World.ChunkPosition getCachedChunkPosition(int x, int z) {
+    public ChunkPosition getCachedChunkPosition(int x, int z) {
         return positionCache.get(x, z);
     }
 
@@ -261,14 +260,14 @@ public class WorldChunkStore {
 
     private static class PositionCache {
         private static final int MAX_SIZE = WorldConfiguration.MAX_CHUNK_POSITION_CACHE_SIZE;
-        private final Map<Long, World.ChunkPosition> cache = new ConcurrentHashMap<>();
+        private final Map<Long, ChunkPosition> cache = new ConcurrentHashMap<>();
 
-        World.ChunkPosition get(int x, int z) {
+        ChunkPosition get(int x, int z) {
             if (cache.size() > MAX_SIZE) {
                 System.out.println("WARNING: Position cache exceeded max size, clearing");
                 cache.clear();
             }
-            return cache.computeIfAbsent(key(x, z), k -> new World.ChunkPosition(x, z));
+            return cache.computeIfAbsent(key(x, z), k -> new ChunkPosition(x, z));
         }
 
         void remove(int x, int z) {
@@ -283,7 +282,7 @@ public class WorldChunkStore {
             return cache.size();
         }
 
-        void cleanup(Set<World.ChunkPosition> loadedPositions) {
+        void cleanup(Set<ChunkPosition> loadedPositions) {
             Set<Long> loadedKeys = new HashSet<>();
             loadedPositions.forEach(pos -> loadedKeys.add(key(pos.getX(), pos.getZ())));
             cache.keySet().removeIf(key -> !loadedKeys.contains(key));

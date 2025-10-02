@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.function.Consumer;
 
 import com.stonebreak.world.chunk.utils.ChunkManager;
+import com.stonebreak.world.chunk.utils.ChunkPosition;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterSystem;
@@ -494,43 +495,5 @@ public class World {
      */
     public void setChunk(int x, int z, Chunk chunk) {
         chunkStore.setChunk(x, z, chunk);
-    }
-    
-    
-    /**
-     * Represents a position of a chunk in the world.
-     */
-    public static class ChunkPosition {
-        private final int x;
-        private final int z;
-        
-        public ChunkPosition(int x, int z) {
-            this.x = x;
-            this.z = z;
-        }
-        
-        public int getX() {
-            return x;
-        }
-        
-        public int getZ() {
-            return z;
-        }
-        
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            
-            ChunkPosition that = (ChunkPosition) o;
-            return x == that.x && z == that.z;
-        }
-        
-        @Override
-        public int hashCode() {
-            int result = x;
-            result = 31 * result + z;
-            return result;
-        }
     }
 }

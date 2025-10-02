@@ -27,6 +27,7 @@ import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
 
 /**
@@ -102,7 +103,7 @@ public class WorldRenderer {
         checkGLError("After updateAnimatedWater");
         
         // Get visible chunks
-        Map<World.ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
+        Map<ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
 
         // Render opaque pass
         renderOpaquePass(visibleChunks);
@@ -190,16 +191,16 @@ public class WorldRenderer {
     /**
      * Get visible chunks around the player.
      */
-    private Map<World.ChunkPosition, Chunk> getVisibleChunks(World world, Player player) {
+    private Map<ChunkPosition, Chunk> getVisibleChunks(World world, Player player) {
         int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         return world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
     }
-    
+
     /**
      * Render opaque pass (non-water parts of chunks).
      */
-    private void renderOpaquePass(Map<World.ChunkPosition, Chunk> visibleChunks) {
+    private void renderOpaquePass(Map<ChunkPosition, Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
@@ -213,7 +214,7 @@ public class WorldRenderer {
     /**
      * Render transparent pass (water parts of chunks).
      */
-    private void renderTransparentPass(Map<World.ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void renderTransparentPass(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glDepthMask(false); // Disable depth writing for transparent objects
@@ -231,7 +232,7 @@ public class WorldRenderer {
     /**
      * Sort chunks from back to front for proper transparent rendering.
      */
-    private void sortChunksBackToFront(Map<World.ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void sortChunksBackToFront(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
         reusableSortedChunks.clear();
         reusableSortedChunks.addAll(visibleChunks.values());
         Vector3f playerPos = player.getPosition();
