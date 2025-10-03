@@ -216,8 +216,9 @@ public class MmsCcoAdapter {
             float[] vertices = waterGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
             float[] normals = waterGenerator.generateFaceNormals(face);
 
-            // Generate texture coordinates (same as regular blocks)
-            float[] texCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
+            // Generate texture coordinates with water height adjustment
+            float[] baseTexCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
+            float[] texCoords = waterGenerator.generateWaterTextureCoordinates(face, blockX, blockY, blockZ, baseTexCoords);
 
             // Generate alpha flags (water uses alpha blending, not testing)
             float[] alphaFlags = new float[]{0.0f, 0.0f, 0.0f, 0.0f};

@@ -74,7 +74,8 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
 
         // Get water height and corner heights for this block
         float blockHeight = getWaterHeight(blockX, blockY, blockZ);
-        float[] cornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
+        float[] baseCornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
+        float[] cornerHeights = sewCornerHeights(blockX, blockY, blockZ, baseCornerHeights);
         float waterBottomY = computeWaterBottomAttachmentHeight(blockX, blockY, blockZ, worldY);
 
         float[] vertices = new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
@@ -93,33 +94,118 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
                 vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY; vertices[idx++] = worldZ + 1;
                 vertices[idx++] = worldX;       vertices[idx++] = waterBottomY; vertices[idx++] = worldZ + 1;
             }
-            case 2 -> { // North face (-Z) - Top vertices use corner heights
-                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ;
-                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ;
-                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[3]; vertices[idx++] = worldZ;
-                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[2]; vertices[idx++] = worldZ;
+            case 2 -> { // North face (-Z) - Corner heights already sewn with neighbor data
+                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ;
+                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ;
+                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[3];         vertices[idx++] = worldZ;
+                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[2];         vertices[idx++] = worldZ;
             }
-            case 3 -> { // South face (+Z) - Top vertices use corner heights
-                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ + 1;
-                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ + 1;
-                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[1]; vertices[idx++] = worldZ + 1;
-                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[0]; vertices[idx++] = worldZ + 1;
+            case 3 -> { // South face (+Z) - Corner heights already sewn with neighbor data
+                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ + 1;
+                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ + 1;
+                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[1];         vertices[idx++] = worldZ + 1;
+                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[0];         vertices[idx++] = worldZ + 1;
             }
-            case 4 -> { // East face (+X) - Top vertices use corner heights
-                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ + 1;
-                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ;
-                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[2]; vertices[idx++] = worldZ;
-                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[1]; vertices[idx++] = worldZ + 1;
+            case 4 -> { // East face (+X) - Corner heights already sewn with neighbor data
+                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ + 1;
+                vertices[idx++] = worldX + 1;   vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ;
+                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[2];         vertices[idx++] = worldZ;
+                vertices[idx++] = worldX + 1;   vertices[idx++] = worldY + cornerHeights[1];         vertices[idx++] = worldZ + 1;
             }
-            case 5 -> { // West face (-X) - Top vertices use corner heights
-                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ;
-                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;              vertices[idx++] = worldZ + 1;
-                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[0]; vertices[idx++] = worldZ + 1;
-                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[3]; vertices[idx++] = worldZ;
+            case 5 -> { // West face (-X) - Corner heights already sewn with neighbor data
+                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ;
+                vertices[idx++] = worldX;       vertices[idx++] = waterBottomY;                      vertices[idx++] = worldZ + 1;
+                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[0];         vertices[idx++] = worldZ + 1;
+                vertices[idx++] = worldX;       vertices[idx++] = worldY + cornerHeights[3];         vertices[idx++] = worldZ;
             }
         }
 
         return vertices;
+    }
+
+    /**
+     * Generates texture coordinates for water face with proper height-based V coordinate adjustment.
+     * This prevents texture stretching on side faces when water has variable heights.
+     *
+     * Side Face Vertex Layout (looking at the face from outside):
+     * v3 (top-left) ---- v2 (top-right)
+     * |                   |
+     * |                   |
+     * v0 (bottom-left) -- v1 (bottom-right)
+     *
+     * Texture Coordinate Mapping:
+     * - U: 0 (left) to 1 (right)
+     * - V: 0 (top) to 1 (bottom)
+     *
+     * @param face Face index (0-5)
+     * @param blockX Block X coordinate
+     * @param blockY Block Y coordinate
+     * @param blockZ Block Z coordinate
+     * @param baseTexCoords Base texture coordinates from texture mapper
+     * @return Adjusted texture coordinates (8 floats = 4 vertices × 2 coords)
+     */
+    public float[] generateWaterTextureCoordinates(int face, int blockX, int blockY, int blockZ, float[] baseTexCoords) {
+        if (baseTexCoords.length != 8) {
+            throw new IllegalArgumentException("Base texture coordinates must have 8 floats (4 vertices × 2 coords)");
+        }
+
+        // Clone base coordinates
+        float[] texCoords = baseTexCoords.clone();
+
+        // Only adjust side faces (not top or bottom)
+        if (face >= 2 && face <= 5) {
+            float blockHeight = getWaterHeight(blockX, blockY, blockZ);
+            float[] cornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
+            cornerHeights = sewCornerHeights(blockX, blockY, blockZ, cornerHeights);
+
+            // For side faces, we need to adjust the V coordinate of top vertices based on actual height
+            // The V coordinate represents vertical position in the texture:
+            // V=0 is top of texture, V=1 is bottom of texture
+            // For water at height 0.875, we want V to be close to 0 (top of texture)
+
+            // Vertex order for side faces: v0 (bottom-left), v1 (bottom-right), v2 (top-right), v3 (top-left)
+            // In the vertices array for MmsWaterGenerator side faces:
+            // North (2): [1,0,0], [0,0,0], [0,h3,0], [1,h2,0]  -> v0, v1, v2(h2), v3(h3)
+            // South (3): [0,0,1], [1,0,1], [1,h1,1], [0,h0,1]  -> v0, v1, v2(h1), v3(h0)
+            // East  (4): [1,0,1], [1,0,0], [1,h2,0], [1,h1,1]  -> v0, v1, v2(h2), v3(h1)
+            // West  (5): [0,0,0], [0,0,1], [0,h0,1], [0,h3,0]  -> v0, v1, v2(h0), v3(h3)
+
+            // Get the corner heights for top vertices (v2 and v3)
+            float heightV2 = 0.0f; // Top-right vertex height
+            float heightV3 = 0.0f; // Top-left vertex height
+
+            switch (face) {
+                case 2 -> { // North face (-Z): v2=corner2, v3=corner3
+                    heightV2 = cornerHeights[2];
+                    heightV3 = cornerHeights[3];
+                }
+                case 3 -> { // South face (+Z): v2=corner1, v3=corner0
+                    heightV2 = cornerHeights[1];
+                    heightV3 = cornerHeights[0];
+                }
+                case 4 -> { // East face (+X): v2=corner2, v3=corner1
+                    heightV2 = cornerHeights[2];
+                    heightV3 = cornerHeights[1];
+                }
+                case 5 -> { // West face (-X): v2=corner0, v3=corner3
+                    heightV2 = cornerHeights[0];
+                    heightV3 = cornerHeights[3];
+                }
+            }
+
+            // Calculate V coordinate based on height
+            // V = 1.0 - height means: at height 0.875, V = 0.125 (near top of texture)
+            // At height 0.0, V = 1.0 (bottom of texture)
+            float vTopRight = 1.0f - heightV2; // v2 (top-right)
+            float vTopLeft = 1.0f - heightV3;  // v3 (top-left)
+
+            // Texture coordinates are ordered: v0(u,v), v1(u,v), v2(u,v), v3(u,v)
+            // Update only the V coordinate for top vertices (v2 and v3)
+            texCoords[5] = vTopRight; // v2.v (index 4 is v2.u, index 5 is v2.v)
+            texCoords[7] = vTopLeft;  // v3.v (index 6 is v3.u, index 7 is v3.v)
+        }
+
+        return texCoords;
     }
 
     /**
@@ -135,6 +221,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      */
     public float[] generateWaterFlags(int face, int blockX, int blockY, int blockZ, float blockHeight) {
         float[] cornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
+        cornerHeights = sewCornerHeights(blockX, blockY, blockZ, cornerHeights);
         float[] waterFlags = new float[MmsBufferLayout.VERTICES_PER_QUAD];
 
         switch (face) {
@@ -337,6 +424,73 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         }
 
         return heights;
+    }
+
+    /**
+     * Ensures this block's corner heights align with neighboring water blocks to avoid visible seams.
+     *
+     * @param blockX Block X coordinate
+     * @param blockY Block Y coordinate
+     * @param blockZ Block Z coordinate
+     * @param cornerHeights Base corner heights computed for this block
+     * @return Corner heights blended with neighbors along shared edges
+     */
+    private float[] sewCornerHeights(int blockX, int blockY, int blockZ, float[] cornerHeights) {
+        float[] sewnHeights = cornerHeights.clone();
+
+        // North neighbor (z - 1) shares corners 2 (NE) and 3 (NW)
+        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX, blockY, blockZ - 1,
+            new int[]{2, 3}, new int[]{1, 0});
+
+        // South neighbor (z + 1) shares corners 0 (SW) and 1 (SE)
+        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX, blockY, blockZ + 1,
+            new int[]{0, 1}, new int[]{3, 2});
+
+        // East neighbor (x + 1) shares corners 1 (SE) and 2 (NE)
+        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX + 1, blockY, blockZ,
+            new int[]{1, 2}, new int[]{0, 3});
+
+        // West neighbor (x - 1) shares corners 0 (SW) and 3 (NW)
+        mergeEdgeHeightsWithNeighbor(sewnHeights, blockX - 1, blockY, blockZ,
+            new int[]{0, 3}, new int[]{1, 2});
+
+        return sewnHeights;
+    }
+
+    /**
+     * Merges corner heights along an edge with the neighbor's corner heights, using the higher value to
+     * avoid gaps between adjacent water quads.
+     *
+     * @param targetHeights Heights to update
+     * @param neighborX Neighbor block X coordinate
+     * @param neighborY Neighbor block Y coordinate
+     * @param neighborZ Neighbor block Z coordinate
+     * @param ourCorners Corner indices for this block's edge (length 2)
+     * @param neighborCorners Corresponding corner indices on the neighbor block (length 2)
+     */
+    private void mergeEdgeHeightsWithNeighbor(float[] targetHeights, int neighborX, int neighborY, int neighborZ,
+                                              int[] ourCorners, int[] neighborCorners) {
+        if (ourCorners.length != neighborCorners.length) {
+            throw new IllegalArgumentException("Corner arrays must be the same length");
+        }
+
+        float neighborBlockHeight = getWaterHeight(neighborX, neighborY, neighborZ);
+        if (neighborBlockHeight <= 0.0f) {
+            return;
+        }
+
+        float[] neighborCornerHeights = computeWaterCornerHeights(neighborX, neighborY, neighborZ, neighborBlockHeight);
+        for (int i = 0; i < ourCorners.length; i++) {
+            int ourCorner = ourCorners[i];
+            int neighborCorner = neighborCorners[i];
+            if (ourCorner < 0 || ourCorner >= targetHeights.length) {
+                continue;
+            }
+            if (neighborCorner < 0 || neighborCorner >= neighborCornerHeights.length) {
+                continue;
+            }
+            targetHeights[ourCorner] = Math.max(targetHeights[ourCorner], neighborCornerHeights[neighborCorner]);
+        }
     }
 
     /**
