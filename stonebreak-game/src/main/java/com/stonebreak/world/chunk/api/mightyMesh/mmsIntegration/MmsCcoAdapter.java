@@ -54,6 +54,11 @@ public class MmsCcoAdapter {
         this.crossGenerator = new MmsCrossGenerator();
         this.textureMapper = textureMapper;
         this.world = world;
+
+        if (world != null) {
+            this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
+            System.out.println("[MmsCcoAdapter] Water generator initialized with provided world instance");
+        }
     }
 
     /**
@@ -67,7 +72,7 @@ public class MmsCcoAdapter {
             throw new IllegalArgumentException("World cannot be null when setting");
         }
         this.world = world;
-        this.waterGenerator = new MmsWaterGenerator(world);
+        this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
         System.out.println("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
     }
 

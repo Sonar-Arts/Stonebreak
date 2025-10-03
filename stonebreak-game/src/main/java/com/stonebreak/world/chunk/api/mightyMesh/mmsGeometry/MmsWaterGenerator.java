@@ -5,6 +5,7 @@ import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsBufferLayout;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
 
 /**
  * Mighty Mesh System - Water block geometry generator.
@@ -40,19 +41,30 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     private static final float MAX_WATER_HEIGHT = 0.875f; // 7/8 block height for source blocks
     private static final float WATER_ATTACHMENT_EPSILON = 0.001f;
     private static final float WATER_FLAG_EPSILON = 0.0001f;
+    private static final float HEIGHT_ALIGNMENT_EPSILON = 0.0001f;
 
     private final World world;
+    private final float[] waterTopTextureBounds; // [uMin, uMax, vMin, vMax]
+
+    private long cachedCornerKey = Long.MIN_VALUE;
+    private float[] cachedCornerHeights;
 
     /**
      * Creates a water generator with world reference for neighbor lookups.
      *
      * @param world World instance for accessing water blocks
+     * @param textureMapper Texture mapper for resolving top-face UV data
      */
-    public MmsWaterGenerator(World world) {
+    public MmsWaterGenerator(World world, MmsTextureMapper textureMapper) {
         if (world == null) {
             throw new IllegalArgumentException("World cannot be null for water generator");
         }
+        if (textureMapper == null) {
+            throw new IllegalArgumentException("Texture mapper cannot be null for water generator");
+        }
         this.world = world;
+        float[] topFaceTex = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, BlockType.Face.TOP.getIndex());
+        this.waterTopTextureBounds = extractTextureBounds(topFaceTex);
     }
 
     /**
@@ -73,9 +85,16 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         int blockZ = (int) Math.floor(worldZ);
 
         // Get water height and corner heights for this block
-        float blockHeight = getWaterHeight(blockX, blockY, blockZ);
-        float[] baseCornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
-        float[] cornerHeights = sewCornerHeights(blockX, blockY, blockZ, baseCornerHeights);
+        float[] cornerHeights = getSewnCornerHeights(blockX, blockY, blockZ);
+
+        // For side faces, ensure we use the exact same Y coordinates as the top face above
+        // This prevents gaps between the top surface and side faces
+        if (face >= 2 && face <= 5) {
+            // Side faces should align with the top face of this block
+            // The corner heights are already sewn, which should match, but we'll verify
+            cornerHeights = ensureSideFaceAlignment(blockX, blockY, blockZ, face, cornerHeights);
+        }
+
         float waterBottomY = computeWaterBottomAttachmentHeight(blockX, blockY, blockZ, worldY);
 
         float[] vertices = new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
@@ -154,55 +173,17 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
 
         // Only adjust side faces (not top or bottom)
         if (face >= 2 && face <= 5) {
-            float blockHeight = getWaterHeight(blockX, blockY, blockZ);
-            float[] cornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
-            cornerHeights = sewCornerHeights(blockX, blockY, blockZ, cornerHeights);
+            // Remap side faces to use the water top-face texture so the sides visually stick to the surface.
+            float[] bounds = waterTopTextureBounds;
+            float uMin = bounds[0];
+            float uMax = bounds[1];
+            float vTop = bounds[2];
+            float vBottom = bounds[3];
 
-            // For side faces, we need to adjust the V coordinate of top vertices based on actual height
-            // The V coordinate represents vertical position in the texture:
-            // V=0 is top of texture, V=1 is bottom of texture
-            // For water at height 0.875, we want V to be close to 0 (top of texture)
-
-            // Vertex order for side faces: v0 (bottom-left), v1 (bottom-right), v2 (top-right), v3 (top-left)
-            // In the vertices array for MmsWaterGenerator side faces:
-            // North (2): [1,0,0], [0,0,0], [0,h3,0], [1,h2,0]  -> v0, v1, v2(h2), v3(h3)
-            // South (3): [0,0,1], [1,0,1], [1,h1,1], [0,h0,1]  -> v0, v1, v2(h1), v3(h0)
-            // East  (4): [1,0,1], [1,0,0], [1,h2,0], [1,h1,1]  -> v0, v1, v2(h2), v3(h1)
-            // West  (5): [0,0,0], [0,0,1], [0,h0,1], [0,h3,0]  -> v0, v1, v2(h0), v3(h3)
-
-            // Get the corner heights for top vertices (v2 and v3)
-            float heightV2 = 0.0f; // Top-right vertex height
-            float heightV3 = 0.0f; // Top-left vertex height
-
-            switch (face) {
-                case 2 -> { // North face (-Z): v2=corner2, v3=corner3
-                    heightV2 = cornerHeights[2];
-                    heightV3 = cornerHeights[3];
-                }
-                case 3 -> { // South face (+Z): v2=corner1, v3=corner0
-                    heightV2 = cornerHeights[1];
-                    heightV3 = cornerHeights[0];
-                }
-                case 4 -> { // East face (+X): v2=corner2, v3=corner1
-                    heightV2 = cornerHeights[2];
-                    heightV3 = cornerHeights[1];
-                }
-                case 5 -> { // West face (-X): v2=corner0, v3=corner3
-                    heightV2 = cornerHeights[0];
-                    heightV3 = cornerHeights[3];
-                }
-            }
-
-            // Calculate V coordinate based on height
-            // V = 1.0 - height means: at height 0.875, V = 0.125 (near top of texture)
-            // At height 0.0, V = 1.0 (bottom of texture)
-            float vTopRight = 1.0f - heightV2; // v2 (top-right)
-            float vTopLeft = 1.0f - heightV3;  // v3 (top-left)
-
-            // Texture coordinates are ordered: v0(u,v), v1(u,v), v2(u,v), v3(u,v)
-            // Update only the V coordinate for top vertices (v2 and v3)
-            texCoords[5] = vTopRight; // v2.v (index 4 is v2.u, index 5 is v2.v)
-            texCoords[7] = vTopLeft;  // v3.v (index 6 is v3.u, index 7 is v3.v)
+            texCoords[0] = uMin;    texCoords[1] = vBottom;
+            texCoords[2] = uMax;    texCoords[3] = vBottom;
+            texCoords[4] = uMax;    texCoords[5] = vTop;
+            texCoords[6] = uMin;    texCoords[7] = vTop;
         }
 
         return texCoords;
@@ -220,8 +201,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      * @return Water flag array with 4 floats (one per vertex)
      */
     public float[] generateWaterFlags(int face, int blockX, int blockY, int blockZ, float blockHeight) {
-        float[] cornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
-        cornerHeights = sewCornerHeights(blockX, blockY, blockZ, cornerHeights);
+        float[] cornerHeights = getSewnCornerHeights(blockX, blockY, blockZ);
         float[] waterFlags = new float[MmsBufferLayout.VERTICES_PER_QUAD];
 
         switch (face) {
@@ -427,6 +407,71 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
     }
 
     /**
+     * Ensures side faces align perfectly with the top face to prevent gaps.
+     * This method is called for side faces only to guarantee that the top edge of a side face
+     * matches exactly with the corresponding edge of the top face.
+     *
+     * @param blockX Block X coordinate
+     * @param blockY Block Y coordinate
+     * @param blockZ Block Z coordinate
+     * @param cornerHeights Current corner heights (already sewn)
+     * @return Corner heights guaranteed to match the top face edge
+     */
+    private float[] ensureSideFaceAlignment(int blockX, int blockY, int blockZ, int face, float[] cornerHeights) {
+        float[] reference = peekCachedCornerHeights(blockX, blockY, blockZ);
+        if (reference == null) {
+            return cornerHeights;
+        }
+
+        int[] edgeCorners = switch (face) {
+            case 2 -> new int[]{2, 3}; // North edge shares NE and NW corners
+            case 3 -> new int[]{0, 1}; // South edge shares SW and SE corners
+            case 4 -> new int[]{1, 2}; // East edge shares SE and NE corners
+            case 5 -> new int[]{0, 3}; // West edge shares SW and NW corners
+            default -> new int[0];
+        };
+
+        for (int idx : edgeCorners) {
+            if (idx >= 0 && idx < cornerHeights.length) {
+                float aligned = alignHeight(reference[idx]);
+                cornerHeights[idx] = aligned;
+            }
+        }
+        return cornerHeights;
+    }
+
+    /**
+     * Gets the cached corner heights for the most recently processed block without cloning.
+     */
+    private float[] peekCachedCornerHeights(int blockX, int blockY, int blockZ) {
+        long key = packBlockKey(blockX, blockY, blockZ);
+        if (key == cachedCornerKey) {
+            return cachedCornerHeights;
+        }
+        return null;
+    }
+
+    /**
+     * Returns sewn corner heights for the specified block, reusing cached data so every face
+     * shares exactly the same height values.
+     */
+    private float[] getSewnCornerHeights(int blockX, int blockY, int blockZ) {
+        long key = packBlockKey(blockX, blockY, blockZ);
+        if (key == cachedCornerKey && cachedCornerHeights != null) {
+            return cachedCornerHeights.clone();
+        }
+
+        float blockHeight = getWaterHeight(blockX, blockY, blockZ);
+        float[] baseCornerHeights = computeWaterCornerHeights(blockX, blockY, blockZ, blockHeight);
+        float[] sewnHeights = sewCornerHeights(blockX, blockY, blockZ, baseCornerHeights);
+        normalizeCornerHeights(sewnHeights);
+
+        cachedCornerKey = key;
+        cachedCornerHeights = sewnHeights;
+        return sewnHeights.clone();
+    }
+
+    /**
      * Ensures this block's corner heights align with neighboring water blocks to avoid visible seams.
      *
      * @param blockX Block X coordinate
@@ -599,5 +644,36 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      */
     private float encodeWaterHeight(float height) {
         return height > WATER_FLAG_EPSILON ? height : WATER_FLAG_EPSILON;
+    }
+
+    private float[] extractTextureBounds(float[] texCoords) {
+        if (texCoords == null || texCoords.length != 8) {
+            throw new IllegalArgumentException("Water top texture coordinates must contain 8 floats");
+        }
+
+        float uMin = Math.min(Math.min(texCoords[0], texCoords[2]), Math.min(texCoords[4], texCoords[6]));
+        float uMax = Math.max(Math.max(texCoords[0], texCoords[2]), Math.max(texCoords[4], texCoords[6]));
+        float vMin = Math.min(Math.min(texCoords[1], texCoords[3]), Math.min(texCoords[5], texCoords[7]));
+        float vMax = Math.max(Math.max(texCoords[1], texCoords[3]), Math.max(texCoords[5], texCoords[7]));
+
+        return new float[]{uMin, uMax, vMin, vMax};
+    }
+
+    private void normalizeCornerHeights(float[] heights) {
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] = alignHeight(heights[i]);
+        }
+    }
+
+    private float alignHeight(float height) {
+        float aligned = (float) (Math.round(height / HEIGHT_ALIGNMENT_EPSILON) * HEIGHT_ALIGNMENT_EPSILON);
+        return clampWaterHeight(aligned);
+    }
+
+    private long packBlockKey(int x, int y, int z) {
+        long lx = ((long) x & 0x3FFFFFFL) << 38;
+        long ly = ((long) y & 0xFFFL) << 26;
+        long lz = ((long) z & 0x3FFFFFFL);
+        return lx | ly | lz;
     }
 }
