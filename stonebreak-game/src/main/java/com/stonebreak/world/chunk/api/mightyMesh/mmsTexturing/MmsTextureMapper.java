@@ -35,16 +35,6 @@ public interface MmsTextureMapper {
     float[] generateCrossTextureCoordinates(BlockType blockType);
 
     /**
-     * Generates water height flags for vertices.
-     * Used to encode per-vertex water surface heights.
-     *
-     * @param face Face index
-     * @param waterCornerHeights Corner heights (4 floats) or null
-     * @return Array of 4 water flags (one per vertex)
-     */
-    float[] generateWaterFlags(int face, float[] waterCornerHeights);
-
-    /**
      * Generates alpha test flags for vertices.
      *
      * @param blockType Type of block
@@ -64,15 +54,5 @@ public interface MmsTextureMapper {
                blockType == BlockType.LEAVES ||
                blockType == BlockType.PINE_LEAVES ||
                blockType == BlockType.ELM_LEAVES;
-    }
-
-    /**
-     * Checks if a block type is water.
-     *
-     * @param blockType Type of block
-     * @return true if water block
-     */
-    default boolean isWaterBlock(BlockType blockType) {
-        return blockType == BlockType.WATER;
     }
 }

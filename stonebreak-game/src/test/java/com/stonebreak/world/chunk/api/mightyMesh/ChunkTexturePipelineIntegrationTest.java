@@ -137,19 +137,15 @@ public class ChunkTexturePipelineIntegrationTest {
     }
 
     @Test
-    @DisplayName("Should build textured water block with animated surface")
-    void shouldBuildTexturedWaterBlockWithAnimatedSurface() {
+    @DisplayName("Should build textured water block")
+    void shouldBuildTexturedWaterBlock() {
         // Setup texture atlas
         float[] testUVs = {0.0f, 0.0f, 0.25f, 0.25f};
         when(mockAtlas.getBlockFaceUVs(any(BlockType.class), any(BlockType.Face.class)))
             .thenReturn(testUVs);
 
-        // Water corner heights for animated surface
-        float[] waterHeights = {0.8f, 0.85f, 0.9f, 0.75f};
-
-        // Build top face with water animation
+        // Build top face (water is treated like any other block)
         float[] texCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, 0);
-        float[] waterFlags = textureMapper.generateWaterFlags(0, waterHeights); // Top face
         float[] alphaFlags = textureMapper.generateAlphaFlags(BlockType.WATER);
 
         meshBuilder.beginFace();
@@ -160,7 +156,7 @@ public class ChunkTexturePipelineIntegrationTest {
                 texCoords[texIdx],
                 texCoords[texIdx + 1],
                 0, 1, 0,
-                waterFlags[v],      // Water animation flag
+                0.0f,              // No water flags
                 alphaFlags[v]
             );
         }
@@ -168,15 +164,9 @@ public class ChunkTexturePipelineIntegrationTest {
 
         MmsMeshData mesh = meshBuilder.build();
 
-        // Verify water flags
-        float[] meshWaterFlags = mesh.getWaterHeightFlags();
-        assertEquals(4, meshWaterFlags.length);
-
-        // All water flags should be set
-        for (int i = 0; i < 4; i++) {
-            assertTrue(meshWaterFlags[i] > 0.0f,
-                "Water flag " + i + " should be set for animation");
-        }
+        // Verify mesh was built correctly
+        assertEquals(4, mesh.getVertexCount());
+        assertEquals(6, mesh.getIndexCount());
     }
 
     @Test

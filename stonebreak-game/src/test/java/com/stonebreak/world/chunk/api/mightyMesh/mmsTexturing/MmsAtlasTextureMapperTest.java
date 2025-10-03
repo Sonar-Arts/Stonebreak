@@ -175,66 +175,6 @@ public class MmsAtlasTextureMapperTest {
         });
     }
 
-    // === Water Flag Tests ===
-
-    @Test
-    @DisplayName("Should generate water flags for top face with corner heights")
-    void shouldGenerateWaterFlagsForTopFaceWithCornerHeights() {
-        float[] waterHeights = {0.8f, 0.9f, 0.7f, 0.85f};
-        float[] flags = mapper.generateWaterFlags(0, waterHeights); // Face 0 = TOP
-
-        assertEquals(4, flags.length, "Should have 4 water flags for quad");
-
-        // Top face applies all corner heights
-        for (int i = 0; i < 4; i++) {
-            assertTrue(flags[i] >= waterHeights[i],
-                "Water flag " + i + " should encode height " + waterHeights[i]);
-        }
-    }
-
-    @Test
-    @DisplayName("Should generate default water flags when heights are null")
-    void shouldGenerateDefaultWaterFlagsWhenHeightsAreNull() {
-        float[] flags = mapper.generateWaterFlags(0, null);
-
-        assertEquals(4, flags.length, "Should have 4 water flags");
-        for (float flag : flags) {
-            assertTrue(flag > 0.0f && flag < 0.001f,
-                "Default flag should be small epsilon value");
-        }
-    }
-
-    @Test
-    @DisplayName("Should generate default water flags when heights array is wrong size")
-    void shouldGenerateDefaultWaterFlagsWhenHeightsArrayIsWrongSize() {
-        float[] badHeights = {0.5f, 0.6f}; // Only 2 instead of 4
-        float[] flags = mapper.generateWaterFlags(0, badHeights);
-
-        assertEquals(4, flags.length, "Should have 4 water flags");
-        for (float flag : flags) {
-            assertTrue(flag > 0.0f && flag < 0.001f,
-                "Should use default epsilon when array size is wrong");
-        }
-    }
-
-    @Test
-    @DisplayName("Should apply water heights correctly to side faces")
-    void shouldApplyWaterHeightsCorrectlyToSideFaces() {
-        float[] waterHeights = {0.5f, 0.6f, 0.7f, 0.8f};
-
-        // Test north face (-Z, face 2)
-        float[] northFlags = mapper.generateWaterFlags(2, waterHeights);
-        assertEquals(4, northFlags.length);
-        assertTrue(northFlags[1] > 0.0f); // Should have height at corner
-        assertTrue(northFlags[2] > 0.0f); // Should have height at corner
-
-        // Test south face (+Z, face 3)
-        float[] southFlags = mapper.generateWaterFlags(3, waterHeights);
-        assertEquals(4, southFlags.length);
-        assertTrue(southFlags[2] > 0.0f); // Should have height at corner
-        assertTrue(southFlags[3] > 0.0f); // Should have height at corner
-    }
-
     // === Alpha Flag Tests ===
 
     @Test
@@ -292,36 +232,5 @@ public class MmsAtlasTextureMapperTest {
     void shouldProvideAccessToTextureAtlas() {
         assertSame(mockAtlas, mapper.getTextureAtlas(),
             "Should return same atlas instance provided in constructor");
-    }
-
-    @Test
-    @DisplayName("Should handle bottom face water flags correctly")
-    void shouldHandleBottomFaceWaterFlagsCorrectly() {
-        float[] waterHeights = {0.5f, 0.6f, 0.7f, 0.8f};
-        float[] flags = mapper.generateWaterFlags(1, waterHeights); // Face 1 = BOTTOM
-
-        assertEquals(4, flags.length);
-        for (float flag : flags) {
-            assertTrue(flag > 0.0f && flag < 0.001f,
-                "Bottom face should use epsilon (no water variation)");
-        }
-    }
-
-    @Test
-    @DisplayName("Should handle east and west face water flags correctly")
-    void shouldHandleEastAndWestFaceWaterFlagsCorrectly() {
-        float[] waterHeights = {0.5f, 0.6f, 0.7f, 0.8f};
-
-        // East face (+X, face 4)
-        float[] eastFlags = mapper.generateWaterFlags(4, waterHeights);
-        assertEquals(4, eastFlags.length);
-        assertTrue(eastFlags[2] > 0.0f); // Should have height
-        assertTrue(eastFlags[3] > 0.0f); // Should have height
-
-        // West face (-X, face 5)
-        float[] westFlags = mapper.generateWaterFlags(5, waterHeights);
-        assertEquals(4, westFlags.length);
-        assertTrue(westFlags[1] > 0.0f); // Should have height
-        assertTrue(westFlags[2] > 0.0f); // Should have height
     }
 }

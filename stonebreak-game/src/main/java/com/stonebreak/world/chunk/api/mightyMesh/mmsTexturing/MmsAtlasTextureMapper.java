@@ -25,9 +25,6 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
 
     private final TextureAtlas textureAtlas;
 
-    // Water flag constants
-    private static final float WATER_FLAG_EPSILON = 0.0001f;
-
     /**
      * Creates a texture mapper using the provided texture atlas.
      *
@@ -107,64 +104,6 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
         }
 
         return texCoords;
-    }
-
-    @Override
-    public float[] generateWaterFlags(int face, float[] waterCornerHeights) {
-        float[] flags = new float[MmsBufferLayout.VERTICES_PER_QUAD];
-
-        if (waterCornerHeights == null || waterCornerHeights.length != 4) {
-            // No water surface variation, use base flags
-            for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
-                flags[i] = WATER_FLAG_EPSILON;
-            }
-            return flags;
-        }
-
-        // Apply water corner heights based on face
-        switch (face) {
-            case 0: // Top face - apply all corner heights
-                for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
-                    flags[i] = encodeWaterHeight(waterCornerHeights[i]);
-                }
-                break;
-
-            case 2: // North face (-Z)
-                flags[0] = WATER_FLAG_EPSILON;
-                flags[1] = encodeWaterHeight(waterCornerHeights[3]);
-                flags[2] = encodeWaterHeight(waterCornerHeights[2]);
-                flags[3] = WATER_FLAG_EPSILON;
-                break;
-
-            case 3: // South face (+Z)
-                flags[0] = WATER_FLAG_EPSILON;
-                flags[1] = WATER_FLAG_EPSILON;
-                flags[2] = encodeWaterHeight(waterCornerHeights[1]);
-                flags[3] = encodeWaterHeight(waterCornerHeights[0]);
-                break;
-
-            case 4: // East face (+X)
-                flags[0] = WATER_FLAG_EPSILON;
-                flags[1] = WATER_FLAG_EPSILON;
-                flags[2] = encodeWaterHeight(waterCornerHeights[2]);
-                flags[3] = encodeWaterHeight(waterCornerHeights[1]);
-                break;
-
-            case 5: // West face (-X)
-                flags[0] = WATER_FLAG_EPSILON;
-                flags[1] = encodeWaterHeight(waterCornerHeights[0]);
-                flags[2] = encodeWaterHeight(waterCornerHeights[3]);
-                flags[3] = WATER_FLAG_EPSILON;
-                break;
-
-            default: // Bottom face or invalid
-                for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
-                    flags[i] = WATER_FLAG_EPSILON;
-                }
-                break;
-        }
-
-        return flags;
     }
 
     @Override
@@ -250,16 +189,6 @@ public class MmsAtlasTextureMapper implements MmsTextureMapper {
             default:
                 throw new IllegalArgumentException("Invalid face index: " + faceIndex);
         }
-    }
-
-    /**
-     * Encodes a water height value for shader usage.
-     *
-     * @param height Water height (0.0 to 1.0)
-     * @return Encoded height with minimum epsilon
-     */
-    private float encodeWaterHeight(float height) {
-        return height > WATER_FLAG_EPSILON ? height : WATER_FLAG_EPSILON;
     }
 
     /**

@@ -150,20 +150,7 @@ public class MmsCrossGenerator implements MmsGeometryService {
     // Cross blocks don't use standard face-based generation
 
     @Override
-    public float[] generateFaceVertices(int face, BlockType blockType,
-                                        float worldX, float worldY, float worldZ,
-                                        float blockHeight) {
-        throw new UnsupportedOperationException(
-            "Cross blocks use generateCrossVertices() instead of per-face generation"
-        );
-    }
-
-    @Override
-    public float[] generateFaceVerticesWithWater(int face, BlockType blockType,
-                                                 float worldX, float worldY, float worldZ,
-                                                 float blockHeight,
-                                                 float[] waterCornerHeights,
-                                                 float waterBottomHeight) {
+    public float[] generateFaceVertices(int face, float worldX, float worldY, float worldZ) {
         throw new UnsupportedOperationException(
             "Cross blocks use generateCrossVertices() instead of per-face generation"
         );
@@ -174,20 +161,5 @@ public class MmsCrossGenerator implements MmsGeometryService {
         throw new UnsupportedOperationException(
             "Cross blocks use generateCrossNormals() instead of per-face generation"
         );
-    }
-
-    @Override
-    public float calculateBlockHeight(BlockType blockType, float worldX, float worldY, float worldZ) {
-        return 1.0f; // Cross blocks always full height
-    }
-
-    @Override
-    public float[] calculateWaterCornerHeights(int blockX, int blockY, int blockZ, float baseHeight) {
-        return null; // Cross blocks don't support water
-    }
-
-    @Override
-    public boolean requiresCustomGeometry(BlockType blockType) {
-        return blockType == BlockType.ROSE || blockType == BlockType.DANDELION;
     }
 }

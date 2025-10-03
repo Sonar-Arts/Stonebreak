@@ -84,19 +84,7 @@ public class MmsCuboidGenerator implements MmsGeometryService {
     };
 
     @Override
-    public float[] generateFaceVertices(int face, BlockType blockType,
-                                        float worldX, float worldY, float worldZ,
-                                        float blockHeight) {
-        return generateFaceVerticesWithWater(face, blockType, worldX, worldY, worldZ,
-            blockHeight, null, worldY);
-    }
-
-    @Override
-    public float[] generateFaceVerticesWithWater(int face, BlockType blockType,
-                                                 float worldX, float worldY, float worldZ,
-                                                 float blockHeight,
-                                                 float[] waterCornerHeights,
-                                                 float waterBottomHeight) {
+    public float[] generateFaceVertices(int face, float worldX, float worldY, float worldZ) {
         if (face < 0 || face >= 6) {
             throw new IllegalArgumentException("Invalid face index: " + face);
         }
@@ -104,77 +92,16 @@ public class MmsCuboidGenerator implements MmsGeometryService {
         float[] vertices = new float[MmsBufferLayout.POSITION_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
         float[][] offsets = FACE_VERTEX_OFFSETS[face];
 
-        // Handle water blocks with variable corner heights
-        boolean isWater = blockType == BlockType.WATER && waterCornerHeights != null;
-
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
             int baseIdx = i * MmsBufferLayout.POSITION_SIZE;
 
-            // Calculate base vertex position
-            float x = worldX + offsets[i][0];
-            float y = worldY + offsets[i][1] * blockHeight;
-            float z = worldZ + offsets[i][2];
-
-            // Apply water-specific modifications
-            if (isWater) {
-                if (face == 0) {
-                    // Top face: use corner-specific heights
-                    y = worldY + waterCornerHeights[i];
-                } else if (face == 1) {
-                    // Bottom face: attach to ground or lower water block
-                    y = waterBottomHeight + offsets[i][1] * blockHeight;
-                } else {
-                    // Side faces: adjust top vertices to water surface
-                    if (offsets[i][1] > 0) {
-                        // Top vertices use corner heights
-                        int cornerIndex = getWaterCornerIndexForSideFace(face, i);
-                        if (cornerIndex >= 0) {
-                            y = worldY + waterCornerHeights[cornerIndex];
-                        }
-                    }
-                }
-            }
-
-            vertices[baseIdx] = x;
-            vertices[baseIdx + 1] = y;
-            vertices[baseIdx + 2] = z;
+            // Calculate vertex position (standard 1x1x1 cube)
+            vertices[baseIdx] = worldX + offsets[i][0];
+            vertices[baseIdx + 1] = worldY + offsets[i][1];
+            vertices[baseIdx + 2] = worldZ + offsets[i][2];
         }
 
         return vertices;
-    }
-
-    /**
-     * Maps a vertex index on a side face to a water corner height index.
-     *
-     * Water corner indices: 0=(0,0), 1=(1,0), 2=(1,1), 3=(0,1)
-     *
-     * @param face Side face index (2-5)
-     * @param vertexIndex Vertex index on that face (0-3)
-     * @return Corner index (0-3) or -1 if not applicable
-     */
-    private int getWaterCornerIndexForSideFace(int face, int vertexIndex) {
-        // Map side face vertices to water corner heights
-        // Only top vertices (indices 2 and 3) need water surface adjustment
-        switch (face) {
-            case 2: // North (-Z): z=0, vertices are (1,0,0), (0,0,0), (0,1,0), (1,1,0)
-                if (vertexIndex == 2) return 0; // (0,1,0) -> corner 0=(0,0)
-                if (vertexIndex == 3) return 1; // (1,1,0) -> corner 1=(1,0)
-                return -1;
-            case 3: // South (+Z): z=1, vertices are (0,0,1), (1,0,1), (1,1,1), (0,1,1)
-                if (vertexIndex == 2) return 2; // (1,1,1) -> corner 2=(1,1)
-                if (vertexIndex == 3) return 3; // (0,1,1) -> corner 3=(0,1)
-                return -1;
-            case 4: // East (+X): x=1, vertices are (1,0,1), (1,0,0), (1,1,0), (1,1,1)
-                if (vertexIndex == 2) return 1; // (1,1,0) -> corner 1=(1,0)
-                if (vertexIndex == 3) return 2; // (1,1,1) -> corner 2=(1,1)
-                return -1;
-            case 5: // West (-X): x=0, vertices are (0,0,0), (0,0,1), (0,1,1), (0,1,0)
-                if (vertexIndex == 2) return 3; // (0,1,1) -> corner 3=(0,1)
-                if (vertexIndex == 3) return 0; // (0,1,0) -> corner 0=(0,0)
-                return -1;
-            default:
-                return -1;
-        }
     }
 
     @Override
@@ -195,23 +122,6 @@ public class MmsCuboidGenerator implements MmsGeometryService {
         }
 
         return normals;
-    }
-
-    @Override
-    public float calculateBlockHeight(BlockType blockType, float worldX, float worldY, float worldZ) {
-        // Standard cubes always have full height
-        // Override for blocks with variable heights
-        if (blockType == BlockType.WATER) {
-            return 0.9f; // Water slightly lower than full block
-        }
-        return 1.0f;
-    }
-
-    @Override
-    public float[] calculateWaterCornerHeights(int blockX, int blockY, int blockZ, float baseHeight) {
-        // This implementation returns uniform height
-        // Override in subclass for realistic water surface simulation
-        return new float[] {baseHeight, baseHeight, baseHeight, baseHeight};
     }
 
     /**

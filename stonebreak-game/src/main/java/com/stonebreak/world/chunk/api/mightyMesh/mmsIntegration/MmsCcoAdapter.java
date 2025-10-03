@@ -149,8 +149,7 @@ public class MmsCcoAdapter {
         // Generate texture coordinates (8 vertices)
         float[] texCoords = textureMapper.generateCrossTextureCoordinates(blockType);
 
-        // Generate flags (cross blocks always use alpha testing, never water)
-        float[] waterFlags = new float[MmsBufferLayout.VERTICES_PER_CROSS]; // All zeros
+        // Generate alpha flags (cross blocks always use alpha testing)
         float[] alphaFlags = new float[MmsBufferLayout.VERTICES_PER_CROSS];
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_CROSS; i++) {
             alphaFlags[i] = 1.0f; // Cross blocks need alpha testing
@@ -165,7 +164,7 @@ public class MmsCcoAdapter {
                 vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                 texCoords[tIdx], texCoords[tIdx + 1],
                 normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                waterFlags[i], alphaFlags[i]
+                0.0f, alphaFlags[i] // No water flags needed
             );
         }
 
@@ -190,33 +189,20 @@ public class MmsCcoAdapter {
         float worldY = ly;
         float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
 
-        float blockHeight = cuboidGenerator.calculateBlockHeight(blockType, worldX, worldY, worldZ);
-
-        // Calculate water corner heights if needed
-        float[] waterCornerHeights = null;
-        if (blockType == BlockType.WATER) {
-            waterCornerHeights = cuboidGenerator.calculateWaterCornerHeights(
-                (int)worldX, (int)worldY, (int)worldZ, blockHeight
-            );
-        }
-
         // Check each face for culling
         for (int face = 0; face < 6; face++) {
             if (!shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
                 continue; // Face is culled
             }
 
-            // Generate face geometry
-            float[] vertices = cuboidGenerator.generateFaceVerticesWithWater(
-                face, blockType, worldX, worldY, worldZ, blockHeight, waterCornerHeights, worldY
-            );
+            // Generate face geometry (standard cuboid)
+            float[] vertices = cuboidGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
             float[] normals = cuboidGenerator.generateFaceNormals(face);
 
             // Generate texture coordinates
             float[] texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
 
-            // Generate flags
-            float[] waterFlags = textureMapper.generateWaterFlags(face, waterCornerHeights);
+            // Generate alpha flags
             float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
 
             // Add face to builder
@@ -229,7 +215,7 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], alphaFlags[i]
+                    0.0f, alphaFlags[i] // No water flags needed
                 );
             }
             builder.endFace();
