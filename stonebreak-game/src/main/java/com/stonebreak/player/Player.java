@@ -4,7 +4,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
-import com.stonebreak.audio.SoundSystem;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
@@ -13,7 +12,8 @@ import com.stonebreak.items.ItemType;
 // Other package imports
 import com.stonebreak.world.World;
 import com.stonebreak.core.Game;
-import com.stonebreak.rendering.WaterEffects;
+import com.stonebreak.blocks.Water;
+import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.util.DropUtil;
 
 /**
@@ -49,7 +49,9 @@ public class Player {      // Player settings
     
     // Reference to the world (mutable for world switching)
     private World world;
-    
+
+    // Block placement validation service
+    private final IBlockPlacementService blockPlacementService;
     // Inventory
     private final Inventory inventory;
     
@@ -57,11 +59,7 @@ public class Player {      // Player settings
     private Vector3i breakingBlock; // The block currently being broken
     private float breakingProgress; // Progress from 0.0 to 1.0
     private float breakingTime; // Time spent breaking the current block
-    
-    // Walking sound system
-    private float walkingSoundTimer; // Timer for walking sound intervals
-    private boolean wasMovingLastFrame; // Track if player was moving in the previous frame
-    private static final float WALKING_SOUND_INTERVAL = 0.3f; // Play sound every 0.3 seconds while walking
+
     
     // Flight system
     private boolean flightEnabled = false; // Whether flight is enabled via command
@@ -76,16 +74,22 @@ public class Player {      // Player settings
 
     // Player health
     private float health = 20.0f; // Player health (full health)
-    
+
+    // Walking sound state (if needed for future sound system)
+    private float walkingSoundTimer = 0.0f;
+    private boolean wasMovingLastFrame = false;
+
     /**
      * Creates a new player in the specified world.
      */
     public Player(World world) {
         this.world = world;
+        this.blockPlacementService = new BlockPlacementValidator(world);
         this.position = new Vector3f(0, 100, 0);
         this.velocity = new Vector3f(0, 0, 0);
         this.onGround = false;
-        this.camera = new Camera();        this.inventory = new Inventory();
+        this.camera = new Camera();
+        this.inventory = new Inventory();
         this.isAttacking = false;
         this.physicallyInWater = false;
         this.wasInWaterLastFrame = false;
@@ -94,8 +98,6 @@ public class Player {      // Player settings
         this.breakingBlock = null;
         this.breakingProgress = 0.0f;
         this.breakingTime = 0.0f;
-        this.walkingSoundTimer = 0.0f;
-        this.wasMovingLastFrame = false;
         this.flightEnabled = false;
         this.isFlying = false;
         this.wasJumpPressed = false;
@@ -149,6 +151,12 @@ public class Player {      // Player settings
             }
         }
 
+        // Apply water flow forces if in water
+        if (physicallyInWater && !isFlying) {
+            WaterFlowPhysics.applyWaterFlowForce(world, position, velocity,
+                Game.getDeltaTime(), PLAYER_WIDTH, PLAYER_HEIGHT);
+        }
+
         // Apply gravity (unless flying)
         if (!onGround && !isFlying) {
             if (physicallyInWater) {
@@ -159,7 +167,7 @@ public class Player {      // Player settings
                 } else {
                     velocity.y -= GRAVITY * Game.getDeltaTime();
                 }
-                
+
                 // Safety check for water exit period
                 if (velocity.y > 0.1f && !physicallyInWater && isInWaterExitAntiFloatPeriod) {
                     velocity.y = 0.0f;
@@ -228,7 +236,13 @@ public class Player {      // Player settings
         updateBlockBreaking();
         
         // Update walking sounds
-        updateWalkingSounds();
+        Game.getSoundSystem().updatePlayerSounds(position, velocity, onGround, physicallyInWater);
+
+        // Update audio listener position and orientation for proper 3D spatial audio
+        // Only update if we have a valid world loaded
+        if (Game.getWorld() != null) {
+            Game.getSoundSystem().setListenerFromCamera(position, camera.getFront(), camera.getUp());
+        }
     }
     
     /**
@@ -758,10 +772,7 @@ public class Player {      // Player settings
                 if (breakingProgress >= 1.0f) {
                     // If breaking a water block, remove it from water simulation
                     if (blockType == BlockType.WATER) {
-                        WaterEffects waterEffects = Game.getWaterEffects();
-                        if (waterEffects != null) {
-                            waterEffects.removeWaterSource(breakingBlock.x, breakingBlock.y, breakingBlock.z);
-                        }
+                        Water.removeWaterSource(breakingBlock.x, breakingBlock.y, breakingBlock.z);
                     }
                     
                     // If breaking a snow block, remove snow layer data and spawn correct number of drops
@@ -778,6 +789,10 @@ public class Player {      // Player settings
                     
                     // Break the block
                     world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+
+                    // Notify water system about block being broken
+                    Water.onBlockBroken(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+
                     resetBlockBreaking();
                 }
             }
@@ -833,6 +848,10 @@ public class Player {      // Player settings
                     DropUtil.handleBlockBroken(world, dropPosition, blockType);
                     
                     world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+
+                    // Notify water system about block being broken
+                    Water.onBlockBroken(blockPos.x, blockPos.y, blockPos.z);
+
                     resetBlockBreaking();
                 }
             }
@@ -862,6 +881,99 @@ public class Player {      // Player settings
             return;
         }
 
+        // Handle bucket interactions
+        if (selectedItem.isTool()) {
+            ItemType itemType = selectedItem.asItemType();
+
+            // Handle empty bucket picking up water
+            if (itemType == ItemType.WOODEN_BUCKET) {
+                Vector3i targetBlock = raycastIncludingWater();
+                if (targetBlock != null) {
+                    BlockType blockType = world.getBlockAt(targetBlock.x, targetBlock.y, targetBlock.z);
+                    if (blockType == BlockType.WATER) {
+                        // Check if it's a water source block
+                        if (Water.isWaterSource(targetBlock.x, targetBlock.y, targetBlock.z)) {
+                            // Remove the water source block
+                            world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR);
+                            Water.onBlockPlaced(targetBlock.x, targetBlock.y, targetBlock.z);
+
+                            // Replace empty bucket with water bucket in the same slot
+                            int currentSlot = inventory.getSelectedHotbarSlotIndex();
+                            int currentCount = selectedItem.getCount();
+
+                            if (currentCount == 1) {
+                                // Replace the single bucket with water bucket
+                                inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET_WATER, 1));
+                            } else {
+                                // Decrease count by 1 and try to add water bucket
+                                inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1));
+                                inventory.addItem(ItemType.WOODEN_BUCKET_WATER, 1);
+                            }
+                        }
+                    }
+                }
+                return; // Empty bucket doesn't place blocks
+            }
+
+            // Handle water bucket placing water
+            if (itemType == ItemType.WOODEN_BUCKET_WATER) {
+                // Use raycast that includes water blocks to detect water directly
+                Vector3i targetBlock = raycastIncludingWater();
+                Vector3i placePos = null;
+
+                if (targetBlock != null) {
+                    BlockType targetBlockType = world.getBlockAt(targetBlock.x, targetBlock.y, targetBlock.z);
+
+                    // If we hit water directly, try to place in that water block
+                    if (targetBlockType == BlockType.WATER) {
+                        placePos = targetBlock;
+                    } else {
+                        // If we hit a solid block, find adjacent position to place
+                        placePos = findPlacePosition(targetBlock);
+                    }
+                }
+
+                if (placePos != null) {
+                    BlockType blockAtPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
+
+                    // Can place water in air blocks or water blocks
+                    if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER) {
+                        // Special handling for placing water on existing water
+                        if (blockAtPos == BlockType.WATER) {
+                            // Check if it's already a source
+                            if (Water.isWaterSource(placePos.x, placePos.y, placePos.z)) {
+                                // Already a source, don't consume the bucket
+                                return;
+                            }
+                            // Convert flow to source by triggering world block change
+                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
+                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                        } else {
+                            // Place water source block in air
+                            if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER)) {
+                                return; // Failed to place
+                            }
+                            Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
+                        }
+
+                        // Replace water bucket with empty bucket in the same slot
+                        int currentSlot = inventory.getSelectedHotbarSlotIndex();
+                        int currentCount = selectedItem.getCount();
+
+                        if (currentCount == 1) {
+                            // Replace the single water bucket with empty bucket
+                            inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET, 1));
+                        } else {
+                            // Decrease count by 1 and try to add empty bucket
+                            inventory.setHotbarSlot(currentSlot, new ItemStack(ItemType.WOODEN_BUCKET_WATER, currentCount - 1));
+                            inventory.addItem(ItemType.WOODEN_BUCKET, 1);
+                        }
+                    }
+                }
+                return; // Water bucket doesn't place regular blocks
+            }
+        }
+
         // Check if this item can be placed as a block
         if (!selectedItem.isPlaceable()) {
             return; // Cannot place tools or other non-placeable items
@@ -875,41 +987,24 @@ public class Player {      // Player settings
         
         int selectedBlockTypeId = selectedBlockType.getId();
         
-        Vector3i hitBlockPos = raycast(); // This is the first non-air block hit by ray. Null if only air.
+        Vector3i hitBlockPos = raycastForPlacement(); // This is the first solid (non-air, non-water) block hit by ray. Null if only air/water.
         Vector3i placePos;
 
         if (hitBlockPos != null) {
             BlockType hitBlockType = world.getBlockAt(hitBlockPos.x, hitBlockPos.y, hitBlockPos.z);
             BlockType blockTypeToPlace = BlockType.getById(selectedBlockTypeId);
-            
+
             if (blockTypeToPlace == BlockType.SNOW && hitBlockType == BlockType.SNOW) {
                 // For snow on snow, place directly into the snow's space (stack layers)
-                placePos = new Vector3i(hitBlockPos);
-            } else if (hitBlockType == BlockType.WATER) {
-                // For water blocks, place directly into the water's space (replace the water)
                 placePos = new Vector3i(hitBlockPos);
             } else {
                 // For solid blocks, try to place on an adjacent face
                 placePos = findPlacePosition(hitBlockPos);
             }
         } else {
-            // Player is aiming at AIR (or beyond reach, but raycast handles distance).
-            // Determine the air block cell player is targeting.
-            // Use rayOrigin similar to raycast()
-            Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
-            // Target point is at RAY_CAST_DISTANCE or slightly less to be within the last cell.
-            Vector3f targetPointInAir = new Vector3f(camera.getFront()).mul(RAY_CAST_DISTANCE - 0.1f).add(rayOrigin);
-            
-            placePos = new Vector3i(
-                (int)Math.floor(targetPointInAir.x),
-                (int)Math.floor(targetPointInAir.y),
-                (int)Math.floor(targetPointInAir.z)
-            );
-            // Ensure this calculated position is actually AIR or WATER, otherwise invalid.
-            BlockType blockAtTargetPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
-            if (blockAtTargetPos != BlockType.AIR && blockAtTargetPos != BlockType.WATER) {
-                placePos = null; // Don't place if calculated target isn't air or water.
-            }
+            // Player is aiming at AIR/WATER only (no solid blocks within reach).
+            // Since water is treated like air for placement, blocks cannot be placed without adjacent solid blocks.
+            placePos = null; // Cannot place blocks in mid-air or mid-water without solid block adjacency.
         }
         
         if (placePos != null) {
@@ -934,11 +1029,14 @@ public class Player {      // Player settings
                     Vector3i abovePos = new Vector3i(placePos.x, placePos.y + 1, placePos.z);
                     BlockType blockAbove = world.getBlockAt(abovePos.x, abovePos.y, abovePos.z);
                     if (blockAbove == BlockType.AIR) {
-                        if (!intersectsWithPlayer(abovePos)) {
+                        if (!blockPlacementService.wouldIntersectWithPlayer(abovePos, position, BlockType.SNOW, onGround)) {
                             // Place new snow block above
                             if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
                                 inventory.removeItem(selectedItem.getItem(), 1);
+
+                                // Notify water system about block placement
+                                Water.onBlockPlaced(abovePos.x, abovePos.y, abovePos.z);
                             }
                         }
                     }
@@ -946,39 +1044,49 @@ public class Player {      // Player settings
                 }
             }
             
-            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER || 
+            if (blockAtPos == BlockType.AIR || blockAtPos == BlockType.WATER ||
                 (blockTypeToPlace == BlockType.SNOW && blockAtPos == BlockType.SNOW)) {
-                if (intersectsWithPlayer(placePos)) {
-                    // System.out.println("DEBUG: Placement at " + placePos + " denied due to intersection with player.");
-                    return; // Collision with player, abort.
+
+                // Use the block placement validator to check placement validity
+                BlockPlacementValidator.PlacementValidationResult validationResult =
+                    blockPlacementService.validatePlacement(placePos, position, blockTypeToPlace, onGround);
+
+                if (!validationResult.canPlace()) {
+                    // Block placement is invalid - simply return without placing or moving player
+                    return;
                 }
                 
-                // Check if the placement position has at least one adjacent solid block
-                // Exception: Allow placement on water blocks (replacing water doesn't require adjacent solid blocks)
-                if (blockAtPos != BlockType.WATER && !hasAdjacentSolidBlock(placePos)) {
-                    return; // Cannot place blocks in mid-air
-                }
-                
-                // If replacing water, remove it from water simulation first
-                if (blockAtPos == BlockType.WATER) {
-                    WaterEffects waterEffects = Game.getWaterEffects();
-                    if (waterEffects != null) {
-                        waterEffects.removeWaterSource(placePos.x, placePos.y, placePos.z);
+                // Special handling for placing water on existing water
+                if (blockAtPos == BlockType.WATER && selectedBlockType == BlockType.WATER) {
+                    // Check if it's already a source
+                    if (!Water.isWaterSource(placePos.x, placePos.y, placePos.z)) {
+                        // Convert flow to source by triggering world block change
+                        // This will call WaterSystem.onBlockChanged which uses cells.put() to force source
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                        inventory.removeItem(selectedItem.getItem(), 1);
                     }
+                    // If already a source, don't consume the bucket
+                    return;
                 }
-                
+
+                // If replacing water with non-water block, remove it from water simulation first
+                if (blockAtPos == BlockType.WATER) {
+                    Water.removeWaterSource(placePos.x, placePos.y, placePos.z);
+                }
+
                 // All checks passed, place the block.
                 if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
-                    
+
                     // If placing a water block, register it as a water source
                     if (selectedBlockType == BlockType.WATER) {
-                        WaterEffects waterEffects = Game.getWaterEffects();
-                        if (waterEffects != null) {
-                            waterEffects.addWaterSource(placePos.x, placePos.y, placePos.z);
-                        }
+                        Water.addWaterSource(placePos.x, placePos.y, placePos.z);
                     }
-                    
+
+                    // Notify water system about block placement (affects flow)
+                    Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
+
                     // If placing a snow block, initialize it with 1 layer
                     if (selectedBlockType == BlockType.SNOW) {
                         world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
@@ -1140,75 +1248,15 @@ public class Player {      // Player settings
             }
             
             // Check if block would intersect with player (last check to prioritize placement)
-            if (intersectsWithPlayer(placePos)) {
+            if (blockPlacementService.wouldIntersectWithPlayer(placePos, position, null, onGround)) {
                 return null;
             }
         }
         
         return placePos;
     }
-    
-    /**
-     * Checks if a block position has at least one adjacent solid block.
-     * This prevents placing blocks in mid-air.
-     */
-    private boolean hasAdjacentSolidBlock(Vector3i blockPos) {
-        // Check all 6 adjacent positions (up, down, north, south, east, west)
-        Vector3i[] adjacentPositions = {
-            new Vector3i(blockPos.x, blockPos.y + 1, blockPos.z), // Above
-            new Vector3i(blockPos.x, blockPos.y - 1, blockPos.z), // Below
-            new Vector3i(blockPos.x + 1, blockPos.y, blockPos.z), // East
-            new Vector3i(blockPos.x - 1, blockPos.y, blockPos.z), // West
-            new Vector3i(blockPos.x, blockPos.y, blockPos.z + 1), // North
-            new Vector3i(blockPos.x, blockPos.y, blockPos.z - 1)  // South
-        };
-        
-        for (Vector3i adjacentPos : adjacentPositions) {
-            BlockType adjacentBlock = world.getBlockAt(adjacentPos.x, adjacentPos.y, adjacentPos.z);
-            if (adjacentBlock.isSolid()) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Checks if a block at the specified position would intersect with the player.
-     * Uses more precise AABB (Axis-Aligned Bounding Box) collision detection.
-     * Uses the player's actual physics bounding box.
-     */
-    private boolean intersectsWithPlayer(Vector3i blockPos) {
-        // Player's actual physics bounding box
-        float halfPlayerWidth = PLAYER_WIDTH / 2;
-        float pMinX = position.x - halfPlayerWidth;
-        float pMaxX = position.x + halfPlayerWidth;
-        float pMinY = position.y; // Player's feet
-        float pMaxY = position.y + PLAYER_HEIGHT; // Player's head
-        float pMinZ = position.z - halfPlayerWidth;
-        float pMaxZ = position.z + halfPlayerWidth;
-        
-        // Block's bounding box - consider actual block height
-        float blockHeight = getBlockCollisionHeight(blockPos.x, blockPos.y, blockPos.z);
-        if (blockHeight <= 0) {
-            return false; // Non-solid blocks don't cause collision
-        }
-        
-        float bMinX = blockPos.x;
-        float bMaxX = blockPos.x + 1.0f;
-        float bMinY = blockPos.y;
-        float bMaxY = blockPos.y + blockHeight; // Use actual block height
-        float bMinZ = blockPos.z;
-        float bMaxZ = blockPos.z + 1.0f;
-        
-        // Standard AABB collision check
-        boolean collisionX = (pMinX < bMaxX) && (pMaxX > bMinX);
-        boolean collisionY = (pMinY < bMaxY) && (pMaxY > bMinY); // True if Y volumes overlap
-        boolean collisionZ = (pMinZ < bMaxZ) && (pMaxZ > bMinZ);
-        
-        // Return true if all three axes have overlapping volumes
-        return collisionX && collisionY && collisionZ;
-    }
+
+
     
     /**
      * Calculates the intersection of a ray with a plane.
@@ -1233,33 +1281,97 @@ public class Player {      // Player settings
     /**
      * Performs a raycast from the player's view to find the block they're looking at.
      * Uses a smaller step size for better precision.
-     * @return The position of the first non-air block hit by ray, or null if no block was hit.
+     * Treats water as transparent for block breaking/placing interactions.
+     * @return The position of the first solid (non-air, non-water) block hit by ray, or null if no block was hit.
      */
     public Vector3i raycast() { // Changed to public
         Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
         Vector3f rayDirection = camera.getFront();
-        
+
         // Use a smaller step size for more accurate raycasting
         float stepSize = 0.025f;
-        
+
         // Perform ray marching
         for (float distance = 0; distance < RAY_CAST_DISTANCE; distance += stepSize) {
             Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
-            
+
             int blockX = (int) Math.floor(point.x);
             int blockY = (int) Math.floor(point.y);
             int blockZ = (int) Math.floor(point.z);
-            
+
             BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
-            
+
+            // Skip air and water blocks - treat water as transparent for interactions
+            if (blockType != BlockType.AIR && blockType != BlockType.WATER) {
+                return new Vector3i(blockX, blockY, blockZ);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Performs a raycast specifically for block placement.
+     * Treats water like air - looks for the first solid block to place adjacent to.
+     * @return The position of the first solid (non-air, non-water) block hit by ray, or null if no solid block was hit.
+     */
+    private Vector3i raycastForPlacement() {
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+        Vector3f rayDirection = camera.getFront();
+
+        // Use a smaller step size for more accurate raycasting
+        float stepSize = 0.025f;
+
+        // Perform ray marching
+        for (float distance = 0; distance < RAY_CAST_DISTANCE; distance += stepSize) {
+            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
+
+            int blockX = (int) Math.floor(point.x);
+            int blockY = (int) Math.floor(point.y);
+            int blockZ = (int) Math.floor(point.z);
+
+            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
+
+            // For placement, skip air and water blocks - only return solid blocks
+            if (blockType != BlockType.AIR && blockType != BlockType.WATER) {
+                return new Vector3i(blockX, blockY, blockZ);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Performs a raycast that includes water blocks.
+     * Used for bucket interactions to detect water blocks.
+     * @return The position of the first non-air block hit by ray, or null if no block was hit.
+     */
+    private Vector3i raycastIncludingWater() {
+        Vector3f rayOrigin = new Vector3f(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+        Vector3f rayDirection = camera.getFront();
+
+        // Use a smaller step size for more accurate raycasting
+        float stepSize = 0.025f;
+
+        // Perform ray marching
+        for (float distance = 0; distance < RAY_CAST_DISTANCE; distance += stepSize) {
+            Vector3f point = new Vector3f(rayDirection).mul(distance).add(rayOrigin);
+
+            int blockX = (int) Math.floor(point.x);
+            int blockY = (int) Math.floor(point.y);
+            int blockZ = (int) Math.floor(point.z);
+
+            BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
+
+            // Return first non-air block (including water)
             if (blockType != BlockType.AIR) {
                 return new Vector3i(blockX, blockY, blockZ);
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Checks if the given block type is a wooden block that should be affected by axe efficiency.
      * @param blockType The block type to check
@@ -1350,7 +1462,7 @@ public class Player {      // Player settings
     public void setPosition(Vector3f position) {
         setPosition(position.x, position.y, position.z);
     }
-    
+
     /**
      * Gets the player's position.
      */
@@ -1446,58 +1558,7 @@ public class Player {      // Player settings
     public float getBreakingProgress() {
         return breakingProgress;
     }
-    
-    /**
-     * Updates walking sound effects based on player movement.
-     */
-    private void updateWalkingSounds() {
-        // Calculate horizontal movement speed
-        float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        boolean isMoving = horizontalSpeed > 1.0f && onGround && !physicallyInWater; // Higher threshold to prevent over-triggering
-        
-        if (isMoving) {
-            // If player just started moving, play sound immediately
-            if (!wasMovingLastFrame) {
-                playWalkingSound();
-                walkingSoundTimer = 0.0f;
-            } else {
-                walkingSoundTimer += Game.getDeltaTime();
-                
-                // Play walking sound at intervals
-                if (walkingSoundTimer >= WALKING_SOUND_INTERVAL) {
-                    playWalkingSound();
-                    walkingSoundTimer = 0.0f;
-                }
-            }
-        } else {
-            // Reset timer when not moving
-            walkingSoundTimer = 0.0f;
-        }
-        
-        wasMovingLastFrame = isMoving;
-    }
-    
-    /**
-     * Plays the appropriate walking sound based on the block type under the player.
-     */
-    private void playWalkingSound() {
-        // Check what block type the player is standing on
-        int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(position.y - 0.1f); // Slightly below feet to get ground block
-        int blockZ = (int) Math.floor(position.z);
-        
-        BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
-        
-        // Play appropriate walking sound based on block type
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (soundSystem != null) {
-            if (groundBlock == BlockType.GRASS) {
-                soundSystem.playSoundWithVariation("grasswalk", 0.3f);
-            } else if (groundBlock == BlockType.SAND || groundBlock == BlockType.RED_SAND) {
-                soundSystem.playSoundWithVariation("sandwalk", 0.3f);
-            }
-        }
-    }
+
     
     /**
      * Handles flight ascent (space key while flying).
@@ -1609,14 +1670,14 @@ public class Player {      // Player settings
 
         // Check if the target drop position is AIR and doesn't intersect with the player
         BlockType blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
-        if (blockAtDropPos == BlockType.AIR && !intersectsWithPlayer(dropPos)) {
+        if (blockAtDropPos == BlockType.AIR && !blockPlacementService.wouldIntersectWithPlayer(dropPos, position, blockToPlace, onGround)) {
             // Also ensure there is a solid block below the drop position to prevent floating items
             BlockType blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
             if (!blockBelowDropPos.isSolid()) {
                 // Try one block lower if initial position has no support
                 dropPos.y = dropPos.y -1;
                 blockAtDropPos = world.getBlockAt(dropPos.x, dropPos.y, dropPos.z);
-                 if (blockAtDropPos != BlockType.AIR || intersectsWithPlayer(dropPos)) {
+                 if (blockAtDropPos != BlockType.AIR || blockPlacementService.wouldIntersectWithPlayer(dropPos, position, blockToPlace, onGround)) {
                     return false; // Lower position is also not suitable
                 }
                  blockBelowDropPos = world.getBlockAt(dropPos.x, dropPos.y - 1, dropPos.z);
@@ -1629,6 +1690,9 @@ public class Player {      // Player settings
                 if (blockToPlace == BlockType.SNOW) {
                     world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
                 }
+
+                // Notify water system about block placement
+                Water.onBlockPlaced(dropPos.x, dropPos.y, dropPos.z);
                 System.out.println("Player dropped item " + blockToPlace.getName() + " at " + dropPos.x + ", " + dropPos.y + ", " + dropPos.z);
                 return true;
             }

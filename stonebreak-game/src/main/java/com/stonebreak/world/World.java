@@ -2,17 +2,22 @@ package com.stonebreak.world;
 
 import java.util.Map;
 import java.util.List;
+import java.util.Collection;
+import java.util.function.Consumer;
 
+import com.stonebreak.world.chunk.utils.ChunkManager;
+import com.stonebreak.world.chunk.utils.ChunkPosition;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.waterSystem.WaterSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.*;
-import com.stonebreak.world.chunk.mesh.builder.ChunkMeshBuildingPipeline;
-import com.stonebreak.world.chunk.mesh.util.ChunkErrorReporter;
-import com.stonebreak.world.chunk.mesh.data.ChunkNeighborCoordinator;
-import com.stonebreak.world.chunk.mesh.data.WorldChunkStore;
+import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
+import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
+import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
+import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
-import com.stonebreak.world.memory.WorldMemoryManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -30,11 +35,10 @@ public class World {
     
     // Modular components
     private final WorldChunkStore chunkStore;
-    private final ChunkStateManager stateManager;
-    private final ChunkNeighborCoordinator neighborCoordinator;
-    private final WorldMemoryManager memoryManager;
-    private final ChunkMeshBuildingPipeline meshPipeline;
+    private final CcoNeighborCoordinator neighborCoordinator;
+    private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
+    private final WaterSystem waterSystem;
 
     public World() {
         this(new WorldConfiguration());
@@ -49,14 +53,34 @@ public class World {
 
         this.terrainSystem = new TerrainGenerationSystem(seed);
         this.snowLayerManager = new SnowLayerManager();
-        
+
         // Initialize modular components
-        this.stateManager = new ChunkStateManager();
         this.errorReporter = new ChunkErrorReporter();
-        this.meshPipeline = new ChunkMeshBuildingPipeline(config, stateManager, errorReporter);
+
+        // Create MMS mesh pipeline using MmsAPI
+        // MmsAPI is initialized in Game.initCoreComponents() before any World is created
+        if (!MmsAPI.isInitialized()) {
+            throw new IllegalStateException("MmsAPI must be initialized before creating World");
+        }
+        this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(this, config, errorReporter);
+
         this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
-        this.neighborCoordinator = new ChunkNeighborCoordinator(chunkStore, stateManager, config);
-        this.memoryManager = new WorldMemoryManager(config, chunkStore);
+
+        // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider
+        this.neighborCoordinator = new CcoNeighborCoordinator(new CcoNeighborCoordinator.ChunkProvider() {
+            @Override
+            public Chunk getChunk(int chunkX, int chunkZ) {
+                return chunkStore.getChunk(chunkX, chunkZ);
+            }
+
+            @Override
+            public void ensureChunkExists(int chunkX, int chunkZ) {
+                chunkStore.ensureChunkExists(chunkX, chunkZ);
+            }
+        }, config);
+
+        this.waterSystem = new WaterSystem(this);
+        this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
         
         this.chunkManager = new ChunkManager(this, config.getRenderDistance());
         
@@ -75,9 +99,9 @@ public class World {
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
+        waterSystem.tick(Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
-        memoryManager.performMemoryManagement();
         meshPipeline.processChunkMeshBuildRequests(this);
     }
 
@@ -101,7 +125,7 @@ public class World {
 
         if (!chunk.areFeaturesPopulated()) {
             terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-            stateManager.markChunkForPopulation(chunk);
+            markChunkForMeshRebuild(chunk);
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
 
@@ -112,7 +136,7 @@ public class World {
         // This handles cases where mesh generation silently failed or was never attempted
         if (chunk.areFeaturesPopulated() && !isMeshReady && !isMeshGenerating) {
             // Force reset mesh state to allow retry
-            stateManager.resetMeshGenerationState(chunk);
+            resetMeshGenerationState(chunk);
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         } else if (!isMeshReady) {
             meshPipeline.scheduleConditionalMeshBuild(chunk);
@@ -143,20 +167,32 @@ public class World {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return BlockType.AIR;
         }
-        
+
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = getChunkAt(chunkX, chunkZ);
-        
+
         if (chunk == null) {
             return BlockType.AIR;
         }
-        
+
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         return chunk.getBlock(localX, y, localZ);
+    }
+
+    /**
+     * Checks if the specified world position is underwater (contains a water block).
+     * @param x World X coordinate
+     * @param y World Y coordinate
+     * @param z World Z coordinate
+     * @return true if the position contains water, false otherwise
+     */
+    public boolean isPositionUnderwater(int x, int y, int z) {
+        BlockType block = getBlockAt(x, y, z);
+        return block == BlockType.WATER;
     }
     
     /**
@@ -176,12 +212,22 @@ public class World {
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
         
+        BlockType previous = chunk.getBlock(localX, y, localZ);
+        if (previous == blockType) {
+            return true;
+        }
+
         chunk.setBlock(localX, y, localZ, blockType);
 
-        stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-        neighborCoordinator.rebuildNeighborChunksScheduled(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        waterSystem.onBlockChanged(x, y, z, previous, blockType);
         
         return true;
+    }
+
+    public WaterSystem getWaterSystem() {
+        return waterSystem;
     }
     
     
@@ -205,22 +251,28 @@ public class World {
 
     /**
      * Returns chunks around the specified position within render distance.
+     * This method performs side effects:
+     * - Populates chunks with features if needed (trees, structures)
+     * - Schedules mesh generation for unpopulated chunks
+     * - Ensures border chunks exist for neighbor meshing
+     *
+     * Use this method when preparing chunks for rendering.
      */
     public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
         Map<ChunkPosition, Chunk> visibleChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
-        
+
         // Populate chunks that need features
         for (Chunk chunk : visibleChunks.values()) {
             if (!chunk.areFeaturesPopulated()) {
                 terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-                stateManager.markChunkForPopulation(chunk);
+                markChunkForMeshRebuild(chunk);
                 meshPipeline.scheduleConditionalMeshBuild(chunk);
             }
         }
-        
+
         // Ensure border chunks exist for meshing purposes
         neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
-        
+
         return visibleChunks;
     }
 
@@ -262,20 +314,6 @@ public class World {
             chunkStore.cleanup();
         }
 
-        // Reset world state using available methods
-        if (stateManager != null) {
-            // Reset mesh generation states for all chunks
-            for (Chunk chunk : chunkStore.getAllChunks()) {
-                stateManager.resetMeshGenerationState(chunk);
-            }
-        }
-
-        // Clear memory management caches using available methods
-        if (memoryManager != null) {
-            // Perform aggressive memory cleanup by unloading distant chunks
-            memoryManager.forceUnloadDistantChunks(400);
-        }
-
         // Process any pending GPU cleanup without shutting down the pipeline
         if (meshPipeline != null) {
             meshPipeline.processGpuCleanupQueue();
@@ -306,7 +344,15 @@ public class World {
     public int getDirtyChunkCount() {
         return chunkStore.getDirtyChunks().size();
     }
-    
+
+    /**
+     * Returns all currently loaded chunks.
+     * This is used for diagnostics and debugging.
+     */
+    public Collection<Chunk> getAllChunks() {
+        return chunkStore.getAllChunks();
+    }
+
     /**
      * Returns the number of chunks pending mesh build.
      * This is used for debugging purposes.
@@ -356,10 +402,33 @@ public class World {
     public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
         int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
         if (chunk != null) {
-            stateManager.markForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+        }
+    }
+
+    /**
+     * Triggers a mesh rebuild for all loaded chunks.
+     * Use this when global visual settings change that affect block rendering.
+     * This method requires a player position to determine which chunks are currently loaded.
+     */
+    public void rebuildAllLoadedChunks(int playerChunkX, int playerChunkZ) {
+        try {
+            // Get all chunks currently loaded around the player
+            Map<ChunkPosition, Chunk> loadedChunks = getChunksAroundPlayer(playerChunkX, playerChunkZ);
+
+            // Mark all loaded chunks for mesh rebuild
+            for (Chunk chunk : loadedChunks.values()) {
+                if (chunk != null) {
+                    markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                }
+            }
+
+            System.out.println("Marked " + loadedChunks.size() + " chunks for mesh rebuild due to settings change");
+        } catch (Exception e) {
+            System.err.println("Error rebuilding all chunks: " + e.getMessage());
         }
     }
     
@@ -399,6 +468,28 @@ public class World {
     }
     
     /**
+     * Marks a chunk for mesh rebuild using CCO dirty tracker.
+     */
+    private void markChunkForMeshRebuild(Chunk chunk) {
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+    }
+
+    /**
+     * Marks a chunk for mesh rebuild and schedules it using CCO dirty tracker.
+     */
+    private void markChunkForMeshRebuildWithScheduling(Chunk chunk, Consumer<Chunk> meshBuildScheduler) {
+        markChunkForMeshRebuild(chunk);
+        meshBuildScheduler.accept(chunk);
+    }
+
+    /**
+     * Resets mesh generation state using CCO dirty tracker.
+     */
+    private void resetMeshGenerationState(Chunk chunk) {
+        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
+    }
+
+    /**
      * Sets the world spawn position with coordinates
      */
     public void setSpawnPosition(float x, float y, float z) {
@@ -410,43 +501,5 @@ public class World {
      */
     public void setChunk(int x, int z, Chunk chunk) {
         chunkStore.setChunk(x, z, chunk);
-    }
-    
-    
-    /**
-     * Represents a position of a chunk in the world.
-     */
-    public static class ChunkPosition {
-        private final int x;
-        private final int z;
-        
-        public ChunkPosition(int x, int z) {
-            this.x = x;
-            this.z = z;
-        }
-        
-        public int getX() {
-            return x;
-        }
-        
-        public int getZ() {
-            return z;
-        }
-        
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            
-            ChunkPosition that = (ChunkPosition) o;
-            return x == that.x && z == that.z;
-        }
-        
-        @Override
-        public int hashCode() {
-            int result = x;
-            result = 31 * result + z;
-            return result;
-        }
     }
 }

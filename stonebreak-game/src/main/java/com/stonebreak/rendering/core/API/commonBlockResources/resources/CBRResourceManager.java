@@ -356,6 +356,71 @@ public class CBRResourceManager implements AutoCloseable {
         System.gc(); // Suggest garbage collection
         System.out.println("[CBRResourceManager] Optimized memory usage");
     }
+
+    /**
+     * Refreshes leaf block definitions when transparency setting changes.
+     * This is much safer than full reinitialization as it doesn't dispose OpenGL resources.
+     */
+    public static void refreshLeafDefinitions() {
+        CBRResourceManager current = instance;
+        if (current != null && current.initialized.get()) {
+            try {
+                // Check if the registry is a GameBlockDefinitionRegistry
+                if (current.blockRegistry instanceof com.stonebreak.rendering.core.GameBlockDefinitionRegistry) {
+                    com.stonebreak.rendering.core.GameBlockDefinitionRegistry gameRegistry =
+                        (com.stonebreak.rendering.core.GameBlockDefinitionRegistry) current.blockRegistry;
+                    gameRegistry.refreshLeafDefinitions();
+
+                    // Clear any cached resources for leaf blocks
+                    current.clearCaches();
+
+                    System.out.println("[CBRResourceManager] Leaf definitions refreshed successfully");
+                } else {
+                    System.out.println("[CBRResourceManager] Cannot refresh leaf definitions - unknown registry type");
+                }
+            } catch (Exception e) {
+                System.err.println("[CBRResourceManager] Error refreshing leaf definitions: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            System.out.println("[CBRResourceManager] Cannot refresh - no initialized instance");
+        }
+    }
+
+    /**
+     * Forces reinitialization of the CBR system.
+     * Use when block definitions need to be updated (e.g., settings changes).
+     * Note: This will reinitialize the system with the same texture atlas and registry.
+     * WARNING: This can cause OpenGL errors if called from wrong thread.
+     */
+    public static void forceReinitialize() {
+        synchronized (LOCK) {
+            CBRResourceManager current = instance;
+            if (current != null && current.initialized.get()) {
+                try {
+                    // Store references before disposal
+                    TextureAtlas atlas = current.textureManager.getTextureAtlas();
+                    BlockDefinitionRegistry registry = current.blockRegistry;
+
+                    // Dispose current instance
+                    current.close();
+
+                    // Ensure instance is nullified
+                    instance = null;
+
+                    // Create new instance with same parameters
+                    CBRResourceManager newInstance = getInstance(atlas, registry);
+
+                    System.out.println("[CBRResourceManager] Forced reinitialization completed");
+                } catch (Exception e) {
+                    System.err.println("[CBRResourceManager] Error during forced reinitialization: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            } else {
+                System.out.println("[CBRResourceManager] Reinitialization skipped - no current instance or not initialized");
+            }
+        }
+    }
     
     // === Lifecycle Management ===
     

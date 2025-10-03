@@ -47,6 +47,19 @@ public class RegionFile implements AutoCloseable {
                 return null; // Chunk not saved
             }
 
+            // Validate offset and length are within file bounds
+            long fileLength = file.length();
+            if (offset < HEADER_SIZE || offset + length > fileLength) {
+                System.err.println("[REGION-ERROR] Invalid chunk data at (" + localX + "," + localZ +
+                    ") in region " + regionPath.getFileName() +
+                    " - offset: " + offset + ", length: " + length + ", file size: " + fileLength);
+                System.err.println("[REGION-ERROR] Marking chunk as corrupted and returning null");
+                // Mark chunk as invalid to prevent future read attempts
+                chunkOffsets[index] = 0;
+                chunkLengths[index] = 0;
+                return null;
+            }
+
             file.seek(offset);
             byte[] data = new byte[length];
             file.readFully(data);
@@ -104,7 +117,12 @@ public class RegionFile implements AutoCloseable {
 
         lock.readLock().lock();
         try {
-            return chunkOffsets[index] != 0 && chunkLengths[index] != 0;
+            boolean exists = chunkOffsets[index] != 0 && chunkLengths[index] != 0;
+            if (!exists) {
+                System.out.println("[REGION-DEBUG] Chunk (" + localX + "," + localZ + ") not found in region " +
+                    regionPath.getFileName() + " - offset: " + chunkOffsets[index] + ", length: " + chunkLengths[index]);
+            }
+            return exists;
         } finally {
             lock.readLock().unlock();
         }

@@ -40,6 +40,21 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
         
         System.out.println("[GameBlockDefinitionRegistry] Initialized " + definitionsByResourceId.size() + " block definitions");
     }
+
+    /**
+     * Refreshes block definitions for leaf blocks.
+     * Use when leaf transparency setting changes.
+     */
+    public void refreshLeafDefinitions() {
+        BlockType[] leafBlocks = {BlockType.LEAVES, BlockType.PINE_LEAVES, BlockType.ELM_LEAVES};
+
+        for (BlockType leafBlock : leafBlocks) {
+            BlockDefinition newDefinition = createDefinitionForBlockType(leafBlock);
+            registerDefinition(newDefinition);
+        }
+
+        System.out.println("[GameBlockDefinitionRegistry] Refreshed " + leafBlocks.length + " leaf block definitions");
+    }
     
     /**
      * Creates a BlockDefinition for a given BlockType.
@@ -84,6 +99,14 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
         switch (blockType) {
             case ROSE, DANDELION:
                 return BlockDefinition.RenderLayer.CUTOUT; // Transparent flowers
+            case LEAVES, PINE_LEAVES, ELM_LEAVES:
+                // Leaf blocks use cutout only when transparency is enabled
+                // When disabled, use opaque to show the black spots
+                try {
+                    return blockType.isTransparent() ? BlockDefinition.RenderLayer.CUTOUT : BlockDefinition.RenderLayer.OPAQUE;
+                } catch (Exception e) {
+                    return BlockDefinition.RenderLayer.CUTOUT; // Default to cutout for leaves
+                }
             default:
                 return BlockDefinition.RenderLayer.OPAQUE;
         }

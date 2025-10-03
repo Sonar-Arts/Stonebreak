@@ -148,6 +148,7 @@ public class InputHandler {
             case ARM_MODEL -> adjustArmModelSetting(direction);
             case CROSSHAIR_STYLE -> adjustCrosshairStyleSetting(direction);
             case CROSSHAIR_SIZE -> adjustCrosshairSizeSetting(direction);
+            case LEAF_TRANSPARENCY -> adjustLeafTransparencySetting(direction);
         }
     }
     
@@ -218,7 +219,17 @@ public class InputHandler {
         Slider crosshairSizeSlider = stateManager.getCrosshairSizeSlider();
         crosshairSizeSlider.adjustValue(direction * SettingsConfig.CROSSHAIR_SIZE_STEP);
     }
-    
+
+    /**
+     * Toggles leaf transparency setting when direction indicates change.
+     */
+    private void adjustLeafTransparencySetting(int direction) {
+        // For toggle buttons, any direction change toggles the setting
+        if (direction != 0) {
+            actionHandler.toggleLeafTransparency();
+        }
+    }
+
     /**
      * Confirms resolution selection from dropdown and closes it.
      */

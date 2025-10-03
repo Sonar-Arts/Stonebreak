@@ -143,6 +143,7 @@ public class DropUtil {
             BlockType blockType = itemStack.asBlockType();
             if (blockType != null) {
                 BlockDrop drop = BlockDrop.createDropWithVelocity(world, dropPosition, blockType, dropVelocity);
+                drop.setStackCount(itemStack.getCount()); // Set the actual stack count from the ItemStack
                 EntityManager entityManager = Game.getEntityManager();
                 if (entityManager != null) {
                     entityManager.addEntity(drop);
@@ -242,6 +243,12 @@ public class DropUtil {
             case STONE:
                 // Stone drops cobblestone when mined
                 return BlockType.COBBLESTONE;
+            case RED_SANDSTONE:
+                // Red sandstone drops red sand cobblestone when mined
+                return BlockType.RED_SAND_COBBLESTONE;
+            case SANDSTONE:
+                // Sandstone drops sand cobblestone when mined
+                return BlockType.SAND_COBBLESTONE;
             case GRASS:
                 return BlockType.DIRT;
             case IRON_ORE:

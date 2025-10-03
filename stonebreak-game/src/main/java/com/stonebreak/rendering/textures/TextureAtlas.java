@@ -14,7 +14,9 @@ import com.stonebreak.textures.loaders.TextureResourceLoader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * Modern texture atlas system with JSON-based texture loading.
@@ -47,8 +49,8 @@ public class TextureAtlas {
     private java.util.List<int[]> waterFaceTiles = new java.util.ArrayList<>();
     
     // Paths
-    private static final String ATLAS_METADATA_PATH = "stonebreak-game/src/main/resources/Texture Atlas/atlas_metadata.json";
-    private static final String ATLAS_IMAGE_PATH = "stonebreak-game/src/main/resources/Texture Atlas/TextureAtlas.png";
+    private static final Path ATLAS_METADATA_PATH = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "atlas_metadata.json");
+    private static final Path ATLAS_IMAGE_PATH = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "TextureAtlas.png");
     
     /**
      * Creates a texture atlas with the specified texture size.
@@ -154,22 +156,24 @@ public class TextureAtlas {
     private int loadGeneratedAtlasTexture() {
         try {
             // Check if files exist
-            File metadataFile = new File(ATLAS_METADATA_PATH);
-            File imageFile = new File(ATLAS_IMAGE_PATH);
-            
-            if (!metadataFile.exists() || !imageFile.exists()) {
-                System.out.println("Atlas files not found: metadata=" + metadataFile.exists() + ", image=" + imageFile.exists());
+            Path metadataFile = ATLAS_METADATA_PATH;
+            Path imageFile = ATLAS_IMAGE_PATH;
+
+            boolean metadataExists = Files.exists(metadataFile);
+            boolean imageExists = Files.exists(imageFile);
+            if (!metadataExists || !imageExists) {
+                System.out.println("Atlas files not found: metadata=" + metadataExists + ", image=" + imageExists);
                 return 0;
             }
-            
+
             // Load metadata
             ObjectMapper objectMapper = new ObjectMapper();
-            atlasMetadata = objectMapper.readValue(metadataFile, AtlasMetadata.class);
+            atlasMetadata = objectMapper.readValue(metadataFile.toFile(), AtlasMetadata.class);
             atlasMetadata.initializeLookupMaps();
             System.out.println("[TextureAtlas] Loaded atlas metadata with " + atlasMetadata.getTextures().size() + " textures");
             
             // Load image
-            BufferedImage atlasImage = ImageIO.read(imageFile);
+            BufferedImage atlasImage = ImageIO.read(imageFile.toFile());
             if (atlasImage == null) {
                 System.err.println("Failed to load atlas image");
                 return 0;
@@ -564,13 +568,16 @@ public class TextureAtlas {
             case PINE_WOOD_PLANKS: return "pine_wood_planks_custom"; // Added missing mapping
             case ELM_WOOD_PLANKS: return "elm_wood_planks_custom"; // Added missing mapping
             case SNOWY_DIRT: return "snowy_dirt";
-            case SNOWY_LEAVES: return "snowy_leaves";
+            case PINE_LEAVES: return "pine_leaves";
             case RED_SAND: return "red_sand";
             case CRYSTAL: return "crystal";
             case SANDSTONE: return "sandstone";
             case RED_SANDSTONE: return "red_sandstone";
             case ELM_LEAVES: return "elm_leaves";
             case GRAVEL: return "gravel";
+            case CLAY: return "clay";
+            case RED_SAND_COBBLESTONE: return "red_sand_cobblestone";
+            case SAND_COBBLESTONE: return "sand_cobblestone";
             default: return blockType.name().toLowerCase();
         }
     }
@@ -690,11 +697,13 @@ public class TextureAtlas {
      */
     private String getItemTextureName(ItemType itemType) {
         if (itemType == null) return null;
-        
+
         switch (itemType) {
             case STICK: return "stick";
             case WOODEN_PICKAXE: return "wooden_pickaxe";
             case WOODEN_AXE: return "wooden_axe";
+            case WOODEN_BUCKET: return "wooden_bucket_base";
+            case WOODEN_BUCKET_WATER: return "wooden_bucket_water";
             default: return itemType.name().toLowerCase();
         }
     }

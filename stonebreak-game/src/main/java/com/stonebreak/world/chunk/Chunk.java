@@ -1,248 +1,241 @@
 package com.stonebreak.world.chunk;
 
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.time.LocalDateTime;
-import java.util.logging.Logger;
-import java.util.logging.Level;
-
-import com.stonebreak.world.World;
-import com.stonebreak.world.operations.WorldConfiguration;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.system.MemoryUtil;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
-import com.stonebreak.world.chunk.mesh.geometry.ChunkMeshOperations;
-import com.stonebreak.world.chunk.operations.ChunkCoordinateUtils;
-import com.stonebreak.world.chunk.operations.ChunkInternalStateManager;
-import com.stonebreak.world.chunk.operations.ChunkState;
-import com.stonebreak.world.chunk.operations.ChunkDataBuffer;
-import com.stonebreak.world.chunk.operations.ChunkDataOperations;
-import com.stonebreak.world.chunk.operations.ChunkMeshData;
-import com.stonebreak.world.chunk.operations.ChunkBufferState;
-import com.stonebreak.world.chunk.operations.ChunkBufferOperations;
-import com.stonebreak.world.chunk.operations.ChunkResourceManager;
+import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
+import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory.ComponentBundle;
+import com.stonebreak.world.chunk.api.commonChunkOperations.coordinates.CcoCoordinates;
+import com.stonebreak.world.chunk.api.commonChunkOperations.data.*;
+import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockReader;
+import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockWriter;
+import com.stonebreak.world.chunk.api.commonChunkOperations.serialization.CcoSnapshotBuilder;
+import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
+import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsRenderableHandle;
+import com.stonebreak.world.chunk.utils.ChunkPosition;
+
+
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Represents a chunk of the world, storing block data and mesh information.
+ * Represents a chunk of the world using the CCO (Common Chunk Operations) API.
+ * This is a complete rewrite using CCO components for:
+ * - Unified block operations with automatic dirty tracking
+ * - Lock-free state management
+ * - Optimized GPU buffer operations
+ * - Built-in serialization support
  */
 public class Chunk {
-    
+
     private static final Logger logger = Logger.getLogger(Chunk.class.getName());
-    
+
+    // Position (immutable)
     private final int x;
     private final int z;
-    
-    // Block data storage and operations
-    private final ChunkDataBuffer chunkData;
-    private final ChunkDataOperations dataOperations;
-    
-    // Buffer operations and state
-    private final ChunkBufferOperations bufferOperations = new ChunkBufferOperations();
-    private ChunkBufferState bufferState = ChunkBufferState.empty();
-    private int indexCount;
-    private boolean meshGenerated;
-    
-    // State management
-    private final ChunkInternalStateManager stateManager = new ChunkInternalStateManager();
-    
-    // Resource management
-    private final ChunkResourceManager resourceManager;
-    
-    // Save/load tracking fields
-    private boolean isDirty = false;
-    private LocalDateTime lastModified = LocalDateTime.now();
-    private boolean generatedByPlayer = false;
-    
+
+    // CCO Components
+    private CcoChunkMetadata metadata;
+    private final CcoBlockArray blocks;
+    private final CcoBlockReader reader;
+    private final CcoBlockWriter writer;
+    private final CcoAtomicStateManager stateManager;
+    private final CcoDirtyTracker dirtyTracker;
+
+    // Mesh data and buffers (MMS-based)
+    private MmsMeshData pendingMmsMeshData;
+    private MmsRenderableHandle renderableHandle;
+    private boolean meshGenerated = false;
+
     /**
-     * Creates a new chunk at the specified position.
+     * Creates a new chunk at the specified position using CCO API.
      */
     public Chunk(int x, int z) {
         this.x = x;
         this.z = z;
-        this.meshGenerated = false;
-        
-        // Initialize data and operations
-        this.chunkData = new ChunkDataBuffer(x, z);
-        this.dataOperations = new ChunkDataOperations(chunkData, stateManager);
-        
-        // Initialize resource management
-        this.resourceManager = new ChunkResourceManager(stateManager, bufferOperations);
-        
-        // Initialize state - blocks populated after creation
-        stateManager.addState(ChunkState.BLOCKS_POPULATED);
+
+        // Initialize block array (16x256x16)
+        BlockType[][][] blockArray = new BlockType[16][256][16];
+        for (int ix = 0; ix < 16; ix++) {
+            for (int iy = 0; iy < 256; iy++) {
+                for (int iz = 0; iz < 16; iz++) {
+                    blockArray[ix][iy][iz] = BlockType.AIR;
+                }
+            }
+        }
+
+        // Build CCO components using factory
+        ComponentBundle bundle = CcoFactory.builder()
+            .withPosition(x, z)
+            .withBlocks(blockArray)
+            .withSeed(0)
+            .withInitialState(CcoChunkState.BLOCKS_POPULATED)
+            .build();
+
+        // Extract components
+        this.metadata = bundle.metadata;
+        this.blocks = bundle.blocks;
+        this.reader = bundle.reader;
+        this.writer = bundle.writer;
+        this.stateManager = bundle.stateManager;
+        this.dirtyTracker = bundle.dirtyTracker;
     }
-    
+
+    // ===== Block Operations (CCO-based) =====
+
     /**
      * Gets the block type at the specified local position.
      */
     public BlockType getBlock(int x, int y, int z) {
-        return dataOperations.getBlock(x, y, z);
+        return reader.get(x, y, z);
     }
-    
+
     /**
      * Sets the block type at the specified local position.
+     * Automatically marks chunk as dirty for mesh regeneration and saving.
      */
     public void setBlock(int x, int y, int z, BlockType blockType) {
-        boolean changed = dataOperations.setBlock(x, y, z, blockType);
+        boolean changed = writer.set(x, y, z, blockType);
         if (changed) {
-            setDirty(true); // Mark chunk as dirty for saving when block data changes
+            metadata = metadata.withUpdatedTimestamp();
         }
     }
-    
-    // Chunk mesh operations instance for generating mesh data
-    private final ChunkMeshOperations chunkMeshOperations = new ChunkMeshOperations();
-    
+
+    // ===== Mesh Operations (CCO-based) =====
+
     /**
-     * Builds the mesh data for this chunk. This is CPU-intensive and can be run on a worker thread.
+     * Builds the mesh data for this chunk using MMS API. This is CPU-intensive and can be run on a worker thread.
      */
     public void buildAndPrepareMeshData(World world) {
-        // State should already be MESH_GENERATING, set by caller
         try {
             // Update loading progress
             Game game = Game.getInstance();
             if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
                 game.getLoadingScreen().updateProgress("Meshing Chunk");
             }
-            
-            // Generate mesh data directly within the chunk
-            ChunkMeshOperations.MeshData oldMeshData = chunkMeshOperations.generateMeshData(chunkData.getBlocks(), x, z, world);
-            
-            // Convert to new ChunkMeshData format
-            ChunkMeshData meshData = new ChunkMeshData(
-                oldMeshData.vertexData,
-                oldMeshData.textureData, 
-                oldMeshData.normalData,
-                oldMeshData.isWaterData,
-                oldMeshData.isAlphaTestedData,
-                oldMeshData.indexData,
-                oldMeshData.indexCount
-            );
-            
-            // Store the generated mesh data
-            updateMeshDataFromResult(meshData);
-            stateManager.markMeshCpuReady(); // Mark data as ready for GL upload ONLY on success
+
+            // Generate mesh data using MMS API
+            if (!MmsAPI.isInitialized()) {
+                logger.log(Level.SEVERE, "MMS API not initialized for chunk (" + x + ", " + z + ")");
+                stateManager.removeState(CcoChunkState.MESH_GENERATING);
+                dirtyTracker.markMeshDirtyOnly();
+                return;
+            }
+
+            pendingMmsMeshData = MmsAPI.getInstance().generateChunkMesh(this);
+
+            // MMS API already updates state, but ensure consistency
+            // Mark mesh as ready for GPU upload
+            stateManager.removeState(CcoChunkState.MESH_GENERATING);
+            stateManager.addState(CcoChunkState.MESH_CPU_READY);
+
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "CRITICAL: Exception during generateMeshData for chunk (" + x + ", " + z + "): " + e.getMessage()
-                + "\nTime: " + java.time.LocalDateTime.now()
-                + "\nThread: " + Thread.currentThread().getName()
-                + "\nMemory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used", e);
-            resourceManager.handleMeshGenerationFailure();
+            logger.log(Level.SEVERE, "CRITICAL: Exception during mesh generation for chunk (" + x + ", " + z + "): "
+                + e.getMessage(), e);
+            stateManager.removeState(CcoChunkState.MESH_GENERATING);
+            dirtyTracker.markMeshDirtyOnly();
         }
     }
 
     /**
-     * Applies the prepared mesh data to OpenGL. This must be called on the main GL thread.
-     *
-     * Optimization: if a mesh already exists (VAO/VBOs allocated), update buffer data in place
-     * instead of destroying and recreating GL objects. This avoids VAO/VBO churn.
+     * Applies the prepared mesh data to OpenGL using MMS API. This must be called on the main GL thread.
      */
     public void applyPreparedDataToGL() {
-        if (!stateManager.isMeshReadyForUpload()) {
-            return; // Data not ready yet or already processed
+        if (!stateManager.hasState(CcoChunkState.MESH_CPU_READY)) {
+            return; // Data not ready
         }
-
-        // Case 1: Chunk has become empty or has no renderable data
-        if (vertexData == null || vertexData.length == 0 || indexData == null || indexData.length == 0 || indexCount == 0) {
-            if (this.meshGenerated) { // If there was an old mesh
-                bufferOperations.deleteBuffers(bufferState);
-                bufferState = ChunkBufferState.empty();
-                this.meshGenerated = false;
-            }
-            stateManager.removeState(ChunkState.MESH_CPU_READY); // Data processed
-            return;
-        }
-
-        // Case 2: We have new mesh data to apply.
-        final boolean hasExistingMesh = this.meshGenerated && bufferState.isValid();
 
         try {
-            // Create ChunkMeshData from current arrays
-            ChunkMeshData meshData = new ChunkMeshData(vertexData, textureData, normalData, 
-                                                      isWaterData, isAlphaTestedData, indexData, indexCount);
-            
-            if (hasExistingMesh) {
-                // Fast path: update buffer contents in-place
-                bufferOperations.updateBuffers(bufferState, meshData);
-            } else {
-                // First-time creation path: allocate VAO/VBOs and upload data
-                bufferState = bufferOperations.createBuffers(meshData);
-                this.meshGenerated = true; // New mesh is now active and ready for rendering.
+            if (pendingMmsMeshData == null || pendingMmsMeshData.isEmpty()) {
+                // Empty mesh - clean up existing resources
+                if (meshGenerated && renderableHandle != null) {
+                    renderableHandle.close();
+                    renderableHandle = null;
+                    meshGenerated = false;
+                }
+                stateManager.removeState(CcoChunkState.MESH_CPU_READY);
+                stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
+                return;
             }
-            
-            // Mark as uploaded to GPU
-            stateManager.markMeshGpuUploaded();
-            
-            // CRITICAL FIX: Free mesh data arrays after successful GL upload
-            // The data is now safely stored in GPU buffers and no longer needed in RAM
-            freeMeshDataArrays();
+
+            // Upload mesh to GPU using MMS API
+            if (meshGenerated && renderableHandle != null) {
+                // Clean up old handle before creating new one
+                renderableHandle.close();
+            }
+
+            renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
+            meshGenerated = true;
+
+            stateManager.removeState(CcoChunkState.MESH_CPU_READY);
+            stateManager.addState(CcoChunkState.MESH_GPU_UPLOADED);
+
+            // Clear dirty flags after successful upload
+            dirtyTracker.clearMeshDirty();
+
         } catch (Exception e) {
-            logger.log(Level.SEVERE, () ->
-                "CRITICAL: Error during " + (hasExistingMesh ? "updateBuffers" : "createBuffers") +
-                " for chunk (" + x + ", " + z + ")\n" +
-                "Time=" + java.time.LocalDateTime.now() +
-                " Thread=" + Thread.currentThread().getName() +
-                " BufferState=" + bufferState +
-                " IndexCount=" + indexCount +
-                " MemMB=" + ((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024));
-            
-            if (!hasExistingMesh) {
-                // Creation failed; ensure we don't hold partially created GL objects
-                bufferState = resourceManager.handleBufferUploadFailure(bufferState);
-                this.meshGenerated = false;
-            }
-       } finally {
-            stateManager.removeState(ChunkState.MESH_CPU_READY); // Data has been processed (or attempt failed)
+            logger.log(Level.SEVERE, "CRITICAL: Error during GL buffer upload for chunk (" + x + ", " + z + ")", e);
+            stateManager.removeState(CcoChunkState.MESH_CPU_READY);
+            dirtyTracker.markMeshDirtyOnly();
+        } finally {
+            pendingMmsMeshData = null;
         }
     }
+
     /**
-     * Updates mesh data from ChunkMeshData result
-     */
-    private void updateMeshDataFromResult(ChunkMeshData meshData) {
-        // Free old mesh data arrays before assigning new ones
-        freeMeshDataArrays();
-        
-        vertexData = meshData.getVertexData();
-        textureData = meshData.getTextureData();
-        normalData = meshData.getNormalData();
-        isWaterData = meshData.getIsWaterData();
-        isAlphaTestedData = meshData.getIsAlphaTestedData();
-        indexData = meshData.getIndexData();
-        indexCount = meshData.getIndexCount();
-    }
-    
-    // Mesh data
-    private float[] vertexData;
-    private float[] textureData;
-    private float[] normalData;
-    private float[] isWaterData;
-    private float[] isAlphaTestedData; // New array for isAlphaTested flags
-    private int[] indexData;
-      /**
-     * Renders the chunk.
+     * Renders the chunk using MMS API.
      */
     public void render() {
-        if (!stateManager.isRenderable() || indexCount == 0) {
+        // Debug: Always log first few chunks
+        if (debugRenderCallCount < 5) {
+            System.out.println("[Chunk.render] Called for (" + x + "," + z + "): " +
+                "renderable=" + stateManager.isRenderable() +
+                " meshGen=" + meshGenerated +
+                " handle=" + (renderableHandle != null));
+            debugRenderCallCount++;
+        }
+
+        if (!stateManager.isRenderable() || !meshGenerated || renderableHandle == null) {
             return;
         }
-        
-        bufferOperations.render(bufferState, indexCount);
+
+        // Debug first few successful renders
+        if (debugRenderSuccessCount < 3) {
+            System.out.println("[Chunk.render] SUCCESS: Rendering chunk at (" + x + "," + z + ") with " +
+                renderableHandle.getIndexCount() + " indices");
+            debugRenderSuccessCount++;
+        }
+
+        renderableHandle.render();
     }
-    
+
+    private static int debugRenderCallCount = 0;
+    private static int debugRenderSuccessCount = 0;
+
+    // ===== Coordinate Operations =====
+
+    /**
+     * Gets the position of this chunk as a ChunkPosition object.
+     * This is the preferred method for accessing chunk coordinates following SOLID principles.
+     */
+    public ChunkPosition getPosition() {
+        return new ChunkPosition(x, z);
+    }
+
     /**
      * Converts a local X coordinate to a world X coordinate.
      */
     public int getWorldX(int localX) {
-        return ChunkCoordinateUtils.localToWorldX(x, localX);
+        return CcoCoordinates.localToWorldX(x, localX);
     }
-    
+
     /**
      * Converts a local Z coordinate to a world Z coordinate.
      */
     public int getWorldZ(int localZ) {
-        return ChunkCoordinateUtils.localToWorldZ(z, localZ);
+        return CcoCoordinates.localToWorldZ(z, localZ);
     }
 
     public int getChunkX() {
@@ -254,22 +247,24 @@ public class Chunk {
     }
 
     public int getX() {
-        return this.x;
+        return x;
     }
 
     public int getZ() {
-        return this.z;
+        return z;
     }
 
+    // ===== State Management (CCO-based) =====
+
     public boolean areFeaturesPopulated() {
-        return stateManager.hasState(ChunkState.FEATURES_POPULATED);
+        return stateManager.hasState(CcoChunkState.FEATURES_POPULATED) ||
+               metadata.hasStructures();
     }
 
     public void setFeaturesPopulated(boolean featuresPopulated) {
         if (featuresPopulated) {
-            stateManager.addState(ChunkState.FEATURES_POPULATED);
-        } else {
-            stateManager.removeState(ChunkState.FEATURES_POPULATED);
+            stateManager.addState(CcoChunkState.FEATURES_POPULATED);
+            metadata = metadata.withFeaturesPopulated();
         }
     }
 
@@ -278,189 +273,170 @@ public class Chunk {
     }
 
     public boolean isDataReadyForGL() {
-        return stateManager.hasState(ChunkState.MESH_CPU_READY);
+        return stateManager.hasState(CcoChunkState.MESH_CPU_READY);
     }
 
-    // Getter for mesh generation status
     public boolean isMeshDataGenerationScheduledOrInProgress() {
-        return stateManager.hasState(ChunkState.MESH_GENERATING);
+        return stateManager.hasState(CcoChunkState.MESH_GENERATING);
     }
 
-    // Package-private setter for mesh generation status, called by World
-    void setMeshDataGenerationScheduledOrInProgress(boolean status) {
-        if (status) {
-            stateManager.markMeshGenerating();
-        } else {
-            stateManager.removeState(ChunkState.MESH_GENERATING);
-        }
-    }
-    
-    /**
-     * Gets the state manager for this chunk.
-     * @return The chunk's state manager
-     */
-    public ChunkInternalStateManager getStateManager() {
-        return stateManager;
-    }
-    
-    /**
-     * Gets the data operations for this chunk.
-     * @return The chunk's data operations
-     */
-    public ChunkDataOperations getDataOperations() {
-        return dataOperations;
-    }
-    
-    /**
-     * Gets the chunk data for this chunk.
-     * @return The chunk's data
-     */
-    public ChunkDataBuffer getChunkData() {
-        return chunkData;
-    }
-    
-    /**
-     * Gets the resource manager for this chunk.
-     * @return The chunk's resource manager
-     */
-    public ChunkResourceManager getResourceManager() {
-        return resourceManager;
-    }
-    
-    /**
-     * Gets the current mesh data as a ChunkMeshData object.
-     * @return Current mesh data, or empty mesh data if no mesh exists
-     */
-    private ChunkMeshData getCurrentMeshData() {
-        if (vertexData == null || indexData == null || indexCount == 0) {
-            return ChunkMeshData.empty();
-        }
-        return new ChunkMeshData(vertexData, textureData, normalData, 
-                               isWaterData, isAlphaTestedData, indexData, indexCount);
-    }
-     /**
-      * Cleans up CPU-side resources. Safe to call from any thread.
-      */
-     public void cleanupCpuResources() {
-         ChunkMeshData meshData = getCurrentMeshData();
-         resourceManager.cleanupCpuResources(meshData);
-         freeMeshDataArrays();
-         indexCount = 0;
+    // ===== Dirty Tracking (CCO-based) =====
 
-         // CRITICAL FIX: Mark mesh as dirty to ensure regeneration is attempted
-         // Without this, chunks with cleared resources won't be queued for mesh rebuild
-         stateManager.markMeshDirty();
-     }
- 
-     /**
-      * Cleans up GPU resources. MUST be called from the main OpenGL thread.
-      */
-     public void cleanupGpuResources() {
-         meshGenerated = resourceManager.cleanupGpuResources(bufferState, meshGenerated);
-         bufferState = ChunkBufferState.empty();
-         
-         // Clean up buffer operations resources
-         bufferOperations.cleanup();
-     }
     /**
-     * Frees mesh data arrays to reduce memory usage.
-     * This is critical for preventing memory leaks when mesh data is regenerated.
-     */
-    private void freeMeshDataArrays() {
-        vertexData = null;
-        textureData = null;
-        normalData = null;
-        isWaterData = null;
-        isAlphaTestedData = null;
-        indexData = null;
-    }
-    
-    // ===== Save/Load Methods =====
-    
-    /**
-     * Gets whether this chunk has been modified and needs saving.
+     * Checks if the chunk has been modified since last save.
      */
     public boolean isDirty() {
-        return isDirty;
-    }
-    
-    /**
-     * Sets whether this chunk has been modified and needs saving.
-     */
-    public void setDirty(boolean isDirty) {
-        this.isDirty = isDirty;
-        if (isDirty) {
-            this.lastModified = LocalDateTime.now();
-        }
-    }
-    
-    /**
-     * Marks this chunk as clean (not needing to be saved).
-     */
-    public void markClean() {
-        this.isDirty = false;
-        this.lastModified = LocalDateTime.now();
-    }
-    
-    /**
-     * Gets the last modification timestamp of this chunk.
-     */
-    public LocalDateTime getLastModified() {
-        return lastModified;
-    }
-    
-    /**
-     * Sets the last modification timestamp of this chunk.
-     */
-    public void setLastModified(LocalDateTime lastModified) {
-        this.lastModified = lastModified;
-    }
-    
-    /**
-     * Gets whether this chunk was generated by player actions.
-     */
-    public boolean isGeneratedByPlayer() {
-        return generatedByPlayer;
-    }
-    
-    /**
-     * Sets whether this chunk was generated by player actions.
-     */
-    public void setGeneratedByPlayer(boolean generatedByPlayer) {
-        this.generatedByPlayer = generatedByPlayer;
-    }
-    
-    /**
-     * Gets whether features have been populated in this chunk.
-     * Renamed from areFeaturesPopulated for consistency with ChunkData.
-     */
-    public boolean isFeaturesPopulated() {
-        return stateManager.hasState(ChunkState.FEATURES_POPULATED);
+        return dirtyTracker.isDataDirty();
     }
 
     /**
-     * Gets the block array for this chunk.
-     * Used by binary save/load system.
-     * @return The 3D block array
-     */
-    public BlockType[][][] getBlocks() {
-        return chunkData.getBlocks();
-    }
-
-    /**
-     * Sets the block array for this chunk.
-     * Used by binary save/load system.
-     * @param blocks The 3D block array to set
-     */
-    public void setBlocks(BlockType[][][] blocks) {
-        chunkData.setBlocks(blocks);
-    }
-
-    /**
-     * Marks this chunk as dirty.
-     * Alias for setDirty(true) used by binary save/load system.
+     * Marks the chunk as dirty (needing to be saved).
      */
     public void markDirty() {
-        setDirty(true);
+        dirtyTracker.markDataDirtyOnly();
+        metadata = metadata.withUpdatedTimestamp();
+    }
+
+    /**
+     * Marks the chunk as clean (saved to disk).
+     */
+    public void markClean() {
+        dirtyTracker.clearDataDirty();
+    }
+
+    // ===== Serialization (CCO-based) =====
+
+    /**
+     * Creates a serializable snapshot of this chunk using CCO API.
+     * This is the preferred method for serialization.
+     */
+    public CcoSerializableSnapshot createSnapshot() {
+        return CcoSnapshotBuilder.create(metadata, blocks);
+    }
+
+    /**
+     * Loads chunk data from a CCO snapshot.
+     * This is the preferred method for deserialization.
+     */
+    public void loadFromSnapshot(CcoSerializableSnapshot snapshot) {
+        // Update metadata from snapshot
+        this.metadata = new CcoChunkMetadata(
+            snapshot.getChunkX(),
+            snapshot.getChunkZ(),
+            metadata.getCreatedTime(),
+            snapshot.getLastModified().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            metadata.getGenerationSeed(),
+            metadata.hasStructures(),
+            snapshot.isFeaturesPopulated(),
+            metadata.hasEntities()
+        );
+
+        // Copy block data
+        BlockType[][][] snapshotBlocks = snapshot.getBlocks();
+        BlockType[][][] currentBlocks = blocks.getUnderlyingArray();
+        for (int ix = 0; ix < 16; ix++) {
+            for (int iy = 0; iy < 256; iy++) {
+                System.arraycopy(snapshotBlocks[ix][iy], 0, currentBlocks[ix][iy], 0, 16);
+            }
+        }
+
+        dirtyTracker.markBlockChanged();
+        stateManager.removeState(CcoChunkState.MESH_GPU_UPLOADED);
+        stateManager.removeState(CcoChunkState.MESH_CPU_READY);
+    }
+
+
+    /**
+     * Gets the last modification timestamp.
+     */
+    public java.time.LocalDateTime getLastModified() {
+        return metadata.getLastModified();
+    }
+
+    /**
+     * Sets the last modification timestamp. Used by save system.
+     */
+    public void setLastModified(java.time.LocalDateTime lastModified) {
+        // Convert LocalDateTime to millis and update metadata
+        long millis = lastModified.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        this.metadata = new CcoChunkMetadata(
+            metadata.getChunkX(),
+            metadata.getChunkZ(),
+            metadata.getCreatedTime(),
+            millis,
+            metadata.getGenerationSeed(),
+            metadata.hasStructures(),
+            metadata.needsDecoration(),
+            metadata.hasEntities()
+        );
+    }
+
+    // ===== Resource Cleanup =====
+
+    /**
+     * Cleans up CPU-side resources. Safe to call from any thread.
+     */
+    public void cleanupCpuResources() {
+        pendingMmsMeshData = null;
+    }
+
+    /**
+     * Cleans up GPU resources using MMS API. MUST be called from the main OpenGL thread.
+     */
+    public void cleanupGpuResources() {
+        if (renderableHandle != null) {
+            renderableHandle.close();
+            renderableHandle = null;
+        }
+        meshGenerated = false;
+    }
+
+    // ===== CCO Component Access =====
+
+    /**
+     * Gets the CCO state manager for this chunk.
+     */
+    public CcoAtomicStateManager getCcoStateManager() {
+        return stateManager;
+    }
+
+    /**
+     * Gets the CCO block reader for efficient block access.
+     * Prefer this over getBlocks() for performance-critical read operations.
+     */
+    public CcoBlockReader getBlockReader() {
+        return reader;
+    }
+
+    /**
+     * Gets the CCO dirty tracker for this chunk.
+     */
+    public CcoDirtyTracker getCcoDirtyTracker() {
+        return dirtyTracker;
+    }
+
+    // ===== MMS Mesh Handle Management =====
+
+    /**
+     * Gets the MMS renderable handle for this chunk.
+     * Used by MmsMeshPipeline for managing GPU resources.
+     *
+     * @return Renderable handle or null if not uploaded
+     */
+    public MmsRenderableHandle getMmsRenderableHandle() {
+        return renderableHandle;
+    }
+
+    /**
+     * Sets the MMS renderable handle for this chunk.
+     * Used by MmsMeshPipeline after GPU upload.
+     *
+     * @param handle Renderable handle
+     */
+    public void setMmsRenderableHandle(MmsRenderableHandle handle) {
+        this.renderableHandle = handle;
+        if (handle != null) {
+            this.meshGenerated = true;
+        }
     }
 }

@@ -2,7 +2,10 @@ package com.stonebreak.ui;
 
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.Item;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
+import com.stonebreak.ui.hotbar.styling.HotbarTheme;
 
 /**
  * UI module for managing hotbar display and interaction logic.
@@ -16,13 +19,15 @@ public class HotbarScreen {
     private String selectedItemName;
     private float tooltipAlpha;
     private float tooltipTimer;
-    private static final float TOOLTIP_DISPLAY_DURATION = 1.5f; // seconds
-    private static final float TOOLTIP_FADE_DURATION = 0.5f;   // seconds
-    
-    // Hotbar visual constants
-    public static final int SLOT_SIZE = 48;
-    public static final int SLOT_PADDING = 4;
-    public static final int HOTBAR_Y_OFFSET = 50;
+
+    // Use constants from theme for consistency
+    private static final float TOOLTIP_DISPLAY_DURATION = HotbarTheme.Animation.TOOLTIP_DISPLAY_DURATION;
+    private static final float TOOLTIP_FADE_DURATION = HotbarTheme.Animation.TOOLTIP_FADE_DURATION;
+
+    // Delegate visual constants to the layout calculator for consistency
+    public static final int SLOT_SIZE = HotbarLayoutCalculator.getSlotSize();
+    public static final int SLOT_PADDING = HotbarLayoutCalculator.getSlotPadding();
+    public static final int HOTBAR_Y_OFFSET = HotbarLayoutCalculator.getHotbarYOffset();
     
     public HotbarScreen(Inventory inventory) {
         this.inventory = inventory;
@@ -50,11 +55,11 @@ public class HotbarScreen {
     }
     
     /**
-     * Displays a tooltip for the selected hotbar item.
+     * Displays a tooltip for the selected hotbar item (supports all Item types).
      */
-    public void displayItemTooltip(BlockType blockType) {
-        if (blockType != null && blockType != BlockType.AIR) {
-            this.selectedItemName = blockType.getName();
+    public void displayItemTooltip(Item item) {
+        if (item != null && (!(item instanceof BlockType) || item != BlockType.AIR)) {
+            this.selectedItemName = item.getName();
             this.tooltipTimer = TOOLTIP_DISPLAY_DURATION + TOOLTIP_FADE_DURATION;
             this.tooltipAlpha = 1.0f;
         } else {
@@ -62,6 +67,28 @@ public class HotbarScreen {
             this.tooltipTimer = 0.0f;
             this.tooltipAlpha = 0.0f;
         }
+    }
+
+    /**
+     * Displays a tooltip for the selected hotbar item from an ItemStack.
+     */
+    public void displayItemTooltip(ItemStack itemStack) {
+        if (itemStack != null && !itemStack.isEmpty()) {
+            displayItemTooltip(itemStack.getItem());
+        } else {
+            this.selectedItemName = null;
+            this.tooltipTimer = 0.0f;
+            this.tooltipAlpha = 0.0f;
+        }
+    }
+
+    /**
+     * Displays a tooltip for the selected hotbar item (legacy BlockType support).
+     * @deprecated Use displayItemTooltip(Item) or displayItemTooltip(ItemStack) instead
+     */
+    @Deprecated
+    public void displayItemTooltip(BlockType blockType) {
+        displayItemTooltip((Item) blockType);
     }
     
     /**
@@ -100,72 +127,34 @@ public class HotbarScreen {
     }
     
     /**
-     * Calculates hotbar dimensions and positioning.
+     * Calculates hotbar dimensions and positioning using the new layout calculator.
      */
-    public HotbarLayout calculateLayout(int screenWidth, int screenHeight) {
-        ItemStack[] hotbarItems = getHotbarSlots();
-        int hotbarWidth = hotbarItems.length * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int hotbarStartX = (screenWidth - hotbarWidth) / 2;
-        int hotbarStartY = screenHeight - SLOT_SIZE - HOTBAR_Y_OFFSET;
-        
-        return new HotbarLayout(hotbarStartX, hotbarStartY, hotbarWidth, SLOT_SIZE + SLOT_PADDING * 2);
+    public HotbarLayoutCalculator.HotbarLayout calculateLayout(int screenWidth, int screenHeight) {
+        return HotbarLayoutCalculator.calculateLayout(screenWidth, screenHeight);
     }
     
     /**
-     * Calculates the position of a specific hotbar slot.
+     * Calculates the position of a specific hotbar slot using the new layout calculator.
      */
-    public SlotPosition calculateSlotPosition(int slotIndex, HotbarLayout layout) {
-        int slotX = layout.startX + SLOT_PADDING + slotIndex * (SLOT_SIZE + SLOT_PADDING);
-        int slotY = layout.startY;
-        return new SlotPosition(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
+    public HotbarLayoutCalculator.SlotPosition calculateSlotPosition(int slotIndex, HotbarLayoutCalculator.HotbarLayout layout) {
+        return HotbarLayoutCalculator.calculateSlotPosition(slotIndex, layout);
     }
     
     /**
-     * Checks if a point is within a hotbar slot.
+     * Checks if a point is within a hotbar slot using the new layout calculator.
      */
-    public boolean isPointInSlot(float mouseX, float mouseY, int slotIndex, HotbarLayout layout) {
-        SlotPosition pos = calculateSlotPosition(slotIndex, layout);
-        return mouseX >= pos.x && mouseX <= pos.x + pos.width &&
-               mouseY >= pos.y && mouseY <= pos.y + pos.height;
+    public boolean isPointInSlot(float mouseX, float mouseY, int slotIndex, HotbarLayoutCalculator.HotbarLayout layout) {
+        return HotbarLayoutCalculator.isPointInSlot(mouseX, mouseY, slotIndex, layout);
     }
     
     /**
-     * Gets the slot index at the given coordinates, or -1 if none.
+     * Gets the slot index at the given coordinates, or -1 if none using the new layout calculator.
      */
-    public int getSlotIndexAt(float mouseX, float mouseY, HotbarLayout layout) {
-        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-            if (isPointInSlot(mouseX, mouseY, i, layout)) {
-                return i;
-            }
-        }
-        return -1;
+    public int getSlotIndexAt(float mouseX, float mouseY, HotbarLayoutCalculator.HotbarLayout layout) {
+        return HotbarLayoutCalculator.getSlotIndexAt(mouseX, mouseY, layout);
     }
     
-    /**
-     * Data class for hotbar layout information.
-     */
-    public static class HotbarLayout {
-        public final int startX, startY, width, height;
-        
-        public HotbarLayout(int startX, int startY, int width, int height) {
-            this.startX = startX;
-            this.startY = startY;
-            this.width = width;
-            this.height = height;
-        }
-    }
-    
-    /**
-     * Data class for slot position information.
-     */
-    public static class SlotPosition {
-        public final int x, y, width, height;
-        
-        public SlotPosition(int x, int y, int width, int height) {
-            this.x = x;
-            this.y = y;
-            this.width = width;
-            this.height = height;
-        }
-    }
+    // Data classes moved to HotbarLayoutCalculator for consistency
+    // Use HotbarLayoutCalculator.HotbarLayout instead of the old HotbarLayout
+    // Use HotbarLayoutCalculator.SlotPosition instead of the old SlotPosition
 }

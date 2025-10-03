@@ -3,6 +3,9 @@ package com.stonebreak.rendering.core.API.commonBlockResources;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.textures.TextureAtlas;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinitionRegistry;
+import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
@@ -14,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Optional;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;

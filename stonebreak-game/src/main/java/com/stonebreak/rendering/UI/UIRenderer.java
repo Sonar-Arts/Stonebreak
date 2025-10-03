@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI;
 import java.nio.FloatBuffer;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.chat.ChatSystem;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.items.Item;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.shaders.ShaderProgram;
@@ -224,14 +224,35 @@ public class UIRenderer {
      * @param screenSlotHeight Height of the slot
      * @param textureAtlas The texture atlas containing block textures
      */
-    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY, 
+    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
                                 int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas) {
         if (blockIconRenderer == null) {
             throw new IllegalStateException("BlockIconRenderer not initialized. Call initializeBlockIconRenderer() first.");
         }
         blockIconRenderer.draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas);
     }
-    
+
+    /**
+     * Renders a 3D block icon in the specified slot area with dragged item support.
+     * Delegates to BlockIconRenderer.
+     *
+     * @param shaderProgram The shader program to use for rendering
+     * @param type The block type to render
+     * @param screenSlotX X coordinate of the slot
+     * @param screenSlotY Y coordinate of the slot
+     * @param screenSlotWidth Width of the slot
+     * @param screenSlotHeight Height of the slot
+     * @param textureAtlas The texture atlas containing block textures
+     * @param isDraggedItem If true, renders closer to camera to avoid z-fighting
+     */
+    public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
+                                int screenSlotWidth, int screenSlotHeight, TextureAtlas textureAtlas, boolean isDraggedItem) {
+        if (blockIconRenderer == null) {
+            throw new IllegalStateException("BlockIconRenderer not initialized. Call initializeBlockIconRenderer() first.");
+        }
+        blockIconRenderer.draw3DItemInSlot(shaderProgram, type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight, textureAtlas, isDraggedItem);
+    }
+
     // ===== Depth Curtain Rendering Delegation =====
     
     public void renderInventoryDepthCurtain() {
@@ -359,7 +380,14 @@ public class UIRenderer {
     public ItemIconRenderer getItemIconRenderer() {
         return itemIconRenderer;
     }
-    
+
+    /**
+     * Get the chat renderer for chat-specific interactions.
+     */
+    public ChatRenderer getChatRenderer() {
+        return chatRenderer;
+    }
+
     public void cleanup() {
         // Cleanup OpenGL quad renderer
         if (openGLQuadRenderer != null) {

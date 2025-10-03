@@ -92,41 +92,64 @@ public class EntityRenderer {
             #version 330 core
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec2 aTexCoord;
-            
+
             uniform mat4 model;
             uniform mat4 view;
             uniform mat4 projection;
-            
+
             out vec2 TexCoord;
-            
+            out vec3 FragWorldPos;
+
             void main() {
-                gl_Position = projection * view * model * vec4(aPos, 1.0);
+                vec4 worldPos = model * vec4(aPos, 1.0);
+                FragWorldPos = worldPos.xyz;
+                gl_Position = projection * view * worldPos;
                 TexCoord = aTexCoord;
             }
             """;
-        
+
         String fragmentShader = """
             #version 330 core
             out vec4 FragColor;
-            
+
             in vec2 TexCoord;
+            in vec3 FragWorldPos;
+
             uniform sampler2D textureSampler;
-            
+            uniform vec3 cameraPos;
+            uniform float underwaterFogDensity;
+            uniform vec3 underwaterFogColor;
+
             void main() {
-                FragColor = texture(textureSampler, TexCoord);
+                vec4 texColor = texture(textureSampler, TexCoord);
+
+                // Apply underwater fog if density > 0
+                if (underwaterFogDensity > 0.0) {
+                    float distance = length(FragWorldPos - cameraPos);
+                    float fogFactor = exp(-underwaterFogDensity * distance);
+                    fogFactor = clamp(fogFactor, 0.0, 1.0);
+
+                    // Blend texture color with fog color
+                    FragColor = mix(vec4(underwaterFogColor, texColor.a), texColor, fogFactor);
+                } else {
+                    FragColor = texColor;
+                }
             }
             """;
-        
+
         try {
             shader = new ShaderProgram();
             shader.createVertexShader(vertexShader);
             shader.createFragmentShader(fragmentShader);
             shader.link();
-            
+
             shader.createUniform("model");
             shader.createUniform("view");
             shader.createUniform("projection");
             shader.createUniform("textureSampler");
+            shader.createUniform("cameraPos");
+            shader.createUniform("underwaterFogDensity");
+            shader.createUniform("underwaterFogColor");
         } catch (Exception e) {
             System.err.println("Failed to create entity shader: " + e.getMessage());
         }
@@ -377,22 +400,40 @@ public class EntityRenderer {
      * Render an entity. Called by the main Renderer.
      */
     public void renderEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        renderEntity(entity, viewMatrix, projectionMatrix, null, null);
+    }
+
+    /**
+     * Render an entity with underwater fog support.
+     * @param entity The entity to render
+     * @param viewMatrix The view matrix
+     * @param projectionMatrix The projection matrix
+     * @param world The world (for underwater detection), can be null
+     * @param cameraPos The camera position (for fog distance calculation), can be null
+     */
+    public void renderEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                            com.stonebreak.world.World world, Vector3f cameraPos) {
         if (!initialized || !entity.isAlive()) return;
-        
+
         EntityType entityType = entity.getType();
-        
+
         // Check if we have a complex model for this entity type
         if (vaoMaps.containsKey(entityType) && !vaoMaps.get(entityType).isEmpty()) {
-            renderComplexEntity(entity, viewMatrix, projectionMatrix);
+            renderComplexEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
         } else {
             // Fallback to simple cube rendering
-            renderSimpleEntity(entity, viewMatrix, projectionMatrix);
+            renderSimpleEntity(entity, viewMatrix, projectionMatrix, world, cameraPos);
         }
     }
     
     private void renderComplexEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        renderComplexEntity(entity, viewMatrix, projectionMatrix, null, null);
+    }
+
+    private void renderComplexEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                     com.stonebreak.world.World world, Vector3f cameraPos) {
         EntityType entityType = entity.getType();
-        
+
         // Save current OpenGL state
         int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
         int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
@@ -400,23 +441,45 @@ public class EntityRenderer {
         int previousElementArrayBuffer = GL11.glGetInteger(GL15.GL_ELEMENT_ARRAY_BUFFER_BINDING);
         int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
         boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-        
+
         // Ensure clean state for entity rendering
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthFunc(GL11.GL_LESS);
         // Disable face culling to make textures visible from both sides
         GL11.glDisable(GL11.GL_CULL_FACE);
-        
+
         shader.bind();
-        
+
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
         shader.setUniform("textureSampler", 0);
-        
+
         // Set common uniforms
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
+
+        // Calculate underwater fog parameters
+        float fogDensity = 0.0f;
+        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f); // Blue-cyan water color
+
+        if (world != null && cameraPos != null) {
+            // Check if camera (player) is underwater
+            int camX = (int) Math.floor(cameraPos.x);
+            int camY = (int) Math.floor(cameraPos.y);
+            int camZ = (int) Math.floor(cameraPos.z);
+            boolean cameraUnderwater = world.isPositionUnderwater(camX, camY, camZ);
+
+            // Apply fog only if camera is underwater
+            if (cameraUnderwater) {
+                fogDensity = 0.15f; // Moderate fog density for nice underwater effect
+            }
+        }
+
+        // Set underwater fog uniforms
+        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shader.setUniform("underwaterFogDensity", fogDensity);
+        shader.setUniform("underwaterFogColor", fogColor);
         
         // Entity position is now correctly positioned due to baked transformations in JSON
         Vector3f renderPosition = new Vector3f(entity.getPosition());
@@ -577,26 +640,53 @@ public class EntityRenderer {
     }
     
     private void renderSimpleEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        renderSimpleEntity(entity, viewMatrix, projectionMatrix, null, null);
+    }
+
+    private void renderSimpleEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                    com.stonebreak.world.World world, Vector3f cameraPos) {
         shader.bind();
-        
+
         // Bind texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
         shader.setUniform("textureSampler", 0);
-        
+
         // Set uniforms
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
-        
+
+        // Calculate underwater fog parameters
+        float fogDensity = 0.0f;
+        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f); // Blue-cyan water color
+
+        if (world != null && cameraPos != null) {
+            // Check if camera (player) is underwater
+            int camX = (int) Math.floor(cameraPos.x);
+            int camY = (int) Math.floor(cameraPos.y);
+            int camZ = (int) Math.floor(cameraPos.z);
+            boolean cameraUnderwater = world.isPositionUnderwater(camX, camY, camZ);
+
+            // Apply fog only if camera is underwater
+            if (cameraUnderwater) {
+                fogDensity = 0.15f; // Moderate fog density for nice underwater effect
+            }
+        }
+
+        // Set underwater fog uniforms
+        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        shader.setUniform("underwaterFogDensity", fogDensity);
+        shader.setUniform("underwaterFogColor", fogColor);
+
         // Entity position is now correctly positioned due to baked transformations in JSON
         Vector3f renderPosition = new Vector3f(entity.getPosition());
         // Removed Y-offset: renderPosition.y += entity.getHeight() / 2.0f;
-        
+
         Matrix4f modelMatrix = new Matrix4f()
             .translate(renderPosition)
             .rotateY((float) Math.toRadians(entity.getRotation().y))
             .scale(entity.getScale());
-        
+
         shader.setUniform("model", modelMatrix);
         
         // Render simple cube

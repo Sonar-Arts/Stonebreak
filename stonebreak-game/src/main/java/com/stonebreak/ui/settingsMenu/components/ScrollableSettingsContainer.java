@@ -142,6 +142,12 @@ public class ScrollableSettingsContainer {
         String currentStyleName = SettingsConfig.CROSSHAIR_STYLE_NAMES[stateManager.getSelectedCrosshairStyleIndex()];
         String crosshairStyleText = "Crosshair: " + currentStyleName;
         stateManager.getCrosshairStyleButton().setText(crosshairStyleText);
+
+        String leafTransparencyText = "Leaf Transparency: " + (settings.getLeafTransparency() ? "ON" : "OFF");
+        stateManager.getLeafTransparencyButton().setText(leafTransparencyText);
+
+        String waterShaderText = "Water Animation: " + (settings.getWaterShaderEnabled() ? "ON" : "OFF");
+        stateManager.getWaterShaderButton().setText(waterShaderText);
     }
     
     /**
@@ -168,6 +174,14 @@ public class ScrollableSettingsContainer {
             case CROSSHAIR_SIZE:
                 stateManager.getCrosshairSizeSlider().setPosition(x, y);
                 stateManager.getCrosshairSizeSlider().render(stateManager.getUIRenderer());
+                break;
+            case LEAF_TRANSPARENCY:
+                stateManager.getLeafTransparencyButton().setPosition(x - SettingsConfig.BUTTON_WIDTH/2, y);
+                stateManager.getLeafTransparencyButton().render(stateManager.getUIRenderer());
+                break;
+            case WATER_SHADER:
+                stateManager.getWaterShaderButton().setPosition(x - SettingsConfig.BUTTON_WIDTH/2, y);
+                stateManager.getWaterShaderButton().render(stateManager.getUIRenderer());
                 break;
         }
     }

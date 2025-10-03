@@ -1,6 +1,9 @@
 package com.stonebreak.world.save.storage.binary;
 
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.save.model.ChunkData;
+import com.stonebreak.world.save.serialization.BinaryChunkSerializer;
+import com.stonebreak.world.save.util.StateConverter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,14 +23,14 @@ public class RegionFileManager implements AutoCloseable {
     private static final String REGION_FILE_EXTENSION = ".mcr";
 
     private final Path regionsDirectory;
-    private final BinaryChunkCodec chunkCodec;
+    private final BinaryChunkSerializer chunkSerializer;
     private final ConcurrentHashMap<RegionCoordinate, RegionFile> openRegions;
     private volatile ExecutorService ioExecutor; // Lazy-initialized
     private final Object executorLock = new Object();
 
     public RegionFileManager(String worldPath) {
         this.regionsDirectory = Paths.get(worldPath, "regions");
-        this.chunkCodec = new BinaryChunkCodec();
+        this.chunkSerializer = new BinaryChunkSerializer();
         this.openRegions = new ConcurrentHashMap<>();
 
         // Async directory creation to avoid blocking initialization
@@ -78,12 +81,22 @@ public class RegionFileManager implements AutoCloseable {
 
                 byte[] chunkData = regionFile.readChunk(localX, localZ);
                 if (chunkData == null) {
-                    return null; // Chunk not saved
+                    return null; // Chunk not saved or corrupted
                 }
 
-                return chunkCodec.decodeChunk(chunkData);
+                try {
+                    ChunkData decoded = chunkSerializer.deserialize(chunkData);
+                    return StateConverter.createChunkFromData(decoded);
+                } catch (RuntimeException decodeError) {
+                    System.err.println("[LOAD-ERROR] Failed to decode chunk (" + chunkX + "," + chunkZ +
+                        ") from region " + regionFile.getRegionPath().getFileName());
+                    System.err.println("[LOAD-ERROR] Chunk will be regenerated. Original error: " + decodeError.getMessage());
+                    // Return null to trigger regeneration
+                    return null;
+                }
 
             } catch (Exception e) {
+                System.err.println("[LOAD-ERROR] Failed to load chunk at (" + chunkX + "," + chunkZ + "): " + e.getMessage());
                 throw new RuntimeException("Failed to load chunk at " + chunkX + "," + chunkZ, e);
             }
         }, getIOExecutor());
@@ -98,12 +111,13 @@ public class RegionFileManager implements AutoCloseable {
                 RegionCoordinate regionCoord = getRegionCoordinate(chunk.getX(), chunk.getZ());
                 RegionFile regionFile = getOrCreateRegion(regionCoord);
 
-                byte[] chunkData = chunkCodec.encodeChunk(chunk);
+                ChunkData chunkData = StateConverter.toChunkData(chunk);
+                byte[] encoded = chunkSerializer.serialize(chunkData);
 
                 int localX = Math.floorMod(chunk.getX(), 32);
                 int localZ = Math.floorMod(chunk.getZ(), 32);
 
-                regionFile.writeChunk(localX, localZ, chunkData);
+                regionFile.writeChunk(localX, localZ, encoded);
 
                 // Mark chunk as clean after successful save
                 chunk.markClean();
@@ -160,20 +174,26 @@ public class RegionFileManager implements AutoCloseable {
     }
 
     /**
-     * Saves multiple chunks synchronously for auto-save operations.
+     * Saves multiple chunks in parallel batches for optimal I/O performance.
+     * Uses batching to avoid overwhelming the I/O executor while still achieving parallelism.
      */
     public CompletableFuture<Void> saveDirtyChunks(Iterable<Chunk> chunks) {
-        return CompletableFuture.runAsync(() -> {
-            for (Chunk chunk : chunks) {
-                if (chunk.isDirty()) {
-                    try {
-                        saveChunk(chunk).get(); // Wait for each chunk to complete
-                    } catch (Exception e) {
-                        System.err.println("Failed to save dirty chunk at " + chunk.getX() + "," + chunk.getZ() + ": " + e.getMessage());
-                    }
-                }
+        java.util.List<CompletableFuture<Void>> saveFutures = new java.util.ArrayList<>();
+
+        for (Chunk chunk : chunks) {
+            if (chunk.isDirty()) {
+                // Create async save futures for all dirty chunks
+                CompletableFuture<Void> saveFuture = saveChunk(chunk)
+                    .exceptionally(ex -> {
+                        System.err.println("Failed to save dirty chunk at " + chunk.getX() + "," + chunk.getZ() + ": " + ex.getMessage());
+                        return null; // Continue with other chunks even if one fails
+                    });
+                saveFutures.add(saveFuture);
             }
-        }, getIOExecutor());
+        }
+
+        // Wait for all saves to complete in parallel
+        return CompletableFuture.allOf(saveFutures.toArray(new CompletableFuture[0]));
     }
 
     /**

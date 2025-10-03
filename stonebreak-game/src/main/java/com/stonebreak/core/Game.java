@@ -5,7 +5,6 @@ import java.util.concurrent.*;
 
 import com.stonebreak.audio.*;
 import com.stonebreak.blocks.*;
-import com.stonebreak.chat.*;
 import com.stonebreak.config.*;
 import com.stonebreak.crafting.*;
 import com.stonebreak.input.*;
@@ -15,12 +14,19 @@ import com.stonebreak.rendering.*;
 import com.stonebreak.rendering.CowTextureAtlas;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.ui.*;
+import com.stonebreak.ui.chat.ChatSystem;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
 import com.stonebreak.world.operations.WorldConfiguration;
-import com.stonebreak.world.save.managers.WorldSaveSystem;
+import com.stonebreak.world.save.SaveService;
+import com.stonebreak.world.save.model.WorldData;
+import com.stonebreak.world.save.model.PlayerData;
+import com.stonebreak.world.save.util.StateConverter;
 import org.joml.Vector3f;
 
 /**
@@ -40,7 +46,7 @@ public class Game {
     private PauseMenu pauseMenu;
     private InventoryScreen inventoryScreen; // Added InventoryScreen
     private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
-    private RecipeBookScreen recipeBookScreen; // Added RecipeBookScreen
+    private RecipeScreen recipeScreen; // Added RecipeBookScreen
     private WaterEffects waterEffects; // Water effects manager
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
@@ -49,11 +55,13 @@ public class Game {
     private SoundSystem soundSystem; // Sound system
     private ChatSystem chatSystem; // Chat system
     private CraftingManager craftingManager; // Crafting manager
+    private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
-    private WorldSaveSystem worldSaveSystem; // World save/load system for manual saves
+    private SaveService saveService; // World save/load system
+    private WorldData currentWorldData; // Current world metadata
     private String currentWorldName; // Current world name for save system initialization
     private long currentWorldSeed; // Current world seed for save system initialization
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
@@ -74,7 +82,8 @@ public class Game {
     // Cheat system
     private boolean cheatsEnabled = false;
 
-    // Window dimensions
+    // Window dimensions and handle
+    private long window;
     private int windowWidth;
     private int windowHeight;
 
@@ -98,11 +107,13 @@ public class Game {
         }
         return instance;
     }
+
     /**
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
     public void initCoreComponents(Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+        this.window = window; // Store window handle for clipboard operations
         this.renderer = renderer;
         this.textureAtlas = textureAtlas; // Store TextureAtlas
         this.inputHandler = inputHandler; // Store InputHandler
@@ -118,6 +129,7 @@ public class Game {
         this.soundSystem.initialize();
         this.soundSystem.loadSound("grasswalk", "/sounds/GrassWalk.wav");
         this.soundSystem.loadSound("sandwalk", "/sounds/SandWalk-001.wav");
+        this.soundSystem.loadSound("woodwalk", "/sounds/WoodWalk.wav");
         this.soundSystem.loadSound("blockpickup", "/sounds/BlockPickup.wav");
 
         // Apply settings to sound system
@@ -145,6 +157,9 @@ public class Game {
         this.chatSystem = new ChatSystem();
         this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
 
+        // Initialize sound emitter manager
+        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
+
         // Initialize memory leak detector
         this.memoryLeakDetector = MemoryLeakDetector.getInstance();
         this.memoryLeakDetector.startMonitoring();
@@ -158,23 +173,40 @@ public class Game {
         CowTextureAtlas.initialize();
         System.out.println("Cow texture atlas initialized");
 
+        // Initialize MMS API early (before World creation)
+        // World will be null at this point, but that's okay - it will be set when World is created
+        com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, null);
+        System.out.println("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
+
         System.out.println("[STARTUP] Core components initialized (no world/player yet)");
     }
 
     /**
      * Initializes components that require a world and player.
      * This should be called when a world is created/loaded.
+     *
+     * NOTE: MmsAPI must be initialized BEFORE World is created (World constructor depends on it).
+     * NOTE: World reference is automatically set in MmsAPI during World construction via createMeshPipeline().
      */
     public void initWorldComponents(World world, Player player) {
         this.world = world;
         this.player = player;
 
-        // Update save system references if it exists (regardless of initialization state)
-        // This ensures the save system gets the correct world/player references even if
-        // initialization happens later in the flow
-        if (worldSaveSystem != null) {
-            System.out.println("[SAVE-SYSTEM] Updating save system references during world component initialization");
-            worldSaveSystem.updateReferences(world, player);
+        // MmsAPI should already be initialized and have its world reference set
+        // (happens automatically in World constructor via createMeshPipeline)
+        if (!com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
+            System.err.println("[MMS-API] WARNING: MmsAPI not initialized - this should not happen!");
+            // Emergency fallback
+            if (textureAtlas != null && world != null) {
+                com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
+                System.out.println("[MMS-API] Emergency initialization performed");
+            }
+        }
+
+        // Initialize save service if it exists but hasn't been initialized yet
+        if (saveService != null && currentWorldData != null) {
+            System.out.println("[SAVE-SYSTEM] Updating save service references during world component initialization");
+            saveService.initialize(currentWorldData, player, world);
         }
 
         // Set camera for mouse capture system
@@ -216,9 +248,15 @@ public class Game {
 
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
-            this.recipeBookScreen = new RecipeBookScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
+            this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
+        }
+
+        // Initialize player sounds
+        if (soundSystem != null) {
+            soundSystem.initializePlayerSounds(world);
+            System.out.println("Player sound system initialized");
         }
 
         System.out.println("[WORLD-CREATION] World components initialized for new world");
@@ -268,7 +306,224 @@ public class Game {
         this.craftingManager.registerRecipe(planksToWorkbenchRecipe);
         System.out.println("Registered recipe: WOOD_PLANKS -> WORKBENCH");
 
-        // Add remaining recipes... (truncated for brevity - would include all existing recipes)
+        // Recipe 4: Pine Wood Planks to Workbench
+        // Input: 4 BlockType.PINE_WOOD_PLANKS (2x2) -> Output: 1 BlockType.WORKBENCH
+        List<List<ItemStack>> pinePlanksToWorkbenchPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe pinePlanksToWorkbenchRecipe = new Recipe(
+            "pine_planks_to_workbench",
+            pinePlanksToWorkbenchPattern,
+            new ItemStack(BlockType.WORKBENCH.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(pinePlanksToWorkbenchRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS -> WORKBENCH");
+
+        // Recipe 5: Sticks
+        // Input: 2 BlockType.WOOD_PLANKS (vertical) -> Output: 4 ItemType.STICK
+        List<List<ItemStack>> planksToSticksPattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1))
+        );
+        Recipe planksToSticksRecipe = new Recipe(
+            "planks_to_sticks",
+            planksToSticksPattern,
+            new ItemStack(ItemType.STICK, 4)
+        );
+        this.craftingManager.registerRecipe(planksToSticksRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS -> STICKS");
+
+        // Recipe 6: Pine Wood Planks to Sticks
+        // Input: 2 BlockType.PINE_WOOD_PLANKS (vertical) -> Output: 4 ItemType.STICK
+        List<List<ItemStack>> pinePlanksToSticksPattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe pinePlanksToSticksRecipe = new Recipe(
+            "pine_planks_to_sticks",
+            pinePlanksToSticksPattern,
+            new ItemStack(ItemType.STICK, 4)
+        );
+        this.craftingManager.registerRecipe(pinePlanksToSticksRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS -> STICKS");
+
+        // Recipe 7: Wooden Pickaxe
+        // Input: 3 Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
+        List<List<ItemStack>> woodenPickaxePattern = List.of(
+            List.of(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null)
+        );
+        Recipe woodenPickaxeRecipe = new Recipe(
+            "wooden_pickaxe",
+            woodenPickaxePattern,
+            new ItemStack(ItemType.WOODEN_PICKAXE, 1)
+        );
+        this.craftingManager.registerRecipe(woodenPickaxeRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
+
+        // Recipe 8: Wooden Pickaxe (Pine Wood Planks variant)
+        // Input: 3 Pine Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
+        List<List<ItemStack>> pineWoodenPickaxePattern = List.of(
+            List.of(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null)
+        );
+        Recipe pineWoodenPickaxeRecipe = new Recipe(
+            "pine_wooden_pickaxe",
+            pineWoodenPickaxePattern,
+            new ItemStack(ItemType.WOODEN_PICKAXE, 1)
+        );
+        this.craftingManager.registerRecipe(pineWoodenPickaxeRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
+
+        // Recipe 9: Elm Wood Planks
+        // Input: 1 BlockType.ELM_WOOD_LOG -> Output: 4 BlockType.ELM_WOOD_PLANKS
+        List<List<ItemStack>> elmToPlanksPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_LOG.getId(), 1))
+        );
+        Recipe elmToPlanksRecipe = new Recipe(
+            "elm_to_planks",
+            elmToPlanksPattern,
+            new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 4)
+        );
+        this.craftingManager.registerRecipe(elmToPlanksRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_LOG -> ELM_WOOD_PLANKS");
+
+        // Recipe 10: Elm Wood Planks to Workbench
+        // Input: 4 BlockType.ELM_WOOD_PLANKS (2x2) -> Output: 1 BlockType.WORKBENCH
+        List<List<ItemStack>> elmPlanksToWorkbenchPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe elmPlanksToWorkbenchRecipe = new Recipe(
+            "elm_planks_to_workbench",
+            elmPlanksToWorkbenchPattern,
+            new ItemStack(BlockType.WORKBENCH.getId(), 1)
+        );
+        this.craftingManager.registerRecipe(elmPlanksToWorkbenchRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS -> WORKBENCH");
+
+        // Recipe 11: Elm Wood Planks to Sticks
+        // Input: 2 BlockType.ELM_WOOD_PLANKS (vertical) -> Output: 4 ItemType.STICK
+        List<List<ItemStack>> elmPlanksToSticksPattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1))
+        );
+        Recipe elmPlanksToSticksRecipe = new Recipe(
+            "elm_planks_to_sticks",
+            elmPlanksToSticksPattern,
+            new ItemStack(ItemType.STICK, 4)
+        );
+        this.craftingManager.registerRecipe(elmPlanksToSticksRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS -> STICKS");
+
+        // Recipe 12: Wooden Pickaxe (Elm Wood Planks variant)
+        // Input: 3 Elm Wood Planks in top row, 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Pickaxe
+        List<List<ItemStack>> elmWoodenPickaxePattern = List.of(
+            List.of(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1), null)
+        );
+        Recipe elmWoodenPickaxeRecipe = new Recipe(
+            "elm_wooden_pickaxe",
+            elmWoodenPickaxePattern,
+            new ItemStack(ItemType.WOODEN_PICKAXE, 1)
+        );
+        this.craftingManager.registerRecipe(elmWoodenPickaxeRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_PICKAXE");
+
+        // Recipe 13: Wooden Axe (Regular Wood Planks)
+        // Input: 3 Wood Planks (2 top row, 1 middle left), 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Axe
+        List<List<ItemStack>> woodenAxePattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1))
+        );
+        Recipe woodenAxeRecipe = new Recipe(
+            "wooden_axe",
+            woodenAxePattern,
+            new ItemStack(ItemType.WOODEN_AXE, 1)
+        );
+        this.craftingManager.registerRecipe(woodenAxeRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS + STICKS -> WOODEN_AXE");
+
+        // Recipe 14: Wooden Axe (Pine Wood Planks variant)
+        // Input: 3 Pine Wood Planks (2 top row, 1 middle left), 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Axe
+        List<List<ItemStack>> pineWoodenAxePattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1))
+        );
+        Recipe pineWoodenAxeRecipe = new Recipe(
+            "pine_wooden_axe",
+            pineWoodenAxePattern,
+            new ItemStack(ItemType.WOODEN_AXE, 1)
+        );
+        this.craftingManager.registerRecipe(pineWoodenAxeRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICKS -> WOODEN_AXE");
+
+        // Recipe 15: Wooden Axe (Elm Wood Planks variant)
+        // Input: 3 Elm Wood Planks (2 top row, 1 middle left), 2 Sticks in center column (middle and bottom) -> Output: 1 Wooden Axe
+        List<List<ItemStack>> elmWoodenAxePattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1)),
+            java.util.Arrays.asList(null, new ItemStack(ItemType.STICK, 1))
+        );
+        Recipe elmWoodenAxeRecipe = new Recipe(
+            "elm_wooden_axe",
+            elmWoodenAxePattern,
+            new ItemStack(ItemType.WOODEN_AXE, 1)
+        );
+        this.craftingManager.registerRecipe(elmWoodenAxeRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICKS -> WOODEN_AXE");
+
+        // Recipe 16: Wooden Bucket (Regular Wood Planks)
+        // Pattern: wSw / wxw / xwx (w = wood planks, S = stick, x = empty)
+        List<List<ItemStack>> woodenBucketPattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1), new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), null, new ItemStack(BlockType.WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.WOOD_PLANKS.getId(), 1), null)
+        );
+        Recipe woodenBucketRecipe = new Recipe(
+            "wooden_bucket",
+            woodenBucketPattern,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1)
+        );
+        this.craftingManager.registerRecipe(woodenBucketRecipe);
+        System.out.println("Registered recipe: WOOD_PLANKS + STICK -> WOODEN_BUCKET");
+
+        // Recipe 17: Wooden Bucket (Pine Wood Planks variant)
+        // Pattern: wSw / wxw / xwx (w = pine planks, S = stick, x = empty)
+        List<List<ItemStack>> pineWoodenBucketPattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1), new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), null, new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.PINE_WOOD_PLANKS.getId(), 1), null)
+        );
+        Recipe pineWoodenBucketRecipe = new Recipe(
+            "pine_wooden_bucket",
+            pineWoodenBucketPattern,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1)
+        );
+        this.craftingManager.registerRecipe(pineWoodenBucketRecipe);
+        System.out.println("Registered recipe: PINE_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
+
+        // Recipe 18: Wooden Bucket (Elm Wood Planks variant)
+        // Pattern: wSw / wxw / xwx (w = elm planks, S = stick, x = empty)
+        List<List<ItemStack>> elmWoodenBucketPattern = java.util.Arrays.asList(
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), new ItemStack(ItemType.STICK, 1), new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), null, new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1)),
+            java.util.Arrays.asList(null, new ItemStack(BlockType.ELM_WOOD_PLANKS.getId(), 1), null)
+        );
+        Recipe elmWoodenBucketRecipe = new Recipe(
+            "elm_wooden_bucket",
+            elmWoodenBucketPattern,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1)
+        );
+        this.craftingManager.registerRecipe(elmWoodenBucketRecipe);
+        System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
+
         System.out.println("All crafting recipes initialized");
     }
 
@@ -280,12 +535,40 @@ public class Game {
         // Initialize core components first
         initCoreComponents(renderer, textureAtlas, inputHandler, window);
 
+        // Initialize RecipeBookScreen
+        if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
+            this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
+        } else {
+            System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
+        }
+
         // Then initialize world-specific components
         if (world != null && player != null) {
             initWorldComponents(world, player);
         } else {
             System.out.println("[STARTUP] Skipping world component initialization (null world or player)");
         }
+        
+        // Initialize memory leak detector
+        this.memoryLeakDetector = MemoryLeakDetector.getInstance();
+        this.memoryLeakDetector.startMonitoring();
+        System.out.println("Memory leak detection started.");
+        
+        // Initialize debug overlay
+        this.debugOverlay = new DebugOverlay();
+        System.out.println("Debug overlay initialized (F3 to toggle).");
+        
+        // Initialize cow texture atlas
+        CowTextureAtlas.initialize();
+        System.out.println("Cow texture atlas initialized");
+        
+        // Initialize entity system
+        this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        System.out.println("Entity system initialized - cows can now spawn!");
+
+        // Initialize player sounds
+        this.soundSystem.initializePlayerSounds(world);
+        System.out.println("Player sound system initialized");
         System.out.println("[STARTUP] Game initialization completed");
     }
     
@@ -362,26 +645,8 @@ public class Game {
                     mouseCaptureManager.forceUpdate();
                     hasInitializedMouseCaptureAfterLoading = true;
                 }
-                
-                if (paused) {
-                    // Check if paused by pause menu vs just inventory/UI
-                    boolean pausedByMenu = pauseMenu != null && pauseMenu.isVisible();
-                    
-                    // Update UI screens that are visible
-                    if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                        inventoryScreen.update(deltaTime);
-                    }
-                    if (workbenchScreen != null && workbenchScreen.isVisible()) {
-                        workbenchScreen.update(deltaTime);
-                    }
-                    
-                    // Only pause game world updates if actually paused by the pause menu
-                    // If paused only by inventory/UI, continue to game world updates
-                    if (pausedByMenu) {
-                        return; // Don't update player/world if paused by escape menu
-                    }
-                }
-                // Continue to game world updates (either not paused, or paused only by inventory/UI)
+
+                // Continue to game world updates - PLAYING state is unpaused
             }
             case WORKBENCH_UI -> {
                 // Update workbench UI but keep the game world running
@@ -404,17 +669,21 @@ public class Game {
                 if (pauseMenu != null && pauseMenu.isVisible()) {
                     // pauseMenu.update(deltaTime); // If pause menu has timed elements
                 }
-                 if (recipeBookScreen != null && currentState == GameState.RECIPE_BOOK_UI) { // This specific check seems odd here if RECIPE_BOOK_UI is its own case
-                    recipeBookScreen.update(deltaTime);
-                }
                 // Input handling for these screens is separate.
                 return; // Don't update game world
             }
-            case RECIPE_BOOK_UI -> {
-                if (recipeBookScreen != null) {
-                    recipeBookScreen.update(deltaTime);
+            case INVENTORY_UI -> {
+                // Update inventory screen and continue to game world updates
+                if (inventoryScreen != null && inventoryScreen.isVisible()) {
+                    inventoryScreen.update(deltaTime);
                 }
-                return; // Don't update game world
+                // Continue to game world updates - inventory doesn't pause the game world
+            }
+            case RECIPE_BOOK_UI -> {
+                if (recipeScreen != null) {
+                    recipeScreen.update(deltaTime);
+                }
+                // Continue to game world updates - recipe book doesn't pause the game world
             }
             default -> {
                 return; // Unhandled state
@@ -436,7 +705,12 @@ public class Game {
         if (chatSystem != null) {
             chatSystem.update(deltaTime);
         }
-        
+
+        // Update sound emitters
+        if (soundEmitterManager != null) {
+            soundEmitterManager.update(deltaTime);
+        }
+
         // Update world (processes chunk loading, mesh building, etc.)
         if (world != null) {
             worldUpdateExecutor.submit(() -> world.update(renderer));
@@ -481,6 +755,13 @@ public class Game {
      */
     public static int getWindowHeight() {
         return getInstance().windowHeight;
+    }
+
+    /**
+     * Gets window handle for GLFW operations.
+     */
+    public long getWindow() {
+        return window;
     }
 
     /**
@@ -606,23 +887,17 @@ public class Game {
         inventoryScreen.toggleVisibility();
 
         if (inventoryScreen.isVisible()) {
-            // Opening inventory - pause the game
-            this.paused = true;
+            // Opening inventory - transition to INVENTORY_UI state
+            setState(GameState.INVENTORY_UI);
         } else {
-            // Closing inventory - check if we should unpause
+            // Closing inventory - return to PLAYING state
+            // Only return to playing if no other UI is forcing a different state
             if (pauseMenu == null || !pauseMenu.isVisible()) {
-                // Only unpause if we're in PLAYING state and no pause menu is visible
-                if (this.currentState == GameState.PLAYING) {
-                    this.paused = false;
-                }
-                // Other states (WORKBENCH_UI, RECIPE_BOOK_UI) remain paused
+                setState(GameState.PLAYING);
             }
         }
-        
-        // Update mouse capture state when inventory visibility changes
-        if (mouseCaptureManager != null) {
-            mouseCaptureManager.updateCaptureState();
-        }
+
+        // Mouse capture state is automatically updated by setState()
     }
     
     /**
@@ -644,6 +919,12 @@ public class Game {
             System.out.println("DEBUG: Previous state saved as: " + this.previousGameState);
         }
         this.currentState = state;
+
+        // Randomize splash text when transitioning to main menu
+        if (state == GameState.MAIN_MENU && mainMenu != null) {
+            mainMenu.refreshSplashText();
+        }
+
         System.out.println("DEBUG: Current state set to: " + this.currentState);
 
         // Special debug for world select screen
@@ -671,21 +952,13 @@ public class Game {
      */
     private void updatePauseState(GameState state) {
         switch (state) {
-            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI -> {
+            case MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI -> {
                 paused = true;
             }
-            case PLAYING -> {
-                // Special case: Always unpause when coming from LOADING state
-                if (this.previousGameState == GameState.LOADING) {
-                    paused = false;
-                } else {
-                    // For other transitions, only keep paused if inventory is explicitly visible
-                    boolean shouldUnpause = (inventoryScreen == null || !inventoryScreen.isVisible());
-                    
-                    if (shouldUnpause) {
-                        paused = false;
-                    }
-                }
+            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI -> {
+                // PLAYING, INVENTORY_UI, and RECIPE_BOOK_UI should be unpaused to allow normal game function
+                // Movement and world interactions are prevented by InputHandler, not by pause state
+                paused = false;
             }
         }
     }
@@ -701,8 +974,8 @@ public class Game {
     /**
      * Gets the recipe book screen.
      */
-    public RecipeBookScreen getRecipeBookScreen() {
-        return recipeBookScreen;
+    public RecipeScreen getRecipeBookScreen() {
+        return recipeScreen;
     }
 
     /**
@@ -748,6 +1021,13 @@ public class Game {
     }
 
     /**
+     * Gets the sound emitter manager.
+     */
+    public static com.stonebreak.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
+        return getInstance().soundEmitterManager;
+    }
+
+    /**
      * Gets the game's primary font.
      * This assumes the font is loaded and available via the Renderer.
      * @return The Font object, or null if not available.
@@ -788,7 +1068,7 @@ public class Game {
      * Opens the Recipe Book screen.
      */
     public void openRecipeBookScreen() {
-        if (recipeBookScreen == null) {
+        if (recipeScreen == null) {
             System.out.println("Cannot open RecipeBook: recipeBookScreen is null.");
             return;
         }
@@ -797,8 +1077,8 @@ public class Game {
         // Case 1: Workbench UI is active
         if (currentState == GameState.WORKBENCH_UI) {
             allowOpen = true;
-        // Case 2: Inventory screen is visible (implies game is PLAYING but effectively paused for this UI)
-        } else if (inventoryScreen != null && inventoryScreen.isVisible()) {
+        // Case 2: Inventory UI is active
+        } else if (currentState == GameState.INVENTORY_UI) {
             allowOpen = true;
         // Case 3: Actively playing and not paused by the main PauseMenu (Escape key menu)
         } else if (currentState == GameState.PLAYING && (pauseMenu == null || !pauseMenu.isVisible())) {
@@ -809,7 +1089,7 @@ public class Game {
             // setState will correctly set this.previousGameState to the current state (e.g., PLAYING, WORKBENCH_UI)
             // before changing currentState to RECIPE_BOOK_UI.
             setState(GameState.RECIPE_BOOK_UI);
-            recipeBookScreen.onOpen(); // Initialize/refresh recipe list
+            recipeScreen.onOpen(); // Initialize/refresh recipe list
             System.out.println("Opened RecipeBook Screen. Will return to: " + this.previousGameState);
         } else {
             String contextDetails = "Current state: " + currentState;
@@ -819,7 +1099,7 @@ public class Game {
             if (pauseMenu != null) {
                 contextDetails += ", MainPauseActive: " + pauseMenu.isVisible();
             }
-            contextDetails += ", Game.paused: " + this.paused;
+            contextDetails += ", CurrentState: " + currentState;
             System.out.println("Cannot open RecipeBook: Not in a valid context (" + contextDetails + ").");
         }
     }
@@ -828,8 +1108,8 @@ public class Game {
      * Closes the Recipe Book screen and returns to the previous game state.
      */
     public void closeRecipeBookScreen() {
-        if (recipeBookScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
-            recipeBookScreen.onClose();
+        if (recipeScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
+            recipeScreen.onClose();
             setState(previousGameState); // Uses the stored previous state
             System.out.println("Closed RecipeBook Screen. Returning to: " + previousGameState);
         }
@@ -877,12 +1157,12 @@ public class Game {
         }
 
         // Save current player state before cleanup
-        if (worldSaveSystem != null) {
+        if (saveService != null) {
             try {
                 System.out.println("Performing final save before shutdown...");
 
                 // Save current game state synchronously with timeout
-                java.util.concurrent.CompletableFuture<Void> saveOperation = worldSaveSystem.saveWorldNow();
+                java.util.concurrent.CompletableFuture<Void> saveOperation = saveService.saveAll();
                 saveOperation.get(5, java.util.concurrent.TimeUnit.SECONDS); // 5 second timeout
 
                 System.out.println("Final save completed successfully");
@@ -894,10 +1174,10 @@ public class Game {
             }
 
             try {
-                System.out.println("Closing WorldSaveSystem...");
-                worldSaveSystem.close();
+                System.out.println("Closing SaveService...");
+                saveService.close();
             } catch (Exception e) {
-                System.err.println("Error closing WorldSaveSystem: " + e.getMessage());
+                System.err.println("Error closing SaveService: " + e.getMessage());
             }
         }
 
@@ -928,15 +1208,17 @@ public class Game {
         System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
         System.out.println("========================================");
 
-        // Skip explicit save during world reset to avoid hanging
-        // The auto-save system should have already saved data periodically
-        System.out.println("[WORLD-ISOLATION] Skipping explicit save during world reset to prevent hanging");
-        System.out.println("[WORLD-ISOLATION] Auto-save system should have saved data already");
+        if (saveService != null) {
+            System.out.println("[WORLD-ISOLATION] Flushing saves before world reset");
+            saveService.flushSavesBlocking("world reset");
+        } else {
+            System.out.println("[WORLD-ISOLATION] No save system present during world reset");
+        }
 
         // Stop auto-save to prevent further save operations during reset
-        if (worldSaveSystem != null) {
+        if (saveService != null) {
             try {
-                worldSaveSystem.stopAutoSave();
+                saveService.stopAutoSave();
                 System.out.println("[WORLD-ISOLATION] Stopped auto-save system for clean reset");
             } catch (Exception e) {
                 System.err.println("[WORLD-ISOLATION] Error stopping auto-save: " + e.getMessage());
@@ -959,18 +1241,6 @@ public class Game {
             }
         } else {
             System.out.println("[WORLD-ISOLATION] No world to clear");
-        }
-
-        // Stop auto-save when switching worlds
-        if (worldSaveSystem != null) {
-            try {
-                worldSaveSystem.stopAutoSave();
-                System.out.println("[SAVE-SYSTEM] Stopped auto-save for world switch");
-            } catch (Exception e) {
-                System.err.println("[SAVE-SYSTEM] Error stopping auto-save: " + e.getMessage());
-            }
-        } else {
-            System.out.println("[SAVE-SYSTEM] No save system to stop");
         }
 
         // Stop and clean up entity system to prevent background activity
@@ -1000,7 +1270,8 @@ public class Game {
         // Clear game metadata and save system to prevent world data leakage
         currentWorldName = null;
         currentWorldSeed = 0;
-        worldSaveSystem = null; // Clear save system reference so it gets reinitialized for next world
+        currentWorldData = null;
+        saveService = null; // Clear save system reference so it gets reinitialized for next world
         System.out.println("[WORLD-ISOLATION] ✓ Cleared game metadata and save system for world switching");
 
         System.out.println("========================================");
@@ -1011,6 +1282,8 @@ public class Game {
 
     /**
      * Creates a fresh World instance with the specified seed for complete world isolation.
+     *
+     * NOTE: MmsAPI should already be initialized in initCoreComponents().
      */
     private World createFreshWorldInstance(long seed) {
         WorldConfiguration config = new WorldConfiguration();
@@ -1045,13 +1318,21 @@ public class Game {
      */
     private void cleanupStaticResources() {
         try {
+            // Shutdown MMS API
+            System.out.println("Shutting down MMS API...");
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.shutdown();
+        } catch (Exception e) {
+            System.err.println("Error shutting down MMS API: " + e.getMessage());
+        }
+
+        try {
             // Shutdown ModelLoader async executor
             System.out.println("Shutting down ModelLoader executor...");
             com.stonebreak.model.ModelLoader.shutdown();
         } catch (Exception e) {
             System.err.println("Error shutting down ModelLoader: " + e.getMessage());
         }
-        
+
         try {
             // Shutdown CowTextureAtlas if it has any background resources
             System.out.println("Cleaning up CowTextureAtlas...");
@@ -1257,8 +1538,8 @@ public class Game {
     /**
      * Gets the world save system for manual save operations.
      */
-    public WorldSaveSystem getWorldSaveSystem() {
-        return worldSaveSystem;
+    public SaveService getSaveService() {
+        return saveService;
     }
 
     /**
@@ -1285,9 +1566,33 @@ public class Game {
     public void startWorldGeneration(String worldName, long seed) {
         System.out.println("Starting world generation for: " + worldName + " with seed: " + seed);
 
+        // Persist and dispose of any previous save system before switching worlds
+        SaveService previousSaveService = this.saveService;
+        if (previousSaveService != null) {
+            try {
+                previousSaveService.stopAutoSave();
+                System.out.println("[SAVE-SYSTEM] Stopped auto-save on previous world");
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Error stopping auto-save before world switch: " + e.getMessage());
+            }
+
+            try {
+                System.out.println("[SAVE-SYSTEM] Flushing previous save service before switching worlds");
+                previousSaveService.flushSavesBlocking("world switch");
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Flush failed during world switch: " + e.getMessage());
+            }
+
+            try {
+                previousSaveService.close();
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Error closing previous save service: " + e.getMessage());
+            }
+        }
+
         // Initialize save system early to enable player data loading during generation
         String worldPath = "worlds/" + worldName;
-        this.worldSaveSystem = new WorldSaveSystem(worldPath);
+        this.saveService = new SaveService(worldPath);
         this.currentWorldName = worldName;
         this.currentWorldSeed = seed;
 
@@ -1298,7 +1603,7 @@ public class Game {
             new Thread(() -> performWorldLoadingOrGeneration(worldName, seed)).start();
         }
     }
-    
+
     /**
      * Performs initial world generation with progress updates.
      * This runs in a background thread while the loading screen is displayed.
@@ -1318,40 +1623,44 @@ public class Game {
                 // Try to load existing player data before setting default position
                 org.joml.Vector3f playerPosition = new org.joml.Vector3f(0, 100, 0); // Default position
 
-                if (worldSaveSystem != null) {
+                if (saveService != null) {
                     try {
-                        // Initialize save system with world metadata for proper world isolation
-                        com.stonebreak.world.save.core.WorldMetadata worldMetadata =
-                            new com.stonebreak.world.save.core.WorldMetadata(currentWorldSeed, currentWorldName);
-                        worldSaveSystem.initialize(world, player, worldMetadata);
+                        // Create or load world metadata
+                        currentWorldData = WorldData.builder()
+                            .seed(currentWorldSeed)
+                            .worldName(currentWorldName)
+                            .build();
+
+                        // Initialize save system with game state
+                        saveService.initialize(currentWorldData, player, world);
                         System.out.println("[SAVE-SYSTEM] ✓ Initialized save system for world '" + currentWorldName + "'");
-                        System.out.println("[SAVE-SYSTEM] Save system isInitialized(): " + worldSaveSystem.isInitialized());
 
-                        // Check if player data exists and load it
-                        com.stonebreak.world.save.core.PlayerState existingPlayerState = null;
-                        try {
-                            existingPlayerState = worldSaveSystem.loadPlayerState().get(); // Blocking call for simplicity during generation
-                        } catch (Exception loadException) {
-                            System.out.println("[PLAYER-DATA] Player data loading failed (likely new world): " + loadException.getMessage());
-                            existingPlayerState = null;
-                        }
-
-                        if (existingPlayerState != null) {
-                            // Apply the loaded player state (with world name validation)
-                            worldSaveSystem.applyPlayerState(existingPlayerState);
-                            playerPosition = new org.joml.Vector3f(existingPlayerState.getPosition());
+                        // Try to load existing player data
+                        SaveService.LoadResult loadResult = saveService.loadWorld().get();
+                        if (loadResult.isSuccess() && loadResult.getPlayerData() != null) {
+                            // Apply the loaded player state
+                            StateConverter.applyPlayerData(player, loadResult.getPlayerData());
+                            playerPosition = new org.joml.Vector3f(loadResult.getPlayerData().getPosition());
                             System.out.println("[PLAYER-DATA] ✓ Loaded existing player data for world '" + currentWorldName + "': position=" +
                                 playerPosition.x + "," + playerPosition.y + "," + playerPosition.z);
+
+                            // Update current world data if loaded
+                            if (loadResult.getWorldData() != null) {
+                                currentWorldData = loadResult.getWorldData();
+                            }
                         } else {
-                            // No existing player data, give starting items and set default position (this is normal for new worlds)
+                            // No existing player data, give starting items
                             player.giveStartingItems();
                             System.out.println("[PLAYER-DATA] ✓ No existing player data found for world '" + currentWorldName + "' - treating as new world, giving starting items");
                         }
+
+                        // Start auto-save
+                        saveService.startAutoSave();
                     } catch (Exception e) {
                         // Failed to initialize save system or load player data
                         System.err.println("[SAVE-SYSTEM] ✗ CRITICAL ERROR: Save system initialization failed for world '" + currentWorldName + "'!");
                         System.err.println("[SAVE-SYSTEM] Error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                        System.err.println("[SAVE-SYSTEM] This will prevent saving/loading - player will get starter items every time");
+                        e.printStackTrace();
 
                         player.giveStartingItems();
                         System.out.println("[PLAYER-DATA] Save system failed, giving starting items as fallback: " + e.getMessage());
@@ -1428,7 +1737,7 @@ public class Game {
     }
 
     /**
-     * Performs world loading or generation with WorldSaveSystem integration.
+     * Performs world loading or generation with SaveService integration.
      * This runs in a background thread while the loading screen is displayed.
      *
      * @param worldName The name of the world to load or create
@@ -1436,52 +1745,61 @@ public class Game {
      */
     private void performWorldLoadingOrGeneration(String worldName, long seed) {
         try {
-            // Use the save system initialized in startWorldGeneration
-            WorldSaveSystem saveSystem = this.worldSaveSystem;
+            // Use the save service initialized in startWorldGeneration
+            SaveService saveService = this.saveService;
+
+            if (saveService == null) {
+                System.err.println("[SAVE-SYSTEM] SaveService is null - creating new world");
+                createNewWorldWithGeneration(worldName, seed);
+                return;
+            }
 
             // Check if world exists
             java.io.File worldDir = new java.io.File("worlds", worldName);
             boolean worldExists = worldDir.exists() && worldDir.isDirectory();
 
             if (worldExists) {
-                // Load existing world: metadata + player state, then finalize
+                // Load existing world
                 if (loadingScreen != null) {
                     loadingScreen.updateProgress("Loading World: " + worldName);
                 }
                 System.out.println("Loading existing world: " + worldName);
 
-                saveSystem.loadCompleteWorldState()
+                saveService.loadWorld()
                     .thenAccept(result -> {
                         try {
-                            if (result != null && result.isValid()) {
-                                var metadata = result.metadata;
-                                if (metadata != null) {
-                                    // Create fresh World instance with correct seed for complete isolation
-                                    World newWorld = createFreshWorldInstance(metadata.getSeed());
-                                    replaceWorldInstance(newWorld);
-                                    System.out.println("[WORLD-ISOLATION] Created fresh World instance for loading with seed: " + metadata.getSeed());
+                            if (result.isSuccess() && result.getWorldData() != null) {
+                                WorldData worldData = result.getWorldData();
 
-                                    // Apply spawn position to the new world
-                                    if (metadata.getSpawnPosition() != null) {
-                                        newWorld.setSpawnPosition(metadata.getSpawnPosition());
-                                    }
-                                    // Update seed for save system initialization
-                                    this.currentWorldSeed = metadata.getSeed();
+                                // Create fresh World instance with correct seed for complete isolation
+                                World newWorld = createFreshWorldInstance(worldData.getSeed());
+                                replaceWorldInstance(newWorld);
+                                System.out.println("[WORLD-ISOLATION] Created fresh World instance for loading with seed: " + worldData.getSeed());
+
+                                // Apply spawn position to the new world
+                                if (worldData.getSpawnPosition() != null) {
+                                    newWorld.setSpawnPosition(worldData.getSpawnPosition());
                                 }
+
+                                // Update seed for save system initialization
+                                this.currentWorldSeed = worldData.getSeed();
+                                this.currentWorldData = worldData;
 
                                 // Reinitialize save system with fresh world/player instances after replaceWorldInstance
-                                if (metadata != null) {
-                                    System.out.println("[SAVE-SYSTEM] Reinitializing save system after world replacement for existing world");
-                                    com.stonebreak.world.save.core.WorldMetadata worldMetadata =
-                                        new com.stonebreak.world.save.core.WorldMetadata(metadata.getSeed(), worldName);
-                                    saveSystem.initialize(world, player, worldMetadata);
-                                    System.out.println("[SAVE-SYSTEM] Save system reinitialized - isInitialized(): " + saveSystem.isInitialized());
+                                System.out.println("[SAVE-SYSTEM] Reinitializing save system after world replacement for existing world");
+                                saveService.initialize(worldData, player, world);
+
+                                // Apply player state if available
+                                if (result.getPlayerData() != null) {
+                                    StateConverter.applyPlayerData(player, result.getPlayerData());
+                                    System.out.println("[PLAYER-DATA] Applied loaded player data");
+                                } else {
+                                    player.giveStartingItems();
+                                    System.out.println("[PLAYER-DATA] No player data found - giving starting items");
                                 }
 
-                                // Apply player state
-                                if (result.playerState != null) {
-                                    saveSystem.applyPlayerState(result.playerState);
-                                }
+                                // Start auto-save
+                                saveService.startAutoSave();
 
                                 System.out.println("Successfully loaded complete world state for: " + worldName);
                             } else {
@@ -1491,6 +1809,7 @@ public class Game {
                             }
                         } catch (Exception e) {
                             System.err.println("Error applying loaded world state: " + e.getMessage());
+                            e.printStackTrace();
                         }
                     })
                     .exceptionally(throwable -> {
@@ -1573,14 +1892,12 @@ public class Game {
 
         // Save system was already initialized during world generation for player data loading
         // No need to reinitialize here
-        if (worldSaveSystem != null && worldSaveSystem.isInitialized()) {
+        if (saveService != null && currentWorldData != null) {
             System.out.println("[SAVE-SYSTEM] ✓ Save system is working properly after world generation");
         } else {
             System.err.println("[SAVE-SYSTEM] ✗ CRITICAL: Save system is NOT working after world generation!");
-            System.err.println("[SAVE-SYSTEM] worldSaveSystem = " + (worldSaveSystem != null ? "not null" : "NULL"));
-            if (worldSaveSystem != null) {
-                System.err.println("[SAVE-SYSTEM] isInitialized() = " + worldSaveSystem.isInitialized());
-            }
+            System.err.println("[SAVE-SYSTEM] saveService = " + (saveService != null ? "not null" : "NULL"));
+            System.err.println("[SAVE-SYSTEM] currentWorldData = " + (currentWorldData != null ? "not null" : "NULL"));
         }
     }
 }

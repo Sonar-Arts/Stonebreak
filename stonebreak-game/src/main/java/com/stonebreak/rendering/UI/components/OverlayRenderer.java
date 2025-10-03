@@ -8,9 +8,9 @@ import com.stonebreak.rendering.UI.menus.BlockIconRenderer;
 import com.stonebreak.rendering.UI.menus.ItemIconRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.shaders.ShaderProgram;
-import com.stonebreak.ui.InventoryScreen;
-import com.stonebreak.ui.RecipeBookScreen;
-import com.stonebreak.ui.WorkbenchScreen;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
 
 /**
  * Handles rendering of UI overlay elements that need to appear above all other UI components.
@@ -30,23 +30,24 @@ public class OverlayRenderer {
     
     /**
      * Renders all overlay UI elements for the current game state.
-     * This includes tooltips, underwater overlay, and other elements that should appear above all other UI.
+     * This includes tooltips and other elements that should appear above all other UI.
      * This should be called after all other UI rendering is complete.
+     * Note: Underwater overlay is NOT rendered here - it's rendered earlier in the pipeline before UI.
      */
     public void renderOverlay(Game game, int windowWidth, int windowHeight) {
         if (game == null) return;
-        
+
         // Render inventory tooltips (both full inventory and hotbar)
         renderInventoryTooltips(game, windowWidth, windowHeight);
-        
+
         // Render recipe book tooltips if visible
         renderRecipeBookTooltips(game);
-        
+
         // Render workbench tooltips if visible
         renderWorkbenchTooltips(game);
-        
-        // Render underwater overlay if player is underwater
-        renderUnderwaterOverlay(game, windowWidth, windowHeight);
+
+        // Render dragged items last (highest z-index) so they appear above everything
+        renderDraggedItems(game, windowWidth, windowHeight);
     }
     
     /**
@@ -67,9 +68,9 @@ public class OverlayRenderer {
      * Renders recipe book tooltips if the recipe book is visible.
      */
     private void renderRecipeBookTooltips(Game game) {
-        RecipeBookScreen recipeBookScreen = game.getRecipeBookScreen();
-        if (recipeBookScreen != null && recipeBookScreen.isVisible()) {
-            recipeBookScreen.renderTooltipsOnly();
+        RecipeScreen recipeScreen = game.getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible()) {
+            recipeScreen.renderTooltipsOnly();
         }
     }
     
@@ -79,15 +80,34 @@ public class OverlayRenderer {
     private void renderWorkbenchTooltips(Game game) {
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            // WorkbenchScreen handles its own tooltip rendering internally
-            // This method is here for consistency and future expansion
+            workbenchScreen.renderTooltipsOnly();
         }
     }
-    
+
+    /**
+     * Renders dragged items from all active UI screens.
+     * This ensures dragged items appear above all other UI elements.
+     */
+    private void renderDraggedItems(Game game, int windowWidth, int windowHeight) {
+        // Render inventory dragged items
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen != null && inventoryScreen.isVisible()) {
+            inventoryScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+        }
+
+        // Render workbench dragged items
+        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+        if (workbenchScreen != null && workbenchScreen.isVisible()) {
+            workbenchScreen.renderDraggedItemOnly(windowWidth, windowHeight);
+        }
+    }
+
     /**
      * Renders the underwater overlay effect if the player is underwater.
+     * This is a public method that should be called BEFORE UI rendering, not after.
+     * It updates and renders the underwater tint effect behind all UI elements.
      */
-    private void renderUnderwaterOverlay(Game game, int windowWidth, int windowHeight) {
+    public void renderUnderwaterOverlay(Game game, int windowWidth, int windowHeight) {
         Player player = game.getPlayer();
         if (player != null) {
             underwaterOverlayRenderer.update(player, game.getDeltaTime());

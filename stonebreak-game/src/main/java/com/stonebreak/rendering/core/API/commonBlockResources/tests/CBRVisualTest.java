@@ -372,7 +372,7 @@ public class CBRVisualTest {
         System.out.println("\n🍃 CUBE_ALL blocks - Transparent (CUTOUT render layer):");
         row = 4; col = 0;
         addTestBlockInGrid("stonebreak:leaves", col++, row, spacing, "Leaves (transparent)");
-        addTestBlockInGrid("stonebreak:snowy_leaves", col++, row, spacing, "Snowy leaves (transparent)");
+        addTestBlockInGrid("stonebreak:snowy_leaves", col++, row, spacing, "Pine leaves (transparent)");
         addTestBlockInGrid("stonebreak:elm_leaves", col++, row, spacing, "Elm leaves (transparent)");
         addTestBlockInGrid("stonebreak:water", col++, row, spacing, "Water (transparent)");
         

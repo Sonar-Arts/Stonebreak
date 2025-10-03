@@ -1,0 +1,18 @@
+{
+  "item_type": "WOODEN_BUCKET_WATER",
+  "texture_name": "wooden_bucket_water",
+  "description": "Wooden bucket filled with water",
+  "texture_properties": {
+    "size": 16,
+    "format": "RGBA",
+    "flags": ["TOOL_TEXTURE", "ITEM_ICON"],
+    "atlas_coordinates": {"x": 1, "y": 4}
+  },
+  "metadata": {
+    "created_from": "wooden_bucket_water.png",
+    "atlas_coordinates": {"x": 1, "y": 4},
+    "purpose": "Water-filled wooden bucket item texture",
+    "version": "1.0",
+    "design_notes": "Bucket filled with water, ready to place water blocks"
+  }
+}

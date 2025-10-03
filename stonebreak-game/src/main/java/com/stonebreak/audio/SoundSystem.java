@@ -1,30 +1,27 @@
 package com.stonebreak.audio;
 
-import org.lwjgl.*;
-import org.lwjgl.openal.*;
-import static org.lwjgl.openal.AL10.*;
-import static org.lwjgl.openal.ALC10.*;
-
-import javax.sound.sampled.*;
-import java.io.*;
-import java.net.*;
-import java.nio.*;
-import java.util.*;
+import com.stonebreak.audio.components.*;
 
 public class SoundSystem {
     private static SoundSystem instance;
-    
-    private long device;
-    private long context;
-    private final Map<String, Integer> soundBuffers;
-    private final Map<String, Integer[]> sources; // Multiple sources per sound
-    private final Map<String, Integer> sourceIndexes; // Track current source index
-    private float masterVolume = 1.0f; // Master volume multiplier
-    
+
+    private final OpenALContext openALContext;
+    private final AudioLoader audioLoader;
+    private final SoundBuffer soundBuffer;
+    private final VolumeController volumeController;
+    private final SoundPlayer soundPlayer;
+    private final AudioListener audioListener;
+    private final AudioDiagnostics audioDiagnostics;
+    private PlayerSounds playerSounds;
+
     private SoundSystem() {
-        soundBuffers = new HashMap<>();
-        sources = new HashMap<>();
-        sourceIndexes = new HashMap<>();
+        this.openALContext = new OpenALContext();
+        this.audioLoader = new AudioLoader();
+        this.soundBuffer = new SoundBuffer(4); // 4 sources per sound for overlapping playback
+        this.volumeController = new VolumeController();
+        this.soundPlayer = new SoundPlayer(soundBuffer, volumeController);
+        this.audioListener = new AudioListener();
+        this.audioDiagnostics = new AudioDiagnostics(openALContext, soundBuffer);
     }
     
     public static SoundSystem getInstance() {
@@ -35,363 +32,260 @@ public class SoundSystem {
     }
     
     public void initialize() {
-        try {
-            String defaultDeviceName = alcGetString(0, ALC_DEFAULT_DEVICE_SPECIFIER);
-            System.out.println("Initializing OpenAL with device: " + defaultDeviceName);
-            
-            device = alcOpenDevice(defaultDeviceName);
-            if (device == 0) {
-                System.err.println("Failed to open OpenAL device");
-                return;
-            }
-            
-            int[] attributes = {0};
-            context = alcCreateContext(device, attributes);
-            if (context == 0) {
-                System.err.println("Failed to create OpenAL context");
-                alcCloseDevice(device);
-                return;
-            }
-            
-            if (!alcMakeContextCurrent(context)) {
-                System.err.println("Failed to make OpenAL context current");
-                alcDestroyContext(context);
-                alcCloseDevice(device);
-                return;
-            }
-            
-            AL.createCapabilities(ALC.createCapabilities(device));
-            
-            alListener3f(AL_POSITION, 0, 0, 1.0f);
-            alListener3f(AL_VELOCITY, 0, 0, 0);
-            alListener3f(AL_ORIENTATION, 0, 0, 1);
-            
-            System.out.println("OpenAL initialized successfully");
-        } catch (Exception e) {
-            System.err.println("Failed to initialize OpenAL: " + e.getMessage());
-            System.err.println("Stack trace: " + e.toString());
+        if (openALContext.initialize()) {
+            audioListener.initializeDefaultListener();
         }
     }
     
     public void loadSound(String name, String resourcePath) {
-        System.out.println("=== Loading Sound ====");
-        System.out.println("Sound name: " + name);
-        System.out.println("Resource path: " + resourcePath);
-        System.out.println("Class: " + getClass().getName());
-        System.out.println("ClassLoader: " + getClass().getClassLoader());
-        
-        // Try to list available resources
-        try {
-            java.net.URL resourceUrl = getClass().getResource("/sounds/");
-            System.out.println("Sounds directory URL: " + resourceUrl);
-            
-            if (resourceUrl != null) {
-                java.io.File soundsDir = new java.io.File(resourceUrl.toURI());
-                if (soundsDir.exists() && soundsDir.isDirectory()) {
-                    System.out.println("Contents of sounds directory:");
-                    for (String file : soundsDir.list()) {
-                        System.out.println("  - " + file);
-                    }
-                }
-            }
-        } catch (URISyntaxException | SecurityException e) {
-            System.err.println("Error listing resources: " + e.getMessage());
-        }
-        
-        // Also try URL-based access
-        try {
-            java.net.URL soundUrl = getClass().getResource(resourcePath);
-            System.out.println("Direct URL for " + resourcePath + ": " + soundUrl);
-        } catch (Exception e) {
-            System.err.println("Error getting URL: " + e.getMessage());
-        }
-        
-        // Try different approaches for module compatibility
-        InputStream is = null;
-        
-        // First try: Module's class loader
-        is = getClass().getClassLoader().getResourceAsStream(resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath);
-        
-        // Second try: Module class itself
-        if (is == null) {
-            is = getClass().getResourceAsStream(resourcePath);
-        }
-        
-        // Third try: Context class loader
-        if (is == null) {
-            is = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath);
-        }
-        
-        try (InputStream finalIs = is) {
-            if (finalIs == null) {
-                System.err.println("InputStream is NULL for path: " + resourcePath);
-                
-                // Try alternative paths
-                System.out.println("Trying alternative paths...");
-                String[] alternativePaths = {
-                    "/sounds/GrassWalk.wav",
-                    "sounds/GrassWalk.wav",
-                    "/GrassWalk.wav",
-                    "GrassWalk.wav"
-                };
-                
-                for (String altPath : alternativePaths) {
-                    System.out.println("Trying: " + altPath);
-                    InputStream altIs = null;
-                    
-                    // Try different approaches for each alternative path
-                    altIs = getClass().getClassLoader().getResourceAsStream(altPath.startsWith("/") ? altPath.substring(1) : altPath);
-                    if (altIs == null) {
-                        altIs = getClass().getResourceAsStream(altPath);
-                    }
-                    if (altIs == null) {
-                        altIs = Thread.currentThread().getContextClassLoader().getResourceAsStream(altPath.startsWith("/") ? altPath.substring(1) : altPath);
-                    }
-                    
-                    try (InputStream finalAltIs = altIs) {
-                        if (finalAltIs != null) {
-                            System.out.println("Found sound at: " + altPath);
-                            loadSoundFromStream(name, finalAltIs, altPath);
-                            return;
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Error trying " + altPath + ": " + e.getMessage());
-                    }
-                }
-                
-                System.err.println("Could not find sound file at any path!");
-                return;
-            }
-            
-            System.out.println("Successfully opened InputStream for: " + resourcePath);
-            loadSoundFromStream(name, finalIs, resourcePath);
-            
-        } catch (IOException e) {
-            System.err.println("IOException loading sound " + resourcePath + ": " + e.getMessage());
-            System.err.println("Stack trace: " + e.toString());
-        }
-        System.out.println("=====================");
-    }
-    
-    private void loadSoundFromStream(String name, InputStream is, String path) {
-        try {
-            System.out.println("Loading sound: " + name + " from " + path);
-            
-            // Use Java Sound API to load WAV files
-            try (BufferedInputStream bis = new BufferedInputStream(is);
-                 AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis)) {
-                AudioFormat format = audioInputStream.getFormat();
-                
-                System.out.println("Original format: " + format);
-                
-                // Convert to PCM if necessary
-                AudioFormat targetFormat = new AudioFormat(
-                    AudioFormat.Encoding.PCM_SIGNED,
-                    format.getSampleRate(),
-                    16,
-                    format.getChannels(),
-                    format.getChannels() * 2,
-                    format.getSampleRate(),
-                    false
-                );
-                
-                try (AudioInputStream pcmStream = AudioSystem.getAudioInputStream(targetFormat, audioInputStream)) {
-                
-                byte[] audioData = pcmStream.readAllBytes();
-                ByteBuffer audioBuffer = BufferUtils.createByteBuffer(audioData.length);
-                audioBuffer.put(audioData);
-                audioBuffer.flip();
-                
-                int channels = targetFormat.getChannels();
-                int sampleRate = (int) targetFormat.getSampleRate();
-                
-                System.out.println("Converted format: " + channels + " channels, " + sampleRate + " Hz, " + audioData.length + " bytes");
-                
-                int alFormat = switch (channels) {
-                    case 1 -> AL_FORMAT_MONO16;
-                    case 2 -> AL_FORMAT_STEREO16;
-                    default -> {
-                        System.err.println("Unsupported channel count: " + channels);
-                        yield -1;
-                    }
-                };
-                
-                if (alFormat == -1) {
-                    return;
-                }
-                
-                int bufferPointer = alGenBuffers();
-                alBufferData(bufferPointer, alFormat, audioBuffer, sampleRate);
-                
-                // Check for OpenAL errors
-                int error = alGetError();
-                if (error != AL_NO_ERROR) {
-                    System.err.println("OpenAL error loading buffer: " + error);
-                    return;
-                }
-                
-                soundBuffers.put(name, bufferPointer);
-                
-                // Create multiple sources for overlapping sounds (e.g., 4 sources per sound)
-                int numSources = 4;
-                Integer[] soundSources = new Integer[numSources];
-                
-                for (int i = 0; i < numSources; i++) {
-                    int sourcePointer = alGenSources();
-                    alSourcei(sourcePointer, AL_BUFFER, bufferPointer);
-                    alSourcef(sourcePointer, AL_GAIN, 0.5f);
-                    alSourcef(sourcePointer, AL_PITCH, 1f);
-                    alSource3f(sourcePointer, AL_POSITION, 0, 0, 0);
-                    
-                    error = alGetError();
-                    if (error != AL_NO_ERROR) {
-                        System.err.println("OpenAL error creating source " + i + ": " + error);
-                        return;
-                    }
-                    
-                    soundSources[i] = sourcePointer;
-                }
-                
-                sources.put(name, soundSources);
-                sourceIndexes.put(name, 0);
-                
-                System.out.println("Successfully loaded sound: " + name + " (" + channels + " channels, " + sampleRate + " Hz)");
-                }
-                
-            } catch (UnsupportedAudioFileException e) {
-                System.err.println("Unsupported audio file format: " + path);
-                System.err.println("Stack trace: " + e.toString());
-            }
-            
-        } catch (IOException e) {
-            System.err.println("Error loading sound " + path + ": " + e.getMessage());
-            System.err.println("Stack trace: " + e.toString());
+        AudioLoader.LoadResult result = audioLoader.loadSound(name, resourcePath);
+        if (result.success) {
+            soundBuffer.addSound(name, result.buffer);
+        } else {
+            System.err.println("Failed to load sound " + name + ": " + result.errorMessage);
         }
     }
     
     public void playSound(String name) {
-        Integer[] soundSources = sources.get(name);
-        if (soundSources != null) {
-            // Get the current source index and cycle through sources
-            int currentIndex = sourceIndexes.get(name);
-            int source = soundSources[currentIndex];
-            
-            // Apply master volume and play the sound
-            alSourcef(source, AL_GAIN, 0.5f * masterVolume); // 0.5f is the default volume
-            alSourcePlay(source);
-            
-            // Move to next source for next call (round-robin)
-            sourceIndexes.put(name, (currentIndex + 1) % soundSources.length);
-            
-            int error = alGetError();
-            if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing sound " + name + ": " + error);
-            }
-        } else {
-            System.err.println("Sound not found: " + name);
-        }
+        soundPlayer.playSound(name);
     }
     
     public void playSoundWithVolume(String name, float volume) {
-        Integer[] soundSources = sources.get(name);
-        if (soundSources != null) {
-            // Get the current source index and cycle through sources
-            int currentIndex = sourceIndexes.get(name);
-            int source = soundSources[currentIndex];
-            
-            // Apply master volume multiplied by the specific volume and play the sound
-            alSourcef(source, AL_GAIN, volume * masterVolume);
-            alSourcePlay(source);
-            
-            // Move to next source for next call (round-robin)
-            sourceIndexes.put(name, (currentIndex + 1) % soundSources.length);
-            
-            int error = alGetError();
-            if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing sound " + name + " with volume " + volume + ": " + error);
-            }
-        } else {
-            System.err.println("Sound not found: " + name);
-        }
+        soundPlayer.playSoundWithVolume(name, volume);
     }
     
     public void playSoundWithVariation(String name, float volume) {
-        Integer[] soundSources = sources.get(name);
-        if (soundSources != null) {
-            // Get the current source index and cycle through sources
-            int currentIndex = sourceIndexes.get(name);
-            int source = soundSources[currentIndex];
-            
-            // Create slight pitch variation (0.9 to 1.1, so ±10% variation)
-            float pitchVariation = 0.9f + (float)(Math.random() * 0.2f);
-            
-            // Apply volume and pitch variation
-            alSourcef(source, AL_GAIN, volume * masterVolume);
-            alSourcef(source, AL_PITCH, pitchVariation);
-            alSourcePlay(source);
-            
-            // Move to next source for next call (round-robin)
-            sourceIndexes.put(name, (currentIndex + 1) % soundSources.length);
-            
-            int error = alGetError();
-            if (error != AL_NO_ERROR) {
-                System.err.println("OpenAL error playing sound " + name + " with variation: " + error);
-            }
-        } else {
-            System.err.println("Sound not found: " + name);
-        }
+        soundPlayer.playSoundWithVariation(name, volume);
+    }
+
+    /**
+     * Plays a sound at a specific 3D position in the world.
+     * The sound will have proper 3D audio properties including distance attenuation.
+     *
+     * @param name The name of the sound to play
+     * @param volume The volume level (0.0 to 1.0)
+     * @param x The X coordinate in world space
+     * @param y The Y coordinate in world space
+     * @param z The Z coordinate in world space
+     */
+    public void playSoundAt3D(String name, float volume, float x, float y, float z) {
+        soundPlayer.playSoundAt3D(name, volume, x, y, z);
+    }
+
+    /**
+     * Plays a sound at a specific 3D position with pitch variation.
+     *
+     * @param name The name of the sound to play
+     * @param volume The volume level (0.0 to 1.0)
+     * @param x The X coordinate in world space
+     * @param y The Y coordinate in world space
+     * @param z The Z coordinate in world space
+     */
+    public void playSoundAt3DWithVariation(String name, float volume, float x, float y, float z) {
+        soundPlayer.playSoundAt3DWithVariation(name, volume, x, y, z);
+    }
+
+    /**
+     * Convenience method to play a sound at a 3D position using a Vector3f.
+     *
+     * @param name The name of the sound to play
+     * @param volume The volume level (0.0 to 1.0)
+     * @param position The position vector in world space
+     */
+    public void playSoundAt3D(String name, float volume, org.joml.Vector3f position) {
+        playSoundAt3D(name, volume, position.x, position.y, position.z);
+    }
+
+    /**
+     * Convenience method to play a sound at a 3D position with variation using a Vector3f.
+     *
+     * @param name The name of the sound to play
+     * @param volume The volume level (0.0 to 1.0)
+     * @param position The position vector in world space
+     */
+    public void playSoundAt3DWithVariation(String name, float volume, org.joml.Vector3f position) {
+        playSoundAt3DWithVariation(name, volume, position.x, position.y, position.z);
     }
     
     public void setListenerPosition(float x, float y, float z) {
-        alListener3f(AL_POSITION, x, y, z);
+        audioListener.setListenerPosition(x, y, z);
+    }
+
+    /**
+     * Sets the audio listener orientation for proper 3D audio.
+     * @param forward The forward direction vector
+     * @param up The up direction vector
+     */
+    public void setListenerOrientation(org.joml.Vector3f forward, org.joml.Vector3f up) {
+        audioListener.setListenerOrientation(forward, up);
+    }
+
+    /**
+     * Sets the audio listener position and orientation from camera data.
+     * This should be called every frame for proper 3D spatial audio.
+     * @param position The listener position (usually player position)
+     * @param front The camera front/forward vector
+     * @param up The camera up vector
+     */
+    public void setListenerFromCamera(org.joml.Vector3f position, org.joml.Vector3f front, org.joml.Vector3f up) {
+        audioListener.setListenerFromCamera(position, front, up);
     }
     
     public boolean isSoundLoaded(String name) {
-        return soundBuffers.containsKey(name) && sources.containsKey(name) && sources.get(name) != null;
+        return soundBuffer.isSoundLoaded(name);
     }
     
     public void testBasicFunctionality() {
-        System.out.println("=== SoundSystem Test ===");
-        System.out.println("Device: " + device);
-        System.out.println("Context: " + context);
-        System.out.println("Loaded sound buffers: " + soundBuffers.keySet());
-        System.out.println("Available sources: " + sources.keySet());
-        System.out.println("soundBuffers map size: " + soundBuffers.size());
-        System.out.println("sources map size: " + sources.size());
-        
-        // Test if OpenAL is working
-        int error = alGetError();
-        if (error != AL_NO_ERROR) {
-            System.err.println("OpenAL error in test: " + error);
-        } else {
-            System.out.println("OpenAL is functioning correctly");
-        }
-        
-        // Test if grasswalk sound is loaded
-        if (soundBuffers.containsKey("grasswalk") && sources.containsKey("grasswalk")) {
-            System.out.println("✓ Grasswalk sound is properly loaded");
-            System.out.println("Attempting to play grasswalk sound...");
+        audioDiagnostics.testBasicFunctionality();
+        // Note: Sound playing removed to prevent audio before world is loaded
+        // Use testSoundPlayback() method if you need to test sound playback specifically
+    }
+
+    /**
+     * Tests sound playback functionality - only call this when appropriate (e.g., in-game).
+     * This method actually plays a sound, unlike testBasicFunctionality().
+     */
+    public void testSoundPlayback() {
+        if (soundBuffer.isSoundLoaded("grasswalk")) {
+            System.out.println("Testing sound playback with grasswalk...");
             playSound("grasswalk");
         } else {
-            System.err.println("✗ Grasswalk sound failed to load!");
-            System.err.println("soundBuffers contains 'grasswalk': " + soundBuffers.containsKey("grasswalk"));
-            System.err.println("sources contains 'grasswalk': " + sources.containsKey("grasswalk"));
-            
-            // Show what we actually have
-            if (!soundBuffers.isEmpty()) {
-                System.err.println("Available sound buffers:");
-                for (String key : soundBuffers.keySet()) {
-                    System.err.println("  - '" + key + "'");
-                }
-            }
-            if (!sources.isEmpty()) {
-                System.err.println("Available sources:");
-                for (String key : sources.keySet()) {
-                    System.err.println("  - '" + key + "'");
-                }
+            System.err.println("Cannot test sound playback - grasswalk sound not loaded");
+        }
+    }
+
+    /**
+     * Tests 3D audio functionality with known positions relative to the player.
+     * This method plays sounds at specific distances to verify 3D audio is working.
+     */
+    public void test3DAudio() {
+        if (!soundBuffer.isSoundLoaded("blockpickup")) {
+            System.err.println("Cannot test 3D audio - blockpickup sound not loaded");
+            return;
+        }
+
+        com.stonebreak.player.Player player = com.stonebreak.core.Game.getPlayer();
+        if (player == null) {
+            System.err.println("Cannot test 3D audio - player not found");
+            return;
+        }
+
+        org.joml.Vector3f playerPos = player.getPosition();
+        System.out.println("🧪 3D AUDIO TEST: Player position: (" + playerPos.x + ", " + playerPos.y + ", " + playerPos.z + ")");
+
+        // Test sounds at various distances
+        float[][] testPositions = {
+            {playerPos.x + 2.0f, playerPos.y, playerPos.z},     // 2 blocks away (should be loud)
+            {playerPos.x + 10.0f, playerPos.y, playerPos.z},    // 10 blocks away (should be quieter)
+            {playerPos.x + 25.0f, playerPos.y, playerPos.z},    // 25 blocks away (should be very quiet)
+            {playerPos.x + 60.0f, playerPos.y, playerPos.z}     // 60 blocks away (should be silent)
+        };
+
+        String[] descriptions = {
+            "2 blocks (should be loud)",
+            "10 blocks (should be quieter)",
+            "25 blocks (should be very quiet)",
+            "60 blocks (should be silent)"
+        };
+
+        for (int i = 0; i < testPositions.length; i++) {
+            float[] pos = testPositions[i];
+            System.out.println("🧪 3D AUDIO TEST: Playing sound at " + descriptions[i] + " - position (" + pos[0] + ", " + pos[1] + ", " + pos[2] + ")");
+
+            // Calculate distance for reference
+            float distance = (float) Math.sqrt(
+                Math.pow(pos[0] - playerPos.x, 2) +
+                Math.pow(pos[1] - playerPos.y, 2) +
+                Math.pow(pos[2] - playerPos.z, 2)
+            );
+            System.out.println("🧪 3D AUDIO TEST: Calculated distance: " + distance + " blocks");
+
+            playSoundAt3D("blockpickup", 0.8f, pos[0], pos[1], pos[2]);
+
+            // Wait a bit between sounds
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
-        System.out.println("========================");
+
+        System.out.println("🧪 3D AUDIO TEST: Test completed. If 3D audio is working, you should have heard:");
+        System.out.println("  - Loud sound at 2 blocks");
+        System.out.println("  - Quieter sound at 10 blocks");
+        System.out.println("  - Very quiet sound at 25 blocks");
+        System.out.println("  - Silent or barely audible sound at 60 blocks");
+    }
+
+    /**
+     * Simple immediate test of 3D audio at one position
+     */
+    public void testSingle3DAudio(float distance) {
+        if (!soundBuffer.isSoundLoaded("blockpickup")) {
+            System.err.println("Cannot test 3D audio - blockpickup sound not loaded");
+            return;
+        }
+
+        com.stonebreak.player.Player player = com.stonebreak.core.Game.getPlayer();
+        if (player == null) {
+            System.err.println("Cannot test 3D audio - player not found");
+            return;
+        }
+
+        org.joml.Vector3f playerPos = player.getPosition();
+        float testX = playerPos.x + distance;
+        float testY = playerPos.y;
+        float testZ = playerPos.z;
+
+        System.out.println("🧪 SINGLE 3D TEST: Player at (" + playerPos.x + ", " + playerPos.y + ", " + playerPos.z + ")");
+        System.out.println("🧪 SINGLE 3D TEST: Playing sound " + distance + " blocks away at (" + testX + ", " + testY + ", " + testZ + ")");
+
+        playSoundAt3D("blockpickup", 0.8f, testX, testY, testZ);
+    }
+
+    /**
+     * Diagnoses OpenAL 3D audio configuration
+     */
+    public void diagnoseOpenAL3D() {
+        System.out.println("🔍 OPENAL DIAGNOSIS:");
+
+        // Check distance model
+        int distanceModel = org.lwjgl.openal.AL10.alGetInteger(org.lwjgl.openal.AL10.AL_DISTANCE_MODEL);
+        System.out.println("  Distance Model: " + distanceModel + " (AL_INVERSE_DISTANCE_CLAMPED=" + org.lwjgl.openal.AL10.AL_INVERSE_DISTANCE_CLAMPED + ")");
+
+        // Check if we have a blockpickup source to examine
+        Integer[] sources = soundBuffer.getSources("blockpickup");
+        if (sources != null && sources.length > 0) {
+            int source = sources[0];
+            System.out.println("  Examining source " + source + " for 'blockpickup':");
+
+            // Check source properties
+            float refDist = org.lwjgl.openal.AL10.alGetSourcef(source, org.lwjgl.openal.AL10.AL_REFERENCE_DISTANCE);
+            float maxDist = org.lwjgl.openal.AL10.alGetSourcef(source, org.lwjgl.openal.AL10.AL_MAX_DISTANCE);
+            float rolloff = org.lwjgl.openal.AL10.alGetSourcef(source, org.lwjgl.openal.AL10.AL_ROLLOFF_FACTOR);
+            int relative = org.lwjgl.openal.AL10.alGetSourcei(source, org.lwjgl.openal.AL10.AL_SOURCE_RELATIVE);
+
+            System.out.println("    Reference Distance: " + refDist);
+            System.out.println("    Max Distance: " + maxDist);
+            System.out.println("    Rolloff Factor: " + rolloff);
+            System.out.println("    Source Relative: " + relative + " (AL_FALSE=" + org.lwjgl.openal.AL10.AL_FALSE + ")");
+
+            // Check listener position
+            java.nio.FloatBuffer listenerPos = org.lwjgl.BufferUtils.createFloatBuffer(3);
+            org.lwjgl.openal.AL10.alGetListenerfv(org.lwjgl.openal.AL10.AL_POSITION, listenerPos);
+            System.out.println("    Listener Position: (" + listenerPos.get(0) + ", " + listenerPos.get(1) + ", " + listenerPos.get(2) + ")");
+
+        } else {
+            System.out.println("  No blockpickup sources found for examination");
+        }
+
+        int error = org.lwjgl.openal.AL10.alGetError();
+        if (error != org.lwjgl.openal.AL10.AL_NO_ERROR) {
+            System.err.println("  OpenAL Error during diagnosis: " + error);
+        } else {
+            System.out.println("  No OpenAL errors detected");
+        }
     }
     
     /**
@@ -399,30 +293,46 @@ public class SoundSystem {
      * @param volume Volume level (0.0 = silent, 1.0 = normal volume)
      */
     public void setMasterVolume(float volume) {
-        this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
+        volumeController.setMasterVolume(volume);
     }
-    
+
     /**
      * Gets the current master volume.
      * @return Current master volume level
      */
     public float getMasterVolume() {
-        return masterVolume;
+        return volumeController.getMasterVolume();
     }
-    
+
+    /**
+     * Initializes player sound management with the given world.
+     * Should be called when a world is loaded.
+     */
+    public void initializePlayerSounds(com.stonebreak.world.World world) {
+        this.playerSounds = new PlayerSounds(world);
+    }
+
+    /**
+     * Updates player walking sounds based on movement state.
+     * Should be called every frame during player update.
+     */
+    public void updatePlayerSounds(org.joml.Vector3f position, org.joml.Vector3f velocity, boolean onGround, boolean physicallyInWater) {
+        if (playerSounds != null) {
+            playerSounds.updateWalkingSounds(position, velocity, onGround, physicallyInWater);
+        }
+    }
+
+    /**
+     * Resets player sound state. Call when player is created or respawned.
+     */
+    public void resetPlayerSounds() {
+        if (playerSounds != null) {
+            playerSounds.reset();
+        }
+    }
+
     public void cleanup() {
-        for (Integer[] soundSources : sources.values()) {
-            if (soundSources != null) {
-                for (int source : soundSources) {
-                    alDeleteSources(source);
-                }
-            }
-        }
-        for (int buffer : soundBuffers.values()) {
-            alDeleteBuffers(buffer);
-        }
-        
-        alcDestroyContext(context);
-        alcCloseDevice(device);
+        soundBuffer.cleanup();
+        openALContext.cleanup();
     }
 }

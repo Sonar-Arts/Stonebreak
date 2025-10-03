@@ -1,6 +1,6 @@
 {
-  "block_type": "SNOWY_LEAVES",
-  "texture_name": "snowy_leaves",
+  "block_type": "PINE_LEAVES",
+  "texture_name": "pine_leaves",
   "description": "Dark green leaves with white snow patches and edge transparency",
   "texture_properties": {
     "size": 16,

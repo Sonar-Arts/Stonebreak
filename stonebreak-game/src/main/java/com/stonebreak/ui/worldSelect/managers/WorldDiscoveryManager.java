@@ -2,7 +2,7 @@ package com.stonebreak.ui.worldSelect.managers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.stonebreak.world.save.core.WorldMetadata;
+import com.stonebreak.world.save.model.WorldData;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,18 +13,18 @@ import java.util.*;
 import java.time.LocalDateTime;
 
 /**
- * Manages world discovery and metadata retrieval from the worlds directory.
- * Scans for existing worlds and provides metadata information.
+ * Manages world discovery and world data retrieval from the worlds directory.
+ * Scans for existing worlds and provides world data information.
  */
 public class WorldDiscoveryManager {
 
     private static final String WORLDS_DIRECTORY = "worlds";
-    private static final String METADATA_FILENAME = "metadata.json";
+    private static final String WORLD_DATA_FILENAME = "world.json";
 
     private final ObjectMapper objectMapper;
 
-    // Cache for world metadata to avoid repeated file reads
-    private final Map<String, WorldMetadata> metadataCache = new HashMap<>();
+    // Cache for world data to avoid repeated file reads
+    private final Map<String, WorldData> worldDataCache = new HashMap<>();
     private long lastScanTime = 0;
     private static final long CACHE_VALIDITY_MS = 5000; // 5 seconds
 
@@ -69,11 +69,15 @@ public class WorldDiscoveryManager {
 
             // Sort worlds by last played time (most recent first)
             worlds.sort((a, b) -> {
-                WorldMetadata metadataA = getWorldMetadata(a);
-                WorldMetadata metadataB = getWorldMetadata(b);
+                WorldData worldDataA = getWorldData(a);
+                WorldData worldDataB = getWorldData(b);
 
-                Long timeA = metadataA != null ? metadataA.getLastPlayedMillis() : null;
-                Long timeB = metadataB != null ? metadataB.getLastPlayedMillis() : null;
+                Long timeA = worldDataA != null && worldDataA.getLastPlayed() != null
+                    ? worldDataA.getLastPlayed().toEpochSecond(java.time.ZoneOffset.UTC) * 1000
+                    : null;
+                Long timeB = worldDataB != null && worldDataB.getLastPlayed() != null
+                    ? worldDataB.getLastPlayed().toEpochSecond(java.time.ZoneOffset.UTC) * 1000
+                    : null;
 
                 // Handle null times (put them at the end)
                 if (timeA == null && timeB == null) return a.compareTo(b);
@@ -97,9 +101,9 @@ public class WorldDiscoveryManager {
      */
     private boolean isValidWorldDirectory(Path worldPath) {
         try {
-            // Check for metadata file (required)
-            Path metadataPath = worldPath.resolve(METADATA_FILENAME);
-            if (!Files.exists(metadataPath)) {
+            // Check for world data file (required)
+            Path worldDataPath = worldPath.resolve(WORLD_DATA_FILENAME);
+            if (!Files.exists(worldDataPath)) {
                 return false;
             }
 
@@ -117,72 +121,81 @@ public class WorldDiscoveryManager {
     // ===== METADATA MANAGEMENT =====
 
     /**
-     * Gets metadata for a specific world, using cache when possible.
+     * Gets world data for a specific world, using cache when possible.
      */
-    public WorldMetadata getWorldMetadata(String worldName) {
+    public WorldData getWorldData(String worldName) {
         if (worldName == null || worldName.trim().isEmpty()) {
             return null;
         }
 
         // Check cache first
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastScanTime < CACHE_VALIDITY_MS && metadataCache.containsKey(worldName)) {
-            return metadataCache.get(worldName);
+        if (currentTime - lastScanTime < CACHE_VALIDITY_MS && worldDataCache.containsKey(worldName)) {
+            return worldDataCache.get(worldName);
         }
 
         // Load from file
-        WorldMetadata metadata = loadWorldMetadata(worldName);
+        WorldData worldData = loadWorldData(worldName);
 
         // Update cache
-        if (metadata != null) {
-            metadataCache.put(worldName, metadata);
+        if (worldData != null) {
+            worldDataCache.put(worldName, worldData);
             lastScanTime = currentTime;
         }
 
-        return metadata;
+        return worldData;
     }
 
     /**
-     * Loads world metadata from the file system.
+     * Legacy compatibility method - returns WorldData under the old method name.
+     * @deprecated Use getWorldData() instead
      */
-    private WorldMetadata loadWorldMetadata(String worldName) {
-        try {
-            Path metadataPath = Paths.get(WORLDS_DIRECTORY, worldName, METADATA_FILENAME);
+    @Deprecated
+    public WorldData getWorldMetadata(String worldName) {
+        return getWorldData(worldName);
+    }
 
-            if (!Files.exists(metadataPath)) {
+    /**
+     * Loads world data from the file system.
+     */
+    private WorldData loadWorldData(String worldName) {
+        try {
+            Path worldDataPath = Paths.get(WORLDS_DIRECTORY, worldName, WORLD_DATA_FILENAME);
+
+            if (!Files.exists(worldDataPath)) {
                 return null;
             }
 
-            return objectMapper.readValue(metadataPath.toFile(), WorldMetadata.class);
+            return objectMapper.readValue(worldDataPath.toFile(), WorldData.class);
 
         } catch (IOException e) {
-            System.err.println("Error loading metadata for world '" + worldName + "': " + e.getMessage());
+            System.err.println("Error loading world data for world '" + worldName + "': " + e.getMessage());
             return null;
         } catch (Exception e) {
-            System.err.println("Unexpected error loading metadata for world '" + worldName + "': " + e.getMessage());
+            System.err.println("Unexpected error loading world data for world '" + worldName + "': " + e.getMessage());
             return null;
         }
     }
 
     /**
-     * Refreshes the metadata cache for all worlds.
+     * Refreshes the world data cache for all worlds.
      */
     public void refreshMetadataCache() {
-        metadataCache.clear();
+        worldDataCache.clear();
         lastScanTime = 0;
 
-        // Pre-load metadata for discovered worlds
+        // Pre-load world data for discovered worlds
         List<String> worlds = discoverWorlds();
         for (String worldName : worlds) {
-            getWorldMetadata(worldName);
+            getWorldData(worldName);
         }
     }
 
     /**
-     * Clears the metadata cache.
+     * Clears the world data cache.
      */
     public void clearCache() {
-        metadataCache.clear();
+        worldDataCache.clear();
         lastScanTime = 0;
     }
 
@@ -261,15 +274,16 @@ public class WorldDiscoveryManager {
      * Gets a display-friendly summary of world information.
      */
     public String getWorldDisplayInfo(String worldName) {
-        WorldMetadata metadata = getWorldMetadata(worldName);
-        if (metadata == null) {
+        WorldData worldData = getWorldData(worldName);
+        if (worldData == null) {
             return worldName;
         }
 
         StringBuilder info = new StringBuilder(worldName);
 
-        if (metadata.getLastPlayedMillis() > 0) {
-            info.append(" (Last played: ").append(formatTimestamp(metadata.getLastPlayedMillis())).append(")");
+        if (worldData.getLastPlayed() != null) {
+            long lastPlayedMillis = worldData.getLastPlayed().toEpochSecond(java.time.ZoneOffset.UTC) * 1000;
+            info.append(" (Last played: ").append(formatTimestamp(lastPlayedMillis)).append(")");
         }
 
         return info.toString();
