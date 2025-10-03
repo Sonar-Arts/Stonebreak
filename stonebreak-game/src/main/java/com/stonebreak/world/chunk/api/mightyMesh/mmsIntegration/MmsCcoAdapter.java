@@ -12,6 +12,7 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshData;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCuboidGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCrossGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsGeometryService;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsAtlasTextureMapper;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -34,6 +35,7 @@ public class MmsCcoAdapter {
     private final MmsGeometryService cuboidGenerator;
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
+    private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
 
     /**
@@ -65,7 +67,8 @@ public class MmsCcoAdapter {
             throw new IllegalArgumentException("World cannot be null when setting");
         }
         this.world = world;
-        System.out.println("[MmsCcoAdapter] World instance set successfully");
+        this.waterGenerator = new MmsWaterGenerator(world);
+        System.out.println("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
     }
 
     /**
@@ -105,6 +108,12 @@ public class MmsCcoAdapter {
                         // Handle cross-section blocks (flowers)
                         if (isCrossBlock(blockType)) {
                             addCrossBlock(builder, blockType, lx, ly, lz, chunkX, chunkZ);
+                            continue;
+                        }
+
+                        // Handle water blocks with special geometry
+                        if (blockType == BlockType.WATER) {
+                            addWaterBlockWithCulling(builder, lx, ly, lz, chunkX, chunkZ, chunkData);
                             continue;
                         }
 
@@ -179,6 +188,62 @@ public class MmsCcoAdapter {
     }
 
     /**
+     * Adds a water block with face culling and variable height geometry.
+     */
+    private void addWaterBlockWithCulling(MmsMeshBuilder builder,
+                                         int lx, int ly, int lz, int chunkX, int chunkZ,
+                                         CcoChunkData chunkData) {
+        if (waterGenerator == null) {
+            // Fallback to standard cube if water generator not initialized
+            addCubeBlockWithCulling(builder, BlockType.WATER, lx, ly, lz, chunkX, chunkZ, chunkData);
+            return;
+        }
+
+        float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+        float worldY = ly;
+        float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+        int blockX = (int) Math.floor(worldX);
+        int blockY = (int) Math.floor(worldY);
+        int blockZ = (int) Math.floor(worldZ);
+
+        // Check each face for culling (water has special culling rules)
+        for (int face = 0; face < 6; face++) {
+            if (!shouldRenderWaterFace(lx, ly, lz, face, chunkData)) {
+                continue; // Face is culled
+            }
+
+            // Generate water-specific geometry with variable heights
+            float[] vertices = waterGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
+            float[] normals = waterGenerator.generateFaceNormals(face);
+
+            // Generate texture coordinates (same as regular blocks)
+            float[] texCoords = textureMapper.generateFaceTextureCoordinates(BlockType.WATER, face);
+
+            // Generate alpha flags (water uses alpha blending, not testing)
+            float[] alphaFlags = new float[]{0.0f, 0.0f, 0.0f, 0.0f};
+
+            // Generate water flags with height encoding
+            float blockHeight = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, 0.875f)[0];
+            float[] waterFlags = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, blockHeight);
+
+            // Add face to builder
+            builder.beginFace();
+            for (int i = 0; i < 4; i++) {
+                int vIdx = i * 3;
+                int tIdx = i * 2;
+
+                builder.addVertex(
+                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                    texCoords[tIdx], texCoords[tIdx + 1],
+                    normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
+                    waterFlags[i], alphaFlags[i] // Water flags encode height
+                );
+            }
+            builder.endFace();
+        }
+    }
+
+    /**
      * Adds a cube block with face culling to the mesh builder.
      */
     private void addCubeBlockWithCulling(MmsMeshBuilder builder, BlockType blockType,
@@ -219,6 +284,34 @@ public class MmsCcoAdapter {
                 );
             }
             builder.endFace();
+        }
+    }
+
+    /**
+     * Determines if a water face should be rendered based on adjacent blocks.
+     * Water has special culling rules to prevent water-to-water culling.
+     */
+    private boolean shouldRenderWaterFace(int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        // Get adjacent block coordinates
+        int adjX = lx + getFaceOffsetX(face);
+        int adjY = ly + getFaceOffsetY(face);
+        int adjZ = lz + getFaceOffsetZ(face);
+
+        // Get adjacent block (handles chunk boundaries via world)
+        BlockType adjacentBlock = getAdjacentBlock(adjX, adjY, adjZ, chunkData);
+
+        // Water face culling rules (from old FaceRenderingService):
+        if (adjacentBlock == BlockType.WATER) {
+            // Never render faces between water blocks - they blend seamlessly
+            return false;
+        } else {
+            // Water vs non-water: render top face when adjacent to opaque blocks,
+            // other faces when transparent (but not water)
+            if (face == 0) { // Top face
+                return !adjacentBlock.isTransparent() || adjacentBlock == BlockType.AIR;
+            } else {
+                return adjacentBlock.isTransparent() && adjacentBlock != BlockType.WATER;
+            }
         }
     }
 
