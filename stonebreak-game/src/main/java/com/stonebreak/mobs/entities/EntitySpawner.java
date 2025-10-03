@@ -4,6 +4,7 @@ import org.joml.Vector3f;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.player.Player;
 
 import java.util.Random;
 
@@ -21,6 +22,11 @@ public class EntitySpawner {
     private static final float COW_SPAWN_CHANCE = 0.1f; // 10% chance per chunk generation
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
+    
+    // Spawning rules for zombies
+    private static final int MAX_ZOMBIES_NEAR_PLAYER = 3;
+    private static final float ZOMBIE_SPAWN_DISTANCE = 20.0f; // Distance from player to spawn
+    private static final float ZOMBIE_MIN_SPAWN_DISTANCE = 15.0f; // Minimum distance to avoid spawning too close
     
     // Cow texture variants for random selection
     private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland", "jersey"};
@@ -180,6 +186,7 @@ public class EntitySpawner {
         
         return switch (type) {
             case COW -> isValidCowSpawnLocation(x, y, z);
+            case ZOMBIE -> isValidZombieSpawnLocation(x, y, z);
             default -> false;
         };
     }
@@ -326,7 +333,106 @@ public class EntitySpawner {
         return entityManager.spawnEntity(type, position);
     }
     
+    /**
+     * Spawns zombies near the player for testing purposes.
+     * In the final version, this would be called based on game conditions.
+     */
+    public void spawnZombiesNearPlayer(Player player, int count) {
+        if (player == null || !player.isAlive()) return;
+        
+        Vector3f playerPos = player.getPosition();
+        int zombiesSpawned = 0;
+        int maxAttempts = count * 10; // More attempts since we need specific distance requirements
+        
+        for (int attempt = 0; attempt < maxAttempts && zombiesSpawned < count; attempt++) {
+            // Generate random angle for spawn direction
+            float angle = (float) (Math.random() * 2 * Math.PI);
+            
+            // Generate random distance between min and max spawn distance
+            float distance = ZOMBIE_MIN_SPAWN_DISTANCE + 
+                            (float)(Math.random() * (ZOMBIE_SPAWN_DISTANCE - ZOMBIE_MIN_SPAWN_DISTANCE));
+            
+            // Calculate spawn position
+            float spawnX = playerPos.x + (float)(Math.cos(angle) * distance);
+            float spawnZ = playerPos.z + (float)(Math.sin(angle) * distance);
+            
+            // Find suitable Y position
+            int groundY = findSuitableSpawnHeight((int)spawnX, (int)spawnZ);
+            if (groundY > 0) {
+                Vector3f spawnPos = new Vector3f(spawnX, groundY, spawnZ);
+                
+                if (isValidSpawnLocation(spawnPos, EntityType.ZOMBIE)) {
+                    // Spawn the zombie
+                    Entity zombie = entityManager.spawnEntity(EntityType.ZOMBIE, spawnPos);
+                    if (zombie != null) {
+                        zombiesSpawned++;
+                        System.out.println("Zombie spawned at " + spawnPos + " (distance: " + 
+                                         String.format("%.1f", distance) + " from player)");
+                    }
+                }
+            }
+        }
+        
+        if (zombiesSpawned < count) {
+            System.out.println("Warning: Only spawned " + zombiesSpawned + " of " + count + " requested zombies");
+        }
+    }
+    
+    /**
+     * Checks if a location is suitable for zombie spawning.
+     */
+    private boolean isValidZombieSpawnLocation(int x, int y, int z) {
+        // Check ground block - zombies can spawn on most solid surfaces
+        var groundBlock = world.getBlockAt(x, y - 1, z);
+        if (groundBlock == null || groundBlock == com.stonebreak.blocks.BlockType.AIR || 
+            groundBlock == com.stonebreak.blocks.BlockType.WATER) {
+            return false;
+        }
+        
+        // Check for enough space (zombie needs 2 blocks of height - 1.95 blocks tall)
+        var airBlock1 = world.getBlockAt(x, y, z);
+        var airBlock2 = world.getBlockAt(x, y + 1, z);
+        if ((airBlock1 != null && airBlock1 != com.stonebreak.blocks.BlockType.AIR) ||
+            (airBlock2 != null && airBlock2 != com.stonebreak.blocks.BlockType.AIR)) {
+            return false;
+        }
+        
+        // Zombies are smaller than cows (0.6x0.6), so less space checking needed
+        // But still check immediate surroundings to avoid spawning in walls
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue; // Skip center
+                
+                var sideBlock = world.getBlockAt(x + dx, y, z + dz);
+                // Only fail if completely surrounded by solid blocks
+                if (sideBlock != null && sideBlock != com.stonebreak.blocks.BlockType.AIR) {
+                    // Count solid neighbors
+                    int solidNeighbors = 0;
+                    for (int ddx = -1; ddx <= 1; ddx++) {
+                        for (int ddz = -1; ddz <= 1; ddz++) {
+                            var neighbor = world.getBlockAt(x + ddx, y, z + ddz);
+                            if (neighbor != null && neighbor != com.stonebreak.blocks.BlockType.AIR) {
+                                solidNeighbors++;
+                            }
+                        }
+                    }
+                    // Don't spawn if mostly surrounded by solid blocks
+                    if (solidNeighbors > 6) return false;
+                }
+            }
+        }
+        
+        // Don't spawn in water
+        if (world.getBlockAt(x, y, z) == com.stonebreak.blocks.BlockType.WATER ||
+            world.getBlockAt(x, y + 1, z) == com.stonebreak.blocks.BlockType.WATER) {
+            return false;
+        }
+        
+        return true;
+    }
+    
     // Getters
     public float getCowSpawnChance() { return COW_SPAWN_CHANCE; }
     public int getMaxCowsPerChunk() { return MAX_COWS_PER_CHUNK; }
+    public int getMaxZombiesNearPlayer() { return MAX_ZOMBIES_NEAR_PLAYER; }
 }

@@ -27,6 +27,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F7;
 
 /**
  * Handles player input for movement and interaction.
@@ -57,6 +58,7 @@ public class InputHandler {
     private boolean f4KeyPressed = false; // Added for memory leak analysis
     private boolean f5KeyPressed = false; // Added for detailed memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
+    private boolean f7KeyPressed = false; // Added for test zombie spawning
     
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
@@ -446,6 +448,43 @@ public class InputHandler {
             }
         } else if (!isF6Pressed) {
             f6KeyPressed = false;
+        }
+        
+        // F7 - Spawn test zombie
+        boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
+        if (isF7Pressed && !f7KeyPressed) {
+            f7KeyPressed = true;
+            Player player = Game.getPlayer();
+            EntityManager entityManager = Game.getEntityManager();
+            if (player != null && entityManager != null) {
+                System.out.println("[DEBUG] Spawning test zombie near player...");
+                
+                // Spawn zombie directly using EntityManager
+                Vector3f playerPos = player.getPosition();
+                Vector3f spawnPos = new Vector3f(playerPos.x + 10.0f, playerPos.y, playerPos.z + 10.0f);
+                
+                // Find ground level at spawn position
+                int groundY = (int)playerPos.y;
+                for (int y = (int)playerPos.y + 10; y >= (int)playerPos.y - 10; y--) {
+                    BlockType block = Game.getWorld().getBlockAt((int)spawnPos.x, y, (int)spawnPos.z);
+                    if (block != null && block != BlockType.AIR) {
+                        groundY = y + 1;
+                        break;
+                    }
+                }
+                spawnPos.y = groundY;
+                
+                Entity zombie = entityManager.spawnEntity(EntityType.ZOMBIE, spawnPos);
+                if (zombie != null) {
+                    System.out.println("[DEBUG] Spawned test zombie at " + spawnPos);
+                } else {
+                    System.out.println("[DEBUG] Failed to spawn test zombie");
+                }
+            } else {
+                System.out.println("[DEBUG] Failed to spawn zombie - player or entity manager is null");
+            }
+        } else if (!isF7Pressed) {
+            f7KeyPressed = false;
         }
     }
  
