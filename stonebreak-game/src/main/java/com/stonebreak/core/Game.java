@@ -1675,11 +1675,11 @@ public class Game {
                 int playerChunkX = (int) Math.floor(playerPosition.x / 16);
                 int playerChunkZ = (int) Math.floor(playerPosition.z / 16);
                 int renderDistance = 4; // Smaller initial area
-                
+
                 if (loadingScreen != null) {
                     loadingScreen.updateProgress("Generating Base Terrain Shape");
                 }
-                
+
                 // Generate chunks in expanding rings
                 long lastProgressUpdate = System.currentTimeMillis();
                 int chunksGenerated = 0;
@@ -1717,10 +1717,10 @@ public class Game {
                         }
                     }
                 }
-                
+
                 // Give time for all chunks to finish processing
                 Thread.sleep(500);
-                
+
                 // Complete world generation
                 completeWorldGeneration();
                 

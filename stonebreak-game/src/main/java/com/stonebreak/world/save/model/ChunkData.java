@@ -2,6 +2,8 @@ package com.stonebreak.world.save.model;
 
 import com.stonebreak.blocks.BlockType;
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Pure data model for chunk state.
@@ -14,6 +16,7 @@ public final class ChunkData {
     private final BlockType[][][] blocks;
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
+    private final Map<String, WaterBlockData> waterMetadata;
 
     private ChunkData(Builder builder) {
         this.chunkX = builder.chunkX;
@@ -21,6 +24,7 @@ public final class ChunkData {
         this.blocks = deepCopyBlocks(builder.blocks);
         this.lastModified = builder.lastModified;
         this.featuresPopulated = builder.featuresPopulated;
+        this.waterMetadata = builder.waterMetadata != null ? new HashMap<>(builder.waterMetadata) : new HashMap<>();
     }
 
     // Getters - return defensive copies for mutable objects
@@ -29,6 +33,7 @@ public final class ChunkData {
     public BlockType[][][] getBlocks() { return deepCopyBlocks(blocks); }
     public LocalDateTime getLastModified() { return lastModified; }
     public boolean isFeaturesPopulated() { return featuresPopulated; }
+    public Map<String, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
 
     /**
      * Deep copies block array for immutability.
@@ -54,6 +59,7 @@ public final class ChunkData {
         private BlockType[][][] blocks;
         private LocalDateTime lastModified = LocalDateTime.now();
         private boolean featuresPopulated = false;
+        private Map<String, WaterBlockData> waterMetadata = new HashMap<>();
 
         public Builder chunkX(int chunkX) {
             this.chunkX = chunkX;
@@ -80,6 +86,11 @@ public final class ChunkData {
             return this;
         }
 
+        public Builder waterMetadata(Map<String, WaterBlockData> waterMetadata) {
+            this.waterMetadata = waterMetadata;
+            return this;
+        }
+
         public ChunkData build() {
             if (blocks == null || blocks.length != 16 || blocks[0].length != 256 || blocks[0][0].length != 16) {
                 throw new IllegalStateException("Invalid chunk block array dimensions");
@@ -87,4 +98,9 @@ public final class ChunkData {
             return new ChunkData(this);
         }
     }
+
+    /**
+     * Water block metadata for saving depth and falling state.
+     */
+    public record WaterBlockData(int level, boolean falling) {}
 }

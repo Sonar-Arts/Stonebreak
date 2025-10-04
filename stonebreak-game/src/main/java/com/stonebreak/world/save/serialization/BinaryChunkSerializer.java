@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Binary serializer for ChunkData with palette compression and LZ4.
@@ -44,12 +46,16 @@ public class BinaryChunkSerializer implements Serializer<ChunkData> {
             // Serialize palette
             byte[] paletteData = palette.serializePalette();
 
-            // Build uncompressed body (palette + encoded blocks)
-            ByteBuffer bodyBuffer = ByteBuffer.allocate(paletteData.length + encodedBlocks.length * 8);
+            // Serialize water metadata (only non-source water blocks)
+            byte[] waterMetadataBytes = serializeWaterMetadata(chunk.getWaterMetadata());
+
+            // Build uncompressed body (palette + encoded blocks + water metadata)
+            ByteBuffer bodyBuffer = ByteBuffer.allocate(paletteData.length + encodedBlocks.length * 8 + waterMetadataBytes.length);
             bodyBuffer.put(paletteData);
             for (long blockData : encodedBlocks) {
                 bodyBuffer.putLong(blockData);
             }
+            bodyBuffer.put(waterMetadataBytes);
             byte[] body = Arrays.copyOf(bodyBuffer.array(), bodyBuffer.position());
 
             // Try LZ4 compression on the body
@@ -125,6 +131,12 @@ public class BinaryChunkSerializer implements Serializer<ChunkData> {
             // Decode blocks using palette
             BlockType[][][] blocks = palette.decodeBlocks(encodedBlocks);
 
+            // Deserialize water metadata (if present)
+            Map<String, ChunkData.WaterBlockData> waterMetadata = new HashMap<>();
+            if (buffer.hasRemaining()) {
+                waterMetadata = deserializeWaterMetadata(buffer);
+            }
+
             // Build ChunkData
             return ChunkData.builder()
                 .chunkX(header.chunkX)
@@ -133,6 +145,7 @@ public class BinaryChunkSerializer implements Serializer<ChunkData> {
                 .lastModified(Instant.ofEpochMilli(header.lastModified)
                     .atZone(ZoneId.systemDefault()).toLocalDateTime())
                 .featuresPopulated(((header.flags & 0x01) != 0) || ((header.flags & 0x02) != 0))
+                .waterMetadata(waterMetadata)
                 .build();
 
         } catch (Exception e) {
@@ -184,5 +197,58 @@ public class BinaryChunkSerializer implements Serializer<ChunkData> {
         byte bitsPerBlock;
         byte compressionType;
         byte flags;
+    }
+
+    /**
+     * Serializes water metadata to bytes.
+     * Format: [count:int][entries: localX:byte, y:byte, localZ:byte, level:byte, falling:byte]*
+     */
+    private byte[] serializeWaterMetadata(Map<String, ChunkData.WaterBlockData> waterMetadata) {
+        // Filter out source blocks (level 0) - no need to save them
+        Map<String, ChunkData.WaterBlockData> nonSourceBlocks = new HashMap<>();
+        for (Map.Entry<String, ChunkData.WaterBlockData> entry : waterMetadata.entrySet()) {
+            if (entry.getValue().level() != 0) { // Skip source blocks (level 0)
+                nonSourceBlocks.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        ByteBuffer buffer = ByteBuffer.allocate(4 + nonSourceBlocks.size() * 5);
+        buffer.putInt(nonSourceBlocks.size());
+
+        for (Map.Entry<String, ChunkData.WaterBlockData> entry : nonSourceBlocks.entrySet()) {
+            String[] coords = entry.getKey().split(",");
+            buffer.put((byte) Integer.parseInt(coords[0])); // localX (0-15)
+            buffer.put((byte) Integer.parseInt(coords[1])); // y (0-255)
+            buffer.put((byte) Integer.parseInt(coords[2])); // localZ (0-15)
+            buffer.put((byte) entry.getValue().level());     // level (0-7)
+            buffer.put((byte) (entry.getValue().falling() ? 1 : 0)); // falling flag
+        }
+
+        return Arrays.copyOf(buffer.array(), buffer.position());
+    }
+
+    /**
+     * Deserializes water metadata from bytes.
+     */
+    private Map<String, ChunkData.WaterBlockData> deserializeWaterMetadata(ByteBuffer buffer) {
+        Map<String, ChunkData.WaterBlockData> waterMetadata = new HashMap<>();
+
+        if (buffer.remaining() < 4) {
+            return waterMetadata; // No water metadata present
+        }
+
+        int count = buffer.getInt();
+        for (int i = 0; i < count && buffer.remaining() >= 5; i++) {
+            int localX = buffer.get() & 0xFF;
+            int y = buffer.get() & 0xFF;
+            int localZ = buffer.get() & 0xFF;
+            int level = buffer.get() & 0xFF;
+            boolean falling = buffer.get() != 0;
+
+            String key = localX + "," + y + "," + localZ;
+            waterMetadata.put(key, new ChunkData.WaterBlockData(level, falling));
+        }
+
+        return waterMetadata;
     }
 }

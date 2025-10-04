@@ -169,7 +169,7 @@ public class SaveService implements AutoCloseable {
 
         CompletableFuture<?>[] futures = dirtyChunks.stream()
             .map(chunk -> {
-                ChunkData chunkData = StateConverter.toChunkData(chunk);
+                ChunkData chunkData = StateConverter.toChunkData(chunk, world);
                 return repository.saveChunk(chunkData)
                     .thenRun(() -> chunk.markClean())
                     .exceptionally(ex -> {
@@ -232,7 +232,7 @@ public class SaveService implements AutoCloseable {
                 if (dataOpt.isEmpty()) {
                     return null; // Chunk doesn't exist - will be generated
                 }
-                return StateConverter.createChunkFromData(dataOpt.get());
+                return StateConverter.createChunkFromData(dataOpt.get(), world);
             })
             .exceptionally(ex -> {
                 System.err.println("[LOAD] Failed to load chunk at " +
@@ -245,7 +245,7 @@ public class SaveService implements AutoCloseable {
      * Saves a single chunk immediately.
      */
     public CompletableFuture<Void> saveChunk(Chunk chunk) {
-        ChunkData chunkData = StateConverter.toChunkData(chunk);
+        ChunkData chunkData = StateConverter.toChunkData(chunk, world);
         return repository.saveChunk(chunkData)
             .thenRun(() -> chunk.markClean());
     }

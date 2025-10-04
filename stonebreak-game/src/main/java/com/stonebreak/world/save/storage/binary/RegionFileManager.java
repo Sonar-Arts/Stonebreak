@@ -86,7 +86,9 @@ public class RegionFileManager implements AutoCloseable {
 
                 try {
                     ChunkData decoded = chunkSerializer.deserialize(chunkData);
-                    return StateConverter.createChunkFromData(decoded);
+                    // Note: RegionFileManager is deprecated - passing null for World
+                    // Water metadata won't be applied, but this code path is not used anymore
+                    return StateConverter.createChunkFromData(decoded, null);
                 } catch (RuntimeException decodeError) {
                     System.err.println("[LOAD-ERROR] Failed to decode chunk (" + chunkX + "," + chunkZ +
                         ") from region " + regionFile.getRegionPath().getFileName());
@@ -111,7 +113,9 @@ public class RegionFileManager implements AutoCloseable {
                 RegionCoordinate regionCoord = getRegionCoordinate(chunk.getX(), chunk.getZ());
                 RegionFile regionFile = getOrCreateRegion(regionCoord);
 
-                ChunkData chunkData = StateConverter.toChunkData(chunk);
+                // Note: RegionFileManager is deprecated - passing null for World
+                // Water metadata won't be saved, but this code path is not used anymore
+                ChunkData chunkData = StateConverter.toChunkData(chunk, null);
                 byte[] encoded = chunkSerializer.serialize(chunkData);
 
                 int localX = Math.floorMod(chunk.getX(), 32);

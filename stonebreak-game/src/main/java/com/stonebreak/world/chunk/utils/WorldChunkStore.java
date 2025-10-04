@@ -4,8 +4,10 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.features.FeatureQueue;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.SaveService;
 
@@ -15,6 +17,7 @@ import java.util.function.Consumer;
 
 /**
  * Manages chunk storage and lifecycle with CCO-integrated serialization.
+ * Implements Minecraft-style multi-stage chunk generation to prevent feature "pop-in".
  * Follows SOLID, KISS, YAGNI, and DRY principles.
  */
 public class WorldChunkStore {
@@ -23,16 +26,22 @@ public class WorldChunkStore {
     private final MmsMeshPipeline meshPipeline;
     private final Map<ChunkPosition, Chunk> chunks;
     private final PositionCache positionCache;
+    private final com.stonebreak.world.World world;
+    private final FeatureQueue featureQueue;
 
     private Consumer<Chunk> loadListener;
     private Consumer<Chunk> unloadListener;
 
     public WorldChunkStore(TerrainGenerationSystem terrainSystem,
                           WorldConfiguration config,
-                          MmsMeshPipeline meshPipeline) {
+                          MmsMeshPipeline meshPipeline,
+                          com.stonebreak.world.World world,
+                          FeatureQueue featureQueue) {
         this.terrainSystem = terrainSystem;
         this.config = config;
         this.meshPipeline = meshPipeline;
+        this.world = world;
+        this.featureQueue = featureQueue;
         this.chunks = new ConcurrentHashMap<>();
         this.positionCache = new PositionCache();
     }
@@ -50,7 +59,22 @@ public class WorldChunkStore {
 
     public Chunk getOrCreateChunk(int x, int z) {
         ChunkPosition pos = positionCache.get(x, z);
-        return chunks.computeIfAbsent(pos, p -> loadOrGenerate(x, z));
+        Chunk chunk = chunks.get(pos);
+
+        if (chunk == null) {
+            // Generate/load chunk and populate features immediately
+            chunk = chunks.computeIfAbsent(pos, p -> loadOrGenerate(x, z));
+            if (chunk != null) {
+                // Process queued features that were waiting for this chunk
+                featureQueue.processChunk(world, pos);
+
+                if (loadListener != null) {
+                    notify(loadListener, chunk);
+                }
+            }
+        }
+
+        return chunk;
     }
 
     public boolean hasChunk(int x, int z) {
@@ -123,6 +147,7 @@ public class WorldChunkStore {
         });
         chunks.clear();
         positionCache.clear();
+        featureQueue.clear();
     }
 
     public ChunkPosition getCachedChunkPosition(int x, int z) {
@@ -146,6 +171,7 @@ public class WorldChunkStore {
 
     /**
      * Loads chunk from save or generates new one. Uses CCO snapshots via SaveService.
+     * Populates features immediately after generation (no deferred loading).
      */
     private Chunk loadOrGenerate(int x, int z) {
         SaveService saveService = getSaveService();
@@ -156,7 +182,6 @@ public class WorldChunkStore {
                 Chunk loaded = saveService.loadChunk(x, z).get();
                 if (loaded != null) {
                     prepareLoadedChunk(loaded);
-                    notify(loadListener, loaded);
                     return loaded;
                 }
             } catch (Exception e) {
@@ -164,7 +189,7 @@ public class WorldChunkStore {
             }
         }
 
-        // Generate new chunk
+        // Generate new chunk with terrain + features
         return generate(x, z);
     }
 
@@ -172,17 +197,15 @@ public class WorldChunkStore {
         try {
             MemoryProfiler.getInstance().incrementAllocation("Chunk");
 
-            Chunk chunk = terrainSystem.generateBareChunk(x, z);
+            // Generate terrain
+            Chunk chunk = terrainSystem.generateTerrainOnly(x, z);
             if (chunk == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;
             }
 
-            notify(loadListener, chunk);
-
-            if (shouldMesh(x, z)) {
-                meshPipeline.scheduleConditionalMeshBuild(chunk);
-            }
+            // Populate features immediately
+            terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager());
 
             return chunk;
         } catch (Exception e) {

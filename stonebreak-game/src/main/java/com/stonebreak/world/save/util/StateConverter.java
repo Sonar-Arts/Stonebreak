@@ -9,8 +9,11 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Inventory;
+import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Utility class for converting between game objects and data models.
@@ -99,16 +102,27 @@ public final class StateConverter {
 
     /**
      * Converts Chunk to ChunkData using CCO snapshot API.
+     * Extracts water metadata from World's WaterSystem.
      */
-    public static ChunkData toChunkData(Chunk chunk) {
+    public static ChunkData toChunkData(Chunk chunk, World world) {
         CcoSerializableSnapshot snapshot = chunk.createSnapshot();
-        return snapshot.toChunkData();
+        Map<String, ChunkData.WaterBlockData> waterMetadata = extractWaterMetadata(chunk, world);
+
+        return ChunkData.builder()
+                .chunkX(snapshot.getChunkX())
+                .chunkZ(snapshot.getChunkZ())
+                .blocks(snapshot.getBlocks())
+                .lastModified(snapshot.getLastModified())
+                .featuresPopulated(snapshot.isFeaturesPopulated())
+                .waterMetadata(waterMetadata)
+                .build();
     }
 
     /**
      * Applies ChunkData to Chunk using CCO snapshot API.
+     * Applies water metadata to World's WaterSystem.
      */
-    public static void applyChunkData(Chunk chunk, ChunkData data) {
+    public static void applyChunkData(Chunk chunk, ChunkData data, World world) {
         // Convert ChunkData back to CCO snapshot
         CcoSerializableSnapshot snapshot = new CcoSerializableSnapshot(
             data.getChunkX(),
@@ -121,6 +135,9 @@ public final class StateConverter {
         // Load from snapshot
         chunk.loadFromSnapshot(snapshot);
 
+        // Apply water metadata to WaterSystem
+        applyWaterMetadata(chunk, data.getWaterMetadata(), world);
+
         // NOTE: Do NOT call markClean() here!
         // loadFromSnapshot() marks the chunk as MESH_DIRTY, which is correct - loaded chunks need mesh regeneration.
         // markClean() should ONLY be called after a successful save, not after loading.
@@ -130,9 +147,62 @@ public final class StateConverter {
      * Creates ChunkData and applies to existing Chunk.
      * Used when loading chunk from disk.
      */
-    public static Chunk createChunkFromData(ChunkData data) {
+    public static Chunk createChunkFromData(ChunkData data, World world) {
         Chunk chunk = new Chunk(data.getChunkX(), data.getChunkZ());
-        applyChunkData(chunk, data);
+        applyChunkData(chunk, data, world);
         return chunk;
+    }
+
+    /**
+     * Extracts water metadata from World's WaterSystem for a specific chunk.
+     * Returns map of local coordinates to water block data.
+     */
+    private static Map<String, ChunkData.WaterBlockData> extractWaterMetadata(Chunk chunk, World world) {
+        Map<String, ChunkData.WaterBlockData> waterMetadata = new HashMap<>();
+
+        if (world == null || world.getWaterSystem() == null) {
+            return waterMetadata;
+        }
+
+        int chunkX = chunk.getChunkX();
+        int chunkZ = chunk.getChunkZ();
+
+        // Scan all blocks in the chunk for water
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                for (int y = 0; y < 256; y++) {
+                    if (chunk.getBlock(localX, y, localZ) == BlockType.WATER) {
+                        int worldX = chunkX * 16 + localX;
+                        int worldZ = chunkZ * 16 + localZ;
+
+                        // Get water block state from WaterSystem
+                        var waterBlock = world.getWaterSystem().getWaterBlock(worldX, y, worldZ);
+                        if (waterBlock != null && !waterBlock.isSource()) {
+                            // Only save non-source blocks (source blocks are default)
+                            String key = localX + "," + y + "," + localZ;
+                            waterMetadata.put(key, new ChunkData.WaterBlockData(waterBlock.level(), waterBlock.falling()));
+                        }
+                    }
+                }
+            }
+        }
+
+        return waterMetadata;
+    }
+
+    /**
+     * Applies water metadata to World's WaterSystem for a loaded chunk.
+     * This is called AFTER the chunk blocks are loaded.
+     */
+    private static void applyWaterMetadata(Chunk chunk, Map<String, ChunkData.WaterBlockData> waterMetadata, World world) {
+        if (world == null || world.getWaterSystem() == null || waterMetadata.isEmpty()) {
+            return;
+        }
+
+        int chunkX = chunk.getChunkX();
+        int chunkZ = chunk.getChunkZ();
+
+        // Apply water metadata directly to WaterSystem
+        world.getWaterSystem().loadWaterMetadata(chunkX, chunkZ, waterMetadata);
     }
 }

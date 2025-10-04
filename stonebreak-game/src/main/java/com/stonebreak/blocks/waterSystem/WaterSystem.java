@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.PriorityQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Self-contained water simulation that mirrors Minecraft's water rules while
@@ -35,14 +36,14 @@ public final class WaterSystem {
     private static final float LEVEL_NORMALIZER = WaterBlock.MAX_LEVEL + 1.0f;
 
     private final World world;
-    private final Map<BlockPos, WaterBlock> cells = new HashMap<>();
+    private final Map<BlockPos, WaterBlock> cells = new ConcurrentHashMap<>();
     private final PriorityQueue<ScheduledUpdate> pendingUpdates = new PriorityQueue<>((a, b) -> Long.compare(a.scheduledTick(), b.scheduledTick()));
-    private final Map<BlockPos, Long> scheduledTicks = new HashMap<>();
+    private final Map<BlockPos, Long> scheduledTicks = new ConcurrentHashMap<>();
     private final Set<Long> scannedChunks = new HashSet<>();
     private final Set<Long> dirtyChunks = new HashSet<>(); // Batched mesh updates
 
     // CCO API caching for performance
-    private final Map<Long, CcoBlockReader> readerCache = new HashMap<>();
+    private final Map<Long, CcoBlockReader> readerCache = new ConcurrentHashMap<>();
 
     private float tickAccumulator;
     private long logicalTick;
@@ -155,9 +156,9 @@ public final class WaterSystem {
 
     /**
      * Removes cached water data when a chunk is unloaded.
-     * Thread-safe: synchronized to prevent concurrent modification from multiple unload threads.
+     * Thread-safe: ConcurrentHashMap handles concurrent access.
      */
-    public synchronized void onChunkUnloaded(Chunk chunk) {
+    public void onChunkUnloaded(Chunk chunk) {
         if (chunk == null) {
             return;
         }
@@ -628,6 +629,26 @@ public final class WaterSystem {
 
     public int getTrackedWaterCount() {
         return cells.size();
+    }
+
+    /**
+     * Loads water metadata for a chunk from save data.
+     * Called when a chunk is loaded from disk to restore water depth states.
+     */
+    public void loadWaterMetadata(int chunkX, int chunkZ, java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata) {
+        for (java.util.Map.Entry<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> entry : waterMetadata.entrySet()) {
+            String[] coords = entry.getKey().split(",");
+            int localX = Integer.parseInt(coords[0]);
+            int y = Integer.parseInt(coords[1]);
+            int localZ = Integer.parseInt(coords[2]);
+
+            int worldX = chunkX * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localX;
+            int worldZ = chunkZ * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localZ;
+
+            BlockPos pos = new BlockPos(worldX, y, worldZ);
+            WaterBlock loadedState = new WaterBlock(entry.getValue().level(), entry.getValue().falling());
+            cells.put(pos, loadedState);
+        }
     }
 
     // ===== CCO API HELPERS =====

@@ -64,7 +64,10 @@ public class World {
         }
         this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(this, config, errorReporter);
 
-        this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline);
+        // Create FeatureQueue for multi-chunk features
+        com.stonebreak.world.generation.features.FeatureQueue featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
+
+        this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline, this, featureQueue);
 
         // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider
         this.neighborCoordinator = new CcoNeighborCoordinator(new CcoNeighborCoordinator.ChunkProvider() {
@@ -123,11 +126,7 @@ public class World {
             }
         }
 
-        if (!chunk.areFeaturesPopulated()) {
-            terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-            markChunkForMeshRebuild(chunk);
-            meshPipeline.scheduleConditionalMeshBuild(chunk);
-        }
+        // Features are now always populated during chunk generation - no need to check
 
         boolean isMeshReady = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
         boolean isMeshGenerating = chunk.isMeshDataGenerationScheduledOrInProgress();
@@ -159,7 +158,7 @@ public class World {
     public boolean hasChunkAt(int x, int z) {
         return chunkStore.hasChunk(x, z);
     }
-    
+
     /**
      * Gets the block type at the specified world position.
      */
@@ -252,28 +251,17 @@ public class World {
     /**
      * Returns chunks around the specified position within render distance.
      * This method performs side effects:
-     * - Populates chunks with features if needed (trees, structures)
-     * - Schedules mesh generation for unpopulated chunks
      * - Ensures border chunks exist for neighbor meshing
      *
      * Use this method when preparing chunks for rendering.
      */
     public Map<ChunkPosition, Chunk> getChunksAroundPlayer(int playerChunkX, int playerChunkZ) {
-        Map<ChunkPosition, Chunk> visibleChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
+        Map<ChunkPosition, Chunk> allChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
 
-        // Populate chunks that need features
-        for (Chunk chunk : visibleChunks.values()) {
-            if (!chunk.areFeaturesPopulated()) {
-                terrainSystem.populateChunkWithFeatures(this, chunk, snowLayerManager);
-                markChunkForMeshRebuild(chunk);
-                meshPipeline.scheduleConditionalMeshBuild(chunk);
-            }
-        }
-
-        // Ensure border chunks exist for meshing purposes
+        // Ensure border chunks exist for meshing purposes (triggers generation cascade)
         neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
 
-        return visibleChunks;
+        return allChunks;
     }
 
     /**

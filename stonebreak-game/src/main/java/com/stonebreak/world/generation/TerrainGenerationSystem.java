@@ -156,11 +156,13 @@ public class TerrainGenerationSystem {
     }
     
     /**
-     * Generates only the bare terrain for a new chunk (no features like ores or trees).
+     * Generates terrain-only chunk (no features like ores or trees yet).
+     * Features are populated separately after the chunk is registered in the chunk store
+     * to avoid recursive chunk generation when features span multiple chunks.
      * Uses chunk.setBlock() which internally uses CCO API for block operations.
-     * Generates mesh using MMS API after terrain generation is complete.
+     * Mesh generation happens automatically via CCO dirty tracking when chunk is rendered.
      */
-    public Chunk generateBareChunk(int chunkX, int chunkZ) {
+    public Chunk generateTerrainOnly(int chunkX, int chunkZ) {
         updateLoadingProgress("Generating Base Terrain Shape");
         Chunk chunk = new Chunk(chunkX, chunkZ);
 
@@ -226,12 +228,13 @@ public class TerrainGenerationSystem {
                     }
                     chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
                 }
-                // Trees and other features will be generated in populateChunkWithFeatures
             }
         }
 
+        // Features will be populated after chunk registration to avoid recursion
+        chunk.setFeaturesPopulated(false);
+
         // Mesh generation happens automatically via CCO dirty tracking when chunk is rendered
-        chunk.setFeaturesPopulated(false); // Explicitly mark as not populated
         return chunk;
     }
 
@@ -239,6 +242,9 @@ public class TerrainGenerationSystem {
      * Populates an existing chunk with features like ores and trees.
      * Uses world.setBlockAt() which internally uses CCO API for global block placement.
      * Mesh regeneration happens automatically via CCO dirty tracking.
+     *
+     * IMPORTANT: This method assumes required neighbor chunks exist (at least terrain generated).
+     * WorldChunkStore ensures this before calling this method.
      */
     public void populateChunkWithFeatures(World world, Chunk chunk, SnowLayerManager snowLayerManager) {
         if (chunk == null || chunk.areFeaturesPopulated()) {
@@ -249,6 +255,13 @@ public class TerrainGenerationSystem {
 
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
+
+        // Verify required neighbors exist (defensive check)
+        if (!verifyNeighborsExist(world, chunkX, chunkZ)) {
+            System.err.println("WARNING: populateChunkWithFeatures called before neighbors ready for chunk (" +
+                chunkX + ", " + chunkZ + "). Skipping feature population.");
+            return;
+        }
 
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
@@ -423,5 +436,21 @@ public class TerrainGenerationSystem {
 
         // Mesh regeneration happens automatically via CCO dirty tracking when chunk is rendered
         chunk.setFeaturesPopulated(true);
+    }
+
+    /**
+     * Verifies that required neighbor chunks exist for safe feature population.
+     * Follows Minecraft's pattern: requires chunks at (x+1, z), (x, z+1), (x+1, z+1).
+     *
+     * @param world The world to check
+     * @param chunkX Current chunk X coordinate
+     * @param chunkZ Current chunk Z coordinate
+     * @return true if all required neighbors exist
+     */
+    private boolean verifyNeighborsExist(World world, int chunkX, int chunkZ) {
+        // Check required neighbors (Minecraft-style dependency)
+        return world.hasChunkAt(chunkX + 1, chunkZ) &&      // East
+               world.hasChunkAt(chunkX, chunkZ + 1) &&      // South
+               world.hasChunkAt(chunkX + 1, chunkZ + 1);    // Southeast
     }
 }

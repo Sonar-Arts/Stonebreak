@@ -1,5 +1,6 @@
 package com.stonebreak.world.chunk.utils;
 
+import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
@@ -234,6 +235,7 @@ public class ChunkManager {
                             // Verify chunk was loaded properly using CCO states
                             if (chunk != null) {
                                 CcoAtomicStateManager stateManager = chunk.getCcoStateManager();
+
                                 if (!stateManager.hasAnyState(CcoChunkState.BLOCKS_POPULATED, CcoChunkState.FEATURES_POPULATED)) {
                                     System.err.println("WARNING: Chunk (" + pos.getX() + ", " + pos.getZ() + ") loaded but not populated. States: " + stateManager.getCurrentStates());
                                 }
@@ -393,4 +395,5 @@ public class ChunkManager {
         }
         System.out.println("Chunk executor shutdown complete.");
     }
+
 }
