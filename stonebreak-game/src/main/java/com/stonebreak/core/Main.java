@@ -636,6 +636,14 @@ public class Main {
             renderer.endUIFrame();
             renderer.getUIRenderer().renderPauseMenuDepthCurtain();
         }
+
+        // Render death menu if player is dead
+        com.stonebreak.ui.DeathMenu deathMenu = game.getDeathMenu();
+        if (deathMenu != null && deathMenu.isVisible() && renderer != null) {
+            renderer.beginUIFrame(width, height, 1.0f);
+            deathMenu.render(renderer.getUIRenderer(), width, height);
+            renderer.endUIFrame();
+        }
     }
 
     private void renderDebugOverlay(Renderer renderer) {

@@ -46,9 +46,20 @@ public class Player {      // Player settings
     
     // Camera
     private final Camera camera;
-    
+
     // Reference to the world
     private final World world;
+
+    // Health system
+    private float health;
+    private float maxHealth;
+    private static final float HEALTH_PER_HEART = 2.0f; // 10 hearts = 20 health
+    private static final int MAX_HEARTS = 10;
+    private boolean isDead;
+
+    // Fall damage tracking
+    private float previousY;
+    private boolean wasFalling;
 
     // Block placement validation service
     private final IBlockPlacementService blockPlacementService;
@@ -97,11 +108,23 @@ public class Player {      // Player settings
         this.wasJumpPressed = false;
         this.lastSpaceKeyTime = 0.0f;
         this.lastNormalJumpTime = 0.0f;
+
+        // Initialize health system
+        this.maxHealth = MAX_HEARTS * HEALTH_PER_HEART;
+        this.health = maxHealth;
+        this.isDead = false;
+        this.previousY = position.y;
+        this.wasFalling = false;
     }
       /**
      * Updates the player's position and camera.
      */
     public void update() {
+        // Don't update if dead
+        if (isDead) {
+            return;
+        }
+
         // Check if player is in water
         physicallyInWater = isPartiallyInWater();
         
@@ -236,6 +259,9 @@ public class Player {      // Player settings
         if (Game.getWorld() != null) {
             Game.getSoundSystem().setListenerFromCamera(position, camera.getFront(), camera.getUp());
         }
+
+        // Calculate fall damage
+        calculateFallDamage();
     }
     
     /**
@@ -521,6 +547,138 @@ public class Player {      // Player settings
             position.z = correctedPositionZ;
             // Sliding is allowed, so velocity.z is not zeroed here.
         }
+    }
+
+    /**
+     * Calculates and applies fall damage based on fall distance.
+     * Player takes 1 heart (2 health) of damage for every 3 blocks fallen.
+     */
+    private void calculateFallDamage() {
+        // Track if player is currently falling
+        if (!onGround && velocity.y < 0) {
+            wasFalling = true;
+        }
+
+        // Check if player just landed
+        if (onGround && wasFalling) {
+            float fallDistance = previousY - position.y;
+
+            // Only apply damage if fall distance is significant (more than 3 blocks)
+            if (fallDistance > 3.0f) {
+                // Calculate damage: 1 heart (2 health) per 3 blocks fallen
+                float damage = ((fallDistance - 3.0f) / 3.0f) * HEALTH_PER_HEART;
+                damage(damage);
+            }
+
+            wasFalling = false;
+        }
+
+        // Update previousY when on ground or starting to fall
+        if (onGround || !wasFalling) {
+            previousY = position.y;
+        }
+    }
+
+    /**
+     * Damages the player by the specified amount.
+     */
+    public void damage(float amount) {
+        if (isDead) return;
+
+        health -= amount;
+        if (health <= 0) {
+            health = 0;
+            die();
+        }
+    }
+
+    /**
+     * Heals the player by the specified amount.
+     */
+    public void heal(float amount) {
+        if (isDead) return;
+
+        health = Math.min(health + amount, maxHealth);
+    }
+
+    /**
+     * Handles player death.
+     */
+    private void die() {
+        isDead = true;
+
+        // Drop all items from inventory
+        dropAllItems();
+
+        // Stop all movement
+        velocity.set(0, 0, 0);
+    }
+
+    /**
+     * Drops all items from the player's inventory.
+     */
+    private void dropAllItems() {
+        // Drop all hotbar items
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            ItemStack stack = inventory.getHotbarSlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                dropItemStack(stack);
+                inventory.setHotbarSlot(i, null);
+            }
+        }
+
+        // Drop all main inventory items
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            ItemStack stack = inventory.getMainInventorySlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                dropItemStack(stack);
+                inventory.setMainInventorySlot(i, null);
+            }
+        }
+    }
+
+    /**
+     * Helper method to drop an entire item stack.
+     */
+    private void dropItemStack(ItemStack stack) {
+        Vector3f dropPosition = new Vector3f(position.x, position.y + 0.5f, position.z);
+
+        // For each item in the stack
+        for (int j = 0; j < stack.getCount(); j++) {
+            if (stack.isPlaceable()) {
+                // Drop placeable items as block drops
+                BlockType blockType = stack.asBlockType();
+                if (blockType != null) {
+                    DropUtil.createBlockDrop(world, dropPosition, blockType);
+                }
+            } else {
+                // Drop tools and other items as item drops
+                ItemType itemType = stack.asItemType();
+                if (itemType != null) {
+                    DropUtil.createItemDrop(world, dropPosition, itemType, 1);
+                }
+            }
+        }
+    }
+
+    /**
+     * Respawns the player at spawn position with full health.
+     */
+    public void respawn() {
+        // Reset health
+        health = maxHealth;
+        isDead = false;
+
+        // Reset position to spawn (high Y to ensure safe spawn)
+        position.set(0, 100, 0);
+        velocity.set(0, 0, 0);
+
+        // Reset fall damage tracking
+        previousY = position.y;
+        wasFalling = false;
+
+        // Reset camera
+        camera.setPosition(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
     }
 
     /**
@@ -1575,6 +1733,34 @@ public class Player {      // Player settings
      */
     public boolean isFlying() {
         return isFlying;
+    }
+
+    /**
+     * Gets the player's current health.
+     */
+    public float getHealth() {
+        return health;
+    }
+
+    /**
+     * Gets the player's maximum health.
+     */
+    public float getMaxHealth() {
+        return maxHealth;
+    }
+
+    /**
+     * Gets whether the player is dead.
+     */
+    public boolean isDead() {
+        return isDead;
+    }
+
+    /**
+     * Gets the player's health as a number of hearts.
+     */
+    public int getHearts() {
+        return (int) Math.ceil(health / HEALTH_PER_HEART);
     }
 
     /**

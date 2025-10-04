@@ -54,7 +54,13 @@ public class MouseCaptureManager {
      */
     private boolean shouldCaptureMouseForState(GameState state) {
         Game game = Game.getInstance();
-        
+
+        // Never capture mouse if death menu is visible
+        com.stonebreak.ui.DeathMenu deathMenu = game.getDeathMenu();
+        if (deathMenu != null && deathMenu.isVisible()) {
+            return false;
+        }
+
         switch (state) {
             case PLAYING -> {
                 // Always capture mouse in PLAYING state unless chat is open

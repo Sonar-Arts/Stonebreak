@@ -93,32 +93,66 @@ public class MenuRenderer extends BaseRenderer {
     public void renderPauseMenu(int windowWidth, int windowHeight, boolean isQuitButtonHovered, boolean isSettingsButtonHovered) {
         float centerX = windowWidth / 2.0f;
         float centerY = windowHeight / 2.0f;
-        
+
         try (MemoryStack stack = stackPush()) {
             nvgBeginPath(vg);
             nvgRect(vg, 0, 0, windowWidth, windowHeight);
             nvgFillColor(vg, nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)));
             nvgFill(vg);
         }
-        
+
         float panelWidth = 520;
         float panelHeight = 450;
         float panelX = centerX - panelWidth / 2;
         float panelY = centerY - panelHeight / 2;
-        
+
         drawMinecraftPanel(panelX, panelY, panelWidth, panelHeight);
         drawPauseMenuTitle(centerX, panelY + 70, "GAME PAUSED");
-        
+
         float buttonWidth = 360;
         float buttonHeight = 50;
         float resumeY = centerY - 60;
         drawMinecraftButton("Resume Game", centerX - buttonWidth/2, resumeY, buttonWidth, buttonHeight, false);
-        
+
         float settingsY = centerY + 10;
         drawMinecraftButton("Settings", centerX - buttonWidth/2, settingsY, buttonWidth, buttonHeight, isSettingsButtonHovered);
-        
+
         float quitY = centerY + 80;
         drawMinecraftButton("Quit to Main Menu", centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight, isQuitButtonHovered);
+    }
+
+    public void renderDeathMenu(int windowWidth, int windowHeight, boolean isRespawnButtonHovered) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+
+        // Dark overlay
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, windowWidth, windowHeight);
+            nvgFillColor(vg, nvgRGBA(80, 0, 0, 180, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+
+        // "You Died!" text in red
+        try (MemoryStack stack = stackPush()) {
+            nvgFontSize(vg, 96);
+            nvgFontFace(vg, "minecraft");
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+
+            // Shadow
+            nvgFillColor(vg, nvgRGBA(40, 0, 0, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX + 4, centerY - 100 + 4, "You Died!");
+
+            // Main text
+            nvgFillColor(vg, nvgRGBA(255, 50, 50, 255, NVGColor.malloc(stack)));
+            nvgText(vg, centerX, centerY - 100, "You Died!");
+        }
+
+        // Respawn button
+        float buttonWidth = 360;
+        float buttonHeight = 50;
+        float respawnY = centerY + 20;
+        drawMinecraftButton("Respawn", centerX - buttonWidth/2, respawnY, buttonWidth, buttonHeight, isRespawnButtonHovered);
     }
     
     public void renderSettingsMenu(int windowWidth, int windowHeight) {
@@ -559,8 +593,18 @@ public class MenuRenderer extends BaseRenderer {
         float buttonWidth = 360;
         float buttonHeight = 50;
         float quitY = centerY + 80;
-        
+
         return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, quitY, buttonWidth, buttonHeight);
+    }
+
+    public boolean isDeathRespawnClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        float centerX = windowWidth / 2.0f;
+        float centerY = windowHeight / 2.0f;
+        float buttonWidth = 360;
+        float buttonHeight = 50;
+        float respawnY = centerY + 20;
+
+        return isButtonClicked(mouseX, mouseY, centerX - buttonWidth/2, respawnY, buttonWidth, buttonHeight);
     }
     
     /**
