@@ -670,7 +670,10 @@ public class Game {
             // Check if player died and show death menu
             if (player.isDead() && !deathMenu.isVisible()) {
                 deathMenu.setVisible(true);
-                // Mouse capture will be released by updateCaptureState when needed
+                // Release mouse capture when death menu appears
+                if (mouseCaptureManager != null) {
+                    mouseCaptureManager.updateCaptureState();
+                }
             }
         }
         
