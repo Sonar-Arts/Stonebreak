@@ -119,37 +119,47 @@ public class TimeOfDay {
      * Calculates the sun direction vector based on current time.
      * The sun rises in the east, peaks at noon, and sets in the west.
      * Time progression:
-     * - Dawn (0 ticks): Sun rising in the east
-     * - Noon (6000 ticks): Sun at zenith
-     * - Dusk (12000 ticks): Sun setting in the west
+     * - Dawn (0 ticks): Sun rising in the east (horizon)
+     * - Noon (6000 ticks): Sun at zenith (directly overhead)
+     * - Dusk (12000 ticks): Sun setting in the west (horizon)
      * - Midnight (18000 ticks): Sun below horizon (night)
      */
     public Vector3f getSunDirection() {
         // Normalize ticks to 0-1 range
         float dayProgress = getNormalizedTime();
 
-        // Map to angle where:
-        // 0.0 (dawn) = -90 degrees (east horizon)
-        // 0.25 (noon) = 0 degrees (zenith, south)
-        // 0.5 (dusk) = 90 degrees (west horizon)
-        // Shift by -0.25 so noon is at 0
-        float normalizedAngle = (dayProgress - 0.25f) * 360.0f;
+        // Convert day progress to angle for sun's arc across sky
+        // We want a simple sine wave for elevation:
+        // 0.0 (dawn/0 ticks) → 0° elevation (horizon)
+        // 0.25 (noon/6000 ticks) → 90° elevation (zenith/directly overhead)
+        // 0.5 (dusk/12000 ticks) → 0° elevation (horizon)
+        // 0.75 (midnight/18000 ticks) → -90° elevation (below horizon)
 
-        // Calculate elevation (height above horizon)
-        // Peaks at noon (0 degrees), below horizon at night
-        float elevationAngle = (float) Math.sin(Math.toRadians(normalizedAngle)) * 110.0f;
+        // Map dayProgress to a 0-180 degree arc for daytime (first half of cycle)
+        // Then 180-360 for nighttime (second half below horizon)
+        float sunAngle = dayProgress * 360.0f; // 0-360 degrees
+
+        // Elevation follows sine wave: sin(0°)=0, sin(90°)=1, sin(180°)=0, sin(270°)=-1
+        // We want: 0° at dawn, 90° at noon, 0° at dusk, -90° at midnight
+        // This is exactly: sin(sunAngle) * 90°
+        float elevationAngle = (float) Math.sin(Math.toRadians(sunAngle)) * 90.0f;
+
+        // Clamp to reasonable range
         elevationAngle = Math.max(-90.0f, Math.min(90.0f, elevationAngle));
 
-        // Calculate azimuth (compass direction)
-        // East (-X) at dawn, South (+Z) at noon, West (+X) at dusk
-        float azimuthAngle = normalizedAngle;
+        // Calculate azimuth (compass direction) - sun moves from east to west
+        // dayProgress 0.0 (dawn) → -90° (east)
+        // dayProgress 0.25 (noon) → 0° (south)
+        // dayProgress 0.5 (dusk) → 90° (west)
+        // Map 0.0-0.5 to -90° to +90° (east through south to west)
+        float azimuthAngle = (dayProgress * 2.0f - 0.5f) * 180.0f;
 
         // Convert to radians
         float elevRad = (float) Math.toRadians(elevationAngle);
         float azimRad = (float) Math.toRadians(azimuthAngle);
 
         // Convert spherical to Cartesian
-        float y = (float) Math.sin(elevRad); // Height
+        float y = (float) Math.sin(elevRad); // Height (up/down)
         float horizontalDistance = (float) Math.cos(elevRad);
 
         // In OpenGL: +X = right, +Y = up, +Z = toward viewer

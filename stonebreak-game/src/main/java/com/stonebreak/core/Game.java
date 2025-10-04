@@ -511,9 +511,9 @@ public class Game {
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         System.out.println("Entity system initialized - cows can now spawn!");
 
-        // Initialize time of day system (starts at dawn)
-        this.timeOfDay = new TimeOfDay(TimeOfDay.DAWN);
-        System.out.println("Time of day system initialized");
+        // Initialize time of day system (starts at noon for bright daylight)
+        this.timeOfDay = new TimeOfDay(TimeOfDay.NOON);
+        System.out.println("Time of day system initialized (starting at noon)");
 
         // Initialize player sounds
         this.soundSystem.initializePlayerSounds(world);
