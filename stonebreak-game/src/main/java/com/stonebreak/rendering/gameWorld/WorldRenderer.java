@@ -72,8 +72,11 @@ public class WorldRenderer {
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
         
+        // Get time of day system for lighting
+        com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
+
         // Render sky first (before world geometry for proper depth testing)
-        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime);
+        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
         checkGLError("After sky rendering");
         
         // Ensure proper depth function for world geometry
@@ -161,6 +164,20 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
         shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
+
+        // Set lighting uniforms from TimeOfDay system
+        com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            shaderProgram.setUniform("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shaderProgram.setUniform("u_sunDirection", timeOfDay.getSunDirection());
+        } else {
+            // Fallback to default lighting if TimeOfDay not initialized
+            shaderProgram.setUniform("u_ambientLight", 1.0f);
+            shaderProgram.setUniform("u_sunDirection", new Vector3f(0.5f, 1.0f, 0.3f).normalize());
+        }
+
+        // Set view position for specular lighting calculations
+        shaderProgram.setUniform("u_viewPos", player.getCamera().getPosition());
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));

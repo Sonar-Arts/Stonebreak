@@ -56,7 +56,10 @@ public class Game {
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
-    
+
+    // Time of day system
+    private TimeOfDay timeOfDay; // Day/night cycle system
+
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
     private GameState previousGameState = GameState.MAIN_MENU; // Added previousGameState
@@ -508,6 +511,10 @@ public class Game {
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
         System.out.println("Entity system initialized - cows can now spawn!");
 
+        // Initialize time of day system (starts at dawn)
+        this.timeOfDay = new TimeOfDay(TimeOfDay.DAWN);
+        System.out.println("Time of day system initialized");
+
         // Initialize player sounds
         this.soundSystem.initializePlayerSounds(world);
         System.out.println("Player sound system initialized");
@@ -674,6 +681,11 @@ public class Game {
         if (entityManager != null) {
             entityManager.update(deltaTime);
         }
+
+        // Update time of day system (advances day/night cycle based on real time)
+        if (timeOfDay != null) {
+            timeOfDay.update(deltaTime);
+        }
     }
     
     /**
@@ -754,7 +766,14 @@ public class Game {
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return getInstance().entityManager;
     }
-    
+
+    /**
+     * Gets the time of day system.
+     */
+    public static TimeOfDay getTimeOfDay() {
+        return getInstance().timeOfDay;
+    }
+
     /**
      * Toggles the pause menu visibility.
      */

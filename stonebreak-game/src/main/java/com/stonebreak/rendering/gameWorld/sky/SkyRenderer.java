@@ -19,23 +19,22 @@ import static org.lwjgl.opengl.GL30.*;
 
 // Project Imports
 import com.stonebreak.rendering.shaders.ShaderProgram;
+import com.stonebreak.world.TimeOfDay;
 
 /**
  * Renderer for procedural sky with sun and clouds.
  * Renders a full-screen sky dome with atmospheric effects.
+ * Sky color and sun position are driven by the TimeOfDay system.
  */
 public class SkyRenderer {
-    
+
     // Sky dome geometry
     private int skyVAO;
     private int skyVBO;
     private int skyEBO;
-    
+
     // Shader program for sky rendering
     private ShaderProgram skyShaderProgram;
-    
-    // Sun position (normalized direction vector) - positioned at horizon
-    private final Vector3f sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
     
     // Sky dome vertices (cube that will be expanded in vertex shader)
     private static final float[] SKY_VERTICES = {
@@ -123,6 +122,7 @@ public class SkyRenderer {
             skyShaderProgram.createUniform("cameraPosition");
             skyShaderProgram.createUniform("time");
             skyShaderProgram.createUniform("sunDirection");
+            skyShaderProgram.createUniform("skyColor");
             
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize sky shaders", e);
@@ -142,10 +142,16 @@ public class SkyRenderer {
     }
     
     /**
-     * Render the sky dome.
+     * Render the sky dome with dynamic time-of-day lighting.
      * Should be called first in the rendering pipeline, before world geometry.
+     *
+     * @param projectionMatrix The projection matrix
+     * @param viewMatrix The view matrix
+     * @param cameraPosition The camera position
+     * @param totalTime The total game time
+     * @param timeOfDay The time of day system (null for static sky)
      */
-    public void renderSky(Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPosition, float totalTime) {
+    public void renderSky(Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPosition, float totalTime, TimeOfDay timeOfDay) {
         // Save current OpenGL state
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -164,13 +170,26 @@ public class SkyRenderer {
         
         // Use sky shader
         skyShaderProgram.bind();
-        
+
+        // Calculate sun direction and sky color from TimeOfDay if available
+        Vector3f sunDirection;
+        Vector3f skyColor;
+        if (timeOfDay != null) {
+            sunDirection = timeOfDay.getSunDirection();
+            skyColor = timeOfDay.getSkyColor();
+        } else {
+            // Fallback to static values if no TimeOfDay system
+            sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
+            skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
+        }
+
         // Set uniforms
         skyShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         skyShaderProgram.setUniform("viewMatrix", viewMatrix);
         skyShaderProgram.setUniform("cameraPosition", cameraPosition);
         skyShaderProgram.setUniform("time", totalTime);
         skyShaderProgram.setUniform("sunDirection", sunDirection);
+        skyShaderProgram.setUniform("skyColor", skyColor);
         
         // Bind sky VAO and render
         glBindVertexArray(skyVAO);
@@ -203,39 +222,7 @@ public class SkyRenderer {
         glDepthMask(depthMaskEnabled);
         glDepthFunc(currentDepthFunc);
     }
-    
-    /**
-     * Get the current sun direction.
-     */
-    public Vector3f getSunDirection() {
-        return new Vector3f(sunDirection);
-    }
-    
-    /**
-     * Set the sun direction (should be normalized).
-     */
-    public void setSunDirection(Vector3f direction) {
-        this.sunDirection.set(direction.normalize());
-    }
-    
-    /**
-     * Set the sun direction using elevation and azimuth angles.
-     * 
-     * @param elevation Elevation angle in degrees (0 = horizon, 90 = zenith)
-     * @param azimuth Azimuth angle in degrees (0 = north, 90 = east)
-     */
-    public void setSunDirection(float elevation, float azimuth) {
-        float elevRad = (float) Math.toRadians(elevation);
-        float azimRad = (float) Math.toRadians(azimuth);
-        
-        float y = (float) Math.sin(elevRad);
-        float horizontalDistance = (float) Math.cos(elevRad);
-        float x = horizontalDistance * (float) Math.sin(azimRad);
-        float z = horizontalDistance * (float) Math.cos(azimRad);
-        
-        sunDirection.set(x, y, z).normalize();
-    }
-    
+
     /**
      * Clean up OpenGL resources.
      */
