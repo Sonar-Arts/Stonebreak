@@ -154,7 +154,6 @@ public class EntityManager {
                 String textureVariant = variants[(int)(Math.random() * variants.length)];
                 yield new com.stonebreak.mobs.cow.Cow(world, position, textureVariant);
             }
-            case ZOMBIE -> new com.stonebreak.mobs.zombie.Zombie(world, position);
             default -> {
                 System.err.println("Unknown entity type: " + type);
                 yield null;

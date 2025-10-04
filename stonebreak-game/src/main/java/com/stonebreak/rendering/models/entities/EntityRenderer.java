@@ -53,8 +53,6 @@ public class EntityRenderer {
     private int debugSphereVBO;
     private int debugSphereTexVBO;
 
-    // Simple green texture for zombies
-    private int zombieTextureId = -1;
 
     /**
      * Initialize the entity renderer. Called by the main Renderer.
@@ -64,7 +62,6 @@ public class EntityRenderer {
         
         createShader();
         createTextureAtlas();
-        createZombieTexture();
         createSimpleCubeModel();
         createDebugSphereModel();
         initializeEntityModels();
@@ -83,7 +80,6 @@ public class EntityRenderer {
             
             switch (entityType) {
                 case COW -> createCowModel();
-                case ZOMBIE -> createZombieModel();
                 // Add other entity types here as they're implemented
                 default -> {
                     // No special model needed - will use simple cube fallback
@@ -163,30 +159,6 @@ public class EntityRenderer {
     private void createTextureAtlas() {
         // Initialize the static cow texture atlas
         CowTextureAtlas.initialize();
-    }
-    
-    private void createZombieTexture() {
-        // Create a simple 4x4 green texture for zombies
-        zombieTextureId = GL11.glGenTextures();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, zombieTextureId);
-        
-        // Create a 4x4 green texture
-        int size = 4;
-        ByteBuffer textureBuffer = ByteBuffer.allocateDirect(size * size * 4); // RGBA
-        
-        for (int i = 0; i < size * size; i++) {
-            textureBuffer.put((byte) 50);   // Dark green R
-            textureBuffer.put((byte) 150);  // Green G
-            textureBuffer.put((byte) 50);   // Dark green B
-            textureBuffer.put((byte) 255);  // Alpha
-        }
-        textureBuffer.flip();
-        
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, size, size, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, textureBuffer);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        
-        System.out.println("[EntityRenderer] Created zombie texture with ID: " + zombieTextureId);
     }
     
     private void createSimpleCubeModel() {
@@ -322,146 +294,19 @@ public class EntityRenderer {
         ModelDefinition.setUseBakedVertices(true);
         try {
             ModelDefinition.ModelPart[] parts = ModelLoader.getAllPartsStrict(ModelLoader.getCowModel("standard_cow_baked"));
-            
+
             String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
-            
+
             for (int i = 0; i < parts.length; i++) {
                 ModelDefinition.ModelPart part = parts[i];
                 String partName = partNames[i];
-                
+
                 createModelPart(EntityType.COW, partName, part);
             }
         } finally {
             // Always reset to origin-based vertices after model creation
             ModelDefinition.setUseBakedVertices(false);
         }
-    }
-    
-    private void createZombieModel() {
-        // Create a simple humanoid zombie model using basic cubes
-        // This is a temporary implementation until proper zombie models are created
-        
-        // Body - main torso cube (centered at origin)
-        // Body dimensions: 0.6w x 1.2h x 0.4d
-        createZombiePart("body", 0.6f, 1.2f, 0.4f, 0.0f, 0.0f, 0.0f);
-        
-        // Head - positioned so its bottom touches the top of the body
-        // Body extends from -0.6 to +0.6 in Y, so head starts at +0.6
-        // Head is 0.5 tall, so its center is at +0.6 + 0.25 = +0.85
-        createZombiePart("head", 0.5f, 0.5f, 0.5f, 0.0f, 0.85f, 0.0f);
-        
-        // Arms - positioned so they connect to the body at shoulder level
-        // Body is 0.6 wide, so arms start at ±0.3 from center
-        // Arm is 0.25 wide, so arm center is at ±(0.3 + 0.125) = ±0.425
-        // Arms positioned at upper body level (Y = +0.3, which is middle-upper body)
-        createZombiePart("left_arm", 0.25f, 1.0f, 0.25f, -0.425f, 0.3f, 0.0f);
-        createZombiePart("right_arm", 0.25f, 1.0f, 0.25f, 0.425f, 0.3f, 0.0f);
-        
-        // Legs - positioned so they connect to the bottom of the body
-        // Body extends from -0.6 to +0.6 in Y, so legs start at -0.6
-        // Leg is 1.0 tall, so leg center is at -0.6 - 0.5 = -1.1
-        // Legs spaced to look natural, body is 0.6 wide so legs at ±0.15
-        createZombiePart("left_leg", 0.25f, 1.0f, 0.25f, -0.15f, -1.1f, 0.0f);
-        createZombiePart("right_leg", 0.25f, 1.0f, 0.25f, 0.15f, -1.1f, 0.0f);
-    }
-    
-    private void createZombiePart(String partName, float width, float height, float depth, 
-                                  float offsetX, float offsetY, float offsetZ) {
-        // Create a simple cube for this zombie part
-        float halfW = width / 2.0f;
-        float halfH = height / 2.0f;
-        float halfD = depth / 2.0f;
-        
-        // Cube vertices (with offset)
-        float[] vertices = {
-            // Front face
-            -halfW + offsetX, -halfH + offsetY,  halfD + offsetZ,  // 0
-             halfW + offsetX, -halfH + offsetY,  halfD + offsetZ,  // 1
-             halfW + offsetX,  halfH + offsetY,  halfD + offsetZ,  // 2
-            -halfW + offsetX,  halfH + offsetY,  halfD + offsetZ,  // 3
-            // Back face
-            -halfW + offsetX, -halfH + offsetY, -halfD + offsetZ,  // 4
-             halfW + offsetX, -halfH + offsetY, -halfD + offsetZ,  // 5
-             halfW + offsetX,  halfH + offsetY, -halfD + offsetZ,  // 6
-            -halfW + offsetX,  halfH + offsetY, -halfD + offsetZ   // 7
-        };
-        
-        // Cube indices
-        int[] indices = {
-            // Front face
-            0, 1, 2,  2, 3, 0,
-            // Back face
-            4, 7, 6,  6, 5, 4,
-            // Left face
-            4, 0, 3,  3, 7, 4,
-            // Right face
-            1, 5, 6,  6, 2, 1,
-            // Top face
-            3, 2, 6,  6, 7, 3,
-            // Bottom face
-            4, 5, 1,  1, 0, 4
-        };
-        
-        // Simple texture coordinates for all 8 vertices (green zombie skin color)
-        float[] texCoords = {
-            // All vertices use the same texture coordinates for simplicity
-            0.0f, 0.0f,  // 0
-            1.0f, 0.0f,  // 1
-            1.0f, 1.0f,  // 2
-            0.0f, 1.0f,  // 3
-            0.0f, 0.0f,  // 4
-            1.0f, 0.0f,  // 5
-            1.0f, 1.0f,  // 6
-            0.0f, 1.0f   // 7
-        };
-        
-        // Create VAO, VBO, EBO for this zombie part
-        int vao = GL30.glGenVertexArrays();
-        int vbo = GL15.glGenBuffers();
-        int ebo = GL15.glGenBuffers();
-        int texVbo = GL15.glGenBuffers();
-        
-        GL30.glBindVertexArray(vao);
-        
-        // Upload vertex data
-        FloatBuffer vertexBuffer = memAllocFloat(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexBuffer, GL15.GL_STATIC_DRAW);
-        
-        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // Upload texture coordinates (placeholder - will use simple color)
-        FloatBuffer texCoordBuffer = memAllocFloat(texCoords.length);
-        texCoordBuffer.put(texCoords).flip();
-        
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, texVbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, texCoordBuffer, GL15.GL_STATIC_DRAW);
-        
-        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(1);
-        
-        // Upload indices
-        IntBuffer indexBuffer = memAllocInt(indices.length);
-        indexBuffer.put(indices).flip();
-        
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ebo);
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL15.GL_STATIC_DRAW);
-        
-        // Store in maps
-        vaoMaps.get(EntityType.ZOMBIE).put(partName, vao);
-        vboMaps.get(EntityType.ZOMBIE).put(partName, vbo);
-        eboMaps.get(EntityType.ZOMBIE).put(partName, ebo);
-        texCoordVboMaps.get(EntityType.ZOMBIE).put(partName, texVbo);
-        vertexCountMaps.get(EntityType.ZOMBIE).put(partName, indices.length);
-        
-        // Clean up
-        GL30.glBindVertexArray(0);
-        memFree(vertexBuffer);
-        memFree(texCoordBuffer);
-        memFree(indexBuffer);
     }
     
     private void createModelPart(EntityType entityType, String partName, ModelDefinition.ModelPart part) {
@@ -610,7 +455,6 @@ public class EntityRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         switch (entityType) {
             case COW -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId());
-            case ZOMBIE -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, zombieTextureId);
             default -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, CowTextureAtlas.getTextureId()); // Fallback
         }
         shader.setUniform("textureSampler", 0);
@@ -660,9 +504,6 @@ public class EntityRenderer {
                     renderCowPathfindingTarget(cow, viewMatrix, projectionMatrix);
                 }
             }
-            case ZOMBIE -> {
-                renderZombieParts(baseMatrix, entity);
-            }
             // Add other complex entity types here
             default -> {
                 // Shouldn't reach here, but fallback to simple rendering
@@ -692,30 +533,30 @@ public class EntityRenderer {
         String currentAnimation = "IDLE";
         float animationTime = System.currentTimeMillis() / 1000.0f; // Default fallback
         String textureVariant = "default";
-        
+
         if (entity instanceof com.stonebreak.mobs.cow.Cow cow) {
             currentAnimation = cow.getCurrentAnimation();
             // Use the cow's animation controller time for consistent timing
             animationTime = cow.getAnimationController().getTotalAnimationTime();
             textureVariant = cow.getTextureVariant();
         }
-        
+
         // Get animated cow model parts from JSON model system (using baked coordinates)
         ModelDefinition.ModelPart[] animatedParts = ModelLoader.getAnimatedParts("standard_cow_baked", currentAnimation, animationTime);
-        
+
         String[] partNames = {"body", "head", "front_left", "front_right", "back_left", "back_right", "left_horn", "right_horn", "udder", "tail"};
         Map<String, Integer> cowVaoMap = vaoMaps.get(EntityType.COW);
         Map<String, Integer> cowVertexCountMap = vertexCountMaps.get(EntityType.COW);
-        
-        // Render each part of the cow  
+
+        // Render each part of the cow
         for (int i = 0; i < animatedParts.length && i < partNames.length; i++) {
             ModelDefinition.ModelPart part = animatedParts[i];
             String partName = partNames[i];
-            
+
             if (cowVaoMap.containsKey(partName)) {
                 // Update texture coordinates for this variant if needed
                 updateTextureCoordinatesForVariant(EntityType.COW, partName, part, textureVariant);
-                
+
                 // Create model matrix for this part
                 Matrix4f partMatrix = new Matrix4f(baseMatrix)
                     .translate(part.getPositionVector())
@@ -725,34 +566,12 @@ public class EntityRenderer {
                         (float) Math.toRadians(part.getRotation().z)
                     )
                     .scale(part.getScale());
-                
+
                 shader.setUniform("model", partMatrix);
-                
+
                 // Render this part
                 GL30.glBindVertexArray(cowVaoMap.get(partName));
                 GL11.glDrawElements(GL11.GL_TRIANGLES, cowVertexCountMap.get(partName), GL11.GL_UNSIGNED_INT, 0);
-            }
-        }
-    }
-    
-    private void renderZombieParts(Matrix4f baseMatrix, Entity entity) {
-        // Render all zombie parts with a simple green texture
-        String[] partNames = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"};
-        
-        for (String partName : partNames) {
-            Integer vao = vaoMaps.get(EntityType.ZOMBIE).get(partName);
-            Integer vertexCount = vertexCountMaps.get(EntityType.ZOMBIE).get(partName);
-            
-            if (vao != null && vertexCount != null) {
-                // Create model matrix for this part
-                Matrix4f partMatrix = new Matrix4f(baseMatrix);
-                
-                // Set uniforms for this part
-                shader.setUniform("model", partMatrix);
-                
-                // Bind VAO and render
-                GL30.glBindVertexArray(vao);
-                GL11.glDrawElements(GL11.GL_TRIANGLES, vertexCount, GL11.GL_UNSIGNED_INT, 0);
             }
         }
     }

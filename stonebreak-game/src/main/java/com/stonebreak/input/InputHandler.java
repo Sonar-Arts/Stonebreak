@@ -13,6 +13,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.PauseMenu;
@@ -450,42 +451,6 @@ public class InputHandler {
             f6KeyPressed = false;
         }
         
-        // F7 - Spawn test zombie
-        boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
-        if (isF7Pressed && !f7KeyPressed) {
-            f7KeyPressed = true;
-            Player player = Game.getPlayer();
-            EntityManager entityManager = Game.getEntityManager();
-            if (player != null && entityManager != null) {
-                System.out.println("[DEBUG] Spawning test zombie near player...");
-                
-                // Spawn zombie directly using EntityManager
-                Vector3f playerPos = player.getPosition();
-                Vector3f spawnPos = new Vector3f(playerPos.x + 10.0f, playerPos.y, playerPos.z + 10.0f);
-                
-                // Find ground level at spawn position
-                int groundY = (int)playerPos.y;
-                for (int y = (int)playerPos.y + 10; y >= (int)playerPos.y - 10; y--) {
-                    BlockType block = Game.getWorld().getBlockAt((int)spawnPos.x, y, (int)spawnPos.z);
-                    if (block != null && block != BlockType.AIR) {
-                        groundY = y + 1;
-                        break;
-                    }
-                }
-                spawnPos.y = groundY;
-                
-                Entity zombie = entityManager.spawnEntity(EntityType.ZOMBIE, spawnPos);
-                if (zombie != null) {
-                    System.out.println("[DEBUG] Spawned test zombie at " + spawnPos);
-                } else {
-                    System.out.println("[DEBUG] Failed to spawn test zombie");
-                }
-            } else {
-                System.out.println("[DEBUG] Failed to spawn zombie - player or entity manager is null");
-            }
-        } else if (!isF7Pressed) {
-            f7KeyPressed = false;
-        }
     }
  
 
