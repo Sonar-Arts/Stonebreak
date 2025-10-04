@@ -168,11 +168,14 @@ public class ItemDrop extends Entity {
         
         com.stonebreak.player.Player player = game.getPlayer();
         if (player == null) return;
-        
+
+        // Dead players cannot pick up items
+        if (player.isDead()) return;
+
         // Check if player is within pickup range
         Vector3f playerPosition = player.getPosition();
         float distance = position.distance(playerPosition);
-        
+
         if (distance <= PICKUP_RANGE) {
             // Try to add item(s) to player inventory
             com.stonebreak.items.Inventory inventory = player.getInventory();

@@ -585,9 +585,11 @@ public class Player {      // Player settings
     public void damage(float amount) {
         if (isDead) return;
 
+        System.out.println("DEBUG: Player took " + amount + " damage. Health: " + health + " -> " + (health - amount));
         health -= amount;
         if (health <= 0) {
             health = 0;
+            System.out.println("DEBUG: Health <= 0, calling die()");
             die();
         }
     }
@@ -605,6 +607,15 @@ public class Player {      // Player settings
      * Handles player death.
      */
     private void die() {
+        System.out.println("DEBUG: Player died at position: " + position);
+        System.out.println("DEBUG: Checking inventory BEFORE dropAllItems():");
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            ItemStack stack = inventory.getHotbarSlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                System.out.println("  Hotbar slot " + i + " HAS ITEMS: " + stack.getCount());
+            }
+        }
+
         isDead = true;
 
         // Drop all items from inventory
@@ -612,29 +623,44 @@ public class Player {      // Player settings
 
         // Stop all movement
         velocity.set(0, 0, 0);
+
+        System.out.println("DEBUG: Player death handling complete");
     }
 
     /**
      * Drops all items from the player's inventory.
      */
     private void dropAllItems() {
+        System.out.println("DEBUG: dropAllItems() called - dropping all inventory items on death");
+        System.out.println("DEBUG: Inventory object: " + inventory);
+        System.out.println("DEBUG: World object: " + world);
+
         // Drop all hotbar items
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             ItemStack stack = inventory.getHotbarSlot(i);
+            System.out.println("DEBUG: Hotbar slot " + i + ": " + (stack == null ? "NULL" : (stack.isEmpty() ? "EMPTY" : stack.getCount() + "x items")));
             if (stack != null && !stack.isEmpty()) {
+                System.out.println("DEBUG: Dropping hotbar slot " + i + ": " + stack.getCount() + "x items");
                 dropItemStack(stack);
-                inventory.setHotbarSlot(i, null);
+                // Clear the slot by setting count to 0 and item to AIR
+                stack.clear();
+                System.out.println("DEBUG: After clear() - slot " + i + " is now: " + (stack.isEmpty() ? "EMPTY" : stack.getCount() + "x items"));
             }
         }
 
         // Drop all main inventory items
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             ItemStack stack = inventory.getMainInventorySlot(i);
+            System.out.println("DEBUG: Main inventory slot " + i + ": " + (stack == null ? "NULL" : (stack.isEmpty() ? "EMPTY" : stack.getCount() + "x items")));
             if (stack != null && !stack.isEmpty()) {
+                System.out.println("DEBUG: Dropping main inventory slot " + i + ": " + stack.getCount() + "x items");
                 dropItemStack(stack);
-                inventory.setMainInventorySlot(i, null);
+                // Clear the slot by setting count to 0 and item to AIR
+                stack.clear();
             }
         }
+
+        System.out.println("DEBUG: dropAllItems() finished");
     }
 
     /**
@@ -642,22 +668,23 @@ public class Player {      // Player settings
      */
     private void dropItemStack(ItemStack stack) {
         Vector3f dropPosition = new Vector3f(position.x, position.y + 0.5f, position.z);
+        System.out.println("DEBUG: dropItemStack called at position " + dropPosition + " for stack: " + stack.getCount() + " items");
 
-        // For each item in the stack
-        for (int j = 0; j < stack.getCount(); j++) {
-            if (stack.isPlaceable()) {
-                // Drop placeable items as block drops
-                BlockType blockType = stack.asBlockType();
-                if (blockType != null) {
+        if (stack.isPlaceable()) {
+            // Drop placeable items as block drops
+            BlockType blockType = stack.asBlockType();
+            if (blockType != null) {
+                System.out.println("DEBUG: Creating " + stack.getCount() + " block drops of type " + blockType.getName());
+                // Create one drop for entire stack
+                for (int j = 0; j < stack.getCount(); j++) {
                     DropUtil.createBlockDrop(world, dropPosition, blockType);
                 }
-            } else {
-                // Drop tools and other items as item drops
-                ItemType itemType = stack.asItemType();
-                if (itemType != null) {
-                    DropUtil.createItemDrop(world, dropPosition, itemType, 1);
-                }
             }
+        } else {
+            // Drop tools and other items as item drops
+            System.out.println("DEBUG: Creating item drop for non-placeable item");
+            // Create one ItemStack drop for the entire stack
+            DropUtil.createItemDrop(world, dropPosition, stack.copy());
         }
     }
 
@@ -665,6 +692,15 @@ public class Player {      // Player settings
      * Respawns the player at spawn position with full health.
      */
     public void respawn() {
+        System.out.println("DEBUG: Respawn called");
+        System.out.println("DEBUG: Checking inventory BEFORE respawn:");
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            ItemStack stack = inventory.getHotbarSlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                System.out.println("  Hotbar slot " + i + " HAS ITEMS: " + stack.getCount());
+            }
+        }
+
         // Reset health
         health = maxHealth;
         isDead = false;
@@ -679,6 +715,8 @@ public class Player {      // Player settings
 
         // Reset camera
         camera.setPosition(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
+
+        System.out.println("DEBUG: Respawn complete");
     }
 
     /**
