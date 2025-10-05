@@ -105,6 +105,10 @@ public class World {
         waterSystem.tick(Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
         chunkManager.update(Game.getPlayer());
+
+        // Process deferred feature population (breaks recursive generation cycles)
+        chunkStore.processPendingFeaturePopulation();
+
         meshPipeline.processChunkMeshBuildRequests(this);
     }
 
@@ -199,18 +203,27 @@ public class World {
      * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
      */
     public boolean setBlockAt(int x, int y, int z, BlockType blockType) {
+        return setBlockAt(x, y, z, blockType, false);
+    }
+
+    /**
+     * Sets the block type at the specified world position with priority-based mesh regeneration.
+     * @param isPlayerModification If true, uses high priority for instant visual feedback (1-frame latency)
+     * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
+     */
+    public boolean setBlockAt(int x, int y, int z, BlockType blockType, boolean isPlayerModification) {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return false;
         }
-        
+
         int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         Chunk chunk = getChunkAt(chunkX, chunkZ);
-        
+
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        
+
         BlockType previous = chunk.getBlock(localX, y, localZ);
         if (previous == blockType) {
             return true;
@@ -218,10 +231,21 @@ public class World {
 
         chunk.setBlock(localX, y, localZ, blockType);
 
-        markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-        neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        if (isPlayerModification) {
+            // PRIORITY PATH: Player modification - high priority async mesh generation
+            // Uses PRIORITY_PLAYER_MODIFICATION to bypass batch limits for 1-frame feedback
+            markChunkForMeshRebuildWithScheduling(chunk,
+                c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION));
+            neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ,
+                c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_NEIGHBOR_CHUNK));
+        } else {
+            // NORMAL PATH: World gen/loading - standard priority async mesh generation
+            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+            neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        }
+
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
-        
+
         return true;
     }
 

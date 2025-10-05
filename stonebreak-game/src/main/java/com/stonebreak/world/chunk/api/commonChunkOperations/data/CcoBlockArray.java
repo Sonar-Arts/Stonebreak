@@ -188,6 +188,23 @@ public final class CcoBlockArray {
         return unique.size();
     }
 
+    /**
+     * Clears all block references by nulling out the underlying array.
+     * Used for memory cleanup when unloading chunks.
+     * After calling this, the CcoBlockArray should not be used.
+     */
+    public void clear() {
+        for (int x = 0; x < sizeX; x++) {
+            for (int y = 0; y < sizeY; y++) {
+                if (blocks[x][y] != null) {
+                    for (int z = 0; z < sizeZ; z++) {
+                        blocks[x][y][z] = null;
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public String toString() {
         return String.format("CcoBlockArray{size=%dx%dx%d}", sizeX, sizeY, sizeZ);

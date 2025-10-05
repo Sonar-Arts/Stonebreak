@@ -146,6 +146,7 @@ public class MmsCcoAdapter {
         }
     }
 
+
     /**
      * Adds a cross-section block to the mesh builder.
      */
@@ -357,14 +358,21 @@ public class MmsCcoAdapter {
         }
 
         // Out of bounds - query neighboring chunk via world
+        // CRITICAL FIX: Only query if neighbor chunk exists to prevent recursive chunk generation
         if (world != null && adjY >= 0 && adjY < WorldConfiguration.WORLD_HEIGHT) {
             // Convert to world coordinates
             int worldX = adjX + chunkData.getChunkX() * WorldConfiguration.CHUNK_SIZE;
             int worldZ = adjZ + chunkData.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
 
-            // Query world for block at this position
-            BlockType adjacentBlock = world.getBlockAt(worldX, adjY, worldZ);
-            return adjacentBlock != null ? adjacentBlock : BlockType.AIR;
+            // Calculate neighbor chunk coordinates
+            int neighborChunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
+            int neighborChunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
+
+            // Only query if neighbor chunk already exists (don't trigger generation)
+            if (world.hasChunkAt(neighborChunkX, neighborChunkZ)) {
+                BlockType adjacentBlock = world.getBlockAt(worldX, adjY, worldZ);
+                return adjacentBlock != null ? adjacentBlock : BlockType.AIR;
+            }
         }
 
         // Out of world bounds or no world reference - assume air

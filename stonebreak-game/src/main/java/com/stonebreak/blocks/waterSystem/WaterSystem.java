@@ -177,11 +177,16 @@ public final class WaterSystem {
         );
 
         // Remove pending updates for the unloaded chunk
-        pendingUpdates.removeIf(update -> {
+        // Use iterator to avoid ConcurrentModificationException with PriorityQueue
+        Iterator<ScheduledUpdate> iterator = pendingUpdates.iterator();
+        while (iterator.hasNext()) {
+            ScheduledUpdate update = iterator.next();
             BlockPos pos = update.pos();
-            return Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-                   Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ;
-        });
+            if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                iterator.remove();
+            }
+        }
 
         // Remove scheduled ticks for the unloaded chunk
         scheduledTicks.keySet().removeIf(pos ->
@@ -500,9 +505,12 @@ public final class WaterSystem {
     }
 
     /**
-     * Applies all batched mesh and data updates to chunks.
+     * Applies all batched mesh updates to chunks.
      * Called once per logical tick after processing all water updates.
-     * Marks chunks dirty for both mesh regeneration AND data saving.
+     *
+     * CRITICAL FIX: Only triggers mesh rebuild, does NOT mark chunks dirty for saving.
+     * Water level changes are purely visual and should not trigger chunk saves.
+     * Only actual block placement/removal (via setBlockViaCco) marks chunks dirty for saving.
      */
     private void flushDirtyChunks() {
         if (dirtyChunks.isEmpty()) {
@@ -515,11 +523,8 @@ public final class WaterSystem {
 
             Chunk chunk = world.getChunkAt(chunkX, chunkZ);
             if (chunk != null) {
-                // Mark chunk dirty for both mesh and data using CCO dirty tracker
-                // This ensures water changes are both rendered AND saved to disk
-                chunk.getCcoDirtyTracker().markBlockChanged();
-
-                // Trigger mesh rebuild using world's scheduling system
+                // ONLY trigger mesh rebuild - do NOT mark chunk dirty for saving
+                // Water metadata is saved when actual blocks change (via CCO in setBlockViaCco)
                 int worldX = chunkX * WorldConfiguration.CHUNK_SIZE;
                 int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
                 world.triggerChunkRebuild(worldX, 0, worldZ);

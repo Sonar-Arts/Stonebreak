@@ -375,9 +375,18 @@ public class Chunk {
 
     /**
      * Cleans up CPU-side resources. Safe to call from any thread.
+     * NOTE: Block array cleanup removed - blocks must remain accessible for
+     * collision detection and neighbor chunk meshing during unload.
+     * Memory will be released when the Chunk object itself is garbage collected.
      */
     public void cleanupCpuResources() {
         pendingMmsMeshData = null;
+
+        // Block array intentionally NOT cleared here - it's needed for:
+        // 1. Player collision detection during chunk unload
+        // 2. Neighbor chunk meshing (edge blocks must be accessible)
+        // 3. Saving dirty chunks (requires block data)
+        // Memory will be freed when the entire Chunk object is GC'd
     }
 
     /**

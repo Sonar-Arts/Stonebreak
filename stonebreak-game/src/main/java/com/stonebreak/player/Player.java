@@ -786,9 +786,9 @@ public class Player {      // Player settings
                     // Create drops before breaking the block
                     Vector3f dropPosition = new Vector3f(breakingBlock.x + 0.5f, breakingBlock.y + 0.5f, breakingBlock.z + 0.5f);
                     DropUtil.handleBlockBroken(world, dropPosition, blockType);
-                    
-                    // Break the block
-                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+
+                    // Break the block (player action - use fast path for instant visual feedback)
+                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR, true);
 
                     // Notify water system about block being broken
                     Water.onBlockBroken(breakingBlock.x, breakingBlock.y, breakingBlock.z);
@@ -846,8 +846,8 @@ public class Player {      // Player settings
                     // Create drops before breaking the block
                     Vector3f dropPosition = new Vector3f(blockPos.x + 0.5f, blockPos.y + 0.5f, blockPos.z + 0.5f);
                     DropUtil.handleBlockBroken(world, dropPosition, blockType);
-                    
-                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+
+                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR, true);
 
                     // Notify water system about block being broken
                     Water.onBlockBroken(blockPos.x, blockPos.y, blockPos.z);
@@ -894,7 +894,7 @@ public class Player {      // Player settings
                         // Check if it's a water source block
                         if (Water.isWaterSource(targetBlock.x, targetBlock.y, targetBlock.z)) {
                             // Remove the water source block
-                            world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR);
+                            world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR, true);
                             Water.onBlockPlaced(targetBlock.x, targetBlock.y, targetBlock.z);
 
                             // Replace empty bucket with water bucket in the same slot
@@ -946,11 +946,11 @@ public class Player {      // Player settings
                                 return;
                             }
                             // Convert flow to source by triggering world block change
-                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
-                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR, true); // Temp remove
+                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true); // Replace as source
                         } else {
                             // Place water source block in air
-                            if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER)) {
+                            if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true)) {
                                 return; // Failed to place
                             }
                             Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
@@ -1031,7 +1031,7 @@ public class Player {      // Player settings
                     if (blockAbove == BlockType.AIR) {
                         if (!blockPlacementService.wouldIntersectWithPlayer(abovePos, position, BlockType.SNOW, onGround)) {
                             // Place new snow block above
-                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
+                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW, true)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
                                 inventory.removeItem(selectedItem.getItem(), 1);
 
@@ -1062,8 +1062,8 @@ public class Player {      // Player settings
                     if (!Water.isWaterSource(placePos.x, placePos.y, placePos.z)) {
                         // Convert flow to source by triggering world block change
                         // This will call WaterSystem.onBlockChanged which uses cells.put() to force source
-                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
-                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR, true); // Temp remove
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true); // Replace as source
                         inventory.removeItem(selectedItem.getItem(), 1);
                     }
                     // If already a source, don't consume the bucket
@@ -1076,7 +1076,7 @@ public class Player {      // Player settings
                 }
 
                 // All checks passed, place the block.
-                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
+                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
 
                     // If placing a water block, register it as a water source
@@ -1686,7 +1686,7 @@ public class Player {      // Player settings
                  }
             }
 
-            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
+            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace, true)) {
                 if (blockToPlace == BlockType.SNOW) {
                     world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
                 }

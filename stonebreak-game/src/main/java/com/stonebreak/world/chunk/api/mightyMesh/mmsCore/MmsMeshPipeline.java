@@ -44,10 +44,11 @@ public final class MmsMeshPipeline {
     // Pipeline queues
     private final ExecutorService meshGenerationExecutor;
     private final Set<Chunk> chunksToGenerateMesh;
-    private final Queue<MeshUploadTask> meshesReadyForGLUpload;
+    private final PriorityBlockingQueue<MeshUploadTask> meshesReadyForGLUpload;
     private final Queue<Chunk> chunksFailedToGenerateMesh;
     private final Queue<MmsRenderableHandle> handlesPendingGpuCleanup;
     private final Map<Chunk, Integer> chunkRetryCount;
+    private final Map<Chunk, Integer> chunkPriorityMap;
 
     // Dependencies
     private final ChunkErrorReporter errorReporter;
@@ -93,10 +94,11 @@ public final class MmsMeshPipeline {
             }
         );
         this.chunksToGenerateMesh = ConcurrentHashMap.newKeySet();
-        this.meshesReadyForGLUpload = new ConcurrentLinkedQueue<>();
+        this.meshesReadyForGLUpload = new PriorityBlockingQueue<>(100); // Initial capacity 100
         this.chunksFailedToGenerateMesh = new ConcurrentLinkedQueue<>();
         this.handlesPendingGpuCleanup = new ConcurrentLinkedQueue<>();
         this.chunkRetryCount = new ConcurrentHashMap<>();
+        this.chunkPriorityMap = new ConcurrentHashMap<>();
 
         // System.out.println("[MmsMeshPipeline] Created mesh pipeline with " +
         //     config.getChunkBuildThreads() + " threads");
@@ -107,10 +109,22 @@ public final class MmsMeshPipeline {
     /**
      * Schedules a chunk for mesh generation if it's ready.
      * Thread-safe, can be called from any thread.
+     * Uses default priority (PRIORITY_WORLD_GENERATION).
      *
      * @param chunk Chunk to schedule
      */
     public void scheduleConditionalMeshBuild(Chunk chunk) {
+        scheduleConditionalMeshBuild(chunk, PRIORITY_WORLD_GENERATION);
+    }
+
+    /**
+     * Schedules a chunk for mesh generation with specified priority.
+     * Thread-safe, can be called from any thread.
+     *
+     * @param chunk Chunk to schedule
+     * @param priority Priority level (use PRIORITY_* constants)
+     */
+    public void scheduleConditionalMeshBuild(Chunk chunk, int priority) {
         if (chunk == null || shutdown) {
             return;
         }
@@ -126,6 +140,9 @@ public final class MmsMeshPipeline {
                 containsMeshForChunk(chunk)) {
                 return;
             }
+
+            // Store priority for this chunk
+            chunkPriorityMap.put(chunk, priority);
 
             // Mark as generating and schedule
             markMeshGenerationInProgress(chunk);
@@ -191,8 +208,11 @@ public final class MmsMeshPipeline {
             success = meshData != null && !meshData.isEmpty();
 
             if (success) {
-                // Queue for GL upload
-                meshesReadyForGLUpload.offer(new MeshUploadTask(chunk, meshData));
+                // Get priority for this chunk (default to world generation priority)
+                int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
+
+                // Queue for GL upload with priority
+                meshesReadyForGLUpload.offer(new MeshUploadTask(chunk, meshData, priority));
 
                 // Mark chunk state as CPU ready
                 synchronized (chunk) {
@@ -210,6 +230,9 @@ public final class MmsMeshPipeline {
         } finally {
             markMeshGenerationComplete(chunk);
             handleGenerationResult(chunk, success);
+
+            // Clean up priority map
+            chunkPriorityMap.remove(chunk);
         }
     }
 
@@ -274,17 +297,30 @@ public final class MmsMeshPipeline {
         int updatesThisFrame = 0;
         int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
 
-        while ((task = meshesReadyForGLUpload.poll()) != null &&
-               updatesThisFrame < maxUpdatesPerFrame) {
+        while ((task = meshesReadyForGLUpload.poll()) != null) {
+            // Player modifications bypass batch limit for instant feedback
+            boolean isPlayerPriority = task.priority >= PRIORITY_PLAYER_MODIFICATION;
+
+            // Check batch limit (except for player modifications)
+            if (!isPlayerPriority && updatesThisFrame >= maxUpdatesPerFrame) {
+                // Put task back and stop processing
+                meshesReadyForGLUpload.offer(task);
+                break;
+            }
 
             try {
                 // Upload mesh to GPU using MMS API
                 MmsRenderableHandle handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
 
+                // CRITICAL: Explicitly null out mesh data to allow GC after GPU upload
+                // Without this, MeshUploadTask keeps references to large float arrays
+                // causing severe memory leaks (hundreds of MB accumulate)
+                task.meshData = null;
+
                 // Debug: Log first few uploads
                 // if (debugGLUploadSuccessCount < 3) {
                 //     System.out.println("[MmsMeshPipeline] Uploaded chunk (" + task.chunk.getChunkX() + "," +
-                //         task.chunk.getChunkZ() + ") with " + handle.getIndexCount() + " indices");
+                //         task.chunk.getChunkZ() + ") with " + handle.getIndexCount() + " indices (priority: " + task.priority + ")");
                 //     debugGLUploadSuccessCount++;
                 // }
 
@@ -528,6 +564,7 @@ public final class MmsMeshPipeline {
         meshesReadyForGLUpload.clear();
         chunksFailedToGenerateMesh.clear();
         chunkRetryCount.clear();
+        chunkPriorityMap.clear();
 
         // Clean up pending GPU resources
         processGpuCleanupQueue();
@@ -585,15 +622,50 @@ public final class MmsMeshPipeline {
     // === Internal Classes ===
 
     /**
-     * Upload task containing chunk and generated mesh data.
+     * Upload task containing chunk and generated mesh data with priority.
      */
-    private static class MeshUploadTask {
+    private static class MeshUploadTask implements Comparable<MeshUploadTask> {
         final Chunk chunk;
-        final MmsMeshData meshData;
+        MmsMeshData meshData; // Non-final to allow explicit cleanup after GPU upload
+        final int priority;
+        final long timestamp;
 
-        MeshUploadTask(Chunk chunk, MmsMeshData meshData) {
+        MeshUploadTask(Chunk chunk, MmsMeshData meshData, int priority) {
             this.chunk = chunk;
             this.meshData = meshData;
+            this.priority = priority;
+            this.timestamp = System.nanoTime();
+        }
+
+        @Override
+        public int compareTo(MeshUploadTask other) {
+            // Higher priority first
+            int priorityCompare = Integer.compare(other.priority, this.priority);
+            if (priorityCompare != 0) {
+                return priorityCompare;
+            }
+            // Same priority: older first (FIFO)
+            return Long.compare(this.timestamp, other.timestamp);
         }
     }
+
+    // === Priority Constants ===
+
+    /**
+     * Priority for player-initiated block modifications.
+     * Highest priority - bypasses batch limits for instant feedback.
+     */
+    public static final int PRIORITY_PLAYER_MODIFICATION = 100;
+
+    /**
+     * Priority for neighbor chunks affected by player modifications.
+     * Medium-high priority to maintain visual consistency.
+     */
+    public static final int PRIORITY_NEIGHBOR_CHUNK = 50;
+
+    /**
+     * Priority for world generation chunks.
+     * Lowest priority - processed after player interactions.
+     */
+    public static final int PRIORITY_WORLD_GENERATION = 10;
 }

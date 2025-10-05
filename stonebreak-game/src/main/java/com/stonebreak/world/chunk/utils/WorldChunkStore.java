@@ -13,6 +13,7 @@ import com.stonebreak.world.save.SaveService;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 /**
@@ -29,6 +30,9 @@ public class WorldChunkStore {
     private final com.stonebreak.world.World world;
     private final FeatureQueue featureQueue;
 
+    // Deferred feature population queue to break recursive generation cycles
+    private final Queue<ChunkPosition> pendingFeaturePopulation = new ConcurrentLinkedQueue<>();
+
     private Consumer<Chunk> loadListener;
     private Consumer<Chunk> unloadListener;
 
@@ -42,7 +46,16 @@ public class WorldChunkStore {
         this.meshPipeline = meshPipeline;
         this.world = world;
         this.featureQueue = featureQueue;
-        this.chunks = new ConcurrentHashMap<>();
+
+        // OPTIMIZATION: Pre-size ConcurrentHashMap to avoid resizing overhead
+        // Calculate expected capacity: (renderDistance * 2 + 3)² chunks
+        // +3 accounts for border chunks (renderDistance + 1 on each side + center)
+        // Multiply by 2 for HashMap load factor (default 0.75, use 0.5 for safety)
+        int renderDist = config.getRenderDistance();
+        int expectedChunks = (renderDist * 2 + 3) * (renderDist * 2 + 3);
+        int initialCapacity = expectedChunks * 2; // Account for load factor
+        this.chunks = new ConcurrentHashMap<>(initialCapacity);
+
         this.positionCache = new PositionCache();
     }
 
@@ -62,9 +75,14 @@ public class WorldChunkStore {
         Chunk chunk = chunks.get(pos);
 
         if (chunk == null) {
-            // Generate/load chunk and populate features immediately
+            // Generate/load chunk (features deferred to prevent recursion)
             chunk = chunks.computeIfAbsent(pos, p -> loadOrGenerate(x, z));
             if (chunk != null) {
+                // Queue for deferred feature population if not already populated
+                if (!chunk.areFeaturesPopulated()) {
+                    pendingFeaturePopulation.offer(pos);
+                }
+
                 // Process queued features that were waiting for this chunk
                 featureQueue.processChunk(world, pos);
 
@@ -125,11 +143,18 @@ public class WorldChunkStore {
     public void unloadChunk(int chunkX, int chunkZ) {
         ChunkPosition pos = positionCache.get(chunkX, chunkZ);
         Chunk chunk = chunks.remove(pos);
-        if (chunk == null) return;
+        if (chunk == null) {
+            // Chunk doesn't exist, but still clean up position cache entry
+            positionCache.remove(chunkX, chunkZ);
+            return;
+        }
 
         notify(unloadListener, chunk);
         saveIfDirty(chunk);
         cleanup(chunk, chunkX, chunkZ);
+
+        // CRITICAL FIX: Remove position cache entry to prevent memory leak
+        // Without this, the cache grows unbounded during chunk load/unload cycles
         positionCache.remove(chunkX, chunkZ);
 
         if ((chunkX + chunkZ) % WorldConfiguration.MEMORY_LOG_INTERVAL == 0) {
@@ -167,11 +192,55 @@ public class WorldChunkStore {
         }
     }
 
+    /**
+     * Processes chunks waiting for feature population. Called each frame from World.update().
+     * Only populates features for chunks whose neighbors exist to prevent recursion.
+     * Limits processing to prevent lag spikes.
+     */
+    public void processPendingFeaturePopulation() {
+        ChunkPosition pos;
+        int processed = 0;
+        final int MAX_PER_FRAME = 10; // Limit to prevent lag spikes
+
+        while (processed < MAX_PER_FRAME && (pos = pendingFeaturePopulation.poll()) != null) {
+            Chunk chunk = chunks.get(pos);
+
+            // Skip if chunk was unloaded or already has features
+            if (chunk == null || chunk.areFeaturesPopulated()) {
+                continue;
+            }
+
+            // Check if all required neighbors exist (east, south, southeast)
+            int x = pos.getX();
+            int z = pos.getZ();
+            boolean neighborsReady = hasChunk(x + 1, z) &&
+                                   hasChunk(x, z + 1) &&
+                                   hasChunk(x + 1, z + 1);
+
+            if (neighborsReady) {
+                // Neighbors exist - safe to populate features
+                try {
+                    terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager());
+                    chunk.setFeaturesPopulated(true);
+                    processed++;
+                } catch (Exception e) {
+                    System.err.println("Exception populating features for chunk (" + x + ", " + z + "): " + e.getMessage());
+                    // Mark as populated anyway to prevent infinite retry
+                    chunk.setFeaturesPopulated(true);
+                }
+            } else {
+                // Re-queue if neighbors not ready yet
+                pendingFeaturePopulation.offer(pos);
+                break; // Stop processing to prevent spinning on same chunk
+            }
+        }
+    }
+
     // ========== Private Implementation ==========
 
     /**
      * Loads chunk from save or generates new one. Uses CCO snapshots via SaveService.
-     * Populates features immediately after generation (no deferred loading).
+     * Features are deferred via queue to prevent recursive chunk generation.
      */
     private Chunk loadOrGenerate(int x, int z) {
         SaveService saveService = getSaveService();
@@ -189,7 +258,7 @@ public class WorldChunkStore {
             }
         }
 
-        // Generate new chunk with terrain + features
+        // Generate new chunk (terrain only, features deferred)
         return generate(x, z);
     }
 
@@ -197,15 +266,22 @@ public class WorldChunkStore {
         try {
             MemoryProfiler.getInstance().incrementAllocation("Chunk");
 
-            // Generate terrain
+            // Generate terrain ONLY - features will be populated later via queue
+            // This prevents recursive chunk generation during mesh building
             Chunk chunk = terrainSystem.generateTerrainOnly(x, z);
             if (chunk == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;
             }
 
-            // Populate features immediately
-            terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager());
+            // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
+            // when neighbors exist and it's safe to do so without triggering recursion
+
+            // CRITICAL FIX: Mark newly generated chunks as clean
+            // setBlock() calls during generation marked them dirty, but they don't
+            // need saving until the PLAYER modifies them. This prevents all 3000+
+            // generated chunks from staying dirty forever and never being unloaded.
+            chunk.markClean();
 
             return chunk;
         } catch (Exception e) {

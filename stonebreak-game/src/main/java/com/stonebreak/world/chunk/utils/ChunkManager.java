@@ -9,8 +9,10 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState;
 import com.stonebreak.world.chunk.api.commonChunkOperations.state.CcoAtomicStateManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -90,6 +92,9 @@ public class ChunkManager {
 
             System.out.println("Checking " + totalCandidates + " chunks for unloading...");
 
+            // OPTIMIZATION: Batch clean chunks for single executor submission
+            List<ChunkPosition> cleanChunksToUnload = new ArrayList<>();
+
             for (ChunkPosition pos : chunksToUnload) {
                 // Use CCO API to check if chunk exists and needs saving
                 if (world.hasChunkAt(pos.getX(), pos.getZ())) {
@@ -112,37 +117,43 @@ public class ChunkManager {
                     }
                 }
 
-                // Chunk is clean or doesn't exist, safe to unload normally
+                // Chunk is clean or doesn't exist, safe to batch unload
+                cleanChunksToUnload.add(pos);
                 // Remove from active chunks BEFORE attempting unload to prevent double-unload
                 activeChunkPositions.remove(pos);
+            }
 
-                // Submit unload operation with error handling
+            // OPTIMIZATION: Batch unload clean chunks in single executor task
+            if (!cleanChunksToUnload.isEmpty()) {
+                final int batchSize = cleanChunksToUnload.size();
                 chunkExecutor.submit(() -> {
-                    try {
-                        world.unloadChunk(pos.getX(), pos.getZ());
-                    } catch (Exception e) {
-                        // Extract meaningful error message
-                        String errorMsg = e.getMessage();
-                        if (errorMsg == null && e.getCause() != null) {
-                            errorMsg = e.getCause().getMessage();
-                        }
-                        if (errorMsg == null || errorMsg.isEmpty()) {
-                            errorMsg = e.getClass().getSimpleName();
-                            if (e.getCause() != null) {
-                                errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                    for (ChunkPosition pos : cleanChunksToUnload) {
+                        try {
+                            world.unloadChunk(pos.getX(), pos.getZ());
+                        } catch (Exception e) {
+                            // Extract meaningful error message
+                            String errorMsg = e.getMessage();
+                            if (errorMsg == null && e.getCause() != null) {
+                                errorMsg = e.getCause().getMessage();
                             }
-                        }
+                            if (errorMsg == null || errorMsg.isEmpty()) {
+                                errorMsg = e.getClass().getSimpleName();
+                                if (e.getCause() != null) {
+                                    errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                                }
+                            }
 
-                        System.err.println("ChunkManager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
-                        if (e.getCause() != null && e.getCause().getMessage() != null) {
-                            System.err.println("  Caused by: " + e.getCause().getMessage());
-                        }
+                            System.err.println("ChunkManager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                            if (e.getCause() != null && e.getCause().getMessage() != null) {
+                                System.err.println("  Caused by: " + e.getCause().getMessage());
+                            }
 
-                        // Re-add to active chunks if unload failed
-                        activeChunkPositions.add(pos);
+                            // Re-add to active chunks if unload failed
+                            activeChunkPositions.add(pos);
+                        }
                     }
                 });
-                unloadedCount++;
+                unloadedCount = batchSize;
             }
 
             if (protectedCount > 0) {
