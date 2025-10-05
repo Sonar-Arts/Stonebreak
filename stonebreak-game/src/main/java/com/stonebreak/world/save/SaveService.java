@@ -16,6 +16,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Main save/load service coordinator.
@@ -25,12 +28,14 @@ import java.util.concurrent.TimeUnit;
  */
 public class SaveService implements AutoCloseable {
     private static final int AUTO_SAVE_INTERVAL_SECONDS = 30;
+    private static final int CHUNK_SAVE_BATCH_SIZE = 50; // Process chunks in batches to avoid overwhelming I/O
 
     private final String worldPath;
     private final SaveRepository repository;
     private final ScheduledExecutorService autoSaveScheduler;
     private ScheduledFuture<?> autoSaveTask;
     private long lastAutoSaveTime;
+    private final AtomicBoolean autoSaveInProgress = new AtomicBoolean(false);
 
     // Current state
     private volatile WorldData worldData;
@@ -155,7 +160,9 @@ public class SaveService implements AutoCloseable {
     }
 
     /**
-     * Saves only dirty chunks (for auto-save).
+     * Saves only dirty chunks with batched processing for optimal performance.
+     * OPTIMIZATION: Processes chunks in batches to avoid overwhelming the 2-thread I/O executor.
+     * Moves StateConverter calls inside async tasks to avoid blocking caller thread.
      */
     public CompletableFuture<Void> saveDirtyChunks() {
         if (world == null) {
@@ -167,22 +174,48 @@ public class SaveService implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         }
 
-        CompletableFuture<?>[] futures = dirtyChunks.stream()
-            .map(chunk -> {
-                ChunkData chunkData = StateConverter.toChunkData(chunk, world);
-                return repository.saveChunk(chunkData)
-                    .thenRun(() -> chunk.markClean())
-                    .exceptionally(ex -> {
+        int totalChunks = dirtyChunks.size();
+
+        // Split chunks into batches for controlled parallelism
+        List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
+
+        for (int i = 0; i < dirtyChunks.size(); i += CHUNK_SAVE_BATCH_SIZE) {
+            int batchStart = i;
+            int batchEnd = Math.min(i + CHUNK_SAVE_BATCH_SIZE, dirtyChunks.size());
+            List<Chunk> batch = dirtyChunks.subList(batchStart, batchEnd);
+
+            // Process each batch asynchronously
+            CompletableFuture<Void> batchFuture = CompletableFuture.runAsync(() -> {
+                List<CompletableFuture<Void>> chunkFutures = new ArrayList<>();
+
+                for (Chunk chunk : batch) {
+                    // OPTIMIZATION: Move conversion to async context to avoid blocking caller
+                    CompletableFuture<Void> chunkFuture = CompletableFuture.supplyAsync(() -> {
+                        return StateConverter.toChunkData(chunk, world);
+                    }).thenCompose(chunkData -> {
+                        return repository.saveChunk(chunkData);
+                    }).thenRun(() -> {
+                        chunk.markClean();
+                    }).exceptionally(ex -> {
                         System.err.println("[SAVE] Failed to save chunk at " +
                             chunk.getX() + "," + chunk.getZ() + ": " + ex.getMessage());
                         return null;
                     });
-            })
-            .toArray(CompletableFuture[]::new);
 
-        return CompletableFuture.allOf(futures)
+                    chunkFutures.add(chunkFuture);
+                }
+
+                // Wait for all chunks in this batch to complete
+                CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0])).join();
+            });
+
+            batchFutures.add(batchFuture);
+        }
+
+        // Wait for all batches to complete
+        return CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
             .thenRun(() -> {
-                System.out.printf("[SAVE] Saved %d dirty chunks%n", dirtyChunks.size());
+                System.out.printf("[SAVE] Saved %d dirty chunks%n", totalChunks);
             });
     }
 
@@ -279,10 +312,18 @@ public class SaveService implements AutoCloseable {
     }
 
     /**
-     * Performs auto-save operation.
+     * Performs auto-save operation fully asynchronously with overlap prevention.
+     * OPTIMIZATION: Runs completely async, never blocks scheduler thread.
+     * Skips save if previous auto-save still running to prevent queue buildup.
      */
     private void performAutoSave() {
         if (worldData == null || player == null || world == null) {
+            return;
+        }
+
+        // OPTIMIZATION: Skip if previous auto-save still running
+        if (!autoSaveInProgress.compareAndSet(false, true)) {
+            System.out.println("[AUTO-SAVE] Skipped - previous auto-save still in progress");
             return;
         }
 
@@ -296,17 +337,35 @@ public class SaveService implements AutoCloseable {
         // Convert player to data model
         PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
 
-        // Save only essentials in auto-save (world, player, dirty chunks)
+        // Get dirty chunk count for logging
+        int dirtyChunkCount = world.getDirtyChunks().size();
+
+        // Save only essentials in auto-save (world, player, dirty chunks) - fully async
         repository.saveWorld(updatedWorld)
             .thenCompose(v -> repository.savePlayer(playerData))
             .thenCompose(v -> saveDirtyChunks())
             .thenRun(() -> {
                 long duration = System.currentTimeMillis() - startTime;
                 lastAutoSaveTime = startTime;
-                System.out.printf("[AUTO-SAVE] Completed in %dms%n", duration);
+
+                // Log performance stats
+                System.out.printf("[AUTO-SAVE] Completed in %dms (%d chunks", duration, dirtyChunkCount);
+                if (dirtyChunkCount > 0) {
+                    System.out.printf(", %.1f chunks/sec)%n", dirtyChunkCount / (duration / 1000.0));
+                } else {
+                    System.out.println(")");
+                }
+
+                // Warn if save is taking too long
+                if (duration > 5000) {
+                    System.err.printf("[AUTO-SAVE] WARNING: Save took %dms (>5s threshold)%n", duration);
+                }
+
+                autoSaveInProgress.set(false);
             })
             .exceptionally(ex -> {
                 System.err.println("[AUTO-SAVE] Failed: " + ex.getMessage());
+                autoSaveInProgress.set(false);
                 return null;
             });
     }

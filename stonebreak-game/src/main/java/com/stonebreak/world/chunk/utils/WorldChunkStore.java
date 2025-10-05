@@ -12,6 +12,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.SaveService;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
@@ -150,12 +151,25 @@ public class WorldChunkStore {
         }
 
         notify(unloadListener, chunk);
-        saveIfDirty(chunk);
-        cleanup(chunk, chunkX, chunkZ);
 
-        // CRITICAL FIX: Remove position cache entry to prevent memory leak
-        // Without this, the cache grows unbounded during chunk load/unload cycles
-        positionCache.remove(chunkX, chunkZ);
+        // OPTIMIZATION: Async save - don't block main thread
+        // Save dirty chunks asynchronously, cleanup after save completes
+        if (chunk.isDirty()) {
+            saveIfDirtyAsync(chunk).thenRun(() -> {
+                cleanup(chunk, chunkX, chunkZ);
+                positionCache.remove(chunkX, chunkZ);
+            }).exceptionally(ex -> {
+                System.err.println("CRITICAL: Async save failed for chunk (" + chunkX + ", " + chunkZ + "): " + ex.getMessage());
+                // Still cleanup to prevent memory leak
+                cleanup(chunk, chunkX, chunkZ);
+                positionCache.remove(chunkX, chunkZ);
+                return null;
+            });
+        } else {
+            // Clean chunks can be unloaded immediately
+            cleanup(chunk, chunkX, chunkZ);
+            positionCache.remove(chunkX, chunkZ);
+        }
 
         if ((chunkX + chunkZ) % WorldConfiguration.MEMORY_LOG_INTERVAL == 0) {
             Game.logDetailedMemoryInfo("After unloading chunk (" + chunkX + ", " + chunkZ + ")");
@@ -310,25 +324,30 @@ public class WorldChunkStore {
     }
 
     /**
-     * Saves dirty chunk using CCO integration.
+     * Saves dirty chunk asynchronously using CCO integration.
      * SaveService internally uses chunk.createSnapshot() via StateConverter.
+     * OPTIMIZATION: Returns CompletableFuture to avoid blocking main thread.
      */
-    private void saveIfDirty(Chunk chunk) {
-        if (!chunk.isDirty()) return;
+    private CompletableFuture<Void> saveIfDirtyAsync(Chunk chunk) {
+        if (!chunk.isDirty()) {
+            return CompletableFuture.completedFuture(null);
+        }
 
         SaveService saveService = getSaveService();
         if (saveService == null) {
-            throw new RuntimeException("Cannot save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") - save system unavailable");
+            return CompletableFuture.failedFuture(
+                new RuntimeException("Cannot save dirty chunk (" + chunk.getX() + ", " + chunk.getZ() + ") - save system unavailable")
+            );
         }
 
-        try {
-            saveService.saveChunk(chunk).get();
-            System.out.println("[SAVE] Saved chunk (" + chunk.getX() + ", " + chunk.getZ() + ")");
-        } catch (Exception e) {
-            System.err.println("CRITICAL: Failed to save chunk (" + chunk.getX() + ", " + chunk.getZ() + "): " + getErrorMessage(e));
-            e.printStackTrace();
-            throw new RuntimeException("Cannot unload chunk with unsaved edits", e);
-        }
+        return saveService.saveChunk(chunk)
+            .thenRun(() -> {
+                System.out.println("[SAVE] Saved chunk (" + chunk.getX() + ", " + chunk.getZ() + ")");
+            })
+            .exceptionally(ex -> {
+                System.err.println("CRITICAL: Failed to save chunk (" + chunk.getX() + ", " + chunk.getZ() + "): " + getErrorMessage((Exception) ex));
+                return null;
+            });
     }
 
     private void cleanup(Chunk chunk, int chunkX, int chunkZ) {
