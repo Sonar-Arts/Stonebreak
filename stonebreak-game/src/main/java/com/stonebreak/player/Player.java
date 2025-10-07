@@ -75,6 +75,9 @@ public class Player {      // Player settings
     // Player health
     private float health = 20.0f; // Player health (full health)
 
+    // Save/load state tracking
+    private boolean isLoadedFromSave = false; // Track if player data was loaded from save
+
     // Walking sound state (if needed for future sound system)
     private float walkingSoundTimer = 0.0f;
     private boolean wasMovingLastFrame = false;
@@ -1641,6 +1644,14 @@ public class Player {      // Player settings
     }
 
     /**
+     * Sets whether this player's data was loaded from a save file.
+     * This affects whether position/state gets reset in giveStartingItems().
+     */
+    public void setLoadedFromSave(boolean loaded) {
+        this.isLoadedFromSave = loaded;
+    }
+
+    /**
      * Attempts to drop an item as a block in front of the player.
      * @param itemToDrop The ItemStack to drop.
      * @return true if the item was successfully dropped, false otherwise.
@@ -1702,54 +1713,61 @@ public class Player {      // Player settings
     /**
      * Gives starting items and resets player state for new worlds.
      * This resets position, inventory, physics state, and camera orientation.
+     * If player data was loaded from save, position/rotation are preserved.
      */
     public void giveStartingItems() {
-        // Reset position to spawn
-        position.set(0, 100, 0);
+        // Only reset position and state for NEW players (not loaded from save)
+        if (!isLoadedFromSave) {
+            // Reset position to spawn
+            position.set(0, 100, 0);
 
-        // Reset velocity and physics state
-        velocity.set(0, 0, 0);
-        onGround = false;
+            // Reset velocity and physics state
+            velocity.set(0, 0, 0);
+            onGround = false;
 
-        // Reset water state
-        physicallyInWater = false;
-        wasInWaterLastFrame = false;
-        justExitedWaterThisFrame = false;
-        waterExitTime = 0.0f;
+            // Reset water state
+            physicallyInWater = false;
+            wasInWaterLastFrame = false;
+            justExitedWaterThisFrame = false;
+            waterExitTime = 0.0f;
 
-        // Reset attack state
-        isAttacking = false;
-        attackAnimationTime = 0.0f;
+            // Reset attack state
+            isAttacking = false;
+            attackAnimationTime = 0.0f;
 
-        // Reset block breaking state
-        breakingBlock = null;
-        breakingProgress = 0.0f;
-        breakingTime = 0.0f;
+            // Reset block breaking state
+            breakingBlock = null;
+            breakingProgress = 0.0f;
+            breakingTime = 0.0f;
 
-        // Reset walking sound state
-        walkingSoundTimer = 0.0f;
-        wasMovingLastFrame = false;
+            // Reset walking sound state
+            walkingSoundTimer = 0.0f;
+            wasMovingLastFrame = false;
 
-        // Reset flight state
-        isFlying = false;
-        wasJumpPressed = false;
-        lastSpaceKeyTime = 0.0f;
-        lastNormalJumpTime = 0.0f;
+            // Reset flight state
+            isFlying = false;
+            wasJumpPressed = false;
+            lastSpaceKeyTime = 0.0f;
+            lastNormalJumpTime = 0.0f;
 
-        // Reset health
-        health = 20.0f;
+            // Reset health
+            health = 20.0f;
 
-        // Reset camera orientation
-        if (camera != null) {
-            camera.reset();
+            // Reset camera orientation
+            if (camera != null) {
+                camera.reset();
+            }
+
+            // Reset inventory to starting items
+            if (inventory != null) {
+                inventory.resetToStartingItems();
+            }
+
+            System.out.println("Player data reset for new world");
+        } else {
+            // Player data was loaded from save - preserve position and state
+            System.out.println("Player data loaded from save - preserving position and state");
         }
-
-        // Reset inventory to starting items
-        if (inventory != null) {
-            inventory.resetToStartingItems();
-        }
-
-        System.out.println("Player data reset for world switching");
     }
 
     /**

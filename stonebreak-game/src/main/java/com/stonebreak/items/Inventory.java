@@ -37,14 +37,15 @@ public class Inventory {
         }
         this.selectedHotbarSlotIndex = 0;
 
-        // Initialize with starting items (extracted to a private method to avoid overridable method calls in constructor)
-        initializeStartingItems();    }
+        // Starting items are now explicitly initialized via giveStartingItems() for new players only
+        // Loaded players will have inventory populated via StateConverter.applyPlayerData()
+    }
     
     /**
      * Initialize inventory with starting items.
-     * Extracted to a separate method to avoid overridable method calls in constructor.
+     * Called explicitly for new players only (not when loading from save).
      */
-    private void initializeStartingItems() {
+    public void initializeStartingItems() {
         // Start with some basic blocks
         addItem(BlockType.GRASS, 10);
         addItem(BlockType.DIRT, 10);

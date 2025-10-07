@@ -59,6 +59,9 @@ public final class StateConverter {
      * Single source of truth for player state application.
      */
     public static void applyPlayerData(Player player, PlayerData data) {
+        // Mark player as loaded from save to prevent position reset
+        player.setLoadedFromSave(true);
+
         // Apply position and rotation
         player.getPosition().set(data.getPosition());
         player.getCamera().setYaw(data.getRotation().x);

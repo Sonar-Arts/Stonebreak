@@ -1786,15 +1786,45 @@ public class Game {
                                 this.currentWorldData = worldData;
 
                                 // Reinitialize save system with fresh world/player instances after replaceWorldInstance
+                                // IMPORTANT: Use this.player and this.world (not captured variables) because replaceWorldInstance created new instances
                                 System.out.println("[SAVE-SYSTEM] Reinitializing save system after world replacement for existing world");
-                                saveService.initialize(worldData, player, world);
+                                saveService.initialize(worldData, this.player, this.world);
 
                                 // Apply player state if available
                                 if (result.getPlayerData() != null) {
-                                    StateConverter.applyPlayerData(player, result.getPlayerData());
-                                    System.out.println("[PLAYER-DATA] Applied loaded player data");
+                                    StateConverter.applyPlayerData(this.player, result.getPlayerData());
+                                    System.out.println("[PLAYER-DATA] Applied loaded player data to position: " +
+                                        this.player.getPosition().x + ", " + this.player.getPosition().y + ", " + this.player.getPosition().z);
+
+                                    // Generate initial chunks around loaded player position
+                                    Vector3f playerPos = result.getPlayerData().getPosition();
+                                    int playerChunkX = (int) Math.floor(playerPos.x / 16);
+                                    int playerChunkZ = (int) Math.floor(playerPos.z / 16);
+                                    int renderDistance = 4;
+
+                                    if (loadingScreen != null) {
+                                        loadingScreen.updateProgress("Loading chunks around player...");
+                                    }
+
+                                    // Generate chunks in expanding rings around player
+                                    for (int ring = 0; ring <= renderDistance; ring++) {
+                                        for (int x = playerChunkX - ring; x <= playerChunkX + ring; x++) {
+                                            for (int z = playerChunkZ - ring; z <= playerChunkZ + ring; z++) {
+                                                if (ring == 0 || x == playerChunkX - ring || x == playerChunkX + ring ||
+                                                    z == playerChunkZ - ring || z == playerChunkZ + ring) {
+                                                    this.world.getChunkAt(x, z); // Load or generate chunk
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    try {
+                                        Thread.sleep(300); // Brief wait for chunks to process
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
                                 } else {
-                                    player.giveStartingItems();
+                                    this.player.giveStartingItems();
                                     System.out.println("[PLAYER-DATA] No player data found - giving starting items");
                                 }
 
