@@ -197,7 +197,7 @@ public enum BlockType implements Item {
                 return type;
             }
         }
-        return AIR; // Default to air
+        return null; // Return null to allow fallback to ItemType lookup
     }
 
     /**
