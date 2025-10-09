@@ -386,7 +386,7 @@ public class WorldChunkStore {
 
         return saveService.saveChunk(chunk)
             .thenRun(() -> {
-                System.out.println("[SAVE] Saved chunk (" + chunk.getX() + ", " + chunk.getZ() + ")");
+                // Logging removed for performance - chunk saves happen frequently
             })
             .exceptionally(ex -> {
                 System.err.println("CRITICAL: Failed to save chunk (" + chunk.getX() + ", " + chunk.getZ() + "): " + getErrorMessage((Exception) ex));

@@ -480,9 +480,7 @@ public class EntityManager {
             }
         }
         
-        if (removedCount > 0) {
-            System.out.println("Unloaded " + removedCount + " entities from chunk (" + chunkX + ", " + chunkZ + ")");
-        }
+        // Logging removed for performance - entity unloading happens frequently
     }
 
     /**
@@ -559,9 +557,7 @@ public class EntityManager {
             }
         }
 
-        if (loadedCount > 0) {
-            System.out.println("Loaded " + loadedCount + " entities for chunk (" + chunkX + ", " + chunkZ + ")");
-        }
+        // Logging removed for performance - entity loading happens frequently
     }
 
     // Getters

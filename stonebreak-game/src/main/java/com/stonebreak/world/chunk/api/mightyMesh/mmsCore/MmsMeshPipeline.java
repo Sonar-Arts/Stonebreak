@@ -357,13 +357,7 @@ public final class MmsMeshPipeline {
             }
         }
 
-        // Log if significant work done or high memory pressure
-        if (updatesThisFrame >= 16 || ChunkManager.isHighMemoryPressure()) {
-            Game.logDetailedMemoryInfo(
-                "After processing " + updatesThisFrame +
-                " MMS GL updates (batch size: " + maxUpdatesPerFrame + ")"
-            );
-        }
+        // Logging removed for performance - GL uploads happen frequently
     }
 
     // === Pipeline Stage 3: GPU Cleanup ===

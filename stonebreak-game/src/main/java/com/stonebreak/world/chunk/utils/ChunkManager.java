@@ -90,7 +90,7 @@ public class ChunkManager {
             int protectedCount = 0;
             int unloadedCount = 0;
 
-            System.out.println("Checking " + totalCandidates + " chunks for unloading...");
+            // Logging removed for performance - chunk unloading happens frequently
 
             // OPTIMIZATION: Batch clean chunks for single executor submission
             List<ChunkPosition> cleanChunksToUnload = new ArrayList<>();
@@ -156,12 +156,7 @@ public class ChunkManager {
                 unloadedCount = batchSize;
             }
 
-            if (protectedCount > 0) {
-                System.out.println("Saved and unloaded " + protectedCount + " dirty chunks with player edits. Unloaded " + unloadedCount + " clean chunks.");
-                System.out.println("Total dirty chunks in world: " + world.getDirtyChunkCount() + ", Total loaded chunks: " + world.getLoadedChunkCount());
-            } else if (unloadedCount > 0) {
-                System.out.println("Unloaded " + unloadedCount + " chunks.");
-            }
+            // Logging removed for performance - chunk unloading happens frequently
         }
     }
 
@@ -189,7 +184,7 @@ public class ChunkManager {
                     // The WorldChunkStore.unloadChunk() method already handles saving dirty chunks
                     // via saveChunkOnUnload() before proceeding with unload
                     world.unloadChunk(pos.getX(), pos.getZ());
-                    System.out.println("[CCO-SAVE-UNLOAD] Successfully saved and unloaded dirty chunk (" + pos.getX() + ", " + pos.getZ() + ")");
+                    // Logging removed for performance - saves happen frequently
                 } catch (Exception e) {
                     // Extract meaningful error message
                     String errorMsg = e.getMessage();
