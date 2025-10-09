@@ -1,11 +1,14 @@
 package com.stonebreak.world.save.serialization;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.cow.CowAI;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.world.World;
 import com.stonebreak.world.save.model.EntityData;
 import org.joml.Vector3f;
@@ -47,6 +50,7 @@ public class EntitySerializer {
         // Add entity-specific data
         switch (entityType) {
             case BLOCK_DROP -> serializeBlockDrop((BlockDrop) entity, builder);
+            case ITEM_DROP -> serializeItemDrop((ItemDrop) entity, builder);
             case COW -> serializeCow((Cow) entity, builder);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
@@ -71,6 +75,7 @@ public class EntitySerializer {
         EntityType entityType = entityData.getEntityType();
         return switch (entityType) {
             case BLOCK_DROP -> deserializeBlockDrop(entityData, world);
+            case ITEM_DROP -> deserializeItemDrop(entityData, world);
             case COW -> deserializeCow(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
@@ -160,6 +165,94 @@ public class EntitySerializer {
             return blockDrop;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize BlockDrop", e);
+            return null;
+        }
+    }
+
+    // ===== ItemDrop Serialization =====
+
+    private static void serializeItemDrop(ItemDrop itemDrop, EntityData.Builder builder) {
+        try {
+            // Get the item stack
+            ItemStack itemStack = itemDrop.getItemStack();
+            if (itemStack == null || itemStack.isEmpty()) {
+                logger.log(Level.WARNING, "ItemDrop has null or empty ItemStack");
+                return;
+            }
+
+            // Determine if this is a BlockType or ItemType
+            int itemId = itemStack.getItem().getId();
+            boolean isBlockType = itemStack.asBlockType() != null;
+            int itemCount = itemStack.getCount();
+
+            // Access private fields via reflection
+            Field despawnTimerField = ItemDrop.class.getDeclaredField("despawnTimer");
+            despawnTimerField.setAccessible(true);
+            float despawnTimer = despawnTimerField.getFloat(itemDrop);
+
+            // Stack count is accessible via public getter
+            int stackCount = itemDrop.getStackCount();
+
+            builder.addCustomData("itemId", itemId)
+                   .addCustomData("isBlockType", isBlockType)
+                   .addCustomData("itemCount", itemCount)
+                   .addCustomData("despawnTimer", despawnTimer)
+                   .addCustomData("stackCount", stackCount);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to serialize ItemDrop", e);
+        }
+    }
+
+    private static Entity deserializeItemDrop(EntityData entityData, World world) {
+        try {
+            EntityData.ItemDropData itemDropData = EntityData.ItemDropData.fromCustomData(entityData);
+            Vector3f position = entityData.getPosition();
+
+            // Reconstruct the item from ID and type
+            int itemId = itemDropData.getItemId();
+            boolean isBlockType = itemDropData.isBlockType();
+            int itemCount = itemDropData.getItemCount();
+
+            ItemStack itemStack;
+            if (isBlockType) {
+                BlockType blockType = BlockType.getById(itemId);
+                if (blockType == null) {
+                    logger.log(Level.WARNING, "Failed to find BlockType with ID: " + itemId);
+                    return null;
+                }
+                itemStack = new ItemStack(blockType, itemCount);
+            } else {
+                ItemType itemType = ItemType.getById(itemId);
+                if (itemType == null) {
+                    logger.log(Level.WARNING, "Failed to find ItemType with ID: " + itemId);
+                    return null;
+                }
+                itemStack = new ItemStack(itemType, itemCount);
+            }
+
+            // Create item drop
+            ItemDrop itemDrop = new ItemDrop(world, position, itemStack);
+
+            // Restore state
+            itemDrop.setPosition(position);
+            itemDrop.setVelocity(entityData.getVelocity());
+            itemDrop.setHealth(entityData.getHealth());
+            itemDrop.setAlive(entityData.isAlive());
+            itemDrop.setStackCount(itemDropData.getStackCount());
+
+            // Restore despawn timer via reflection
+            Field despawnTimerField = ItemDrop.class.getDeclaredField("despawnTimer");
+            despawnTimerField.setAccessible(true);
+            despawnTimerField.setFloat(itemDrop, itemDropData.getDespawnTimer());
+
+            // Restore age via reflection
+            Field ageField = Entity.class.getDeclaredField("age");
+            ageField.setAccessible(true);
+            ageField.setFloat(itemDrop, entityData.getAge());
+
+            return itemDrop;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to deserialize ItemDrop", e);
             return null;
         }
     }

@@ -182,4 +182,43 @@ public final class EntityData {
             return new CowData(entityData, textureVariant, canBeMilked, milkRegenTimer, aiState);
         }
     }
+
+    /**
+     * Specialized builder for ItemDrop entities.
+     */
+    public static class ItemDropData {
+        private final EntityData baseData;
+        private final int itemId;
+        private final boolean isBlockType;
+        private final int itemCount;
+        private final float despawnTimer;
+        private final int stackCount;
+
+        public ItemDropData(EntityData baseData, int itemId, boolean isBlockType,
+                           int itemCount, float despawnTimer, int stackCount) {
+            this.baseData = baseData;
+            this.itemId = itemId;
+            this.isBlockType = isBlockType;
+            this.itemCount = itemCount;
+            this.despawnTimer = despawnTimer;
+            this.stackCount = stackCount;
+        }
+
+        public EntityData getBaseData() { return baseData; }
+        public int getItemId() { return itemId; }
+        public boolean isBlockType() { return isBlockType; }
+        public int getItemCount() { return itemCount; }
+        public float getDespawnTimer() { return despawnTimer; }
+        public int getStackCount() { return stackCount; }
+
+        public static ItemDropData fromCustomData(EntityData entityData) {
+            Map<String, Object> customData = entityData.getCustomData();
+            int itemId = (int) customData.getOrDefault("itemId", 0);
+            boolean isBlockType = (boolean) customData.getOrDefault("isBlockType", true);
+            int itemCount = (int) customData.getOrDefault("itemCount", 1);
+            float despawnTimer = (float) customData.getOrDefault("despawnTimer", 300.0f);
+            int stackCount = (int) customData.getOrDefault("stackCount", 1);
+            return new ItemDropData(entityData, itemId, isBlockType, itemCount, despawnTimer, stackCount);
+        }
+    }
 }

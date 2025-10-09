@@ -123,6 +123,19 @@ public class JsonEntitySerializer {
                 customData.put("despawnTimer", despawnTimer);
                 customData.put("stackCount", stackCount);
             }
+            case ITEM_DROP -> {
+                int itemId = JsonParsingUtil.extractIntFromObject(json, "customData", "itemId");
+                boolean isBlockType = JsonParsingUtil.extractBooleanFromObject(json, "customData", "isBlockType");
+                int itemCount = JsonParsingUtil.extractIntFromObject(json, "customData", "itemCount");
+                float despawnTimer = (float) JsonParsingUtil.extractDoubleFromObject(json, "customData", "despawnTimer");
+                int stackCount = JsonParsingUtil.extractIntFromObject(json, "customData", "stackCount");
+
+                customData.put("itemId", itemId);
+                customData.put("isBlockType", isBlockType);
+                customData.put("itemCount", itemCount);
+                customData.put("despawnTimer", despawnTimer);
+                customData.put("stackCount", stackCount);
+            }
             case COW -> {
                 String textureVariant = JsonParsingUtil.extractStringFromObject(json, "customData", "textureVariant");
                 boolean canBeMilked = JsonParsingUtil.extractBooleanFromObject(json, "customData", "canBeMilked");
