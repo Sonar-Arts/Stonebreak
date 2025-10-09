@@ -1,9 +1,10 @@
-package com.stonebreak.world.save;
+package com.stonebreak.world.save.diagnostics;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.save.SaveService;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -372,40 +373,8 @@ public class SaveSystemDiagnostics {
         System.out.println("└─────────────────────────────────────────────────────────────────────────────┘");
         System.out.println();
 
-        // Step 3: Test chunkExists() call
-        System.out.println("┌─ STEP 3: ChunkExists Check ────────────────────────────────────────────────┐");
-        try {
-            CompletableFuture<Boolean> existsFuture = saveService.chunkExists(chunkX, chunkZ);
-            Boolean chunkExistsResult = existsFuture.get(); // Blocking call for diagnostics
-
-            if (chunkExistsResult == null) {
-                System.out.println("│ ✗ FAILURE: chunkExists() returned NULL                                     │");
-                System.out.println("│   → Unexpected null result from chunkExists()                              │");
-                System.out.println("└─────────────────────────────────────────────────────────────────────────────┘");
-                return;
-            }
-
-            if (!chunkExistsResult) {
-                System.out.println("│ ✗ FAILURE: chunkExists() returned FALSE                                    │");
-                System.out.println("│   → Region file exists but chunk is not in the region                      │");
-                System.out.println("│   → Chunk was never saved OR region file is corrupted                      │");
-                System.out.println("└─────────────────────────────────────────────────────────────────────────────┘");
-                return;
-            }
-
-            System.out.println("│ ✓ SUCCESS: chunkExists() returned TRUE                                     │");
-            System.out.println("│   → Chunk data exists in the region file                                   │");
-        } catch (Exception e) {
-            System.out.println("│ ✗ FAILURE: Exception during chunkExists() call                             │");
-            System.out.println("│   Error: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-            System.out.println("└─────────────────────────────────────────────────────────────────────────────┘");
-            return;
-        }
-        System.out.println("└─────────────────────────────────────────────────────────────────────────────┘");
-        System.out.println();
-
-        // Step 4: Test actual chunk loading
-        System.out.println("┌─ STEP 4: Chunk Load Attempt ───────────────────────────────────────────────┐");
+        // Step 3: Test actual chunk loading (chunkExists() was removed in cleanup)
+        System.out.println("┌─ STEP 3: Chunk Load Attempt ───────────────────────────────────────────────┐");
         try {
             CompletableFuture<Chunk> loadFuture = saveService.loadChunk(chunkX, chunkZ);
             Chunk loadedChunk = loadFuture.get(); // Blocking call for diagnostics
@@ -455,8 +424,8 @@ public class SaveSystemDiagnostics {
         System.out.println("└─────────────────────────────────────────────────────────────────────────────┘");
         System.out.println();
 
-        // Step 5: Check if World is using save-first logic
-        System.out.println("┌─ STEP 5: Runtime Behavior Check ───────────────────────────────────────────┐");
+        // Step 4: Check if World is using save-first logic
+        System.out.println("┌─ STEP 4: Runtime Behavior Check ───────────────────────────────────────────┐");
         World world = Game.getWorld();
         if (world == null) {
             System.out.println("│ ⚠ WARNING: World is NULL (not loaded yet)                                  │");
@@ -480,7 +449,6 @@ public class SaveSystemDiagnostics {
         System.out.println("╠═══════════════════════════════════════════════════════════════════════════════╣");
         System.out.println("║ ✓ Save system is initialized                                                  ║");
         System.out.println("║ ✓ Region files exist on disk                                                  ║");
-        System.out.println("║ ✓ Chunk exists in region file                                                 ║");
         System.out.println("║ ✓ Chunk can be loaded from disk                                               ║");
         System.out.println("║                                                                               ║");
         System.out.println("║ CONCLUSION:                                                                   ║");
@@ -562,18 +530,8 @@ public class SaveSystemDiagnostics {
             saveService.saveChunk(testChunk).get(); // Blocking
             System.out.println("   ✓ Chunk saved");
 
-            // Verify it exists
-            System.out.println("3. Checking if chunk exists...");
-            boolean exists = saveService.chunkExists(testChunkX, testChunkZ).get();
-            System.out.println("   " + (exists ? "✓" : "✗") + " Chunk exists: " + exists);
-
-            if (!exists) {
-                System.out.println("ERROR: Chunk was saved but doesn't exist!");
-                return;
-            }
-
-            // Load the chunk back
-            System.out.println("4. Loading chunk back...");
+            // Load the chunk back (chunkExists() was removed in cleanup)
+            System.out.println("3. Loading chunk back...");
             Chunk loadedChunk = saveService.loadChunk(testChunkX, testChunkZ).get();
 
             if (loadedChunk == null) {
@@ -583,7 +541,7 @@ public class SaveSystemDiagnostics {
             System.out.println("   ✓ Chunk loaded");
 
             // Verify blocks match
-            System.out.println("5. Verifying block data:");
+            System.out.println("4. Verifying block data:");
             boolean match1 = loadedChunk.getBlock(0, 64, 0) == BlockType.STONE;
             boolean match2 = loadedChunk.getBlock(8, 64, 8) == BlockType.DIRT;
             boolean match3 = loadedChunk.getBlock(15, 64, 15) == BlockType.GRASS;

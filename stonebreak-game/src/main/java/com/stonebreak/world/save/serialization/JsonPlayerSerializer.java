@@ -1,22 +1,21 @@
 package com.stonebreak.world.save.serialization;
 
 import com.stonebreak.world.save.model.PlayerData;
+import com.stonebreak.world.save.util.JsonParsingUtil;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
  * JSON serializer for PlayerData.
  * All serialization logic centralized here - follows Single Responsibility.
  */
-public class JsonPlayerSerializer implements Serializer<PlayerData> {
+public class JsonPlayerSerializer {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    @Override
     public byte[] serialize(PlayerData player) {
         StringBuilder json = new StringBuilder();
         json.append("{\n");
@@ -40,7 +39,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
         json.append("  \"selectedHotbarSlot\": ").append(player.getSelectedHotbarSlot()).append(",\n");
 
         if (player.getWorldName() != null) {
-            json.append("  \"worldName\": \"").append(escapeJson(player.getWorldName())).append("\",\n");
+            json.append("  \"worldName\": \"").append(JsonParsingUtil.escapeJson(player.getWorldName())).append("\",\n");
         }
 
         json.append("  \"lastSaved\": \"").append(player.getLastSaved().format(FORMATTER)).append("\",\n");
@@ -74,21 +73,20 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
         return json.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    @Override
     public PlayerData deserialize(byte[] data) {
         String json = new String(data, StandardCharsets.UTF_8);
 
         try {
             PlayerData.Builder builder = PlayerData.builder()
-                .position(extractVector3f(json, "position"))
-                .rotation(extractVector2f(json, "rotation"))
-                .health(extractFloat(json, "health", 20.0f))
-                .flying(extractBoolean(json, "isFlying", false))
-                .gameMode(extractInt(json, "gameMode", 1))
-                .selectedHotbarSlot(extractInt(json, "selectedHotbarSlot", 0))
-                .lastSaved(extractDateTime(json, "lastSaved"));
+                .position(JsonParsingUtil.extractVector3f(json, "position"))
+                .rotation(JsonParsingUtil.extractVector2f(json, "rotation"))
+                .health(JsonParsingUtil.extractFloat(json, "health", 20.0f))
+                .flying(JsonParsingUtil.extractBoolean(json, "isFlying", false))
+                .gameMode(JsonParsingUtil.extractInt(json, "gameMode", 1))
+                .selectedHotbarSlot(JsonParsingUtil.extractInt(json, "selectedHotbarSlot", 0))
+                .lastSaved(JsonParsingUtil.extractDateTime(json, "lastSaved"));
 
-            String worldName = extractStringOptional(json, "worldName");
+            String worldName = JsonParsingUtil.extractStringOptional(json, "worldName");
             if (worldName != null) {
                 builder.worldName(worldName);
             }
@@ -105,8 +103,8 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
 
                 for (int i = 0; i < Math.min(36, items.length); i++) {
                     String item = items[i];
-                    int id = extractIntFromObject(item, "id", BlockType.AIR.getId());
-                    int count = extractIntFromObject(item, "count", 0);
+                    int id = JsonParsingUtil.extractIntFromObject(item, "id", BlockType.AIR.getId());
+                    int count = JsonParsingUtil.extractIntFromObject(item, "count", 0);
                     inventory[i] = new ItemStack(id, count);
                 }
             }
@@ -124,100 +122,5 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize PlayerData: " + e.getMessage(), e);
         }
-    }
-
-    private String escapeJson(String str) {
-        return str.replace("\\", "\\\\")
-                  .replace("\"", "\\\"")
-                  .replace("\n", "\\n")
-                  .replace("\r", "\\r");
-    }
-
-    private String extractString(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            return m.group(1);
-        }
-        throw new IllegalArgumentException("Missing or invalid key: " + key);
-    }
-
-    private String extractStringOptional(String json, String key) {
-        try {
-            return extractString(json, key);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-    }
-
-    private float extractFloat(String json, String key, float defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*([-\\d.]+)";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            return Float.parseFloat(m.group(1));
-        }
-        return defaultValue;
-    }
-
-    private int extractInt(String json, String key, int defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            return Integer.parseInt(m.group(1));
-        }
-        return defaultValue;
-    }
-
-    private int extractIntFromObject(String json, String key, int defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            return Integer.parseInt(m.group(1));
-        }
-        return defaultValue;
-    }
-
-    private boolean extractBoolean(String json, String key, boolean defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*(true|false)";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            return Boolean.parseBoolean(m.group(1));
-        }
-        return defaultValue;
-    }
-
-    private LocalDateTime extractDateTime(String json, String key) {
-        String value = extractString(json, key);
-        return LocalDateTime.parse(value, FORMATTER);
-    }
-
-    private Vector3f extractVector3f(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([-\\d.]+)[^}]+\"y\"\\s*:\\s*([-\\d.]+)[^}]+\"z\"\\s*:\\s*([-\\d.]+)";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            float x = Float.parseFloat(m.group(1));
-            float y = Float.parseFloat(m.group(2));
-            float z = Float.parseFloat(m.group(3));
-            return new Vector3f(x, y, z);
-        }
-        return new Vector3f(0, 100, 0);
-    }
-
-    private Vector2f extractVector2f(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([-\\d.]+)[^}]+\"y\"\\s*:\\s*([-\\d.]+)";
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher m = p.matcher(json);
-        if (m.find()) {
-            float x = Float.parseFloat(m.group(1));
-            float y = Float.parseFloat(m.group(2));
-            return new Vector2f(x, y);
-        }
-        return new Vector2f(0, 0);
     }
 }

@@ -19,7 +19,7 @@ import java.util.HashMap;
  * All serialization logic centralized here - follows Single Responsibility.
  * Achieves 75-97% size reduction compared to raw block data.
  */
-public class BinaryChunkSerializer implements Serializer<ChunkData> {
+public class BinaryChunkSerializer {
     private static final int CHUNK_HEADER_SIZE = 32;
     private static final int FORMAT_VERSION = 1;
     private static final byte COMPRESSION_NONE = 0;
@@ -34,7 +34,6 @@ public class BinaryChunkSerializer implements Serializer<ChunkData> {
         this.decompressor = factory.fastDecompressor();
     }
 
-    @Override
     public byte[] serialize(ChunkData chunk) {
         try {
             // Build palette from chunk blocks
@@ -86,7 +85,6 @@ public class BinaryChunkSerializer implements Serializer<ChunkData> {
         }
     }
 
-    @Override
     public ChunkData deserialize(byte[] data) {
         ChunkHeader header = null;
         try {

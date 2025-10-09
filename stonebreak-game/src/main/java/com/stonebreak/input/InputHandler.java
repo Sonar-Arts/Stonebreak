@@ -534,7 +534,7 @@ public class InputHandler {
                     }
 
                     // Run quick diagnostic
-                    com.stonebreak.world.save.SaveSystemDiagnostics.quickDiagnostic();
+                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.quickDiagnostic();
 
                     // Get current world name from save service
                     String worldName = "unknown";
@@ -547,7 +547,7 @@ public class InputHandler {
                     }
 
                     // Run comprehensive chunk diagnostic for current chunk
-                    com.stonebreak.world.save.SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
+                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
 
                     if (chatSystem != null) {
                         chatSystem.addMessage("Diagnostic complete - check console", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green

@@ -1,7 +1,7 @@
 package com.stonebreak.world.save.repository;
 
 import com.stonebreak.world.save.model.ChunkData;
-import com.stonebreak.world.save.serialization.Serializer;
+import com.stonebreak.world.save.serialization.BinaryChunkSerializer;
 import com.stonebreak.world.save.storage.binary.RegionFile;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,11 +21,11 @@ public class RegionRepository {
     private static final String REGION_FILE_EXTENSION = ".mcr";
 
     private final Path regionsDirectory;
-    private final Serializer<ChunkData> chunkSerializer;
+    private final BinaryChunkSerializer chunkSerializer;
     private final ConcurrentHashMap<RegionCoordinate, RegionFile> openRegions;
     private final ExecutorService ioExecutor;
 
-    public RegionRepository(String worldPath, Serializer<ChunkData> chunkSerializer) {
+    public RegionRepository(String worldPath, BinaryChunkSerializer chunkSerializer) {
         this.regionsDirectory = Paths.get(worldPath, "regions");
         this.chunkSerializer = chunkSerializer;
         this.openRegions = new ConcurrentHashMap<>();

@@ -3,9 +3,7 @@ package com.stonebreak.world.save;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.ChunkData;
-import com.stonebreak.world.save.repository.SaveRepository;
 import com.stonebreak.world.save.repository.FileSaveRepository;
-import com.stonebreak.world.save.serialization.*;
 import com.stonebreak.world.save.util.StateConverter;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
@@ -31,7 +29,7 @@ public class SaveService implements AutoCloseable {
     private static final int CHUNK_SAVE_BATCH_SIZE = 50; // Process chunks in batches to avoid overwhelming I/O
 
     private final String worldPath;
-    private final SaveRepository repository;
+    private final FileSaveRepository repository;
     private final ScheduledExecutorService autoSaveScheduler;
     private ScheduledFuture<?> autoSaveTask;
     private long lastAutoSaveTime;
@@ -45,13 +43,8 @@ public class SaveService implements AutoCloseable {
     public SaveService(String worldPath) {
         this.worldPath = worldPath;
 
-        // Create repository with serializers
-        this.repository = new FileSaveRepository(
-            worldPath,
-            new JsonWorldSerializer(),
-            new JsonPlayerSerializer(),
-            new BinaryChunkSerializer()
-        );
+        // Create repository
+        this.repository = new FileSaveRepository(worldPath);
 
         // Create auto-save scheduler
         this.autoSaveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -281,20 +274,6 @@ public class SaveService implements AutoCloseable {
         ChunkData chunkData = StateConverter.toChunkData(chunk, world);
         return repository.saveChunk(chunkData)
             .thenRun(() -> chunk.markClean());
-    }
-
-    /**
-     * Checks if chunk exists in storage.
-     */
-    public CompletableFuture<Boolean> chunkExists(int chunkX, int chunkZ) {
-        return repository.chunkExists(chunkX, chunkZ);
-    }
-
-    /**
-     * Checks if world save exists.
-     */
-    public CompletableFuture<Boolean> worldExists() {
-        return repository.worldExists();
     }
 
     /**
