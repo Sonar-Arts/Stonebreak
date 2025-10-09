@@ -1,5 +1,7 @@
 package com.stonebreak.world.save;
 
+import com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics;
+
 /**
  * Test runner for SaveSystemDiagnostics.
  * Runs diagnostics for the "test 3" world at coordinates X=23, Y=71, Z=37.

@@ -150,23 +150,29 @@ public class WorldChunkStore {
             return;
         }
 
-        notify(unloadListener, chunk);
+        // CRITICAL FIX: Save chunk BEFORE notifying unload listener!
+        // The unload listener (waterSystem.onChunkUnloaded) deletes water cells from WaterSystem.
+        // We must save the chunk first so extractWaterMetadata() can access those cells.
 
         // OPTIMIZATION: Async save - don't block main thread
         // Save dirty chunks asynchronously, cleanup after save completes
         if (chunk.isDirty()) {
             saveIfDirtyAsync(chunk).thenRun(() -> {
+                // AFTER save completes, notify unload listener to clean up water cells
+                notify(unloadListener, chunk);
                 cleanup(chunk, chunkX, chunkZ);
                 positionCache.remove(chunkX, chunkZ);
             }).exceptionally(ex -> {
                 System.err.println("CRITICAL: Async save failed for chunk (" + chunkX + ", " + chunkZ + "): " + ex.getMessage());
                 // Still cleanup to prevent memory leak
+                notify(unloadListener, chunk);
                 cleanup(chunk, chunkX, chunkZ);
                 positionCache.remove(chunkX, chunkZ);
                 return null;
             });
         } else {
             // Clean chunks can be unloaded immediately
+            notify(unloadListener, chunk);
             cleanup(chunk, chunkX, chunkZ);
             positionCache.remove(chunkX, chunkZ);
         }
@@ -291,17 +297,55 @@ public class WorldChunkStore {
             // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
             // when neighbors exist and it's safe to do so without triggering recursion
 
-            // CRITICAL FIX: Mark newly generated chunks as clean
+            // CRITICAL FIX: Mark newly generated chunks as clean UNLESS they contain flowing water
             // setBlock() calls during generation marked them dirty, but they don't
             // need saving until the PLAYER modifies them. This prevents all 3000+
             // generated chunks from staying dirty forever and never being unloaded.
-            chunk.markClean();
+            // EXCEPTION: Chunks with flowing water MUST be saved to persist water metadata.
+            if (!chunkHasFlowingWater(chunk)) {
+                chunk.markClean();
+            } else {
+                System.out.println("[WATER-GEN] Chunk (" + x + ", " + z + ") has flowing water - keeping dirty for save");
+            }
 
             return chunk;
         } catch (Exception e) {
             System.err.println("Exception generating chunk (" + x + ", " + z + "): " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Checks if a chunk contains any flowing (non-source) water blocks.
+     * Used to determine if a newly generated chunk needs to be saved to persist water metadata.
+     */
+    private boolean chunkHasFlowingWater(Chunk chunk) {
+        if (world == null || world.getWaterSystem() == null) {
+            return false;
+        }
+
+        int chunkX = chunk.getChunkX();
+        int chunkZ = chunk.getChunkZ();
+
+        // Scan chunk for water blocks and check their state in WaterSystem
+        for (int localX = 0; localX < WorldConfiguration.CHUNK_SIZE; localX++) {
+            for (int localZ = 0; localZ < WorldConfiguration.CHUNK_SIZE; localZ++) {
+                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                    if (chunk.getBlock(localX, y, localZ) == com.stonebreak.blocks.BlockType.WATER) {
+                        int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + localX;
+                        int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + localZ;
+
+                        var waterBlock = world.getWaterSystem().getWaterBlock(worldX, y, worldZ);
+                        // If there's any non-source water, this chunk needs to be saved
+                        if (waterBlock != null && !waterBlock.isSource()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private void prepareLoadedChunk(Chunk chunk) {

@@ -308,17 +308,88 @@ public class Chunk {
 
     /**
      * Creates a serializable snapshot of this chunk using CCO API.
-     * This is the preferred method for serialization.
+     * Extracts water metadata from the World's WaterSystem to ensure flow levels persist.
+     *
+     * @param world World instance to extract water metadata from
+     * @return Immutable snapshot including blocks and water metadata
      */
-    public CcoSerializableSnapshot createSnapshot() {
-        return CcoSnapshotBuilder.create(metadata, blocks);
+    public CcoSerializableSnapshot createSnapshot(World world) {
+        // Extract water metadata from WaterSystem
+        java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
+
+        int totalWaterBlocks = 0;
+        int sourceBlocks = 0;
+        int flowingBlocks = 0;
+        int missingFromWaterSystem = 0;
+
+        if (world != null && world.getWaterSystem() != null) {
+            // Scan all water blocks in this chunk
+            for (int localX = 0; localX < 16; localX++) {
+                for (int localZ = 0; localZ < 16; localZ++) {
+                    for (int y = 0; y < 256; y++) {
+                        if (reader.get(localX, y, localZ) == BlockType.WATER) {
+                            totalWaterBlocks++;
+                            int worldX = x * 16 + localX;
+                            int worldZ = z * 16 + localZ;
+
+                            // Get water state from WaterSystem
+                            var waterBlock = world.getWaterSystem().getWaterBlock(worldX, y, worldZ);
+                            if (waterBlock == null) {
+                                missingFromWaterSystem++;
+                            } else if (waterBlock.isSource()) {
+                                sourceBlocks++;
+                            } else {
+                                flowingBlocks++;
+                                // Only save non-source water (source is default)
+                                String key = localX + "," + y + "," + localZ;
+                                waterMetadata.put(key, new com.stonebreak.world.save.model.ChunkData.WaterBlockData(
+                                    waterBlock.level(),
+                                    waterBlock.falling()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Log water metadata extraction results
+            if (totalWaterBlocks > 0) {
+                logger.log(Level.INFO, String.format(
+                    "[WATER-SAVE] Chunk (%d,%d): %d water blocks total | %d sources | %d flowing (saved) | %d missing from WaterSystem",
+                    x, z, totalWaterBlocks, sourceBlocks, flowingBlocks, missingFromWaterSystem
+                ));
+            }
+        } else {
+            logger.log(Level.WARNING, String.format(
+                "[WATER-SAVE] Chunk (%d,%d): Cannot extract water metadata - world or WaterSystem is null",
+                x, z
+            ));
+        }
+
+        // Create snapshot with water metadata
+        return new CcoSerializableSnapshot(
+            metadata.getChunkX(),
+            metadata.getChunkZ(),
+            blocks.getUnderlyingArray(),
+            metadata.getLastModified(),
+            metadata.isFeaturesPopulated(),
+            waterMetadata
+        );
     }
 
     /**
      * Loads chunk data from a CCO snapshot.
-     * This is the preferred method for deserialization.
+     * Applies both block data and water metadata from the snapshot.
+     *
+     * @param snapshot Snapshot to load from
+     * @param world World instance to apply water metadata to
      */
-    public void loadFromSnapshot(CcoSerializableSnapshot snapshot) {
+    public void loadFromSnapshot(CcoSerializableSnapshot snapshot, World world) {
+        logger.log(Level.INFO, String.format(
+            "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): loadFromSnapshot() called with %d water metadata entries",
+            snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size()
+        ));
+
         // Update metadata from snapshot
         this.metadata = new CcoChunkMetadata(
             snapshot.getChunkX(),
@@ -338,6 +409,27 @@ public class Chunk {
             for (int iy = 0; iy < 256; iy++) {
                 System.arraycopy(snapshotBlocks[ix][iy], 0, currentBlocks[ix][iy], 0, 16);
             }
+        }
+
+        // Apply water metadata to WaterSystem BEFORE onChunkLoaded is called
+        if (world != null && world.getWaterSystem() != null && !snapshot.getWaterMetadata().isEmpty()) {
+            logger.log(Level.INFO, String.format(
+                "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): Calling loadWaterMetadata() with %d entries",
+                snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size()
+            ));
+            world.getWaterSystem().loadWaterMetadata(snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata());
+            logger.log(Level.INFO, String.format(
+                "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): loadWaterMetadata() completed",
+                snapshot.getChunkX(), snapshot.getChunkZ()
+            ));
+        } else {
+            logger.log(Level.INFO, String.format(
+                "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): Skipping loadWaterMetadata() - world=%s, waterSystem=%s, metadataSize=%d",
+                snapshot.getChunkX(), snapshot.getChunkZ(),
+                world != null ? "present" : "null",
+                (world != null && world.getWaterSystem() != null) ? "present" : "null",
+                snapshot.getWaterMetadata().size()
+            ));
         }
 
         dirtyTracker.markBlockChanged();

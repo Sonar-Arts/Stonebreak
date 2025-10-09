@@ -142,7 +142,15 @@ public final class WaterSystem {
                             needsUpdate = true;
                         }
 
-                        cells.put(pos, WaterBlock.source());
+                        // CRITICAL FIX: Only add as source if not already loaded from save metadata
+                        // When a chunk is loaded from disk, loadWaterMetadata() is called first,
+                        // which populates cells with correct flow levels. We must respect that data.
+                        // For newly generated chunks, cells will be empty, so we add sources normally.
+                        WaterBlock existing = cells.get(pos);
+                        if (existing == null) {
+                            cells.put(pos, WaterBlock.source());
+                        }
+                        // If existing != null, water metadata was already loaded - keep it!
 
                         // Only enqueue water that needs to flow
                         if (needsUpdate) {
@@ -641,6 +649,12 @@ public final class WaterSystem {
      * Called when a chunk is loaded from disk to restore water depth states.
      */
     public void loadWaterMetadata(int chunkX, int chunkZ, java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata) {
+        if (waterMetadata.isEmpty()) {
+            System.out.println("[WATER-LOAD] Chunk (" + chunkX + "," + chunkZ + "): No water metadata to load");
+            return;
+        }
+
+        int loadedCount = 0;
         for (java.util.Map.Entry<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> entry : waterMetadata.entrySet()) {
             String[] coords = entry.getKey().split(",");
             int localX = Integer.parseInt(coords[0]);
@@ -653,7 +667,10 @@ public final class WaterSystem {
             BlockPos pos = new BlockPos(worldX, y, worldZ);
             WaterBlock loadedState = new WaterBlock(entry.getValue().level(), entry.getValue().falling());
             cells.put(pos, loadedState);
+            loadedCount++;
         }
+
+        System.out.println("[WATER-LOAD] Chunk (" + chunkX + "," + chunkZ + "): Loaded " + loadedCount + " flowing water blocks from save data");
     }
 
     // ===== CCO API HELPERS =====

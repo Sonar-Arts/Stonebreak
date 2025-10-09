@@ -49,6 +49,19 @@ public class World {
     }
 
     public World(WorldConfiguration config, long seed) {
+        this(config, seed, false);
+    }
+
+    /**
+     * Protected constructor for testing that bypasses MmsAPI initialization.
+     * WARNING: Only use this for unit tests that don't require rendering!
+     * This constructor is protected to allow test subclasses in test packages.
+     *
+     * @param config World configuration
+     * @param seed World generation seed
+     * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
+     */
+    protected World(WorldConfiguration config, long seed, boolean testMode) {
         this.config = config;
 
         this.terrainSystem = new TerrainGenerationSystem(seed);
@@ -57,37 +70,58 @@ public class World {
         // Initialize modular components
         this.errorReporter = new ChunkErrorReporter();
 
-        // Create MMS mesh pipeline using MmsAPI
-        // MmsAPI is initialized in Game.initCoreComponents() before any World is created
-        if (!MmsAPI.isInitialized()) {
-            throw new IllegalStateException("MmsAPI must be initialized before creating World");
+        if (testMode) {
+            // Test mode: Skip MmsAPI and rendering-related initialization
+            this.meshPipeline = null;
+            System.out.println("[TEST MODE] Creating World without MmsAPI/rendering systems");
+        } else {
+            // Normal mode: Create MMS mesh pipeline using MmsAPI
+            // MmsAPI is initialized in Game.initCoreComponents() before any World is created
+            if (!MmsAPI.isInitialized()) {
+                throw new IllegalStateException("MmsAPI must be initialized before creating World");
+            }
+            this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(this, config, errorReporter);
         }
-        this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(this, config, errorReporter);
 
         // Create FeatureQueue for multi-chunk features
         com.stonebreak.world.generation.features.FeatureQueue featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
 
-        this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline, this, featureQueue);
+        if (testMode) {
+            // Test mode: Create minimal chunk store that doesn't require mesh pipeline
+            // This allows creating chunks manually without the full chunk loading system
+            this.chunkStore = null; // Tests will create chunks directly
+        } else {
+            this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline, this, featureQueue);
+        }
 
-        // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider
-        this.neighborCoordinator = new CcoNeighborCoordinator(new CcoNeighborCoordinator.ChunkProvider() {
-            @Override
-            public Chunk getChunk(int chunkX, int chunkZ) {
-                return chunkStore.getChunk(chunkX, chunkZ);
-            }
+        if (testMode) {
+            // Test mode: Minimal initialization for save/load testing
+            this.neighborCoordinator = null;
+            this.waterSystem = new WaterSystem(this);
+            this.chunkManager = null;
+            System.out.println("[TEST MODE] World created with seed: " + terrainSystem.getSeed() + " (rendering disabled)");
+        } else {
+            // Normal mode: Full initialization
+            // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider
+            this.neighborCoordinator = new CcoNeighborCoordinator(new CcoNeighborCoordinator.ChunkProvider() {
+                @Override
+                public Chunk getChunk(int chunkX, int chunkZ) {
+                    return chunkStore.getChunk(chunkX, chunkZ);
+                }
 
-            @Override
-            public void ensureChunkExists(int chunkX, int chunkZ) {
-                chunkStore.ensureChunkExists(chunkX, chunkZ);
-            }
-        }, config);
+                @Override
+                public void ensureChunkExists(int chunkX, int chunkZ) {
+                    chunkStore.ensureChunkExists(chunkX, chunkZ);
+                }
+            }, config);
 
-        this.waterSystem = new WaterSystem(this);
-        this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
-        
-        this.chunkManager = new ChunkManager(this, config.getRenderDistance());
-        
-        System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
+            this.waterSystem = new WaterSystem(this);
+            this.chunkStore.setChunkListeners(waterSystem::onChunkLoaded, waterSystem::onChunkUnloaded);
+
+            this.chunkManager = new ChunkManager(this, config.getRenderDistance());
+
+            System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
+        }
     }
     
     /**
@@ -102,22 +136,32 @@ public class World {
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
+        if (meshPipeline == null) return; // Test mode - skip rendering updates
+
         waterSystem.tick(Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
-        chunkManager.update(Game.getPlayer());
+        if (chunkManager != null) {
+            chunkManager.update(Game.getPlayer());
+        }
 
         // Process deferred feature population (breaks recursive generation cycles)
-        chunkStore.processPendingFeaturePopulation();
+        if (chunkStore != null) {
+            chunkStore.processPendingFeaturePopulation();
+        }
 
         meshPipeline.processChunkMeshBuildRequests(this);
     }
 
     public void updateMainThread() {
+        if (meshPipeline == null) return; // Test mode - skip rendering updates
+
         meshPipeline.applyPendingGLUpdates();
         meshPipeline.processGpuCleanupQueue();
     }
-    
+
     public void processGpuCleanupQueue() {
+        if (meshPipeline == null) return; // Test mode - skip rendering updates
+
         meshPipeline.processGpuCleanupQueue();
     }
     public void ensureChunkIsReadyForRender(int cx, int cz) {
@@ -153,13 +197,17 @@ public class World {
      * If the chunk doesn't exist, it will be generated.
      */
     public Chunk getChunkAt(int x, int z) {
+        if (chunkStore == null) return null; // Test mode - no chunk store
+
         return chunkStore.getOrCreateChunk(x, z);
     }
-    
+
     /**
      * Checks if a chunk exists at the specified position.
      */
     public boolean hasChunkAt(int x, int z) {
+        if (chunkStore == null) return false; // Test mode - no chunk store
+
         return chunkStore.hasChunk(x, z);
     }
 
@@ -293,6 +341,8 @@ public class World {
      * @return List of chunks that have been modified and need saving
      */
     public List<Chunk> getDirtyChunks() {
+        if (chunkStore == null) return new java.util.ArrayList<>(); // Test mode - no chunk store
+
         return chunkStore.getDirtyChunks();
     }
     

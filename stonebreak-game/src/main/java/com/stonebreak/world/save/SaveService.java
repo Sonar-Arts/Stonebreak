@@ -277,6 +277,13 @@ public class SaveService implements AutoCloseable {
     }
 
     /**
+     * Checks if a chunk exists in the save file.
+     */
+    public CompletableFuture<Boolean> chunkExists(int chunkX, int chunkZ) {
+        return repository.chunkExists(chunkX, chunkZ);
+    }
+
+    /**
      * Gets the world path.
      */
     public String getWorldPath() {

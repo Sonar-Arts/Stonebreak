@@ -2,7 +2,8 @@ package com.stonebreak.world.save;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.save.storage.binary.RegionFileManager;
+import com.stonebreak.world.save.repository.FileSaveRepository;
+import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.serialization.BinaryChunkSerializer;
 import com.stonebreak.world.save.util.StateConverter;
 
@@ -59,9 +60,9 @@ public class ChunkSaveLoadTest {
         System.out.println("Phase 1: Setup and Initialization");
         System.out.println("----------------------------------");
         Path testWorldPath = setupTestEnvironment();
-        RegionFileManager regionManager = new RegionFileManager(testWorldPath.toString());
+        FileSaveRepository saveRepository = new FileSaveRepository(testWorldPath.toString());
         System.out.println("✓ Test environment created: " + testWorldPath);
-        System.out.println("✓ RegionFileManager initialized\n");
+        System.out.println("✓ FileSaveRepository initialized\n");
 
         try {
             // Phase 2: Block Placement Simulation
@@ -83,10 +84,13 @@ public class ChunkSaveLoadTest {
             // Phase 3: Manual Save
             System.out.println("Phase 3: Manual Save Operation");
             System.out.println("--------------------------------");
-            CompletableFuture<Void> saveFuture = regionManager.saveChunk(originalChunk);
+            ChunkData chunkData = StateConverter.toChunkData(originalChunk, null);
+            CompletableFuture<Void> saveFuture = saveRepository.saveChunk(chunkData);
             saveFuture.get(10, TimeUnit.SECONDS); // Wait for save with timeout
             System.out.println("✓ Chunk saved to region file");
 
+            // Mark chunk as clean after save
+            originalChunk.markClean();
             // Verify clean flag after save
             assert !originalChunk.isDirty() : "Chunk should be marked as CLEAN after save";
             System.out.println("✓ Chunk marked as CLEAN after save");
@@ -112,8 +116,11 @@ public class ChunkSaveLoadTest {
             // Phase 5: Load from Disk
             System.out.println("Phase 5: Load from Disk");
             System.out.println("-----------------------");
-            CompletableFuture<Chunk> loadFuture = regionManager.loadChunk(TEST_CHUNK_X, TEST_CHUNK_Z);
-            Chunk loadedChunk = loadFuture.get(10, TimeUnit.SECONDS); // Wait for load with timeout
+            CompletableFuture<java.util.Optional<ChunkData>> loadFuture = saveRepository.loadChunk(TEST_CHUNK_X, TEST_CHUNK_Z);
+            ChunkData loadedChunkData = loadFuture.get(10, TimeUnit.SECONDS).orElseThrow(
+                () -> new AssertionError("Loaded chunk should not be null")
+            );
+            Chunk loadedChunk = StateConverter.createChunkFromData(loadedChunkData, null);
 
             assert loadedChunk != null : "Loaded chunk should not be null";
             System.out.println("✓ Chunk loaded from region file");
@@ -169,8 +176,8 @@ public class ChunkSaveLoadTest {
             // Phase 7: Cleanup
             System.out.println("\nPhase 7: Cleanup and Resource Disposal");
             System.out.println("---------------------------------------");
-            regionManager.close();
-            System.out.println("✓ RegionFileManager closed");
+            saveRepository.close();
+            System.out.println("✓ FileSaveRepository closed");
 
             cleanupTestEnvironment(testWorldPath);
             System.out.println("✓ Test environment cleaned up");

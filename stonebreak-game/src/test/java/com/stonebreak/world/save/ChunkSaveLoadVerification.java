@@ -2,7 +2,9 @@ package com.stonebreak.world.save;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.save.storage.binary.RegionFileManager;
+import com.stonebreak.world.save.repository.FileSaveRepository;
+import com.stonebreak.world.save.model.ChunkData;
+import com.stonebreak.world.save.util.StateConverter;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,9 +59,9 @@ public class ChunkSaveLoadVerification {
     public void runVerification() throws Exception {
         System.out.println("=== Phase 1: Simulated World Generation ===");
         Path testWorldPath = setupTestEnvironment();
-        RegionFileManager regionManager = new RegionFileManager(testWorldPath.toString());
+        FileSaveRepository saveRepository = new FileSaveRepository(testWorldPath.toString());
         System.out.println("✓ Test world created: " + testWorldPath);
-        System.out.println("✓ Region manager initialized\n");
+        System.out.println("✓ Save repository initialized\n");
 
         try {
             // Phase 2: Simulate chunk generation with terrain
@@ -90,9 +92,13 @@ public class ChunkSaveLoadVerification {
             System.out.println("=== Phase 4: Save Dirty Chunk on Unload ===");
             System.out.println("Simulating chunk unload with dirty flag...");
 
-            CompletableFuture<Void> saveFuture = regionManager.saveChunk(generatedChunk);
+            // Convert chunk to ChunkData for saving
+            ChunkData chunkData = StateConverter.toChunkData(generatedChunk, null);
+            CompletableFuture<Void> saveFuture = saveRepository.saveChunk(chunkData);
             saveFuture.get(10, TimeUnit.SECONDS);
 
+            // Mark chunk as clean after save
+            generatedChunk.markClean();
             assert !generatedChunk.isDirty() : "Chunk should be CLEAN after save";
             System.out.println("✓ Dirty chunk saved successfully");
             System.out.println("✓ Chunk now marked as CLEAN");
@@ -102,17 +108,20 @@ public class ChunkSaveLoadVerification {
             System.out.println("=== Phase 5: Complete World Unload and Reload ===");
             generatedChunk = null;
 
-            // Close the manager to flush all caches and resources
-            regionManager.close();
-            System.out.println("✓ Region manager closed (all caches cleared)");
+            // Close the repository to flush all caches and resources
+            saveRepository.close();
+            System.out.println("✓ Save repository closed (all caches cleared)");
 
-            // Create a NEW manager instance - forces disk read
-            regionManager = new RegionFileManager(testWorldPath.toString());
-            System.out.println("✓ New region manager created");
+            // Create a NEW repository instance - forces disk read
+            saveRepository = new FileSaveRepository(testWorldPath.toString());
+            System.out.println("✓ New save repository created");
             System.out.println("✓ This ensures chunk loads from disk, not cache\n");
 
-            CompletableFuture<Chunk> loadFuture = regionManager.loadChunk(TEST_CHUNK_X, TEST_CHUNK_Z);
-            Chunk loadedChunk = loadFuture.get(10, TimeUnit.SECONDS);
+            CompletableFuture<java.util.Optional<ChunkData>> loadFuture = saveRepository.loadChunk(TEST_CHUNK_X, TEST_CHUNK_Z);
+            ChunkData loadedChunkData = loadFuture.get(10, TimeUnit.SECONDS).orElseThrow(
+                () -> new AssertionError("Chunk should load successfully")
+            );
+            Chunk loadedChunk = StateConverter.createChunkFromData(loadedChunkData, null);
 
             assert loadedChunk != null : "Chunk should load successfully";
             assert !loadedChunk.isDirty() : "Loaded chunk should be CLEAN";
@@ -162,7 +171,10 @@ public class ChunkSaveLoadVerification {
             System.out.println("Testing that loaded chunks are used instead of regeneration...");
 
             // Reload the same chunk again - should load from save, not regenerate
-            Chunk reloadedChunk = regionManager.loadChunk(TEST_CHUNK_X, TEST_CHUNK_Z).get(10, TimeUnit.SECONDS);
+            ChunkData reloadedChunkData = saveRepository.loadChunk(TEST_CHUNK_X, TEST_CHUNK_Z).get(10, TimeUnit.SECONDS).orElseThrow(
+                () -> new AssertionError("Second load failed")
+            );
+            Chunk reloadedChunk = StateConverter.createChunkFromData(reloadedChunkData, null);
 
             // Verify all our placed blocks are still there
             for (TestBlock testBlock : TEST_BLOCKS) {
@@ -177,8 +189,8 @@ public class ChunkSaveLoadVerification {
 
         } finally {
             System.out.println("=== Cleanup ===");
-            regionManager.close();
-            System.out.println("✓ Region manager closed");
+            saveRepository.close();
+            System.out.println("✓ Save repository closed");
 
             cleanupTestEnvironment(testWorldPath);
             System.out.println("✓ Test environment cleaned up");

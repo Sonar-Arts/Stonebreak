@@ -120,7 +120,13 @@ public class BinaryChunkSerializer {
             BlockPalette palette = BlockPalette.deserializePalette(paletteData);
 
             // Read encoded block data
-            int encodedDataSize = (buffer.remaining()) / 8;
+            // Calculate exact size based on palette and chunk dimensions (16x256x16 = 65536 blocks)
+            // IMPORTANT: Must use same formula as BlockPalette.encodeBlocks() to ensure consistency
+            int bitsPerBlock = palette.getBitsPerBlock();
+            int totalBlocks = 16 * 256 * 16; // 65536 blocks
+            int bitsNeeded = totalBlocks * bitsPerBlock;
+            int encodedDataSize = (bitsNeeded + 63) / 64; // Round up to nearest long (matches encode formula)
+
             long[] encodedBlocks = new long[encodedDataSize];
             for (int i = 0; i < encodedDataSize; i++) {
                 encodedBlocks[i] = buffer.getLong();
