@@ -113,7 +113,24 @@ public class RegionRepository {
         }, ioExecutor);
     }
 
+    /**
+     * Flushes all pending writes to disk across all open region files.
+     * OPTIMIZATION: Ensures data durability during shutdown without closing files.
+     */
+    public void flush() {
+        for (RegionFile region : openRegions.values()) {
+            try {
+                region.flush();
+            } catch (IOException e) {
+                System.err.println("Error flushing region file: " + e.getMessage());
+            }
+        }
+    }
+
     public void close() {
+        // Flush all pending writes before closing
+        flush();
+
         // Close all open region files
         for (RegionFile region : openRegions.values()) {
             try {

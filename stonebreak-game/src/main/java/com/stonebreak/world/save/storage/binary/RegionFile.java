@@ -9,17 +9,23 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * Handles individual region files (.mcr) containing 32×32 chunks each.
  * Single responsibility: manage one region file's storage operations.
  * Thread-safe with read/write locks for concurrent access.
+ * OPTIMIZATION: Batched fsync to reduce I/O overhead
  */
 public class RegionFile implements AutoCloseable {
 
     private static final int HEADER_SIZE = 8192; // 8KB header (4KB offsets + 4KB lengths)
     private static final int CHUNKS_PER_REGION = 1024; // 32×32 = 1024 chunks
+    private static final int SYNC_BATCH_SIZE = 10; // Sync to disk after N chunk writes
 
     private final RandomAccessFile file;
     private final int[] chunkOffsets = new int[CHUNKS_PER_REGION];
     private final int[] chunkLengths = new int[CHUNKS_PER_REGION];
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private final Path regionPath;
+
+    // Batched fsync tracking
+    private int unsyncedWrites = 0;
+    private boolean needsSync = false;
 
     public RegionFile(Path regionPath) throws IOException {
         this.regionPath = regionPath;
@@ -73,6 +79,7 @@ public class RegionFile implements AutoCloseable {
     /**
      * Writes chunk data to the region file.
      * Uses atomic write strategy to prevent corruption.
+     * OPTIMIZATION: Uses batched fsync - only syncs after SYNC_BATCH_SIZE writes
      */
     public void writeChunk(int localX, int localZ, byte[] data) throws IOException {
         if (localX < 0 || localX >= 32 || localZ < 0 || localZ >= 32) {
@@ -97,8 +104,16 @@ public class RegionFile implements AutoCloseable {
             // Write updated header entries atomically
             updateHeaderEntry(index);
 
-            // Ensure data is written to disk
-            file.getFD().sync();
+            // Mark as needing sync
+            needsSync = true;
+            unsyncedWrites++;
+
+            // Only sync after batch size reached to reduce I/O overhead
+            if (unsyncedWrites >= SYNC_BATCH_SIZE) {
+                file.getFD().sync();
+                unsyncedWrites = 0;
+                needsSync = false;
+            }
 
         } finally {
             lock.writeLock().unlock();
@@ -186,10 +201,32 @@ public class RegionFile implements AutoCloseable {
         }
     }
 
+    /**
+     * Flushes any pending writes to disk.
+     * Call this to ensure data durability before shutdown or critical operations.
+     */
+    public void flush() throws IOException {
+        lock.writeLock().lock();
+        try {
+            if (needsSync) {
+                file.getFD().sync();
+                unsyncedWrites = 0;
+                needsSync = false;
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
     @Override
     public void close() throws IOException {
         lock.writeLock().lock();
         try {
+            // Flush any pending writes before closing
+            if (needsSync) {
+                file.getFD().sync();
+            }
+
             if (file != null) {
                 file.close();
             }
