@@ -91,7 +91,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
 
             if (m.find()) {
                 String invJson = m.group(1);
-                String[] items = invJson.split("\\},");
+                String[] items = invJson.split("\\}\\s*,?\\s*");
 
                 for (int i = 0; i < Math.min(36, items.length); i++) {
                     String item = items[i];
@@ -142,7 +142,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
     }
 
     private float extractFloat(String json, String key, float defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*([\\d.\\-]+)";
+        String pattern = "\"" + key + "\"\\s*:\\s*([-\\d.]+)";
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
         java.util.regex.Matcher m = p.matcher(json);
         if (m.find()) {
@@ -152,7 +152,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
     }
 
     private int extractInt(String json, String key, int defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*(\\d+)";
+        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
         java.util.regex.Matcher m = p.matcher(json);
         if (m.find()) {
@@ -162,7 +162,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
     }
 
     private int extractIntFromObject(String json, String key, int defaultValue) {
-        String pattern = "\"" + key + "\"\\s*:\\s*(\\d+)";
+        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
         java.util.regex.Matcher m = p.matcher(json);
         if (m.find()) {
@@ -187,7 +187,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
     }
 
     private Vector3f extractVector3f(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([\\d.\\-]+)[^}]+\"y\"\\s*:\\s*([\\d.\\-]+)[^}]+\"z\"\\s*:\\s*([\\d.\\-]+)";
+        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([-\\d.]+)[^}]+\"y\"\\s*:\\s*([-\\d.]+)[^}]+\"z\"\\s*:\\s*([-\\d.]+)";
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
         java.util.regex.Matcher m = p.matcher(json);
         if (m.find()) {
@@ -200,7 +200,7 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
     }
 
     private Vector2f extractVector2f(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([\\d.\\-]+)[^}]+\"y\"\\s*:\\s*([\\d.\\-]+)";
+        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([-\\d.]+)[^}]+\"y\"\\s*:\\s*([-\\d.]+)";
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
         java.util.regex.Matcher m = p.matcher(json);
         if (m.find()) {
