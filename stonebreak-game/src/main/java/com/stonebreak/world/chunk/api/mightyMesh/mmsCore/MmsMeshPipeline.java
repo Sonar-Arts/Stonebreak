@@ -11,6 +11,7 @@ import com.stonebreak.core.Game;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 /**
  * Mighty Mesh System - Complete mesh building pipeline with orchestration.
@@ -57,6 +58,15 @@ public final class MmsMeshPipeline {
 
     // State
     private volatile boolean shutdown = false;
+
+    // Frame budget tracking for adaptive mesh generation
+    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 10;
+    private static final int MIN_MESH_BUILDS_PER_FRAME = 3;
+    private static final int MAX_MESH_BUILDS_PER_FRAME = 20;
+    private static final float TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
+    private static final float HIGH_FRAME_TIME_MS = 20.0f; // Reduce if above this
+    private static final float LOW_FRAME_TIME_MS = 12.0f; // Increase if below this
+    private int currentMeshBuildsPerFrame = DEFAULT_MAX_MESH_BUILDS_PER_FRAME;
 
     /**
      * Creates a new mesh pipeline.
@@ -151,36 +161,69 @@ public final class MmsMeshPipeline {
     }
 
     /**
-     * Processes all scheduled mesh generation requests.
-     * Submits tasks to worker thread pool.
+     * Processes scheduled mesh generation requests with frame budget awareness.
+     * Submits tasks to worker thread pool, limiting submissions per frame to prevent stuttering.
      *
      * @param world World instance for mesh generation
      */
     public void processChunkMeshBuildRequests(World world) {
         if (chunksToGenerateMesh.isEmpty() || shutdown) {
-            // Debug: Log if empty
-            if (debugProcessCallCount < 3 && chunksToGenerateMesh.isEmpty()) {
-                System.out.println("[MmsMeshPipeline.processChunkMeshBuildRequests] Queue is empty");
-                debugProcessCallCount++;
-            }
             return;
         }
 
-        // Debug: Log processing
-        if (debugProcessCallCount < 3) {
-            System.out.println("[MmsMeshPipeline.processChunkMeshBuildRequests] Processing " +
-                chunksToGenerateMesh.size() + " chunks");
-            debugProcessCallCount++;
-        }
+        // Adjust batch size based on frame time
+        adjustMeshBuildsPerFrame();
 
-        // Batch all pending chunks
-        Set<Chunk> batchToProcess = new HashSet<>(chunksToGenerateMesh);
-        chunksToGenerateMesh.clear();
+        // Get player position for distance-based priority
+        com.stonebreak.player.Player player = Game.getPlayer();
+        int playerChunkX = player != null ? (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE) : 0;
+        int playerChunkZ = player != null ? (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE) : 0;
 
-        // Submit to worker threads
-        for (Chunk chunk : batchToProcess) {
+        // Batch chunks to process this frame (limited by frame budget)
+        List<Chunk> chunksToProcess = new ArrayList<>(chunksToGenerateMesh);
+
+        // Sort by distance to player (closest first)
+        chunksToProcess.sort((a, b) -> {
+            int distA = Math.max(Math.abs(a.getChunkX() - playerChunkX), Math.abs(a.getChunkZ() - playerChunkZ));
+            int distB = Math.max(Math.abs(b.getChunkX() - playerChunkX), Math.abs(b.getChunkZ() - playerChunkZ));
+            return Integer.compare(distA, distB);
+        });
+
+        // Process only up to the frame budget limit
+        int processedThisFrame = 0;
+        Iterator<Chunk> iterator = chunksToProcess.iterator();
+        while (iterator.hasNext() && processedThisFrame < currentMeshBuildsPerFrame) {
+            Chunk chunk = iterator.next();
+
+            // Remove from queue and submit to worker thread
+            chunksToGenerateMesh.remove(chunk);
             meshGenerationExecutor.submit(() -> processMeshGenerationTask(world, chunk));
+
+            processedThisFrame++;
         }
+
+        // Log if we're throttling
+        if (!chunksToGenerateMesh.isEmpty() && processedThisFrame > 0) {
+            // Chunks remaining will be processed next frame
+            // This spreads the load across multiple frames to prevent stuttering
+        }
+    }
+
+    /**
+     * Adjusts mesh builds per frame based on current frame time.
+     * Increases limit when frame time is good, decreases when struggling.
+     */
+    private void adjustMeshBuildsPerFrame() {
+        float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
+
+        if (deltaTimeMs > HIGH_FRAME_TIME_MS) {
+            // Frame time too high, reduce mesh builds
+            currentMeshBuildsPerFrame = Math.max(MIN_MESH_BUILDS_PER_FRAME, currentMeshBuildsPerFrame - 1);
+        } else if (deltaTimeMs < LOW_FRAME_TIME_MS) {
+            // Frame time good, can increase mesh builds
+            currentMeshBuildsPerFrame = Math.min(MAX_MESH_BUILDS_PER_FRAME, currentMeshBuildsPerFrame + 1);
+        }
+        // If between LOW and HIGH, keep current value
     }
 
     private static int debugProcessCallCount = 0;

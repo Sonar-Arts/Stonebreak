@@ -86,13 +86,9 @@ public class World {
         // Create FeatureQueue for multi-chunk features
         com.stonebreak.world.generation.features.FeatureQueue featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
 
-        if (testMode) {
-            // Test mode: Create minimal chunk store that doesn't require mesh pipeline
-            // This allows creating chunks manually without the full chunk loading system
-            this.chunkStore = null; // Tests will create chunks directly
-        } else {
-            this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline, this, featureQueue);
-        }
+        // Always create chunk store - tests may need chunk loading functionality
+        // In test mode, meshPipeline is null but WorldChunkStore handles this gracefully
+        this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline, this, featureQueue);
 
         if (testMode) {
             // Test mode: Minimal initialization for save/load testing
@@ -165,6 +161,8 @@ public class World {
         meshPipeline.processGpuCleanupQueue();
     }
     public void ensureChunkIsReadyForRender(int cx, int cz) {
+        if (meshPipeline == null || neighborCoordinator == null) return; // Test mode - no rendering
+
         Chunk chunk = chunkStore.getChunk(cx, cz);
 
         if (chunk == null) {
@@ -279,17 +277,19 @@ public class World {
 
         chunk.setBlock(localX, y, localZ, blockType);
 
-        if (isPlayerModification) {
-            // PRIORITY PATH: Player modification - high priority async mesh generation
-            // Uses PRIORITY_PLAYER_MODIFICATION to bypass batch limits for 1-frame feedback
-            markChunkForMeshRebuildWithScheduling(chunk,
-                c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION));
-            neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ,
-                c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_NEIGHBOR_CHUNK));
-        } else {
-            // NORMAL PATH: World gen/loading - standard priority async mesh generation
-            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-            neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+        if (meshPipeline != null && neighborCoordinator != null) {
+            if (isPlayerModification) {
+                // PRIORITY PATH: Player modification - high priority async mesh generation
+                // Uses PRIORITY_PLAYER_MODIFICATION to bypass batch limits for 1-frame feedback
+                markChunkForMeshRebuildWithScheduling(chunk,
+                    c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION));
+                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ,
+                    c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_NEIGHBOR_CHUNK));
+            } else {
+                // NORMAL PATH: World gen/loading - standard priority async mesh generation
+                markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+            }
         }
 
         waterSystem.onBlockChanged(x, y, z, previous, blockType);
@@ -331,7 +331,9 @@ public class World {
         Map<ChunkPosition, Chunk> allChunks = chunkStore.getChunksInRenderDistance(playerChunkX, playerChunkZ);
 
         // Ensure border chunks exist for meshing purposes (triggers generation cascade)
-        neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
+        if (neighborCoordinator != null) {
+            neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
+        }
 
         return allChunks;
     }
@@ -360,9 +362,11 @@ public class World {
         if (chunkManager != null) {
             chunkManager.shutdown();
         }
-        
-        meshPipeline.shutdown();
-        meshPipeline.processGpuCleanupQueue();
+
+        if (meshPipeline != null) {
+            meshPipeline.shutdown();
+            meshPipeline.processGpuCleanupQueue();
+        }
         chunkStore.cleanup();
     }
 
@@ -420,15 +424,15 @@ public class World {
      * This is used for debugging purposes.
      */
     public int getPendingMeshBuildCount() {
-        return meshPipeline.getPendingMeshBuildCount();
+        return meshPipeline != null ? meshPipeline.getPendingMeshBuildCount() : 0;
     }
-    
+
     /**
      * Returns the number of chunks pending GL upload.
      * This is used for debugging purposes.
      */
     public int getPendingGLUploadCount() {
-        return meshPipeline.getPendingGLUploadCount();
+        return meshPipeline != null ? meshPipeline.getPendingGLUploadCount() : 0;
     }
     
     /**
@@ -462,6 +466,8 @@ public class World {
      * Use this when block visual properties change without changing the block type.
      */
     public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
+        if (meshPipeline == null) return; // Test mode - no rendering
+
         int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
         int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
 
@@ -477,6 +483,8 @@ public class World {
      * This method requires a player position to determine which chunks are currently loaded.
      */
     public void rebuildAllLoadedChunks(int playerChunkX, int playerChunkZ) {
+        if (meshPipeline == null) return; // Test mode - no rendering
+
         try {
             // Get all chunks currently loaded around the player
             Map<ChunkPosition, Chunk> loadedChunks = getChunksAroundPlayer(playerChunkX, playerChunkZ);

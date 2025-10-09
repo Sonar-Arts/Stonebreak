@@ -8,7 +8,12 @@ import com.stonebreak.player.Player;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Iterator;
+import java.util.Queue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Central manager for all entities in the game world.
@@ -19,13 +24,18 @@ public class EntityManager {
     private final List<Entity> entities;
     private final List<Entity> entitiesToAdd;
     private final List<Entity> entitiesToRemove;
-    
+
     // World and collision system
     private final World world;
     private final EntityCollision collision;
-    
+
     // Update tracking
     private float totalTime;
+
+    // Async entity loading
+    private final ExecutorService entityDeserializationExecutor;
+    private final Queue<Entity> pendingEntityAdditions;
+    private static final int MAX_ENTITY_ADDITIONS_PER_FRAME = 20;
     
     /**
      * Creates a new entity manager for the specified world.
@@ -37,6 +47,15 @@ public class EntityManager {
         this.entitiesToRemove = new ArrayList<>();
         this.collision = new EntityCollision(world);
         this.totalTime = 0.0f;
+
+        // Initialize async entity loading
+        this.pendingEntityAdditions = new ConcurrentLinkedQueue<>();
+        this.entityDeserializationExecutor = Executors.newFixedThreadPool(2, runnable -> {
+            Thread thread = new Thread(runnable, "EntityDeserializer");
+            thread.setDaemon(true);
+            thread.setPriority(Thread.NORM_PRIORITY - 1);
+            return thread;
+        });
     }
     
     /**
@@ -44,7 +63,10 @@ public class EntityManager {
      */
     public void update(float deltaTime) {
         totalTime += deltaTime;
-        
+
+        // Process pending async entity additions (batched)
+        processPendingEntityAdditions();
+
         // Add new entities
         synchronized (entitiesToAdd) {
             if (!entitiesToAdd.isEmpty()) {
@@ -423,9 +445,23 @@ public class EntityManager {
      * Cleans up dead entities and performs maintenance.
      */
     public void cleanup() {
+        // Shutdown entity deserialization executor
+        entityDeserializationExecutor.shutdown();
+        try {
+            if (!entityDeserializationExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                entityDeserializationExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            entityDeserializationExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        // Clear pending additions
+        pendingEntityAdditions.clear();
+
         // Remove all dead entities (CopyOnWriteArrayList doesn't support iterator.remove())
         entities.removeIf(entity -> !entity.isAlive());
-        
+
         // Clear pending lists
         synchronized (entitiesToAdd) {
             entitiesToAdd.clear();
@@ -540,24 +576,47 @@ public class EntityManager {
     }
 
     /**
-     * Loads entities from EntityData list and adds them to the specified chunk.
+     * Loads entities from EntityData list asynchronously and queues them for addition.
      * Used when loading chunk entity state from save data.
+     * Entities are deserialized on background thread and added in batches during update().
      */
     public void loadEntitiesForChunk(List<com.stonebreak.world.save.model.EntityData> entityDataList, int chunkX, int chunkZ) {
         if (entityDataList == null || entityDataList.isEmpty()) {
             return;
         }
 
-        int loadedCount = 0;
-        for (com.stonebreak.world.save.model.EntityData entityData : entityDataList) {
-            Entity entity = com.stonebreak.world.save.serialization.EntitySerializer.deserialize(entityData, world);
-            if (entity != null) {
-                addEntity(entity);
-                loadedCount++;
+        // Submit deserialization to background thread
+        entityDeserializationExecutor.submit(() -> {
+            try {
+                for (com.stonebreak.world.save.model.EntityData entityData : entityDataList) {
+                    Entity entity = com.stonebreak.world.save.serialization.EntitySerializer.deserialize(entityData, world);
+                    if (entity != null) {
+                        // Queue for batched addition on main thread
+                        pendingEntityAdditions.offer(entity);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Error deserializing entities for chunk (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
             }
+        });
+    }
+
+    /**
+     * Processes pending entity additions in batches to prevent frame time spikes.
+     * Called during update() on the main thread.
+     */
+    private void processPendingEntityAdditions() {
+        int addedThisFrame = 0;
+
+        Entity entity;
+        while (addedThisFrame < MAX_ENTITY_ADDITIONS_PER_FRAME && (entity = pendingEntityAdditions.poll()) != null) {
+            synchronized (entitiesToAdd) {
+                entitiesToAdd.add(entity);
+            }
+            addedThisFrame++;
         }
 
-        // Logging removed for performance - entity loading happens frequently
+        // If there are more pending, they'll be added next frame
     }
 
     // Getters

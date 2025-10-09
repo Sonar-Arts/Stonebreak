@@ -34,6 +34,9 @@ public class WorldChunkStore {
     // Deferred feature population queue to break recursive generation cycles
     private final Queue<ChunkPosition> pendingFeaturePopulation = new ConcurrentLinkedQueue<>();
 
+    // Async chunk loading support - tracks chunks being loaded to prevent duplicate requests
+    private final Map<ChunkPosition, CompletableFuture<Chunk>> pendingChunkLoads = new ConcurrentHashMap<>();
+
     private Consumer<Chunk> loadListener;
     private Consumer<Chunk> unloadListener;
 
@@ -73,27 +76,77 @@ public class WorldChunkStore {
 
     public Chunk getOrCreateChunk(int x, int z) {
         ChunkPosition pos = positionCache.get(x, z);
+
+        // Fast path: chunk already loaded
         Chunk chunk = chunks.get(pos);
-
-        if (chunk == null) {
-            // Generate/load chunk (features deferred to prevent recursion)
-            chunk = chunks.computeIfAbsent(pos, p -> loadOrGenerate(x, z));
-            if (chunk != null) {
-                // Queue for deferred feature population if not already populated
-                if (!chunk.areFeaturesPopulated()) {
-                    pendingFeaturePopulation.offer(pos);
-                }
-
-                // Process queued features that were waiting for this chunk
-                featureQueue.processChunk(world, pos);
-
-                if (loadListener != null) {
-                    notify(loadListener, chunk);
-                }
-            }
+        if (chunk != null) {
+            return chunk;
         }
 
-        return chunk;
+        // Check if chunk is currently being loaded
+        CompletableFuture<Chunk> pendingLoad = pendingChunkLoads.get(pos);
+        if (pendingLoad != null) {
+            // Chunk is loading asynchronously
+            // Check if completed
+            if (pendingLoad.isDone() && !pendingLoad.isCompletedExceptionally()) {
+                try {
+                    chunk = pendingLoad.getNow(null);
+                    if (chunk != null) {
+                        // Load completed, finalize chunk
+                        finalizeChunkLoad(pos, chunk);
+                        return chunk;
+                    }
+                } catch (Exception e) {
+                    // Load failed, remove from pending and let it retry
+                    pendingChunkLoads.remove(pos);
+                }
+            }
+            // Still loading, return null (caller will retry next frame)
+            return null;
+        }
+
+        // Start async chunk load
+        CompletableFuture<Chunk> loadFuture = loadOrGenerateAsync(x, z)
+            .thenApply(loadedChunk -> {
+                if (loadedChunk != null) {
+                    // Store chunk and finalize on completion
+                    chunks.put(pos, loadedChunk);
+                    finalizeChunkLoad(pos, loadedChunk);
+                }
+                // Remove from pending loads
+                pendingChunkLoads.remove(pos);
+                return loadedChunk;
+            })
+            .exceptionally(e -> {
+                System.err.println("[LOAD] Async chunk load failed for (" + x + ", " + z + "): " + e.getMessage());
+                pendingChunkLoads.remove(pos);
+                return null;
+            });
+
+        // Track this pending load
+        pendingChunkLoads.put(pos, loadFuture);
+
+        // Return null - chunk will be available on next frame
+        return null;
+    }
+
+    /**
+     * Finalizes chunk loading by setting up feature population and notifying listeners.
+     * Called when async chunk load completes.
+     */
+    private void finalizeChunkLoad(ChunkPosition pos, Chunk chunk) {
+        // Queue for deferred feature population if not already populated
+        if (!chunk.areFeaturesPopulated()) {
+            pendingFeaturePopulation.offer(pos);
+        }
+
+        // Process queued features that were waiting for this chunk
+        featureQueue.processChunk(world, pos);
+
+        // Notify load listener
+        if (loadListener != null) {
+            notify(loadListener, chunk);
+        }
     }
 
     public boolean hasChunk(int x, int z) {
@@ -187,6 +240,11 @@ public class WorldChunkStore {
     }
 
     public void cleanup() {
+        // Cancel any pending chunk loads
+        pendingChunkLoads.values().forEach(future -> future.cancel(true));
+        pendingChunkLoads.clear();
+
+        // Clean up loaded chunks
         chunks.values().forEach(chunk -> {
             if (chunk != null) chunk.cleanupGpuResources();
         });
@@ -212,17 +270,43 @@ public class WorldChunkStore {
         }
     }
 
+    // Dynamic feature population limit state
+    private int currentFeaturePopulationLimit = 15; // Start at 15 (was 10)
+    private static final int MIN_FEATURE_POPULATION_LIMIT = 5;
+    private static final int MAX_FEATURE_POPULATION_LIMIT = 40;
+    private static final float FEATURE_TARGET_FRAME_TIME_MS = 16.0f;
+
+    /**
+     * Adjusts feature population limit based on current frame time.
+     * Increases limit when performance is good, decreases when struggling.
+     */
+    private void adjustFeaturePopulationLimit() {
+        float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
+
+        if (deltaTimeMs > 20.0f) {
+            // Frame time too high, reduce feature population
+            currentFeaturePopulationLimit = Math.max(MIN_FEATURE_POPULATION_LIMIT,
+                currentFeaturePopulationLimit - 2);
+        } else if (deltaTimeMs < 14.0f && pendingFeaturePopulation.size() > 10) {
+            // Frame time good and we have backlog, increase limit
+            currentFeaturePopulationLimit = Math.min(MAX_FEATURE_POPULATION_LIMIT,
+                currentFeaturePopulationLimit + 1);
+        }
+    }
+
     /**
      * Processes chunks waiting for feature population. Called each frame from World.update().
      * Only populates features for chunks whose neighbors exist to prevent recursion.
-     * Limits processing to prevent lag spikes.
+     * Dynamically adjusts processing limit based on frame time to prevent lag spikes.
      */
     public void processPendingFeaturePopulation() {
+        // Adjust limit based on frame time
+        adjustFeaturePopulationLimit();
+
         ChunkPosition pos;
         int processed = 0;
-        final int MAX_PER_FRAME = 10; // Limit to prevent lag spikes
 
-        while (processed < MAX_PER_FRAME && (pos = pendingFeaturePopulation.poll()) != null) {
+        while (processed < currentFeaturePopulationLimit && (pos = pendingFeaturePopulation.poll()) != null) {
             Chunk chunk = chunks.get(pos);
 
             // Skip if chunk was unloaded or already has features
@@ -259,27 +343,33 @@ public class WorldChunkStore {
     // ========== Private Implementation ==========
 
     /**
-     * Loads chunk from save or generates new one. Uses CCO snapshots via SaveService.
+     * Loads chunk from save or generates new one asynchronously. Uses CCO snapshots via SaveService.
      * Features are deferred via queue to prevent recursive chunk generation.
+     * Returns CompletableFuture that completes when chunk is ready.
      */
-    private Chunk loadOrGenerate(int x, int z) {
+    private CompletableFuture<Chunk> loadOrGenerateAsync(int x, int z) {
         SaveService saveService = getSaveService();
 
-        // Try loading from disk first
+        // Try loading from disk first (async)
         if (saveService != null) {
-            try {
-                Chunk loaded = saveService.loadChunk(x, z).get();
-                if (loaded != null) {
-                    prepareLoadedChunk(loaded);
-                    return loaded;
-                }
-            } catch (Exception e) {
-                System.err.println("[LOAD] Failed to load chunk (" + x + ", " + z + "): " + e.getMessage());
-            }
+            return saveService.loadChunk(x, z)
+                .thenApply(loaded -> {
+                    if (loaded != null) {
+                        prepareLoadedChunk(loaded);
+                        return loaded;
+                    }
+                    // Chunk not on disk, generate new one
+                    return generate(x, z);
+                })
+                .exceptionally(e -> {
+                    System.err.println("[LOAD] Failed to load chunk (" + x + ", " + z + "): " + e.getMessage());
+                    // Fall back to generation on error
+                    return generate(x, z);
+                });
         }
 
-        // Generate new chunk (terrain only, features deferred)
-        return generate(x, z);
+        // No save service, generate immediately
+        return CompletableFuture.completedFuture(generate(x, z));
     }
 
     private Chunk generate(int x, int z) {
@@ -353,7 +443,9 @@ public class WorldChunkStore {
             chunk.setFeaturesPopulated(true);
         }
         chunk.cleanupCpuResources();
-        meshPipeline.scheduleConditionalMeshBuild(chunk);
+        if (meshPipeline != null) {
+            meshPipeline.scheduleConditionalMeshBuild(chunk);
+        }
     }
 
     private boolean shouldMesh(int chunkX, int chunkZ) {
@@ -395,9 +487,13 @@ public class WorldChunkStore {
     }
 
     private void cleanup(Chunk chunk, int chunkX, int chunkZ) {
-        meshPipeline.removeChunkFromQueues(chunk);
+        if (meshPipeline != null) {
+            meshPipeline.removeChunkFromQueues(chunk);
+        }
         chunk.cleanupCpuResources();
-        meshPipeline.addChunkForGpuCleanup(chunk);
+        if (meshPipeline != null) {
+            meshPipeline.addChunkForGpuCleanup(chunk);
+        }
         Game.getEntityManager().removeEntitiesInChunk(chunkX, chunkZ);
     }
 

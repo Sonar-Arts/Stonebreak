@@ -32,10 +32,13 @@ public class ChunkManager {
 
     private final World world;
     private final int renderDistance;
+    private final WorldConfiguration config;
     private final Set<ChunkPosition> activeChunkPositions = Collections.synchronizedSet(new HashSet<>());
     private float updateTimer = 0.0f;
 
-    private final ExecutorService chunkExecutor = Executors.newFixedThreadPool(2);
+    // Use configurable thread pool size (4-6 threads typical)
+    // Dynamically calculated based on CPU cores, min 2, max 8
+    private final ExecutorService chunkExecutor;
     private static final float UPDATE_INTERVAL = 1.0f; // Update every second
     private static volatile boolean optimizationsEnabled = true;
     private static long lastMemoryCheck = 0;
@@ -48,6 +51,34 @@ public class ChunkManager {
     public ChunkManager(World world, int renderDistance) {
         this.world = world;
         this.renderDistance = renderDistance;
+        this.config = new WorldConfiguration(renderDistance, calculateOptimalChunkLoadThreads());
+
+        // Create thread pool with optimal thread count
+        // Typically 4-6 threads on modern CPUs
+        int threadCount = this.config.getChunkBuildThreads();
+        this.chunkExecutor = Executors.newFixedThreadPool(threadCount,
+            new java.util.concurrent.ThreadFactory() {
+                private int threadId = 0;
+                @Override
+                public Thread newThread(Runnable r) {
+                    Thread thread = new Thread(r, "ChunkLoader-" + threadId++);
+                    thread.setDaemon(true);
+                    thread.setPriority(Thread.NORM_PRIORITY - 1); // Slightly lower priority than main thread
+                    return thread;
+                }
+            });
+
+        System.out.println("ChunkManager: Using " + threadCount + " chunk loading threads");
+    }
+
+    /**
+     * Calculates optimal thread count for chunk loading operations.
+     * Uses more threads than mesh building since loading is I/O bound.
+     */
+    private static int calculateOptimalChunkLoadThreads() {
+        int cores = Runtime.getRuntime().availableProcessors();
+        // Min 2, max 8, typically cores/2 + 1
+        return Math.max(2, Math.min(8, cores / 2 + 1));
     }
 
     public void update(Player player) {
@@ -224,17 +255,34 @@ public class ChunkManager {
         chunksToLoad.removeAll(activeChunkPositions);
 
         if (!chunksToLoad.isEmpty()) {
-            for (ChunkPosition pos : chunksToLoad) {
+            // Get player position for distance calculation
+            Player player = Game.getPlayer();
+            int playerChunkX = player != null ? (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE) : 0;
+            int playerChunkZ = player != null ? (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE) : 0;
+
+            // Sort chunks by distance to player (closest first)
+            List<ChunkPosition> sortedChunks = new ArrayList<>(chunksToLoad);
+            sortedChunks.sort((a, b) -> {
+                int distA = Math.max(Math.abs(a.getX() - playerChunkX), Math.abs(a.getZ() - playerChunkZ));
+                int distB = Math.max(Math.abs(b.getX() - playerChunkX), Math.abs(b.getZ() - playerChunkZ));
+                return Integer.compare(distA, distB);
+            });
+
+            // Load chunks in priority order (closest first)
+            for (ChunkPosition pos : sortedChunks) {
                 if (activeChunkPositions.add(pos)) {
+                    // Calculate priority based on distance
+                    int distance = Math.max(Math.abs(pos.getX() - playerChunkX), Math.abs(pos.getZ() - playerChunkZ));
+
                     chunkExecutor.submit(() -> {
                         try {
                             long startTime = System.currentTimeMillis();
                             Chunk chunk = world.getChunkAt(pos.getX(), pos.getZ());
                             long endTime = System.currentTimeMillis();
 
-                            // Log slow chunk loading
-                            if (endTime - startTime > 500) { // More than 500ms
-                                System.err.println("SLOW CHUNK LOAD: Chunk (" + pos.getX() + ", " + pos.getZ() + ") took " + (endTime - startTime) + "ms");
+                            // Log slow chunk loading (only for nearby chunks)
+                            if (endTime - startTime > 500 && distance <= 3) { // More than 500ms for nearby chunks
+                                System.err.println("SLOW CHUNK LOAD: Chunk (" + pos.getX() + ", " + pos.getZ() + ") distance=" + distance + " took " + (endTime - startTime) + "ms");
                                 System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
                             }
 
@@ -289,6 +337,14 @@ public class ChunkManager {
         }
     }
 
+    // Adaptive GL batch sizing state
+    private static int currentGLBatchSize = 16; // Start at safe default
+    private static final int MIN_GL_BATCH_SIZE = 2;
+    private static final int MAX_GL_BATCH_SIZE = 64;
+    private static final float GL_TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
+    private static final float GL_HIGH_FRAME_TIME_MS = 18.0f; // Reduce uploads if above
+    private static final float GL_LOW_FRAME_TIME_MS = 14.0f; // Increase uploads if below
+
     public static int getOptimizedGLBatchSize() {
         if (!optimizationsEnabled) {
             return 32;
@@ -296,29 +352,44 @@ public class ChunkManager {
 
         updateMemoryPressure();
 
-        float deltaTime = Game.getDeltaTime();
-        int baseBatchSize = getExistingBatchSize();
+        // Get current frame time
+        float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
 
-        if (!highMemoryPressure && deltaTime < 0.016f) {
-            return Math.min(64, baseBatchSize * 2);
+        // Adaptive adjustment based on frame time
+        if (deltaTimeMs > GL_HIGH_FRAME_TIME_MS) {
+            // Frame time too high - reduce GL uploads per frame
+            currentGLBatchSize = Math.max(MIN_GL_BATCH_SIZE, currentGLBatchSize - 2);
+        } else if (deltaTimeMs < GL_LOW_FRAME_TIME_MS) {
+            // Frame time good - can increase GL uploads
+            currentGLBatchSize = Math.min(MAX_GL_BATCH_SIZE, currentGLBatchSize + 1);
         }
 
-        if (deltaTime > 0.025f) {
-            return Math.max(2, baseBatchSize / 2);
+        // Apply memory pressure limits
+        if (highMemoryPressure) {
+            // Under memory pressure, cap batch size
+            currentGLBatchSize = Math.min(currentGLBatchSize, 8);
         }
 
-        return baseBatchSize;
+        // Get memory-based base size for safety limits
+        int memorySafeBatchSize = getMemorySafeBatchSize();
+
+        // Return the more conservative of adaptive vs memory-safe
+        return Math.min(currentGLBatchSize, memorySafeBatchSize);
     }
 
-    private static int getExistingBatchSize() {
+    /**
+     * Gets a safe batch size based on current memory pressure.
+     * Acts as a safety limit for the adaptive sizing.
+     */
+    private static int getMemorySafeBatchSize() {
         long heapUsed = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
         long heapMax = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax();
         double memoryUsage = (double) heapUsed / heapMax;
 
         if (memoryUsage > 0.9) return 4;
-        if (memoryUsage > 0.8) return 8;
-        if (memoryUsage > 0.7) return 16;
-        return 32;
+        if (memoryUsage > 0.8) return 12;
+        if (memoryUsage > 0.7) return 24;
+        return 64; // No memory constraint
     }
 
     private static void updateMemoryPressure() {

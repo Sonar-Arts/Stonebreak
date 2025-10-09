@@ -772,6 +772,19 @@ public class Game {
     }
 
     /**
+     * Sets the delta time for testing purposes only.
+     * This allows unit tests to simulate different frame times.
+     * WARNING: Only use this in unit tests!
+     *
+     * @param testDeltaTime Delta time to use for testing
+     */
+    public static void setDeltaTimeForTesting(float testDeltaTime) {
+        if (instance != null) {
+            instance.deltaTime = testDeltaTime;
+        }
+    }
+
+    /**
      * Gets the total time elapsed since the game started.
      * @return Total time elapsed in seconds.
      */
