@@ -1,6 +1,7 @@
 package com.stonebreak.world.save.serialization;
 
 import com.stonebreak.world.save.model.ChunkData;
+import com.stonebreak.world.save.model.EntityData;
 import com.stonebreak.world.save.storage.binary.BlockPalette;
 import com.stonebreak.blocks.BlockType;
 import net.jpountz.lz4.LZ4Factory;
@@ -13,6 +14,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Binary serializer for ChunkData with palette compression and LZ4.
@@ -48,13 +51,17 @@ public class BinaryChunkSerializer {
             // Serialize water metadata (only non-source water blocks)
             byte[] waterMetadataBytes = serializeWaterMetadata(chunk.getWaterMetadata());
 
-            // Build uncompressed body (palette + encoded blocks + water metadata)
-            ByteBuffer bodyBuffer = ByteBuffer.allocate(paletteData.length + encodedBlocks.length * 8 + waterMetadataBytes.length);
+            // Serialize entity data
+            byte[] entityDataBytes = serializeEntityData(chunk.getEntities());
+
+            // Build uncompressed body (palette + encoded blocks + water metadata + entity data)
+            ByteBuffer bodyBuffer = ByteBuffer.allocate(paletteData.length + encodedBlocks.length * 8 + waterMetadataBytes.length + entityDataBytes.length);
             bodyBuffer.put(paletteData);
             for (long blockData : encodedBlocks) {
                 bodyBuffer.putLong(blockData);
             }
             bodyBuffer.put(waterMetadataBytes);
+            bodyBuffer.put(entityDataBytes);
             byte[] body = Arrays.copyOf(bodyBuffer.array(), bodyBuffer.position());
 
             // Try LZ4 compression on the body
@@ -141,6 +148,12 @@ public class BinaryChunkSerializer {
                 waterMetadata = deserializeWaterMetadata(buffer);
             }
 
+            // Deserialize entity data (if present)
+            List<EntityData> entities = new ArrayList<>();
+            if (buffer.hasRemaining()) {
+                entities = deserializeEntityData(buffer);
+            }
+
             // Build ChunkData
             return ChunkData.builder()
                 .chunkX(header.chunkX)
@@ -150,6 +163,7 @@ public class BinaryChunkSerializer {
                     .atZone(ZoneId.systemDefault()).toLocalDateTime())
                 .featuresPopulated(((header.flags & 0x01) != 0) || ((header.flags & 0x02) != 0))
                 .waterMetadata(waterMetadata)
+                .entities(entities)
                 .build();
 
         } catch (Exception e) {
@@ -254,5 +268,75 @@ public class BinaryChunkSerializer {
         }
 
         return waterMetadata;
+    }
+
+    /**
+     * Serializes entity data to bytes using JsonEntitySerializer.
+     * Format: [count:int][entity1Length:int][entity1Json][entity2Length:int][entity2Json]...
+     */
+    private byte[] serializeEntityData(List<EntityData> entities) {
+        if (entities == null || entities.isEmpty()) {
+            // Return just a count of 0
+            ByteBuffer buffer = ByteBuffer.allocate(4);
+            buffer.putInt(0);
+            return buffer.array();
+        }
+
+        // Use JSON serialization for entities (more flexible and easier to maintain)
+        JsonEntitySerializer jsonSerializer = new JsonEntitySerializer();
+        List<byte[]> serializedEntities = new ArrayList<>();
+        int totalSize = 4; // Start with entity count
+
+        for (EntityData entity : entities) {
+            byte[] entityJson = jsonSerializer.serialize(entity);
+            serializedEntities.add(entityJson);
+            totalSize += 4 + entityJson.length; // 4 bytes for length + entity data
+        }
+
+        ByteBuffer buffer = ByteBuffer.allocate(totalSize);
+        buffer.putInt(entities.size());
+
+        for (byte[] entityJson : serializedEntities) {
+            buffer.putInt(entityJson.length);
+            buffer.put(entityJson);
+        }
+
+        return buffer.array();
+    }
+
+    /**
+     * Deserializes entity data from bytes.
+     */
+    private List<EntityData> deserializeEntityData(ByteBuffer buffer) {
+        List<EntityData> entities = new ArrayList<>();
+
+        if (buffer.remaining() < 4) {
+            return entities; // No entity data present
+        }
+
+        int count = buffer.getInt();
+        JsonEntitySerializer jsonSerializer = new JsonEntitySerializer();
+
+        for (int i = 0; i < count && buffer.remaining() >= 4; i++) {
+            int length = buffer.getInt();
+            if (buffer.remaining() < length) {
+                break; // Corrupted data, stop here
+            }
+
+            byte[] entityJson = new byte[length];
+            buffer.get(entityJson);
+
+            try {
+                EntityData entity = jsonSerializer.deserialize(entityJson);
+                if (entity != null) {
+                    entities.add(entity);
+                }
+            } catch (Exception e) {
+                // Log error but continue deserializing other entities
+                System.err.println("Failed to deserialize entity: " + e.getMessage());
+            }
+        }
+
+        return entities;
     }
 }

@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Pure data model for chunk state.
@@ -17,6 +19,7 @@ public final class ChunkData {
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
     private final Map<String, WaterBlockData> waterMetadata;
+    private final List<EntityData> entities;
 
     private ChunkData(Builder builder) {
         this.chunkX = builder.chunkX;
@@ -25,6 +28,7 @@ public final class ChunkData {
         this.lastModified = builder.lastModified;
         this.featuresPopulated = builder.featuresPopulated;
         this.waterMetadata = builder.waterMetadata != null ? new HashMap<>(builder.waterMetadata) : new HashMap<>();
+        this.entities = builder.entities != null ? new ArrayList<>(builder.entities) : new ArrayList<>();
     }
 
     // Getters - return defensive copies for mutable objects
@@ -34,6 +38,7 @@ public final class ChunkData {
     public LocalDateTime getLastModified() { return lastModified; }
     public boolean isFeaturesPopulated() { return featuresPopulated; }
     public Map<String, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
+    public List<EntityData> getEntities() { return new ArrayList<>(entities); }
 
     /**
      * Deep copies block array for immutability.
@@ -60,6 +65,7 @@ public final class ChunkData {
         private LocalDateTime lastModified = LocalDateTime.now();
         private boolean featuresPopulated = false;
         private Map<String, WaterBlockData> waterMetadata = new HashMap<>();
+        private List<EntityData> entities = new ArrayList<>();
 
         public Builder chunkX(int chunkX) {
             this.chunkX = chunkX;
@@ -88,6 +94,11 @@ public final class ChunkData {
 
         public Builder waterMetadata(Map<String, WaterBlockData> waterMetadata) {
             this.waterMetadata = waterMetadata;
+            return this;
+        }
+
+        public Builder entities(List<EntityData> entities) {
+            this.entities = entities != null ? new ArrayList<>(entities) : new ArrayList<>();
             return this;
         }
 

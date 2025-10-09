@@ -2,11 +2,14 @@ package com.stonebreak.world.chunk.api.commonChunkOperations.data;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.save.model.ChunkData;
+import com.stonebreak.world.save.model.EntityData;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Immutable snapshot of chunk data for serialization.
@@ -18,6 +21,10 @@ import java.util.Objects;
  * WATER METADATA INTEGRATION:
  * Water flow levels are stored as part of the chunk snapshot to ensure they persist correctly.
  * This follows the CCO principle of keeping all chunk state together.
+ *
+ * ENTITY DATA INTEGRATION:
+ * Entity data (block drops, cows, etc.) is stored as part of the chunk snapshot.
+ * Entities are serialized when chunks are saved and restored when chunks are loaded.
  */
 public final class CcoSerializableSnapshot {
     private final int chunkX;
@@ -26,6 +33,7 @@ public final class CcoSerializableSnapshot {
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
     private final Map<String, ChunkData.WaterBlockData> waterMetadata;  // Water flow levels (non-source only)
+    private final List<EntityData> entities;  // Entity data for this chunk
 
     /**
      * Creates a serializable snapshot.
@@ -38,7 +46,7 @@ public final class CcoSerializableSnapshot {
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, new HashMap<>());
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, new HashMap<>(), new ArrayList<>());
     }
 
     /**
@@ -54,12 +62,31 @@ public final class CcoSerializableSnapshot {
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata) {
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, waterMetadata, new ArrayList<>());
+    }
+
+    /**
+     * Creates a serializable snapshot with water metadata and entities.
+     *
+     * @param chunkX Chunk X coordinate
+     * @param chunkZ Chunk Z coordinate
+     * @param blocks Block array (will be deep-copied by ChunkData)
+     * @param lastModified Last modification timestamp
+     * @param featuresPopulated Whether features are populated
+     * @param waterMetadata Water flow level metadata (defensive copy made)
+     * @param entities Entity data for this chunk (defensive copy made)
+     */
+    public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
+                                   LocalDateTime lastModified, boolean featuresPopulated,
+                                   Map<String, ChunkData.WaterBlockData> waterMetadata,
+                                   List<EntityData> entities) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
         this.lastModified = Objects.requireNonNull(lastModified, "lastModified cannot be null");
         this.featuresPopulated = featuresPopulated;
         this.waterMetadata = waterMetadata != null ? new HashMap<>(waterMetadata) : new HashMap<>();
+        this.entities = entities != null ? new ArrayList<>(entities) : new ArrayList<>();
     }
 
     /**
@@ -89,6 +116,7 @@ public final class CcoSerializableSnapshot {
                 .lastModified(lastModified)
                 .featuresPopulated(featuresPopulated)
                 .waterMetadata(waterMetadata)  // CCO-integrated water metadata
+                .entities(entities)  // CCO-integrated entity data
                 .build();
     }
 
@@ -116,9 +144,13 @@ public final class CcoSerializableSnapshot {
         return new HashMap<>(waterMetadata);  // Defensive copy
     }
 
+    public List<EntityData> getEntities() {
+        return new ArrayList<>(entities);  // Defensive copy
+    }
+
     @Override
     public String toString() {
-        return String.format("CcoSerializableSnapshot{pos=(%d,%d), features=%s, modified=%s}",
-                chunkX, chunkZ, featuresPopulated, lastModified);
+        return String.format("CcoSerializableSnapshot{pos=(%d,%d), features=%s, modified=%s, entities=%d}",
+                chunkX, chunkZ, featuresPopulated, lastModified, entities.size());
     }
 }

@@ -114,6 +114,26 @@ public class JsonParsingUtil {
     }
 
     /**
+     * Extracts a boolean value from JSON by key (no default).
+     */
+    public static boolean extractBoolean(String json, String key) {
+        return extractBoolean(json, key, false);
+    }
+
+    /**
+     * Extracts a double value from JSON by key.
+     */
+    public static double extractDouble(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)";
+        Pattern p = Pattern.compile(pattern);
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return Double.parseDouble(m.group(1));
+        }
+        throw new IllegalArgumentException("Missing or invalid key: " + key);
+    }
+
+    /**
      * Extracts a LocalDateTime value from JSON by key.
      */
     public static LocalDateTime extractDateTime(String json, String key) {
@@ -125,7 +145,11 @@ public class JsonParsingUtil {
      * Extracts a Vector3f value from JSON by key.
      */
     public static Vector3f extractVector3f(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*\\{[^}]+\"x\"\\s*:\\s*([\\d.\\-]+)[^}]+\"y\"\\s*:\\s*([\\d.\\-]+)[^}]+\"z\"\\s*:\\s*([\\d.\\-]+)";
+        // Pattern to match floating point numbers (including negative and decimals)
+        String floatPattern = "(-?\\d+(?:\\.\\d+)?)";
+        String pattern = "\"" + key + "\"\\s*:\\s*\\{\\s*\"x\"\\s*:\\s*" + floatPattern +
+                        "\\s*,\\s*\"y\"\\s*:\\s*" + floatPattern +
+                        "\\s*,\\s*\"z\"\\s*:\\s*" + floatPattern;
         Pattern p = Pattern.compile(pattern);
         Matcher m = p.matcher(json);
         if (m.find()) {
@@ -150,5 +174,69 @@ public class JsonParsingUtil {
             return new Vector2f(x, y);
         }
         return new Vector2f(0, 0); // Default rotation
+    }
+
+    // ===== Nested Object Extraction Methods =====
+
+    /**
+     * Extracts a string value from a nested JSON object.
+     * Example: extractStringFromObject(json, "customData", "textureVariant")
+     */
+    public static String extractStringFromObject(String json, String objectKey, String valueKey) {
+        String objectPattern = "\"" + objectKey + "\"\\s*:\\s*\\{([^}]+)\\}";
+        Pattern p = Pattern.compile(objectPattern, Pattern.DOTALL);
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            String objectContent = m.group(1);
+            return extractString(objectContent, valueKey);
+        }
+        throw new IllegalArgumentException("Missing or invalid object key: " + objectKey);
+    }
+
+    /**
+     * Extracts an int value from a nested JSON object.
+     */
+    public static int extractIntFromObject(String json, String objectKey, String valueKey) {
+        String objectPattern = "\"" + objectKey + "\"\\s*:\\s*\\{([^}]+)\\}";
+        Pattern p = Pattern.compile(objectPattern, Pattern.DOTALL);
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            String objectContent = m.group(1);
+            return extractInt(objectContent, valueKey, 0);
+        }
+        return 0;
+    }
+
+    /**
+     * Extracts a double value from a nested JSON object.
+     */
+    public static double extractDoubleFromObject(String json, String objectKey, String valueKey) {
+        String objectPattern = "\"" + objectKey + "\"\\s*:\\s*\\{([^}]+)\\}";
+        Pattern p = Pattern.compile(objectPattern, Pattern.DOTALL);
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            String objectContent = m.group(1);
+            String pattern = "\"" + valueKey + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)";
+            Pattern valuePattern = Pattern.compile(pattern);
+            Matcher valueMatcher = valuePattern.matcher(objectContent);
+            if (valueMatcher.find()) {
+                return Double.parseDouble(valueMatcher.group(1));
+            }
+        }
+        return 0.0;
+    }
+
+    /**
+     * Extracts a boolean value from a nested JSON object.
+     */
+    public static boolean extractBooleanFromObject(String json, String objectKey, String valueKey) {
+        String objectPattern = "\"" + objectKey + "\"\\s*:\\s*\\{([^}]+)\\}";
+        Pattern p = Pattern.compile(objectPattern, Pattern.DOTALL);
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            String objectContent = m.group(1);
+            return extractBoolean(objectContent, valueKey, false);
+        }
+        return false;
     }
 }

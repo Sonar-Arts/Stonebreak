@@ -308,10 +308,10 @@ public class Chunk {
 
     /**
      * Creates a serializable snapshot of this chunk using CCO API.
-     * Extracts water metadata from the World's WaterSystem to ensure flow levels persist.
+     * Extracts water metadata from the World's WaterSystem and entities from EntityManager.
      *
-     * @param world World instance to extract water metadata from
-     * @return Immutable snapshot including blocks and water metadata
+     * @param world World instance to extract water metadata and entities from
+     * @return Immutable snapshot including blocks, water metadata, and entities
      */
     public CcoSerializableSnapshot createSnapshot(World world) {
         // Extract water metadata from WaterSystem
@@ -366,28 +366,42 @@ public class Chunk {
             ));
         }
 
-        // Create snapshot with water metadata
+        // Extract entities in this chunk from EntityManager
+        java.util.List<com.stonebreak.world.save.model.EntityData> entities = new java.util.ArrayList<>();
+        if (world != null) {
+            com.stonebreak.core.Game game = Game.getInstance();
+            if (game != null && game.getEntityManager() != null) {
+                entities = game.getEntityManager().getEntitiesInChunk(x, z);
+                logger.log(Level.FINE, String.format(
+                    "[ENTITY-SAVE] Chunk (%d,%d): Saving %d entities",
+                    x, z, entities.size()
+                ));
+            }
+        }
+
+        // Create snapshot with water metadata and entities
         return new CcoSerializableSnapshot(
             metadata.getChunkX(),
             metadata.getChunkZ(),
             blocks.getUnderlyingArray(),
             metadata.getLastModified(),
             metadata.isFeaturesPopulated(),
-            waterMetadata
+            waterMetadata,
+            entities
         );
     }
 
     /**
      * Loads chunk data from a CCO snapshot.
-     * Applies both block data and water metadata from the snapshot.
+     * Applies block data, water metadata, and entities from the snapshot.
      *
      * @param snapshot Snapshot to load from
-     * @param world World instance to apply water metadata to
+     * @param world World instance to apply water metadata and entities to
      */
     public void loadFromSnapshot(CcoSerializableSnapshot snapshot, World world) {
         logger.log(Level.FINE, String.format(
-            "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): loadFromSnapshot() called with %d water metadata entries",
-            snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size()
+            "[LOAD-SEQUENCE] Chunk (%d,%d): loadFromSnapshot() called with %d water metadata entries and %d entities",
+            snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size(), snapshot.getEntities().size()
         ));
 
         // Update metadata from snapshot
@@ -399,7 +413,7 @@ public class Chunk {
             metadata.getGenerationSeed(),
             metadata.hasStructures(),
             snapshot.isFeaturesPopulated(),
-            metadata.hasEntities()
+            !snapshot.getEntities().isEmpty() // Update hasEntities based on snapshot
         );
 
         // Copy block data
@@ -430,6 +444,18 @@ public class Chunk {
                 (world != null && world.getWaterSystem() != null) ? "present" : "null",
                 snapshot.getWaterMetadata().size()
             ));
+        }
+
+        // Load entities from snapshot
+        if (world != null && !snapshot.getEntities().isEmpty()) {
+            com.stonebreak.core.Game game = Game.getInstance();
+            if (game != null && game.getEntityManager() != null) {
+                logger.log(Level.FINE, String.format(
+                    "[ENTITY-LOAD] Chunk (%d,%d): Loading %d entities",
+                    snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getEntities().size()
+                ));
+                game.getEntityManager().loadEntitiesForChunk(snapshot.getEntities(), snapshot.getChunkX(), snapshot.getChunkZ());
+            }
         }
 
         dirtyTracker.markBlockChanged();

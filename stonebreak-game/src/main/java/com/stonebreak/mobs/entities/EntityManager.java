@@ -510,6 +510,60 @@ public class EntityManager {
         }
     }
     
+    /**
+     * Gets all entities in a specific chunk as serialized EntityData.
+     * Used for saving chunk entity state.
+     */
+    public List<com.stonebreak.world.save.model.EntityData> getEntitiesInChunk(int chunkX, int chunkZ) {
+        int chunkMinX = chunkX * 16;
+        int chunkMaxX = chunkMinX + 16;
+        int chunkMinZ = chunkZ * 16;
+        int chunkMaxZ = chunkMinZ + 16;
+
+        List<com.stonebreak.world.save.model.EntityData> entityDataList = new ArrayList<>();
+
+        for (Entity entity : entities) {
+            if (entity.isAlive()) {
+                Vector3f pos = entity.getPosition();
+                // Check if entity is within the chunk bounds
+                if (pos.x >= chunkMinX && pos.x < chunkMaxX &&
+                    pos.z >= chunkMinZ && pos.z < chunkMaxZ) {
+                    // Serialize entity to EntityData
+                    com.stonebreak.world.save.model.EntityData entityData =
+                        com.stonebreak.world.save.serialization.EntitySerializer.serialize(entity);
+                    if (entityData != null) {
+                        entityDataList.add(entityData);
+                    }
+                }
+            }
+        }
+
+        return entityDataList;
+    }
+
+    /**
+     * Loads entities from EntityData list and adds them to the specified chunk.
+     * Used when loading chunk entity state from save data.
+     */
+    public void loadEntitiesForChunk(List<com.stonebreak.world.save.model.EntityData> entityDataList, int chunkX, int chunkZ) {
+        if (entityDataList == null || entityDataList.isEmpty()) {
+            return;
+        }
+
+        int loadedCount = 0;
+        for (com.stonebreak.world.save.model.EntityData entityData : entityDataList) {
+            Entity entity = com.stonebreak.world.save.serialization.EntitySerializer.deserialize(entityData, world);
+            if (entity != null) {
+                addEntity(entity);
+                loadedCount++;
+            }
+        }
+
+        if (loadedCount > 0) {
+            System.out.println("Loaded " + loadedCount + " entities for chunk (" + chunkX + ", " + chunkZ + ")");
+        }
+    }
+
     // Getters
     public World getWorld() { return world; }
     public EntityCollision getCollision() { return collision; }

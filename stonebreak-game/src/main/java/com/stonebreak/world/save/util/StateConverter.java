@@ -115,17 +115,19 @@ public final class StateConverter {
 
     /**
      * Applies ChunkData to Chunk using CCO snapshot API.
-     * Water metadata is automatically applied via CCO integration.
+     * Water metadata and entities are automatically applied via CCO integration.
      */
     public static void applyChunkData(Chunk chunk, ChunkData data, World world) {
-        // Convert ChunkData back to CCO snapshot (includes water metadata)
+        // Convert ChunkData back to CCO snapshot (includes water metadata and entities)
+        // CRITICAL: Must use 7-parameter constructor to include entities, otherwise entities won't be loaded!
         CcoSerializableSnapshot snapshot = new CcoSerializableSnapshot(
             data.getChunkX(),
             data.getChunkZ(),
             data.getBlocks(),
             data.getLastModified(),
             data.isFeaturesPopulated(),
-            data.getWaterMetadata()  // Water metadata from ChunkData
+            data.getWaterMetadata(),  // Water metadata from ChunkData
+            data.getEntities()         // Entity data from ChunkData (CRITICAL FIX)
         );
 
         // Load from snapshot (automatically applies water metadata to WaterSystem)
