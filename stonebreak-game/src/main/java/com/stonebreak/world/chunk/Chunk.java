@@ -354,7 +354,7 @@ public class Chunk {
 
             // Log water metadata extraction results
             if (totalWaterBlocks > 0) {
-                logger.log(Level.INFO, String.format(
+                logger.log(Level.FINE, String.format(
                     "[WATER-SAVE] Chunk (%d,%d): %d water blocks total | %d sources | %d flowing (saved) | %d missing from WaterSystem",
                     x, z, totalWaterBlocks, sourceBlocks, flowingBlocks, missingFromWaterSystem
                 ));
@@ -385,7 +385,7 @@ public class Chunk {
      * @param world World instance to apply water metadata to
      */
     public void loadFromSnapshot(CcoSerializableSnapshot snapshot, World world) {
-        logger.log(Level.INFO, String.format(
+        logger.log(Level.FINE, String.format(
             "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): loadFromSnapshot() called with %d water metadata entries",
             snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size()
         ));
@@ -413,17 +413,17 @@ public class Chunk {
 
         // Apply water metadata to WaterSystem BEFORE onChunkLoaded is called
         if (world != null && world.getWaterSystem() != null && !snapshot.getWaterMetadata().isEmpty()) {
-            logger.log(Level.INFO, String.format(
+            logger.log(Level.FINE, String.format(
                 "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): Calling loadWaterMetadata() with %d entries",
                 snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata().size()
             ));
             world.getWaterSystem().loadWaterMetadata(snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getWaterMetadata());
-            logger.log(Level.INFO, String.format(
+            logger.log(Level.FINE, String.format(
                 "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): loadWaterMetadata() completed",
                 snapshot.getChunkX(), snapshot.getChunkZ()
             ));
         } else {
-            logger.log(Level.INFO, String.format(
+            logger.log(Level.FINE, String.format(
                 "[WATER-LOAD-SEQUENCE] Chunk (%d,%d): Skipping loadWaterMetadata() - world=%s, waterSystem=%s, metadataSize=%d",
                 snapshot.getChunkX(), snapshot.getChunkZ(),
                 world != null ? "present" : "null",
