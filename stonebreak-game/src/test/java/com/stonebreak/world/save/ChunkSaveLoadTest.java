@@ -158,7 +158,7 @@ public class ChunkSaveLoadTest {
 
             // Verify palette compression effectiveness
             BinaryChunkSerializer serializer = new BinaryChunkSerializer();
-            byte[] encodedData = serializer.serialize(StateConverter.toChunkData(loadedChunk));
+            byte[] encodedData = serializer.serialize(StateConverter.toChunkData(loadedChunk, null));
             int encodedSize = encodedData.length;
             int uncompressedSize = 16 * 16 * 256 * 4; // Rough estimate of uncompressed size
             double compressionRatio = (1.0 - (double)encodedSize / uncompressedSize) * 100;

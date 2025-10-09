@@ -18,7 +18,7 @@ class BinaryChunkSerializerCompatibilityTest {
         Chunk chunk = new Chunk(0, 0);
         chunk.setFeaturesPopulated(true);
 
-        ChunkData chunkData = StateConverter.toChunkData(chunk);
+        ChunkData chunkData = StateConverter.toChunkData(chunk, null);
         byte[] encoded = serializer.serialize(chunkData);
 
         ByteBuffer header = ByteBuffer.wrap(encoded, 0, 32);
@@ -40,7 +40,7 @@ class BinaryChunkSerializerCompatibilityTest {
         BinaryChunkSerializer serializer = new BinaryChunkSerializer();
         Chunk chunk = new Chunk(0, 0);
         chunk.setFeaturesPopulated(true);
-        ChunkData chunkData = StateConverter.toChunkData(chunk);
+        ChunkData chunkData = StateConverter.toChunkData(chunk, null);
         byte[] encoded = serializer.serialize(chunkData);
 
         byte[] legacyEncoded = encoded.clone();

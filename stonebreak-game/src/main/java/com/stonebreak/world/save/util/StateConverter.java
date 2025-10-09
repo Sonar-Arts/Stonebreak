@@ -76,6 +76,9 @@ public final class StateConverter {
         if (loadedInventory != null && loadedInventory.length == 36) {
             Inventory inventory = player.getInventory();
 
+            System.out.println("[STATE-CONVERTER] ========== APPLYING INVENTORY FROM SAVE ==========");
+            System.out.println("[STATE-CONVERTER] Loaded inventory slots: " + loadedInventory.length);
+
             // Clear existing inventory first to ensure clean slate
             for (int i = 0; i < 9; i++) {
                 inventory.setHotbarItem(i, null);
@@ -86,20 +89,27 @@ public final class StateConverter {
 
             // Apply hotbar items (slots 0-8)
             for (int i = 0; i < 9; i++) {
-                if (loadedInventory[i] != null) {
+                if (loadedInventory[i] != null && !loadedInventory[i].isEmpty()) {
+                    System.out.println("[STATE-CONVERTER] Setting hotbar slot " + i + ": " +
+                        loadedInventory[i].getName() + " (ID=" + loadedInventory[i].getBlockTypeId() +
+                        " count=" + loadedInventory[i].getCount() + ")");
                     inventory.setHotbarItem(i, loadedInventory[i]);
                 }
             }
 
             // Apply main inventory items (slots 9-35)
             for (int i = 0; i < 27; i++) {
-                if (loadedInventory[i + 9] != null) {
+                if (loadedInventory[i + 9] != null && !loadedInventory[i + 9].isEmpty()) {
+                    System.out.println("[STATE-CONVERTER] Setting main inventory slot " + i + ": " +
+                        loadedInventory[i + 9].getName() + " (ID=" + loadedInventory[i + 9].getBlockTypeId() +
+                        " count=" + loadedInventory[i + 9].getCount() + ")");
                     inventory.setMainInventoryItem(i, loadedInventory[i + 9]);
                 }
             }
 
             // Set selected hotbar slot
             inventory.setSelectedSlot(data.getSelectedHotbarSlot());
+            System.out.println("[STATE-CONVERTER] ========== END INVENTORY APPLICATION ==========");
         }
     }
 

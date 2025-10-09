@@ -48,15 +48,25 @@ public class JsonPlayerSerializer implements Serializer<PlayerData> {
         // Serialize inventory as simple {id, count} pairs
         json.append("  \"inventory\": [\n");
         ItemStack[] inv = player.getInventory();
+        System.out.println("[SAVE-DEBUG] ========== SAVING PLAYER INVENTORY ==========");
+        System.out.println("[SAVE-DEBUG] Total inventory slots: " + inv.length);
         for (int i = 0; i < 36; i++) {
             ItemStack stack = inv[i];
             int id = (stack == null) ? BlockType.AIR.getId() : stack.getBlockTypeId();
             int count = (stack == null) ? 0 : stack.getCount();
 
+            // DIAGNOSTIC LOGGING:
+            if (stack != null && id > 0) {
+                System.out.println("[SAVE-DEBUG] Slot " + i + ": " +
+                    stack.getName() + " (ID=" + id + " count=" + count +
+                    " item=" + stack.getItem().getClass().getSimpleName() + ")");
+            }
+
             json.append("    {\"id\": ").append(id).append(", \"count\": ").append(count).append("}");
             if (i < 35) json.append(",");
             json.append("\n");
         }
+        System.out.println("[SAVE-DEBUG] ========== END INVENTORY SAVE ==========");
         json.append("  ]\n");
 
         json.append("}");

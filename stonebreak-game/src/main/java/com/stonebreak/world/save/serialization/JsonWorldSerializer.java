@@ -73,7 +73,7 @@ public class JsonWorldSerializer implements Serializer<WorldData> {
     }
 
     private long extractLong(String json, String key) {
-        String pattern = "\"" + key + "\"\\s*:\\s*(\\d+)";
+        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
         java.util.regex.Matcher m = p.matcher(json);
         if (m.find()) {
