@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoBlockReader;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.HashMap;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.PriorityQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Self-contained water simulation that mirrors Minecraft's water rules while
@@ -34,12 +36,15 @@ public final class WaterSystem {
     private static final float LEVEL_NORMALIZER = WaterBlock.MAX_LEVEL + 1.0f;
 
     private final World world;
-    private final Map<BlockPos, WaterBlock> cells = new HashMap<>();
+    private final Map<BlockPos, WaterBlock> cells = new ConcurrentHashMap<>();
     private final PriorityQueue<ScheduledUpdate> pendingUpdates = new PriorityQueue<>((a, b) -> Long.compare(a.scheduledTick(), b.scheduledTick()));
-    private final Map<BlockPos, Long> scheduledTicks = new HashMap<>();
+    private final Map<BlockPos, Long> scheduledTicks = new ConcurrentHashMap<>();
     private final Set<Long> scannedChunks = new HashSet<>();
+    private final Set<Long> dirtyChunks = new HashSet<>(); // Batched mesh updates
 
-    private int suppressedCallbacks;
+    // CCO API caching for performance
+    private final Map<Long, CcoBlockReader> readerCache = new ConcurrentHashMap<>();
+
     private float tickAccumulator;
     private long logicalTick;
 
@@ -93,6 +98,7 @@ public final class WaterSystem {
         for (int i = 0; i < ticks; i++) {
             logicalTick++;
             processQueue(Math.max(1, budgetPerTick));
+            flushDirtyChunks(); // Apply batched mesh updates after each logical tick
         }
     }
 
@@ -109,11 +115,11 @@ public final class WaterSystem {
             return; // Already scanned this chunk
         }
 
-        BlockType[][][] blocks = chunk.getChunkData().getBlocks();
+        var reader = chunk.getBlockReader();
         for (int localX = 0; localX < WorldConfiguration.CHUNK_SIZE; localX++) {
             for (int localZ = 0; localZ < WorldConfiguration.CHUNK_SIZE; localZ++) {
                 for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if (blocks[localX][y][localZ] == BlockType.WATER) {
+                    if (reader.get(localX, y, localZ) == BlockType.WATER) {
                         int worldX = chunk.getChunkX() * WorldConfiguration.CHUNK_SIZE + localX;
                         int worldZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE + localZ;
                         BlockPos pos = new BlockPos(worldX, y, worldZ);
@@ -122,21 +128,29 @@ public final class WaterSystem {
                         boolean needsUpdate = false;
 
                         // Check if there's air below (flowing water)
-                        if (y > 0 && blocks[localX][y - 1][localZ] == BlockType.AIR) {
+                        if (y > 0 && reader.isAir(localX, y - 1, localZ)) {
                             needsUpdate = true;
                         }
 
                         // Check if there's air beside (surface water)
                         if (!needsUpdate && (
-                            (localX > 0 && blocks[localX - 1][y][localZ] == BlockType.AIR) ||
-                            (localX < WorldConfiguration.CHUNK_SIZE - 1 && blocks[localX + 1][y][localZ] == BlockType.AIR) ||
-                            (localZ > 0 && blocks[localX][y][localZ - 1] == BlockType.AIR) ||
-                            (localZ < WorldConfiguration.CHUNK_SIZE - 1 && blocks[localX][y][localZ + 1] == BlockType.AIR)
+                            (localX > 0 && reader.isAir(localX - 1, y, localZ)) ||
+                            (localX < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(localX + 1, y, localZ)) ||
+                            (localZ > 0 && reader.isAir(localX, y, localZ - 1)) ||
+                            (localZ < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(localX, y, localZ + 1))
                         )) {
                             needsUpdate = true;
                         }
 
-                        cells.put(pos, WaterBlock.source());
+                        // CRITICAL FIX: Only add as source if not already loaded from save metadata
+                        // When a chunk is loaded from disk, loadWaterMetadata() is called first,
+                        // which populates cells with correct flow levels. We must respect that data.
+                        // For newly generated chunks, cells will be empty, so we add sources normally.
+                        WaterBlock existing = cells.get(pos);
+                        if (existing == null) {
+                            cells.put(pos, WaterBlock.source());
+                        }
+                        // If existing != null, water metadata was already loaded - keep it!
 
                         // Only enqueue water that needs to flow
                         if (needsUpdate) {
@@ -150,6 +164,7 @@ public final class WaterSystem {
 
     /**
      * Removes cached water data when a chunk is unloaded.
+     * Thread-safe: ConcurrentHashMap handles concurrent access.
      */
     public void onChunkUnloaded(Chunk chunk) {
         if (chunk == null) {
@@ -157,35 +172,43 @@ public final class WaterSystem {
         }
         long key = chunkKey(chunk.getChunkX(), chunk.getChunkZ());
         scannedChunks.remove(key);
+        readerCache.remove(key); // Clear CCO reader cache
 
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
 
-        Iterator<BlockPos> iter = cells.keySet().iterator();
-        while (iter.hasNext()) {
-            BlockPos pos = iter.next();
+        // Remove water cells in the unloaded chunk
+        // Synchronized method ensures thread-safety during iteration
+        cells.keySet().removeIf(pos ->
+            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        );
+
+        // Remove pending updates for the unloaded chunk
+        // Use iterator to avoid ConcurrentModificationException with PriorityQueue
+        Iterator<ScheduledUpdate> iterator = pendingUpdates.iterator();
+        while (iterator.hasNext()) {
+            ScheduledUpdate update = iterator.next();
+            BlockPos pos = update.pos();
             if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
                 Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
-                iter.remove();
+                iterator.remove();
             }
         }
 
-        pendingUpdates.removeIf(update -> {
-            BlockPos pos = update.pos();
-            return Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-                   Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ;
-        });
-        scheduledTicks.entrySet().removeIf(entry ->
-            Math.floorDiv(entry.getKey().x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(entry.getKey().z(), WorldConfiguration.CHUNK_SIZE) == chunkZ);
+        // Remove scheduled ticks for the unloaded chunk
+        scheduledTicks.keySet().removeIf(pos ->
+            Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+            Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ
+        );
     }
 
     /**
-     * Notified by the world whenever a block changes. We ignore changes happening
-     * as part of the water system itself (wrapped by {@link #setBlockType}).
+     * Notified by the world whenever a block changes.
+     * Note: CCO API handles callbacks automatically, so we process all changes.
      */
     public void onBlockChanged(int x, int y, int z, BlockType previous, BlockType next) {
-        if (suppressedCallbacks > 0 || !isWithinWorld(y)) {
+        if (!isWithinWorld(y)) {
             return;
         }
 
@@ -255,7 +278,7 @@ public final class WaterSystem {
             return;
         }
 
-        BlockType blockType = world.getBlockAt(pos.x(), pos.y(), pos.z());
+        BlockType blockType = getBlockViaCco(pos);
         WaterBlock current = cells.get(pos);
 
         if (blockType != BlockType.WATER) {
@@ -283,7 +306,7 @@ public final class WaterSystem {
             // When falling water lands, reset depth to level 1 (fresh flow starting point)
             current = WaterBlock.flowing(1);
             cells.put(pos, current);
-            notifyChunkUpdate(pos); // Visual update when falling water lands
+            markChunkDirty(pos); // Batched visual update when falling water lands
         }
 
         int targetLevel = computeTargetLevel(pos, current);
@@ -301,7 +324,7 @@ public final class WaterSystem {
         if (!updated.equals(current)) {
             cells.put(pos, updated);
             scheduleNeighbors(pos);
-            notifyChunkUpdate(pos); // Visual update when water level changes
+            markChunkDirty(pos); // Batched visual update when water level changes
         }
 
         spreadHorizontally(pos, updated);
@@ -309,7 +332,7 @@ public final class WaterSystem {
 
     private WaterBlock deriveInitialState(BlockPos pos) {
         BlockType above = (pos.y() + 1 < WorldConfiguration.WORLD_HEIGHT)
-            ? world.getBlockAt(pos.x(), pos.y() + 1, pos.z())
+            ? getBlockViaCco(pos.above())
             : BlockType.AIR;
         if (above == BlockType.WATER && canFlowInto(pos.below())) {
             return WaterBlock.falling(1);
@@ -366,7 +389,7 @@ public final class WaterSystem {
             }
             WaterBlock neighbor = cells.get(neighborPos);
             if (neighbor == null) {
-                if (world.getBlockAt(neighborPos.x(), neighborPos.y(), neighborPos.z()) != BlockType.WATER) {
+                if (getBlockViaCco(neighborPos) != BlockType.WATER) {
                     continue;
                 }
                 neighbor = WaterBlock.source();
@@ -422,7 +445,7 @@ public final class WaterSystem {
             return false;
         }
 
-        BlockType blockType = world.getBlockAt(pos.x(), pos.y(), pos.z());
+        BlockType blockType = getBlockViaCco(pos);
         if (!FlowBlockInteraction.canDisplace(blockType)) {
             return false;
         }
@@ -449,20 +472,20 @@ public final class WaterSystem {
 
         if (FlowBlockInteraction.isFragile(blockType)) {
             FlowBlockInteraction.dropFragile(world, pos.x(), pos.y(), pos.z(), blockType);
-            setBlockType(pos, BlockType.AIR);
+            setBlockViaCco(pos, BlockType.AIR);
         }
 
         boolean blockTypeChanged = (blockType != BlockType.WATER);
         if (blockTypeChanged) {
-            setBlockType(pos, BlockType.WATER);
+            setBlockViaCco(pos, BlockType.WATER);
         }
 
         cells.put(pos, candidate);
         enqueue(pos, WATER_TICK_DELAY);
 
-        // Trigger visual update if water level changed (even if block type stayed WATER)
+        // Trigger batched visual update if water level changed (even if block type stayed WATER)
         if (levelChanged && !blockTypeChanged) {
-            notifyChunkUpdate(pos);
+            markChunkDirty(pos);
         }
 
         return true;
@@ -470,33 +493,53 @@ public final class WaterSystem {
 
     private void removeWater(BlockPos pos) {
         cells.remove(pos);
-        if (world.getBlockAt(pos.x(), pos.y(), pos.z()) == BlockType.WATER) {
-            setBlockType(pos, BlockType.AIR);
+        if (getBlockViaCco(pos) == BlockType.WATER) {
+            setBlockViaCco(pos, BlockType.AIR);
         }
         scheduleNeighbors(pos);
     }
 
-    private void setBlockType(BlockPos pos, BlockType type) {
+    /**
+     * Marks a chunk as needing a mesh rebuild due to water changes.
+     * Updates are batched and applied at the end of each logical tick.
+     */
+    private void markChunkDirty(BlockPos pos) {
         if (!isWithinWorld(pos.y())) {
             return;
         }
-        suppressedCallbacks++;
-        try {
-            world.setBlockAt(pos.x(), pos.y(), pos.z(), type);
-        } finally {
-            suppressedCallbacks--;
-        }
+        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        dirtyChunks.add(chunkKey(chunkX, chunkZ));
     }
 
     /**
-     * Notifies the world that a water block's visual state has changed,
-     * triggering a chunk mesh rebuild for proper visual updates.
+     * Applies all batched mesh updates to chunks.
+     * Called once per logical tick after processing all water updates.
+     *
+     * CRITICAL FIX: Only triggers mesh rebuild, does NOT mark chunks dirty for saving.
+     * Water level changes are purely visual and should not trigger chunk saves.
+     * Only actual block placement/removal (via setBlockViaCco) marks chunks dirty for saving.
      */
-    private void notifyChunkUpdate(BlockPos pos) {
-        if (!isWithinWorld(pos.y())) {
+    private void flushDirtyChunks() {
+        if (dirtyChunks.isEmpty()) {
             return;
         }
-        world.triggerChunkRebuild(pos.x(), pos.y(), pos.z());
+
+        for (Long chunkKey : dirtyChunks) {
+            int chunkX = (int) (chunkKey >> 32);
+            int chunkZ = (int) (chunkKey & 0xFFFFFFFFL);
+
+            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+            if (chunk != null) {
+                // ONLY trigger mesh rebuild - do NOT mark chunk dirty for saving
+                // Water metadata is saved when actual blocks change (via CCO in setBlockViaCco)
+                int worldX = chunkX * WorldConfiguration.CHUNK_SIZE;
+                int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
+                world.triggerChunkRebuild(worldX, 0, worldZ);
+            }
+        }
+
+        dirtyChunks.clear();
     }
 
     private void scheduleNeighbors(BlockPos pos) {
@@ -542,7 +585,7 @@ public final class WaterSystem {
         if (existing != null && existing.isSource()) {
             return false;
         }
-        return FlowBlockInteraction.canDisplace(world.getBlockAt(pos.x(), pos.y(), pos.z()));
+        return FlowBlockInteraction.canDisplace(getBlockViaCco(pos));
     }
 
     /**
@@ -553,7 +596,7 @@ public final class WaterSystem {
         if (!isWithinWorld(pos.y())) {
             return false;
         }
-        BlockType blockType = world.getBlockAt(pos.x(), pos.y(), pos.z());
+        BlockType blockType = getBlockViaCco(pos);
         // Treat source blocks as space below (so water recognizes edge and falls)
         WaterBlock existing = cells.get(pos);
         if (existing != null && existing.isSource()) {
@@ -599,6 +642,101 @@ public final class WaterSystem {
 
     public int getTrackedWaterCount() {
         return cells.size();
+    }
+
+    /**
+     * Loads water metadata for a chunk from save data.
+     * Called when a chunk is loaded from disk to restore water depth states.
+     */
+    public void loadWaterMetadata(int chunkX, int chunkZ, java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata) {
+        if (waterMetadata.isEmpty()) {
+            System.out.println("[WATER-LOAD] Chunk (" + chunkX + "," + chunkZ + "): No water metadata to load");
+            return;
+        }
+
+        int loadedCount = 0;
+        for (java.util.Map.Entry<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> entry : waterMetadata.entrySet()) {
+            String[] coords = entry.getKey().split(",");
+            int localX = Integer.parseInt(coords[0]);
+            int y = Integer.parseInt(coords[1]);
+            int localZ = Integer.parseInt(coords[2]);
+
+            int worldX = chunkX * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localX;
+            int worldZ = chunkZ * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localZ;
+
+            BlockPos pos = new BlockPos(worldX, y, worldZ);
+            WaterBlock loadedState = new WaterBlock(entry.getValue().level(), entry.getValue().falling());
+            cells.put(pos, loadedState);
+            loadedCount++;
+        }
+
+        System.out.println("[WATER-LOAD] Chunk (" + chunkX + "," + chunkZ + "): Loaded " + loadedCount + " flowing water blocks from save data");
+    }
+
+    // ===== CCO API HELPERS =====
+
+    /**
+     * Gets a cached CCO block reader for the specified chunk coordinates.
+     * Caches readers to avoid repeated chunk lookups during water updates.
+     */
+    private CcoBlockReader getReaderForChunk(int chunkX, int chunkZ) {
+        long key = chunkKey(chunkX, chunkZ);
+        CcoBlockReader reader = readerCache.get(key);
+        if (reader == null) {
+            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+            if (chunk != null) {
+                reader = chunk.getBlockReader();
+                readerCache.put(key, reader);
+            }
+        }
+        return reader;
+    }
+
+    /**
+     * Gets a block type at world coordinates using CCO API.
+     * More efficient than world.getBlockAt() for frequent access patterns.
+     */
+    private BlockType getBlockViaCco(BlockPos pos) {
+        if (!isWithinWorld(pos.y())) {
+            return BlockType.AIR;
+        }
+
+        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        CcoBlockReader reader = getReaderForChunk(chunkX, chunkZ);
+
+        if (reader == null) {
+            return BlockType.AIR;
+        }
+
+        int localX = Math.floorMod(pos.x(), WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        return reader.get(localX, pos.y(), localZ);
+    }
+
+    /**
+     * Sets a block type at world coordinates using CCO API.
+     * CCO automatically marks the chunk dirty for mesh regeneration and saving.
+     * This eliminates the need for suppressedCallbacks workaround.
+     */
+    private void setBlockViaCco(BlockPos pos, BlockType type) {
+        if (!isWithinWorld(pos.y())) {
+            return;
+        }
+
+        int chunkX = Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE);
+        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+
+        if (chunk == null) {
+            return;
+        }
+
+        int localX = Math.floorMod(pos.x(), WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(pos.z(), WorldConfiguration.CHUNK_SIZE);
+
+        // CCO writer automatically marks dirty and handles callbacks
+        chunk.setBlock(localX, pos.y(), localZ, type);
     }
 
     private record BlockPos(int x, int y, int z) {

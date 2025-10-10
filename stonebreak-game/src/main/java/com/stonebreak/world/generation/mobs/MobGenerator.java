@@ -2,7 +2,7 @@ package com.stonebreak.world.generation.mobs;
 
 import java.util.Random;
 
-import com.stonebreak.world.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.mobs.animals.AnimalGenerator;
@@ -15,11 +15,11 @@ public class MobGenerator {
     
     /**
      * Processes mob spawning for a chunk based on its biome and conditions.
-     * 
+     *
      * @param world The world instance
      * @param chunk The chunk to process for mob spawning
      * @param biome The biome type of the chunk
-     * @param random Random number generator
+     * @param random Random number generator for animal spawning
      * @param randomLock Synchronization lock for random access
      */
     public static void processChunkMobSpawning(World world, Chunk chunk, BiomeType biome, Random random, Object randomLock) {
@@ -42,7 +42,7 @@ public class MobGenerator {
                 synchronized (randomLock) {
                     cowSpawnChance = random.nextFloat();
                 }
-                
+
                 if (cowSpawnChance < 0.1f) { // 10% chance per chunk
                     AnimalGenerator.spawnCows(world, chunk, random, randomLock);
                 }

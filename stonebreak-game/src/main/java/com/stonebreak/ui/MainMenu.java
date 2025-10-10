@@ -91,8 +91,8 @@ public class MainMenu {
     
     private void executeSelectedAction() {
         switch (selectedButton) {
-            case 0 -> // Play - Start world generation with loading screen
-                Game.getInstance().startWorldGeneration();
+            case 0 -> // Play - Go to world select screen
+                Game.getInstance().setState(GameState.WORLD_SELECT);
             case 1 -> { // Settings
                 SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
                 if (settingsMenu != null) {

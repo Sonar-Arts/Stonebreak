@@ -3,12 +3,15 @@ package com.stonebreak.blocks.waterSystem.handlers;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
+import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 
 /**
  * Minimal helper providing the handful of interactions water needs with other
  * blocks. The intent is to keep policy decisions (what can be displaced, what
  * drops items) in one place so the core simulation stays focused on flow.
+ * Uses CCO API for optimized block access.
  */
 public final class FlowBlockInteraction {
 
@@ -41,7 +44,20 @@ public final class FlowBlockInteraction {
         if (y <= 0) {
             return true;
         }
-        BlockType below = world.getBlockAt(x, y - 1, z);
+
+        // Use CCO API for optimized block access
+        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
+        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
+        Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+
+        if (chunk == null) {
+            return false;
+        }
+
+        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
+        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
+        BlockType below = chunk.getBlockReader().get(localX, y - 1, localZ);
+
         if (below == BlockType.WATER) {
             return true;
         }

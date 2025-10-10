@@ -47,12 +47,11 @@ public class Player {      // Player settings
     // Camera
     private final Camera camera;
     
-    // Reference to the world
-    private final World world;
+    // Reference to the world (mutable for world switching)
+    private World world;
 
     // Block placement validation service
     private final IBlockPlacementService blockPlacementService;
-
     // Inventory
     private final Inventory inventory;
     
@@ -60,7 +59,7 @@ public class Player {      // Player settings
     private Vector3i breakingBlock; // The block currently being broken
     private float breakingProgress; // Progress from 0.0 to 1.0
     private float breakingTime; // Time spent breaking the current block
-    
+
     
     // Flight system
     private boolean flightEnabled = false; // Whether flight is enabled via command
@@ -72,7 +71,17 @@ public class Player {      // Player settings
     private static final float NORMAL_JUMP_GRACE_PERIOD = 0.2f; // Grace period for normal jumps (200ms)
     private static final float FLY_SPEED = MOVE_SPEED * 2.5f; // Flight movement speed (250% of walking speed)
     private static final float FLY_VERTICAL_SPEED = 15.0f; // Vertical flight speed (ascent/descent)
-    
+
+    // Player health
+    private float health = 20.0f; // Player health (full health)
+
+    // Save/load state tracking
+    private boolean isLoadedFromSave = false; // Track if player data was loaded from save
+
+    // Walking sound state (if needed for future sound system)
+    private float walkingSoundTimer = 0.0f;
+    private boolean wasMovingLastFrame = false;
+
     /**
      * Creates a new player in the specified world.
      */
@@ -97,6 +106,7 @@ public class Player {      // Player settings
         this.wasJumpPressed = false;
         this.lastSpaceKeyTime = 0.0f;
         this.lastNormalJumpTime = 0.0f;
+        this.health = 20.0f;
     }
       /**
      * Updates the player's position and camera.
@@ -337,8 +347,14 @@ public class Player {      // Player settings
         if (stepUpHeight > 0.0f && !collisionOccurred && onGround) {
             position.y += stepUpHeight + 0.01f; // Small extra height to ensure we're on top
         } else if (collisionOccurred) {
+            float originalX = position.x;
             position.x = correctedPositionX;
-            // Sliding is allowed, so velocity.x is not zeroed here.
+            // Zero the velocity in the direction of collision to prevent sticking
+            if (velocity.x > 0 && correctedPositionX < originalX) {
+                velocity.x = 0; // Moving right but got pushed left
+            } else if (velocity.x < 0 && correctedPositionX > originalX) {
+                velocity.x = 0; // Moving left but got pushed right
+            }
         }
     }
 
@@ -518,8 +534,14 @@ public class Player {      // Player settings
         if (stepUpHeight > 0.0f && !collisionOccurred && onGround) {
             position.y += stepUpHeight + 0.01f; // Small extra height to ensure we're on top
         } else if (collisionOccurred) {
+            float originalZ = position.z;
             position.z = correctedPositionZ;
-            // Sliding is allowed, so velocity.z is not zeroed here.
+            // Zero the velocity in the direction of collision to prevent sticking
+            if (velocity.z > 0 && correctedPositionZ < originalZ) {
+                velocity.z = 0; // Moving towards +Z but got pushed towards -Z
+            } else if (velocity.z < 0 && correctedPositionZ > originalZ) {
+                velocity.z = 0; // Moving towards -Z but got pushed towards +Z
+            }
         }
     }
 
@@ -767,9 +789,9 @@ public class Player {      // Player settings
                     // Create drops before breaking the block
                     Vector3f dropPosition = new Vector3f(breakingBlock.x + 0.5f, breakingBlock.y + 0.5f, breakingBlock.z + 0.5f);
                     DropUtil.handleBlockBroken(world, dropPosition, blockType);
-                    
-                    // Break the block
-                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR);
+
+                    // Break the block (player action - use fast path for instant visual feedback)
+                    world.setBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z, BlockType.AIR, true);
 
                     // Notify water system about block being broken
                     Water.onBlockBroken(breakingBlock.x, breakingBlock.y, breakingBlock.z);
@@ -827,8 +849,8 @@ public class Player {      // Player settings
                     // Create drops before breaking the block
                     Vector3f dropPosition = new Vector3f(blockPos.x + 0.5f, blockPos.y + 0.5f, blockPos.z + 0.5f);
                     DropUtil.handleBlockBroken(world, dropPosition, blockType);
-                    
-                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR);
+
+                    world.setBlockAt(blockPos.x, blockPos.y, blockPos.z, BlockType.AIR, true);
 
                     // Notify water system about block being broken
                     Water.onBlockBroken(blockPos.x, blockPos.y, blockPos.z);
@@ -875,7 +897,7 @@ public class Player {      // Player settings
                         // Check if it's a water source block
                         if (Water.isWaterSource(targetBlock.x, targetBlock.y, targetBlock.z)) {
                             // Remove the water source block
-                            world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR);
+                            world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR, true);
                             Water.onBlockPlaced(targetBlock.x, targetBlock.y, targetBlock.z);
 
                             // Replace empty bucket with water bucket in the same slot
@@ -927,11 +949,11 @@ public class Player {      // Player settings
                                 return;
                             }
                             // Convert flow to source by triggering world block change
-                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
-                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR, true); // Temp remove
+                            world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true); // Replace as source
                         } else {
                             // Place water source block in air
-                            if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER)) {
+                            if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true)) {
                                 return; // Failed to place
                             }
                             Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
@@ -1012,7 +1034,7 @@ public class Player {      // Player settings
                     if (blockAbove == BlockType.AIR) {
                         if (!blockPlacementService.wouldIntersectWithPlayer(abovePos, position, BlockType.SNOW, onGround)) {
                             // Place new snow block above
-                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW)) {
+                            if (world.setBlockAt(abovePos.x, abovePos.y, abovePos.z, BlockType.SNOW, true)) {
                                 world.getSnowLayerManager().setSnowLayers(abovePos.x, abovePos.y, abovePos.z, 1);
                                 inventory.removeItem(selectedItem.getItem(), 1);
 
@@ -1043,8 +1065,8 @@ public class Player {      // Player settings
                     if (!Water.isWaterSource(placePos.x, placePos.y, placePos.z)) {
                         // Convert flow to source by triggering world block change
                         // This will call WaterSystem.onBlockChanged which uses cells.put() to force source
-                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR); // Temp remove
-                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER); // Replace as source
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.AIR, true); // Temp remove
+                        world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true); // Replace as source
                         inventory.removeItem(selectedItem.getItem(), 1);
                     }
                     // If already a source, don't consume the bucket
@@ -1057,7 +1079,7 @@ public class Player {      // Player settings
                 }
 
                 // All checks passed, place the block.
-                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType)) {
+                if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true)) {
                     inventory.removeItem(selectedItem.getItem(), 1);
 
                     // If placing a water block, register it as a water source
@@ -1067,7 +1089,7 @@ public class Player {      // Player settings
 
                     // Notify water system about block placement (affects flow)
                     Water.onBlockPlaced(placePos.x, placePos.y, placePos.z);
-                    
+
                     // If placing a snow block, initialize it with 1 layer
                     if (selectedBlockType == BlockType.SNOW) {
                         world.getSnowLayerManager().setSnowLayers(placePos.x, placePos.y, placePos.z, 1);
@@ -1236,8 +1258,8 @@ public class Player {      // Player settings
         
         return placePos;
     }
-    
-    
+
+
     
     /**
      * Calculates the intersection of a ray with a plane.
@@ -1419,14 +1441,13 @@ public class Player {      // Player settings
                 }
             }
         }
-        
+
         // Additional check: ensure the player's feet aren't in water
         // This helps catch boundary cases where the player is just at the edge
         int feetBlockX = (int) Math.floor(position.x);
         int feetBlockY = (int) Math.floor(position.y + 0.1f); // Just above feet
         int feetBlockZ = (int) Math.floor(position.z);
-        
-        // The redundant if was removed, directly returning the result of the check.
+
         return world.getBlockAt(feetBlockX, feetBlockY, feetBlockZ) == BlockType.WATER;
     }
     
@@ -1437,7 +1458,14 @@ public class Player {      // Player settings
         position.set(x, y, z);
         camera.setPosition(x, y + PLAYER_HEIGHT * 0.8f, z);
     }
-    
+
+    /**
+     * Sets the player's position.
+     */
+    public void setPosition(Vector3f position) {
+        setPosition(position.x, position.y, position.z);
+    }
+
     /**
      * Gets the player's position.
      */
@@ -1503,8 +1531,11 @@ public class Player {      // Player settings
         return velocity;
     }
 
-    public boolean isOnGround() {
-        return onGround;
+    /**
+     * Sets the player's velocity vector.
+     */
+    public void setVelocity(Vector3f velocity) {
+        this.velocity.set(velocity);
     }
 
     /**
@@ -1530,7 +1561,7 @@ public class Player {      // Player settings
     public float getBreakingProgress() {
         return breakingProgress;
     }
-    
+
     
     /**
      * Handles flight ascent (space key while flying).
@@ -1575,6 +1606,49 @@ public class Player {      // Player settings
      */
     public boolean isFlying() {
         return isFlying;
+    }
+
+    /**
+     * Returns whether the player is currently on the ground.
+     */
+    public boolean isOnGround() {
+        return onGround;
+    }
+
+    /**
+     * Returns the player's current health.
+     */
+    public float getHealth() {
+        return health;
+    }
+
+    /**
+     * Sets whether the player is on the ground.
+     */
+    public void setOnGround(boolean onGround) {
+        this.onGround = onGround;
+    }
+
+    /**
+     * Sets whether the player is flying.
+     */
+    public void setFlying(boolean flying) {
+        this.isFlying = flying;
+    }
+
+    /**
+     * Sets the player's health.
+     */
+    public void setHealth(float health) {
+        this.health = health;
+    }
+
+    /**
+     * Sets whether this player's data was loaded from a save file.
+     * This affects whether position/state gets reset in giveStartingItems().
+     */
+    public void setLoadedFromSave(boolean loaded) {
+        this.isLoadedFromSave = loaded;
     }
 
     /**
@@ -1623,7 +1697,7 @@ public class Player {      // Player settings
                  }
             }
 
-            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace)) {
+            if (world.setBlockAt(dropPos.x, dropPos.y, dropPos.z, blockToPlace, true)) {
                 if (blockToPlace == BlockType.SNOW) {
                     world.getSnowLayerManager().setSnowLayers(dropPos.x, dropPos.y, dropPos.z, 1);
                 }
@@ -1634,5 +1708,74 @@ public class Player {      // Player settings
                 return true;
             }
         }        return false;
+    }
+
+    /**
+     * Gives starting items and resets player state for new worlds.
+     * This resets position, inventory, physics state, and camera orientation.
+     * If player data was loaded from save, position/rotation are preserved.
+     */
+    public void giveStartingItems() {
+        // Only reset position and state for NEW players (not loaded from save)
+        if (!isLoadedFromSave) {
+            // Reset position to spawn
+            position.set(0, 100, 0);
+
+            // Reset velocity and physics state
+            velocity.set(0, 0, 0);
+            onGround = false;
+
+            // Reset water state
+            physicallyInWater = false;
+            wasInWaterLastFrame = false;
+            justExitedWaterThisFrame = false;
+            waterExitTime = 0.0f;
+
+            // Reset attack state
+            isAttacking = false;
+            attackAnimationTime = 0.0f;
+
+            // Reset block breaking state
+            breakingBlock = null;
+            breakingProgress = 0.0f;
+            breakingTime = 0.0f;
+
+            // Reset walking sound state
+            walkingSoundTimer = 0.0f;
+            wasMovingLastFrame = false;
+
+            // Reset flight state
+            isFlying = false;
+            wasJumpPressed = false;
+            lastSpaceKeyTime = 0.0f;
+            lastNormalJumpTime = 0.0f;
+
+            // Reset health
+            health = 20.0f;
+
+            // Reset camera orientation
+            if (camera != null) {
+                camera.reset();
+            }
+
+            // Reset inventory to starting items
+            if (inventory != null) {
+                inventory.resetToStartingItems();
+            }
+
+            System.out.println("Player data reset for new world");
+        } else {
+            // Player data was loaded from save - preserve position and state
+            System.out.println("Player data loaded from save - preserving position and state");
+        }
+    }
+
+    /**
+     * Sets the world reference for world switching.
+     * This is used when switching between worlds to update the player's world reference.
+     */
+    public void setWorld(World world) {
+        this.world = world;
+        System.out.println("[WORLD-ISOLATION] Player world reference updated for world switching");
     }
 }

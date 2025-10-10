@@ -41,7 +41,7 @@ public class ItemStack {
                 this.item = BlockType.AIR;
             }
         }
-        
+
         if (this.item == BlockType.AIR && count > 0) {
             this.count = 0;
         } else {
