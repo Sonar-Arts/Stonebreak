@@ -129,9 +129,17 @@ public class SaveService implements AutoCloseable {
 
         long startTime = System.currentTimeMillis();
 
-        // Update world data with current play time
+        // Update world data with current play time and world time
         long sessionTime = startTime - lastAutoSaveTime;
         WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
+
+        // Capture current world time from TimeOfDay system
+        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+        if (game != null && game.getTimeOfDay() != null) {
+            long currentTimeTicks = game.getTimeOfDay().getTicks();
+            updatedWorld = updatedWorld.withWorldTime(currentTimeTicks);
+        }
+
         this.worldData = updatedWorld;
 
         // Convert player to data model
@@ -315,9 +323,17 @@ public class SaveService implements AutoCloseable {
 
         long startTime = System.currentTimeMillis();
 
-        // Update world data
+        // Update world data with current play time and world time
         long sessionTime = startTime - lastAutoSaveTime;
         WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
+
+        // Capture current world time from TimeOfDay system
+        com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+        if (game != null && game.getTimeOfDay() != null) {
+            long currentTimeTicks = game.getTimeOfDay().getTicks();
+            updatedWorld = updatedWorld.withWorldTime(currentTimeTicks);
+        }
+
         this.worldData = updatedWorld;
 
         // Convert player to data model

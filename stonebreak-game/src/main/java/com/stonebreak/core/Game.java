@@ -1663,11 +1663,18 @@ public class Game {
                             // Update current world data if loaded
                             if (loadResult.getWorldData() != null) {
                                 currentWorldData = loadResult.getWorldData();
+
+                                // Initialize TimeOfDay with loaded world time
+                                long savedTimeTicks = currentWorldData.getWorldTimeTicks();
+                                timeOfDay = new TimeOfDay(savedTimeTicks);
+                                System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
                             }
                         } else {
-                            // No existing player data, give starting items
+                            // No existing player data, give starting items and initialize time at noon
                             player.giveStartingItems();
+                            timeOfDay = new TimeOfDay(TimeOfDay.NOON);
                             System.out.println("[PLAYER-DATA] ✓ No existing player data found for world '" + currentWorldName + "' - treating as new world, giving starting items");
+                            System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon");
                         }
 
                         // Start auto-save
@@ -1684,7 +1691,10 @@ public class Game {
                 } else {
                     // No save system available, give starting items and use defaults
                     player.giveStartingItems();
+                    // Initialize time at noon for new worlds
+                    timeOfDay = new TimeOfDay(TimeOfDay.NOON);
                     System.out.println("[PLAYER-DATA] No save system available for world '" + currentWorldName + "', giving starting items");
+                    System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no save system)");
                 }
 
                 // Generate chunks around player position
@@ -1806,6 +1816,11 @@ public class Game {
                                 System.out.println("[SAVE-SYSTEM] Reinitializing save system after world replacement for existing world");
                                 saveService.initialize(worldData, this.player, this.world);
 
+                                // Initialize TimeOfDay with loaded world time
+                                long savedTimeTicks = worldData.getWorldTimeTicks();
+                                this.timeOfDay = new TimeOfDay(savedTimeTicks);
+                                System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + this.timeOfDay.getTimeString() + ")");
+
                                 // Apply player state if available
                                 if (result.getPlayerData() != null) {
                                     StateConverter.applyPlayerData(this.player, result.getPlayerData());
@@ -1841,6 +1856,11 @@ public class Game {
                                     }
                                 } else {
                                     this.player.giveStartingItems();
+                                    // Initialize time at noon for new worlds without player data
+                                    if (this.timeOfDay == null) {
+                                        this.timeOfDay = new TimeOfDay(TimeOfDay.NOON);
+                                        System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no player data)");
+                                    }
                                     System.out.println("[PLAYER-DATA] No player data found - giving starting items");
                                 }
 

@@ -18,6 +18,7 @@ public final class WorldData {
     private final LocalDateTime createdTime;
     private final LocalDateTime lastPlayed;
     private final long totalPlayTimeMillis;
+    private final long worldTimeTicks;
     private final int formatVersion;
 
     @JsonCreator
@@ -28,6 +29,7 @@ public final class WorldData {
             @JsonProperty("createdTime") @JsonAlias("creationTime") LocalDateTime createdTime,
             @JsonProperty("lastPlayed") LocalDateTime lastPlayed,
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
+            @JsonProperty("worldTimeTicks") long worldTimeTicks,
             @JsonProperty("formatVersion") int formatVersion) {
         this.seed = seed;
         this.worldName = worldName;
@@ -35,13 +37,14 @@ public final class WorldData {
         this.createdTime = createdTime;
         this.lastPlayed = lastPlayed;
         this.totalPlayTimeMillis = totalPlayTimeMillis;
+        this.worldTimeTicks = worldTimeTicks;
         this.formatVersion = formatVersion;
     }
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
              builder.createdTime, builder.lastPlayed, builder.totalPlayTimeMillis,
-             builder.formatVersion);
+             builder.worldTimeTicks, builder.formatVersion);
     }
 
     // Getters
@@ -51,6 +54,7 @@ public final class WorldData {
     public LocalDateTime getCreatedTime() { return createdTime; }
     public LocalDateTime getLastPlayed() { return lastPlayed; }
     public long getTotalPlayTimeMillis() { return totalPlayTimeMillis; }
+    public long getWorldTimeTicks() { return worldTimeTicks; }
     public int getFormatVersion() { return formatVersion; }
 
     /**
@@ -72,6 +76,15 @@ public final class WorldData {
             .build();
     }
 
+    /**
+     * Creates a new WorldData with updated world time.
+     */
+    public WorldData withWorldTime(long timeTicks) {
+        return new Builder(this)
+            .worldTimeTicks(timeTicks)
+            .build();
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -83,6 +96,7 @@ public final class WorldData {
         private LocalDateTime createdTime = LocalDateTime.now();
         private LocalDateTime lastPlayed = LocalDateTime.now();
         private long totalPlayTimeMillis = 0;
+        private long worldTimeTicks = 6000; // Default to NOON
         private int formatVersion = 1;
 
         public Builder() {}
@@ -94,6 +108,7 @@ public final class WorldData {
             this.createdTime = data.createdTime;
             this.lastPlayed = data.lastPlayed;
             this.totalPlayTimeMillis = data.totalPlayTimeMillis;
+            this.worldTimeTicks = data.worldTimeTicks;
             this.formatVersion = data.formatVersion;
         }
 
@@ -124,6 +139,11 @@ public final class WorldData {
 
         public Builder totalPlayTimeMillis(long totalPlayTimeMillis) {
             this.totalPlayTimeMillis = totalPlayTimeMillis;
+            return this;
+        }
+
+        public Builder worldTimeTicks(long worldTimeTicks) {
+            this.worldTimeTicks = worldTimeTicks;
             return this;
         }
 
