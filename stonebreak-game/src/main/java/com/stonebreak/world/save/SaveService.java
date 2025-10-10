@@ -184,11 +184,17 @@ public class SaveService implements AutoCloseable {
                 for (Chunk chunk : batch) {
                     // OPTIMIZATION: Move conversion to async context to avoid blocking caller
                     CompletableFuture<Void> chunkFuture = CompletableFuture.supplyAsync(() -> {
+                        // CRITICAL FIX: Atomically clear dirty flag BEFORE snapshot
+                        // This prevents race where chunk is modified after snapshot but before markClean()
+                        if (!chunk.getCcoDirtyTracker().checkAndClearDataDirty()) {
+                            return null; // Chunk wasn't dirty, skip save
+                        }
                         return StateConverter.toChunkData(chunk, world);
                     }).thenCompose(chunkData -> {
+                        if (chunkData == null) {
+                            return CompletableFuture.completedFuture(null); // Skip save if not dirty
+                        }
                         return repository.saveChunk(chunkData);
-                    }).thenRun(() -> {
-                        chunk.markClean();
                     }).exceptionally(ex -> {
                         System.err.println("[SAVE] Failed to save chunk at " +
                             chunk.getX() + "," + chunk.getZ() + ": " + ex.getMessage());
@@ -269,11 +275,16 @@ public class SaveService implements AutoCloseable {
 
     /**
      * Saves a single chunk immediately.
+     * CRITICAL FIX: Uses atomic dirty flag clearing to prevent race conditions.
      */
     public CompletableFuture<Void> saveChunk(Chunk chunk) {
+        // Atomically clear dirty flag BEFORE snapshot to prevent race condition
+        if (!chunk.getCcoDirtyTracker().checkAndClearDataDirty()) {
+            return CompletableFuture.completedFuture(null); // Already clean
+        }
+
         ChunkData chunkData = StateConverter.toChunkData(chunk, world);
-        return repository.saveChunk(chunkData)
-            .thenRun(() -> chunk.markClean());
+        return repository.saveChunk(chunkData);
     }
 
     /**
