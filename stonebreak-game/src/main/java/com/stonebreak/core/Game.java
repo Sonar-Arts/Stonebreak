@@ -68,6 +68,7 @@ public class Game {
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
+    private com.stonebreak.mobs.entities.EntitySpawner entitySpawner; // Entity spawning system
     
     // Game state
     private GameState currentState = GameState.MAIN_MENU;
@@ -221,6 +222,7 @@ public class Game {
 
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
         // Initialize InventoryScreen - requires Player, Renderer, TextureAtlas, and InputHandler
@@ -564,6 +566,7 @@ public class Game {
         
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
         // Initialize player sounds
@@ -733,6 +736,11 @@ public class Game {
         if (entityManager != null) {
             entityManager.update(deltaTime);
         }
+
+        // Update entity spawner (handles continuous spawning and despawning)
+        if (entitySpawner != null) {
+            entitySpawner.update(deltaTime);
+        }
     }
     
     /**
@@ -825,6 +833,13 @@ public class Game {
      */
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return getInstance().entityManager;
+    }
+
+    /**
+     * Gets the entity spawner.
+     */
+    public com.stonebreak.mobs.entities.EntitySpawner getEntitySpawner() {
+        return entitySpawner;
     }
     
     /**

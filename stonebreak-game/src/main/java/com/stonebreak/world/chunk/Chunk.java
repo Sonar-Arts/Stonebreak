@@ -379,13 +379,14 @@ public class Chunk {
             }
         }
 
-        // Create snapshot with water metadata and entities
+        // Create snapshot with water metadata, entities, and entity generation flag
         return new CcoSerializableSnapshot(
             metadata.getChunkX(),
             metadata.getChunkZ(),
             blocks.getUnderlyingArray(),
             metadata.getLastModified(),
             metadata.isFeaturesPopulated(),
+            metadata.hasEntities(),  // Preserve entity generation flag
             waterMetadata,
             entities
         );
@@ -413,7 +414,7 @@ public class Chunk {
             metadata.getGenerationSeed(),
             metadata.hasStructures(),
             snapshot.isFeaturesPopulated(),
-            !snapshot.getEntities().isEmpty() // Update hasEntities based on snapshot
+            snapshot.hasEntitiesGenerated() // Restore entity generation flag from snapshot
         );
 
         // Copy block data
@@ -540,6 +541,26 @@ public class Chunk {
      */
     public CcoDirtyTracker getCcoDirtyTracker() {
         return dirtyTracker;
+    }
+
+    /**
+     * Gets the CCO metadata for this chunk.
+     * Provides access to chunk metadata including entity generation tracking.
+     */
+    public CcoChunkMetadata getCcoMetadata() {
+        return metadata;
+    }
+
+    /**
+     * Marks the chunk as having entities generated.
+     * This prevents duplicate entity spawning when chunks are saved and reloaded.
+     */
+    public void setEntitiesGenerated(boolean generated) {
+        metadata = metadata.withEntities(generated);
+        if (generated) {
+            // Mark dirty to ensure entity data is saved
+            markDirty();
+        }
     }
 
     // ===== MMS Mesh Handle Management =====

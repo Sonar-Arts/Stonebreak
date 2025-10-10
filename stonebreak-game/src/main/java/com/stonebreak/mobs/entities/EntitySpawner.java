@@ -4,30 +4,56 @@ import org.joml.Vector3f;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.player.Player;
+import com.stonebreak.core.Game;
 
 import java.util.Random;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
- * Handles natural entity spawning during world generation and runtime.
- * Manages spawn rules, biome restrictions, and population limits.
+ * Handles natural entity spawning following Minecraft mechanics:
+ *
+ * INITIAL SPAWNING:
+ * - Most animals spawn within chunks when they are generated
+ *
+ * CONTINUOUS SPAWNING:
+ * - Passive mobs have a spawning cycle every 400 game ticks (20 seconds)
+ * - Mobs spawn within chunks that have a player horizontally within 128 blocks
+ * - Can only spawn within 128 block radius sphere centered on player
+ *
+ * DESPAWNING:
+ * - Mobs that move farther than 128 blocks from nearest player despawn
  */
 public class EntitySpawner {
     private final World world;
     private final EntityManager entityManager;
     private final Random random;
-    
-    // Spawning rules for cows
-    private static final int MAX_COWS_PER_CHUNK = 4;
-    private static final float COW_SPAWN_CHANCE = 0.1f; // 10% chance per chunk generation
+
+    // Minecraft spawning mechanics
+    private static final int PASSIVE_MOB_SPAWN_TICKS = 400; // 20 seconds at 20 ticks/second
+    private static final int SPAWN_RADIUS = 128; // blocks from player
+    private static final int DESPAWN_RADIUS = 128; // blocks from nearest player
+
+    // Initial spawning during chunk generation
+    private static final float INITIAL_SPAWN_CHANCE = 0.15f; // 15% chance per chunk
+    private static final int MIN_INITIAL_COWS = 2;
+    private static final int MAX_INITIAL_COWS = 4;
+
+    // Continuous spawning limits
+    private static final int MAX_PASSIVE_MOBS_PER_PLAYER = 10; // Minecraft uses mob cap per player
+    private static final int SPAWN_ATTEMPTS_PER_CYCLE = 3; // Number of spawn attempts per cycle
+
+    // Spawn height limits
     private static final int MIN_SPAWN_HEIGHT = 60;
     private static final int MAX_SPAWN_HEIGHT = 120;
-    
-    // Cow texture variants for random selection
+
+    // Cow texture variants
     private static final String[] COW_TEXTURE_VARIANTS = {"default", "angus", "highland", "jersey"};
-    
-    // Biome types where cows can spawn (basic implementation)
-    // Note: Stonebreak doesn't have complex biomes yet, so we'll use basic terrain checks
-    
+
+    // Tick counter for spawning cycle
+    private int tickCounter = 0;
+
     /**
      * Creates a new entity spawner for the specified world.
      */
@@ -36,140 +62,164 @@ public class EntitySpawner {
         this.entityManager = entityManager;
         this.random = new Random();
     }
-    
+
     /**
-     * Called when a chunk is generated to spawn entities.
+     * Updates the spawner - handles continuous spawning cycle and despawning.
+     * Should be called every game tick (20 times per second).
      */
-    public void spawnEntitiesInChunk(Chunk chunk) {
-        if (chunk == null) return;
-        
-        // Check if we should spawn cows in this chunk
-        if (random.nextFloat() < COW_SPAWN_CHANCE) {
-            spawnCowsInChunk(chunk);
+    public void update(float deltaTime) {
+        tickCounter++;
+
+        // Passive mob spawning cycle every 400 ticks (20 seconds)
+        if (tickCounter >= PASSIVE_MOB_SPAWN_TICKS) {
+            tickCounter = 0;
+            performContinuousSpawning();
         }
+
+        // Check for mobs that need to despawn
+        checkDespawning();
     }
-    
+
     /**
-     * Spawns cows in a specific chunk based on terrain suitability.
+     * Initial spawning when a chunk is generated.
+     * "Most animals spawn within chunks when they are generated"
      */
-    private void spawnCowsInChunk(Chunk chunk) {
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-        
-        // Convert chunk coordinates to world coordinates
-        int worldX = chunkX * 16;
-        int worldZ = chunkZ * 16;
-        
-        // Try to spawn 1-4 cows in this chunk
-        int cowsToSpawn = 1 + random.nextInt(MAX_COWS_PER_CHUNK);
+    public void initialChunkSpawn(Chunk chunk) {
+        // Roll for spawn chance
+        if (random.nextFloat() > INITIAL_SPAWN_CHANCE) {
+            return; // This chunk won't have initial cows
+        }
+
+        int cowsToSpawn = MIN_INITIAL_COWS + random.nextInt(MAX_INITIAL_COWS - MIN_INITIAL_COWS + 1);
         int cowsSpawned = 0;
-        
-        // Attempt spawning with limited tries to avoid infinite loops
         int maxAttempts = 20;
+
         for (int attempt = 0; attempt < maxAttempts && cowsSpawned < cowsToSpawn; attempt++) {
-            // Pick random position within chunk
-            int x = worldX + random.nextInt(16);
-            int z = worldZ + random.nextInt(16);
-            
-            // Find suitable Y position
-            int y = findSuitableSpawnHeight(x, z);
-            if (y > 0) {
-                // Position the entity body properly - y is the ground surface where feet should touch
-                // For cows with large bounding boxes, ensure they're centered properly
-                Vector3f spawnPos = new Vector3f(x + 0.5f, y, z + 0.5f);
-                
-                // Adjust position to avoid block edge issues for large entities
-                spawnPos = adjustSpawnPositionForLargeEntity(spawnPos, EntityType.COW);
-                
-                if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                    // Select random texture variant
-                    String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
-                    System.out.println("DEBUG: Spawning cow with variant: " + textureVariant + " at " + spawnPos);
-                    
-                    // Verify the variant will load correctly before spawning
-                    com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant variantTest = 
-                        com.stonebreak.textures.mobs.CowTextureLoader.getCowVariant(textureVariant);
-                    if (variantTest != null) {
-                        System.out.println("DEBUG: Verified variant loads as: " + variantTest.getDisplayName());
-                    } else {
-                        System.err.println("DEBUG: WARNING - Variant " + textureVariant + " failed to load!");
-                    }
-                    
-                    // Spawn the cow with selected variant
-                    Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
-                    if (cow != null) {
-                        cowsSpawned++;
-                        if (cow instanceof com.stonebreak.mobs.cow.Cow cowEntity) {
-                            System.out.println("DEBUG: Cow spawned successfully with variant: " + cowEntity.getTextureVariant());
-                        }
-                    }
+            Vector3f spawnPos = findSpawnLocationInChunk(chunk);
+            if (spawnPos != null && isValidSpawnLocation(spawnPos, EntityType.COW)) {
+                String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
+                Entity cow = entityManager.spawnCowWithVariant(spawnPos, variant);
+                if (cow != null) {
+                    cowsSpawned++;
                 }
             }
         }
     }
-    
+
     /**
-     * Adjusts spawn position for large entities to avoid block edge collisions.
+     * Continuous spawning cycle for passive mobs.
+     * Spawns mobs near players following Minecraft rules.
      */
-    private Vector3f adjustSpawnPositionForLargeEntity(Vector3f position, EntityType entityType) {
-        float entityWidth = entityType.getWidth();
-        float entityLength = entityType.getLength();
-        
-        // If entity is large (> 1.0 blocks), ensure it's well-centered
-        if (entityWidth > 1.0f || entityLength > 1.0f) {
-            // Calculate how much the entity extends beyond 1 block
-            float widthOverhang = Math.max(0, (entityWidth - 1.0f) / 2);
-            float lengthOverhang = Math.max(0, (entityLength - 1.0f) / 2);
-            
-            // Adjust position to keep entity away from block edges
-            float adjustedX = position.x;
-            float adjustedZ = position.z;
-            
-            // Check if we're too close to block edges and adjust
-            float xFraction = adjustedX - (float)Math.floor(adjustedX);
-            float zFraction = adjustedZ - (float)Math.floor(adjustedZ);
-            
-            // If too close to edges, move towards center
-            if (xFraction < 0.5f - widthOverhang) {
-                adjustedX = (float)Math.floor(adjustedX) + 0.5f;
-            } else if (xFraction > 0.5f + widthOverhang) {
-                adjustedX = (float)Math.floor(adjustedX) + 0.5f;
-            }
-            
-            if (zFraction < 0.5f - lengthOverhang) {
-                adjustedZ = (float)Math.floor(adjustedZ) + 0.5f;
-            } else if (zFraction > 0.5f + lengthOverhang) {
-                adjustedZ = (float)Math.floor(adjustedZ) + 0.5f;
-            }
-            
-            return new Vector3f(adjustedX, position.y, adjustedZ);
+    private void performContinuousSpawning() {
+        Player player = Game.getPlayer();
+        if (player == null) {
+            return;
         }
-        
-        return position;
+
+        // Check mob cap for this player
+        int passiveMobCount = countPassiveMobsNearPlayer(player);
+        if (passiveMobCount >= MAX_PASSIVE_MOBS_PER_PLAYER) {
+            return; // Mob cap reached
+        }
+
+        // Attempt to spawn mobs near player
+        for (int attempt = 0; attempt < SPAWN_ATTEMPTS_PER_CYCLE; attempt++) {
+            if (passiveMobCount >= MAX_PASSIVE_MOBS_PER_PLAYER) {
+                break; // Mob cap reached during spawning
+            }
+
+            Vector3f spawnPos = findSpawnLocationNearPlayer(player);
+            if (spawnPos != null && isValidSpawnLocation(spawnPos, EntityType.COW)) {
+                String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
+                Entity cow = entityManager.spawnCowWithVariant(spawnPos, variant);
+                if (cow != null) {
+                    passiveMobCount++;
+                }
+            }
+        }
     }
-    
+
+    /**
+     * Checks for mobs that are too far from players and despawns them.
+     */
+    private void checkDespawning() {
+        Player player = Game.getPlayer();
+        if (player == null) {
+            return;
+        }
+
+        List<Entity> cows = entityManager.getEntitiesByType(EntityType.COW);
+        for (Entity cow : cows) {
+            float distance = cow.getPosition().distance(player.getPosition());
+            if (distance > DESPAWN_RADIUS) {
+                entityManager.removeEntity(cow);
+            }
+        }
+    }
+
+    /**
+     * Finds a random spawn location within a chunk.
+     */
+    private Vector3f findSpawnLocationInChunk(Chunk chunk) {
+        int chunkX = chunk.getChunkX();
+        int chunkZ = chunk.getChunkZ();
+        int worldX = chunkX * 16;
+        int worldZ = chunkZ * 16;
+
+        // Pick random position within chunk
+        int x = worldX + random.nextInt(16);
+        int z = worldZ + random.nextInt(16);
+
+        // Find suitable Y position
+        int y = findSuitableSpawnHeight(x, z);
+        if (y > 0) {
+            return new Vector3f(x + 0.5f, y, z + 0.5f);
+        }
+
+        return null;
+    }
+
+    /**
+     * Finds a spawn location near a player within 128 blocks.
+     */
+    private Vector3f findSpawnLocationNearPlayer(Player player) {
+        Vector3f playerPos = player.getPosition();
+
+        // Random angle and distance within spawn radius
+        float angle = random.nextFloat() * (float)(Math.PI * 2);
+        float distance = 24 + random.nextFloat() * (SPAWN_RADIUS - 24); // Spawn between 24-128 blocks
+
+        int x = (int)(playerPos.x + Math.cos(angle) * distance);
+        int z = (int)(playerPos.z + Math.sin(angle) * distance);
+
+        // Find suitable Y position
+        int y = findSuitableSpawnHeight(x, z);
+        if (y > 0) {
+            return new Vector3f(x + 0.5f, y, z + 0.5f);
+        }
+
+        return null;
+    }
+
     /**
      * Finds a suitable spawn height at the given x,z coordinates.
      */
     private int findSuitableSpawnHeight(int x, int z) {
-        // Search from top down to find the first solid surface with air above
         for (int y = MAX_SPAWN_HEIGHT; y >= MIN_SPAWN_HEIGHT; y--) {
             BlockType groundBlock = world.getBlockAt(x, y, z);
             BlockType airBlock1 = world.getBlockAt(x, y + 1, z);
             BlockType airBlock2 = world.getBlockAt(x, y + 2, z);
-            
-            // Check for solid ground with 2 blocks of air above
+
             if (groundBlock != null && groundBlock != BlockType.AIR && groundBlock != BlockType.WATER &&
                 (airBlock1 == null || airBlock1 == BlockType.AIR) &&
                 (airBlock2 == null || airBlock2 == BlockType.AIR)) {
-                
                 return y + 1; // Spawn on top of the ground block
             }
         }
-        
+
         return -1; // No suitable spawn height found
     }
-    
+
     /**
      * Checks if a location is valid for spawning the specified entity type.
      */
@@ -177,13 +227,13 @@ public class EntitySpawner {
         int x = (int) Math.floor(position.x);
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
-        
+
         return switch (type) {
             case COW -> isValidCowSpawnLocation(x, y, z);
             default -> false;
         };
     }
-    
+
     /**
      * Checks if a location is suitable for cow spawning.
      */
@@ -193,7 +243,7 @@ public class EntitySpawner {
         if (groundBlock == null || groundBlock == BlockType.AIR || groundBlock == BlockType.WATER) {
             return false;
         }
-        
+
         // Check for enough space (cow needs 2 blocks of height)
         BlockType airBlock1 = world.getBlockAt(x, y, z);
         BlockType airBlock2 = world.getBlockAt(x, y + 1, z);
@@ -201,53 +251,30 @@ public class EntitySpawner {
             (airBlock2 != null && airBlock2 != BlockType.AIR)) {
             return false;
         }
-        
-        // Check cow's width (0.8 blocks) - ensure surrounding blocks are also clear
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (dx == 0 && dz == 0) continue; // Skip center, already checked
-                
-                BlockType sideBlock1 = world.getBlockAt(x + dx, y, z + dz);
-                BlockType sideBlock2 = world.getBlockAt(x + dx, y + 1, z + dz);
-                
-                // Allow partial obstruction but not complete blockage
-                if ((sideBlock1 != null && sideBlock1 != BlockType.AIR) &&
-                    (sideBlock2 != null && sideBlock2 != BlockType.AIR)) {
-                    return false;
-                }
-            }
-        }
-        
+
         // Check not in water
         if (world.getBlockAt(x, y, z) == BlockType.WATER ||
             world.getBlockAt(x, y + 1, z) == BlockType.WATER) {
             return false;
         }
-        
+
         // Check for nearby entities to avoid overcrowding
         if (hasNearbyEntities(new Vector3f(x, y, z), 5.0f, 3)) {
             return false;
         }
-        
-        // Check terrain suitability (prefer grassy areas)
-        if (isGrassyTerrain(x, y - 1, z)) {
-            return true;
-        }
-        
-        // Accept other solid terrain as backup
+
         return true;
     }
-    
+
     /**
-     * Checks if the terrain at a location is grassy (preferred for cows).
+     * Counts passive mobs near a player (within spawn radius).
      */
-    private boolean isGrassyTerrain(int x, int y, int z) {
-        BlockType block = world.getBlockAt(x, y, z);
-        // In Stonebreak, we'll check for grass or dirt blocks
-        // This is a basic implementation that can be expanded
-        return block == BlockType.GRASS || block == BlockType.DIRT;
+    private int countPassiveMobsNearPlayer(Player player) {
+        Vector3f playerPos = player.getPosition();
+        List<Entity> cows = entityManager.getEntitiesInRange(playerPos, SPAWN_RADIUS);
+        return (int) cows.stream().filter(e -> e.getType() == EntityType.COW).count();
     }
-    
+
     /**
      * Checks if there are too many entities nearby.
      */
@@ -255,78 +282,61 @@ public class EntitySpawner {
         int nearbyCount = entityManager.getEntitiesInRange(position, radius).size();
         return nearbyCount >= maxCount;
     }
-    
+
+    /**
+     * Legacy method - redirects to initial chunk spawn
+     * @deprecated Use initialChunkSpawn() instead
+     */
+    @Deprecated
+    public void spawnEntitiesInChunk(Chunk chunk) {
+        initialChunkSpawn(chunk);
+    }
+
     /**
      * Spawns a specific number of cows near a center position (for testing/commands).
      */
     public void spawnCowHerd(Vector3f center, int count) {
         int spawned = 0;
-        int maxAttempts = count * 5; // 5 attempts per cow
-        
+        int maxAttempts = count * 5;
+
         for (int attempt = 0; attempt < maxAttempts && spawned < count; attempt++) {
-            // Generate random position within 8 blocks of center
             float offsetX = (random.nextFloat() - 0.5f) * 16.0f;
             float offsetZ = (random.nextFloat() - 0.5f) * 16.0f;
-            
+
             Vector3f spawnPos = new Vector3f(
                 center.x + offsetX,
                 center.y,
                 center.z + offsetZ
             );
-            
-            // Find ground level
+
             int groundY = findSuitableSpawnHeight((int)spawnPos.x, (int)spawnPos.z);
             if (groundY > 0) {
-                // Position the entity body properly - groundY is the ground surface where feet should touch
-                // With new physics system, entity position represents body bottom, which is at ground level
                 spawnPos.y = groundY;
-                
-                // Adjust position to avoid block edge issues for large entities
-                spawnPos = adjustSpawnPositionForLargeEntity(spawnPos, EntityType.COW);
-                
+
                 if (isValidSpawnLocation(spawnPos, EntityType.COW)) {
-                    // Select random texture variant
                     String textureVariant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
-                    System.out.println("DEBUG: Spawning herd cow with variant: " + textureVariant + " at " + spawnPos);
-                    
-                    // Verify the variant will load correctly before spawning
-                    com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant variantTest = 
-                        com.stonebreak.textures.mobs.CowTextureLoader.getCowVariant(textureVariant);
-                    if (variantTest != null) {
-                        System.out.println("DEBUG: Verified herd variant loads as: " + variantTest.getDisplayName());
-                    } else {
-                        System.err.println("DEBUG: WARNING - Herd variant " + textureVariant + " failed to load!");
-                    }
-                    
-                    // Spawn the cow with selected variant
                     Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
                     if (cow != null) {
                         spawned++;
-                        if (cow instanceof com.stonebreak.mobs.cow.Cow cowEntity) {
-                            System.out.println("DEBUG: Herd cow spawned successfully with variant: " + cowEntity.getTextureVariant());
-                        }
                     }
                 }
             }
         }
     }
-    
+
     /**
      * Gets spawn statistics for debugging.
      */
     public String getSpawnStats() {
         int totalCows = entityManager.getEntitiesByType(EntityType.COW).size();
-        return String.format("Total cows: %d", totalCows);
+        return String.format("Total cows: %d | Next spawn cycle in: %d ticks",
+            totalCows, PASSIVE_MOB_SPAWN_TICKS - tickCounter);
     }
-    
+
     /**
      * Forces spawning of entities for testing (ignores normal spawn rules).
      */
     public Entity forceSpawnEntity(EntityType type, Vector3f position) {
         return entityManager.spawnEntity(type, position);
     }
-    
-    // Getters
-    public float getCowSpawnChance() { return COW_SPAWN_CHANCE; }
-    public int getMaxCowsPerChunk() { return MAX_COWS_PER_CHUNK; }
 }

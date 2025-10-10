@@ -387,12 +387,20 @@ public class WorldChunkStore {
             // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
             // when neighbors exist and it's safe to do so without triggering recursion
 
+            // Initial mob spawning during chunk generation
+            // Following Minecraft rules: "Most animals spawn within chunks when they are generated"
+            // This is INITIAL population only - continuous spawning happens via spawning cycle
+            initialMobSpawn(chunk);
+
             // CRITICAL FIX: Mark newly generated chunks as clean UNLESS they contain flowing water
             // setBlock() calls during generation marked them dirty, but they don't
             // need saving until the PLAYER modifies them. This prevents all 3000+
             // generated chunks from staying dirty forever and never being unloaded.
             // EXCEPTION: Chunks with flowing water MUST be saved to persist water metadata.
-            if (!chunkHasFlowingWater(chunk)) {
+            // NOTE: Initial mob spawning doesn't make chunk dirty - entities are transient and saved separately
+            boolean hasFlowingWater = chunkHasFlowingWater(chunk);
+
+            if (!hasFlowingWater) {
                 chunk.markClean();
             } else {
                 System.out.println("[WATER-GEN] Chunk (" + x + ", " + z + ") has flowing water - keeping dirty for save");
@@ -403,6 +411,23 @@ public class WorldChunkStore {
             System.err.println("Exception generating chunk (" + x + ", " + z + "): " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Initial mob spawning during chunk generation.
+     * Following Minecraft rules: "Most animals spawn within chunks when they are generated"
+     * This provides initial population - continuous spawning happens via spawning cycles.
+     */
+    private void initialMobSpawn(Chunk chunk) {
+        // Get entity spawner from Game
+        Game game = Game.getInstance();
+        if (game == null || game.getEntitySpawner() == null) {
+            return;
+        }
+
+        // Perform initial spawn for newly generated chunk
+        // EntitySpawner will handle spawn chance and mob placement
+        game.getEntitySpawner().initialChunkSpawn(chunk);
     }
 
     /**
