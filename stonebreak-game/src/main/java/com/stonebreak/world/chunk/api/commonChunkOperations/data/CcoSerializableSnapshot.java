@@ -32,6 +32,7 @@ public final class CcoSerializableSnapshot {
     private final BlockType[][][] blocks;  // Direct reference - ChunkData will copy
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
+    private final boolean hasEntitiesGenerated;  // Whether entities were spawned for this chunk
     private final Map<String, ChunkData.WaterBlockData> waterMetadata;  // Water flow levels (non-source only)
     private final List<EntityData> entities;  // Entity data for this chunk
 
@@ -46,7 +47,7 @@ public final class CcoSerializableSnapshot {
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, new HashMap<>(), new ArrayList<>());
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, new HashMap<>(), new ArrayList<>());
     }
 
     /**
@@ -62,7 +63,7 @@ public final class CcoSerializableSnapshot {
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata) {
-        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, waterMetadata, new ArrayList<>());
+        this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, waterMetadata, new ArrayList<>());
     }
 
     /**
@@ -73,11 +74,13 @@ public final class CcoSerializableSnapshot {
      * @param blocks Block array (will be deep-copied by ChunkData)
      * @param lastModified Last modification timestamp
      * @param featuresPopulated Whether features are populated
+     * @param hasEntitiesGenerated Whether entities were spawned for this chunk
      * @param waterMetadata Water flow level metadata (defensive copy made)
      * @param entities Entity data for this chunk (defensive copy made)
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
+                                   boolean hasEntitiesGenerated,
                                    Map<String, ChunkData.WaterBlockData> waterMetadata,
                                    List<EntityData> entities) {
         this.chunkX = chunkX;
@@ -85,8 +88,16 @@ public final class CcoSerializableSnapshot {
         this.blocks = Objects.requireNonNull(blocks, "blocks cannot be null");
         this.lastModified = Objects.requireNonNull(lastModified, "lastModified cannot be null");
         this.featuresPopulated = featuresPopulated;
+        this.hasEntitiesGenerated = hasEntitiesGenerated;
         this.waterMetadata = waterMetadata != null ? new HashMap<>(waterMetadata) : new HashMap<>();
         this.entities = entities != null ? new ArrayList<>(entities) : new ArrayList<>();
+    }
+
+    /**
+     * Gets whether entities were spawned for this chunk.
+     */
+    public boolean hasEntitiesGenerated() {
+        return hasEntitiesGenerated;
     }
 
     /**
@@ -115,6 +126,7 @@ public final class CcoSerializableSnapshot {
                 .blocks(blocks)  // ChunkData builder will deep-copy
                 .lastModified(lastModified)
                 .featuresPopulated(featuresPopulated)
+                .hasEntitiesGenerated(hasEntitiesGenerated)  // Include entity generation flag
                 .waterMetadata(waterMetadata)  // CCO-integrated water metadata
                 .entities(entities)  // CCO-integrated entity data
                 .build();

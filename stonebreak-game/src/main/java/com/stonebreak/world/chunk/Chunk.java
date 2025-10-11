@@ -310,10 +310,28 @@ public class Chunk {
      * Creates a serializable snapshot of this chunk using CCO API.
      * Extracts water metadata from the World's WaterSystem and entities from EntityManager.
      *
+     * CRITICAL: Creates an ATOMIC snapshot by deep-copying the block array immediately.
+     * This prevents race conditions where the chunk is modified after the snapshot is created
+     * but before it's serialized.
+     *
      * @param world World instance to extract water metadata and entities from
      * @return Immutable snapshot including blocks, water metadata, and entities
      */
     public CcoSerializableSnapshot createSnapshot(World world) {
+        // CRITICAL VALIDATION: Verify metadata coordinates match chunk coordinates
+        // This catches corruption bugs before writing corrupted data to disk
+        if (metadata.getChunkX() != this.x || metadata.getChunkZ() != this.z) {
+            throw new IllegalStateException(String.format(
+                "CRITICAL: Metadata coordinate mismatch! Chunk fields=(%d,%d) but metadata=(%d,%d)",
+                this.x, this.z, metadata.getChunkX(), metadata.getChunkZ()
+            ));
+        }
+
+        // CRITICAL FIX: Deep copy blocks array IMMEDIATELY to prevent race conditions
+        // This ensures the snapshot is truly immutable and captures the exact state
+        // at the moment checkAndClearDataDirty() was called.
+        BlockType[][][] blocksCopy = blocks.deepCopy();
+
         // Extract water metadata from WaterSystem
         java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
 
@@ -323,11 +341,11 @@ public class Chunk {
         int missingFromWaterSystem = 0;
 
         if (world != null && world.getWaterSystem() != null) {
-            // Scan all water blocks in this chunk
+            // Scan all water blocks in this chunk (using the deep copy)
             for (int localX = 0; localX < 16; localX++) {
                 for (int localZ = 0; localZ < 16; localZ++) {
                     for (int y = 0; y < 256; y++) {
-                        if (reader.get(localX, y, localZ) == BlockType.WATER) {
+                        if (blocksCopy[localX][y][localZ] == BlockType.WATER) {
                             totalWaterBlocks++;
                             int worldX = x * 16 + localX;
                             int worldZ = z * 16 + localZ;
@@ -360,10 +378,8 @@ public class Chunk {
                 ));
             }
         } else {
-            logger.log(Level.WARNING, String.format(
-                "[WATER-SAVE] Chunk (%d,%d): Cannot extract water metadata - world or WaterSystem is null",
-                x, z
-            ));
+            // Don't log warning - null world is expected in unit tests
+            // In production, world should never be null when saving
         }
 
         // Extract entities in this chunk from EntityManager
@@ -379,13 +395,14 @@ public class Chunk {
             }
         }
 
-        // Create snapshot with water metadata and entities
+        // Create snapshot with deep-copied blocks, water metadata, entities, and entity generation flag
         return new CcoSerializableSnapshot(
             metadata.getChunkX(),
             metadata.getChunkZ(),
-            blocks.getUnderlyingArray(),
+            blocksCopy,  // Use deep copy instead of reference
             metadata.getLastModified(),
             metadata.isFeaturesPopulated(),
+            metadata.hasEntities(),  // Preserve entity generation flag
             waterMetadata,
             entities
         );
@@ -413,7 +430,7 @@ public class Chunk {
             metadata.getGenerationSeed(),
             metadata.hasStructures(),
             snapshot.isFeaturesPopulated(),
-            !snapshot.getEntities().isEmpty() // Update hasEntities based on snapshot
+            snapshot.hasEntitiesGenerated() // Restore entity generation flag from snapshot
         );
 
         // Copy block data
@@ -540,6 +557,26 @@ public class Chunk {
      */
     public CcoDirtyTracker getCcoDirtyTracker() {
         return dirtyTracker;
+    }
+
+    /**
+     * Gets the CCO metadata for this chunk.
+     * Provides access to chunk metadata including entity generation tracking.
+     */
+    public CcoChunkMetadata getCcoMetadata() {
+        return metadata;
+    }
+
+    /**
+     * Marks the chunk as having entities generated.
+     * This prevents duplicate entity spawning when chunks are saved and reloaded.
+     */
+    public void setEntitiesGenerated(boolean generated) {
+        metadata = metadata.withEntities(generated);
+        if (generated) {
+            // Mark dirty to ensure entity data is saved
+            markDirty();
+        }
     }
 
     // ===== MMS Mesh Handle Management =====

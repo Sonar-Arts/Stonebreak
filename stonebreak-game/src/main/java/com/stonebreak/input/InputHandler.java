@@ -534,7 +534,7 @@ public class InputHandler {
                     }
 
                     // Run quick diagnostic
-                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.quickDiagnostic();
+                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.printDiagnostics();
 
                     // Get current world name from save service
                     String worldName = "unknown";

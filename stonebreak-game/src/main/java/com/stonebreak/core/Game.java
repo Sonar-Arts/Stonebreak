@@ -68,6 +68,8 @@ public class Game {
     
     // Entity system components
     private com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
+    private com.stonebreak.mobs.entities.EntitySpawner entitySpawner; // Entity spawning system
+
 
     // Time of day system
     private TimeOfDay timeOfDay; // Day/night cycle system
@@ -224,6 +226,7 @@ public class Game {
 
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
         // Initialize InventoryScreen - requires Player, Renderer, TextureAtlas, and InputHandler
@@ -567,6 +570,7 @@ public class Game {
         
         // Initialize entity system
         this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
         // Initialize time of day system (starts at noon for bright daylight)
@@ -741,6 +745,11 @@ public class Game {
             entityManager.update(deltaTime);
         }
 
+        // Update entity spawner (handles continuous spawning and despawning)
+        if (entitySpawner != null) {
+            entitySpawner.update(deltaTime);
+        }
+
         // Update time of day system (advances day/night cycle based on real time)
         if (timeOfDay != null) {
             timeOfDay.update(deltaTime);
@@ -838,6 +847,14 @@ public class Game {
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return getInstance().entityManager;
     }
+
+    /**
+     * Gets the entity spawner.
+     */
+    public com.stonebreak.mobs.entities.EntitySpawner getEntitySpawner() {
+        return entitySpawner;
+    }
+
 
     /**
      * Gets the time of day system.

@@ -88,17 +88,22 @@ public class WorldChunkStore {
         if (pendingLoad != null) {
             // Chunk is loading asynchronously
             // Check if completed
-            if (pendingLoad.isDone() && !pendingLoad.isCompletedExceptionally()) {
-                try {
-                    chunk = pendingLoad.getNow(null);
-                    if (chunk != null) {
-                        // Load completed, finalize chunk
-                        finalizeChunkLoad(pos, chunk);
-                        return chunk;
+            if (pendingLoad.isDone()) {
+                if (pendingLoad.isCompletedExceptionally()) {
+                    // Load failed with exception - propagate it immediately to crash the game
+                    try {
+                        pendingLoad.getNow(null); // This will throw the exception
+                    } catch (Exception e) {
+                        // Re-throw to crash the game with full stack trace
+                        throw new RuntimeException("Chunk load failed for (" + x + ", " + z + ")", e);
                     }
-                } catch (Exception e) {
-                    // Load failed, remove from pending and let it retry
-                    pendingChunkLoads.remove(pos);
+                }
+                // Normal completion - get the chunk
+                chunk = pendingLoad.getNow(null);
+                if (chunk != null) {
+                    // Load completed, finalize chunk
+                    finalizeChunkLoad(pos, chunk);
+                    return chunk;
                 }
             }
             // Still loading, return null (caller will retry next frame)
@@ -116,12 +121,8 @@ public class WorldChunkStore {
                 // Remove from pending loads
                 pendingChunkLoads.remove(pos);
                 return loadedChunk;
-            })
-            .exceptionally(e -> {
-                System.err.println("[LOAD] Async chunk load failed for (" + x + ", " + z + "): " + e.getMessage());
-                pendingChunkLoads.remove(pos);
-                return null;
             });
+            // NO exception handling - let it crash immediately with full stack trace
 
         // Track this pending load
         pendingChunkLoads.put(pos, loadFuture);
@@ -360,12 +361,8 @@ public class WorldChunkStore {
                     }
                     // Chunk not on disk, generate new one
                     return generate(x, z);
-                })
-                .exceptionally(e -> {
-                    System.err.println("[LOAD] Failed to load chunk (" + x + ", " + z + "): " + e.getMessage());
-                    // Fall back to generation on error
-                    return generate(x, z);
                 });
+                // NO exception handling - let corruption errors crash immediately with full stack trace
         }
 
         // No save service, generate immediately
@@ -387,12 +384,20 @@ public class WorldChunkStore {
             // DO NOT populate features here - they will be populated by processPendingFeaturePopulation()
             // when neighbors exist and it's safe to do so without triggering recursion
 
+            // Initial mob spawning during chunk generation
+            // Following Minecraft rules: "Most animals spawn within chunks when they are generated"
+            // This is INITIAL population only - continuous spawning happens via spawning cycle
+            initialMobSpawn(chunk);
+
             // CRITICAL FIX: Mark newly generated chunks as clean UNLESS they contain flowing water
             // setBlock() calls during generation marked them dirty, but they don't
             // need saving until the PLAYER modifies them. This prevents all 3000+
             // generated chunks from staying dirty forever and never being unloaded.
             // EXCEPTION: Chunks with flowing water MUST be saved to persist water metadata.
-            if (!chunkHasFlowingWater(chunk)) {
+            // NOTE: Initial mob spawning doesn't make chunk dirty - entities are transient and saved separately
+            boolean hasFlowingWater = chunkHasFlowingWater(chunk);
+
+            if (!hasFlowingWater) {
                 chunk.markClean();
             } else {
                 System.out.println("[WATER-GEN] Chunk (" + x + ", " + z + ") has flowing water - keeping dirty for save");
@@ -403,6 +408,23 @@ public class WorldChunkStore {
             System.err.println("Exception generating chunk (" + x + ", " + z + "): " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Initial mob spawning during chunk generation.
+     * Following Minecraft rules: "Most animals spawn within chunks when they are generated"
+     * This provides initial population - continuous spawning happens via spawning cycles.
+     */
+    private void initialMobSpawn(Chunk chunk) {
+        // Get entity spawner from Game
+        Game game = Game.getInstance();
+        if (game == null || game.getEntitySpawner() == null) {
+            return;
+        }
+
+        // Perform initial spawn for newly generated chunk
+        // EntitySpawner will handle spawn chance and mob placement
+        game.getEntitySpawner().initialChunkSpawn(chunk);
     }
 
     /**

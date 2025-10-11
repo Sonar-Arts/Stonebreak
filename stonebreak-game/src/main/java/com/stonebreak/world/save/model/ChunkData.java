@@ -18,6 +18,7 @@ public final class ChunkData {
     private final BlockType[][][] blocks;
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
+    private final boolean hasEntitiesGenerated;
     private final Map<String, WaterBlockData> waterMetadata;
     private final List<EntityData> entities;
 
@@ -27,6 +28,7 @@ public final class ChunkData {
         this.blocks = deepCopyBlocks(builder.blocks);
         this.lastModified = builder.lastModified;
         this.featuresPopulated = builder.featuresPopulated;
+        this.hasEntitiesGenerated = builder.hasEntitiesGenerated;
         this.waterMetadata = builder.waterMetadata != null ? new HashMap<>(builder.waterMetadata) : new HashMap<>();
         this.entities = builder.entities != null ? new ArrayList<>(builder.entities) : new ArrayList<>();
     }
@@ -37,6 +39,7 @@ public final class ChunkData {
     public BlockType[][][] getBlocks() { return deepCopyBlocks(blocks); }
     public LocalDateTime getLastModified() { return lastModified; }
     public boolean isFeaturesPopulated() { return featuresPopulated; }
+    public boolean hasEntitiesGenerated() { return hasEntitiesGenerated; }
     public Map<String, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
     public List<EntityData> getEntities() { return new ArrayList<>(entities); }
 
@@ -64,6 +67,7 @@ public final class ChunkData {
         private BlockType[][][] blocks;
         private LocalDateTime lastModified = LocalDateTime.now();
         private boolean featuresPopulated = false;
+        private boolean hasEntitiesGenerated = false;
         private Map<String, WaterBlockData> waterMetadata = new HashMap<>();
         private List<EntityData> entities = new ArrayList<>();
 
@@ -89,6 +93,11 @@ public final class ChunkData {
 
         public Builder featuresPopulated(boolean featuresPopulated) {
             this.featuresPopulated = featuresPopulated;
+            return this;
+        }
+
+        public Builder hasEntitiesGenerated(boolean hasEntitiesGenerated) {
+            this.hasEntitiesGenerated = hasEntitiesGenerated;
             return this;
         }
 
