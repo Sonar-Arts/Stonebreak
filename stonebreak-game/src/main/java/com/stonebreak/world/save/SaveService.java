@@ -117,12 +117,9 @@ public class SaveService implements AutoCloseable {
         }
 
         long now = System.currentTimeMillis();
-        long sessionMillis = now - lastAutoSaveTime;
-        WorldData updatedWorld = worldData.withAddedPlayTime(sessionMillis);
-        long startTime = System.currentTimeMillis();
 
         // Update world data with current play time and world time
-        long sessionTime = startTime - lastAutoSaveTime;
+        long sessionTime = now - lastAutoSaveTime;
         WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
 
         // Capture current world time from TimeOfDay system
@@ -289,12 +286,9 @@ public class SaveService implements AutoCloseable {
         }
 
         long started = System.currentTimeMillis();
-        long sessionMillis = started - lastAutoSaveTime;
-        WorldData updatedWorld = worldData.withAddedPlayTime(sessionMillis);
-        long startTime = System.currentTimeMillis();
 
         // Update world data with current play time and world time
-        long sessionTime = startTime - lastAutoSaveTime;
+        long sessionTime = started - lastAutoSaveTime;
         WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
 
         // Capture current world time from TimeOfDay system
