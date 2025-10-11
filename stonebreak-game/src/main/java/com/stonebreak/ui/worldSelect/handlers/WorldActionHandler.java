@@ -200,17 +200,17 @@ public class WorldActionHandler {
                 java.nio.file.Path worldDir = java.nio.file.Paths.get("worlds", worldName);
                 java.nio.file.Files.createDirectories(worldDir);
 
-                // Create regions directory (required by new save system)
-                java.nio.file.Path regionsDir = worldDir.resolve("regions");
-                java.nio.file.Files.createDirectories(regionsDir);
+                // Prepare chunk directory for new save system
+                java.nio.file.Path chunksDir = worldDir.resolve("chunks");
+                java.nio.file.Files.createDirectories(chunksDir);
 
                 // Save world data using the JsonWorldSerializer
                 com.stonebreak.world.save.serialization.JsonWorldSerializer serializer =
                     new com.stonebreak.world.save.serialization.JsonWorldSerializer();
 
-                java.nio.file.Path worldDataFile = worldDir.resolve("world.json");
                 byte[] jsonBytes = serializer.serialize(worldData);
-                java.nio.file.Files.write(worldDataFile, jsonBytes);
+                java.nio.file.Files.write(worldDir.resolve("world.json"), jsonBytes);
+                java.nio.file.Files.write(worldDir.resolve("metadata.json"), jsonBytes);
 
                 System.out.println("World created successfully: " + worldName);
                 return true;

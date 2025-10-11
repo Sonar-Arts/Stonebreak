@@ -21,9 +21,6 @@ module stonebreak.game {
     requires com.fasterxml.jackson.annotation;
     requires com.fasterxml.jackson.datatype.jsr310;
     
-    // LZ4 compression
-    requires org.lz4.java;
-
     // Java base modules
     requires java.desktop;
     requires java.management;
@@ -57,7 +54,6 @@ module stonebreak.game {
 
     // Open save system packages for Jackson serialization
     opens com.stonebreak.world.save.model to com.fasterxml.jackson.databind;
-    opens com.stonebreak.world.save.storage.binary to com.fasterxml.jackson.databind;
     opens com.stonebreak.world.save.repository to com.fasterxml.jackson.databind;
     opens com.stonebreak.world.save.serialization to com.fasterxml.jackson.databind;
 
