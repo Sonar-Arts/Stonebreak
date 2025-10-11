@@ -19,8 +19,15 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
+import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.save.SaveService;
+import com.stonebreak.world.save.model.WorldData;
+import com.stonebreak.world.save.model.PlayerData;
+import com.stonebreak.world.save.util.StateConverter;
+import org.joml.Vector3f;
 
 /**
  * Central class for accessing game state and resources.
@@ -52,6 +59,11 @@ public class Game {
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
+    private WorldSelectScreen worldSelectScreen; // World selection screen
+    private SaveService saveService; // World save/load system
+    private WorldData currentWorldData; // Current world metadata
+    private String currentWorldName; // Current world name for save system initialization
+    private long currentWorldSeed; // Current world seed for save system initialization
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     
     // Entity system components
@@ -98,26 +110,23 @@ public class Game {
         }
         return instance;
     }
-      /**     * Initializes game components.
-      */
-     public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+
+    /**
+     * Initializes core game components that don't require a world or player.
+     * This includes renderer, sound system, UI components, and basic systems.
+     */
+    public void initCoreComponents(Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
         this.window = window; // Store window handle for clipboard operations
-        this.world = world;
-        this.player = player;
         this.renderer = renderer;
         this.textureAtlas = textureAtlas; // Store TextureAtlas
         this.inputHandler = inputHandler; // Store InputHandler
-        
-        // Initialize mouse capture system
+
+        // Initialize mouse capture system (without camera - will be set when world is created)
         this.mouseCaptureManager = new MouseCaptureManager(window);
-        this.mouseCaptureManager.setCamera(player.getCamera());
-        
+
         this.pauseMenu = new PauseMenu();
         this.waterEffects = new WaterEffects(); // Initialize water effects
-        
-        // Initialize water simulation with any existing water blocks
-        this.waterEffects.detectExistingWater();
-        
+
         // Initialize sound system
         this.soundSystem = SoundSystem.getInstance();
         this.soundSystem.initialize();
@@ -125,80 +134,141 @@ public class Game {
         this.soundSystem.loadSound("sandwalk", "/sounds/SandWalk-001.wav");
         this.soundSystem.loadSound("woodwalk", "/sounds/WoodWalk.wav");
         this.soundSystem.loadSound("blockpickup", "/sounds/BlockPickup.wav");
-        
+
         // Apply settings to sound system
         Settings gameSettings = Settings.getInstance();
         this.soundSystem.setMasterVolume(gameSettings.getMasterVolume());
-        
+
         this.soundSystem.testBasicFunctionality(); // Test sound system
-        
-        // If sound loading failed, try alternative approaches
-        if (!this.soundSystem.isSoundLoaded("grasswalk")) {
-            System.err.println("First attempt failed, trying alternative loading methods...");
-            
-            // Try different variations
-            String[] pathVariations = {
-                "sounds/GrassWalk.wav",
-                "/GrassWalk.wav", 
-                "GrassWalk.wav"
-            };
-            
-            for (String path : pathVariations) {
-                System.out.println("Trying path: " + path);
-                this.soundSystem.loadSound("grasswalk", path);
-                if (this.soundSystem.isSoundLoaded("grasswalk")) {
-                    System.out.println("Success with path: " + path);
-                    break;
-                }
-            }
-        }
-        
-        // If sand walking sound loading failed, try alternative approaches
-        if (!this.soundSystem.isSoundLoaded("sandwalk")) {
-            System.err.println("Sand walk sound first attempt failed, trying alternative loading methods...");
-            
-            // Try different variations
-            String[] pathVariations = {
-                "sounds/SandWalk-001.wav",
-                "/SandWalk-001.wav", 
-                "SandWalk-001.wav"
-            };
-            
-            for (String path : pathVariations) {
-                System.out.println("Trying sand walk path: " + path);
-                this.soundSystem.loadSound("sandwalk", path);
-                if (this.soundSystem.isSoundLoaded("sandwalk")) {
-                    System.out.println("Success with sand walk path: " + path);
-                    break;
-                }
-            }
-        }
-        
-        // Initialize UI components (UI renderer is now managed by the main renderer)
+
+        // Initialize UI components that don't require world/player
         this.mainMenu = new MainMenu(this.renderer.getUIRenderer());
         this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
-        
+        this.worldSelectScreen = new WorldSelectScreen(this.renderer.getUIRenderer());
+
         // Initialize crosshair with settings
         initializeCrosshairSettings();
 
         // Initialize CraftingManager
         this.craftingManager = new CraftingManager();
 
-        // Remove or comment out the test "WOOD to DIRT" recipe
-        // if (BlockType.WOOD != null && BlockType.DIRT != null) {
-        //     List<List<ItemStack>> woodPattern = new ArrayList<>();
-        //     List<ItemStack> woodRow = new ArrayList<>();
-        //     woodRow.add(new ItemStack(BlockType.WOOD.getId(), 1));
-        //     woodPattern.add(woodRow);
-        //     this.craftingManager.registerRecipe(
-        //         new Recipe("dirt_from_wood", woodPattern, new ItemStack(BlockType.DIRT.getId(), 4))
-        //     );
-        //     System.out.println("Registered test recipe: 1 WOOD -> 4 DIRT");
-        // } else {
-        //     System.err.println("Could not create placeholder recipe: WOOD or DIRT BlockType not found.");
-        // }
+        // Add all the crafting recipes (same as before)
+        initializeCraftingRecipes();
 
+        // Initialize chat system
+        this.chatSystem = new ChatSystem();
+        this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
+
+        // Initialize sound emitter manager
+        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
+
+        // Initialize memory leak detector
+        this.memoryLeakDetector = MemoryLeakDetector.getInstance();
+        this.memoryLeakDetector.startMonitoring();
+        System.out.println("Memory leak detection started.");
+
+        // Initialize debug overlay
+        this.debugOverlay = new DebugOverlay();
+        System.out.println("Debug overlay initialized (F3 to toggle).");
+
+        // Initialize cow texture atlas
+        CowTextureAtlas.initialize();
+        System.out.println("Cow texture atlas initialized");
+
+        // Initialize MMS API early (before World creation)
+        // World will be null at this point, but that's okay - it will be set when World is created
+        com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, null);
+        System.out.println("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");
+
+        System.out.println("[STARTUP] Core components initialized (no world/player yet)");
+    }
+
+    /**
+     * Initializes components that require a world and player.
+     * This should be called when a world is created/loaded.
+     *
+     * NOTE: MmsAPI must be initialized BEFORE World is created (World constructor depends on it).
+     * NOTE: World reference is automatically set in MmsAPI during World construction via createMeshPipeline().
+     */
+    public void initWorldComponents(World world, Player player) {
+        this.world = world;
+        this.player = player;
+
+        // MmsAPI should already be initialized and have its world reference set
+        // (happens automatically in World constructor via createMeshPipeline)
+        if (!com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.isInitialized()) {
+            System.err.println("[MMS-API] WARNING: MmsAPI not initialized - this should not happen!");
+            // Emergency fallback
+            if (textureAtlas != null && world != null) {
+                com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(textureAtlas, world);
+                System.out.println("[MMS-API] Emergency initialization performed");
+            }
+        }
+
+        // Initialize save service if it exists but hasn't been initialized yet
+        if (saveService != null && currentWorldData != null) {
+            System.out.println("[SAVE-SYSTEM] Updating save service references during world component initialization");
+            saveService.initialize(currentWorldData, player, world);
+        }
+
+        // Set camera for mouse capture system
+        if (mouseCaptureManager != null && player != null) {
+            mouseCaptureManager.setCamera(player.getCamera());
+        }
+
+        // Initialize water simulation with any existing water blocks
+        if (waterEffects != null) {
+            waterEffects.detectExistingWater();
+        }
+
+        // Initialize entity system
+        this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
+        System.out.println("Entity system initialized - cows can now spawn!");
+
+        // Initialize InventoryScreen - requires Player, Renderer, TextureAtlas, and InputHandler
+        if (renderer.getFont() != null && textureAtlas != null) {
+            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
+            // Now that inventoryScreen is created, give the inventory a reference to it.
+            player.getInventory().setInventoryScreen(this.inventoryScreen);
+            // Trigger initial tooltip for the currently selected item
+            ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
+            if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
+                if (initialSelectedItem.getItem() instanceof BlockType blockType) {
+                    inventoryScreen.displayHotbarItemTooltip(blockType);
+                }
+            }
+        } else {
+            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
+        }
+
+        // Initialize WorkbenchScreen
+        if (this.renderer.getUIRenderer() != null) {
+            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
+        } else {
+            System.err.println("Failed to initialize WorkbenchScreen due to null components.");
+        }
+
+        // Initialize RecipeBookScreen
+        if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
+            this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
+        } else {
+            System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
+        }
+
+        // Initialize player sounds
+        if (soundSystem != null) {
+            soundSystem.initializePlayerSounds(world);
+            System.out.println("Player sound system initialized");
+        }
+
+        System.out.println("[WORLD-CREATION] World components initialized for new world");
+    }
+
+    /**
+     * Initializes all crafting recipes.
+     */
+    private void initializeCraftingRecipes() {
         // Recipe 1: Wood Planks
         // Input: 1 BlockType.WOOD -> Output: 4 BlockType.WOOD_PLANKS
         List<List<ItemStack>> woodToPlanksPattern = List.of(
@@ -457,41 +527,29 @@ public class Game {
         this.craftingManager.registerRecipe(elmWoodenBucketRecipe);
         System.out.println("Registered recipe: ELM_WOOD_PLANKS + STICK -> WOODEN_BUCKET");
 
-        // Initialize chat system
-        this.chatSystem = new ChatSystem();
-        this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow welcome message
+        System.out.println("All crafting recipes initialized");
+    }
 
-        // Initialize sound emitter manager
-        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
-        
-        // Initialize InventoryScreen - assumes Player, Renderer, TextureAtlas, and InputHandler are already initialized
-        if (renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
-            // Now that inventoryScreen is created, give the inventory a reference to it.
-            player.getInventory().setInventoryScreen(this.inventoryScreen);
-            // Trigger initial tooltip for the currently selected item (supports all item types)
-            ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
-            if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
-                inventoryScreen.displayHotbarItemTooltip(initialSelectedItem);
-            }
-
-        } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, TextureAtlas, InputHandler, or CraftingManager).");
-            // Handle error appropriately, maybe throw an exception or set inventoryScreen to a safe non-functional state
-        }
-
-        // Initialize WorkbenchScreen
-        if (this.renderer.getUIRenderer() != null) {
-            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
-        } else {
-            System.err.println("Failed to initialize WorkbenchScreen due to null components.");
-        }
+    /**
+     * Legacy initialization method for backward compatibility.
+     * This calls both initCoreComponents() and initWorldComponents().
+     */
+    public void init(World world, Player player, Renderer renderer, TextureAtlas textureAtlas, InputHandler inputHandler, long window) {
+        // Initialize core components first
+        initCoreComponents(renderer, textureAtlas, inputHandler, window);
 
         // Initialize RecipeBookScreen
         if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
             this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
         } else {
             System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
+        }
+
+        // Then initialize world-specific components
+        if (world != null && player != null) {
+            initWorldComponents(world, player);
+        } else {
+            System.out.println("[STARTUP] Skipping world component initialization (null world or player)");
         }
         
         // Initialize memory leak detector
@@ -518,6 +576,7 @@ public class Game {
         // Initialize player sounds
         this.soundSystem.initializePlayerSounds(world);
         System.out.println("Player sound system initialized");
+        System.out.println("[STARTUP] Game initialization completed");
     }
     
     /**
@@ -658,7 +717,7 @@ public class Game {
         if (soundEmitterManager != null) {
             soundEmitterManager.update(deltaTime);
         }
-        
+
         // Update world (processes chunk loading, mesh building, etc.)
         if (world != null) {
             worldUpdateExecutor.submit(() -> world.update(renderer));
@@ -722,6 +781,19 @@ public class Game {
      */
     public static float getDeltaTime() {
         return getInstance().deltaTime;
+    }
+
+    /**
+     * Sets the delta time for testing purposes only.
+     * This allows unit tests to simulate different frame times.
+     * WARNING: Only use this in unit tests!
+     *
+     * @param testDeltaTime Delta time to use for testing
+     */
+    public static void setDeltaTimeForTesting(float testDeltaTime) {
+        if (instance != null) {
+            instance.deltaTime = testDeltaTime;
+        }
     }
 
     /**
@@ -1099,7 +1171,32 @@ public class Game {
         if (entityManager != null) {
             entityManager.cleanup();
         }
-        
+
+        // Save current player state before cleanup
+        if (saveService != null) {
+            try {
+                System.out.println("Performing final save before shutdown...");
+
+                // Save current game state synchronously with timeout
+                java.util.concurrent.CompletableFuture<Void> saveOperation = saveService.saveAll();
+                saveOperation.get(5, java.util.concurrent.TimeUnit.SECONDS); // 5 second timeout
+
+                System.out.println("Final save completed successfully");
+            } catch (java.util.concurrent.TimeoutException e) {
+                System.err.println("Final save timed out after 5 seconds - proceeding with shutdown");
+            } catch (Exception e) {
+                System.err.println("Error during final save: " + e.getMessage());
+                // Continue with shutdown even if save fails
+            }
+
+            try {
+                System.out.println("Closing SaveService...");
+                saveService.close();
+            } catch (Exception e) {
+                System.err.println("Error closing SaveService: " + e.getMessage());
+            }
+        }
+
         // Shutdown world update executor with proper termination waiting
         System.out.println("Shutting down world update executor...");
         worldUpdateExecutor.shutdownNow();
@@ -1117,11 +1214,133 @@ public class Game {
         
         System.out.println("Game cleanup completed");
     }
-    
+
+    /**
+     * Resets the world state without fully cleaning up resources.
+     * Used when returning to main menu from gameplay.
+     */
+    public void resetWorld() {
+        System.out.println("========================================");
+        System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
+        System.out.println("========================================");
+
+        if (saveService != null) {
+            System.out.println("[WORLD-ISOLATION] Flushing saves before world reset");
+            saveService.flushSavesBlocking("world reset");
+        } else {
+            System.out.println("[WORLD-ISOLATION] No save system present during world reset");
+        }
+
+        // Stop auto-save to prevent further save operations during reset
+        if (saveService != null) {
+            try {
+                saveService.stopAutoSave();
+                System.out.println("[WORLD-ISOLATION] Stopped auto-save system for clean reset");
+            } catch (Exception e) {
+                System.err.println("[WORLD-ISOLATION] Error stopping auto-save: " + e.getMessage());
+            }
+        }
+
+        // Note: We do NOT reset player data here anymore, as it should be preserved
+        // for when the player returns to this world. Player data will be loaded
+        // fresh when starting a new world or loading an existing one.
+        System.out.println("[WORLD-ISOLATION] Player data preserved for world switching");
+
+        // Clear world data without shutting down critical systems
+        if (world != null) {
+            // If clearWorldData exists, use it; otherwise use a basic reset
+            try {
+                world.clearWorldData();
+                System.out.println("[WORLD-ISOLATION] World chunks and caches cleared");
+            } catch (Exception e) {
+                System.err.println("[WORLD-ISOLATION] Error clearing world data: " + e.getMessage());
+            }
+        } else {
+            System.out.println("[WORLD-ISOLATION] No world to clear");
+        }
+
+        // Stop and clean up entity system to prevent background activity
+        if (entityManager != null) {
+            try {
+                entityManager.cleanup();
+                System.out.println("[BACKGROUND-SYSTEMS] ✓ Stopped EntityManager - no more cows or entities running");
+            } catch (Exception e) {
+                System.err.println("[BACKGROUND-SYSTEMS] ✗ Error stopping EntityManager: " + e.getMessage());
+            }
+        } else {
+            System.out.println("[BACKGROUND-SYSTEMS] ⚠ No EntityManager to stop (unexpected)");
+        }
+
+        // Reset water effects system to clear persistent water simulation data
+        if (waterEffects != null) {
+            try {
+                waterEffects.detectExistingWater(); // This clears all water state
+                System.out.println("[BACKGROUND-SYSTEMS] ✓ Reset WaterEffects - cleared water simulation data");
+            } catch (Exception e) {
+                System.err.println("[BACKGROUND-SYSTEMS] ✗ Error resetting WaterEffects: " + e.getMessage());
+            }
+        } else {
+            System.out.println("[BACKGROUND-SYSTEMS] ⚠ No WaterEffects to reset (unexpected)");
+        }
+
+        // Clear game metadata and save system to prevent world data leakage
+        currentWorldName = null;
+        currentWorldSeed = 0;
+        currentWorldData = null;
+        saveService = null; // Clear save system reference so it gets reinitialized for next world
+        System.out.println("[WORLD-ISOLATION] ✓ Cleared game metadata and save system for world switching");
+
+        System.out.println("========================================");
+        System.out.println("[MAIN-MENU-TRANSITION] ✓ World reset completed - main menu is now clean!");
+        System.out.println("[MAIN-MENU-TRANSITION] No background systems should be running.");
+        System.out.println("========================================");
+    }
+
+    /**
+     * Creates a fresh World instance with the specified seed for complete world isolation.
+     *
+     * NOTE: MmsAPI should already be initialized in initCoreComponents().
+     */
+    private World createFreshWorldInstance(long seed) {
+        WorldConfiguration config = new WorldConfiguration();
+        return new World(config, seed);
+    }
+
+    /**
+     * Replaces the current World instance with a new one, ensuring all references are updated.
+     */
+    private void replaceWorldInstance(World newWorld) {
+        // Clean up old world if it exists
+        if (world != null) {
+            world.cleanup();
+        }
+
+        // Always create a fresh player for the new world to ensure world isolation
+        // The player's data will be loaded from save files specific to this world
+        Player newPlayer = new Player(newWorld);
+        System.out.println("[WORLD-ISOLATION] Created fresh player for new world to ensure inventory isolation");
+
+        // Initialize world components with new world and player
+        if (newWorld != null) {
+            initWorldComponents(newWorld, newPlayer);
+            System.out.println("[WORLD-ISOLATION] Initialized world components for new world");
+        }
+
+        System.out.println("[WORLD-ISOLATION] World instance replaced successfully");
+    }
+
     /**
      * Cleanup static resources that may have background threads.
      */
     private void cleanupStaticResources() {
+        try {
+            // Shutdown MMS API
+            System.out.println("Shutting down MMS API...");
+            com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.shutdown();
+        } catch (Exception e) {
+            System.err.println("Error shutting down MMS API: " + e.getMessage());
+        }
+
         try {
             // Shutdown ModelLoader async executor
             System.out.println("Shutting down ModelLoader executor...");
@@ -1129,7 +1348,7 @@ public class Game {
         } catch (Exception e) {
             System.err.println("Error shutting down ModelLoader: " + e.getMessage());
         }
-        
+
         try {
             // Shutdown CowTextureAtlas if it has any background resources
             System.out.println("Cleaning up CowTextureAtlas...");
@@ -1324,7 +1543,21 @@ public class Game {
     public LoadingScreen getLoadingScreen() {
         return loadingScreen;
     }
-    
+
+    /**
+     * Gets the world select screen.
+     */
+    public WorldSelectScreen getWorldSelectScreen() {
+        return worldSelectScreen;
+    }
+
+    /**
+     * Gets the world save system for manual save operations.
+     */
+    public SaveService getSaveService() {
+        return saveService;
+    }
+
     /**
      * Starts world generation with loading screen.
      * This method should be called when transitioning from main menu to game.
@@ -1333,12 +1566,60 @@ public class Game {
         if (loadingScreen != null) {
             loadingScreen.show(); // This sets state to LOADING
             System.out.println("Started world generation with loading screen");
-            
+
             // Trigger initial world generation in a separate thread
             new Thread(this::performInitialWorldGeneration).start();
         }
     }
-    
+
+    /**
+     * Starts world generation with loading screen for a specific named world.
+     * This method should be called when loading/creating a world from world selection.
+     *
+     * @param worldName The name of the world to load or create
+     * @param seed The seed for world generation
+     */
+    public void startWorldGeneration(String worldName, long seed) {
+        System.out.println("Starting world generation for: " + worldName + " with seed: " + seed);
+
+        // Persist and dispose of any previous save system before switching worlds
+        SaveService previousSaveService = this.saveService;
+        if (previousSaveService != null) {
+            try {
+                previousSaveService.stopAutoSave();
+                System.out.println("[SAVE-SYSTEM] Stopped auto-save on previous world");
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Error stopping auto-save before world switch: " + e.getMessage());
+            }
+
+            try {
+                System.out.println("[SAVE-SYSTEM] Flushing previous save service before switching worlds");
+                previousSaveService.flushSavesBlocking("world switch");
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Flush failed during world switch: " + e.getMessage());
+            }
+
+            try {
+                previousSaveService.close();
+            } catch (Exception e) {
+                System.err.println("[SAVE-SYSTEM] Error closing previous save service: " + e.getMessage());
+            }
+        }
+
+        // Initialize save system early to enable player data loading during generation
+        String worldPath = "worlds/" + worldName;
+        this.saveService = new SaveService(worldPath);
+        this.currentWorldName = worldName;
+        this.currentWorldSeed = seed;
+
+        if (loadingScreen != null) {
+            loadingScreen.show(); // This sets state to LOADING
+
+            // Trigger world loading/generation in a separate thread
+            new Thread(() -> performWorldLoadingOrGeneration(worldName, seed)).start();
+        }
+    }
+
     /**
      * Performs initial world generation with progress updates.
      * This runs in a background thread while the loading screen is displayed.
@@ -1355,18 +1636,76 @@ public class Game {
             
             // Generate initial chunks around spawn point (0, 0)
             if (world != null && player != null) {
-                // Set player position first
-                player.setPosition(0, 100, 0);
-                
-                // Generate chunks around spawn
-                int playerChunkX = 0;
-                int playerChunkZ = 0;
+                // Try to load existing player data before setting default position
+                org.joml.Vector3f playerPosition = new org.joml.Vector3f(0, 100, 0); // Default position
+
+                if (saveService != null) {
+                    try {
+                        // Create or load world metadata
+                        currentWorldData = WorldData.builder()
+                            .seed(currentWorldSeed)
+                            .worldName(currentWorldName)
+                            .build();
+
+                        // Initialize save system with game state
+                        saveService.initialize(currentWorldData, player, world);
+                        System.out.println("[SAVE-SYSTEM] ✓ Initialized save system for world '" + currentWorldName + "'");
+
+                        // Try to load existing player data
+                        SaveService.LoadResult loadResult = saveService.loadWorld().get();
+                        if (loadResult.isSuccess() && loadResult.getPlayerData() != null) {
+                            // Apply the loaded player state
+                            StateConverter.applyPlayerData(player, loadResult.getPlayerData());
+                            playerPosition = new org.joml.Vector3f(loadResult.getPlayerData().getPosition());
+                            System.out.println("[PLAYER-DATA] ✓ Loaded existing player data for world '" + currentWorldName + "': position=" +
+                                playerPosition.x + "," + playerPosition.y + "," + playerPosition.z);
+
+                            // Update current world data if loaded
+                            if (loadResult.getWorldData() != null) {
+                                currentWorldData = loadResult.getWorldData();
+
+                                // Initialize TimeOfDay with loaded world time
+                                long savedTimeTicks = currentWorldData.getWorldTimeTicks();
+                                timeOfDay = new TimeOfDay(savedTimeTicks);
+                                System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
+                            }
+                        } else {
+                            // No existing player data, give starting items and initialize time at noon
+                            player.giveStartingItems();
+                            timeOfDay = new TimeOfDay(TimeOfDay.NOON);
+                            System.out.println("[PLAYER-DATA] ✓ No existing player data found for world '" + currentWorldName + "' - treating as new world, giving starting items");
+                            System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon");
+                        }
+
+                        // Start auto-save
+                        saveService.startAutoSave();
+                    } catch (Exception e) {
+                        // Failed to initialize save system or load player data
+                        System.err.println("[SAVE-SYSTEM] ✗ CRITICAL ERROR: Save system initialization failed for world '" + currentWorldName + "'!");
+                        System.err.println("[SAVE-SYSTEM] Error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                        e.printStackTrace();
+
+                        player.giveStartingItems();
+                        System.out.println("[PLAYER-DATA] Save system failed, giving starting items as fallback: " + e.getMessage());
+                    }
+                } else {
+                    // No save system available, give starting items and use defaults
+                    player.giveStartingItems();
+                    // Initialize time at noon for new worlds
+                    timeOfDay = new TimeOfDay(TimeOfDay.NOON);
+                    System.out.println("[PLAYER-DATA] No save system available for world '" + currentWorldName + "', giving starting items");
+                    System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no save system)");
+                }
+
+                // Generate chunks around player position
+                int playerChunkX = (int) Math.floor(playerPosition.x / 16);
+                int playerChunkZ = (int) Math.floor(playerPosition.z / 16);
                 int renderDistance = 4; // Smaller initial area
-                
+
                 if (loadingScreen != null) {
                     loadingScreen.updateProgress("Generating Base Terrain Shape");
                 }
-                
+
                 // Generate chunks in expanding rings
                 long lastProgressUpdate = System.currentTimeMillis();
                 int chunksGenerated = 0;
@@ -1404,10 +1743,10 @@ public class Game {
                         }
                     }
                 }
-                
+
                 // Give time for all chunks to finish processing
                 Thread.sleep(500);
-                
+
                 // Complete world generation
                 completeWorldGeneration();
                 
@@ -1422,7 +1761,187 @@ public class Game {
             completeWorldGeneration();
         }
     }
-    
+
+    /**
+     * Performs world loading or generation with SaveService integration.
+     * This runs in a background thread while the loading screen is displayed.
+     *
+     * @param worldName The name of the world to load or create
+     * @param seed The seed for world generation
+     */
+    private void performWorldLoadingOrGeneration(String worldName, long seed) {
+        try {
+            // Use the save service initialized in startWorldGeneration
+            SaveService saveService = this.saveService;
+
+            if (saveService == null) {
+                System.err.println("[SAVE-SYSTEM] SaveService is null - creating new world");
+                createNewWorldWithGeneration(worldName, seed);
+                return;
+            }
+
+            // Check if world exists
+            java.io.File worldDir = new java.io.File("worlds", worldName);
+            boolean worldExists = worldDir.exists() && worldDir.isDirectory();
+
+            if (worldExists) {
+                // Load existing world
+                if (loadingScreen != null) {
+                    loadingScreen.updateProgress("Loading World: " + worldName);
+                }
+                System.out.println("Loading existing world: " + worldName);
+
+                saveService.loadWorld()
+                    .thenAccept(result -> {
+                        try {
+                            if (result.isSuccess() && result.getWorldData() != null) {
+                                WorldData worldData = result.getWorldData();
+
+                                // Create fresh World instance with correct seed for complete isolation
+                                World newWorld = createFreshWorldInstance(worldData.getSeed());
+                                replaceWorldInstance(newWorld);
+                                System.out.println("[WORLD-ISOLATION] Created fresh World instance for loading with seed: " + worldData.getSeed());
+
+                                // Apply spawn position to the new world
+                                if (worldData.getSpawnPosition() != null) {
+                                    newWorld.setSpawnPosition(worldData.getSpawnPosition());
+                                }
+
+                                // Update seed for save system initialization
+                                this.currentWorldSeed = worldData.getSeed();
+                                this.currentWorldData = worldData;
+
+                                // Reinitialize save system with fresh world/player instances after replaceWorldInstance
+                                // IMPORTANT: Use this.player and this.world (not captured variables) because replaceWorldInstance created new instances
+                                System.out.println("[SAVE-SYSTEM] Reinitializing save system after world replacement for existing world");
+                                saveService.initialize(worldData, this.player, this.world);
+
+                                // Initialize TimeOfDay with loaded world time
+                                long savedTimeTicks = worldData.getWorldTimeTicks();
+                                this.timeOfDay = new TimeOfDay(savedTimeTicks);
+                                System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + this.timeOfDay.getTimeString() + ")");
+
+                                // Apply player state if available
+                                if (result.getPlayerData() != null) {
+                                    StateConverter.applyPlayerData(this.player, result.getPlayerData());
+                                    System.out.println("[PLAYER-DATA] Applied loaded player data to position: " +
+                                        this.player.getPosition().x + ", " + this.player.getPosition().y + ", " + this.player.getPosition().z);
+
+                                    // Generate initial chunks around loaded player position
+                                    Vector3f playerPos = result.getPlayerData().getPosition();
+                                    int playerChunkX = (int) Math.floor(playerPos.x / 16);
+                                    int playerChunkZ = (int) Math.floor(playerPos.z / 16);
+                                    int renderDistance = 4;
+
+                                    if (loadingScreen != null) {
+                                        loadingScreen.updateProgress("Loading chunks around player...");
+                                    }
+
+                                    // Generate chunks in expanding rings around player
+                                    for (int ring = 0; ring <= renderDistance; ring++) {
+                                        for (int x = playerChunkX - ring; x <= playerChunkX + ring; x++) {
+                                            for (int z = playerChunkZ - ring; z <= playerChunkZ + ring; z++) {
+                                                if (ring == 0 || x == playerChunkX - ring || x == playerChunkX + ring ||
+                                                    z == playerChunkZ - ring || z == playerChunkZ + ring) {
+                                                    this.world.getChunkAt(x, z); // Load or generate chunk
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    try {
+                                        Thread.sleep(300); // Brief wait for chunks to process
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                } else {
+                                    this.player.giveStartingItems();
+                                    // Initialize time at noon for new worlds without player data
+                                    if (this.timeOfDay == null) {
+                                        this.timeOfDay = new TimeOfDay(TimeOfDay.NOON);
+                                        System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no player data)");
+                                    }
+                                    System.out.println("[PLAYER-DATA] No player data found - giving starting items");
+                                }
+
+                                // Start auto-save
+                                saveService.startAutoSave();
+
+                                System.out.println("Successfully loaded complete world state for: " + worldName);
+                            } else {
+                                System.out.println("World load incomplete or invalid; generating new world.");
+                                createNewWorldWithGeneration(worldName, seed);
+                                return; // performInitialWorldGeneration handles completion
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Error applying loaded world state: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    })
+                    .exceptionally(throwable -> {
+                        System.err.println("Failed to load world: " + worldName + " - " + throwable.getMessage());
+                        if (loadingScreen != null) {
+                            loadingScreen.updateProgress("Load failed - generating new world...");
+                        }
+                        createNewWorldWithGeneration(worldName, seed);
+                        return null;
+                    })
+                    .thenRun(this::completeWorldGeneration);
+            } else {
+                // Create new world (performInitialWorldGeneration will call completeWorldGeneration)
+                createNewWorldWithGeneration(worldName, seed);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error during world loading/generation: " + e.getMessage());
+            e.printStackTrace();
+
+            if (loadingScreen != null) {
+                loadingScreen.updateProgress("Error occurred - falling back to default generation");
+            }
+
+            // Fall back to basic world generation
+            try {
+                Thread.sleep(1000); // Brief pause to show error message
+                performInitialWorldGeneration();
+            } catch (Exception fallbackError) {
+                System.err.println("Fallback generation also failed: " + fallbackError.getMessage());
+                completeWorldGeneration(); // Complete anyway to avoid being stuck
+            }
+        }
+    }
+
+    /**
+     * Creates a new world with specified name and seed, then generates initial terrain.
+     *
+     * @param worldName The name of the new world
+     * @param seed The seed for world generation
+     */
+    private void createNewWorldWithGeneration(String worldName, long seed) {
+        try {
+            if (loadingScreen != null) {
+                loadingScreen.updateProgress("Creating New World: " + worldName);
+            }
+            System.out.println("Creating new world: " + worldName + " with seed: " + seed);
+
+            // Create fresh World instance to ensure complete isolation
+            World newWorld = createFreshWorldInstance(seed);
+            replaceWorldInstance(newWorld);
+            System.out.println("[WORLD-ISOLATION] Created fresh World instance with seed: " + seed);
+
+            // Note: Player position and inventory will be set in performInitialWorldGeneration()
+            // based on existing save data or defaults if no save data exists
+
+            // Generate initial chunks around spawn
+            performInitialWorldGeneration();
+
+        } catch (Exception e) {
+            System.err.println("Error creating new world: " + e.getMessage());
+            e.printStackTrace();
+            throw e; // Re-throw to be handled by calling method
+        }
+    }
+
     /**
      * Completes world generation and transitions to playing.
      * This method should be called when initial world generation is complete.
@@ -1430,11 +1949,21 @@ public class Game {
     public void completeWorldGeneration() {
         if (loadingScreen != null) {
             loadingScreen.hide(); // This sets state to PLAYING
-            
+
             // Force mouse capture update after loading screen completion
             if (mouseCaptureManager != null) {
                 mouseCaptureManager.forceUpdate();
             }
+        }
+
+        // Save system was already initialized during world generation for player data loading
+        // No need to reinitialize here
+        if (saveService != null && currentWorldData != null) {
+            System.out.println("[SAVE-SYSTEM] ✓ Save system is working properly after world generation");
+        } else {
+            System.err.println("[SAVE-SYSTEM] ✗ CRITICAL: Save system is NOT working after world generation!");
+            System.err.println("[SAVE-SYSTEM] saveService = " + (saveService != null ? "not null" : "NULL"));
+            System.err.println("[SAVE-SYSTEM] currentWorldData = " + (currentWorldData != null ? "not null" : "NULL"));
         }
     }
 }

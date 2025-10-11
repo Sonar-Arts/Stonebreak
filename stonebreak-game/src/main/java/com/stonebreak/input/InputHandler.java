@@ -2,6 +2,8 @@ package com.stonebreak.input;
 
 import java.util.Arrays;
 
+import com.stonebreak.ui.*;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
@@ -21,12 +23,15 @@ import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 import com.stonebreak.util.MemoryProfiler;
+import com.stonebreak.world.World;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F7;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F8;
 
 /**
  * Handles player input for movement and interaction.
@@ -57,7 +62,9 @@ public class InputHandler {
     private boolean f4KeyPressed = false; // Added for memory leak analysis
     private boolean f5KeyPressed = false; // Added for detailed memory profiling
     private boolean f6KeyPressed = false; // Added for test cow spawning
-    
+    private boolean f7KeyPressed = false; // Added for manual save
+    private boolean f8KeyPressed = false; // Added for save system diagnostic
+
     // Cached objects to avoid allocations
     private final Vector2f cachedMousePosition = new Vector2f();
     
@@ -82,10 +89,7 @@ public class InputHandler {
             // If not, Main.java needs to be modified to call:
             // Game.getInstance().getInputHandler().processMouseButton(button, action, mods);
             
-            // Setup scroll callback for block selection
-            glfwSetScrollCallback(window, (win, xoffset, yoffset) -> {
-                handleScroll(yoffset);
-            });
+            // Note: Scroll callback is now handled in Main.java to route to appropriate handlers
         } catch (Exception e) {
             System.err.println("Error setting up input handlers: " + e.getMessage());
         }
@@ -283,7 +287,7 @@ public class InputHandler {
                 Game.getInstance().toggleInventoryScreen();
                 return;
             }
-            
+
             // Don't open inventory if chat is open
             ChatSystem chatSystem = Game.getInstance().getChatSystem();
             if (chatSystem != null && chatSystem.isOpen()) {
@@ -301,7 +305,7 @@ public class InputHandler {
             if (recipeScreen != null && recipeScreen.isVisible()) {
                 return;
             }
-            
+
             Game.getInstance().toggleInventoryScreen();
             // Cursor state is handled by Game.toggleInventoryScreen()
         } else if (!isInventoryKeyPressed) {
@@ -447,8 +451,119 @@ public class InputHandler {
         } else if (!isF6Pressed) {
             f6KeyPressed = false;
         }
+
+        // F7 - Manual save
+        boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
+        if (isF7Pressed && !f7KeyPressed) {
+            f7KeyPressed = true;
+
+            Game game = Game.getInstance();
+            if (game != null) {
+                com.stonebreak.world.save.SaveService saveService = game.getSaveService();
+                ChatSystem chatSystem = game.getChatSystem();
+
+                if (saveService != null) {
+                    try {
+                        System.out.println("[MANUAL-SAVE] Starting manual save...");
+
+                        // Show visual feedback in chat
+                        if (chatSystem != null) {
+                            chatSystem.addMessage("Saving world...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                        }
+
+                        saveService.saveAll()
+                            .thenRun(() -> {
+                                System.out.println("[MANUAL-SAVE] Manual save completed successfully");
+                                if (chatSystem != null) {
+                                    chatSystem.addMessage("World saved successfully!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                                }
+                            })
+                            .exceptionally(throwable -> {
+                                System.err.println("[MANUAL-SAVE] Manual save failed: " + throwable.getMessage());
+                                if (chatSystem != null) {
+                                    chatSystem.addMessage("Save failed: " + throwable.getMessage(), new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                                }
+                                return null;
+                            });
+                    } catch (Exception e) {
+                        System.err.println("[MANUAL-SAVE] Error during manual save: " + e.getMessage());
+                        e.printStackTrace();
+                        if (chatSystem != null) {
+                            chatSystem.addMessage("Save error: " + e.getMessage(), new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                        }
+                    }
+                } else {
+                    System.err.println("[MANUAL-SAVE] Save system not available - cannot save");
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Save system not available", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
+                }
+            } else {
+                System.err.println("[MANUAL-SAVE] Game instance is null");
+            }
+        } else if (!isF7Pressed) {
+            f7KeyPressed = false;
+        }
+
+        // F8 - Save System Diagnostic
+        boolean isF8Pressed = glfwGetKey(window, GLFW_KEY_F8) == GLFW_PRESS;
+        if (isF8Pressed && !f8KeyPressed) {
+            f8KeyPressed = true;
+
+            Game game = Game.getInstance();
+            if (game != null) {
+                Player player = game.getPlayer();
+                ChatSystem chatSystem = game.getChatSystem();
+
+                if (player != null) {
+                    // Get player's current position
+                    Vector3f pos = player.getPosition();
+                    int worldX = (int) Math.floor(pos.x);
+                    int worldY = (int) Math.floor(pos.y);
+                    int worldZ = (int) Math.floor(pos.z);
+
+                    int chunkX = Math.floorDiv(worldX, 16);
+                    int chunkZ = Math.floorDiv(worldZ, 16);
+
+                    System.out.println("\n[F8-DIAGNOSTIC] Running save system diagnostic at player position...");
+                    System.out.println("[F8-DIAGNOSTIC] Player world pos: (" + worldX + ", " + worldY + ", " + worldZ + ")");
+                    System.out.println("[F8-DIAGNOSTIC] Chunk coords: (" + chunkX + ", " + chunkZ + ")");
+
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Running save diagnostic...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
+                    }
+
+                    // Run quick diagnostic
+                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.quickDiagnostic();
+
+                    // Get current world name from save service
+                    String worldName = "unknown";
+                    var saveService = game.getSaveService();
+                    if (saveService != null) {
+                        String worldPath = saveService.getWorldPath();
+                        if (worldPath != null && worldPath.startsWith("worlds/")) {
+                            worldName = worldPath.substring(7); // Remove "worlds/" prefix
+                        }
+                    }
+
+                    // Run comprehensive chunk diagnostic for current chunk
+                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
+
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Diagnostic complete - check console", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
+                    }
+                } else {
+                    System.out.println("[F8-DIAGNOSTIC] Player is null");
+                    if (chatSystem != null) {
+                        chatSystem.addMessage("Diagnostic failed - no player", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
+                    }
+                }
+            }
+        } else if (!isF8Pressed) {
+            f8KeyPressed = false;
+        }
     }
- 
+
 
     /**
      * Called by GLFW's mouse button callback (likely from Main.java).
@@ -549,6 +664,8 @@ public class InputHandler {
                     }
                     // Check quit button
                     else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, uiRenderer, Game.getWindowWidth(), Game.getWindowHeight())) {
+                        // Clean up world state before returning to main menu
+                        Game.getInstance().resetWorld();
                         // Return to main menu
                         Game.getInstance().setState(GameState.MAIN_MENU);
                         Game.getInstance().getPauseMenu().setVisible(false);
@@ -595,7 +712,7 @@ public class InputHandler {
     // Renamed from handleMouseClick to avoid confusion, as this is the GLFW callback receiver
     // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
 
-    private void handleScroll(double yOffset) {
+    public void handleScroll(double yOffset) {
         // Store scroll offset for UI screens that need it (like RecipeBookScreen)
         this.scrollYOffset = yOffset;
 
@@ -817,6 +934,13 @@ public class InputHandler {
      * Handle character input for chat and recipe book search
      */
     public void handleCharacterInput(char character) {
+        // Handle world select screen input FIRST - highest priority for input fields
+        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
+        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+            worldSelectScreen.handleCharacterInput(character);
+            return;
+        }
+
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatSystem.handleCharInput(character);
@@ -834,7 +958,14 @@ public class InputHandler {
     /**
      * Handle keyboard input for chat and recipe book (backspace, enter, etc.)
      */
-    public void handleKeyInput(int key, int action) {
+    public void handleKeyInput(int key, int action, int mods) {
+        // Handle world select screen input FIRST - highest priority for input fields
+        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
+        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+            worldSelectScreen.handleKeyInput(key, action, mods);
+            return;
+        }
+
         ChatSystem chatSystem = Game.getInstance().getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             // When chat is open, only process chat-related keys
@@ -882,7 +1013,7 @@ public class InputHandler {
             }
         }
         
-        // If chat and recipe book are not handling input, allow normal input handling to continue
+        // If chat, world select, and recipe book are not handling input, allow normal input handling to continue
     }
 
     /**

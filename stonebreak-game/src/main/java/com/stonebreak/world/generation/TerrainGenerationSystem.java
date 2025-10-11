@@ -3,13 +3,13 @@ package com.stonebreak.world.generation;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.util.SplineInterpolator;
-import com.stonebreak.world.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
-import com.stonebreak.world.features.TreeGenerator;
 import com.stonebreak.world.generation.mobs.MobGenerator;
+import com.stonebreak.world.DeterministicRandom;
 
 import java.util.Random;
 
@@ -23,20 +23,26 @@ public class TerrainGenerationSystem {
     
     private final long seed;
     private final Random random;
+    private final Random animalRandom;
+    private final DeterministicRandom deterministicRandom;
     private final NoiseGenerator terrainNoise;
     private final NoiseGenerator temperatureNoise;
     private final NoiseGenerator continentalnessNoise;
     private final SplineInterpolator terrainSpline;
     private final Object randomLock = new Object();
+    private final Object animalRandomLock = new Object();
+    private final Object treeRandomLock = new Object();
     
     public TerrainGenerationSystem(long seed) {
         this.seed = seed;
-        this.random = new Random(seed);
+        this.random = new Random(seed); // Deterministic random for terrain features
+        this.animalRandom = new Random(); // Use current time for truly random animal spawning
+        this.deterministicRandom = new DeterministicRandom(seed);
         this.terrainNoise = new NoiseGenerator(seed);
         this.temperatureNoise = new NoiseGenerator(seed + 1);
         this.continentalnessNoise = new NoiseGenerator(seed + 2);
         this.terrainSpline = new SplineInterpolator();
-        
+
         initializeTerrainSpline();
     }
     
@@ -116,20 +122,7 @@ public class TerrainGenerationSystem {
             }
         }
     }
-    
-    /**
-     * Gets the random instance for synchronized access.
-     */
-    public Random getRandom() {
-        return random;
-    }
-    
-    /**
-     * Gets the random lock for synchronized operations.
-     */
-    public Object getRandomLock() {
-        return randomLock;
-    }
+
     
     /**
      * Gets the world seed.
@@ -137,7 +130,21 @@ public class TerrainGenerationSystem {
     public long getSeed() {
         return seed;
     }
-    
+
+    /**
+     * Gets the random instance for animal spawning (truly random, not deterministic).
+     */
+    public Random getAnimalRandom() {
+        return animalRandom;
+    }
+
+    /**
+     * Gets the random lock for animal spawning synchronization.
+     */
+    public Object getAnimalRandomLock() {
+        return animalRandomLock;
+    }
+
     /**
      * Updates loading progress during world generation.
      */
@@ -149,41 +156,44 @@ public class TerrainGenerationSystem {
     }
     
     /**
-     * Generates only the bare terrain for a new chunk (no features like ores or trees).
-     * Uses chunk.setBlock() for local block placement.
+     * Generates terrain-only chunk (no features like ores or trees yet).
+     * Features are populated separately after the chunk is registered in the chunk store
+     * to avoid recursive chunk generation when features span multiple chunks.
+     * Uses chunk.setBlock() which internally uses CCO API for block operations.
+     * Mesh generation happens automatically via CCO dirty tracking when chunk is rendered.
      */
-    public Chunk generateBareChunk(int chunkX, int chunkZ) {
+    public Chunk generateTerrainOnly(int chunkX, int chunkZ) {
         updateLoadingProgress("Generating Base Terrain Shape");
         Chunk chunk = new Chunk(chunkX, chunkZ);
-        
-        // Generate terrain
+
+        // Generate terrain - chunk.setBlock() uses CCO BlockWriter internally
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                 // Calculate absolute world coordinates
                 int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
                 int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
-                
+
                 // Generate height map using noise
                 int height = generateTerrainHeight(worldX, worldZ);
-                
+
                 // Update progress for biome determination
                 if (x == 0 && z == 0) {
                     updateLoadingProgress("Determining Biomes");
                 }
                 BiomeType biome = getBiomeType(worldX, worldZ);
-                
+
                 // Generate blocks based on height and biome
                 if (x == 8 && z == 8) { // Update progress mid-chunk
                     updateLoadingProgress("Applying Biome Materials");
                 }
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     BlockType blockType;
-                    
+
                     if (y == 0) {
                         blockType = BlockType.BEDROCK;
                     } else if (y < height - 4) {
                         // Deeper layers - biome can influence stone type
-                        if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 && random.nextFloat() < 0.6f) {
+                        if (biome == BiomeType.RED_SAND_DESERT && y < height - 10 && deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "magma", 0.6f)) {
                             blockType = BlockType.MAGMA; // More magma deeper in volcanic areas
                         } else {
                             blockType = BlockType.STONE;
@@ -216,18 +226,25 @@ public class TerrainGenerationSystem {
                     } else {
                         blockType = BlockType.AIR;
                     }
-                    chunk.setBlock(x, y, z, blockType); // Local placement
+                    chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
                 }
-                // Trees and other features will be generated in populateChunkWithFeatures
             }
         }
-        chunk.setFeaturesPopulated(false); // Explicitly mark as not populated
+
+        // Features will be populated after chunk registration to avoid recursion
+        chunk.setFeaturesPopulated(false);
+
+        // Mesh generation happens automatically via CCO dirty tracking when chunk is rendered
         return chunk;
     }
 
     /**
      * Populates an existing chunk with features like ores and trees.
-     * Uses world.setBlockAt() for global block placement.
+     * Uses world.setBlockAt() which internally uses CCO API for global block placement.
+     * Mesh regeneration happens automatically via CCO dirty tracking.
+     *
+     * IMPORTANT: This method assumes required neighbor chunks exist (at least terrain generated).
+     * WorldChunkStore ensures this before calling this method.
      */
     public void populateChunkWithFeatures(World world, Chunk chunk, SnowLayerManager snowLayerManager) {
         if (chunk == null || chunk.areFeaturesPopulated()) {
@@ -235,9 +252,16 @@ public class TerrainGenerationSystem {
         }
 
         updateLoadingProgress("Adding Surface Decorations & Details");
-        
+
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
+
+        // Verify required neighbors exist (defensive check)
+        if (!verifyNeighborsExist(world, chunkX, chunkZ)) {
+            System.err.println("WARNING: populateChunkWithFeatures called before neighbors ready for chunk (" +
+                chunkX + ", " + chunkZ + "). Skipping feature population.");
+            return;
+        }
 
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
@@ -265,22 +289,18 @@ public class TerrainGenerationSystem {
                     BlockType oreType = null;
 
                     if (currentBlock == BlockType.STONE) {
-                        synchronized (randomLock) {
-                            if (random.nextFloat() < 0.015) { // Increased coal slightly
-                                oreType = BlockType.COAL_ORE;
-                            } else if (random.nextFloat() < 0.008 && y < 50) { // Increased iron slightly, wider range
-                                oreType = BlockType.IRON_ORE;
-                            }
+                        if (deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "coal_ore", 0.015f)) { // Increased coal slightly
+                            oreType = BlockType.COAL_ORE;
+                        } else if (deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "iron_ore", 0.008f) && y < 50) { // Increased iron slightly, wider range
+                            oreType = BlockType.IRON_ORE;
                         }
                     } else if (biome == BiomeType.RED_SAND_DESERT && (currentBlock == BlockType.RED_SAND || currentBlock == BlockType.STONE || currentBlock == BlockType.MAGMA) && y > 20 && y < surfaceHeight - 5) {
                         // Crystal generation in Volcanic biomes, embedded in Obsidian, Stone or Magma
-                        synchronized (randomLock) {
-                            if (random.nextFloat() < 0.02) { // Chance for Crystal
-                                oreType = BlockType.CRYSTAL;
-                            }
+                        if (deterministicRandom.shouldGenerate3D(worldX, y, worldZ, "crystal", 0.02f)) { // Chance for Crystal
+                            oreType = BlockType.CRYSTAL;
                         }
                     }
-                    
+
                     if (oreType != null) {
                         world.setBlockAt(worldX, y, worldZ, oreType);
                     }
@@ -289,20 +309,12 @@ public class TerrainGenerationSystem {
                 // Generate Trees (in PLAINS and SNOWY_PLAINS biomes)
                 if (biome == BiomeType.PLAINS) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS) { // Ensure tree spawns on grass
-                        float treeChance;
-                        synchronized (randomLock) {
-                            treeChance = random.nextFloat();
-                        }
-                        
-                        if (treeChance < 0.01 && surfaceHeight > 64) { // 1% total tree chance
+                        if (deterministicRandom.shouldGenerate(worldX, worldZ, "tree", 0.01f) && surfaceHeight > 64) { // 1% total tree chance
                             // Determine tree type: 60% regular oak, 40% elm trees
-                            boolean shouldGenerateElm;
-                            synchronized (randomLock) {
-                                shouldGenerateElm = random.nextFloat() < 0.4f; // 40% chance for elm
-                            }
-                            
+                            boolean shouldGenerateElm = deterministicRandom.shouldGenerate(worldX, worldZ, "tree_type", 0.4f); // 40% chance for elm
+
                             if (shouldGenerateElm) {
-                                TreeGenerator.generateElmTree(world, chunk, x, surfaceHeight, z, random, randomLock);
+                                TreeGenerator.generateElmTree(world, chunk, x, surfaceHeight, z, deterministicRandom.getRandomForPosition(worldX, worldZ, "elm_tree"), treeRandomLock);
                             } else {
                                 TreeGenerator.generateTree(world, chunk, x, surfaceHeight, z);
                             }
@@ -310,11 +322,7 @@ public class TerrainGenerationSystem {
                     }
                 } else if (biome == BiomeType.SNOWY_PLAINS) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) { // Pine trees spawn on snowy dirt
-                        boolean shouldGeneratePineTree;
-                        synchronized (randomLock) {
-                            shouldGeneratePineTree = (random.nextFloat() < 0.015 && surfaceHeight > 64); // Slightly higher chance for pine trees
-                        }
-                        if (shouldGeneratePineTree) {
+                        if (deterministicRandom.shouldGenerate(worldX, worldZ, "pine_tree", 0.015f) && surfaceHeight > 64) { // Slightly higher chance for pine trees
                             TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
                         }
                     }
@@ -322,17 +330,10 @@ public class TerrainGenerationSystem {
                 
                 // Generate Flowers on grass surfaces in PLAINS biome
                 if (biome == BiomeType.PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS && 
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRASS &&
                         chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
-                        boolean shouldGenerateFlower;
-                        synchronized (randomLock) {
-                            shouldGenerateFlower = random.nextFloat() < 0.08; // 8% chance for flowers
-                        }
-                        if (shouldGenerateFlower) {
-                            BlockType flowerType;
-                            synchronized (randomLock) {
-                                flowerType = random.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION;
-                            }
+                        if (deterministicRandom.shouldGenerate(worldX, worldZ, "flower", 0.08f)) { // 8% chance for flowers
+                            BlockType flowerType = deterministicRandom.getBoolean(worldX, worldZ, "flower_type") ? BlockType.ROSE : BlockType.DANDELION;
                             world.setBlockAt(worldX, surfaceHeight, worldZ, flowerType);
                         }
                     }
@@ -341,23 +342,16 @@ public class TerrainGenerationSystem {
                 // Generate Gravel patches on sand surfaces in DESERT biome
                 if (biome == BiomeType.DESERT && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SAND) {
-                        boolean shouldGenerateGravel;
-                        synchronized (randomLock) {
-                            shouldGenerateGravel = random.nextFloat() < 0.01; // 1% chance for gravel patches
-                        }
-                        if (shouldGenerateGravel) {
+                        if (deterministicRandom.shouldGenerate(worldX, worldZ, "gravel_patch", 0.01f)) { // 1% chance for gravel patches
                             // Create small gravel patches (2x2 or 3x3)
-                            int patchSize;
-                            synchronized (randomLock) {
-                                patchSize = random.nextBoolean() ? 2 : 3; // Random patch size
-                            }
-                            
+                            int patchSize = deterministicRandom.getBoolean(worldX, worldZ, "gravel_patch_size") ? 2 : 3; // Random patch size
+
                             for (int dx = 0; dx < patchSize; dx++) {
                                 for (int dz = 0; dz < patchSize; dz++) {
                                     int patchWorldX = worldX + dx - patchSize/2;
                                     int patchWorldZ = worldZ + dz - patchSize/2;
                                     int patchY = generateTerrainHeight(patchWorldX, patchWorldZ) - 1;
-                                    
+
                                     // Only place gravel if the spot is sand
                                     if (world.getBlockAt(patchWorldX, patchY, patchWorldZ) == BlockType.SAND) {
                                         world.setBlockAt(patchWorldX, patchY, patchWorldZ, BlockType.GRAVEL);
@@ -370,27 +364,21 @@ public class TerrainGenerationSystem {
                 
                 // Generate Ice patches and Snow layers in SNOWY_PLAINS biome
                 if (biome == BiomeType.SNOWY_PLAINS && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
-                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT && 
+                    if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT &&
                         chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
-                        float featureChance;
-                        synchronized (randomLock) {
-                            featureChance = random.nextFloat();
-                        }
-                        
+                        float featureChance = deterministicRandom.getFloat(worldX, worldZ, "snow_ice_feature");
+
                         if (featureChance < 0.03) { // 3% chance for ice patches
                             world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.ICE);
                         } else if (featureChance < 0.08) { // Additional 5% chance for snow layers
                             world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
                             // Set initial snow layer count (1-3 layers randomly)
-                            int layers;
-                            synchronized (randomLock) {
-                                layers = 1 + random.nextInt(3); // 1, 2, or 3 layers
-                            }
+                            int layers = 1 + deterministicRandom.getInt(worldX, worldZ, "snow_layers", 3); // 1, 2, or 3 layers
                             snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
                         }
                     }
                 }
-                
+
                 // Generate Clay patches in RED_SAND_DESERT biome
                 if (biome == BiomeType.RED_SAND_DESERT && surfaceHeight > 64 && surfaceHeight < WORLD_HEIGHT) {
                     if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.RED_SAND) {
@@ -398,7 +386,7 @@ public class TerrainGenerationSystem {
                         synchronized (randomLock) {
                             clayChance = random.nextFloat();
                         }
-                        
+
                         if (clayChance < 0.008) { // 0.8% chance for clay patches (much rarer)
                             // Create organic-looking clay patches
                             int centerX = worldX;
@@ -407,16 +395,16 @@ public class TerrainGenerationSystem {
                             synchronized (randomLock) {
                                 radius = 1 + random.nextInt(2); // Radius 1-2 blocks
                             }
-                            
+
                             // Generate circular/organic patch with some randomness
                             for (int dx = -radius; dx <= radius; dx++) {
                                 for (int dz = -radius; dz <= radius; dz++) {
                                     int patchWorldX = centerX + dx;
                                     int patchWorldZ = centerZ + dz;
-                                    
+
                                     // Calculate distance from center
                                     double distance = Math.sqrt(dx * dx + dz * dz);
-                                    
+
                                     // Only place clay within radius with some randomness for organic shape
                                     if (distance <= radius) {
                                         float placeChance;
@@ -425,7 +413,7 @@ public class TerrainGenerationSystem {
                                             placeChance = 1.0f - (float)(distance / radius) * 0.4f;
                                             if (random.nextFloat() < placeChance) {
                                                 int patchY = generateTerrainHeight(patchWorldX, patchWorldZ) - 1;
-                                                
+
                                                 // Only place clay if the spot is red sand
                                                 if (world.getBlockAt(patchWorldX, patchY, patchWorldZ) == BlockType.RED_SAND) {
                                                     world.setBlockAt(patchWorldX, patchY, patchWorldZ, BlockType.CLAY);
@@ -444,8 +432,25 @@ public class TerrainGenerationSystem {
         
         // Process mob spawning for this chunk
         BiomeType chunkBiome = getBiomeType(chunkX * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2, chunkZ * WorldConfiguration.CHUNK_SIZE + WorldConfiguration.CHUNK_SIZE / 2);
-        MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, random, randomLock);
+        MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, animalRandom, animalRandomLock);
 
+        // Mesh regeneration happens automatically via CCO dirty tracking when chunk is rendered
         chunk.setFeaturesPopulated(true);
+    }
+
+    /**
+     * Verifies that required neighbor chunks exist for safe feature population.
+     * Follows Minecraft's pattern: requires chunks at (x+1, z), (x, z+1), (x+1, z+1).
+     *
+     * @param world The world to check
+     * @param chunkX Current chunk X coordinate
+     * @param chunkZ Current chunk Z coordinate
+     * @return true if all required neighbors exist
+     */
+    private boolean verifyNeighborsExist(World world, int chunkX, int chunkZ) {
+        // Check required neighbors (Minecraft-style dependency)
+        return world.hasChunkAt(chunkX + 1, chunkZ) &&      // East
+               world.hasChunkAt(chunkX, chunkZ + 1) &&      // South
+               world.hasChunkAt(chunkX + 1, chunkZ + 1);    // Southeast
     }
 }

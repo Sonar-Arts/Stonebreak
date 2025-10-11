@@ -78,7 +78,8 @@ public class ResourceManager {
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;
                    // Apply GPU-side water surface displacement to avoid remeshing for waves
-                   if (waterHeight > 0.0 && !u_isUIElement && u_waterAnimationEnabled) {
+                   // Use threshold of 0.01 to distinguish actual water from epsilon flags
+                   if (waterHeight > 0.01 && !u_isUIElement && u_waterAnimationEnabled) {
                        const float MIN_WATER_SURFACE = 0.125;
                        const float MAX_WAVE_DELTA = 0.18;
                        // World-space wave using simple, seamless functions
@@ -117,8 +118,12 @@ public class ResourceManager {
 
                    // Apply depth offset for water blocks to prevent z-fighting
                    vec4 clipPos = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
-                   if (waterHeight > 0.0 && u_waterDepthOffset != 0.0) {
+                   if (waterHeight > 0.01 && u_waterDepthOffset != 0.0) {
                        clipPos.z += u_waterDepthOffset * clipPos.w;
+                   }
+                   if (isAlphaTested > 0.5 && !u_isUIElement) {
+                       const float ALPHA_DEPTH_OFFSET = -0.0006;
+                       clipPos.z += ALPHA_DEPTH_OFFSET * clipPos.w;
                    }
                    gl_Position = clipPos;
                    if (u_transformUVsForItem) {
@@ -214,14 +219,22 @@ public class ResourceManager {
                            if (sampledAlpha < 0.1) {
                                discard;
                            }
-                           fragColor = vec4(result, 1.0);
-                       } else if (v_waterHeight > 0.0) {
+                           // Always render alpha-tested blocks in opaque pass, discard in transparent
+                           if (u_renderPass == 0) {
+                               fragColor = vec4(result, 1.0);
+                           } else {
+                               discard;
+                           }
+                       } else if (v_waterHeight > 0.01) {
+                           // Water blocks are rendered in transparent pass only
+                           // Use threshold of 0.01 to distinguish actual water from epsilon flags
                            if (u_renderPass == 0) {
                                discard;
                            } else {
                                fragColor = vec4(result, sampledAlpha);
                            }
                        } else {
+                           // Regular opaque blocks are rendered in opaque pass only
                            if (u_renderPass == 0) {
                                fragColor = vec4(result, 1.0);
                            } else {
