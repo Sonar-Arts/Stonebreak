@@ -88,6 +88,19 @@ public class JsonParsingUtil {
     }
 
     /**
+     * Extracts a long value from JSON by key with default value.
+     */
+    public static long extractLong(String json, String key, long defaultValue) {
+        String pattern = "\"" + key + "\"\\s*:\\s*(-?\\d+)";
+        Pattern p = Pattern.compile(pattern);
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return Long.parseLong(m.group(1));
+        }
+        return defaultValue;
+    }
+
+    /**
      * Extracts a float value from JSON by key.
      */
     public static float extractFloat(String json, String key, float defaultValue) {

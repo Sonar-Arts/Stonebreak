@@ -229,6 +229,11 @@ public class Game {
         this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
+        // Note: TimeOfDay initialization is handled during world loading/generation
+        // For new worlds: Set to NOON in performInitialWorldGeneration()
+        // For existing worlds: Loaded from save data in performWorldLoadingOrGeneration()
+        // This ensures default time is only applied to NEW worlds, not existing ones
+
         // Initialize InventoryScreen - requires Player, Renderer, TextureAtlas, and InputHandler
         if (renderer.getFont() != null && textureAtlas != null) {
             this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
@@ -573,9 +578,13 @@ public class Game {
         this.entitySpawner = new com.stonebreak.mobs.entities.EntitySpawner(world, entityManager);
         System.out.println("Entity system initialized - cows can now spawn!");
 
-        // Initialize time of day system (starts at noon for bright daylight)
-        this.timeOfDay = new TimeOfDay(TimeOfDay.NOON);
-        System.out.println("Time of day system initialized (starting at noon)");
+        // Note: TimeOfDay initialization is handled during world loading/generation
+        // This ensures default time is only applied to NEW worlds, not existing ones
+        // If using this legacy init() path, time will be set to NOON for new worlds
+        if (this.timeOfDay == null) {
+            this.timeOfDay = new TimeOfDay(TimeOfDay.NOON);
+            System.out.println("[TIME-SYSTEM] Time of day initialized to noon (new world)");
+        }
 
         // Initialize player sounds
         this.soundSystem.initializePlayerSounds(world);

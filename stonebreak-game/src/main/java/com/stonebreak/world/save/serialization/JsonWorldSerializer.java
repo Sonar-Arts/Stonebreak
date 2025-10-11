@@ -29,6 +29,7 @@ public class JsonWorldSerializer {
         json.append("  \"creationTime\": \"").append(world.getCreatedTime().format(FORMATTER)).append("\",\n");
         json.append("  \"lastPlayed\": \"").append(world.getLastPlayed().format(FORMATTER)).append("\",\n");
         json.append("  \"totalPlayTimeMillis\": ").append(world.getTotalPlayTimeMillis()).append(",\n");
+        json.append("  \"worldTimeTicks\": ").append(world.getWorldTimeTicks()).append(",\n");
         json.append("  \"formatVersion\": ").append(world.getFormatVersion()).append("\n");
         json.append("}");
 
@@ -46,6 +47,7 @@ public class JsonWorldSerializer {
                 .createdTime(JsonParsingUtil.extractDateTime(json, "creationTime"))
                 .lastPlayed(JsonParsingUtil.extractDateTime(json, "lastPlayed"))
                 .totalPlayTimeMillis(JsonParsingUtil.extractLong(json, "totalPlayTimeMillis"))
+                .worldTimeTicks(JsonParsingUtil.extractLong(json, "worldTimeTicks", 6000L)) // Default to NOON if not present
                 .formatVersion(JsonParsingUtil.extractInt(json, "formatVersion", 1))
                 .build();
         } catch (Exception e) {
