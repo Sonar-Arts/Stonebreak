@@ -53,16 +53,37 @@ public class RegionFile implements AutoCloseable {
                 return null; // Chunk not saved
             }
 
-            // Validate offset and length are within file bounds
+            // CRITICAL VALIDATION: Detect obviously corrupted header entries
+            // Valid chunk data must be after header and have reasonable size
             long fileLength = file.length();
-            if (offset < HEADER_SIZE || offset + length > fileLength) {
-                System.err.println("[REGION-ERROR] Invalid chunk data at (" + localX + "," + localZ +
+            boolean isCorrupted = false;
+
+            if (offset < HEADER_SIZE) {
+                System.err.println("[REGION-ERROR] CORRUPTION DETECTED: offset " + offset + " < HEADER_SIZE " + HEADER_SIZE);
+                isCorrupted = true;
+            } else if (length < 0 || length > 10_000_000) { // 10MB max per chunk
+                System.err.println("[REGION-ERROR] CORRUPTION DETECTED: unreasonable chunk length " + length);
+                isCorrupted = true;
+            } else if (offset + length > fileLength) {
+                System.err.println("[REGION-ERROR] CORRUPTION DETECTED: offset + length exceeds file size");
+                isCorrupted = true;
+            }
+
+            if (isCorrupted) {
+                System.err.println("[REGION-ERROR] Corrupted chunk header at (" + localX + "," + localZ +
                     ") in region " + regionPath.getFileName() +
                     " - offset: " + offset + ", length: " + length + ", file size: " + fileLength);
-                System.err.println("[REGION-ERROR] Marking chunk as corrupted and returning null");
+                System.err.println("[REGION-ERROR] Marking chunk as corrupted and returning null - will be regenerated");
                 // Mark chunk as invalid to prevent future read attempts
                 chunkOffsets[index] = 0;
                 chunkLengths[index] = 0;
+                // Update header on disk to prevent reading corrupted data again
+                try {
+                    updateHeaderEntry(index);
+                    file.getFD().sync();
+                } catch (IOException e) {
+                    System.err.println("[REGION-ERROR] Failed to update header after corruption detection: " + e.getMessage());
+                }
                 return null;
             }
 
@@ -78,8 +99,9 @@ public class RegionFile implements AutoCloseable {
 
     /**
      * Writes chunk data to the region file.
-     * Uses atomic write strategy to prevent corruption.
-     * OPTIMIZATION: Uses batched fsync - only syncs after SYNC_BATCH_SIZE writes
+     * Uses atomic write strategy with immediate sync to prevent corruption.
+     * CRITICAL: Must sync after EVERY write to prevent data loss on crash.
+     * Previous batched fsync optimization caused LZ4 decompression errors.
      */
     public void writeChunk(int localX, int localZ, byte[] data) throws IOException {
         if (localX < 0 || localX >= 32 || localZ < 0 || localZ >= 32) {
@@ -97,23 +119,24 @@ public class RegionFile implements AutoCloseable {
             file.seek(offset);
             file.write(data);
 
+            // CRITICAL: Sync chunk data to disk BEFORE updating header
+            // This ensures the data is physically on disk before the header points to it
+            file.getFD().sync();
+
             // Update in-memory tables
             chunkOffsets[index] = (int) offset;
             chunkLengths[index] = data.length;
 
-            // Write updated header entries atomically
+            // Write updated header entries
             updateHeaderEntry(index);
 
-            // Mark as needing sync
-            needsSync = true;
-            unsyncedWrites++;
+            // CRITICAL: Sync header to disk immediately
+            // Without this, a crash could leave the header pointing to unwritten data
+            file.getFD().sync();
 
-            // Only sync after batch size reached to reduce I/O overhead
-            if (unsyncedWrites >= SYNC_BATCH_SIZE) {
-                file.getFD().sync();
-                unsyncedWrites = 0;
-                needsSync = false;
-            }
+            // Reset tracking variables
+            unsyncedWrites = 0;
+            needsSync = false;
 
         } finally {
             lock.writeLock().unlock();
@@ -238,9 +261,20 @@ public class RegionFile implements AutoCloseable {
     private void loadHeader() throws IOException {
         if (file.length() < HEADER_SIZE) {
             // New file - initialize with empty header
-            file.setLength(HEADER_SIZE);
-            // Arrays are already zero-initialized
-            writeFullHeader();
+            // CRITICAL FIX: Don't use setLength() - it may not zero-fill on all platforms!
+            // Instead, explicitly write zeros to ensure header is properly initialized
+            file.seek(0);
+
+            // Write 8192 bytes of zeros (header size)
+            byte[] zeros = new byte[HEADER_SIZE];
+            file.write(zeros);
+
+            // Sync to ensure zeros are written to disk before any chunk data
+            file.getFD().sync();
+
+            // Arrays are already zero-initialized by Java
+            // Header on disk now matches in-memory state (all zeros)
+            System.out.println("[REGION-INIT] Initialized new region file with zero-filled header: " + regionPath.getFileName());
         } else {
             // Existing file - load header
             file.seek(0);

@@ -318,6 +318,15 @@ public class Chunk {
      * @return Immutable snapshot including blocks, water metadata, and entities
      */
     public CcoSerializableSnapshot createSnapshot(World world) {
+        // CRITICAL VALIDATION: Verify metadata coordinates match chunk coordinates
+        // This catches corruption bugs before writing corrupted data to disk
+        if (metadata.getChunkX() != this.x || metadata.getChunkZ() != this.z) {
+            throw new IllegalStateException(String.format(
+                "CRITICAL: Metadata coordinate mismatch! Chunk fields=(%d,%d) but metadata=(%d,%d)",
+                this.x, this.z, metadata.getChunkX(), metadata.getChunkZ()
+            ));
+        }
+
         // CRITICAL FIX: Deep copy blocks array IMMEDIATELY to prevent race conditions
         // This ensures the snapshot is truly immutable and captures the exact state
         // at the moment checkAndClearDataDirty() was called.

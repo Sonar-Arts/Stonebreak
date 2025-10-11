@@ -88,17 +88,22 @@ public class WorldChunkStore {
         if (pendingLoad != null) {
             // Chunk is loading asynchronously
             // Check if completed
-            if (pendingLoad.isDone() && !pendingLoad.isCompletedExceptionally()) {
-                try {
-                    chunk = pendingLoad.getNow(null);
-                    if (chunk != null) {
-                        // Load completed, finalize chunk
-                        finalizeChunkLoad(pos, chunk);
-                        return chunk;
+            if (pendingLoad.isDone()) {
+                if (pendingLoad.isCompletedExceptionally()) {
+                    // Load failed with exception - propagate it immediately to crash the game
+                    try {
+                        pendingLoad.getNow(null); // This will throw the exception
+                    } catch (Exception e) {
+                        // Re-throw to crash the game with full stack trace
+                        throw new RuntimeException("Chunk load failed for (" + x + ", " + z + ")", e);
                     }
-                } catch (Exception e) {
-                    // Load failed, remove from pending and let it retry
-                    pendingChunkLoads.remove(pos);
+                }
+                // Normal completion - get the chunk
+                chunk = pendingLoad.getNow(null);
+                if (chunk != null) {
+                    // Load completed, finalize chunk
+                    finalizeChunkLoad(pos, chunk);
+                    return chunk;
                 }
             }
             // Still loading, return null (caller will retry next frame)
@@ -116,12 +121,8 @@ public class WorldChunkStore {
                 // Remove from pending loads
                 pendingChunkLoads.remove(pos);
                 return loadedChunk;
-            })
-            .exceptionally(e -> {
-                System.err.println("[LOAD] Async chunk load failed for (" + x + ", " + z + "): " + e.getMessage());
-                pendingChunkLoads.remove(pos);
-                return null;
             });
+            // NO exception handling - let it crash immediately with full stack trace
 
         // Track this pending load
         pendingChunkLoads.put(pos, loadFuture);
@@ -360,12 +361,8 @@ public class WorldChunkStore {
                     }
                     // Chunk not on disk, generate new one
                     return generate(x, z);
-                })
-                .exceptionally(e -> {
-                    System.err.println("[LOAD] Failed to load chunk (" + x + ", " + z + "): " + e.getMessage());
-                    // Fall back to generation on error
-                    return generate(x, z);
                 });
+                // NO exception handling - let corruption errors crash immediately with full stack trace
         }
 
         // No save service, generate immediately

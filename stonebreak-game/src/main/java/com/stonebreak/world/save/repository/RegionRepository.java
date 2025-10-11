@@ -48,13 +48,24 @@ public class RegionRepository {
     public CompletableFuture<Void> saveChunk(ChunkData chunk) {
         return CompletableFuture.runAsync(() -> {
             try {
-                RegionCoordinate regionCoord = getRegionCoordinate(chunk.getChunkX(), chunk.getChunkZ());
+                int chunkX = chunk.getChunkX();
+                int chunkZ = chunk.getChunkZ();
+
+                // CRITICAL VALIDATION: Ensure chunk coordinates are reasonable
+                if (Math.abs(chunkX) > 1000000 || Math.abs(chunkZ) > 1000000) {
+                    throw new IllegalArgumentException(String.format(
+                        "CRITICAL: Refusing to save chunk with corrupted coordinates: (%d,%d)",
+                        chunkX, chunkZ
+                    ));
+                }
+
+                RegionCoordinate regionCoord = getRegionCoordinate(chunkX, chunkZ);
                 RegionFile regionFile = getOrCreateRegion(regionCoord);
 
                 byte[] chunkData = chunkSerializer.serialize(chunk);
 
-                int localX = Math.floorMod(chunk.getChunkX(), 32);
-                int localZ = Math.floorMod(chunk.getChunkZ(), 32);
+                int localX = Math.floorMod(chunkX, 32);
+                int localZ = Math.floorMod(chunkZ, 32);
 
                 regionFile.writeChunk(localX, localZ, chunkData);
 
@@ -66,28 +77,64 @@ public class RegionRepository {
 
     public CompletableFuture<Optional<ChunkData>> loadChunk(int chunkX, int chunkZ) {
         return CompletableFuture.supplyAsync(() -> {
+            RegionCoordinate regionCoord = getRegionCoordinate(chunkX, chunkZ);
+            RegionFile regionFile;
             try {
-                RegionCoordinate regionCoord = getRegionCoordinate(chunkX, chunkZ);
-                RegionFile regionFile = getOrOpenRegion(regionCoord);
+                regionFile = getOrOpenRegion(regionCoord);
+            } catch (IOException e) {
+                System.err.println("[CORRUPTION-RECOVERY] Failed to open region file for chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
+                return Optional.empty(); // Region corrupted, chunk will regenerate
+            }
 
-                if (regionFile == null) {
-                    return Optional.empty(); // Region file doesn't exist
+            if (regionFile == null) {
+                return Optional.empty(); // Region file doesn't exist
+            }
+
+            int localX = Math.floorMod(chunkX, 32);
+            int localZ = Math.floorMod(chunkZ, 32);
+
+            byte[] chunkData;
+            try {
+                chunkData = regionFile.readChunk(localX, localZ);
+            } catch (IOException e) {
+                System.err.println("[CORRUPTION-RECOVERY] Failed to read chunk data at (" + chunkX + "," + chunkZ + "): " + e.getMessage());
+                System.err.println("[CORRUPTION-RECOVERY] Chunk will be regenerated from scratch");
+                // Try to delete corrupted chunk from region
+                try {
+                    regionFile.deleteChunk(localX, localZ);
+                    System.err.println("[CORRUPTION-RECOVERY] Deleted corrupted chunk from region file");
+                } catch (IOException deleteError) {
+                    System.err.println("[CORRUPTION-RECOVERY] Failed to delete corrupted chunk: " + deleteError.getMessage());
                 }
+                return Optional.empty(); // Corrupted chunk, will regenerate
+            }
 
-                int localX = Math.floorMod(chunkX, 32);
-                int localZ = Math.floorMod(chunkZ, 32);
+            if (chunkData == null) {
+                return Optional.empty(); // Chunk not saved
+            }
 
-                byte[] chunkData = regionFile.readChunk(localX, localZ);
-                if (chunkData == null) {
-                    return Optional.empty(); // Chunk not saved
-                }
-
+            // Try to deserialize chunk data
+            try {
                 ChunkData chunk = chunkSerializer.deserialize(chunkData);
                 return Optional.of(chunk);
-
             } catch (Exception e) {
-                System.err.println("Failed to load chunk at (" + chunkX + "," + chunkZ + "): " + e.getMessage());
-                return Optional.empty(); // Return empty on error to allow regeneration
+                // CORRUPTION RECOVERY: If deserialization fails, delete corrupted chunk and regenerate
+                System.err.println("[CORRUPTION-RECOVERY] ========================================");
+                System.err.println("[CORRUPTION-RECOVERY] Corrupted chunk detected at (" + chunkX + "," + chunkZ + ")");
+                System.err.println("[CORRUPTION-RECOVERY] Error: " + e.getMessage());
+                System.err.println("[CORRUPTION-RECOVERY] This chunk will be deleted and regenerated");
+                System.err.println("[CORRUPTION-RECOVERY] ========================================");
+
+                // Delete corrupted chunk from region file
+                try {
+                    regionFile.deleteChunk(localX, localZ);
+                    System.err.println("[CORRUPTION-RECOVERY] ✓ Corrupted chunk deleted from region file");
+                } catch (IOException deleteError) {
+                    System.err.println("[CORRUPTION-RECOVERY] ✗ Failed to delete corrupted chunk: " + deleteError.getMessage());
+                }
+
+                // Return empty so chunk regenerates
+                return Optional.empty();
             }
         }, ioExecutor);
     }

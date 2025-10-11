@@ -39,6 +39,16 @@ public class BinaryChunkSerializer {
 
     public byte[] serialize(ChunkData chunk) {
         try {
+            // CRITICAL VALIDATION: Detect corrupted chunk coordinates before writing
+            int chunkX = chunk.getChunkX();
+            int chunkZ = chunk.getChunkZ();
+            if (Math.abs(chunkX) > 1000000 || Math.abs(chunkZ) > 1000000) {
+                throw new IllegalArgumentException(String.format(
+                    "CRITICAL: Chunk coordinates are corrupted or invalid! chunkX=%d, chunkZ=%d (abs values exceed 1 million)",
+                    chunkX, chunkZ
+                ));
+            }
+
             // Build palette from chunk blocks
             BlockPalette palette = BlockPalette.fromChunk(chunk.getBlocks());
 
@@ -94,36 +104,60 @@ public class BinaryChunkSerializer {
 
     public ChunkData deserialize(byte[] data) {
         ChunkHeader header = null;
+        int currentOffset = 0;
+
+        // Validate data length
+        if (data == null || data.length < CHUNK_HEADER_SIZE) {
+            throw new IllegalArgumentException(
+                "Chunk data is too small: got " + (data == null ? 0 : data.length) + " bytes, expected at least " + CHUNK_HEADER_SIZE + " bytes"
+            );
+        }
+
+        // Read header
+        ByteBuffer headerBuffer = ByteBuffer.wrap(data, 0, CHUNK_HEADER_SIZE);
+        header = readChunkHeader(headerBuffer);
+        currentOffset = CHUNK_HEADER_SIZE;
+
+        // Validate header with detailed diagnostics
+        if (header.version != FORMAT_VERSION) {
+            throw new IllegalArgumentException(String.format(
+                "Chunk (%d,%d): Unsupported chunk format version: %d (expected %d) at offset %d",
+                header.chunkX, header.chunkZ, header.version, FORMAT_VERSION, currentOffset - 24
+            ));
+        }
+
         try {
-            // Validate data length
-            if (data == null || data.length < CHUNK_HEADER_SIZE) {
-                throw new IllegalArgumentException("Chunk data is too small (expected at least " + CHUNK_HEADER_SIZE + " bytes)");
-            }
-
-            // Read header
-            ByteBuffer headerBuffer = ByteBuffer.wrap(data, 0, CHUNK_HEADER_SIZE);
-            header = readChunkHeader(headerBuffer);
-
-            // Validate header
-            if (header.version != FORMAT_VERSION) {
-                throw new IllegalArgumentException("Unsupported chunk format version: " + header.version);
-            }
-
             // Extract body based on compression
             int bodyOffset = CHUNK_HEADER_SIZE;
             byte[] bodyBytes;
             if (header.compressionType == COMPRESSION_LZ4) {
                 int uncompressedSize = header.uncompressedSize;
                 byte[] compressed = Arrays.copyOfRange(data, bodyOffset, data.length);
-                bodyBytes = decompressor.decompress(compressed, uncompressedSize);
+                try {
+                    bodyBytes = decompressor.decompress(compressed, uncompressedSize);
+                } catch (Exception e) {
+                    throw new RuntimeException(String.format(
+                        "LZ4 decompression failed at offset %d: compressed size=%d, expected uncompressed size=%d",
+                        bodyOffset, compressed.length, uncompressedSize
+                    ), e);
+                }
             } else {
                 bodyBytes = Arrays.copyOfRange(data, bodyOffset, data.length);
             }
             ByteBuffer buffer = ByteBuffer.wrap(bodyBytes);
 
             // Read palette
-            byte[] paletteData = new byte[header.paletteSize * 4 + 8];
+            int paletteSize = header.paletteSize * 4 + 8;
+            if (buffer.remaining() < paletteSize) {
+                throw new IllegalArgumentException(String.format(
+                    "Insufficient data for palette: needed %d bytes, got %d bytes at offset %d",
+                    paletteSize, buffer.remaining(), currentOffset
+                ));
+            }
+            byte[] paletteData = new byte[paletteSize];
             buffer.get(paletteData);
+            currentOffset += paletteSize;
+
             BlockPalette palette = BlockPalette.deserializePalette(paletteData);
 
             // Read encoded block data
@@ -134,10 +168,19 @@ public class BinaryChunkSerializer {
             int bitsNeeded = totalBlocks * bitsPerBlock;
             int encodedDataSize = (bitsNeeded + 63) / 64; // Round up to nearest long (matches encode formula)
 
+            int bytesNeeded = encodedDataSize * 8;
+            if (buffer.remaining() < bytesNeeded) {
+                throw new IllegalArgumentException(String.format(
+                    "Insufficient data for block encoding: needed %d bytes (%d longs), got %d bytes at offset %d (bitsPerBlock=%d)",
+                    bytesNeeded, encodedDataSize, buffer.remaining(), currentOffset, bitsPerBlock
+                ));
+            }
+
             long[] encodedBlocks = new long[encodedDataSize];
             for (int i = 0; i < encodedDataSize; i++) {
                 encodedBlocks[i] = buffer.getLong();
             }
+            currentOffset += bytesNeeded;
 
             // Decode blocks using palette
             BlockType[][][] blocks = palette.decodeBlocks(encodedBlocks);
@@ -145,13 +188,27 @@ public class BinaryChunkSerializer {
             // Deserialize water metadata (if present)
             Map<String, ChunkData.WaterBlockData> waterMetadata = new HashMap<>();
             if (buffer.hasRemaining()) {
-                waterMetadata = deserializeWaterMetadata(buffer);
+                int waterMetadataStart = currentOffset;
+                try {
+                    waterMetadata = deserializeWaterMetadata(buffer);
+                } catch (Exception e) {
+                    throw new RuntimeException(String.format(
+                        "Failed to deserialize water metadata at offset %d", waterMetadataStart
+                    ), e);
+                }
             }
 
             // Deserialize entity data (if present)
             List<EntityData> entities = new ArrayList<>();
             if (buffer.hasRemaining()) {
-                entities = deserializeEntityData(buffer);
+                int entityDataStart = currentOffset;
+                try {
+                    entities = deserializeEntityData(buffer);
+                } catch (Exception e) {
+                    throw new RuntimeException(String.format(
+                        "Failed to deserialize entity data at offset %d", entityDataStart
+                    ), e);
+                }
             }
 
             // Build ChunkData
@@ -167,8 +224,29 @@ public class BinaryChunkSerializer {
                 .build();
 
         } catch (Exception e) {
-            String chunkInfo = (header != null) ? "(" + header.chunkX + "," + header.chunkZ + ")" : "(unknown position)";
-            throw new RuntimeException("Failed to deserialize chunk " + chunkInfo + ": " + e.getMessage(), e);
+            // Create comprehensive error message with all diagnostic information
+            String diagnostics = String.format(
+                "\n=== CHUNK DESERIALIZATION FAILURE ===\n" +
+                "Chunk Position: (%d, %d)\n" +
+                "Format Version: %d\n" +
+                "Compression Type: %d (%s)\n" +
+                "Palette Size: %d\n" +
+                "Bits Per Block: %d\n" +
+                "Data Length: %d bytes\n" +
+                "Current Offset: %d bytes\n" +
+                "Error: %s\n" +
+                "=====================================",
+                header.chunkX, header.chunkZ,
+                header.version,
+                header.compressionType, header.compressionType == COMPRESSION_LZ4 ? "LZ4" : "NONE",
+                header.paletteSize,
+                header.bitsPerBlock,
+                data.length,
+                currentOffset,
+                e.getMessage()
+            );
+
+            throw new RuntimeException(diagnostics, e);
         }
     }
 

@@ -257,6 +257,7 @@ public class SaveService implements AutoCloseable {
 
     /**
      * Loads a single chunk.
+     * IMPORTANT: Crashes immediately on deserialization errors to expose data corruption.
      */
     public CompletableFuture<Chunk> loadChunk(int chunkX, int chunkZ) {
         return repository.loadChunk(chunkX, chunkZ)
@@ -265,12 +266,8 @@ public class SaveService implements AutoCloseable {
                     return null; // Chunk doesn't exist - will be generated
                 }
                 return StateConverter.createChunkFromData(dataOpt.get(), world);
-            })
-            .exceptionally(ex -> {
-                System.err.println("[LOAD] Failed to load chunk at " +
-                    chunkX + "," + chunkZ + ": " + ex.getMessage());
-                return null; // Return null to trigger regeneration
             });
+            // NO exception handling - let it crash with full stack trace
     }
 
     /**
