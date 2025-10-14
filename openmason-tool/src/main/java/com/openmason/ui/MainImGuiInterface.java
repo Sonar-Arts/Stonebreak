@@ -126,12 +126,11 @@ public class MainImGuiInterface {
     // Logo Management
     private LogoManager logoManager;
     
-    // Theme Management
-    private ThemeManager themeManager;
+    // Theme Management (dependency injected)
+    private final ThemeManager themeManager;
     private final ImBoolean showThemeMenu = new ImBoolean(false);
     private final ImInt selectedThemeIndex = new ImInt(0);
     private final ImInt selectedDensityIndex = new ImInt(1); // Normal by default
-    private boolean themeSystemInitialized = false;
 
     // Pending theme changes (for Apply button)
     private final ImInt pendingThemeIndex = new ImInt(0);
@@ -144,11 +143,20 @@ public class MainImGuiInterface {
         "example_model.json"
     };
     
-    public MainImGuiInterface() {
+    /**
+     * Create MainImGuiInterface with dependency injection.
+     * @param themeManager ThemeManager instance (guaranteed non-null)
+     */
+    public MainImGuiInterface(ThemeManager themeManager) {
+        if (themeManager == null) {
+            throw new IllegalArgumentException("ThemeManager cannot be null");
+        }
+
+        this.themeManager = themeManager;
+
         // logger.info("Initializing MainImGuiInterface...");
         initializePreferences();
         initializeLogo();
-        initializeThemeSystem();
         initializeComponents();
         updateUIState();
     }
@@ -1531,8 +1539,8 @@ public class MainImGuiInterface {
     
     private void setupPropertiesPanel() {
         try {
-            // Initialize property panel ImGui
-            propertyPanelImGui = new PropertyPanelImGui();
+            // Initialize property panel ImGui with theme manager
+            propertyPanelImGui = new PropertyPanelImGui(themeManager);
             // logger.info("Properties panel setup complete");
         } catch (Exception e) {
             logger.error("Failed to setup properties panel", e);
@@ -1668,134 +1676,11 @@ public class MainImGuiInterface {
         Thread.sleep(150); // Simulate export time
     }
     
-    // Theme system methods
-    
-    /**
-     * Initialize the theme system.
-     */
-    private void initializeThemeSystem() {
-        try {
-            themeManager = ThemeManager.getInstance();
-            themeSystemInitialized = (themeManager != null);
-            
-            if (themeSystemInitialized) {
-                logger.info("Theme system initialized successfully");
-                
-                // Apply default theme if available
-                if (themeManager.getCurrentTheme() == null) {
-                    themeManager.applyTheme("dark"); // Default to dark theme
-                }
-            } else {
-                logger.warn("Theme system failed to initialize - ThemeManager is null");
-            }
-        } catch (Exception e) {
-            logger.error("Failed to initialize theme system", e);
-            themeManager = null;
-            themeSystemInitialized = false;
-        }
-    }
-    
-    /**
-     * Switch to a specific theme.
-     */
-    private void switchTheme(String themeId, int themeIndex) {
-        if (!themeSystemInitialized || themeManager == null) {
-            logger.warn("Theme system not initialized, cannot switch theme");
-            return;
-        }
-        
-        try {
-            themeManager.applyTheme(themeId);
-            selectedThemeIndex.set(themeIndex);
-            updateStatus("Switched to " + themeId + " theme");
-            logger.info("Theme switched to: {}", themeId);
-        } catch (Exception e) {
-            logger.error("Failed to switch theme to: {}", themeId, e);
-            updateStatus("Failed to switch theme: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Switch UI density.
-     */
-    private void switchDensity(DensityManager.UIDensity density, int densityIndex) {
-        if (!themeSystemInitialized || themeManager == null) {
-            logger.warn("Theme system not initialized, cannot switch density");
-            return;
-        }
-        
-        try {
-            themeManager.setUIDensity(density);
-            selectedDensityIndex.set(densityIndex);
-            updateStatus("UI density changed to: " + density.getDisplayName());
-            logger.info("UI density changed to: {}", density.getDisplayName());
-        } catch (Exception e) {
-            logger.error("Failed to change UI density to: {}", density.getDisplayName(), e);
-            updateStatus("Failed to change density: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Preview a theme without applying it permanently.
-     */
-    private void previewTheme(String themeId) {
-        if (!themeSystemInitialized || themeManager == null) {
-            return;
-        }
-        
-        try {
-            ThemeDefinition theme = themeManager.getTheme(themeId);
-            if (theme != null) {
-                themeManager.previewTheme(theme);
-                updateStatus("Previewing theme: " + theme.getName());
-                logger.info("Theme preview started: {}", theme.getName());
-            }
-        } catch (Exception e) {
-            logger.error("Failed to preview theme: {}", themeId, e);
-            updateStatus("Failed to preview theme: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Show advanced theme settings dialog.
-     */
-    private void showAdvancedThemeSettings() {
-        showThemeMenu.set(true);
-    }
-    
-    /**
-     * Reset theme to default settings.
-     */
-    private void resetToDefaultTheme() {
-        if (!themeSystemInitialized || themeManager == null) {
-            return;
-        }
-        
-        try {
-            themeManager.applyTheme("dark"); // Dark is the default
-            themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
-            selectedThemeIndex.set(0);
-            selectedDensityIndex.set(1);
-            updateStatus("Theme reset to default");
-            logger.info("Theme reset to default settings");
-        } catch (Exception e) {
-            logger.error("Failed to reset theme to default", e);
-            updateStatus("Failed to reset theme: " + e.getMessage());
-        }
-    }
-    
     /**
      * Get theme manager instance for other components.
      */
     public ThemeManager getThemeManager() {
         return themeManager;
-    }
-    
-    /**
-     * Check if theme system is initialized.
-     */
-    public boolean isThemeSystemInitialized() {
-        return themeSystemInitialized;
     }
     
     /**

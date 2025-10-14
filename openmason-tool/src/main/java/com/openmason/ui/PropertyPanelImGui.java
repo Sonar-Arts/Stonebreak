@@ -31,9 +31,9 @@ public class PropertyPanelImGui {
     private String currentModelName = null;
     private boolean initialized = false;
     
-    // Theme Management
-    private ThemeManager themeManager;
-    private boolean themeSystemAvailable = false;
+    // Theme Management (dependency injected, optional)
+    private final ThemeManager themeManager;
+    private final boolean themeSystemAvailable;
     
     // Transform Controls
     private final ImFloat positionX = new ImFloat(0.0f);
@@ -74,32 +74,25 @@ public class PropertyPanelImGui {
     private static final long USER_INTERACTION_TIMEOUT = 100; // ms
     
     
-    public PropertyPanelImGui() {
+    /**
+     * Create PropertyPanelImGui with optional theme manager.
+     * @param themeManager ThemeManager instance (can be null for basic functionality)
+     */
+    public PropertyPanelImGui(ThemeManager themeManager) {
+        this.themeManager = themeManager;
+        this.themeSystemAvailable = (themeManager != null);
+
         try {
             this.textureManager = TextureVariantManager.getInstance();
-            initializeThemeSystem();
             initialize();
-        } catch (Exception e) {
-            logger.error("Error initializing PropertyPanelImGui", e);
-        }
-    }
-    
-    /**
-     * Initialize theme system integration.
-     */
-    private void initializeThemeSystem() {
-        try {
-            themeManager = ThemeManager.getInstance();
-            themeSystemAvailable = (themeManager != null);
-            
+
             if (themeSystemAvailable) {
                 logger.debug("Theme system integration enabled for PropertyPanel");
             } else {
-                logger.warn("Theme system not available for PropertyPanel");
+                logger.debug("PropertyPanel created without theme system");
             }
         } catch (Exception e) {
-            logger.error("Failed to initialize theme system for PropertyPanel", e);
-            themeSystemAvailable = false;
+            logger.error("Error initializing PropertyPanelImGui", e);
         }
     }
     

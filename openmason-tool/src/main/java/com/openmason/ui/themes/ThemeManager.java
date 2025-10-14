@@ -25,16 +25,16 @@ import java.util.function.Consumer;
 public class ThemeManager {
     
     private static final Logger logger = LoggerFactory.getLogger(ThemeManager.class);
-    
-    // Singleton instance
-    private static ThemeManager instance;
-    
+
     // Core components
     private final ThemeRegistry registry;
     private final ThemeSerializer serializer;
     private final DensityManager densityManager;
     private final ThemePreview preview;
-    private final ThemeConfigManager configManager;
+
+    // Simple configuration using Properties
+    private final Properties config = new Properties();
+    private static final String CONFIG_FILE = "openmason-tool/Theme.ini";
     
     // Current state
     private ThemeDefinition currentTheme;
@@ -44,13 +44,16 @@ public class ThemeManager {
     private final List<Consumer<ThemeDefinition>> themeChangeCallbacks = new ArrayList<>();
     private final List<Consumer<DensityManager.UIDensity>> densityChangeCallbacks = new ArrayList<>();
     
-    private ThemeManager() {
+    /**
+     * Create a new ThemeManager instance.
+     * Use dependency injection - create once in OpenMasonApp and inject to UI components.
+     */
+    public ThemeManager() {
         // Initialize components
         this.registry = new ThemeRegistry();
         this.serializer = new ThemeSerializer();
         this.densityManager = new DensityManager();
         this.preview = new ThemePreview(densityManager);
-        this.configManager = new ThemeConfigManager();
 
         // Setup component callbacks
         densityManager.setDensityChangeCallback(this::onDensityChanged);
@@ -62,13 +65,6 @@ public class ThemeManager {
 
         logger.info("ThemeManager initialized with {} built-in themes",
                    registry.getThemeCount(ThemeRegistry.ThemeCategory.BUILT_IN));
-    }
-    
-    public static synchronized ThemeManager getInstance() {
-        if (instance == null) {
-            instance = new ThemeManager();
-        }
-        return instance;
     }
     
     /**
@@ -484,9 +480,19 @@ public class ThemeManager {
     private void saveConfiguration() {
         try {
             if (currentTheme != null) {
-                configManager.setCurrentThemeId(currentTheme.getId());
+                config.setProperty("current.theme", currentTheme.getId());
             }
-            configManager.setCurrentDensity(currentDensity.name());
+            config.setProperty("current.density", currentDensity.name());
+
+            // Ensure directory exists
+            java.nio.file.Path configPath = java.nio.file.Paths.get(CONFIG_FILE);
+            java.nio.file.Files.createDirectories(configPath.getParent());
+
+            // Write configuration
+            try (java.io.OutputStream output = java.nio.file.Files.newOutputStream(configPath)) {
+                config.store(output, "OpenMason Theme Configuration");
+            }
+
             logger.debug("Configuration saved to Theme.ini: theme={}, density={}",
                         currentTheme != null ? currentTheme.getId() : "null",
                         currentDensity.name());
@@ -500,8 +506,22 @@ public class ThemeManager {
      */
     private void loadConfiguration() {
         try {
-            // Load theme ID from Theme.ini
-            String themeId = configManager.getCurrentThemeId();
+            java.nio.file.Path configPath = java.nio.file.Paths.get(CONFIG_FILE);
+
+            if (java.nio.file.Files.exists(configPath)) {
+                try (java.io.InputStream input = java.nio.file.Files.newInputStream(configPath)) {
+                    config.load(input);
+                }
+            } else {
+                // Create default configuration
+                config.setProperty("current.theme", "dark");
+                config.setProperty("current.density", "NORMAL");
+                saveConfiguration();
+                logger.info("Created default Theme.ini file");
+            }
+
+            // Load theme ID from config
+            String themeId = config.getProperty("current.theme", "dark");
             ThemeDefinition loadedTheme = registry.getTheme(themeId);
 
             if (loadedTheme != null) {
@@ -511,14 +531,10 @@ public class ThemeManager {
                 // Fallback to dark theme if configured theme not found
                 logger.warn("Theme '{}' not found in registry, falling back to 'dark'", themeId);
                 currentTheme = registry.getTheme("dark");
-                if (currentTheme != null) {
-                    // Update config to reflect the fallback
-                    configManager.setCurrentThemeId("dark");
-                }
             }
 
-            // Load density from Theme.ini
-            String densityName = configManager.getCurrentDensity();
+            // Load density from config
+            String densityName = config.getProperty("current.density", "NORMAL");
             try {
                 currentDensity = DensityManager.UIDensity.valueOf(densityName);
                 densityManager.setDensity(currentDensity);
@@ -528,7 +544,6 @@ public class ThemeManager {
                 logger.warn("Invalid density '{}' in Theme.ini, falling back to NORMAL", densityName);
                 currentDensity = DensityManager.UIDensity.NORMAL;
                 densityManager.setDensity(DensityManager.UIDensity.NORMAL);
-                configManager.setCurrentDensity("NORMAL");
             }
 
             logger.info("Configuration loaded from Theme.ini: {} / {}",
@@ -552,7 +567,6 @@ public class ThemeManager {
     public List<ThemeDefinition> getAvailableThemes() {
         return new ArrayList<>(registry.getAllThemes().values());
     }
-    public ThemeConfigManager getConfigManager() { return configManager; }
     
     // Convenience methods for built-in themes
     public ThemeDefinition getDarkTheme() { return registry.getTheme("dark"); }

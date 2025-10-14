@@ -1,5 +1,6 @@
 package com.openmason.ui;
 
+import com.openmason.ui.themes.ThemeManager;
 import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.flag.ImGuiConfigFlags;
@@ -40,7 +41,10 @@ public class ImGuiApplication {
     // ImGui implementation
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
-    
+
+    // Theme management
+    private ThemeManager themeManager;
+
     // UI Interfaces
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
@@ -250,13 +254,16 @@ public class ImGuiApplication {
      */
     private void initializeUIInterfaces() {
         logger.info("Initializing UI interfaces...");
-        
-        // Create main interface
-        mainInterface = new MainImGuiInterface();
-        
+
+        // Create ThemeManager instance
+        themeManager = new ThemeManager();
+
+        // Create main interface with theme manager
+        mainInterface = new MainImGuiInterface(themeManager);
+
         // Create viewport interface
         viewportInterface = new ViewportImGuiInterface();
-        
+
         logger.info("UI interfaces initialized successfully");
     }
     

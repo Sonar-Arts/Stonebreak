@@ -184,11 +184,18 @@ public class ModelBrowserImGui {
     private int totalModelsDiscovered = 0;
     private int totalVariantsDiscovered = 0;
     
-    // Theme system integration
-    private ThemeManager themeManager;
-    private boolean themeSystemAvailable = false;
-    
-    public ModelBrowserImGui() {
+    // Theme system integration (dependency injected, optional)
+    private final ThemeManager themeManager;
+    private final boolean themeSystemAvailable;
+
+    /**
+     * Create ModelBrowserImGui with optional theme manager.
+     * @param themeManager ThemeManager instance (can be null for basic functionality)
+     */
+    public ModelBrowserImGui(ThemeManager themeManager) {
+        this.themeManager = themeManager;
+        this.themeSystemAvailable = (themeManager != null);
+
         logger.error("=== ModelBrowserImGui CONSTRUCTOR CALLED ===");
         logger.error("Stack trace:", new RuntimeException("ModelBrowserImGui instantiation trace"));
         initialize();
@@ -210,8 +217,12 @@ public class ModelBrowserImGui {
             expandedNodes.add("Cow Models");
             expandedNodes.add("Mobs");
             
-            // Initialize theme system
-            initializeThemeSystem();
+            // Theme system is now initialized via constructor parameter
+            if (themeSystemAvailable) {
+                logger.debug("Theme system initialized successfully for ModelBrowserImGui");
+            } else {
+                logger.debug("ModelBrowserImGui created without theme system");
+            }
             
             // Initialize asynchronously with proper error handling
             CompletableFuture.runAsync(() -> {
@@ -525,25 +536,6 @@ public class ModelBrowserImGui {
     }
     
     // Theme system integration methods
-    
-    /**
-     * Initialize the theme system integration.
-     */
-    private void initializeThemeSystem() {
-        try {
-            themeManager = ThemeManager.getInstance();
-            themeSystemAvailable = (themeManager != null);
-            if (themeSystemAvailable) {
-                logger.debug("Theme system initialized successfully for ModelBrowserImGui");
-            } else {
-                logger.warn("Theme system not available for ModelBrowserImGui");
-            }
-        } catch (Exception e) {
-            logger.error("Failed to initialize theme system for ModelBrowserImGui", e);
-            themeManager = null;
-            themeSystemAvailable = false;
-        }
-    }
     
     /**
      * Apply theme-aware styling for the model browser.
@@ -1311,9 +1303,7 @@ public class ModelBrowserImGui {
             scanInProgress = false;
             scanStatus = "Disposed";
             
-            // Clear theme system reference
-            themeManager = null;
-            themeSystemAvailable = false;
+            // Theme system reference is final, no cleanup needed
             
             logger.info("ModelBrowserImGui resources disposed successfully");
             

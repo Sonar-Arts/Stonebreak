@@ -7,6 +7,7 @@ import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.ViewportImGuiInterface;
+import com.openmason.ui.themes.ThemeManager;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
@@ -48,9 +49,10 @@ public class OpenMasonApp {
     private AppLifecycle appLifecycle;
     
     // UI Interfaces
+    private ThemeManager themeManager;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
-    
+
     // Application state
     private boolean shouldClose = false;
     private boolean shouldApplyDefaultLayout = false;
@@ -303,15 +305,18 @@ public class OpenMasonApp {
      */
     private void initializeUI() {
         // logger.debug("Initializing UI interfaces...");
-        
+
         try {
-            // Initialize main interface
-            mainInterface = new MainImGuiInterface();
-            
+            // Create ThemeManager instance (dependency injection)
+            themeManager = new ThemeManager();
+
+            // Initialize main interface with theme manager
+            mainInterface = new MainImGuiInterface(themeManager);
+
             // Initialize viewport interface and inject the shared viewport
             viewportInterface = new ViewportImGuiInterface();
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
-            
+
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
                 viewportInterface.setWindowHandle(window);
@@ -319,7 +324,7 @@ public class OpenMasonApp {
             } else {
                 logger.error("Cannot set window handle - window not created");
             }
-            
+
             // logger.debug("UI interfaces initialized successfully");
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);
