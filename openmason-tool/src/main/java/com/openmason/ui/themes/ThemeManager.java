@@ -34,6 +34,7 @@ public class ThemeManager {
     private final ThemeSerializer serializer;
     private final DensityManager densityManager;
     private final ThemePreview preview;
+    private final ThemeConfigManager configManager;
     
     // Current state
     private ThemeDefinition currentTheme;
@@ -49,16 +50,17 @@ public class ThemeManager {
         this.serializer = new ThemeSerializer();
         this.densityManager = new DensityManager();
         this.preview = new ThemePreview(densityManager);
-        
+        this.configManager = new ThemeConfigManager();
+
         // Setup component callbacks
         densityManager.setDensityChangeCallback(this::onDensityChanged);
-        
+
         // Initialize system
         initializeBuiltInThemes();
         loadUserThemes();
         loadConfiguration();
-        
-        logger.info("ThemeManager initialized with {} built-in themes", 
+
+        logger.info("ThemeManager initialized with {} built-in themes",
                    registry.getThemeCount(ThemeRegistry.ThemeCategory.BUILT_IN));
     }
     
@@ -477,38 +479,68 @@ public class ThemeManager {
     }
     
     /**
-     * Save current configuration
+     * Save current configuration to Theme.ini
      */
     private void saveConfiguration() {
         try {
-            // Simplified configuration saving
-            logger.debug("Configuration saved");
+            if (currentTheme != null) {
+                configManager.setCurrentThemeId(currentTheme.getId());
+            }
+            configManager.setCurrentDensity(currentDensity.name());
+            logger.debug("Configuration saved to Theme.ini: theme={}, density={}",
+                        currentTheme != null ? currentTheme.getId() : "null",
+                        currentDensity.name());
         } catch (Exception e) {
             logger.error("Failed to save configuration", e);
         }
     }
     
     /**
-     * Load saved configuration
+     * Load saved configuration from Theme.ini
      */
     private void loadConfiguration() {
         try {
-            // Load default theme
-            ThemeDefinition defaultTheme = registry.getTheme("dark");
-            if (defaultTheme != null) {
-                currentTheme = defaultTheme;
+            // Load theme ID from Theme.ini
+            String themeId = configManager.getCurrentThemeId();
+            ThemeDefinition loadedTheme = registry.getTheme(themeId);
+
+            if (loadedTheme != null) {
+                currentTheme = loadedTheme;
+                logger.info("Loaded theme from Theme.ini: {}", themeId);
+            } else {
+                // Fallback to dark theme if configured theme not found
+                logger.warn("Theme '{}' not found in registry, falling back to 'dark'", themeId);
+                currentTheme = registry.getTheme("dark");
+                if (currentTheme != null) {
+                    // Update config to reflect the fallback
+                    configManager.setCurrentThemeId("dark");
+                }
             }
-            
-            // Set default density
+
+            // Load density from Theme.ini
+            String densityName = configManager.getCurrentDensity();
+            try {
+                currentDensity = DensityManager.UIDensity.valueOf(densityName);
+                densityManager.setDensity(currentDensity);
+                logger.info("Loaded density from Theme.ini: {}", densityName);
+            } catch (IllegalArgumentException e) {
+                // Fallback to NORMAL if configured density is invalid
+                logger.warn("Invalid density '{}' in Theme.ini, falling back to NORMAL", densityName);
+                currentDensity = DensityManager.UIDensity.NORMAL;
+                densityManager.setDensity(DensityManager.UIDensity.NORMAL);
+                configManager.setCurrentDensity("NORMAL");
+            }
+
+            logger.info("Configuration loaded from Theme.ini: {} / {}",
+                       currentTheme != null ? currentTheme.getName() : "none",
+                       currentDensity.getDisplayName());
+
+        } catch (Exception e) {
+            logger.error("Failed to load configuration from Theme.ini", e);
+            // Fallback to safe defaults
+            currentTheme = registry.getTheme("dark");
             currentDensity = DensityManager.UIDensity.NORMAL;
             densityManager.setDensity(DensityManager.UIDensity.NORMAL);
-            
-            logger.info("Configuration loaded: {} / {}", 
-                       currentTheme != null ? currentTheme.getName() : "none", 
-                       currentDensity.getDisplayName());
-                       
-        } catch (Exception e) {
-            logger.error("Failed to load configuration", e);
         }
     }
     
@@ -517,9 +549,10 @@ public class ThemeManager {
     public DensityManager.UIDensity getCurrentDensity() { return currentDensity; }
     public boolean isPreviewMode() { return preview.isPreviewActive(); }
     public ThemeDefinition getTheme(String themeId) { return registry.getTheme(themeId); }
-    public List<ThemeDefinition> getAvailableThemes() { 
-        return new ArrayList<>(registry.getAllThemes().values()); 
+    public List<ThemeDefinition> getAvailableThemes() {
+        return new ArrayList<>(registry.getAllThemes().values());
     }
+    public ThemeConfigManager getConfigManager() { return configManager; }
     
     // Convenience methods for built-in themes
     public ThemeDefinition getDarkTheme() { return registry.getTheme("dark"); }

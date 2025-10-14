@@ -132,6 +132,11 @@ public class MainImGuiInterface {
     private final ImInt selectedThemeIndex = new ImInt(0);
     private final ImInt selectedDensityIndex = new ImInt(1); // Normal by default
     private boolean themeSystemInitialized = false;
+
+    // Pending theme changes (for Apply button)
+    private final ImInt pendingThemeIndex = new ImInt(0);
+    private final ImInt pendingDensityIndex = new ImInt(1);
+    private boolean hasUnsavedThemeChanges = false;
     
     // Recent Files
     private final String[] recentFiles = {
@@ -731,19 +736,79 @@ public class MainImGuiInterface {
     
     
     /**
-     * Render preferences window with camera settings.
+     * Render preferences window with camera and theme settings.
      */
     private void renderPreferencesWindow() {
         // Apply window configuration before creating window (from plan section 2.4)
         ImGuiHelpers.configureWindowConstraints(preferencesConfig);
-        
+
         if (ImGui.begin("Preferences", showPreferencesWindow, ImGuiWindowFlags.AlwaysAutoResize)) {
             // Configure window size and position inside window
             ImGuiHelpers.configureWindowSize(preferencesConfig);
             ImGuiHelpers.configureWindowPosition(preferencesConfig);
+
+            // Initialize pending values from current settings (only once when opening)
+            if (ImGui.isWindowAppearing()) {
+                ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+                if (currentTheme != null) {
+                    for (int i = 0; i < themeManager.getAvailableThemes().size(); i++) {
+                        if (themeManager.getAvailableThemes().get(i).getId().equals(currentTheme.getId())) {
+                            pendingThemeIndex.set(i);
+                            break;
+                        }
+                    }
+                }
+                DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
+                pendingDensityIndex.set(currentDensity.ordinal());
+                hasUnsavedThemeChanges = false;
+            }
+
+            // Theme Settings Section
+            ImGui.text("Theme Settings");
+            ImGui.separator();
+
+            // Theme selection
+            ImGui.text("Theme:");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(200.0f);
+            String[] themeNames = themeManager.getAvailableThemes().stream()
+                .map(ThemeDefinition::getName)
+                .toArray(String[]::new);
+
+            if (ImGui.combo("##themeSelect", pendingThemeIndex, themeNames)) {
+                // Mark as having unsaved changes
+                hasUnsavedThemeChanges = true;
+            }
+
+            // UI Density selection
+            ImGui.text("UI Density:");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(200.0f);
+            String[] densityNames = new String[DensityManager.UIDensity.values().length];
+            int idx = 0;
+            for (DensityManager.UIDensity density : DensityManager.UIDensity.values()) {
+                densityNames[idx++] = density.getDisplayName();
+            }
+
+            if (ImGui.combo("##densitySelect", pendingDensityIndex, densityNames)) {
+                // Mark as having unsaved changes
+                hasUnsavedThemeChanges = true;
+            }
+
+            // Show unsaved changes indicator
+            if (hasUnsavedThemeChanges) {
+                ImGui.spacing();
+                ImGui.textColored(1.0f, 0.8f, 0.0f, 1.0f, "* You have unsaved theme changes");
+            }
+
+            ImGui.spacing();
+            ImGui.separator();
+            ImGui.spacing();
+
+            // Camera Settings Section
             ImGui.text("Camera Settings");
             ImGui.separator();
-            
+
             // Camera drag speed setting with manual input
             ImGui.text("Camera Drag Speed:");
             ImGui.sameLine();
@@ -752,17 +817,40 @@ public class MainImGuiInterface {
                 // Clamp the value to reasonable range
                 float newValue = Math.max(0.1f, Math.min(10.0f, cameraMouseSensitivity.get()));
                 cameraMouseSensitivity.set(newValue);
-                
+
                 // Apply the setting to the camera immediately
                 applyCameraMouseSensitivity(newValue);
             }
-            
+
             ImGui.spacing();
             ImGui.separator();
             ImGui.spacing();
-            
+
             // Buttons
-            if (ImGui.button("Reset to Default")) {
+            if (ImGui.button("Apply Theme Changes")) {
+                // Apply pending theme changes
+                ThemeDefinition selectedTheme = themeManager.getAvailableThemes().get(pendingThemeIndex.get());
+                themeManager.applyTheme(selectedTheme);
+
+                DensityManager.UIDensity selectedDensity = DensityManager.UIDensity.values()[pendingDensityIndex.get()];
+                themeManager.setUIDensity(selectedDensity);
+
+                hasUnsavedThemeChanges = false;
+                updateStatus("Theme changes applied: " + selectedTheme.getName() + " / " + selectedDensity.getDisplayName());
+            }
+            ImGui.sameLine();
+
+            if (ImGui.button("Reset All to Defaults")) {
+                // Reset theme to default
+                themeManager.applyTheme("dark");
+                themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
+
+                // Update pending values to match
+                pendingThemeIndex.set(0); // Dark theme is index 0
+                pendingDensityIndex.set(1); // Normal is index 1
+                hasUnsavedThemeChanges = false;
+
+                // Reset camera to default
                 if (preferencesManager != null) {
                     preferencesManager.resetCameraToDefaults();
                     float defaultSensitivity = preferencesManager.getCameraMouseSensitivity();
@@ -772,15 +860,17 @@ public class MainImGuiInterface {
                     cameraMouseSensitivity.set(3.0f);
                     applyCameraMouseSensitivity(3.0f);
                 }
+
+                updateStatus("All settings reset to defaults");
             }
             ImGui.sameLine();
-            
-            if (ImGui.button("Apply")) {
-                applyCameraMouseSensitivity(cameraMouseSensitivity.get());
-            }
-            ImGui.sameLine();
-            
+
             if (ImGui.button("Close")) {
+                // Warn if there are unsaved changes
+                if (hasUnsavedThemeChanges) {
+                    updateStatus("Warning: Unsaved theme changes discarded");
+                    hasUnsavedThemeChanges = false;
+                }
                 showPreferencesWindow.set(false);
             }
         }
