@@ -21,10 +21,9 @@ public class ColorPalette {
      * Create professional dark theme (extracted from createDarkTheme)
      */
     public static ThemeDefinition createDarkTheme() {
-        ThemeDefinition theme = new ThemeDefinition("dark", "Dark", 
+        ThemeDefinition theme = new ThemeDefinition("dark", "Dark",
             "Professional dark theme for extended usage", ThemeDefinition.ThemeType.BUILT_IN);
-        theme.setReadOnly(true);
-        
+
         // Window colors
         theme.setColor(ImGuiCol.WindowBg, 0.11f, 0.11f, 0.11f, 1.00f);           // #1c1c1c
         theme.setColor(ImGuiCol.ChildBg, 0.13f, 0.13f, 0.13f, 1.00f);            // #212121
@@ -116,9 +115,12 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
-        
-        logger.debug("Created dark theme with {} colors and {} style vars", 
+
+        logger.debug("Created dark theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
+
+        // Mark as read-only AFTER all colors and styles are set
+        theme.setReadOnly(true);
         return theme;
     }
     
@@ -126,10 +128,9 @@ public class ColorPalette {
      * Create clean light theme (extracted from createLightTheme)
      */
     public static ThemeDefinition createLightTheme() {
-        ThemeDefinition theme = new ThemeDefinition("light", "Light", 
+        ThemeDefinition theme = new ThemeDefinition("light", "Light",
             "Clean light theme for bright environments", ThemeDefinition.ThemeType.BUILT_IN);
-        theme.setReadOnly(true);
-        
+
         // Window colors
         theme.setColor(ImGuiCol.WindowBg, 0.96f, 0.96f, 0.96f, 1.00f);           // #f5f5f5
         theme.setColor(ImGuiCol.ChildBg, 0.98f, 0.98f, 0.98f, 1.00f);            // #fafafa
@@ -221,20 +222,22 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
-        
-        logger.debug("Created light theme with {} colors and {} style vars", 
+
+        logger.debug("Created light theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
+
+        // Mark as read-only AFTER all colors and styles are set
+        theme.setReadOnly(true);
         return theme;
     }
-    
+
     /**
      * Create high contrast theme for accessibility (extracted from createHighContrastTheme)
      */
     public static ThemeDefinition createHighContrastTheme() {
-        ThemeDefinition theme = new ThemeDefinition("high-contrast", "High Contrast", 
+        ThemeDefinition theme = new ThemeDefinition("high-contrast", "High Contrast",
                                          "High contrast theme for accessibility", ThemeDefinition.ThemeType.BUILT_IN);
-        theme.setReadOnly(true);
-        
+
         // Window colors - maximum contrast
         theme.setColor(ImGuiCol.WindowBg, 0.00f, 0.00f, 0.00f, 1.00f);           // Black
         theme.setColor(ImGuiCol.ChildBg, 0.05f, 0.05f, 0.05f, 1.00f);            // Very dark gray
@@ -326,20 +329,22 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.ChildBorderSize, 2.0f);
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 2.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 1.0f);
-        
-        logger.debug("Created high contrast theme with {} colors and {} style vars", 
+
+        logger.debug("Created high contrast theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
+
+        // Mark as read-only AFTER all colors and styles are set
+        theme.setReadOnly(true);
         return theme;
     }
-    
+
     /**
      * Create professional blue theme (extracted from createBlueTheme)
      */
     public static ThemeDefinition createBlueTheme() {
-        ThemeDefinition theme = new ThemeDefinition("blue", "Blue", 
+        ThemeDefinition theme = new ThemeDefinition("blue", "Blue",
             "Professional blue theme", ThemeDefinition.ThemeType.BUILT_IN);
-        theme.setReadOnly(true);
-        
+
         // Window colors - blue tinted
         theme.setColor(ImGuiCol.WindowBg, 0.12f, 0.16f, 0.23f, 1.00f);           // #1e2a3a
         theme.setColor(ImGuiCol.ChildBg, 0.16f, 0.23f, 0.30f, 1.00f);            // #2a3b4d
@@ -431,12 +436,15 @@ public class ColorPalette {
         theme.setStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
         theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
-        
-        logger.debug("Created blue theme with {} colors and {} style vars", 
+
+        logger.debug("Created blue theme with {} colors and {} style vars",
                      theme.getColorCount(), theme.getStyleVarCount());
+
+        // Mark as read-only AFTER all colors and styles are set
+        theme.setReadOnly(true);
         return theme;
     }
-    
+
     /**
      * Get all available built-in themes
      */

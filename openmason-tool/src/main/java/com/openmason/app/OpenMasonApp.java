@@ -242,14 +242,7 @@ public class OpenMasonApp {
         io.addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);  // Enable keyboard navigation
         io.addConfigFlags(ImGuiConfigFlags.DockingEnable);      // Enable docking
         io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);    // Enable viewports
-        
-        // Setup Dear ImGui style (dark theme to match original)
-        if (appConfig.isDarkThemeEnabled()) {
-            ImGui.styleColorsDark();
-        } else {
-            ImGui.styleColorsLight();
-        }
-        
+
         // Initialize platform/renderer bindings
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
@@ -309,6 +302,9 @@ public class OpenMasonApp {
         try {
             // Create ThemeManager instance (dependency injection)
             themeManager = new ThemeManager();
+
+            // Initialize theme system for ImGui
+            themeManager.initializeForImGui();
 
             // Initialize main interface with theme manager
             mainInterface = new MainImGuiInterface(themeManager);
@@ -371,12 +367,17 @@ public class OpenMasonApp {
             if (openglContextCreated && window != NULL) {
                 // CRITICAL: Ensure OpenGL context is current before any OpenGL cleanup
                 glfwMakeContextCurrent(window);
-                
+
                 // Cleanup UI interfaces first (while OpenGL context is still valid)
                 if (viewportInterface != null) {
                     viewportInterface.dispose();
                 }
-                
+
+                // Cleanup theme manager
+                if (themeManager != null) {
+                    themeManager.dispose();
+                }
+
                 // Cleanup ImGui OpenGL resources (while context is still valid)
                 if (imguiInitialized) {
                     if (imGuiGl3 != null) {
@@ -390,6 +391,11 @@ public class OpenMasonApp {
             } else {
                 // If no OpenGL context, only cleanup non-OpenGL ImGui resources
                 if (imguiInitialized) {
+                    // Cleanup theme manager
+                    if (themeManager != null) {
+                        themeManager.dispose();
+                    }
+
                     if (imGuiGlfw != null) {
                         imGuiGlfw.dispose();
                     }
