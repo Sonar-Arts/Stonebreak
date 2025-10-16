@@ -1,4 +1,4 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.core;
 
 import imgui.ImVec4;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;

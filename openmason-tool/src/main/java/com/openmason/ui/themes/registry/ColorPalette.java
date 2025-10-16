@@ -1,4 +1,5 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.registry;
+import com.openmason.ui.themes.core.ThemeDefinition;
 
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiStyleVar;

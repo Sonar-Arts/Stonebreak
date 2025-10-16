@@ -1,4 +1,5 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.registry;
+import com.openmason.ui.themes.core.ThemeDefinition;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

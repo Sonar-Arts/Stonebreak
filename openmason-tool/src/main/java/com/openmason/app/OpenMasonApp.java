@@ -7,7 +7,7 @@ import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.ViewportImGuiInterface;
-import com.openmason.ui.themes.ThemeManager;
+import com.openmason.ui.themes.core.ThemeManager;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;

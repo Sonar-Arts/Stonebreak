@@ -1,4 +1,10 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.core;
+import com.openmason.ui.themes.registry.ThemeRegistry;
+import com.openmason.ui.themes.registry.ColorPalette;
+import com.openmason.ui.themes.persistence.ThemeSerializer;
+import com.openmason.ui.themes.application.DensityManager;
+import com.openmason.ui.themes.application.StyleApplicator;
+import com.openmason.ui.themes.preview.ThemePreview;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

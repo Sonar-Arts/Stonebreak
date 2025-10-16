@@ -1,4 +1,5 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.utils;
+import com.openmason.ui.themes.core.ThemeDefinition;
 
 import com.openmason.ui.config.WindowConfig;
 import imgui.ImGui;

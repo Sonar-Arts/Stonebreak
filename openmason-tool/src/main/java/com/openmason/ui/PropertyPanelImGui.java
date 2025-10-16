@@ -2,10 +2,10 @@ package com.openmason.ui;
 
 import com.openmason.texture.TextureVariantManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
-import com.openmason.ui.themes.ThemeManager;
-import com.openmason.ui.themes.ThemeDefinition;
-import com.openmason.ui.themes.DensityManager;
-import com.openmason.ui.themes.StyleApplicator;
+import com.openmason.ui.themes.core.ThemeManager;
+import com.openmason.ui.themes.core.ThemeDefinition;
+import com.openmason.ui.themes.application.DensityManager;
+import com.openmason.ui.themes.application.StyleApplicator;
 import imgui.ImGui;
 import imgui.flag.*;
 import imgui.type.ImFloat;

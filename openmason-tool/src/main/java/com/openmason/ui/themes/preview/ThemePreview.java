@@ -1,4 +1,7 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.preview;
+import com.openmason.ui.themes.core.ThemeDefinition;
+import com.openmason.ui.themes.application.DensityManager;
+import com.openmason.ui.themes.application.StyleApplicator;
 
 import imgui.ImGui;
 import imgui.ImVec4;

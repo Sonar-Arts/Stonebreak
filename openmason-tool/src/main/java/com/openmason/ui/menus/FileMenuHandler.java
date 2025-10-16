@@ -6,7 +6,7 @@ import com.openmason.ui.services.StatusService;
 import com.openmason.ui.state.ModelState;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.openmason.ui.LogoManager;
-import com.openmason.ui.themes.ThemeManager;
+import com.openmason.ui.themes.core.ThemeManager;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

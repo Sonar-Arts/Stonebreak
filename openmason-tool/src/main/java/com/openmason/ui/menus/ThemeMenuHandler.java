@@ -1,9 +1,9 @@
 package com.openmason.ui.menus;
 
 import com.openmason.ui.state.UIVisibilityState;
-import com.openmason.ui.themes.DensityManager;
-import com.openmason.ui.themes.ThemeDefinition;
-import com.openmason.ui.themes.ThemeManager;
+import com.openmason.ui.themes.application.DensityManager;
+import com.openmason.ui.themes.core.ThemeDefinition;
+import com.openmason.ui.themes.core.ThemeManager;
 import imgui.ImGui;
 
 /**

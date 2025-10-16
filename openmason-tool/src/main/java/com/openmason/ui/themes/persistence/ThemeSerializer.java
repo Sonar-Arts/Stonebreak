@@ -1,4 +1,6 @@
-package com.openmason.ui.themes;
+package com.openmason.ui.themes.persistence;
+import com.openmason.ui.themes.core.ThemeDefinition;
+import com.openmason.ui.themes.registry.ThemeRegistry;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
