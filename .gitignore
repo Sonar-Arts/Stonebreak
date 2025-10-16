@@ -137,3 +137,7 @@ chunk_gl_errors.txt
 /backups/
 /worlds/
 /Dev Working/
+
+# Open Mason Theme
+theme.ini
+Theme.ini
