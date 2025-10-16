@@ -456,7 +456,7 @@ public class ColorPalette {
         // GRAY50 = 0xFFFFFF, GRAY75 = 0xFAFAFA, GRAY100 = 0xF5F5F5, GRAY200 = 0xEAEAEA
         // GRAY300 = 0xE1E1E1, GRAY400 = 0xCACACA, GRAY500 = 0xB3B3B3, GRAY600 = 0x8E8E8E
         // GRAY700 = 0x707070, GRAY800 = 0x4B4B4B, GRAY900 = 0x2C2C2C
-        // BLUE400 = 0x2680EB, BLUE500 = 0x1473E6, BLUE600 = 0x0D66D0
+        // CYAN400 = 0x1BB5C9, CYAN500 = 0x10AAC0, CYAN600 = 0x0C94A8
 
         // Text colors
         theme.setColor(ImGuiCol.Text, 0.294f, 0.294f, 0.294f, 1.00f);           // GRAY800 #4B4B4B
@@ -467,14 +467,14 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.ChildBg, 0.00f, 0.00f, 0.00f, 0.00f);           // Transparent
         theme.setColor(ImGuiCol.PopupBg, 1.00f, 1.00f, 1.00f, 1.00f);           // GRAY50 #FFFFFF
 
-        // Border colors
-        theme.setColor(ImGuiCol.Border, 0.882f, 0.882f, 0.882f, 1.00f);         // GRAY300 #E1E1E1
+        // Border colors - enhanced visibility
+        theme.setColor(ImGuiCol.Border, 0.792f, 0.792f, 0.792f, 0.80f);         // GRAY400 #CACACA with higher opacity
         theme.setColor(ImGuiCol.BorderShadow, 0.00f, 0.00f, 0.00f, 0.00f);      // None/Transparent
 
-        // Frame colors (inputs, buttons)
-        theme.setColor(ImGuiCol.FrameBg, 0.980f, 0.980f, 0.980f, 1.00f);        // GRAY75 #FAFAFA
-        theme.setColor(ImGuiCol.FrameBgHovered, 1.00f, 1.00f, 1.00f, 1.00f);    // GRAY50 #FFFFFF
-        theme.setColor(ImGuiCol.FrameBgActive, 0.918f, 0.918f, 0.918f, 1.00f);  // GRAY200 #EAEAEA
+        // Frame colors (inputs, buttons) - enhanced contrast
+        theme.setColor(ImGuiCol.FrameBg, 1.00f, 1.00f, 1.00f, 1.00f);           // GRAY50 #FFFFFF (lighter for better separation)
+        theme.setColor(ImGuiCol.FrameBgHovered, 0.882f, 0.882f, 0.882f, 1.00f); // GRAY300 #E1E1E1 (more noticeable hover)
+        theme.setColor(ImGuiCol.FrameBgActive, 0.792f, 0.792f, 0.792f, 1.00f);  // GRAY400 #CACACA (distinct active state)
 
         // Title bar
         theme.setColor(ImGuiCol.TitleBg, 0.882f, 0.882f, 0.882f, 1.00f);        // GRAY300 #E1E1E1
@@ -491,24 +491,24 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.ScrollbarGrabActive, 0.439f, 0.439f, 0.439f, 1.00f);  // GRAY700 #707070
 
         // Check mark
-        theme.setColor(ImGuiCol.CheckMark, 0.078f, 0.451f, 0.902f, 1.00f);      // BLUE500 #1473E6
+        theme.setColor(ImGuiCol.CheckMark, 0.063f, 0.667f, 0.753f, 1.00f);      // CYAN500 #10AAC0
 
         // Slider
         theme.setColor(ImGuiCol.SliderGrab, 0.439f, 0.439f, 0.439f, 1.00f);     // GRAY700 #707070
         theme.setColor(ImGuiCol.SliderGrabActive, 0.294f, 0.294f, 0.294f, 1.00f); // GRAY800 #4B4B4B
 
-        // Button
-        theme.setColor(ImGuiCol.Button, 0.980f, 0.980f, 0.980f, 1.00f);         // GRAY75 #FAFAFA
-        theme.setColor(ImGuiCol.ButtonHovered, 1.00f, 1.00f, 1.00f, 1.00f);     // GRAY50 #FFFFFF
-        theme.setColor(ImGuiCol.ButtonActive, 0.918f, 0.918f, 0.918f, 1.00f);   // GRAY200 #EAEAEA
+        // Button - enhanced contrast
+        theme.setColor(ImGuiCol.Button, 1.00f, 1.00f, 1.00f, 1.00f);            // GRAY50 #FFFFFF (lighter for better separation)
+        theme.setColor(ImGuiCol.ButtonHovered, 0.882f, 0.882f, 0.882f, 1.00f);  // GRAY300 #E1E1E1 (more noticeable hover)
+        theme.setColor(ImGuiCol.ButtonActive, 0.792f, 0.792f, 0.792f, 1.00f);   // GRAY400 #CACACA (distinct active state)
 
         // Header (collapsing headers, selectables)
-        theme.setColor(ImGuiCol.Header, 0.149f, 0.502f, 0.922f, 1.00f);         // BLUE400 #2680EB
-        theme.setColor(ImGuiCol.HeaderHovered, 0.078f, 0.451f, 0.902f, 1.00f);  // BLUE500 #1473E6
-        theme.setColor(ImGuiCol.HeaderActive, 0.051f, 0.400f, 0.816f, 1.00f);   // BLUE600 #0D66D0
+        theme.setColor(ImGuiCol.Header, 0.106f, 0.710f, 0.788f, 1.00f);         // CYAN400 #1BB5C9
+        theme.setColor(ImGuiCol.HeaderHovered, 0.063f, 0.667f, 0.753f, 1.00f);  // CYAN500 #10AAC0
+        theme.setColor(ImGuiCol.HeaderActive, 0.047f, 0.580f, 0.659f, 1.00f);   // CYAN600 #0C94A8
 
-        // Separator
-        theme.setColor(ImGuiCol.Separator, 0.792f, 0.792f, 0.792f, 1.00f);      // GRAY400 #CACACA
+        // Separator - enhanced visibility
+        theme.setColor(ImGuiCol.Separator, 0.702f, 0.702f, 0.702f, 0.70f);      // GRAY500 #B3B3B3 with higher opacity
         theme.setColor(ImGuiCol.SeparatorHovered, 0.557f, 0.557f, 0.557f, 1.00f); // GRAY600 #8E8E8E
         theme.setColor(ImGuiCol.SeparatorActive, 0.439f, 0.439f, 0.439f, 1.00f);  // GRAY700 #707070
 
@@ -518,13 +518,13 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.ResizeGripActive, 0.439f, 0.439f, 0.439f, 1.00f);  // GRAY700 #707070
 
         // Plot colors
-        theme.setColor(ImGuiCol.PlotLines, 0.149f, 0.502f, 0.922f, 1.00f);      // BLUE400 #2680EB
-        theme.setColor(ImGuiCol.PlotLinesHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
-        theme.setColor(ImGuiCol.PlotHistogram, 0.149f, 0.502f, 0.922f, 1.00f);  // BLUE400 #2680EB
-        theme.setColor(ImGuiCol.PlotHistogramHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
+        theme.setColor(ImGuiCol.PlotLines, 0.106f, 0.710f, 0.788f, 1.00f);      // CYAN400 #1BB5C9
+        theme.setColor(ImGuiCol.PlotLinesHovered, 0.047f, 0.580f, 0.659f, 1.00f); // CYAN600 #0C94A8
+        theme.setColor(ImGuiCol.PlotHistogram, 0.106f, 0.710f, 0.788f, 1.00f);  // CYAN400 #1BB5C9
+        theme.setColor(ImGuiCol.PlotHistogramHovered, 0.047f, 0.580f, 0.659f, 1.00f); // CYAN600 #0C94A8
 
         // Text selection
-        theme.setColor(ImGuiCol.TextSelectedBg, 0.149f, 0.502f, 0.922f, 0.35f); // BLUE400 with alpha
+        theme.setColor(ImGuiCol.TextSelectedBg, 0.106f, 0.710f, 0.788f, 0.35f); // CYAN400 with alpha
 
         // Drag and drop
         theme.setColor(ImGuiCol.DragDropTarget, 1.00f, 1.00f, 0.00f, 0.90f);    // Yellow
@@ -544,12 +544,12 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.TableRowBg, 0.00f, 0.00f, 0.00f, 0.00f);        // Transparent
         theme.setColor(ImGuiCol.TableRowBgAlt, 0.294f, 0.294f, 0.294f, 0.09f);  // GRAY800 with alpha
 
-        // Tab colors
-        theme.setColor(ImGuiCol.Tab, 0.918f, 0.918f, 0.918f, 1.00f);            // GRAY200 #EAEAEA
-        theme.setColor(ImGuiCol.TabHovered, 0.078f, 0.451f, 0.902f, 0.80f);     // BLUE500 with alpha
-        theme.setColor(ImGuiCol.TabActive, 1.00f, 1.00f, 1.00f, 1.00f);         // GRAY50 #FFFFFF
-        theme.setColor(ImGuiCol.TabUnfocused, 0.961f, 0.961f, 0.961f, 1.00f);   // GRAY100 #F5F5F5
-        theme.setColor(ImGuiCol.TabUnfocusedActive, 0.980f, 0.980f, 0.980f, 1.00f); // GRAY75 #FAFAFA
+        // Tab colors - enhanced contrast
+        theme.setColor(ImGuiCol.Tab, 0.882f, 0.882f, 0.882f, 1.00f);            // GRAY300 #E1E1E1 (darker for better separation)
+        theme.setColor(ImGuiCol.TabHovered, 0.063f, 0.667f, 0.753f, 0.80f);     // CYAN500 with alpha
+        theme.setColor(ImGuiCol.TabActive, 1.00f, 1.00f, 1.00f, 1.00f);         // GRAY50 #FFFFFF (much lighter/more visible)
+        theme.setColor(ImGuiCol.TabUnfocused, 0.882f, 0.882f, 0.882f, 1.00f);   // GRAY300 #E1E1E1
+        theme.setColor(ImGuiCol.TabUnfocusedActive, 0.961f, 0.961f, 0.961f, 1.00f); // GRAY100 #F5F5F5 (moderately visible)
 
         // Style variables - Adobe Spectrum uses rounded corners with GrabRounding = 4.0f
         theme.setStyleVar(ImGuiStyleVar.WindowRounding, 4.0f);
@@ -583,7 +583,7 @@ public class ColorPalette {
         // GRAY50 = 0x252525, GRAY75 = 0x2F2F2F, GRAY100 = 0x323232, GRAY200 = 0x393939
         // GRAY300 = 0x3E3E3E, GRAY400 = 0x4D4D4D, GRAY500 = 0x5C5C5C, GRAY600 = 0x7B7B7B
         // GRAY700 = 0x999999, GRAY800 = 0xCDCDCD, GRAY900 = 0xFFFFFF
-        // BLUE400 = 0x2680EB, BLUE500 = 0x1473E6, BLUE600 = 0x0D66D0
+        // DARK_TEAL400 = 0x0D8A99, DARK_TEAL500 = 0x0A7080, DARK_TEAL600 = 0x075D6C
 
         // Text colors (bright for dark theme - improved readability)
         theme.setColor(ImGuiCol.Text, 0.90f, 0.90f, 0.90f, 1.00f);              // Enhanced GRAY800 for better contrast
@@ -594,14 +594,14 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.ChildBg, 0.00f, 0.00f, 0.00f, 0.00f);           // Transparent
         theme.setColor(ImGuiCol.PopupBg, 0.145f, 0.145f, 0.145f, 1.00f);        // GRAY50 #252525
 
-        // Border colors
-        theme.setColor(ImGuiCol.Border, 0.243f, 0.243f, 0.243f, 1.00f);         // GRAY300 #3E3E3E
+        // Border colors - enhanced visibility
+        theme.setColor(ImGuiCol.Border, 0.302f, 0.302f, 0.302f, 0.80f);         // GRAY400 #4D4D4D with higher opacity
         theme.setColor(ImGuiCol.BorderShadow, 0.00f, 0.00f, 0.00f, 0.00f);      // None/Transparent
 
-        // Frame colors (inputs, buttons)
-        theme.setColor(ImGuiCol.FrameBg, 0.184f, 0.184f, 0.184f, 1.00f);        // GRAY75 #2F2F2F
-        theme.setColor(ImGuiCol.FrameBgHovered, 0.224f, 0.224f, 0.224f, 1.00f); // GRAY200 #393939 (lighter on hover)
-        theme.setColor(ImGuiCol.FrameBgActive, 0.243f, 0.243f, 0.243f, 1.00f);  // GRAY300 #3E3E3E (even lighter when active)
+        // Frame colors (inputs, buttons) - enhanced contrast
+        theme.setColor(ImGuiCol.FrameBg, 0.145f, 0.145f, 0.145f, 1.00f);        // GRAY50 #252525 (darker for better separation)
+        theme.setColor(ImGuiCol.FrameBgHovered, 0.243f, 0.243f, 0.243f, 1.00f); // GRAY300 #3E3E3E (more noticeable hover)
+        theme.setColor(ImGuiCol.FrameBgActive, 0.302f, 0.302f, 0.302f, 1.00f);  // GRAY400 #4D4D4D (distinct active state)
 
         // Title bar
         theme.setColor(ImGuiCol.TitleBg, 0.243f, 0.243f, 0.243f, 1.00f);        // GRAY300 #3E3E3E
@@ -618,24 +618,24 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.ScrollbarGrabActive, 0.600f, 0.600f, 0.600f, 1.00f);  // GRAY700 #999999
 
         // Check mark
-        theme.setColor(ImGuiCol.CheckMark, 0.078f, 0.451f, 0.902f, 1.00f);      // BLUE500 #1473E6
+        theme.setColor(ImGuiCol.CheckMark, 0.039f, 0.439f, 0.502f, 1.00f);      // DARK_TEAL500 #0A7080
 
         // Slider
         theme.setColor(ImGuiCol.SliderGrab, 0.600f, 0.600f, 0.600f, 1.00f);     // GRAY700 #999999
         theme.setColor(ImGuiCol.SliderGrabActive, 0.804f, 0.804f, 0.804f, 1.00f); // GRAY800 #CDCDCD
 
-        // Button
-        theme.setColor(ImGuiCol.Button, 0.184f, 0.184f, 0.184f, 1.00f);         // GRAY75 #2F2F2F
-        theme.setColor(ImGuiCol.ButtonHovered, 0.224f, 0.224f, 0.224f, 1.00f);  // GRAY200 #393939 (lighter on hover)
-        theme.setColor(ImGuiCol.ButtonActive, 0.243f, 0.243f, 0.243f, 1.00f);   // GRAY300 #3E3E3E (even lighter when clicked)
+        // Button - enhanced contrast
+        theme.setColor(ImGuiCol.Button, 0.145f, 0.145f, 0.145f, 1.00f);         // GRAY50 #252525 (darker for better separation)
+        theme.setColor(ImGuiCol.ButtonHovered, 0.243f, 0.243f, 0.243f, 1.00f);  // GRAY300 #3E3E3E (more noticeable hover)
+        theme.setColor(ImGuiCol.ButtonActive, 0.302f, 0.302f, 0.302f, 1.00f);   // GRAY400 #4D4D4D (distinct active state)
 
         // Header (collapsing headers, selectables)
-        theme.setColor(ImGuiCol.Header, 0.149f, 0.502f, 0.922f, 1.00f);         // BLUE400 #2680EB
-        theme.setColor(ImGuiCol.HeaderHovered, 0.078f, 0.451f, 0.902f, 1.00f);  // BLUE500 #1473E6
-        theme.setColor(ImGuiCol.HeaderActive, 0.051f, 0.400f, 0.816f, 1.00f);   // BLUE600 #0D66D0
+        theme.setColor(ImGuiCol.Header, 0.051f, 0.541f, 0.600f, 1.00f);         // DARK_TEAL400 #0D8A99
+        theme.setColor(ImGuiCol.HeaderHovered, 0.039f, 0.439f, 0.502f, 1.00f);  // DARK_TEAL500 #0A7080
+        theme.setColor(ImGuiCol.HeaderActive, 0.027f, 0.365f, 0.424f, 1.00f);   // DARK_TEAL600 #075D6C
 
-        // Separator
-        theme.setColor(ImGuiCol.Separator, 0.302f, 0.302f, 0.302f, 1.00f);      // GRAY400 #4D4D4D
+        // Separator - enhanced visibility
+        theme.setColor(ImGuiCol.Separator, 0.361f, 0.361f, 0.361f, 0.70f);      // GRAY500 #5C5C5C with higher opacity
         theme.setColor(ImGuiCol.SeparatorHovered, 0.482f, 0.482f, 0.482f, 1.00f); // GRAY600 #7B7B7B
         theme.setColor(ImGuiCol.SeparatorActive, 0.600f, 0.600f, 0.600f, 1.00f);  // GRAY700 #999999
 
@@ -645,13 +645,13 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.ResizeGripActive, 0.600f, 0.600f, 0.600f, 1.00f);  // GRAY700 #999999
 
         // Plot colors
-        theme.setColor(ImGuiCol.PlotLines, 0.149f, 0.502f, 0.922f, 1.00f);      // BLUE400 #2680EB
-        theme.setColor(ImGuiCol.PlotLinesHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
-        theme.setColor(ImGuiCol.PlotHistogram, 0.149f, 0.502f, 0.922f, 1.00f);  // BLUE400 #2680EB
-        theme.setColor(ImGuiCol.PlotHistogramHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
+        theme.setColor(ImGuiCol.PlotLines, 0.051f, 0.541f, 0.600f, 1.00f);      // DARK_TEAL400 #0D8A99
+        theme.setColor(ImGuiCol.PlotLinesHovered, 0.027f, 0.365f, 0.424f, 1.00f); // DARK_TEAL600 #075D6C
+        theme.setColor(ImGuiCol.PlotHistogram, 0.051f, 0.541f, 0.600f, 1.00f);  // DARK_TEAL400 #0D8A99
+        theme.setColor(ImGuiCol.PlotHistogramHovered, 0.027f, 0.365f, 0.424f, 1.00f); // DARK_TEAL600 #075D6C
 
         // Text selection
-        theme.setColor(ImGuiCol.TextSelectedBg, 0.149f, 0.502f, 0.922f, 0.35f); // BLUE400 with alpha
+        theme.setColor(ImGuiCol.TextSelectedBg, 0.051f, 0.541f, 0.600f, 0.35f); // DARK_TEAL400 with alpha
 
         // Drag and drop
         theme.setColor(ImGuiCol.DragDropTarget, 1.00f, 1.00f, 0.00f, 0.90f);    // Yellow
@@ -671,12 +671,12 @@ public class ColorPalette {
         theme.setColor(ImGuiCol.TableRowBg, 0.00f, 0.00f, 0.00f, 0.00f);        // Transparent
         theme.setColor(ImGuiCol.TableRowBgAlt, 0.804f, 0.804f, 0.804f, 0.09f);  // GRAY800 with alpha
 
-        // Tab colors
-        theme.setColor(ImGuiCol.Tab, 0.184f, 0.184f, 0.184f, 1.00f);            // GRAY75 #2F2F2F (inactive tabs darker)
-        theme.setColor(ImGuiCol.TabHovered, 0.078f, 0.451f, 0.902f, 0.80f);     // BLUE500 with alpha
-        theme.setColor(ImGuiCol.TabActive, 0.243f, 0.243f, 0.243f, 1.00f);      // GRAY300 #3E3E3E (active tab lighter/more visible)
-        theme.setColor(ImGuiCol.TabUnfocused, 0.196f, 0.196f, 0.196f, 1.00f);   // GRAY100 #323232
-        theme.setColor(ImGuiCol.TabUnfocusedActive, 0.224f, 0.224f, 0.224f, 1.00f); // GRAY200 #393939 (slightly visible)
+        // Tab colors - enhanced contrast
+        theme.setColor(ImGuiCol.Tab, 0.145f, 0.145f, 0.145f, 1.00f);            // GRAY50 #252525 (inactive tabs darker for better separation)
+        theme.setColor(ImGuiCol.TabHovered, 0.039f, 0.439f, 0.502f, 0.80f);     // DARK_TEAL500 with alpha
+        theme.setColor(ImGuiCol.TabActive, 0.302f, 0.302f, 0.302f, 1.00f);      // GRAY400 #4D4D4D (active tab much lighter/more visible)
+        theme.setColor(ImGuiCol.TabUnfocused, 0.145f, 0.145f, 0.145f, 1.00f);   // GRAY50 #252525
+        theme.setColor(ImGuiCol.TabUnfocusedActive, 0.224f, 0.224f, 0.224f, 1.00f); // GRAY200 #393939 (moderately visible)
 
         // Style variables - Adobe Spectrum uses rounded corners with GrabRounding = 4.0f
         theme.setStyleVar(ImGuiStyleVar.WindowRounding, 4.0f);
