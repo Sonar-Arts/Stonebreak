@@ -513,11 +513,6 @@ public class OpenMasonApp {
      * Main method - application entry point.
      */
     public static void main(String[] args) {
-        // Check for validation test argument
-        if (args.length > 0 && "--validate".equals(args[0])) {
-            runValidationTest();
-            return;
-        }
         
         // logger.info("Launching OpenMason with args: {}", String.join(" ", args));
         
@@ -532,16 +527,5 @@ public class OpenMasonApp {
         }
     }
     
-    /**
-     * Run validation test for Stonebreak integration
-     */
-    private static void runValidationTest() {
-        try {
-            com.openmason.test.SimpleValidationTest.runValidation();
-        } catch (Exception e) {
-            System.err.println("Validation test failed: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
+
 }
