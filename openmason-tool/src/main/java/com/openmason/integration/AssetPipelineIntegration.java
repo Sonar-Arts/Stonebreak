@@ -2,7 +2,6 @@ package com.openmason.integration;
 
 import com.openmason.texture.TextureManager;
 import com.openmason.model.ModelManager;
-import com.openmason.coordinates.CoordinateSystemValidator;
 // Removed JavaFX Task dependency - using standard CompletableFuture
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,11 +22,10 @@ import java.time.format.DateTimeFormatter;
  */
 public class AssetPipelineIntegration {
     private static final Logger logger = LoggerFactory.getLogger(AssetPipelineIntegration.class);
-    
+
     private final TextureManager textureManager;
     private final ModelManager modelManager;
-    private final CoordinateSystemValidator coordinateValidator;
-    
+
     // Asset pipeline configuration
     private Path stonebreakProjectRoot;
     private Path gameTextureDirectory;
@@ -41,8 +39,7 @@ public class AssetPipelineIntegration {
     public AssetPipelineIntegration(TextureManager textureManager, ModelManager modelManager) {
         this.textureManager = textureManager;
         this.modelManager = modelManager;
-        this.coordinateValidator = new CoordinateSystemValidator();
-        
+
         initializePipelinePaths();
     }
     
@@ -121,19 +118,11 @@ public class AssetPipelineIntegration {
                 for (String variantName : variantNames) {
                     try {
                         operation.setCurrentTask("Exporting " + variantName);
-                        
-                        // Validate texture before export (using complete validation)
-                        CoordinateSystemValidator.ValidationResult validation = 
-                            CoordinateSystemValidator.runCompleteValidation();
-                        
-                        if (!validation.isPassed()) {
-                            result.addWarning("Validation issues found for " + variantName + ": " + validation.toString());
-                        }
-                        
+
                         // Export texture definition file
                         Path sourceFile = findTextureSourceFile(variantName);
                         Path targetFile = gameTextureDirectory.resolve(variantName + ".json");
-                        
+
                         if (sourceFile != null && Files.exists(sourceFile)) {
                             Files.copy(sourceFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
                             result.addSuccess("Exported " + variantName + " to " + targetFile);
@@ -141,10 +130,10 @@ public class AssetPipelineIntegration {
                         } else {
                             result.addError("Source file not found for " + variantName);
                         }
-                        
+
                         operation.incrementCompleted();
                         notifyPipelineListeners(operation, PipelineEventType.PROGRESS);
-                        
+
                     } catch (Exception e) {
                         result.addError("Failed to export " + variantName + ": " + e.getMessage());
                         logger.error("Failed to export texture {}", variantName, e);
@@ -177,57 +166,64 @@ public class AssetPipelineIntegration {
     /**
      * Validates all assets against game requirements.
      */
-    public CompletableFuture<ValidationSummary> validateAllAssets() {
+    public CompletableFuture<PipelineResult> validateAllAssets() {
         return CompletableFuture.supplyAsync(() -> {
             String operationId = "validate_assets_" + System.currentTimeMillis();
             PipelineOperation operation = new PipelineOperation(operationId, "Validate All Assets", 4); // 4 cow variants
-            
+
             try {
                 activeOperations.put(operationId, operation);
                 notifyPipelineListeners(operation, PipelineEventType.STARTED);
-                
-                ValidationSummary summary = new ValidationSummary();
+
+                PipelineResult result = new PipelineResult(operationId);
                 String[] variants = {"default_cow", "angus_cow", "highland_cow", "jersey_cow"};
-                
+
                 for (String variant : variants) {
                     operation.setCurrentTask("Validating " + variant);
-                    
+
                     try {
-                        // Validate coordinate system
-                        CoordinateSystemValidator.ValidationResult result = 
-                            CoordinateSystemValidator.runCompleteValidation();
-                        
-                        summary.addVariantResult(variant, result);
-                        
-                        if (result.isPassed()) {
-                            logger.debug("Validation passed for {}", variant);
+                        // Check if source files exist
+                        Path textureFile = findTextureSourceFile(variant);
+                        Path modelFile = findModelSourceFile(variant);
+
+                        if (textureFile != null && Files.exists(textureFile)) {
+                            result.addSuccess("Texture file exists for " + variant);
                         } else {
-                            logger.warn("Validation issues for {}: {}", variant, result.toString());
+                            result.addWarning("Texture file missing for " + variant);
                         }
-                        
+
+                        if (modelFile != null && Files.exists(modelFile)) {
+                            result.addSuccess("Model file exists for " + variant);
+                        } else {
+                            result.addWarning("Model file missing for " + variant);
+                        }
+
                     } catch (Exception e) {
-                        summary.addValidationError(variant, "Validation exception: " + e.getMessage());
+                        result.addError("Validation failed for " + variant + ": " + e.getMessage());
                         logger.error("Validation failed for {}", variant, e);
                     }
-                    
+
                     operation.incrementCompleted();
                     notifyPipelineListeners(operation, PipelineEventType.PROGRESS);
                 }
-                
+
                 operation.setCompleted(true);
                 notifyPipelineListeners(operation, PipelineEventType.COMPLETED);
-                
-                logger.info("Asset validation completed: {} valid, {} with issues", 
-                    summary.getValidCount(), summary.getInvalidCount());
-                
-                return summary;
-                
+
+                logger.info("Asset validation completed: {} successes, {} warnings, {} errors",
+                    result.getSuccessCount(), result.getWarningCount(), result.getErrorCount());
+
+                return result;
+
             } catch (Exception e) {
                 operation.setFailed(true);
                 operation.setErrorMessage(e.getMessage());
                 notifyPipelineListeners(operation, PipelineEventType.FAILED);
-                throw new RuntimeException("Asset validation failed", e);
-                
+
+                PipelineResult errorResult = new PipelineResult(operationId);
+                errorResult.addError("Asset validation failed: " + e.getMessage());
+                return errorResult;
+
             } finally {
                 activeOperations.remove(operationId);
             }
@@ -541,38 +537,7 @@ public class AssetPipelineIntegration {
         
         public boolean isSuccessful() { return errors.isEmpty(); }
     }
-    
-    public static class ValidationSummary {
-        private final Map<String, CoordinateSystemValidator.ValidationResult> variantResults = new ConcurrentHashMap<>();
-        private final List<String> globalErrors = new ArrayList<>();
-        
-        public void addVariantResult(String variant, CoordinateSystemValidator.ValidationResult result) {
-            variantResults.put(variant, result);
-        }
-        
-        public void addValidationError(String variant, String error) {
-            globalErrors.add(variant + ": " + error);
-        }
-        
-        public Map<String, CoordinateSystemValidator.ValidationResult> getVariantResults() {
-            return new ConcurrentHashMap<>(variantResults);
-        }
-        
-        public List<String> getGlobalErrors() { return new ArrayList<>(globalErrors); }
-        
-        public int getValidCount() {
-            return (int) variantResults.values().stream().filter(CoordinateSystemValidator.ValidationResult::isPassed).count();
-        }
-        
-        public int getInvalidCount() {
-            return variantResults.size() - getValidCount() + globalErrors.size();
-        }
-        
-        public boolean isAllValid() {
-            return globalErrors.isEmpty() && variantResults.values().stream().allMatch(CoordinateSystemValidator.ValidationResult::isPassed);
-        }
-    }
-    
+
     public interface PipelineListener {
         void onPipelineEvent(PipelineOperation operation, PipelineEventType eventType);
     }
