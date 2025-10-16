@@ -17,11 +17,7 @@ import java.util.Map;
  */
 public class StyleApplicator {
     private static final Logger logger = LoggerFactory.getLogger(StyleApplicator.class);
-    
-    // Stack tracking for proper cleanup
-    private static int colorStackDepth = 0;
-    private static int styleVarStackDepth = 0;
-    
+
     /**
      * Apply theme to current ImGui context (extracted from applyThemeToImGui)
      */
@@ -122,32 +118,52 @@ public class StyleApplicator {
     
     /**
      * Safely apply style variable with validation
+     * NOTE: We directly modify ImGui.getStyle() instead of using pushStyleVar
+     * because themes are permanent settings, not temporary scoped changes.
      */
     private static void applyStyleVar(int styleVar, float value) {
         try {
-            // Apply different style variables based on their type
+            // Directly modify the style object instead of using push/pop
+            // This is the correct way for permanent theme changes
             switch (styleVar) {
                 case ImGuiStyleVar.WindowRounding:
-                case ImGuiStyleVar.ChildRounding:
-                case ImGuiStyleVar.FrameRounding:
-                case ImGuiStyleVar.PopupRounding:
-                case ImGuiStyleVar.ScrollbarRounding:
-                case ImGuiStyleVar.GrabRounding:
-                case ImGuiStyleVar.TabRounding:
-                case ImGuiStyleVar.WindowBorderSize:
-                case ImGuiStyleVar.ChildBorderSize:
-                case ImGuiStyleVar.PopupBorderSize:
-                case ImGuiStyleVar.FrameBorderSize:
-                    // Single float style variables - use pushStyleVar for temporary changes
-                    ImGui.pushStyleVar(styleVar, value);
+                    ImGui.getStyle().setWindowRounding(value);
                     break;
-                    
+                case ImGuiStyleVar.ChildRounding:
+                    ImGui.getStyle().setChildRounding(value);
+                    break;
+                case ImGuiStyleVar.FrameRounding:
+                    ImGui.getStyle().setFrameRounding(value);
+                    break;
+                case ImGuiStyleVar.PopupRounding:
+                    ImGui.getStyle().setPopupRounding(value);
+                    break;
+                case ImGuiStyleVar.ScrollbarRounding:
+                    ImGui.getStyle().setScrollbarRounding(value);
+                    break;
+                case ImGuiStyleVar.GrabRounding:
+                    ImGui.getStyle().setGrabRounding(value);
+                    break;
+                case ImGuiStyleVar.TabRounding:
+                    ImGui.getStyle().setTabRounding(value);
+                    break;
+                case ImGuiStyleVar.WindowBorderSize:
+                    ImGui.getStyle().setWindowBorderSize(value);
+                    break;
+                case ImGuiStyleVar.ChildBorderSize:
+                    ImGui.getStyle().setChildBorderSize(value);
+                    break;
+                case ImGuiStyleVar.PopupBorderSize:
+                    ImGui.getStyle().setPopupBorderSize(value);
+                    break;
+                case ImGuiStyleVar.FrameBorderSize:
+                    ImGui.getStyle().setFrameBorderSize(value);
+                    break;
                 default:
-                    // For other style variables, use pushStyleVar
-                    ImGui.pushStyleVar(styleVar, value);
+                    logger.warn("Unknown style variable: {}", styleVar);
                     break;
             }
-            
+
         } catch (Exception e) {
             logger.warn("Failed to set style variable {} to {}: {}", styleVar, value, e.getMessage());
         }
@@ -165,14 +181,10 @@ public class StyleApplicator {
         try {
             // Reset to default dark style as baseline
             ImGui.styleColorsDark();
-            
+
             // Reset any custom style variables to defaults
             resetStyleVariablesToDefaults();
-            
-            // Reset stack tracking
-            colorStackDepth = 0;
-            styleVarStackDepth = 0;
-            
+
             logger.debug("Reset ImGui style to defaults");
             
         } catch (Exception e) {
@@ -332,16 +344,17 @@ public class StyleApplicator {
     
     /**
      * Scale a specific style variable by the given factor
+     * Directly modifies the style object, not using push/pop
      */
     private static void scaleStyleVar(int styleVar, float scaleFactor) {
         try {
-            // Since ImGui Java bindings don't have direct getVar/setVar,
-            // we'll use a default value and pushStyleVar for scaling
+            // Get the default value and scale it
             float defaultValue = getDefaultStyleVarValue(styleVar);
             float scaledValue = defaultValue * scaleFactor;
-            
+
             if (isValidStyleValue(scaledValue)) {
-                ImGui.pushStyleVar(styleVar, scaledValue);
+                // Use the same applyStyleVar method which properly sets the style
+                applyStyleVar(styleVar, scaledValue);
             }
         } catch (Exception e) {
             logger.debug("Failed to scale style var {}: {}", styleVar, e.getMessage());
@@ -376,9 +389,8 @@ public class StyleApplicator {
         if (!isImGuiContextValid()) {
             return "ImGui context invalid";
         }
-        
-        return String.format("ImGui context valid. Color stack: %d, Style var stack: %d", 
-                           colorStackDepth, styleVarStackDepth);
+
+        return "ImGui context valid";
     }
     
     /**
@@ -432,10 +444,7 @@ public class StyleApplicator {
                 // Force reset to dark theme as safe fallback
                 ImGui.styleColorsDark();
                 resetStyleVariablesToDefaults();
-                
-                colorStackDepth = 0;
-                styleVarStackDepth = 0;
-                
+
                 logger.info("Emergency reset completed successfully");
             } else {
                 logger.error("Cannot perform emergency reset - ImGui context is invalid");
