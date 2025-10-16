@@ -232,10 +232,10 @@ public class OpenMasonApp {
      */
     private void initializeImGui() {
         // logger.debug("Initializing Dear ImGui...");
-        
+
         // Initialize ImGui context
         ImGui.createContext();
-        
+
         // Configure ImGui IO
         ImGuiIO io = ImGui.getIO();
         setupImGuiLayout(io);
@@ -243,11 +243,59 @@ public class OpenMasonApp {
         io.addConfigFlags(ImGuiConfigFlags.DockingEnable);      // Enable docking
         io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);    // Enable viewports
 
+        // Load JetBrains Mono font
+        loadCustomFonts(io);
+
         // Initialize platform/renderer bindings
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
-        
+
         // logger.debug("Dear ImGui initialized successfully");
+    }
+
+    /**
+     * Load custom fonts for the application (JetBrains Mono).
+     */
+    private void loadCustomFonts(ImGuiIO io) {
+        try {
+            // Define font paths (module-specific to avoid conflicts with stonebreak-game)
+            String fontPath = "openmason-tool/src/main/resources/openmason/fonts/";
+            String regularFont = fontPath + "JetBrainsMono-Regular.ttf";
+            String boldFont = fontPath + "JetBrainsMono-Bold.ttf";
+            String mediumFont = fontPath + "JetBrainsMono-Medium.ttf";
+
+            // Font configuration
+            float fontSize = 16.0f;
+
+            // Load default UI font (Regular)
+            java.io.File regularFontFile = new java.io.File(regularFont);
+            if (regularFontFile.exists()) {
+                io.getFonts().addFontFromFileTTF(regularFont, fontSize);
+                logger.info("Loaded JetBrains Mono Regular font ({}px)", fontSize);
+            } else {
+                logger.warn("JetBrains Mono Regular font not found at: {}", regularFont);
+            }
+
+            // Load bold variant for headings (optional - can be accessed programmatically)
+            java.io.File boldFontFile = new java.io.File(boldFont);
+            if (boldFontFile.exists()) {
+                io.getFonts().addFontFromFileTTF(boldFont, fontSize);
+                logger.info("Loaded JetBrains Mono Bold font ({}px)", fontSize);
+            }
+
+            // Load medium variant (optional)
+            java.io.File mediumFontFile = new java.io.File(mediumFont);
+            if (mediumFontFile.exists()) {
+                io.getFonts().addFontFromFileTTF(mediumFont, fontSize);
+                logger.info("Loaded JetBrains Mono Medium font ({}px)", fontSize);
+            }
+
+            // Build font atlas
+            io.getFonts().build();
+
+        } catch (Exception e) {
+            logger.error("Failed to load custom fonts, using ImGui default font", e);
+        }
     }
     
     /**

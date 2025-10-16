@@ -446,14 +446,270 @@ public class ColorPalette {
     }
 
     /**
+     * Create Mason Spectrum Light theme (extracted from Adobe Spectrum design system)
+     */
+    public static ThemeDefinition createAdobeSpectrumLightTheme() {
+        ThemeDefinition theme = new ThemeDefinition("mason-spectrum-light", "Mason Spectrum Light",
+            "Professional light theme based on Spectrum design system", ThemeDefinition.ThemeType.BUILT_IN);
+
+        // Adobe Spectrum Light colors (hex values from Spectrum constants)
+        // GRAY50 = 0xFFFFFF, GRAY75 = 0xFAFAFA, GRAY100 = 0xF5F5F5, GRAY200 = 0xEAEAEA
+        // GRAY300 = 0xE1E1E1, GRAY400 = 0xCACACA, GRAY500 = 0xB3B3B3, GRAY600 = 0x8E8E8E
+        // GRAY700 = 0x707070, GRAY800 = 0x4B4B4B, GRAY900 = 0x2C2C2C
+        // BLUE400 = 0x2680EB, BLUE500 = 0x1473E6, BLUE600 = 0x0D66D0
+
+        // Text colors
+        theme.setColor(ImGuiCol.Text, 0.294f, 0.294f, 0.294f, 1.00f);           // GRAY800 #4B4B4B
+        theme.setColor(ImGuiCol.TextDisabled, 0.702f, 0.702f, 0.702f, 1.00f);   // GRAY500 #B3B3B3
+
+        // Window colors
+        theme.setColor(ImGuiCol.WindowBg, 0.961f, 0.961f, 0.961f, 1.00f);       // GRAY100 #F5F5F5
+        theme.setColor(ImGuiCol.ChildBg, 0.00f, 0.00f, 0.00f, 0.00f);           // Transparent
+        theme.setColor(ImGuiCol.PopupBg, 1.00f, 1.00f, 1.00f, 1.00f);           // GRAY50 #FFFFFF
+
+        // Border colors
+        theme.setColor(ImGuiCol.Border, 0.882f, 0.882f, 0.882f, 1.00f);         // GRAY300 #E1E1E1
+        theme.setColor(ImGuiCol.BorderShadow, 0.00f, 0.00f, 0.00f, 0.00f);      // None/Transparent
+
+        // Frame colors (inputs, buttons)
+        theme.setColor(ImGuiCol.FrameBg, 0.980f, 0.980f, 0.980f, 1.00f);        // GRAY75 #FAFAFA
+        theme.setColor(ImGuiCol.FrameBgHovered, 1.00f, 1.00f, 1.00f, 1.00f);    // GRAY50 #FFFFFF
+        theme.setColor(ImGuiCol.FrameBgActive, 0.918f, 0.918f, 0.918f, 1.00f);  // GRAY200 #EAEAEA
+
+        // Title bar
+        theme.setColor(ImGuiCol.TitleBg, 0.882f, 0.882f, 0.882f, 1.00f);        // GRAY300 #E1E1E1
+        theme.setColor(ImGuiCol.TitleBgActive, 0.918f, 0.918f, 0.918f, 1.00f);  // GRAY200 #EAEAEA
+        theme.setColor(ImGuiCol.TitleBgCollapsed, 0.792f, 0.792f, 0.792f, 1.00f); // GRAY400 #CACACA
+
+        // Menu bar
+        theme.setColor(ImGuiCol.MenuBarBg, 0.961f, 0.961f, 0.961f, 1.00f);      // GRAY100 #F5F5F5
+
+        // Scrollbar
+        theme.setColor(ImGuiCol.ScrollbarBg, 0.961f, 0.961f, 0.961f, 1.00f);    // GRAY100 #F5F5F5
+        theme.setColor(ImGuiCol.ScrollbarGrab, 0.792f, 0.792f, 0.792f, 1.00f);  // GRAY400 #CACACA
+        theme.setColor(ImGuiCol.ScrollbarGrabHovered, 0.557f, 0.557f, 0.557f, 1.00f); // GRAY600 #8E8E8E
+        theme.setColor(ImGuiCol.ScrollbarGrabActive, 0.439f, 0.439f, 0.439f, 1.00f);  // GRAY700 #707070
+
+        // Check mark
+        theme.setColor(ImGuiCol.CheckMark, 0.078f, 0.451f, 0.902f, 1.00f);      // BLUE500 #1473E6
+
+        // Slider
+        theme.setColor(ImGuiCol.SliderGrab, 0.439f, 0.439f, 0.439f, 1.00f);     // GRAY700 #707070
+        theme.setColor(ImGuiCol.SliderGrabActive, 0.294f, 0.294f, 0.294f, 1.00f); // GRAY800 #4B4B4B
+
+        // Button
+        theme.setColor(ImGuiCol.Button, 0.980f, 0.980f, 0.980f, 1.00f);         // GRAY75 #FAFAFA
+        theme.setColor(ImGuiCol.ButtonHovered, 1.00f, 1.00f, 1.00f, 1.00f);     // GRAY50 #FFFFFF
+        theme.setColor(ImGuiCol.ButtonActive, 0.918f, 0.918f, 0.918f, 1.00f);   // GRAY200 #EAEAEA
+
+        // Header (collapsing headers, selectables)
+        theme.setColor(ImGuiCol.Header, 0.149f, 0.502f, 0.922f, 1.00f);         // BLUE400 #2680EB
+        theme.setColor(ImGuiCol.HeaderHovered, 0.078f, 0.451f, 0.902f, 1.00f);  // BLUE500 #1473E6
+        theme.setColor(ImGuiCol.HeaderActive, 0.051f, 0.400f, 0.816f, 1.00f);   // BLUE600 #0D66D0
+
+        // Separator
+        theme.setColor(ImGuiCol.Separator, 0.792f, 0.792f, 0.792f, 1.00f);      // GRAY400 #CACACA
+        theme.setColor(ImGuiCol.SeparatorHovered, 0.557f, 0.557f, 0.557f, 1.00f); // GRAY600 #8E8E8E
+        theme.setColor(ImGuiCol.SeparatorActive, 0.439f, 0.439f, 0.439f, 1.00f);  // GRAY700 #707070
+
+        // Resize grip
+        theme.setColor(ImGuiCol.ResizeGrip, 0.792f, 0.792f, 0.792f, 1.00f);     // GRAY400 #CACACA
+        theme.setColor(ImGuiCol.ResizeGripHovered, 0.557f, 0.557f, 0.557f, 1.00f); // GRAY600 #8E8E8E
+        theme.setColor(ImGuiCol.ResizeGripActive, 0.439f, 0.439f, 0.439f, 1.00f);  // GRAY700 #707070
+
+        // Plot colors
+        theme.setColor(ImGuiCol.PlotLines, 0.149f, 0.502f, 0.922f, 1.00f);      // BLUE400 #2680EB
+        theme.setColor(ImGuiCol.PlotLinesHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
+        theme.setColor(ImGuiCol.PlotHistogram, 0.149f, 0.502f, 0.922f, 1.00f);  // BLUE400 #2680EB
+        theme.setColor(ImGuiCol.PlotHistogramHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
+
+        // Text selection
+        theme.setColor(ImGuiCol.TextSelectedBg, 0.149f, 0.502f, 0.922f, 0.35f); // BLUE400 with alpha
+
+        // Drag and drop
+        theme.setColor(ImGuiCol.DragDropTarget, 1.00f, 1.00f, 0.00f, 0.90f);    // Yellow
+
+        // Navigation
+        theme.setColor(ImGuiCol.NavHighlight, 0.173f, 0.173f, 0.173f, 0.04f);   // GRAY900 with alpha
+        theme.setColor(ImGuiCol.NavWindowingHighlight, 1.00f, 1.00f, 1.00f, 0.70f);
+        theme.setColor(ImGuiCol.NavWindowingDimBg, 0.80f, 0.80f, 0.80f, 0.20f);
+
+        // Modal
+        theme.setColor(ImGuiCol.ModalWindowDimBg, 0.20f, 0.20f, 0.20f, 0.35f);
+
+        // Table colors
+        theme.setColor(ImGuiCol.TableHeaderBg, 0.882f, 0.882f, 0.882f, 1.00f);  // GRAY300 #E1E1E1
+        theme.setColor(ImGuiCol.TableBorderStrong, 0.792f, 0.792f, 0.792f, 1.00f); // GRAY400 #CACACA
+        theme.setColor(ImGuiCol.TableBorderLight, 0.918f, 0.918f, 0.918f, 1.00f);  // GRAY200 #EAEAEA
+        theme.setColor(ImGuiCol.TableRowBg, 0.00f, 0.00f, 0.00f, 0.00f);        // Transparent
+        theme.setColor(ImGuiCol.TableRowBgAlt, 0.294f, 0.294f, 0.294f, 0.09f);  // GRAY800 with alpha
+
+        // Tab colors
+        theme.setColor(ImGuiCol.Tab, 0.918f, 0.918f, 0.918f, 1.00f);            // GRAY200 #EAEAEA
+        theme.setColor(ImGuiCol.TabHovered, 0.078f, 0.451f, 0.902f, 0.80f);     // BLUE500 with alpha
+        theme.setColor(ImGuiCol.TabActive, 1.00f, 1.00f, 1.00f, 1.00f);         // GRAY50 #FFFFFF
+        theme.setColor(ImGuiCol.TabUnfocused, 0.961f, 0.961f, 0.961f, 1.00f);   // GRAY100 #F5F5F5
+        theme.setColor(ImGuiCol.TabUnfocusedActive, 0.980f, 0.980f, 0.980f, 1.00f); // GRAY75 #FAFAFA
+
+        // Style variables - Adobe Spectrum uses rounded corners with GrabRounding = 4.0f
+        theme.setStyleVar(ImGuiStyleVar.WindowRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.ChildRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.PopupRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.ScrollbarRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.GrabRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.TabRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.WindowBorderSize, 1.0f);
+        theme.setStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0f);
+        theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
+        theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
+
+        logger.debug("Created Mason Spectrum Light theme with {} colors and {} style vars",
+                     theme.getColorCount(), theme.getStyleVarCount());
+
+        // Mark as read-only AFTER all colors and styles are set
+        theme.setReadOnly(true);
+        return theme;
+    }
+
+    /**
+     * Create Mason Spectrum Dark theme (dark variant of Adobe Spectrum design system)
+     */
+    public static ThemeDefinition createAdobeSpectrumDarkTheme() {
+        ThemeDefinition theme = new ThemeDefinition("mason-spectrum-dark", "Mason Spectrum Dark",
+            "Professional dark theme based on Spectrum design system", ThemeDefinition.ThemeType.BUILT_IN);
+
+        // Adobe Spectrum Dark colors (hex values from Spectrum constants)
+        // GRAY50 = 0x252525, GRAY75 = 0x2F2F2F, GRAY100 = 0x323232, GRAY200 = 0x393939
+        // GRAY300 = 0x3E3E3E, GRAY400 = 0x4D4D4D, GRAY500 = 0x5C5C5C, GRAY600 = 0x7B7B7B
+        // GRAY700 = 0x999999, GRAY800 = 0xCDCDCD, GRAY900 = 0xFFFFFF
+        // BLUE400 = 0x2680EB, BLUE500 = 0x1473E6, BLUE600 = 0x0D66D0
+
+        // Text colors (bright for dark theme - improved readability)
+        theme.setColor(ImGuiCol.Text, 0.90f, 0.90f, 0.90f, 1.00f);              // Enhanced GRAY800 for better contrast
+        theme.setColor(ImGuiCol.TextDisabled, 0.482f, 0.482f, 0.482f, 1.00f);   // GRAY600 #7B7B7B (slightly brighter)
+
+        // Window colors
+        theme.setColor(ImGuiCol.WindowBg, 0.196f, 0.196f, 0.196f, 1.00f);       // GRAY100 #323232
+        theme.setColor(ImGuiCol.ChildBg, 0.00f, 0.00f, 0.00f, 0.00f);           // Transparent
+        theme.setColor(ImGuiCol.PopupBg, 0.145f, 0.145f, 0.145f, 1.00f);        // GRAY50 #252525
+
+        // Border colors
+        theme.setColor(ImGuiCol.Border, 0.243f, 0.243f, 0.243f, 1.00f);         // GRAY300 #3E3E3E
+        theme.setColor(ImGuiCol.BorderShadow, 0.00f, 0.00f, 0.00f, 0.00f);      // None/Transparent
+
+        // Frame colors (inputs, buttons)
+        theme.setColor(ImGuiCol.FrameBg, 0.184f, 0.184f, 0.184f, 1.00f);        // GRAY75 #2F2F2F
+        theme.setColor(ImGuiCol.FrameBgHovered, 0.224f, 0.224f, 0.224f, 1.00f); // GRAY200 #393939 (lighter on hover)
+        theme.setColor(ImGuiCol.FrameBgActive, 0.243f, 0.243f, 0.243f, 1.00f);  // GRAY300 #3E3E3E (even lighter when active)
+
+        // Title bar
+        theme.setColor(ImGuiCol.TitleBg, 0.243f, 0.243f, 0.243f, 1.00f);        // GRAY300 #3E3E3E
+        theme.setColor(ImGuiCol.TitleBgActive, 0.224f, 0.224f, 0.224f, 1.00f);  // GRAY200 #393939
+        theme.setColor(ImGuiCol.TitleBgCollapsed, 0.302f, 0.302f, 0.302f, 1.00f); // GRAY400 #4D4D4D
+
+        // Menu bar
+        theme.setColor(ImGuiCol.MenuBarBg, 0.196f, 0.196f, 0.196f, 1.00f);      // GRAY100 #323232
+
+        // Scrollbar
+        theme.setColor(ImGuiCol.ScrollbarBg, 0.196f, 0.196f, 0.196f, 1.00f);    // GRAY100 #323232
+        theme.setColor(ImGuiCol.ScrollbarGrab, 0.302f, 0.302f, 0.302f, 1.00f);  // GRAY400 #4D4D4D
+        theme.setColor(ImGuiCol.ScrollbarGrabHovered, 0.482f, 0.482f, 0.482f, 1.00f); // GRAY600 #7B7B7B
+        theme.setColor(ImGuiCol.ScrollbarGrabActive, 0.600f, 0.600f, 0.600f, 1.00f);  // GRAY700 #999999
+
+        // Check mark
+        theme.setColor(ImGuiCol.CheckMark, 0.078f, 0.451f, 0.902f, 1.00f);      // BLUE500 #1473E6
+
+        // Slider
+        theme.setColor(ImGuiCol.SliderGrab, 0.600f, 0.600f, 0.600f, 1.00f);     // GRAY700 #999999
+        theme.setColor(ImGuiCol.SliderGrabActive, 0.804f, 0.804f, 0.804f, 1.00f); // GRAY800 #CDCDCD
+
+        // Button
+        theme.setColor(ImGuiCol.Button, 0.184f, 0.184f, 0.184f, 1.00f);         // GRAY75 #2F2F2F
+        theme.setColor(ImGuiCol.ButtonHovered, 0.224f, 0.224f, 0.224f, 1.00f);  // GRAY200 #393939 (lighter on hover)
+        theme.setColor(ImGuiCol.ButtonActive, 0.243f, 0.243f, 0.243f, 1.00f);   // GRAY300 #3E3E3E (even lighter when clicked)
+
+        // Header (collapsing headers, selectables)
+        theme.setColor(ImGuiCol.Header, 0.149f, 0.502f, 0.922f, 1.00f);         // BLUE400 #2680EB
+        theme.setColor(ImGuiCol.HeaderHovered, 0.078f, 0.451f, 0.902f, 1.00f);  // BLUE500 #1473E6
+        theme.setColor(ImGuiCol.HeaderActive, 0.051f, 0.400f, 0.816f, 1.00f);   // BLUE600 #0D66D0
+
+        // Separator
+        theme.setColor(ImGuiCol.Separator, 0.302f, 0.302f, 0.302f, 1.00f);      // GRAY400 #4D4D4D
+        theme.setColor(ImGuiCol.SeparatorHovered, 0.482f, 0.482f, 0.482f, 1.00f); // GRAY600 #7B7B7B
+        theme.setColor(ImGuiCol.SeparatorActive, 0.600f, 0.600f, 0.600f, 1.00f);  // GRAY700 #999999
+
+        // Resize grip
+        theme.setColor(ImGuiCol.ResizeGrip, 0.302f, 0.302f, 0.302f, 1.00f);     // GRAY400 #4D4D4D
+        theme.setColor(ImGuiCol.ResizeGripHovered, 0.482f, 0.482f, 0.482f, 1.00f); // GRAY600 #7B7B7B
+        theme.setColor(ImGuiCol.ResizeGripActive, 0.600f, 0.600f, 0.600f, 1.00f);  // GRAY700 #999999
+
+        // Plot colors
+        theme.setColor(ImGuiCol.PlotLines, 0.149f, 0.502f, 0.922f, 1.00f);      // BLUE400 #2680EB
+        theme.setColor(ImGuiCol.PlotLinesHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
+        theme.setColor(ImGuiCol.PlotHistogram, 0.149f, 0.502f, 0.922f, 1.00f);  // BLUE400 #2680EB
+        theme.setColor(ImGuiCol.PlotHistogramHovered, 0.051f, 0.400f, 0.816f, 1.00f); // BLUE600 #0D66D0
+
+        // Text selection
+        theme.setColor(ImGuiCol.TextSelectedBg, 0.149f, 0.502f, 0.922f, 0.35f); // BLUE400 with alpha
+
+        // Drag and drop
+        theme.setColor(ImGuiCol.DragDropTarget, 1.00f, 1.00f, 0.00f, 0.90f);    // Yellow
+
+        // Navigation
+        theme.setColor(ImGuiCol.NavHighlight, 1.00f, 1.00f, 1.00f, 0.04f);      // GRAY900 with alpha
+        theme.setColor(ImGuiCol.NavWindowingHighlight, 1.00f, 1.00f, 1.00f, 0.70f);
+        theme.setColor(ImGuiCol.NavWindowingDimBg, 0.80f, 0.80f, 0.80f, 0.20f);
+
+        // Modal
+        theme.setColor(ImGuiCol.ModalWindowDimBg, 0.20f, 0.20f, 0.20f, 0.35f);
+
+        // Table colors
+        theme.setColor(ImGuiCol.TableHeaderBg, 0.243f, 0.243f, 0.243f, 1.00f);  // GRAY300 #3E3E3E
+        theme.setColor(ImGuiCol.TableBorderStrong, 0.302f, 0.302f, 0.302f, 1.00f); // GRAY400 #4D4D4D
+        theme.setColor(ImGuiCol.TableBorderLight, 0.224f, 0.224f, 0.224f, 1.00f);  // GRAY200 #393939
+        theme.setColor(ImGuiCol.TableRowBg, 0.00f, 0.00f, 0.00f, 0.00f);        // Transparent
+        theme.setColor(ImGuiCol.TableRowBgAlt, 0.804f, 0.804f, 0.804f, 0.09f);  // GRAY800 with alpha
+
+        // Tab colors
+        theme.setColor(ImGuiCol.Tab, 0.184f, 0.184f, 0.184f, 1.00f);            // GRAY75 #2F2F2F (inactive tabs darker)
+        theme.setColor(ImGuiCol.TabHovered, 0.078f, 0.451f, 0.902f, 0.80f);     // BLUE500 with alpha
+        theme.setColor(ImGuiCol.TabActive, 0.243f, 0.243f, 0.243f, 1.00f);      // GRAY300 #3E3E3E (active tab lighter/more visible)
+        theme.setColor(ImGuiCol.TabUnfocused, 0.196f, 0.196f, 0.196f, 1.00f);   // GRAY100 #323232
+        theme.setColor(ImGuiCol.TabUnfocusedActive, 0.224f, 0.224f, 0.224f, 1.00f); // GRAY200 #393939 (slightly visible)
+
+        // Style variables - Adobe Spectrum uses rounded corners with GrabRounding = 4.0f
+        theme.setStyleVar(ImGuiStyleVar.WindowRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.ChildRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.PopupRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.ScrollbarRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.GrabRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.TabRounding, 4.0f);
+        theme.setStyleVar(ImGuiStyleVar.WindowBorderSize, 1.0f);
+        theme.setStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0f);
+        theme.setStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
+        theme.setStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
+
+        logger.debug("Created Mason Spectrum Dark theme with {} colors and {} style vars",
+                     theme.getColorCount(), theme.getStyleVarCount());
+
+        // Mark as read-only AFTER all colors and styles are set
+        theme.setReadOnly(true);
+        return theme;
+    }
+
+    /**
      * Get all available built-in themes
      */
     public static List<ThemeDefinition> getAllBuiltInThemes() {
         List<ThemeDefinition> themes = Arrays.asList(
             createDarkTheme(),
-            createLightTheme(), 
+            createLightTheme(),
             createHighContrastTheme(),
-            createBlueTheme()
+            createBlueTheme(),
+            createAdobeSpectrumLightTheme(),
+            createAdobeSpectrumDarkTheme()
         );
         logger.info("Generated {} built-in themes", themes.size());
         return themes;
@@ -472,18 +728,23 @@ public class ColorPalette {
                 return createHighContrastTheme();
             case "blue":
                 return createBlueTheme();
+            case "mason-spectrum-light":
+                return createAdobeSpectrumLightTheme();
+            case "mason-spectrum-dark":
+                return createAdobeSpectrumDarkTheme();
             default:
                 logger.warn("Unknown built-in theme ID: {}", themeId);
                 return null;
         }
     }
-    
+
     /**
      * Check if a theme ID corresponds to a built-in theme
      */
     public static boolean isBuiltInTheme(String themeId) {
         if (themeId == null) return false;
         String id = themeId.toLowerCase();
-        return "dark".equals(id) || "light".equals(id) || "high-contrast".equals(id) || "blue".equals(id);
+        return "dark".equals(id) || "light".equals(id) || "high-contrast".equals(id) ||
+               "blue".equals(id) || "mason-spectrum-light".equals(id) || "mason-spectrum-dark".equals(id);
     }
 }

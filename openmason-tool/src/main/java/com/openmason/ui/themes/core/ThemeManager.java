@@ -97,16 +97,20 @@ public class ThemeManager {
             ThemeDefinition lightTheme = ColorPalette.createLightTheme();
             ThemeDefinition highContrastTheme = ColorPalette.createHighContrastTheme();
             ThemeDefinition blueTheme = ColorPalette.createBlueTheme();
-            
+            ThemeDefinition adobeSpectrumLightTheme = ColorPalette.createAdobeSpectrumLightTheme();
+            ThemeDefinition adobeSpectrumDarkTheme = ColorPalette.createAdobeSpectrumDarkTheme();
+
             // Register with registry
             registry.registerTheme(darkTheme.getId(), darkTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
             registry.registerTheme(lightTheme.getId(), lightTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
             registry.registerTheme(highContrastTheme.getId(), highContrastTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
             registry.registerTheme(blueTheme.getId(), blueTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
-            
+            registry.registerTheme(adobeSpectrumLightTheme.getId(), adobeSpectrumLightTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
+            registry.registerTheme(adobeSpectrumDarkTheme.getId(), adobeSpectrumDarkTheme, ThemeRegistry.ThemeCategory.BUILT_IN, "ThemeManager");
+
             // Set default theme
             currentTheme = darkTheme;
-            
+
         } catch (Exception e) {
             logger.error("Failed to initialize built-in themes", e);
         }
