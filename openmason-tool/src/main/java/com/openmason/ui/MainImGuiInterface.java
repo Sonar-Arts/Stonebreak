@@ -229,9 +229,10 @@ public class MainImGuiInterface {
         int windowFlags = ImGuiWindowFlags.NoDocking;
 
         ImGuiViewport viewport = ImGui.getMainViewport();
-        float menuBarHeight = ImGui.getFrameHeight();
-        float toolbarHeight = uiVisibilityState.getShowToolbar().get() ? (ImGui.getFrameHeight() + 8.0f) : 0.0f;
-        float topOffset = menuBarHeight + toolbarHeight;
+        // Toolbar height is exactly one frame height with no extra padding
+        // Note: getWorkPosY() already accounts for the menu bar
+        float toolbarHeight = uiVisibilityState.getShowToolbar().get() ? ImGui.getFrameHeight() : 0.0f;
+        float topOffset = toolbarHeight;
 
         ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY() + topOffset);
         ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY() - topOffset);
@@ -240,13 +241,14 @@ public class MainImGuiInterface {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowBorderSize, 0.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0.0f, 0.0f);
 
         windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoCollapse |
                 ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove |
                 ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoNavFocus;
 
         ImGui.begin("OpenMason Dockspace", windowFlags);
-        ImGui.popStyleVar(3);
+        ImGui.popStyleVar(4);
 
         int dockspaceId = ImGui.getID("OpenMasonDockSpace");
         ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);

@@ -58,11 +58,15 @@ public class ToolbarRenderer {
         }
 
         // Position toolbar directly under the menu bar
+        // Note: getWorkPosY() already accounts for the menu bar, so no need to add menuBarHeight
         ImGuiViewport mainViewport = ImGui.getMainViewport();
-        float menuBarHeight = ImGui.getFrameHeight();
 
-        ImGui.setNextWindowPos(mainViewport.getWorkPosX(), mainViewport.getWorkPosY() + menuBarHeight);
-        ImGui.setNextWindowSize(mainViewport.getWorkSizeX(), ImGui.getFrameHeight() + 8.0f);
+        ImGui.setNextWindowPos(mainViewport.getWorkPosX(), mainViewport.getWorkPosY());
+        ImGui.setNextWindowSize(mainViewport.getWorkSizeX(), ImGui.getFrameHeight());
+
+        // Remove padding from toolbar window
+        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.WindowPadding, 4.0f, 2.0f);
+        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemSpacing, 4.0f, 0.0f);
 
         int toolbarFlags = ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
                 ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoScrollbar |
@@ -90,6 +94,7 @@ public class ToolbarRenderer {
             renderStatusDisplay();
         }
         ImGui.end();
+        ImGui.popStyleVar(2); // Pop WindowPadding and ItemSpacing
     }
 
     /**

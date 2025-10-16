@@ -39,7 +39,13 @@ public class MenuBarCoordinator {
      * Render the main menu bar.
      */
     public void render() {
+        // Remove padding from menu bar for tight layout
+        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.WindowPadding, 4.0f, 0.0f);
+        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemSpacing, 4.0f, 0.0f);
+        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FramePadding, 4.0f, 2.0f);
+
         if (!ImGui.beginMainMenuBar()) {
+            ImGui.popStyleVar(3);
             return;
         }
 
@@ -63,6 +69,7 @@ public class MenuBarCoordinator {
         renderToolbarRestoreButton();
 
         ImGui.endMainMenuBar();
+        ImGui.popStyleVar(3); // Pop WindowPadding, ItemSpacing, and FramePadding
     }
 
     /**
