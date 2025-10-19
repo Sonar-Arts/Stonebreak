@@ -7,6 +7,8 @@ import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.ViewportImGuiInterface;
+import com.openmason.ui.WelcomeScreenImGui;
+import com.openmason.ui.ToolCard;
 import com.openmason.ui.themes.core.ThemeManager;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
@@ -50,10 +52,12 @@ public class OpenMasonApp {
     
     // UI Interfaces
     private ThemeManager themeManager;
+    private WelcomeScreenImGui welcomeScreen;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
 
     // Application state
+    private ApplicationState currentState = ApplicationState.WELCOME_SCREEN;
     private boolean shouldClose = false;
     private boolean shouldApplyDefaultLayout = false;
     private boolean imguiInitialized = false;
@@ -354,6 +358,10 @@ public class OpenMasonApp {
             // Initialize theme system for ImGui
             themeManager.initializeForImGui();
 
+            // Initialize welcome screen with theme manager
+            welcomeScreen = new WelcomeScreenImGui(themeManager);
+            setupWelcomeScreenTools();
+
             // Initialize main interface with theme manager
             mainInterface = new MainImGuiInterface(themeManager);
 
@@ -382,28 +390,84 @@ public class OpenMasonApp {
     private void renderUI() {
         // Calculate delta time for animations
         float deltaTime = ImGui.getIO().getDeltaTime();
-        
-        // Render main interface
-        if (mainInterface != null) {
-            try {
-                mainInterface.render();
-                mainInterface.update(deltaTime);
-            } catch (Exception e) {
-                logger.error("Error rendering main interface", e);
+
+        // Render based on application state
+        if (currentState.isWelcomeScreen()) {
+            // Render welcome screen
+            if (welcomeScreen != null) {
+                try {
+                    welcomeScreen.render();
+                    welcomeScreen.update(deltaTime);
+
+                    // Check if welcome screen should close (user clicked X)
+                    if (welcomeScreen.shouldClose()) {
+                        shouldClose = true;
+                    }
+                } catch (Exception e) {
+                    logger.error("Error rendering welcome screen", e);
+                }
             }
-        }
-        
-        // Render viewport interface
-        if (viewportInterface != null) {
-            try {
-                viewportInterface.render();
-                viewportInterface.update(deltaTime);
-            } catch (Exception e) {
-                logger.error("Error rendering viewport interface", e);
+        } else if (currentState.isMainInterface()) {
+            // Render main interface
+            if (mainInterface != null) {
+                try {
+                    mainInterface.render();
+                    mainInterface.update(deltaTime);
+                } catch (Exception e) {
+                    logger.error("Error rendering main interface", e);
+                }
+            }
+
+            // Render viewport interface
+            if (viewportInterface != null) {
+                try {
+                    viewportInterface.render();
+                    viewportInterface.update(deltaTime);
+                } catch (Exception e) {
+                    logger.error("Error rendering viewport interface", e);
+                }
             }
         }
     }
     
+    /**
+     * Setup tool cards for the welcome screen.
+     */
+    private void setupWelcomeScreenTools() {
+        // 3D Model Viewer tool
+        ToolCard modelViewerTool = new ToolCard(
+            "3D Model Viewer",
+            "View and inspect 3D models with professional viewport controls and rendering.",
+            this::transitionToMainInterface
+        );
+        welcomeScreen.addToolCard(modelViewerTool);
+
+        // Future tools (coming soon)
+        welcomeScreen.addToolCard(ToolCard.comingSoon(
+            "Texture Editor",
+            "Create and edit textures with advanced painting and generation tools."
+        ));
+
+        welcomeScreen.addToolCard(ToolCard.comingSoon(
+            "Animation Editor",
+            "Design and preview animations for your 3D models."
+        ));
+
+        welcomeScreen.addToolCard(ToolCard.comingSoon(
+            "Model Validator",
+            "Validate and optimize models for game performance."
+        ));
+    }
+
+    /**
+     * Transition from welcome screen to main interface.
+     */
+    private void transitionToMainInterface() {
+        logger.info("Transitioning to main interface");
+        currentState = ApplicationState.MAIN_INTERFACE;
+        shouldApplyDefaultLayout = true;
+    }
+
     /**
      * Cleanup application resources.
      */
