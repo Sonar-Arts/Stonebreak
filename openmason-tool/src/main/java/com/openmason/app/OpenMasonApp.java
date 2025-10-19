@@ -138,20 +138,27 @@ public class OpenMasonApp {
         // Get window size from config
         int width = appConfig.getLastWindowWidth();
         int height = appConfig.getLastWindowHeight();
-        
+
+        // Validate dimensions - use defaults if invalid
+        if (width <= 0 || height <= 0) {
+            logger.warn("Invalid window dimensions from config: {}x{}, using defaults", width, height);
+            width = DEFAULT_WIDTH;
+            height = DEFAULT_HEIGHT;
+        }
+
         logger.info("Attempting to create GLFW window with dimensions: {}x{}", width, height);
-        
+
         // Create window
         window = glfwCreateWindow(width, height, APP_TITLE, NULL, NULL);
         if (window == NULL) {
             logger.error("Failed to create GLFW window with dimensions {}x{}, trying default size", width, height);
-            
+
             // Try with default dimensions as fallback
             window = glfwCreateWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, APP_TITLE, NULL, NULL);
             if (window == NULL) {
                 throw new RuntimeException("Failed to create GLFW window even with default dimensions " + DEFAULT_WIDTH + "x" + DEFAULT_HEIGHT);
             }
-            
+
             logger.info("Successfully created GLFW window with default dimensions: {}x{}", DEFAULT_WIDTH, DEFAULT_HEIGHT);
         } else {
             logger.info("Successfully created GLFW window with dimensions: {}x{}", width, height);
