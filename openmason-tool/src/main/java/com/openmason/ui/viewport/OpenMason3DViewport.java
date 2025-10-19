@@ -27,7 +27,10 @@ import static org.lwjgl.opengl.GL11.GL_FRONT_AND_BACK;
 import com.openmason.model.ModelManager;
 import com.openmason.model.StonebreakModel;
 import com.openmason.rendering.ModelRenderer;
+import com.openmason.rendering.BlockRenderer;
 import com.openmason.rendering.TextureAtlas;
+import com.openmason.block.BlockManager;
+import com.stonebreak.blocks.BlockType;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -102,7 +105,12 @@ public class OpenMason3DViewport {
     private volatile StonebreakModel currentModel = null;
     private boolean modelRenderingEnabled = true;
     private volatile CompletableFuture<Void> currentModelLoadingFuture = null;
-    
+
+    // Block rendering system
+    private BlockRenderer blockRenderer;
+    private volatile BlockType selectedBlock = null;
+    private boolean blockRenderingMode = false; // When true, renders block instead of model
+
     // Texture system
     private TextureAtlas textureAtlas;
     
@@ -143,13 +151,14 @@ public class OpenMason3DViewport {
         this.camera = new Camera();
         this.inputHandler = new ViewportInputHandler(camera);
         this.modelRenderer = new ModelRenderer("Viewport");
+        this.blockRenderer = new BlockRenderer("Viewport");
         this.transformGizmo = new TransformGizmo();
-        
+
         // Initialize user transform matrix to identity
         this.userTransformMatrix.identity();
         this.userTransformDirty = false;
-        
-        // logger.info("OpenMason 3D Viewport created with input handler and model renderer");
+
+        // logger.info("OpenMason 3D Viewport created with input handler, model renderer, and block renderer");
     }
     
     /**
@@ -191,10 +200,16 @@ public class OpenMason3DViewport {
             
             // Initialize model renderer
             modelRenderer.initialize();
-            
+
             // Enable matrix transformation mode for proper Stonebreak coordinate system support
             modelRenderer.setMatrixTransformationMode(true);
-            
+
+            // Initialize block renderer and BlockManager
+            if (!BlockManager.isInitialized()) {
+                BlockManager.initialize();
+            }
+            blockRenderer.initialize();
+
             // Initialize texture atlas
             textureAtlas = new TextureAtlas("Viewport_CowAtlas");
             textureAtlas.initialize();
@@ -747,31 +762,38 @@ public class OpenMason3DViewport {
         // DIAGNOSTIC: Runtime model state logging (throttled)
         long currentTime = System.currentTimeMillis();
         boolean shouldLog = (currentTime - lastDiagnosticLogTime) >= DIAGNOSTIC_LOG_INTERVAL_MS;
-        
+
         if (shouldLog) {
             lastDiagnosticLogTime = currentTime;
-            // logger.info("RENDER DIAGNOSTIC (viewport instance: {}) - currentModel: {}, currentModelName: {}, modelRenderingEnabled: {}", 
+            // logger.info("RENDER DIAGNOSTIC (viewport instance: {}) - currentModel: {}, currentModelName: {}, modelRenderingEnabled: {}",
             //            System.identityHashCode(this), (currentModel != null), currentModelName, modelRenderingEnabled);
-            
+
             if (currentModel != null) {
-                // logger.info("RENDER DIAGNOSTIC - model variant: {}, body parts: {}", 
-                //            currentModel.getVariantName(), 
+                // logger.info("RENDER DIAGNOSTIC - model variant: {}, body parts: {}",
+                //            currentModel.getVariantName(),
                 //            (currentModel.getBodyParts() != null ? currentModel.getBodyParts().size() : "null"));
-                
+
                 // Check model preparation status
                 boolean isPrepared = modelRenderer.isModelPrepared(currentModel);
                 // logger.info("RENDER DIAGNOSTIC - model prepared: {}", isPrepared);
-                
+
                 if (!isPrepared) {
                     // Get detailed preparation status
                     var status = modelRenderer.getModelPreparationStatus(currentModel);
                     // logger.info("RENDER DIAGNOSTIC - preparation status: {}", status.toString());
                 }
             }
+
+            if (selectedBlock != null && blockRenderingMode) {
+                logger.trace("RENDER DIAGNOSTIC - block mode: rendering {}", selectedBlock.name());
+            }
         }
-        
-        // Prepare loaded model for rendering if needed (must be done on main thread with OpenGL context)
-        if (currentModel != null && !modelRenderer.isModelPrepared(currentModel)) {
+
+        // Render based on mode - blocks take priority over models
+        if (blockRenderingMode && selectedBlock != null) {
+            // Render block
+            renderBlock();
+        } else if (currentModel != null && !modelRenderer.isModelPrepared(currentModel)) {
             try {
                 // logger.info("Preparing model for rendering: {}", currentModelName);
                 boolean prepared = modelRenderer.prepareModel(currentModel);
@@ -788,15 +810,18 @@ public class OpenMason3DViewport {
         }
         
         // DIAGNOSTIC: Check render conditions (throttled)
-        boolean canRender = modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
+        boolean canRenderModel = !blockRenderingMode && modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
+        boolean canRenderBlock = blockRenderingMode && selectedBlock != null;
+
         if (shouldLog) {
-            logger.trace("RENDER DIAGNOSTIC - can render model: {} (enabled: {}, model: {}, prepared: {})", 
-                canRender, modelRenderingEnabled, (currentModel != null), 
-                (currentModel != null ? modelRenderer.isModelPrepared(currentModel) : "N/A"));
+            logger.trace("RENDER DIAGNOSTIC - can render model: {}, can render block: {}", canRenderModel, canRenderBlock);
         }
-        
-        // Render current model if available, otherwise render test cube
-        if (canRender) {
+
+        // Render current model or block if available, otherwise render test cube
+        if (canRenderBlock) {
+            // Block rendering path (already handled above)
+            // Blocks are already rendered in the block rendering section
+        } else if (canRenderModel) {
             // Render the loaded model with shader context
             try {
                 logger.trace("RENDER PATH: Rendering model with transforms");
@@ -1425,17 +1450,88 @@ public class OpenMason3DViewport {
             logger.error("LOAD MODEL DIAGNOSTIC - Cannot load model: name is null or empty");
             return;
         }
-        
+
+        // Switch to model rendering mode
+        blockRenderingMode = false;
+        selectedBlock = null;
+
         // Reset position when loading new models to avoid interference
         resetPositionOnModelSwitch();
-        
+
         // logger.error("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: {} ===", modelName);
         // System.err.println("=== LOAD MODEL DIAGNOSTIC - PUBLIC LOADMODEL CALLED: " + modelName + " ===");
-        
+
         // Load the model asynchronously
         loadModelAsync(modelName);
     }
-    
+
+    /**
+     * Set the selected block to display in the viewport.
+     * Switches to block rendering mode.
+     */
+    public void setSelectedBlock(BlockType blockType) {
+        if (blockType == null) {
+            logger.warn("Cannot set null block type");
+            return;
+        }
+
+        logger.info("Switching to block rendering mode: {}", blockType.name());
+
+        // Switch to block rendering mode
+        blockRenderingMode = true;
+        selectedBlock = blockType;
+
+        // Clear model state
+        currentModel = null;
+        currentModelName = null;
+
+        // Reset transform
+        resetPositionOnModelSwitch();
+    }
+
+    /**
+     * Render the selected block using BlockRenderer and CBR API.
+     */
+    private void renderBlock() {
+        if (selectedBlock == null || blockRenderer == null) {
+            return;
+        }
+
+        try {
+            // Apply user transforms
+            if (userTransformDirty) {
+                updateUserTransformMatrix();
+            }
+
+            // Get view-projection matrix (camera only) - same as model rendering
+            Matrix4f mvpMatrix = new Matrix4f();
+            camera.getProjectionMatrix().mul(camera.getViewMatrix(), mvpMatrix);
+            float[] vpArray = new float[16];
+            mvpMatrix.get(vpArray);
+
+            // Render the block using the matrix shader with all required uniforms
+            // Note: Blocks use their own texture atlas from BlockManager, not the cow texture atlas
+            blockRenderer.renderBlock(
+                selectedBlock,
+                matrixShaderProgram,
+                matrixMvpLocation,
+                matrixModelLocation,
+                vpArray,
+                userTransformMatrix,
+                matrixTextureLocation,
+                matrixUseTextureLocation
+            );
+
+            logger.trace("Rendered block: {}", selectedBlock.name());
+
+        } catch (Exception e) {
+            logger.error("Error rendering block {}: {}", selectedBlock.name(), e.getMessage());
+            e.printStackTrace();
+            // Fall back to test cube on error
+            renderTestCube();
+        }
+    }
+
     /**
      * Render the test cube as a fallback when no model is loaded.
      */

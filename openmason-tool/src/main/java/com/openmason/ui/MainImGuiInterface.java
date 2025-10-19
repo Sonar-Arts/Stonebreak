@@ -1,7 +1,9 @@
 package com.openmason.ui;
 
+import com.openmason.block.BlockManager;
 import com.openmason.model.ModelManager;
 import com.openmason.ui.config.WindowConfig;
+import com.stonebreak.blocks.BlockType;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.dialogs.PreferencesDialog;
@@ -305,11 +307,21 @@ public class MainImGuiInterface {
      */
     private void renderModelTree() {
         if (ImGui.treeNode("Available Models")) {
-            if (ImGui.treeNode("Cow Models")) {
-                if (ImGui.selectable("Standard Cow", false)) {
-                    modelOperations.selectModel("Standard Cow", "default");
-                    selectedModelInfo = "Selected: Standard Cow (default variant)";
+            // Entity Models section
+            if (ImGui.treeNode("Entity Models")) {
+                if (ImGui.treeNode("Cow Models")) {
+                    if (ImGui.selectable("Standard Cow", false)) {
+                        modelOperations.selectModel("Standard Cow", "default");
+                        selectedModelInfo = "Selected: Standard Cow (default variant)";
+                    }
+                    ImGui.treePop();
                 }
+                ImGui.treePop();
+            }
+
+            // Blocks section
+            if (ImGui.treeNode("Blocks")) {
+                renderBlocksTree();
                 ImGui.treePop();
             }
 
@@ -323,6 +335,100 @@ public class MainImGuiInterface {
             }
 
             ImGui.treePop();
+        }
+    }
+
+    /**
+     * Render blocks tree with all available block types.
+     */
+    private void renderBlocksTree() {
+        // Get all available blocks
+        java.util.List<BlockType> allBlocks = BlockManager.getAvailableBlocks();
+
+        // Organize blocks by category
+        java.util.List<BlockType> terrainBlocks = new java.util.ArrayList<>();
+        java.util.List<BlockType> oreBlocks = new java.util.ArrayList<>();
+        java.util.List<BlockType> woodBlocks = new java.util.ArrayList<>();
+        java.util.List<BlockType> plantBlocks = new java.util.ArrayList<>();
+        java.util.List<BlockType> otherBlocks = new java.util.ArrayList<>();
+
+        for (BlockType block : allBlocks) {
+            String name = block.name().toUpperCase();
+            if (name.contains("ORE")) {
+                oreBlocks.add(block);
+            } else if (name.contains("WOOD") || name.contains("LOG") || name.contains("PLANK") ||
+                       name.contains("PINE") || name.contains("ELM")) {
+                woodBlocks.add(block);
+            } else if (name.contains("LEAVES") || name.contains("DANDELION") || name.contains("ROSE")) {
+                plantBlocks.add(block);
+            } else if (name.contains("DIRT") || name.contains("GRASS") || name.contains("STONE") ||
+                       name.contains("SAND") || name.contains("GRAVEL") || name.contains("CLAY")) {
+                terrainBlocks.add(block);
+            } else {
+                otherBlocks.add(block);
+            }
+        }
+
+        // Render categorized blocks
+        if (!terrainBlocks.isEmpty() && ImGui.treeNode("Terrain Blocks")) {
+            for (BlockType block : terrainBlocks) {
+                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
+                    selectBlock(block);
+                }
+            }
+            ImGui.treePop();
+        }
+
+        if (!oreBlocks.isEmpty() && ImGui.treeNode("Ore Blocks")) {
+            for (BlockType block : oreBlocks) {
+                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
+                    selectBlock(block);
+                }
+            }
+            ImGui.treePop();
+        }
+
+        if (!woodBlocks.isEmpty() && ImGui.treeNode("Wood Blocks")) {
+            for (BlockType block : woodBlocks) {
+                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
+                    selectBlock(block);
+                }
+            }
+            ImGui.treePop();
+        }
+
+        if (!plantBlocks.isEmpty() && ImGui.treeNode("Plants")) {
+            for (BlockType block : plantBlocks) {
+                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
+                    selectBlock(block);
+                }
+            }
+            ImGui.treePop();
+        }
+
+        if (!otherBlocks.isEmpty() && ImGui.treeNode("Other Blocks")) {
+            for (BlockType block : otherBlocks) {
+                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
+                    selectBlock(block);
+                }
+            }
+            ImGui.treePop();
+        }
+    }
+
+    /**
+     * Handle block selection - communicate with viewport to display the block.
+     */
+    private void selectBlock(BlockType blockType) {
+        try {
+            if (viewport3D != null) {
+                viewport3D.setSelectedBlock(blockType);
+                selectedModelInfo = "Selected: " + BlockManager.getDisplayName(blockType) + " (Block)";
+                statusService.updateStatus("Loaded block: " + BlockManager.getDisplayName(blockType));
+            }
+        } catch (Exception e) {
+            logger.error("Failed to select block: " + blockType, e);
+            statusService.updateStatus("Error loading block: " + e.getMessage());
         }
     }
 

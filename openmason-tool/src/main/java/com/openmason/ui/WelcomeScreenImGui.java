@@ -19,11 +19,6 @@ import java.util.List;
 /**
  * Welcome screen for Open Mason application.
  * Displays logo and tool selection cards in a sleek, modern interface.
- *
- * Follows KISS, SOLID, YAGNI, DRY principles:
- * - Single responsibility: Display welcome screen
- * - Uses existing LogoManager and ThemeManager
- * - Extensible design for multiple tools
  */
 public class WelcomeScreenImGui {
 

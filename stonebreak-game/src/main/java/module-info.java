@@ -38,6 +38,14 @@ module stonebreak.game {
     exports com.stonebreak.textures.validation;
     exports com.stonebreak.blocks;
     exports com.stonebreak.items;
+
+    // Export rendering packages for OpenMason CBR API integration
+    exports com.stonebreak.rendering.textures;
+    exports com.stonebreak.rendering.core;
+    exports com.stonebreak.rendering.core.API.commonBlockResources.models;
+    exports com.stonebreak.rendering.core.API.commonBlockResources.resources;
+    exports com.stonebreak.rendering.core.API.commonBlockResources.meshing;
+    exports com.stonebreak.rendering.core.API.commonBlockResources.texturing;
     
     // Open packages for Jackson JSON processing
     opens com.stonebreak.model to com.fasterxml.jackson.databind;
