@@ -182,14 +182,6 @@ public class Camera {
         return activeController.getPosition();
     }
 
-    /**
-     * Gets camera direction vector (normalized).
-     *
-     * @return Camera direction vector
-     */
-    public Vector3f getCameraDirection() {
-        return activeController.getDirection();
-    }
 
     // ========== Camera Mode Management ==========
 
@@ -200,23 +192,6 @@ public class Camera {
      */
     public CameraMode getCameraMode() {
         return currentMode;
-    }
-
-    /**
-     * Switches to a different camera mode.
-     *
-     * @param mode The camera mode to switch to
-     */
-    public void setCameraMode(CameraMode mode) {
-        if (this.currentMode == mode) {
-            return;
-        }
-
-        this.currentMode = mode;
-        this.activeController = (mode == CameraMode.ARCBALL) ? arcballController : firstPersonController;
-        viewMatrixDirty = true;
-
-        logger.info("Switched to {} camera mode", mode);
     }
 
     // ========== Getters and Setters ==========

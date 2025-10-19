@@ -4,13 +4,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Mob structure definition and loader for organized asset management.
  */
 public class MobStructure {
-    
+
+    private static final Logger LOGGER = Logger.getLogger(MobStructure.class.getName());
+
     public static class MobDirectories {
         private String directory;
         
@@ -48,6 +53,7 @@ public class MobStructure {
     
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final Map<String, MobStructureDefinition> cachedStructures = new ConcurrentHashMap<>();
+    private static final Set<String> mobTypesWithoutStructureFile = ConcurrentHashMap.newKeySet();
     
     /**
      * Load mob structure definition for a specific mob type.
@@ -58,23 +64,30 @@ public class MobStructure {
         if (cached != null) {
             return cached;
         }
-        
+
+        // Check if we already know this mob type has no structure file
+        if (mobTypesWithoutStructureFile.contains(mobType)) {
+            return null;
+        }
+
         // Load from JSON file
         String filePath = "mobs/" + mobType + "/Mob_structure.JSON";
-        
+
         try (InputStream inputStream = MobStructure.class.getClassLoader().getResourceAsStream(filePath)) {
             if (inputStream == null) {
-                System.err.println("[MobStructure] Could not find mob structure file: " + filePath);
+                // File not found - this is expected for mobs without custom structure definitions
+                // Add to the set so we don't try to load it again
+                mobTypesWithoutStructureFile.add(mobType);
                 return null;
             }
-            
+
             MobStructureDefinition structure = objectMapper.readValue(inputStream, MobStructureDefinition.class);
             cachedStructures.put(mobType, structure);
-            
+
             return structure;
-            
+
         } catch (IOException e) {
-            System.err.println("[MobStructure] Failed to load mob structure for " + mobType + ": " + e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to load mob structure for " + mobType, e);
             return null;
         }
     }
@@ -117,5 +130,6 @@ public class MobStructure {
      */
     public static void clearCache() {
         cachedStructures.clear();
+        mobTypesWithoutStructureFile.clear();
     }
 }
