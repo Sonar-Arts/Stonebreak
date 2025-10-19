@@ -403,27 +403,22 @@ public class WelcomeScreenImGui {
             1.0f
         );
 
-        // Card description with proper wrapping
-        // Move back to relative cursor positioning for text wrapping to work correctly
+        // Card description with proper wrapping using child window
         ImGui.setCursorScreenPos(x1 + CARD_PADDING, y1 + CARD_PADDING + 35);
 
-        // Save current position and create a clipping rect
-        float descStartY = y1 + CARD_PADDING + 35;
-        float descEndY = y2 - CARD_PADDING - 25; // Reserve space for "Coming Soon"
+        // Calculate available space for description
         float descWidth = CARD_WIDTH - (CARD_PADDING * 2);
+        float descHeight = CARD_HEIGHT - 35 - CARD_PADDING - (card.isEnabled() ? 0 : 25); // Reserve space for "Coming Soon"
 
-        // Push a clip rect to prevent text overflow
-        drawList.pushClipRect(x1 + CARD_PADDING, descStartY, x2 - CARD_PADDING, descEndY);
+        // Use child window for proper text wrapping and clipping
+        ImGui.beginChild("##card_desc_" + index, descWidth, descHeight, false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground);
 
-        // Set wrap width and render text
-        ImGui.pushTextWrapPos(x2 - CARD_PADDING);
-
-        // Split description into lines manually if needed
-        String description = card.getDescription();
-        ImGui.textWrapped(description);
-
+        // Now text wrapping will work correctly within the child window
+        ImGui.pushTextWrapPos(descWidth);
+        ImGui.textWrapped(card.getDescription());
         ImGui.popTextWrapPos();
-        drawList.popClipRect();
+
+        ImGui.endChild();
 
         // "Coming Soon" badge for disabled cards
         if (!card.isEnabled()) {
