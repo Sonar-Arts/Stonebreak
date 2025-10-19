@@ -6,19 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Professional 3D camera system supporting both arc-ball and first-person modes.
+ * 3D camera system supporting both arc-ball and first-person modes.
  * Designed for versatile 3D viewport navigation in OpenMason.
- * 
- * Features:
- * - Arc-ball mode: orbit around a target point (default)
- * - First-person mode: free camera movement like FPS games
- * - Smooth interpolation for professional feel
- * - Mouse and keyboard controls for both modes
- * - Professional default viewing angles
- * - Seamless mode switching during runtime
- * - Enhanced mouse sensitivity controls
- * - Improved angle normalization and constraints
- * - Animation system with user input tracking
  */
 public class Camera {
     
@@ -37,7 +26,7 @@ public class Camera {
     private float distance = 15.0f;
     private float yaw = -45.0f;   // Azimuth angle (professional default)
     private float pitch = 25.0f;  // Elevation angle (professional default) 
-    private Vector3f target = new Vector3f(0, 0, 0);
+    private final Vector3f target = new Vector3f(0, 0, 0);
     
     // Target state for smooth interpolation (arc-ball)
     private float targetDistance = 15.0f;
@@ -59,17 +48,17 @@ public class Camera {
     
     // Movement and mouse settings
     private float mouseSensitivity = 3.0f;
-    private float moveSpeed = 5.0f;
+    private final float moveSpeed = 5.0f;
     
     // Projection parameters
     private float fov = 45.0f;
     private float aspectRatio = 1.0f;
-    private float nearPlane = 0.1f;
-    private float farPlane = 100.0f;
+    private final float nearPlane = 0.1f;
+    private final float farPlane = 100.0f;
     
     // Matrices
-    private Matrix4f viewMatrix = new Matrix4f();
-    private Matrix4f projectionMatrix = new Matrix4f();
+    private final Matrix4f viewMatrix = new Matrix4f();
+    private final Matrix4f projectionMatrix = new Matrix4f();
     private boolean viewMatrixDirty = true;
     private boolean projectionMatrixDirty = true;
     
@@ -79,10 +68,7 @@ public class Camera {
     private static final float MIN_PITCH = -89.0f;
     private static final float MAX_PITCH = 89.0f;
     private static final float ZOOM_SENSITIVITY = 1.08f;
-    
-    // Camera constants for first-person mode
-    private static final float DEFAULT_MOVE_SPEED = 5.0f;
-    private static final float DEFAULT_MOUSE_SENSITIVITY = 3.0f;
+
     
     public Camera() {
         // logger.info("Initializing professional 3D camera system (default: arc-ball mode)");
@@ -219,27 +205,33 @@ public class Camera {
      */
     private void updateViewMatrix() {
         Vector3f up = new Vector3f(0, 1, 0);
-        
+
         if (cameraMode == CameraMode.ARCBALL) {
-            // Calculate camera position using professional spherical coordinates
-            float azimuthRad = (float) Math.toRadians(yaw);
-            float elevationRad = (float) Math.toRadians(pitch);
-            
-            // Professional arc-ball camera position calculation
-            float cosElevation = (float) Math.cos(elevationRad);
-            float x = target.x + distance * cosElevation * (float) Math.sin(azimuthRad);
-            float y = target.y + distance * (float) Math.sin(elevationRad);
-            float z = target.z + distance * cosElevation * (float) Math.cos(azimuthRad);
-            
-            Vector3f position = new Vector3f(x, y, z);
+            Vector3f position = calculateArcBallPosition();
             viewMatrix.identity().lookAt(position, target, up);
-            
+
         } else if (cameraMode == CameraMode.FIRST_PERSON) {
             Vector3f lookTarget = new Vector3f(fpPosition).add(getCameraDirection());
             viewMatrix.identity().lookAt(fpPosition, lookTarget, up);
         }
-        
+
         viewMatrixDirty = false;
+    }
+
+    /**
+     * Calculate camera position using professional spherical coordinates for arc-ball mode.
+     */
+    private Vector3f calculateArcBallPosition() {
+        float azimuthRad = (float) Math.toRadians(yaw);
+        float elevationRad = (float) Math.toRadians(pitch);
+
+        // Professional arc-ball camera position calculation
+        float cosElevation = (float) Math.cos(elevationRad);
+        float x = target.x + distance * cosElevation * (float) Math.sin(azimuthRad);
+        float y = target.y + distance * (float) Math.sin(elevationRad);
+        float z = target.z + distance * cosElevation * (float) Math.cos(azimuthRad);
+
+        return new Vector3f(x, y, z);
     }
     
     /**
@@ -260,15 +252,7 @@ public class Camera {
      */
     public Vector3f getPosition() {
         if (cameraMode == CameraMode.ARCBALL) {
-            float azimuthRad = (float) Math.toRadians(yaw);
-            float elevationRad = (float) Math.toRadians(pitch);
-            
-            float cosElevation = (float) Math.cos(elevationRad);
-            float x = target.x + distance * cosElevation * (float) Math.sin(azimuthRad);
-            float y = target.y + distance * (float) Math.sin(elevationRad);
-            float z = target.z + distance * cosElevation * (float) Math.cos(azimuthRad);
-            
-            return new Vector3f(x, y, z);
+            return calculateArcBallPosition();
         } else if (cameraMode == CameraMode.FIRST_PERSON) {
             return new Vector3f(fpPosition);
         }
@@ -297,23 +281,13 @@ public class Camera {
         viewMatrixDirty = true;
     }
     
-    public Vector3f getTarget() { return new Vector3f(target); }
-    public void setTarget(Vector3f target) { 
-        this.target.set(target);
-        viewMatrixDirty = true;
-        // logger.debug("Camera target set to: ({}, {}, {})", target.x, target.y, target.z);
-    }
-    
     public float getFov() { return fov; }
     public void setFov(float fov) { 
         this.fov = clamp(fov, 10.0f, 120.0f); // Professional FOV range
         projectionMatrixDirty = true;
         // logger.debug("Camera FOV set to: {}°", this.fov);
     }
-    
-    public float getAspectRatio() { return aspectRatio; }
-    public float getNearPlane() { return nearPlane; }
-    public float getFarPlane() { return farPlane; }
+
 
     // ========== Professional Camera Animation System ==========
     
@@ -368,24 +342,11 @@ public class Camera {
             viewMatrixDirty = true;
             updateMatrices();
         }
-        
+
+        // Log animation completion
         if (wasAnimating && !isAnimating) {
-            // logger.debug("Camera animation completed (mode: {})", cameraMode);
+            logger.debug("Camera animation completed (mode: {})", cameraMode);
         }
-    }
-    
-    /**
-     * Check if camera is currently animating.
-     */
-    public boolean isAnimating() {
-        return isAnimating;
-    }
-    
-    /**
-     * Check if user input is currently active (within recent timeframe).
-     */
-    public boolean isUserInputActive() {
-        return (System.currentTimeMillis() - lastUserInputTime) < 500; // 500ms timeout
     }
 
     // ========== Enhanced Settings ==========
@@ -460,35 +421,7 @@ public class Camera {
     public CameraMode getCameraMode() {
         return cameraMode;
     }
-    
-    /**
-     * Set camera mode.
-     */
-    public void setCameraMode(CameraMode mode) {
-        if (this.cameraMode != mode) {
-            // logger.info("Switching camera mode from {} to {}", this.cameraMode, mode);
-            
-            if (mode == CameraMode.FIRST_PERSON && this.cameraMode == CameraMode.ARCBALL) {
-                // Transition from arc-ball to first-person
-                fpTargetPosition.set(getPosition());
-                fpTargetYaw = yaw;
-                fpTargetPitch = pitch;
-            } else if (mode == CameraMode.ARCBALL && this.cameraMode == CameraMode.FIRST_PERSON) {
-                // Transition from first-person to arc-ball
-                target.set(0, 0, 0); // Reset target to origin
-                
-                // Calculate distance from current position to target
-                Vector3f directionToTarget = new Vector3f(target).sub(fpPosition);
-                targetDistance = directionToTarget.length();
-                
-                // Calculate angles
-                targetYaw = fpYaw;
-                targetPitch = fpPitch;
-            }
-            
-            this.cameraMode = mode;
-        }
-    }
+
 
     // ========== Professional Utility Methods ==========
     
