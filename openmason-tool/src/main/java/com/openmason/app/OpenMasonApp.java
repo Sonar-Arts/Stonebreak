@@ -259,7 +259,7 @@ public class OpenMasonApp {
     private void loadCustomFonts(ImGuiIO io) {
         try {
             // Define font paths (module-specific to avoid conflicts with stonebreak-game)
-            String fontPath = "openmason-tool/src/main/resources/openmason/fonts/";
+            String fontPath = "openmason-tool/src/main/resources/masonFonts/";
             String regularFont = fontPath + "JetBrainsMono-Regular.ttf";
             String boldFont = fontPath + "JetBrainsMono-Bold.ttf";
             String mediumFont = fontPath + "JetBrainsMono-Medium.ttf";
