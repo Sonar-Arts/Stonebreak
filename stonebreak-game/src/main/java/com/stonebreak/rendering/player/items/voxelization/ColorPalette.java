@@ -75,7 +75,8 @@ public class ColorPalette {
             colorToIndex.put(uniqueColors.get(i), i);
         }
 
-        System.out.println("Color palette for " + itemType.getName() + ": " + uniqueColors.size() + " unique colors");
+        // Debug output removed - uncomment if needed for debugging
+        // System.out.println("Color palette for " + itemType.getName() + ": " + uniqueColors.size() + " unique colors");
     }
 
     /**

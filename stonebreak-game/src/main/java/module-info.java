@@ -46,7 +46,10 @@ module stonebreak.game {
     exports com.stonebreak.rendering.core.API.commonBlockResources.resources;
     exports com.stonebreak.rendering.core.API.commonBlockResources.meshing;
     exports com.stonebreak.rendering.core.API.commonBlockResources.texturing;
-    
+
+    // Export item voxelization system for OpenMason
+    exports com.stonebreak.rendering.player.items.voxelization;
+
     // Open packages for Jackson JSON processing
     opens com.stonebreak.model to com.fasterxml.jackson.databind;
     opens com.stonebreak.textures.atlas to com.fasterxml.jackson.databind;

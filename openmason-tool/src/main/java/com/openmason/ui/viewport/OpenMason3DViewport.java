@@ -28,9 +28,12 @@ import com.openmason.model.ModelManager;
 import com.openmason.model.StonebreakModel;
 import com.openmason.rendering.ModelRenderer;
 import com.openmason.rendering.BlockRenderer;
+import com.openmason.rendering.ItemRenderer;
 import com.openmason.rendering.TextureAtlas;
 import com.openmason.block.BlockManager;
+import com.openmason.item.ItemManager;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.ItemType;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -48,8 +51,17 @@ import java.util.function.Consumer;
  * - Professional viewport rendering pipeline
  */
 public class OpenMason3DViewport {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(OpenMason3DViewport.class);
+
+    /**
+     * Rendering mode for the viewport.
+     */
+    public enum RenderingMode {
+        MODEL,  // Render 3D models
+        BLOCK,  // Render blocks
+        ITEM    // Render voxelized items
+    }
     
     // OpenGL resources
     private int framebuffer = -1;
@@ -106,10 +118,12 @@ public class OpenMason3DViewport {
     private boolean modelRenderingEnabled = true;
     private volatile CompletableFuture<Void> currentModelLoadingFuture = null;
 
-    // Block rendering system
+    // Rendering system
     private BlockRenderer blockRenderer;
     private volatile BlockType selectedBlock = null;
-    private boolean blockRenderingMode = false; // When true, renders block instead of model
+    private ItemRenderer itemRenderer;
+    private volatile ItemType selectedItem = null;
+    private RenderingMode renderingMode = RenderingMode.MODEL; // Current rendering mode
 
     // Texture system
     private TextureAtlas textureAtlas;
@@ -152,13 +166,14 @@ public class OpenMason3DViewport {
         this.inputHandler = new ViewportInputHandler(camera);
         this.modelRenderer = new ModelRenderer("Viewport");
         this.blockRenderer = new BlockRenderer("Viewport");
+        this.itemRenderer = new ItemRenderer("Viewport");
         this.transformGizmo = new TransformGizmo();
 
         // Initialize user transform matrix to identity
         this.userTransformMatrix.identity();
         this.userTransformDirty = false;
 
-        // logger.info("OpenMason 3D Viewport created with input handler, model renderer, and block renderer");
+        // logger.info("OpenMason 3D Viewport created with input handler, model renderer, block renderer, and item renderer");
     }
     
     /**
@@ -209,6 +224,12 @@ public class OpenMason3DViewport {
                 BlockManager.initialize();
             }
             blockRenderer.initialize();
+
+            // Initialize item renderer and ItemManager
+            if (!ItemManager.isInitialized()) {
+                ItemManager.initialize();
+            }
+            itemRenderer.initialize();
 
             // Initialize texture atlas
             textureAtlas = new TextureAtlas("Viewport_CowAtlas");
@@ -784,15 +805,21 @@ public class OpenMason3DViewport {
                 }
             }
 
-            if (selectedBlock != null && blockRenderingMode) {
+            if (selectedBlock != null && renderingMode == RenderingMode.BLOCK) {
                 logger.trace("RENDER DIAGNOSTIC - block mode: rendering {}", selectedBlock.name());
+            }
+            if (selectedItem != null && renderingMode == RenderingMode.ITEM) {
+                logger.trace("RENDER DIAGNOSTIC - item mode: rendering {}", selectedItem.name());
             }
         }
 
-        // Render based on mode - blocks take priority over models
-        if (blockRenderingMode && selectedBlock != null) {
+        // Render based on mode - blocks and items take priority over models
+        if (renderingMode == RenderingMode.BLOCK && selectedBlock != null) {
             // Render block
             renderBlock();
+        } else if (renderingMode == RenderingMode.ITEM && selectedItem != null) {
+            // Render item
+            renderItem();
         } else if (currentModel != null && !modelRenderer.isModelPrepared(currentModel)) {
             try {
                 // logger.info("Preparing model for rendering: {}", currentModelName);
@@ -810,17 +837,19 @@ public class OpenMason3DViewport {
         }
         
         // DIAGNOSTIC: Check render conditions (throttled)
-        boolean canRenderModel = !blockRenderingMode && modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
-        boolean canRenderBlock = blockRenderingMode && selectedBlock != null;
+        boolean canRenderModel = renderingMode == RenderingMode.MODEL && modelRenderingEnabled && currentModel != null && modelRenderer.isModelPrepared(currentModel);
+        boolean canRenderBlock = renderingMode == RenderingMode.BLOCK && selectedBlock != null;
+        boolean canRenderItem = renderingMode == RenderingMode.ITEM && selectedItem != null;
 
         if (shouldLog) {
-            logger.trace("RENDER DIAGNOSTIC - can render model: {}, can render block: {}", canRenderModel, canRenderBlock);
+            logger.trace("RENDER DIAGNOSTIC - can render model: {}, can render block: {}, can render item: {}",
+                canRenderModel, canRenderBlock, canRenderItem);
         }
 
-        // Render current model or block if available, otherwise render test cube
-        if (canRenderBlock) {
-            // Block rendering path (already handled above)
-            // Blocks are already rendered in the block rendering section
+        // Render current model, block, or item if available, otherwise render test cube
+        if (canRenderBlock || canRenderItem) {
+            // Block/item rendering path (already handled above)
+            // Blocks and items are already rendered in their respective sections
         } else if (canRenderModel) {
             // Render the loaded model with shader context
             try {
@@ -1452,8 +1481,9 @@ public class OpenMason3DViewport {
         }
 
         // Switch to model rendering mode
-        blockRenderingMode = false;
+        renderingMode = RenderingMode.MODEL;
         selectedBlock = null;
+        selectedItem = null;
 
         // Reset position when loading new models to avoid interference
         resetPositionOnModelSwitch();
@@ -1478,8 +1508,34 @@ public class OpenMason3DViewport {
         logger.info("Switching to block rendering mode: {}", blockType.name());
 
         // Switch to block rendering mode
-        blockRenderingMode = true;
+        renderingMode = RenderingMode.BLOCK;
         selectedBlock = blockType;
+        selectedItem = null;
+
+        // Clear model state
+        currentModel = null;
+        currentModelName = null;
+
+        // Reset transform
+        resetPositionOnModelSwitch();
+    }
+
+    /**
+     * Set the selected item to display in the viewport.
+     * Switches to item rendering mode.
+     */
+    public void setSelectedItem(ItemType itemType) {
+        if (itemType == null) {
+            logger.warn("Cannot set null item type");
+            return;
+        }
+
+        logger.info("Switching to item rendering mode: {}", itemType.name());
+
+        // Switch to item rendering mode
+        renderingMode = RenderingMode.ITEM;
+        selectedItem = itemType;
+        selectedBlock = null;
 
         // Clear model state
         currentModel = null;
@@ -1526,6 +1582,49 @@ public class OpenMason3DViewport {
 
         } catch (Exception e) {
             logger.error("Error rendering block {}: {}", selectedBlock.name(), e.getMessage());
+            e.printStackTrace();
+            // Fall back to test cube on error
+            renderTestCube();
+        }
+    }
+
+    /**
+     * Render the selected item using ItemRenderer.
+     */
+    private void renderItem() {
+        if (selectedItem == null || itemRenderer == null) {
+            return;
+        }
+
+        try {
+            // Apply user transforms
+            if (userTransformDirty) {
+                updateUserTransformMatrix();
+            }
+
+            // Get view-projection matrix (camera only) - same as model and block rendering
+            Matrix4f mvpMatrix = new Matrix4f();
+            camera.getProjectionMatrix().mul(camera.getViewMatrix(), mvpMatrix);
+            float[] vpArray = new float[16];
+            mvpMatrix.get(vpArray);
+
+            // Render the item using the matrix shader with all required uniforms
+            // Items use voxelized meshes with color palettes
+            itemRenderer.renderItem(
+                selectedItem,
+                matrixShaderProgram,
+                matrixMvpLocation,
+                matrixModelLocation,
+                vpArray,
+                userTransformMatrix,
+                matrixTextureLocation,
+                matrixUseTextureLocation
+            );
+
+            logger.trace("Rendered item: {}", selectedItem.name());
+
+        } catch (Exception e) {
+            logger.error("Error rendering item {}: {}", selectedItem.name(), e.getMessage());
             e.printStackTrace();
             // Fall back to test cube on error
             renderTestCube();

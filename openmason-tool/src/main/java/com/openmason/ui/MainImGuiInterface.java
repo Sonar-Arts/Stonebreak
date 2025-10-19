@@ -1,9 +1,11 @@
 package com.openmason.ui;
 
 import com.openmason.block.BlockManager;
+import com.openmason.item.ItemManager;
 import com.openmason.model.ModelManager;
 import com.openmason.ui.config.WindowConfig;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.ItemType;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.dialogs.PreferencesDialog;
@@ -325,6 +327,12 @@ public class MainImGuiInterface {
                 ImGui.treePop();
             }
 
+            // Items section
+            if (ImGui.treeNode("Items")) {
+                renderItemsTree();
+                ImGui.treePop();
+            }
+
             if (ImGui.treeNode("Recent Files")) {
                 for (String recentFile : recentFiles) {
                     if (ImGui.selectable(recentFile, false)) {
@@ -429,6 +437,74 @@ public class MainImGuiInterface {
         } catch (Exception e) {
             logger.error("Failed to select block: " + blockType, e);
             statusService.updateStatus("Error loading block: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Render items tree with all available voxelizable item types.
+     */
+    private void renderItemsTree() {
+        // Get all available voxelizable items
+        java.util.List<ItemType> allItems = ItemManager.getVoxelizableItems();
+
+        // Organize items by category
+        java.util.List<ItemType> toolItems = new java.util.ArrayList<>();
+        java.util.List<ItemType> materialItems = new java.util.ArrayList<>();
+        java.util.List<ItemType> otherItems = new java.util.ArrayList<>();
+
+        for (ItemType item : allItems) {
+            String name = item.name().toUpperCase();
+            if (name.contains("PICKAXE") || name.contains("AXE") || name.contains("BUCKET")) {
+                toolItems.add(item);
+            } else if (name.contains("STICK")) {
+                materialItems.add(item);
+            } else {
+                otherItems.add(item);
+            }
+        }
+
+        // Render categorized items
+        if (!toolItems.isEmpty() && ImGui.treeNode("Tools")) {
+            for (ItemType item : toolItems) {
+                if (ImGui.selectable(ItemManager.getDisplayName(item), false)) {
+                    selectItem(item);
+                }
+            }
+            ImGui.treePop();
+        }
+
+        if (!materialItems.isEmpty() && ImGui.treeNode("Materials")) {
+            for (ItemType item : materialItems) {
+                if (ImGui.selectable(ItemManager.getDisplayName(item), false)) {
+                    selectItem(item);
+                }
+            }
+            ImGui.treePop();
+        }
+
+        if (!otherItems.isEmpty() && ImGui.treeNode("Other Items")) {
+            for (ItemType item : otherItems) {
+                if (ImGui.selectable(ItemManager.getDisplayName(item), false)) {
+                    selectItem(item);
+                }
+            }
+            ImGui.treePop();
+        }
+    }
+
+    /**
+     * Handle item selection - communicate with viewport to display the item.
+     */
+    private void selectItem(ItemType itemType) {
+        try {
+            if (viewport3D != null) {
+                viewport3D.setSelectedItem(itemType);
+                selectedModelInfo = "Selected: " + ItemManager.getDisplayName(itemType) + " (Item)";
+                statusService.updateStatus("Loaded item: " + ItemManager.getDisplayName(itemType));
+            }
+        } catch (Exception e) {
+            logger.error("Failed to select item: " + itemType, e);
+            statusService.updateStatus("Error loading item: " + e.getMessage());
         }
     }
 
