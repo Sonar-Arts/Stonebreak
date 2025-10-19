@@ -17,8 +17,6 @@ import org.slf4j.LoggerFactory;
  * - Professional default viewing angles
  * - Seamless mode switching during runtime
  * - Enhanced mouse sensitivity controls
- * - Professional camera presets and viewing angles
- * - Frame-to-fit functionality for models
  * - Improved angle normalization and constraints
  * - Animation system with user input tracking
  */
@@ -152,36 +150,6 @@ public class Camera {
         distance = targetDistance;
         
         logger.trace("Camera zoom - Target Distance: {}", targetDistance);
-        viewMatrixDirty = true;
-    }
-    
-    /**
-     * Handle panning (mode-dependent).
-     */
-    public void pan(float deltaX, float deltaY) {
-        lastUserInputTime = System.currentTimeMillis();
-        
-        if (cameraMode == CameraMode.ARCBALL) {
-            // Pan the target point in arc-ball mode
-            Vector3f right = new Vector3f();
-            Vector3f up = new Vector3f();
-            
-            // Calculate camera's right and up vectors
-            getCameraDirection().cross(new Vector3f(0, 1, 0), right).normalize();
-            right.cross(getCameraDirection(), up).normalize();
-            
-            // Move target based on camera orientation
-            Vector3f panOffset = new Vector3f(right).mul(deltaX * 0.1f)
-                               .add(new Vector3f(up).mul(-deltaY * 0.1f));
-            target.add(panOffset);
-            
-            logger.trace("ArcBall Pan - Target: ({}, {}, {})", target.x, target.y, target.z);
-        } else if (cameraMode == CameraMode.FIRST_PERSON) {
-            // Strafe movement in first-person mode
-            moveRight(deltaX * 0.1f);
-            moveUp(deltaY * 0.1f);
-        }
-        
         viewMatrixDirty = true;
     }
     
@@ -346,32 +314,7 @@ public class Camera {
     public float getAspectRatio() { return aspectRatio; }
     public float getNearPlane() { return nearPlane; }
     public float getFarPlane() { return farPlane; }
-    
-    /**
-     * Get camera azimuth (yaw) angle in degrees.
-     */
-    public float getAzimuth() { 
-        return yaw; 
-    }
-    
-    /**
-     * Get camera elevation (pitch) angle in degrees.
-     */
-    public float getElevation() { 
-        return pitch; 
-    }
-    
-    /**
-     * Set camera orientation using azimuth and elevation angles.
-     */
-    public void setOrientation(float azimuth, float elevation) {
-        this.yaw = normalizeAngle(azimuth);
-        this.pitch = clamp(elevation, MIN_PITCH, MAX_PITCH);
-        this.targetYaw = this.yaw;
-        this.targetPitch = this.pitch;
-        viewMatrixDirty = true;
-    }
-    
+
     // ========== Professional Camera Animation System ==========
     
     /**
@@ -444,86 +387,7 @@ public class Camera {
     public boolean isUserInputActive() {
         return (System.currentTimeMillis() - lastUserInputTime) < 500; // 500ms timeout
     }
-    
-    // ========== Professional Camera Presets ==========
-    
-    /**
-     * Camera presets for different professional viewing angles.
-     */
-    public enum CameraPreset {
-        FRONT(0, 0, "Front View"),
-        BACK(180, 0, "Back View"), 
-        LEFT(-90, 0, "Left View"),
-        RIGHT(90, 0, "Right View"),
-        TOP(0, 89, "Top View"),
-        BOTTOM(0, -89, "Bottom View"),
-        ISOMETRIC(45, 35, "Isometric View"),
-        PERSPECTIVE(-45, 25, "Professional Perspective"),
-        HIGH_ANGLE(30, 60, "High Angle View");
-        
-        public final float azimuth;
-        public final float elevation;
-        public final String displayName;
-        
-        CameraPreset(float azimuth, float elevation, String displayName) {
-            this.azimuth = azimuth;
-            this.elevation = elevation;
-            this.displayName = displayName;
-        }
-    }
-    
-    /**
-     * Apply a camera preset with smooth animation.
-     */
-    public void applyPreset(CameraPreset preset) {
-        setOrientationSmooth(preset.azimuth, preset.elevation);
-        // logger.info("Applied camera preset: {}", preset.displayName);
-    }
-    
-    /**
-     * Set camera orientation with smooth animation.
-     */
-    public void setOrientationSmooth(float azimuth, float elevation) {
-        targetYaw = normalizeAngle(azimuth);
-        targetPitch = clamp(elevation, MIN_PITCH, MAX_PITCH);
-        lastUserInputTime = System.currentTimeMillis();
-    }
-    
-    /**
-     * Set camera distance with smooth animation.
-     */
-    public void setDistanceSmooth(float newDistance) {
-        targetDistance = clamp(newDistance, MIN_DISTANCE, MAX_DISTANCE);
-        lastUserInputTime = System.currentTimeMillis();
-    }
-    
-    // ========== Enhanced Model Framing ==========
-    
-    /**
-     * Frame the origin with specified model size for optimal viewing.
-     */
-    public void frameOrigin(float modelSize) {
-        float optimalDistance = modelSize * 3.0f; // Professional viewing distance
-        setDistanceSmooth(clamp(optimalDistance, MIN_DISTANCE, MAX_DISTANCE));
-        // logger.info("Camera framed origin with model size: {}, distance: {}", modelSize, targetDistance);
-    }
-    
-    /**
-     * Frame the origin with default model size.
-     */
-    public void frameOrigin() {
-        frameOrigin(2.0f); // Default model size
-    }
-    
-    /**
-     * Frame an object defined by min/max bounds.
-     */
-    public void frameObject(Vector3f min, Vector3f max) {
-        Vector3f size = new Vector3f(max).sub(min);
-        float maxDimension = Math.max(Math.max(size.x, size.y), size.z);
-        frameOrigin(maxDimension);
-    }
-    
+
     // ========== Enhanced Settings ==========
     
     /**
@@ -533,14 +397,7 @@ public class Camera {
         this.mouseSensitivity = clamp(sensitivity, 0.1f, 5.0f);
         // logger.debug("Mouse sensitivity set to: {}", this.mouseSensitivity);
     }
-    
-    /**
-     * Get current mouse sensitivity.
-     */
-    public float getMouseSensitivity() {
-        return mouseSensitivity;
-    }
-    
+
     // ========== First-Person Movement Methods ==========
     
     /**
@@ -632,28 +489,7 @@ public class Camera {
             this.cameraMode = mode;
         }
     }
-    
-    /**
-     * Toggle between camera modes.
-     */
-    public void toggleCameraMode() {
-        setCameraMode(cameraMode == CameraMode.ARCBALL ? CameraMode.FIRST_PERSON : CameraMode.ARCBALL);
-    }
-    
-    /**
-     * Set movement speed for first-person mode.
-     */
-    public void setMoveSpeed(float speed) {
-        this.moveSpeed = Math.max(0.1f, Math.min(20.0f, speed));
-    }
-    
-    /**
-     * Get movement speed.
-     */
-    public float getMoveSpeed() {
-        return moveSpeed;
-    }
-    
+
     // ========== Professional Utility Methods ==========
     
     /**

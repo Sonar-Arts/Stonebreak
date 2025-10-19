@@ -15,18 +15,33 @@ import static org.lwjgl.opengl.GL30.*;
 
 /**
  * 3D Transform Gizmo for manipulating object transforms in Open Mason.
- * 
+ *
  * Features:
  * - Visual X/Y/Z axes (Red/Green/Blue)
  * - Mouse interaction for translation
  * - High-quality rendering with proper depth testing
  * - Safe bounds checking and input validation
  * - KISS principle: focused, single-responsibility design
- * 
+ *
  * Security measures:
  * - All transform values are clamped to safe ranges
  * - Input validation prevents invalid operations
  * - Graceful error handling for OpenGL failures
+ *
+ * IMPLEMENTATION NOTE - Technical Debt:
+ * The current mouse interaction implementation uses simplified ray-casting logic.
+ * This is intentional technical debt for the initial implementation.
+ *
+ * Simplified areas:
+ * - screenToWorldRay(): Uses basic forward vector instead of proper screen-to-world transformation
+ * - getAxisFromRay(): Simple proximity-based axis selection instead of proper ray-line intersection
+ * - calculateAxisConstrainedPosition(): Basic delta calculation instead of plane-constrained dragging
+ *
+ * Future improvements (when needed):
+ * - Implement proper NDC (Normalized Device Coordinates) to world space ray-casting
+ * - Add accurate ray-line intersection testing for axis selection
+ * - Implement plane-constrained dragging for smoother gizmo manipulation
+ * - Add visual feedback for hover/selection states
  */
 public class TransformGizmo {
     
@@ -322,10 +337,14 @@ public class TransformGizmo {
     
     /**
      * Convert screen coordinates to world ray direction.
+     *
+     * SIMPLIFIED IMPLEMENTATION: Currently returns camera forward vector.
+     * TODO: Implement proper NDC to world space transformation:
+     *       1. Convert screen coords to NDC [-1, 1]
+     *       2. Create ray in clip space
+     *       3. Transform through inverse projection and view matrices
      */
     private Vector3f screenToWorldRay(float mouseX, float mouseY, Camera camera) {
-        // Simplified ray calculation - in a full implementation this would
-        // use proper screen-to-world coordinate transformation
         Vector3f forward = new Vector3f();
         camera.getViewMatrix().positiveZ(forward).negate();
         return forward.normalize();
@@ -333,9 +352,14 @@ public class TransformGizmo {
     
     /**
      * Determine which axis (if any) intersects with the given ray.
+     *
+     * SIMPLIFIED IMPLEMENTATION: Uses Manhattan distance approximation.
+     * TODO: Implement proper ray-line intersection testing:
+     *       1. Calculate closest point on each axis line to the ray
+     *       2. Use perpendicular distance for accurate hit testing
+     *       3. Add selection priority for overlapping axes
      */
     private GizmoAxis getAxisFromRay(Vector3f rayOrigin, Vector3f rayDir) {
-        // Simplified axis selection - checks proximity to each axis
         Vector3f gizmoPos = new Vector3f(position);
         Vector3f toGizmo = new Vector3f(gizmoPos).sub(rayOrigin);
         
@@ -357,10 +381,17 @@ public class TransformGizmo {
     
     /**
      * Calculate new position constrained to the selected axis.
+     *
+     * SIMPLIFIED IMPLEMENTATION: Uses basic ray direction scaling.
+     * TODO: Implement proper plane-constrained dragging:
+     *       1. Create plane perpendicular to camera at gizmo position
+     *       2. Intersect mouse ray with this plane
+     *       3. Project intersection point onto selected axis
+     *       4. Calculate delta from drag start position
      */
     private Vector3f calculateAxisConstrainedPosition(Vector3f rayDir, Vector3f cameraPos) {
         Vector3f newPos = new Vector3f(position);
-        
+
         // Simple delta calculation based on ray direction
         float movementScale = 0.1f; // Adjust sensitivity
         
