@@ -76,10 +76,9 @@ public class SpriteVoxelizer {
                 //         x, y, red, green, blue, alpha, rgba);
                 // }
 
-                // Skip transparent pixels - handle different image formats
-                // For images without alpha channel, alpha might be 0 but we should still process the pixel
-                boolean isTransparent = (alpha < 1) && (red == 0 && green == 0 && blue == 0);
-                if (isTransparent) {
+                // Skip transparent pixels based on alpha channel
+                // Alpha < 10 is considered fully transparent (threshold for anti-aliasing artifacts)
+                if (alpha < 10) {
                     continue;
                 }
 
