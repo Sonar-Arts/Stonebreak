@@ -442,20 +442,20 @@ public class OpenMasonApp {
         );
         welcomeScreen.addToolCard(modelViewerTool);
 
-        // Future tools (coming soon)
+        // Future tools (placeholders)
         welcomeScreen.addToolCard(ToolCard.comingSoon(
-            "Texture Editor",
-            "Create and edit textures with advanced painting and generation tools."
+            "Placeholder 1",
+            "Additional tool coming soon."
         ));
 
         welcomeScreen.addToolCard(ToolCard.comingSoon(
-            "Animation Editor",
-            "Design and preview animations for your 3D models."
+            "Placeholder 2",
+            "Additional tool coming soon."
         ));
 
         welcomeScreen.addToolCard(ToolCard.comingSoon(
-            "Model Validator",
-            "Validate and optimize models for game performance."
+            "Placeholder 3",
+            "Additional tool coming soon."
         ));
     }
 
