@@ -40,13 +40,13 @@ public class AboutDialog {
             ImGui.sameLine();
             ImGui.text("v0.0.1");
 
-            ImGui.text("Professional 3D Model Development Tool");
+            ImGui.text("Voxel Game Engine & Toolset");
             ImGui.spacing();
 
             // Description
             ImGui.separator();
             ImGui.spacing();
-            ImGui.textWrapped("OpenMason is a professional 3D model and texture development tool designed for " +
+            ImGui.textWrapped("OpenMason is a professional voxel game engine and development toolset designed for " +
                     "creating and editing Stonebreak game assets. Built with ImGui and LWJGL for " +
                     "high-performance rendering and intuitive user experience.");
             ImGui.spacing();

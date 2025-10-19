@@ -27,13 +27,13 @@ import static org.lwjgl.system.MemoryUtil.NULL;
 
 /**
  * Main Dear ImGui application class for OpenMason tool.
- * Provides professional 3D model development environment with 1:1 rendering parity to Stonebreak.
+ * Provides professional voxel game engine and development toolset with 1:1 rendering parity to Stonebreak.
  */
 public class OpenMasonApp {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(OpenMasonApp.class);
-    
-    private static final String APP_TITLE = "OpenMason - Professional 3D Model Development Tool";
+
+    private static final String APP_TITLE = "OpenMason - Voxel Game Engine & Toolset";
     private static final int MIN_WIDTH = 1200;
     private static final int MIN_HEIGHT = 800;
     private static final int DEFAULT_WIDTH = 1600;
@@ -434,10 +434,10 @@ public class OpenMasonApp {
      * Setup tool cards for the welcome screen.
      */
     private void setupWelcomeScreenTools() {
-        // 3D Model Viewer tool
+        // 3D Model Viewer
         ToolCard modelViewerTool = new ToolCard(
             "3D Model Viewer",
-            "View and inspect 3D models with professional viewport controls and rendering.",
+            "View and inspect 3D voxel models with professional viewport controls and real-time rendering.",
             this::transitionToMainInterface
         );
         welcomeScreen.addToolCard(modelViewerTool);

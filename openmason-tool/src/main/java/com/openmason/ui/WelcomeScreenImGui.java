@@ -221,40 +221,65 @@ public class WelcomeScreenImGui {
 
     private void renderTitle() {
         String title = "Open Mason";
-        String subtitle = "3D Model & Texture Development Suite";
+        String subtitle = "Voxel Game Engine & Toolset";
 
         // Calculate text width for centering
         ImVec2 titleSize = ImGui.calcTextSize(title);
         ImVec2 subtitleSize = ImGui.calcTextSize(subtitle);
 
-        // Title
-        float titleX = (windowWidth - titleSize.x) * 0.5f;
-        ImGui.setCursorPosX(titleX);
-
         ThemeDefinition theme = themeManager.getCurrentTheme();
+        ImDrawList drawList = ImGui.getWindowDrawList();
 
-        // Use button hovered color as accent color
-        ImVec4 accentColor = theme.getColor(ImGuiCol.ButtonHovered);
-        if (accentColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, accentColor.x, accentColor.y, accentColor.z, accentColor.w);
+        // Title with fancy glow effect
+        float titleX = (windowWidth - titleSize.x) * 0.5f;
+
+        // Set cursor position FIRST, then get screen position
+        ImGui.setCursorPosX(titleX);
+        ImVec2 titleScreenPos = ImGui.getCursorScreenPos();
+
+        // Use a vibrant cyan/blue color for the title
+        ImVec4 titleGlowColor = new ImVec4(0.3f, 0.8f, 1.0f, 1.0f);  // Bright cyan
+        ImVec4 titleMainColor = new ImVec4(0.9f, 0.95f, 1.0f, 1.0f); // Almost white with slight blue tint
+
+        // Draw multiple shadow/glow layers for depth
+        for (int i = 3; i > 0; i--) {
+            float offset = i * 2.0f;
+            float alpha = 0.15f / i;
+            int glowColor = ImColor.rgba(
+                titleGlowColor.x,
+                titleGlowColor.y,
+                titleGlowColor.z,
+                alpha
+            );
+
+            // Draw glow layers in all directions
+            for (float dx = -offset; dx <= offset; dx += offset) {
+                for (float dy = -offset; dy <= offset; dy += offset) {
+                    if (dx == 0 && dy == 0) continue;
+                    drawList.addText(
+                        titleScreenPos.x + dx,
+                        titleScreenPos.y + dy,
+                        glowColor,
+                        title
+                    );
+                }
+            }
         }
+
+        // Draw the main title text (cursor already positioned correctly)
+        ImGui.pushStyleColor(ImGuiCol.Text, titleMainColor.x, titleMainColor.y, titleMainColor.z, titleMainColor.w);
         ImGui.text(title);
-        if (accentColor != null) {
-            ImGui.popStyleColor();
-        }
+        ImGui.popStyleColor();
 
-        // Subtitle
+        // Subtitle with better visibility
         float subtitleX = (windowWidth - subtitleSize.x) * 0.5f;
         ImGui.setCursorPosX(subtitleX);
 
-        ImVec4 secondaryTextColor = theme.getColor(ImGuiCol.TextDisabled);
-        if (secondaryTextColor != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, secondaryTextColor.x, secondaryTextColor.y, secondaryTextColor.z, secondaryTextColor.w);
-        }
+        // Use a softer but more visible color for subtitle
+        ImVec4 subtitleColor = new ImVec4(0.65f, 0.75f, 0.85f, 1.0f); // Soft cyan-gray
+        ImGui.pushStyleColor(ImGuiCol.Text, subtitleColor.x, subtitleColor.y, subtitleColor.z, subtitleColor.w);
         ImGui.text(subtitle);
-        if (secondaryTextColor != null) {
-            ImGui.popStyleColor();
-        }
+        ImGui.popStyleColor();
     }
 
     private void renderSubtitle(String text) {
