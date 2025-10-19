@@ -490,16 +490,13 @@ public class CBRResourceManager implements AutoCloseable {
     }
     
     /**
-     * Registers a shutdown hook to ensure proper cleanup.
+     * NOTE: Shutdown hooks removed because OpenGL cleanup MUST happen on the OpenGL thread.
+     * Applications using CBRResourceManager should explicitly call close() from the main thread
+     * during their shutdown sequence.
+     *
+     * IMPORTANT: Do NOT call OpenGL functions (glDelete*, etc.) from shutdown hooks or
+     * background threads - they will cause "No context is current" fatal errors.
      */
-    static {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            CBRResourceManager current = instance;
-            if (current != null) {
-                current.close();
-            }
-        }, "CBR-Cleanup-Thread"));
-    }
     
     // === Data Classes ===
     

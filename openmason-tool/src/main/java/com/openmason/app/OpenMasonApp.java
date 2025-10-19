@@ -480,7 +480,18 @@ public class OpenMasonApp {
                 // CRITICAL: Ensure OpenGL context is current before any OpenGL cleanup
                 glfwMakeContextCurrent(window);
 
-                // Cleanup UI interfaces first (while OpenGL context is still valid)
+                // Cleanup CBR resource manager FIRST (if initialized)
+                // This must happen on the OpenGL thread to avoid "No context is current" errors
+                try {
+                    if (com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.isInitialized()) {
+                        com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.getInstance().close();
+                        logger.info("CBRResourceManager cleaned up successfully");
+                    }
+                } catch (Exception e) {
+                    logger.error("Error cleaning up CBRResourceManager", e);
+                }
+
+                // Cleanup UI interfaces (while OpenGL context is still valid)
                 if (viewportInterface != null) {
                     viewportInterface.dispose();
                 }

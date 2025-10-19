@@ -739,17 +739,33 @@ public class Main {
     private void cleanup() {
         Game.logDetailedMemoryInfo("Before cleanup");
 
-        // Destroy the window
-        glfwDestroyWindow(window);
-        Game.logDetailedMemoryInfo("After GLFW cleanup");
+        // CRITICAL: Clean up OpenGL resources BEFORE destroying the window
+        // OpenGL context must be current when cleaning up OpenGL resources
 
-        // Clean up renderer resources
+        // Ensure OpenGL context is current
+        if (window != 0) {
+            glfwMakeContextCurrent(window);
+        }
+
+        // Clean up CBR resource manager FIRST (if initialized)
+        // This must happen on the OpenGL thread to avoid "No context is current" errors
+        try {
+            if (com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.isInitialized()) {
+                com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.getInstance().close();
+                System.out.println("CBRResourceManager cleaned up successfully");
+            }
+        } catch (Exception e) {
+            System.err.println("Error cleaning up CBRResourceManager: " + e.getMessage());
+        }
+        Game.logDetailedMemoryInfo("After CBR cleanup");
+
+        // Clean up renderer resources (while OpenGL context is still valid)
         if (renderer != null) {
             renderer.cleanup();
             Game.logDetailedMemoryInfo("After renderer cleanup");
         }
 
-        // Clean up world resources
+        // Clean up world resources (while OpenGL context is still valid)
         World world = Game.getInstance().getWorld();
         if (world != null) {
             world.cleanup();
@@ -759,6 +775,12 @@ public class Main {
         // Clean up game resources
         Game.getInstance().cleanup();
         Game.logDetailedMemoryInfo("After game cleanup");
+
+        // NOW it's safe to destroy the window (destroys OpenGL context)
+        if (window != 0) {
+            glfwDestroyWindow(window);
+            Game.logDetailedMemoryInfo("After GLFW window cleanup");
+        }
 
         // Force garbage collection and report
         Game.forceGCAndReport("Final cleanup");
