@@ -208,7 +208,6 @@ public class MainImGuiInterface {
     public void render() {
         renderDockSpace();
         menuBarCoordinator.render();
-        toolbarRenderer.render();
 
         if (uiVisibilityState.getShowModelBrowser().get()) {
             renderModelBrowser();
@@ -223,24 +222,21 @@ public class MainImGuiInterface {
     }
 
     /**
-     * Render main docking space.
+     * Render main docking space with integrated toolbar.
      */
     private void renderDockSpace() {
         int windowFlags = ImGuiWindowFlags.NoDocking;
 
         ImGuiViewport viewport = ImGui.getMainViewport();
-        // Toolbar height is exactly one frame height with no extra padding
         // Note: getWorkPosY() already accounts for the menu bar
-        float toolbarHeight = uiVisibilityState.getShowToolbar().get() ? ImGui.getFrameHeight() : 0.0f;
-        float topOffset = toolbarHeight;
 
-        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY() + topOffset);
-        ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY() - topOffset);
+        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY());
+        ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY());
         ImGui.setNextWindowViewport(viewport.getID());
 
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowBorderSize, 0.0f);
-        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 4.0f, 2.0f);
         ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0.0f, 0.0f);
 
         windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoCollapse |
@@ -250,8 +246,22 @@ public class MainImGuiInterface {
         ImGui.begin("OpenMason Dockspace", windowFlags);
         ImGui.popStyleVar(4);
 
+        // Render toolbar inline (pushes content down naturally)
+        toolbarRenderer.render();
+
+        // Add separator and spacing between toolbar and dockspace
+        if (uiVisibilityState.getShowToolbar().get()) {
+            ImGui.separator();
+            ImGui.spacing();
+        }
+
+        // Reset padding for dockspace area
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
+
         int dockspaceId = ImGui.getID("OpenMasonDockSpace");
         ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
+
+        ImGui.popStyleVar(1);
 
         ImGui.end();
     }

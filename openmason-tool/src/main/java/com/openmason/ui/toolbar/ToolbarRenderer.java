@@ -50,51 +50,38 @@ public class ToolbarRenderer {
     }
 
     /**
-     * Render the toolbar.
+     * Render the toolbar inline (not as a separate window).
      */
     public void render() {
         if (!uiState.getShowToolbar().get()) {
             return;
         }
 
-        // Position toolbar directly under the menu bar
-        // Note: getWorkPosY() already accounts for the menu bar, so no need to add menuBarHeight
-        ImGuiViewport mainViewport = ImGui.getMainViewport();
-
-        ImGui.setNextWindowPos(mainViewport.getWorkPosX(), mainViewport.getWorkPosY());
-        ImGui.setNextWindowSize(mainViewport.getWorkSizeX(), ImGui.getFrameHeight());
-
-        // Remove padding from toolbar window
-        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.WindowPadding, 4.0f, 2.0f);
+        // Apply toolbar styling
         ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemSpacing, 4.0f, 0.0f);
 
-        int toolbarFlags = ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
-                ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoScrollbar |
-                ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoBringToFrontOnFocus;
+        // Render toolbar content inline
+        renderHideButton();
+        ImGui.sameLine();
+        ImGui.separator();
+        ImGui.sameLine();
 
-        if (ImGui.begin("##Toolbar", uiState.getShowToolbar(), toolbarFlags)) {
-            renderHideButton();
-            ImGui.sameLine();
-            ImGui.separator();
-            ImGui.sameLine();
+        renderFileOperations();
+        ImGui.sameLine();
+        ImGui.separator();
+        ImGui.sameLine();
 
-            renderFileOperations();
-            ImGui.sameLine();
-            ImGui.separator();
-            ImGui.sameLine();
+        renderViewOperations();
+        ImGui.sameLine();
+        ImGui.separator();
+        ImGui.sameLine();
 
-            renderViewOperations();
-            ImGui.sameLine();
-            ImGui.separator();
-            ImGui.sameLine();
+        renderToolOperations();
+        ImGui.sameLine();
 
-            renderToolOperations();
-            ImGui.sameLine();
+        renderStatusDisplay();
 
-            renderStatusDisplay();
-        }
-        ImGui.end();
-        ImGui.popStyleVar(2); // Pop WindowPadding and ItemSpacing
+        ImGui.popStyleVar(1); // Pop ItemSpacing
     }
 
     /**
