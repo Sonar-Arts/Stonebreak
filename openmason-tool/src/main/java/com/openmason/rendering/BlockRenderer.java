@@ -2,12 +2,14 @@ package com.openmason.rendering;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.stonebreak.rendering.core.API.commonBlockResources.models.BlockDefinition;
 import com.openmason.block.BlockManager;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.FloatBuffer;
 
+import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
 
 /**
@@ -170,8 +172,67 @@ public class BlockRenderer implements AutoCloseable {
                 }
             }
 
+            // Handle transparency based on render layer
+            BlockDefinition.RenderLayer renderLayer = resource.getDefinition().getRenderLayer();
+            boolean needsBlending = false;
+            boolean disabledCulling = false;
+
+            switch (renderLayer) {
+                case CUTOUT:
+                    // Alpha testing for sharp edges (leaves, flowers)
+                    // Modern OpenGL: shader handles discard based on alpha < 0.5
+                    // Enable blending for smooth edges
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                    // IMPORTANT: Disable depth writing for cutout blocks
+                    // This prevents transparent pixels from blocking other faces (critical for cross-models like flowers)
+                    // Depth testing is still enabled, so solid pixels still occlude properly
+                    glDepthMask(false);
+
+                    // Disable face culling for cutout blocks (leaves, flowers need both sides)
+                    glDisable(GL_CULL_FACE);
+                    disabledCulling = true;
+                    needsBlending = true;
+                    break;
+
+                case TRANSLUCENT:
+                    // Full alpha blending for water, glass, ice, etc.
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    glDepthMask(false); // Don't write to depth buffer for translucent objects
+
+                    // Disable face culling for translucent blocks (water, glass visible from both sides)
+                    glDisable(GL_CULL_FACE);
+                    disabledCulling = true;
+                    needsBlending = true;
+                    break;
+
+                case OPAQUE:
+                default:
+                    // No transparency needed - solid blocks
+                    glDisable(GL_BLEND);
+                    glDepthMask(true);
+
+                    // Keep face culling enabled for opaque blocks (performance optimization)
+                    glEnable(GL_CULL_FACE);
+                    glCullFace(GL_BACK);
+                    break;
+            }
+
             // Bind the mesh and render
             resource.getMesh().bindAndDraw();
+
+            // Restore OpenGL state after rendering
+            if (needsBlending) {
+                glDisable(GL_BLEND);
+            }
+            if (renderLayer == BlockDefinition.RenderLayer.TRANSLUCENT || renderLayer == BlockDefinition.RenderLayer.CUTOUT) {
+                glDepthMask(true); // Restore depth writing for both translucent and cutout
+            }
+            if (disabledCulling) {
+                glEnable(GL_CULL_FACE); // Restore face culling
+            }
 
             totalRenderCalls++;
 
