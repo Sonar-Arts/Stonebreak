@@ -1,6 +1,7 @@
 package com.openmason.ui;
 
 import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.viewport.gizmo.GizmoState;
 import imgui.*;
 import imgui.flag.*;
 import imgui.type.*;
@@ -278,11 +279,42 @@ public class ViewportImGuiInterface {
      * Render transformation controls window.
      */
     private void renderTransformationControls() {
-        if (ImGui.begin("Matrix Transformations", showTransformationControls)) {
+        if (ImGui.begin("Transform Controls", showTransformationControls)) {
 
-            ImGui.text("Matrix Transform Mode: ALWAYS ENABLED");
+            ImGui.text("Transform Mode:");
             ImGui.separator();
-            ImGui.text("Load a model to view transformation controls");
+
+            // Get current gizmo mode
+            GizmoState.Mode currentMode = viewport3D.getGizmoMode();
+
+            // Translate mode radio button
+            if (ImGui.radioButton("Translate Mode", currentMode == GizmoState.Mode.TRANSLATE)) {
+                viewport3D.setGizmoMode(GizmoState.Mode.TRANSLATE);
+                logger.info("Switched to Translate mode");
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Move the model using arrow gizmos (G key)");
+            }
+
+            ImGui.sameLine();
+
+            // Rotate mode radio button
+            if (ImGui.radioButton("Rotate Mode", currentMode == GizmoState.Mode.ROTATE)) {
+                viewport3D.setGizmoMode(GizmoState.Mode.ROTATE);
+                logger.info("Switched to Rotate mode");
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Rotate the model using circular grabbers (R key)");
+            }
+
+            ImGui.separator();
+
+            // Display mode-specific information
+            if (currentMode == GizmoState.Mode.TRANSLATE) {
+                ImGui.textWrapped("Drag the colored arrows to move along X (red), Y (green), or Z (blue) axes.");
+            } else if (currentMode == GizmoState.Mode.ROTATE) {
+                ImGui.textWrapped("Drag the circular grabbers to rotate around X (red), Y (green), or Z (blue) axes.");
+            }
 
         }
         ImGui.end();

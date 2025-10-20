@@ -24,7 +24,7 @@ import java.util.List;
  */
 public class RotateMode implements IGizmoMode {
 
-    private static final float GIZMO_RADIUS = 0.8f;
+    private static final float GIZMO_RADIUS = 1.0f;
 
     // OpenGL resources
     private boolean initialized = false;
@@ -58,12 +58,13 @@ public class RotateMode implements IGizmoMode {
 
     /**
      * Initializes rotation circle geometry and OpenGL resources.
+     * Uses thick triangles for proper visible thickness.
      */
     private void initializeCircles() {
         Vector3f center = new Vector3f(0, 0, 0);
 
-        // Generate circle geometry for each axis
-        float[][] circleData = CircleGeometry.createAxisRotationCircles(center, GIZMO_RADIUS);
+        // Generate THICK circle geometry for each axis (rendered as triangles)
+        float[][] circleData = CircleGeometry.createThickAxisRotationCircles(center, GIZMO_RADIUS);
 
         // Create VAO/VBO for each circle
         for (int i = 0; i < 3; i++) {
@@ -125,18 +126,14 @@ public class RotateMode implements IGizmoMode {
         gizmoTransform.get(modelBuffer);
         GL30.glUniformMatrix4fv(uModelLoc, false, modelBuffer);
 
-        // Set line width for circles
-        GL30.glLineWidth(2.0f);
-
-        // Render circles
+        // Render circles (no glLineWidth needed - we're using thick triangles)
         renderCircles(gizmoState, uIntensityLoc);
 
-        GL30.glLineWidth(1.0f);
         GL30.glUseProgram(0);
     }
 
     /**
-     * Renders the three rotation circles.
+     * Renders the three rotation circles as thick triangles.
      */
     private void renderCircles(GizmoState gizmoState, int intensityUniformLoc) {
         AxisConstraint[] constraints = {AxisConstraint.X, AxisConstraint.Y, AxisConstraint.Z};
@@ -146,9 +143,9 @@ public class RotateMode implements IGizmoMode {
             float intensity = gizmoState.getIntensityForConstraint(constraints[i]);
             GL30.glUniform1f(intensityUniformLoc, intensity);
 
-            // Render circle as line strip
+            // Render circle as triangle strip (thick geometry)
             GL30.glBindVertexArray(circleVAOs[i]);
-            GL30.glDrawArrays(GL30.GL_LINE_STRIP, 0, circleVertexCounts[i]);
+            GL30.glDrawArrays(GL30.GL_TRIANGLE_STRIP, 0, circleVertexCounts[i]);
             GL30.glBindVertexArray(0);
         }
     }
