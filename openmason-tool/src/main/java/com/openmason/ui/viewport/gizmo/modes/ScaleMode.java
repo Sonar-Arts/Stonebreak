@@ -24,7 +24,7 @@ import java.util.List;
  */
 public class ScaleMode implements IGizmoMode {
 
-    private static final float GIZMO_SIZE = 1.0f;
+    private static final float GIZMO_SIZE = 0.2f;  // Positioned near origin for compact clustered appearance
     private static final float HANDLE_BOX_SIZE = 0.08f;
     private static final float CENTER_BOX_SIZE = 0.12f;
 

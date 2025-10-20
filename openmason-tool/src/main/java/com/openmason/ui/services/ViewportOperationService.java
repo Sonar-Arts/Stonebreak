@@ -72,6 +72,17 @@ public class ViewportOperationService {
     }
 
     /**
+     * Toggle transform gizmo visibility.
+     */
+    public void toggleGizmo(OpenMason3DViewport viewport) {
+        viewportState.toggleGizmo();
+        if (viewport != null && viewport.getGizmoRenderer() != null) {
+            viewport.getGizmoRenderer().getGizmoState().setEnabled(viewportState.isShowGizmo());
+        }
+        statusService.updateStatus("Transform gizmo " + (viewportState.isShowGizmo() ? "enabled" : "disabled"));
+    }
+
+    /**
      * Switch texture variant.
      */
     public void switchTextureVariant(OpenMason3DViewport viewport, TransformState transformState, String variantName) {

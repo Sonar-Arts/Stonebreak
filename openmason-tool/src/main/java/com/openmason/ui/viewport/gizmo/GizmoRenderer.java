@@ -145,13 +145,15 @@ public class GizmoRenderer {
         // Create view-projection matrix
         Matrix4f viewProjection = new Matrix4f(projectionMatrix).mul(viewMatrix);
 
-        // Enable depth testing
+        // Enable depth testing but render gizmo on top (always visible)
         GL30.glEnable(GL30.GL_DEPTH_TEST);
-        GL30.glDepthFunc(GL30.GL_LEQUAL);
+        GL30.glDepthFunc(GL30.GL_ALWAYS);  // Always render on top, never occluded
 
         // Render current mode
         currentMode.render(gizmoTransform, viewProjection, gizmoState);
 
+        // Restore default depth function
+        GL30.glDepthFunc(GL30.GL_LEQUAL);
         GL30.glDisable(GL30.GL_DEPTH_TEST);
     }
 

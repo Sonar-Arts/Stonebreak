@@ -5,6 +5,7 @@ import com.openmason.ui.viewport.gizmo.GizmoState;
 import imgui.*;
 import imgui.flag.*;
 import imgui.type.*;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,6 +65,9 @@ public class ViewportImGuiInterface {
      */
     public void render() {
         try {
+            // Handle keyboard shortcuts
+            handleKeyboardShortcuts();
+
             renderViewportWindow();
 
             if (showCameraControls.get()) {
@@ -81,6 +85,57 @@ public class ViewportImGuiInterface {
         } catch (Exception e) {
             logger.error("Critical error during viewport interface rendering", e);
             throw new RuntimeException("Viewport rendering failed", e);
+        }
+    }
+
+    /**
+     * Handle global keyboard shortcuts.
+     */
+    private void handleKeyboardShortcuts() {
+        if (viewport3D == null) {
+            return;
+        }
+
+        ImGuiIO io = ImGui.getIO();
+        boolean ctrlPressed = io.getKeyCtrl();
+
+        // Ctrl+T: Toggle Transform Gizmo
+        if (ctrlPressed && ImGui.isKeyPressed(GLFW.GLFW_KEY_T)) {
+            boolean currentState = viewport3D.isGizmoEnabled();
+            viewport3D.setGizmoEnabled(!currentState);
+            logger.info("Transform gizmo toggled: {}", !currentState);
+        }
+
+        // Ctrl+G: Toggle Grid
+        if (ctrlPressed && ImGui.isKeyPressed(GLFW.GLFW_KEY_G)) {
+            gridVisible.set(!gridVisible.get());
+            toggleGrid();
+            logger.info("Grid toggled: {}", gridVisible.get());
+        }
+
+        // Ctrl+X: Toggle Axes
+        if (ctrlPressed && ImGui.isKeyPressed(GLFW.GLFW_KEY_X)) {
+            axesVisible.set(!axesVisible.get());
+            toggleAxes();
+            logger.info("Axes toggled: {}", axesVisible.get());
+        }
+
+        // Ctrl+W: Toggle Wireframe
+        if (ctrlPressed && ImGui.isKeyPressed(GLFW.GLFW_KEY_W)) {
+            toggleWireframe();
+            logger.info("Wireframe toggled: {}", wireframeMode.get());
+        }
+
+        // Ctrl+R: Reset View
+        if (ctrlPressed && ImGui.isKeyPressed(GLFW.GLFW_KEY_R)) {
+            resetView();
+            logger.info("View reset");
+        }
+
+        // Ctrl+F: Fit to View
+        if (ctrlPressed && ImGui.isKeyPressed(GLFW.GLFW_KEY_F)) {
+            fitToView();
+            logger.info("Fit to view");
         }
     }
 
@@ -280,6 +335,15 @@ public class ViewportImGuiInterface {
      */
     private void renderTransformationControls() {
         if (ImGui.begin("Transform Controls", showTransformationControls)) {
+
+            // Gizmo visibility toggle
+            boolean gizmoEnabled = viewport3D.isGizmoEnabled();
+            if (ImGui.checkbox("Show Transform Gizmo (Ctrl+T)", new ImBoolean(gizmoEnabled))) {
+                viewport3D.setGizmoEnabled(!gizmoEnabled);
+                logger.info("Transform gizmo toggled: {}", !gizmoEnabled);
+            }
+
+            ImGui.separator();
 
             ImGui.text("Transform Mode:");
             ImGui.separator();

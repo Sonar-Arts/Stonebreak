@@ -26,7 +26,7 @@ public class TranslateMode implements IGizmoMode {
 
     private static final float GIZMO_SIZE = 1.5f;  // Increased for better visibility
     private static final float PLANE_SIZE = 0.2f;  // Scaled proportionally
-    private static final float PLANE_OFFSET = 0.3f; // Scaled proportionally
+    private static final float PLANE_OFFSET = 0.01f; // Near origin for compact appearance (must be > 0)
 
     // OpenGL resources
     private boolean initialized = false;

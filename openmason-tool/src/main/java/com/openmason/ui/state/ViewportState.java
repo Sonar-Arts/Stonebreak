@@ -11,6 +11,7 @@ public class ViewportState {
     private boolean showGrid = true;
     private boolean showAxes = true;
     private boolean wireframeMode = false;
+    private boolean showGizmo = true;
 
     // View Mode State
     private final String[] viewModes = {"Perspective", "Orthographic", "Front", "Side", "Top"};
@@ -44,6 +45,14 @@ public class ViewportState {
 
     public void setWireframeMode(boolean wireframeMode) {
         this.wireframeMode = wireframeMode;
+    }
+
+    public boolean isShowGizmo() {
+        return showGizmo;
+    }
+
+    public void setShowGizmo(boolean showGizmo) {
+        this.showGizmo = showGizmo;
     }
 
     public String[] getViewModes() {
@@ -92,12 +101,20 @@ public class ViewportState {
     }
 
     /**
+     * Toggle gizmo visibility.
+     */
+    public void toggleGizmo() {
+        showGizmo = !showGizmo;
+    }
+
+    /**
      * Reset to default viewport state.
      */
     public void reset() {
         showGrid = true;
         showAxes = true;
         wireframeMode = false;
+        showGizmo = true;
         currentViewModeIndex.set(0);
         currentRenderModeIndex.set(2);
     }
