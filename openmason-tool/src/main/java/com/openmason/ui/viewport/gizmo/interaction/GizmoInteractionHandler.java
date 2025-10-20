@@ -264,18 +264,23 @@ public class GizmoInteractionHandler {
     /**
      * Handles translation drag operation.
      *
-     * @param mouseDelta Mouse movement since drag start
+     * @param mouseDelta Mouse movement since drag start (in ImGui screen space)
      * @param constraint Active axis/plane constraint
      */
     private void handleTranslateDrag(Vector2f mouseDelta, AxisConstraint constraint) {
         Vector3f startPos = gizmoState.getDragStartObjectPos();
         Vector3f newPos = new Vector3f(startPos);
 
+        // Coordinate system correction for screen-space to world-space projection:
+        // - X: Negate to match clip-space projection direction
+        // - Y: Keep as-is (ImGui Y-down works correctly with clip-space Y-up)
+        Vector2f correctedDelta = new Vector2f(-mouseDelta.x, mouseDelta.y);
+
         if (constraint.isSingleAxis()) {
             // Single axis translation
             Vector3f axis = getAxisVector(constraint);
             float movement = RaycastUtil.projectScreenDeltaOntoAxis(
-                mouseDelta,
+                correctedDelta,
                 axis,
                 viewMatrix,
                 projectionMatrix,
@@ -296,10 +301,10 @@ public class GizmoInteractionHandler {
             Vector3f axis2 = getPlaneAxis2(constraint);
 
             float move1 = RaycastUtil.projectScreenDeltaOntoAxis(
-                mouseDelta, axis1, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
+                correctedDelta, axis1, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
             );
             float move2 = RaycastUtil.projectScreenDeltaOntoAxis(
-                mouseDelta, axis2, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
+                correctedDelta, axis2, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
             );
 
             if (gizmoState.isSnapEnabled()) {

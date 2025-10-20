@@ -307,7 +307,12 @@ public final class RaycastUtil {
     /**
      * Projects a screen-space delta (mouse movement) onto a world-space axis.
      *
-     * @param screenDelta Mouse movement in screen space (pixels)
+     * <p>This method handles coordinate system conversion internally:
+     * - Input: Mouse delta in ImGui screen space (Y=0 at top, Y increases downward)
+     * - Output: Projected movement along the world-space axis in world units
+     * - The world-space axis is projected to clip space and compared with screen delta
+     *
+     * @param screenDelta Mouse movement in screen space (pixels, ImGui coordinates)
      * @param axis World-space axis to project onto (must be normalized)
      * @param viewMatrix View matrix
      * @param projectionMatrix Projection matrix
@@ -367,7 +372,8 @@ public final class RaycastUtil {
         Vector4f clipDir = new Vector4f(viewDir, 0.0f);
         projectionMatrix.transform(clipDir);
 
-        // Return normalized screen direction
+        // Return clip-space direction (Y-up convention)
+        // The coordinate system conversion happens implicitly during dot product calculation
         if (Math.abs(clipDir.w) > 0.0001f) {
             return new Vector3f(clipDir.x / clipDir.w, clipDir.y / clipDir.w, clipDir.z / clipDir.w);
         }

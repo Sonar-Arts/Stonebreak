@@ -162,8 +162,15 @@ public class ViewportInputHandler {
             return;
         }
 
-        // Handle gizmo input first (if enabled and initialized)
+        // ========== Gizmo Input Handling (Priority System) ==========
+        // Gizmo gets priority over camera controls to prevent mouse capture conflicts.
+        // The gizmo needs screen-space mouse positions and visible cursor for raycasting,
+        // while camera rotation uses mouse capture (hidden cursor, endless dragging).
+        // These are incompatible, so we give gizmo full priority when active.
+
         boolean gizmoHandledInput = false;
+        boolean gizmoIsActive = false; // Tracks if gizmo is hovered or dragging
+
         if (gizmoRenderer != null && gizmoRenderer.isInitialized() &&
             gizmoRenderer.getGizmoState().isEnabled()) {
 
@@ -177,7 +184,11 @@ public class ViewportInputHandler {
                 (int) imageHeight
             );
 
-            // Check for mouse press on gizmo
+            // Check if gizmo has a hovered part (prevents camera from capturing mouse)
+            // This is critical: we need to check hover BEFORE camera can start dragging
+            boolean gizmoIsHovered = gizmoRenderer.getGizmoState().getHoveredPart() != null;
+
+            // Handle mouse press on gizmo
             if (mouseInBounds && ImGui.isMouseClicked(0)) {
                 gizmoHandledInput = gizmoRenderer.handleMousePress(viewportMouseX, viewportMouseY);
                 if (gizmoHandledInput) {
@@ -185,22 +196,47 @@ public class ViewportInputHandler {
                 }
             }
 
-            // Check for mouse release
+            // Handle mouse release
             if (ImGui.isMouseReleased(0)) {
                 gizmoRenderer.handleMouseRelease(viewportMouseX, viewportMouseY);
             }
 
-            // If gizmo is dragging, it handles input
+            // Priority 1: Active gizmo dragging
+            // If gizmo is dragging, release any camera mouse capture immediately
+            // This ensures gizmo gets clean screen-space mouse tracking
             if (gizmoRenderer.isDragging()) {
                 gizmoHandledInput = true;
+                gizmoIsActive = true;
+
+                // Release camera mouse capture if it was active
+                // Gizmo needs visible cursor and screen-space coordinates
+                if (isDragging || isMouseCaptured) {
+                    logger.debug("Releasing camera mouse capture - gizmo is dragging");
+                    stopDragging();
+                }
+            }
+
+            // Priority 2: Gizmo hover state
+            // Prevent camera from starting drag when hovering over gizmo parts
+            // This prevents the camera from capturing the mouse on the next click
+            if (gizmoIsHovered) {
+                gizmoIsActive = true;
+                gizmoHandledInput = true; // Treat hover as "handled" to block camera input
             }
         }
 
-        // Only handle camera input if gizmo didn't capture the input
+        // ========== Camera Input Handling (Fallthrough) ==========
+        // Only process camera input if gizmo didn't capture the input.
+        // This ensures gizmo always has priority over camera controls.
+        // Camera will only activate when:
+        // - Gizmo is disabled, OR
+        // - Gizmo is not hovered, AND
+        // - Gizmo is not dragging
         if (!gizmoHandledInput) {
             boolean mouseClicked = ImGui.isMouseClicked(0);
 
             // Start camera dragging when left mouse button is pressed within viewport bounds
+            // This won't be reached if gizmo is hovered or active
             if (mouseInBounds && mouseClicked) {
                 startDragging();
             }

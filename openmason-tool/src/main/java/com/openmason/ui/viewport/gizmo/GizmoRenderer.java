@@ -112,9 +112,6 @@ public class GizmoRenderer {
 
     /**
      * Renders the gizmo at the specified position.
-     *
-     * @param camera View matrix
-     * @param projection Projection matrix
      * @param viewportWidth Viewport width in pixels
      * @param viewportHeight Viewport height in pixels
      */
