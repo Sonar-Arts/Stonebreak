@@ -348,9 +348,20 @@ public final class RaycastUtil {
         // Dot product gives us the projection
         float projection = screenDeltaNorm.dot(axisScreen2D);
 
+        // Correct sign based on view-space depth: if axis points toward camera (positive Z in view space),
+        // the visual direction is reversed, so we need to flip the sign
+        // Transform axis to view space to check its Z component
+        Vector3f axisViewSpace = new Vector3f(axis).normalize();
+        viewMatrix.transformDirection(axisViewSpace);
+
+        // In view space, camera looks down -Z, so:
+        // - If axis.z > 0: axis points toward camera (opposite of camera view direction) → flip sign
+        // - If axis.z < 0: axis points away from camera (same as camera view direction) → normal
+        float signCorrection = (axisViewSpace.z > 0) ? 1.0f : -1.0f;
+
         // Scale by screen movement length and viewport size
         float worldScale = 0.01f; // Sensitivity factor
-        return projection * screenLength * worldScale;
+        return signCorrection * projection * screenLength * worldScale;
     }
 
     /**
