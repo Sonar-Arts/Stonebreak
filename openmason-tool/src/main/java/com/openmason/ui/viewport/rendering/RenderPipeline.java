@@ -4,6 +4,7 @@ import com.openmason.rendering.BlockRenderer;
 import com.openmason.rendering.ItemRenderer;
 import com.openmason.rendering.ModelRenderer;
 import com.openmason.rendering.TextureAtlas;
+import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
 import com.openmason.ui.viewport.shaders.ShaderManager;
 import com.openmason.ui.viewport.shaders.ShaderProgram;
@@ -40,6 +41,9 @@ public class RenderPipeline {
     private final ItemRenderer itemRenderer;
     private final TextureAtlas textureAtlas;
 
+    // Gizmo renderer
+    private final GizmoRenderer gizmoRenderer;
+
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
     private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000;
@@ -49,7 +53,7 @@ public class RenderPipeline {
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                          ModelRenderer modelRenderer, BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                         TextureAtlas textureAtlas) {
+                         TextureAtlas textureAtlas, GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
@@ -59,6 +63,7 @@ public class RenderPipeline {
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
         this.textureAtlas = textureAtlas;
+        this.gizmoRenderer = gizmoRenderer;
     }
 
     /**
@@ -101,6 +106,11 @@ public class RenderPipeline {
             // Restore polygon mode after content rendering
             if (viewportState.isWireframeMode()) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            }
+
+            // PASS 3: Render gizmo (after content, always in fill mode)
+            if (gizmoRenderer != null && gizmoRenderer.isInitialized()) {
+                renderGizmo(viewportState);
             }
 
             // Unbind framebuffer
@@ -275,6 +285,22 @@ public class RenderPipeline {
     }
 
     /**
+     * Render gizmo pass.
+     */
+    private void renderGizmo(ViewportState viewportState) {
+        try {
+            gizmoRenderer.render(
+                context.getCamera().getViewMatrix(),
+                context.getCamera().getProjectionMatrix(),
+                viewportState.getWidth(),
+                viewportState.getHeight()
+            );
+        } catch (Exception e) {
+            logger.error("Error rendering gizmo", e);
+        }
+    }
+
+    /**
      * Check if diagnostic logging should occur (throttled).
      */
     private boolean shouldLogDiagnostics() {
@@ -284,5 +310,14 @@ public class RenderPipeline {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Gets the gizmo renderer for external access (input handling, etc.).
+     *
+     * @return The gizmo renderer (may be null)
+     */
+    public GizmoRenderer getGizmoRenderer() {
+        return gizmoRenderer;
     }
 }

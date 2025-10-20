@@ -3,6 +3,8 @@ package com.openmason.ui.viewport;
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
 import com.openmason.model.StonebreakModel;
+import com.openmason.ui.viewport.gizmo.GizmoRenderer;
+import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.model.AsyncModelLoader;
 import com.openmason.rendering.BlockRenderer;
 import com.openmason.rendering.ItemRenderer;
@@ -75,6 +77,10 @@ public class OpenMason3DViewport {
     private final ViewportControlsUI viewportControlsUI;
     private final ModelControlsUI modelControlsUI;
 
+    // Gizmo
+    private final GizmoState gizmoState;
+    private final GizmoRenderer gizmoRenderer;
+
     /**
      * Create new viewport with default configuration.
      */
@@ -85,6 +91,10 @@ public class OpenMason3DViewport {
         this.viewportState = ViewportState.createDefault();
         this.renderingState = new RenderingState();
         this.transformState = new TransformState();
+
+        // Initialize gizmo
+        this.gizmoState = new GizmoState();
+        this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState);
 
         // Initialize managers
         this.shaderManager = new ShaderManager();
@@ -160,11 +170,14 @@ public class OpenMason3DViewport {
             // Initialize texture atlas
             textureAtlas.initialize();
 
+            // Initialize gizmo renderer
+            gizmoRenderer.initialize();
+
             // Create render pipeline (after all dependencies initialized)
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
                 modelRenderer, blockRenderer, itemRenderer,
-                textureAtlas
+                textureAtlas, gizmoRenderer
             );
 
             // Update state
@@ -431,6 +444,14 @@ public class OpenMason3DViewport {
             textureAtlas.close();
         }
 
+        if (gizmoRenderer != null) {
+            try {
+                gizmoRenderer.dispose();
+            } catch (Exception e) {
+                logger.error("Error cleaning up gizmo renderer", e);
+            }
+        }
+
         resourceManager.close();
         shaderManager.cleanup();
 
@@ -538,5 +559,35 @@ public class OpenMason3DViewport {
 
     public void requestRender() {
         // Rendering happens automatically
+    }
+
+    // ========== Gizmo API ==========
+
+    public GizmoState getGizmoState() {
+        return gizmoState;
+    }
+
+    public GizmoRenderer getGizmoRenderer() {
+        return gizmoRenderer;
+    }
+
+    public void setGizmoEnabled(boolean enabled) {
+        gizmoState.setEnabled(enabled);
+    }
+
+    public boolean isGizmoEnabled() {
+        return gizmoState.isEnabled();
+    }
+
+    public void cycleGizmoMode() {
+        gizmoRenderer.cycleMode();
+    }
+
+    public void setGizmoMode(GizmoState.Mode mode) {
+        gizmoRenderer.setMode(mode);
+    }
+
+    public GizmoState.Mode getGizmoMode() {
+        return gizmoRenderer.getCurrentMode();
     }
 }
