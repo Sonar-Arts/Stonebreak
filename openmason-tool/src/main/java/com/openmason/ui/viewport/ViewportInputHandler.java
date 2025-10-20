@@ -133,8 +133,13 @@ public class ViewportInputHandler {
     /**
      * Handle input for camera controls with endless dragging and mouse capture.
      * This is the main entry point for input processing.
+     *
+     * @param imagePos The screen position of the viewport image
+     * @param imageWidth The width of the viewport image
+     * @param imageHeight The height of the viewport image
+     * @param viewportHovered Whether the viewport window is being hovered (not overlaying windows)
      */
-    public void handleInput(ImVec2 imagePos, float imageWidth, float imageHeight) {
+    public void handleInput(ImVec2 imagePos, float imageWidth, float imageHeight, boolean viewportHovered) {
         if (camera == null) {
             logger.warn("Camera is null - cannot handle input");
             return;
@@ -236,8 +241,9 @@ public class ViewportInputHandler {
             boolean mouseClicked = ImGui.isMouseClicked(0);
 
             // Start camera dragging when left mouse button is pressed within viewport bounds
+            // AND the viewport window itself is being hovered (not overlaying windows)
             // This won't be reached if gizmo is hovered or active
-            if (mouseInBounds && mouseClicked) {
+            if (mouseInBounds && mouseClicked && viewportHovered) {
                 startDragging();
             }
 

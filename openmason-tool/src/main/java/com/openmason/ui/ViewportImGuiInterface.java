@@ -258,9 +258,13 @@ public class ViewportImGuiInterface {
         // Display the rendered texture directly without any widgets
         ImGui.image(colorTexture, viewportSize.x, viewportSize.y, 0, 1, 1, 0);
 
+        // Check if the viewport window itself is being hovered
+        // This prevents mouse capture when interacting with overlaying windows
+        boolean viewportHovered = ImGui.isWindowHovered();
+
         // Handle input after image - no widgets interfering with raw input
         if (viewport3D.getInputHandler() != null) {
-            viewport3D.getInputHandler().handleInput(imagePos, viewportSize.x, viewportSize.y);
+            viewport3D.getInputHandler().handleInput(imagePos, viewportSize.x, viewportSize.y, viewportHovered);
         }
     }
 

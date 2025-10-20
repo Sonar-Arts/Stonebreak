@@ -270,9 +270,13 @@ public class OpenMason3DViewport {
         ImGui.image(resourceManager.getFramebuffer().getColorTextureId(),
                    contentRegion.x, contentRegion.y, 0, 1, 1, 0);
 
+        // Check if the viewport window itself is being hovered
+        // This prevents mouse capture when interacting with overlaying windows
+        boolean viewportHovered = ImGui.isWindowHovered();
+
         // Handle input
         if (inputHandler != null) {
-            inputHandler.handleInput(imagePos, contentRegion.x, contentRegion.y);
+            inputHandler.handleInput(imagePos, contentRegion.x, contentRegion.y, viewportHovered);
         }
 
         ImGui.end();
