@@ -19,9 +19,11 @@ public class PreferencesManager {
     
     private static final String PREFERENCES_FILE = "openmason-tool/preferences.properties";
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
-    
+    private static final String PROPERTIES_COMPACT_MODE_KEY = "ui.properties.compact.mode";
+
     // Default values
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
+    private static final boolean DEFAULT_PROPERTIES_COMPACT_MODE = true;
     
     private final Properties properties;
     private final Path preferencesPath;
@@ -76,6 +78,7 @@ public class PreferencesManager {
      */
     private void setDefaults() {
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
+        properties.setProperty(PROPERTIES_COMPACT_MODE_KEY, String.valueOf(DEFAULT_PROPERTIES_COMPACT_MODE));
     }
     
     // Camera Settings
@@ -120,7 +123,28 @@ public class PreferencesManager {
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
         savePreferences();
     }
-    
+
+    // UI Settings
+
+    /**
+     * Get properties panel compact mode setting.
+     */
+    public boolean getPropertiesCompactMode() {
+        String value = properties.getProperty(PROPERTIES_COMPACT_MODE_KEY);
+        if (value != null) {
+            return Boolean.parseBoolean(value);
+        }
+        return DEFAULT_PROPERTIES_COMPACT_MODE;
+    }
+
+    /**
+     * Set properties panel compact mode setting.
+     */
+    public void setPropertiesCompactMode(boolean compact) {
+        properties.setProperty(PROPERTIES_COMPACT_MODE_KEY, String.valueOf(compact));
+        savePreferences();
+    }
+
     /**
      * Get the path to the preferences file.
      */

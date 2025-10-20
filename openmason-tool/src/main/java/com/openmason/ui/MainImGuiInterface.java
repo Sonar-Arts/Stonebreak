@@ -11,6 +11,7 @@ import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.dialogs.PreferencesDialog;
 import com.openmason.ui.menus.*;
 import com.openmason.ui.preferences.PreferencesManager;
+import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.services.*;
 import com.openmason.ui.state.*;
 import com.openmason.ui.themes.utils.ImGuiHelpers;
@@ -201,6 +202,15 @@ public class MainImGuiInterface {
     private void setupPropertiesPanel() {
         try {
             propertyPanelImGui = new PropertyPanelImGui(themeManager);
+
+            // Initialize compact mode from preferences
+            boolean compactMode = preferencesManager.getPropertiesCompactMode();
+            propertyPanelImGui.setCompactMode(compactMode);
+
+            // Wire up to preferences dialog
+            if (preferencesDialog != null) {
+                preferencesDialog.setPropertyPanel(propertyPanelImGui);
+            }
         } catch (Exception e) {
             logger.error("Failed to setup properties panel", e);
         }
@@ -581,9 +591,8 @@ public class MainImGuiInterface {
         metrics.put("memoryUsage", performanceService.getMemoryUsage());
         metrics.put("frameRate", performanceService.getFrameRate());
 
-        if (propertyPanelImGui != null) {
-            metrics.putAll(propertyPanelImGui.getPerformanceMetrics());
-        }
+        // Property panel metrics removed as part of YAGNI cleanup
+        // The panel now focuses solely on its core responsibilities
 
         return metrics;
     }

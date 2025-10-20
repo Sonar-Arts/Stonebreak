@@ -2,6 +2,7 @@ package com.openmason.ui.dialogs;
 
 import com.openmason.ui.config.WindowConfig;
 import com.openmason.ui.preferences.PreferencesManager;
+import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.services.StatusService;
 import com.openmason.ui.state.UIVisibilityState;
 import com.openmason.ui.themes.application.DensityManager;
@@ -11,6 +12,7 @@ import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
+import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;
 
@@ -34,8 +36,13 @@ public class PreferencesDialog {
     private final ImInt pendingDensityIndex = new ImInt(1);
     private boolean hasUnsavedThemeChanges = false;
 
-    // Viewport reference
+    // UI settings
+    private final ImBoolean pendingCompactMode = new ImBoolean(true);
+    private boolean hasUnsavedUIChanges = false;
+
+    // References
     private OpenMason3DViewport viewport;
+    private PropertyPanelImGui propertyPanel;
 
     public PreferencesDialog(UIVisibilityState uiState, ThemeManager themeManager,
                              PreferencesManager preferencesManager, StatusService statusService,
@@ -53,6 +60,13 @@ public class PreferencesDialog {
      */
     public void setViewport(OpenMason3DViewport viewport) {
         this.viewport = viewport;
+    }
+
+    /**
+     * Set property panel reference for UI settings.
+     */
+    public void setPropertyPanel(PropertyPanelImGui propertyPanel) {
+        this.propertyPanel = propertyPanel;
     }
 
     /**
@@ -79,6 +93,11 @@ public class PreferencesDialog {
             ImGui.separator();
             ImGui.spacing();
 
+            renderUISettings();
+            ImGui.spacing();
+            ImGui.separator();
+            ImGui.spacing();
+
             renderCameraSettings();
             ImGui.spacing();
             ImGui.separator();
@@ -90,9 +109,10 @@ public class PreferencesDialog {
     }
 
     /**
-     * Initialize pending theme values from current settings.
+     * Initialize pending values from current settings.
      */
     private void initializePendingValues() {
+        // Theme settings
         ThemeDefinition currentTheme = themeManager.getCurrentTheme();
         if (currentTheme != null) {
             for (int i = 0; i < themeManager.getAvailableThemes().size(); i++) {
@@ -105,6 +125,10 @@ public class PreferencesDialog {
         DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
         pendingDensityIndex.set(currentDensity.ordinal());
         hasUnsavedThemeChanges = false;
+
+        // UI settings
+        pendingCompactMode.set(preferencesManager.getPropertiesCompactMode());
+        hasUnsavedUIChanges = false;
     }
 
     /**
@@ -148,6 +172,29 @@ public class PreferencesDialog {
     }
 
     /**
+     * Render UI settings section.
+     */
+    private void renderUISettings() {
+        ImGui.text("UI Settings");
+        ImGui.separator();
+
+        // Compact mode toggle
+        if (ImGui.checkbox("Compact Properties Panel", pendingCompactMode)) {
+            hasUnsavedUIChanges = true;
+        }
+
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Show only essential controls in the properties panel");
+        }
+
+        // Show unsaved changes indicator
+        if (hasUnsavedUIChanges) {
+            ImGui.spacing();
+            ImGui.textColored(1.0f, 0.8f, 0.0f, 1.0f, "* You have unsaved UI changes");
+        }
+    }
+
+    /**
      * Render camera settings section.
      */
     private void renderCameraSettings() {
@@ -169,8 +216,8 @@ public class PreferencesDialog {
      * Render action buttons.
      */
     private void renderButtons() {
-        if (ImGui.button("Apply Theme Changes")) {
-            applyThemeChanges();
+        if (ImGui.button("Apply Changes")) {
+            applyAllChanges();
         }
         ImGui.sameLine();
 
@@ -185,9 +232,10 @@ public class PreferencesDialog {
     }
 
     /**
-     * Apply pending theme changes.
+     * Apply all pending changes (theme and UI settings).
      */
-    private void applyThemeChanges() {
+    private void applyAllChanges() {
+        // Apply theme changes
         ThemeDefinition selectedTheme = themeManager.getAvailableThemes().get(pendingThemeIndex.get());
         themeManager.applyTheme(selectedTheme);
 
@@ -195,8 +243,18 @@ public class PreferencesDialog {
         themeManager.setUIDensity(selectedDensity);
 
         hasUnsavedThemeChanges = false;
-        statusService.updateStatus("Theme changes applied: " + selectedTheme.getName() +
-                " / " + selectedDensity.getDisplayName());
+
+        // Apply UI settings
+        boolean compact = pendingCompactMode.get();
+        preferencesManager.setPropertiesCompactMode(compact);
+        if (propertyPanel != null) {
+            propertyPanel.setCompactMode(compact);
+        }
+        hasUnsavedUIChanges = false;
+
+        statusService.updateStatus("Preferences applied: " + selectedTheme.getName() +
+                " / " + selectedDensity.getDisplayName() +
+                " / " + (compact ? "Compact" : "Full") + " mode");
     }
 
     /**
@@ -211,6 +269,14 @@ public class PreferencesDialog {
         pendingThemeIndex.set(0);
         pendingDensityIndex.set(1);
         hasUnsavedThemeChanges = false;
+
+        // Reset UI settings to default
+        pendingCompactMode.set(true); // Default to compact mode
+        preferencesManager.setPropertiesCompactMode(true);
+        if (propertyPanel != null) {
+            propertyPanel.setCompactMode(true);
+        }
+        hasUnsavedUIChanges = false;
 
         // Reset camera to default
         if (preferencesManager != null) {
