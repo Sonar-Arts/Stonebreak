@@ -24,9 +24,9 @@ import java.util.List;
  */
 public class TranslateMode implements IGizmoMode {
 
-    private static final float GIZMO_SIZE = 1.0f;
-    private static final float PLANE_SIZE = 0.15f;
-    private static final float PLANE_OFFSET = 0.2f;
+    private static final float GIZMO_SIZE = 1.5f;  // Increased for better visibility
+    private static final float PLANE_SIZE = 0.2f;  // Scaled proportionally
+    private static final float PLANE_OFFSET = 0.3f; // Scaled proportionally
 
     // OpenGL resources
     private boolean initialized = false;

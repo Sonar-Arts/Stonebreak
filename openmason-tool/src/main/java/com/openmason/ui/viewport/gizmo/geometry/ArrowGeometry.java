@@ -215,7 +215,7 @@ public final class ArrowGeometry {
      * @return Radius for hit detection
      */
     public static float getInteractionRadius(float arrowLength) {
-        return arrowLength * 0.2f; // 20% of arrow length for easier clicking
+        return arrowLength * 0.3f; // 30% of arrow length for easier clicking (including tip)
     }
 
     /**
@@ -235,7 +235,7 @@ public final class ArrowGeometry {
         }
 
         Vector3f dir = new Vector3f(direction).normalize();
-        float centerDist = length * 0.6f; // Positioned at 60% for more intuitive tip-grabbing
+        float centerDist = length * 0.75f; // Positioned at 75% to include the arrow tip in interaction area
 
         return new Vector3f(origin).add(
             dir.x * centerDist,
