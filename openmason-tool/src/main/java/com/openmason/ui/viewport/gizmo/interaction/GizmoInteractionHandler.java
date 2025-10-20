@@ -421,7 +421,8 @@ public class GizmoInteractionHandler {
             // This preserves the model's shape while scaling uniformly
             // Use vertical mouse movement (more intuitive)
             // Negate to match expected direction: drag up = increase scale
-            float scaleFactor = 1.0f - (correctedDelta.y * 0.1f);
+            // Lower multiplier (0.05f) for slower, more controlled scaling
+            float scaleFactor = 1.0f - (correctedDelta.y * 0.05f);
 
             // Apply snap if enabled
             if (gizmoState.isSnapEnabled()) {

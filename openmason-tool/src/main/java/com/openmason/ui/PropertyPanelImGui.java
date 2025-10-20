@@ -52,6 +52,11 @@ public class PropertyPanelImGui {
     private float baseScaleX = 1.0f;
     private float baseScaleY = 1.0f;
     private float baseScaleZ = 1.0f;
+
+    // Previous frame scale values for detecting slider jumps
+    private float prevScaleX = 1.0f;
+    private float prevScaleY = 1.0f;
+    private float prevScaleZ = 1.0f;
     
     // Note: Gizmo controls moved to View menu
     
@@ -287,6 +292,10 @@ public class PropertyPanelImGui {
                     baseScaleX = scaleX.get();
                     baseScaleY = scaleY.get();
                     baseScaleZ = scaleZ.get();
+                    // Also update previous values to match current state
+                    prevScaleX = scaleX.get();
+                    prevScaleY = scaleY.get();
+                    prevScaleZ = scaleZ.get();
                 }
             }
 
@@ -323,60 +332,59 @@ public class PropertyPanelImGui {
 
                 // X slider
                 if (ImGui.sliderFloat("X##scaleX", scaleX.getData(), minScale, maxScale, "%.2f")) {
-                    if (ImGui.isItemActive()) {
-                        // User is actively dragging X - apply proportional scaling
-                        if (baseScaleX > 0.001f) {
-                            float scaleFactor = scaleX.get() / baseScaleX;
-                            scaleY.set(Math.max(minScale, Math.min(maxScale, baseScaleY * scaleFactor)));
-                            scaleZ.set(Math.max(minScale, Math.min(maxScale, baseScaleZ * scaleFactor)));
-                        }
+                    if (ImGui.isItemActivated()) {
+                        // Slider was just clicked - use PREVIOUS values as base
+                        baseScaleX = prevScaleX;
+                        baseScaleY = prevScaleY;
+                        baseScaleZ = prevScaleZ;
+                    }
+                    // Apply proportional scaling (including on activation frame to handle jumps)
+                    if (ImGui.isItemActive() && baseScaleX > 0.001f) {
+                        float scaleFactor = scaleX.get() / baseScaleX;
+                        scaleY.set(Math.max(minScale, Math.min(maxScale, baseScaleY * scaleFactor)));
+                        scaleZ.set(Math.max(minScale, Math.min(maxScale, baseScaleZ * scaleFactor)));
                     }
                     updateModelTransform();
-                }
-                // Capture base values when user starts dragging (item just became active)
-                if (ImGui.isItemActivated()) {
-                    baseScaleX = scaleX.get();
-                    baseScaleY = scaleY.get();
-                    baseScaleZ = scaleZ.get();
                 }
 
                 // Y slider
                 if (ImGui.sliderFloat("Y##scaleY", scaleY.getData(), minScale, maxScale, "%.2f")) {
-                    if (ImGui.isItemActive()) {
-                        // User is actively dragging Y - apply proportional scaling
-                        if (baseScaleY > 0.001f) {
-                            float scaleFactor = scaleY.get() / baseScaleY;
-                            scaleX.set(Math.max(minScale, Math.min(maxScale, baseScaleX * scaleFactor)));
-                            scaleZ.set(Math.max(minScale, Math.min(maxScale, baseScaleZ * scaleFactor)));
-                        }
+                    if (ImGui.isItemActivated()) {
+                        // Slider was just clicked - use PREVIOUS values as base
+                        baseScaleX = prevScaleX;
+                        baseScaleY = prevScaleY;
+                        baseScaleZ = prevScaleZ;
+                    }
+                    // Apply proportional scaling (including on activation frame to handle jumps)
+                    if (ImGui.isItemActive() && baseScaleY > 0.001f) {
+                        float scaleFactor = scaleY.get() / baseScaleY;
+                        scaleX.set(Math.max(minScale, Math.min(maxScale, baseScaleX * scaleFactor)));
+                        scaleZ.set(Math.max(minScale, Math.min(maxScale, baseScaleZ * scaleFactor)));
                     }
                     updateModelTransform();
-                }
-                // Capture base values when user starts dragging
-                if (ImGui.isItemActivated()) {
-                    baseScaleX = scaleX.get();
-                    baseScaleY = scaleY.get();
-                    baseScaleZ = scaleZ.get();
                 }
 
                 // Z slider
                 if (ImGui.sliderFloat("Z##scaleZ", scaleZ.getData(), minScale, maxScale, "%.2f")) {
-                    if (ImGui.isItemActive()) {
-                        // User is actively dragging Z - apply proportional scaling
-                        if (baseScaleZ > 0.001f) {
-                            float scaleFactor = scaleZ.get() / baseScaleZ;
-                            scaleX.set(Math.max(minScale, Math.min(maxScale, baseScaleX * scaleFactor)));
-                            scaleY.set(Math.max(minScale, Math.min(maxScale, baseScaleY * scaleFactor)));
-                        }
+                    if (ImGui.isItemActivated()) {
+                        // Slider was just clicked - use PREVIOUS values as base
+                        baseScaleX = prevScaleX;
+                        baseScaleY = prevScaleY;
+                        baseScaleZ = prevScaleZ;
+                    }
+                    // Apply proportional scaling (including on activation frame to handle jumps)
+                    if (ImGui.isItemActive() && baseScaleZ > 0.001f) {
+                        float scaleFactor = scaleZ.get() / baseScaleZ;
+                        scaleX.set(Math.max(minScale, Math.min(maxScale, baseScaleX * scaleFactor)));
+                        scaleY.set(Math.max(minScale, Math.min(maxScale, baseScaleY * scaleFactor)));
                     }
                     updateModelTransform();
                 }
-                // Capture base values when user starts dragging
-                if (ImGui.isItemActivated()) {
-                    baseScaleX = scaleX.get();
-                    baseScaleY = scaleY.get();
-                    baseScaleZ = scaleZ.get();
-                }
+
+                // Store current values for next frame
+                prevScaleX = scaleX.get();
+                prevScaleY = scaleY.get();
+                prevScaleZ = scaleZ.get();
             } else {
                 // Non-uniform mode: sliders move independently
                 if (ImGui.sliderFloat("X##scaleX", scaleX.getData(), minScale, maxScale, "%.2f")) {
@@ -390,6 +398,11 @@ public class PropertyPanelImGui {
                 if (ImGui.sliderFloat("Z##scaleZ", scaleZ.getData(), minScale, maxScale, "%.2f")) {
                     updateModelTransform();
                 }
+
+                // Store current values for next frame (in case we switch to uniform mode)
+                prevScaleX = scaleX.get();
+                prevScaleY = scaleY.get();
+                prevScaleZ = scaleZ.get();
             }
             
             // Reset button
@@ -736,12 +749,15 @@ public class PropertyPanelImGui {
         }
         if (Float.isNaN(scaleX.get()) || Float.isInfinite(scaleX.get()) || scaleX.get() <= 0.0f) {
             scaleX.set(1.0f);
+            prevScaleX = 1.0f;
         }
         if (Float.isNaN(scaleY.get()) || Float.isInfinite(scaleY.get()) || scaleY.get() <= 0.0f) {
             scaleY.set(1.0f);
+            prevScaleY = 1.0f;
         }
         if (Float.isNaN(scaleZ.get()) || Float.isInfinite(scaleZ.get()) || scaleZ.get() <= 0.0f) {
             scaleZ.set(1.0f);
+            prevScaleZ = 1.0f;
         }
     }
     
@@ -768,6 +784,11 @@ public class PropertyPanelImGui {
         baseScaleX = 1.0f;
         baseScaleY = 1.0f;
         baseScaleZ = 1.0f;
+
+        // Reset previous scale values
+        prevScaleX = 1.0f;
+        prevScaleY = 1.0f;
+        prevScaleZ = 1.0f;
 
         // Reset both UI and viewport
         if (viewport3D != null) {
