@@ -173,6 +173,13 @@ public class OpenMason3DViewport {
             // Initialize gizmo renderer
             gizmoRenderer.initialize();
 
+            // Set gizmo renderer in input handler for interaction
+            inputHandler.setGizmoRenderer(gizmoRenderer);
+
+            // Enable gizmo by default
+            gizmoState.setEnabled(true);
+            transformState.setGizmoEnabled(true); // Apply position to model transform
+
             // Create render pipeline (after all dependencies initialized)
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
@@ -573,6 +580,7 @@ public class OpenMason3DViewport {
 
     public void setGizmoEnabled(boolean enabled) {
         gizmoState.setEnabled(enabled);
+        transformState.setGizmoEnabled(enabled); // Keep flags synchronized
     }
 
     public boolean isGizmoEnabled() {

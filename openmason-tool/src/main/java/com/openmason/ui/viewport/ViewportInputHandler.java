@@ -1,5 +1,6 @@
 package com.openmason.ui.viewport;
 
+import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.lwjgl.BufferUtils;
@@ -12,20 +13,24 @@ import java.nio.DoubleBuffer;
 /**
  * Handles all input processing for the OpenMason 3D viewport.
  * Separates input concerns from viewport rendering for better architecture.
- * 
+ *
  * Features:
  * - Mouse capture for endless dragging
  * - Camera rotation and zooming
+ * - Gizmo interaction (transform manipulation)
  * - Professional mouse sensitivity settings
  * - Raw mouse motion support
  * - Clean separation of input and rendering concerns
  */
 public class ViewportInputHandler {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(ViewportInputHandler.class);
-    
+
     // Camera reference for input handling
     private final Camera camera;
+
+    // Gizmo renderer for transform interaction
+    private GizmoRenderer gizmoRenderer = null;
 
     // Mouse interaction state
     private boolean isDragging = false;
@@ -41,7 +46,7 @@ public class ViewportInputHandler {
         this.camera = camera;
         // logger.info("ViewportInputHandler initialized");
     }
-    
+
     /**
      * Set the GLFW window handle for mouse capture functionality.
      * This should be called from the main application.
@@ -53,6 +58,15 @@ public class ViewportInputHandler {
             this.rawMouseMotionSupported = GLFW.glfwRawMouseMotionSupported();
             // logger.info("Window handle set. Raw mouse motion supported: {}", rawMouseMotionSupported);
         }
+    }
+
+    /**
+     * Set the gizmo renderer for transform interaction.
+     * This should be called after viewport initialization.
+     */
+    public void setGizmoRenderer(GizmoRenderer gizmoRenderer) {
+        this.gizmoRenderer = gizmoRenderer;
+        logger.debug("Gizmo renderer set in ViewportInputHandler");
     }
     
     /**
@@ -125,65 +139,86 @@ public class ViewportInputHandler {
             logger.warn("Camera is null - cannot handle input");
             return;
         }
-        
+
         // Get mouse state
         ImVec2 mousePos = ImGui.getIO().getMousePos();
         boolean wantCapture = ImGui.getIO().getWantCaptureMouse();
-        
-        // Always log when mouse is clicked to reduce noise
-        boolean mouseClicked = ImGui.isMouseClicked(0);
-        if (mouseClicked) {
-            // logger.info("CLICK EVENT - mouse: ({}, {}), imageBounds: ({}, {}) to ({}, {})", 
-            //     mousePos.x, mousePos.y, imagePos.x, imagePos.y, 
-            //     imagePos.x + imageWidth, imagePos.y + imageHeight);
-        }
-        
+
+        // Calculate viewport-relative mouse coordinates
+        float viewportMouseX = mousePos.x - imagePos.x;
+        float viewportMouseY = mousePos.y - imagePos.y;
+
         // Check if mouse is within viewport bounds
-        boolean mouseInBounds = !isMouseCaptured && (mousePos.x >= imagePos.x && 
-                               mousePos.x < imagePos.x + imageWidth && 
-                               mousePos.y >= imagePos.y && 
+        boolean mouseInBounds = !isMouseCaptured && (mousePos.x >= imagePos.x &&
+                               mousePos.x < imagePos.x + imageWidth &&
+                               mousePos.y >= imagePos.y &&
                                mousePos.y < imagePos.y + imageHeight);
 
         // Only respect WantCaptureMouse if mouse is NOT in viewport bounds or we're not actively dragging
         if (wantCapture && !mouseInBounds && !isDragging) {
-            // If ImGui wants mouse input and mouse is outside viewport, stop any ongoing drag operation
             if (isDragging) {
-                // logger.info("ImGui captured mouse outside viewport - stopping drag operation");
                 stopDragging();
             }
-            return; // Don't process camera input when ImGui wants mouse control outside viewport
-        }
-        
-        // Use the same mouseClicked variable for consistency 
-        if (mouseClicked) {
-            boolean xInBounds = mousePos.x >= imagePos.x && mousePos.x < imagePos.x + imageWidth;
-            boolean yInBounds = mousePos.y >= imagePos.y && mousePos.y < imagePos.y + imageHeight;
-            boolean notCaptured = !isMouseCaptured;
-            
-            logger.warn("CLICK ANALYSIS - mouseInBounds: {}", mouseInBounds);
-            logger.warn("  notCaptured: {} (isMouseCaptured: {})", notCaptured, isMouseCaptured);
-            logger.warn("  xInBounds: {} ({} >= {} && {} < {})", xInBounds, mousePos.x, imagePos.x, mousePos.x, imagePos.x + imageWidth);
-            logger.warn("  yInBounds: {} ({} >= {} && {} < {})", yInBounds, mousePos.y, imagePos.y, mousePos.y, imagePos.y + imageHeight);
+            return;
         }
 
-        // Start camera dragging when left mouse button is pressed within viewport bounds
-        if (mouseInBounds && mouseClicked) {
-            startDragging();
+        // Handle gizmo input first (if enabled and initialized)
+        boolean gizmoHandledInput = false;
+        if (gizmoRenderer != null && gizmoRenderer.isInitialized() &&
+            gizmoRenderer.getGizmoState().isEnabled()) {
+
+            // Update gizmo with camera matrices for raycasting
+            gizmoRenderer.handleMouseMove(
+                viewportMouseX,
+                viewportMouseY,
+                camera.getViewMatrix(),
+                camera.getProjectionMatrix(),
+                (int) imageWidth,
+                (int) imageHeight
+            );
+
+            // Check for mouse press on gizmo
+            if (mouseInBounds && ImGui.isMouseClicked(0)) {
+                gizmoHandledInput = gizmoRenderer.handleMousePress(viewportMouseX, viewportMouseY);
+                if (gizmoHandledInput) {
+                    logger.debug("Gizmo captured mouse press");
+                }
+            }
+
+            // Check for mouse release
+            if (ImGui.isMouseReleased(0)) {
+                gizmoRenderer.handleMouseRelease(viewportMouseX, viewportMouseY);
+            }
+
+            // If gizmo is dragging, it handles input
+            if (gizmoRenderer.isDragging()) {
+                gizmoHandledInput = true;
+            }
         }
 
-        // Continue dragging with unlimited mouse movement (mouse is now captured)
-        if (isDragging && ImGui.isMouseDown(0)) {
-            processDragging();
-        }
+        // Only handle camera input if gizmo didn't capture the input
+        if (!gizmoHandledInput) {
+            boolean mouseClicked = ImGui.isMouseClicked(0);
 
-        // Stop dragging when mouse button is released
-        if (ImGui.isMouseReleased(0) && isDragging) {
-            stopDragging();
-        }
-        
-        // Handle mouse wheel for zooming (only when hovering over viewport or actively dragging)
-        if (mouseInBounds || isDragging) {
-            processZooming();
+            // Start camera dragging when left mouse button is pressed within viewport bounds
+            if (mouseInBounds && mouseClicked) {
+                startDragging();
+            }
+
+            // Continue dragging with unlimited mouse movement (mouse is now captured)
+            if (isDragging && ImGui.isMouseDown(0)) {
+                processDragging();
+            }
+
+            // Stop dragging when mouse button is released
+            if (ImGui.isMouseReleased(0) && isDragging) {
+                stopDragging();
+            }
+
+            // Handle mouse wheel for zooming (only when hovering over viewport or actively dragging)
+            if (mouseInBounds || isDragging) {
+                processZooming();
+            }
         }
     }
     
