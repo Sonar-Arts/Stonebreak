@@ -25,7 +25,9 @@ public class TransformState {
     private float rotationX = 0.0f;
     private float rotationY = 0.0f;
     private float rotationZ = 0.0f;
-    private float scale = 1.0f;
+    private float scaleX = 1.0f;
+    private float scaleY = 1.0f;
+    private float scaleZ = 1.0f;
 
     // Gizmo state
     private boolean gizmoEnabled = false;
@@ -51,7 +53,9 @@ public class TransformState {
         rotationX = 0.0f;
         rotationY = 0.0f;
         rotationZ = 0.0f;
-        scale = 1.0f;
+        scaleX = 1.0f;
+        scaleY = 1.0f;
+        scaleZ = 1.0f;
         gizmoEnabled = false;
         dirty = true;
         logger.trace("Transform state reset to defaults");
@@ -89,10 +93,38 @@ public class TransformState {
     }
 
     /**
-     * Set scale with constraints.
+     * Set uniform scale with constraints (all axes).
      */
     public void setScale(float scale) {
-        this.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        this.scaleX = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        this.scaleY = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        this.scaleZ = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        this.dirty = true;
+    }
+
+    /**
+     * Set non-uniform scale with constraints (per-axis).
+     */
+    public void setScale(float x, float y, float z) {
+        this.scaleX = Math.max(MIN_SCALE, Math.min(MAX_SCALE, x));
+        this.scaleY = Math.max(MIN_SCALE, Math.min(MAX_SCALE, y));
+        this.scaleZ = Math.max(MIN_SCALE, Math.min(MAX_SCALE, z));
+        this.dirty = true;
+    }
+
+    /**
+     * Set scale for a specific axis.
+     * @param axis 'x', 'y', or 'z'
+     * @param value Scale value with constraints
+     */
+    public void setScaleAxis(char axis, float value) {
+        float constrainedValue = Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
+        switch (Character.toLowerCase(axis)) {
+            case 'x' -> this.scaleX = constrainedValue;
+            case 'y' -> this.scaleY = constrainedValue;
+            case 'z' -> this.scaleZ = constrainedValue;
+            default -> throw new IllegalArgumentException("Invalid axis: " + axis + " (must be 'x', 'y', or 'z')");
+        }
         this.dirty = true;
     }
 
@@ -133,19 +165,21 @@ public class TransformState {
                 (float) Math.toRadians(rotationY),
                 (float) Math.toRadians(rotationZ)
             )
-            .scale(scale);
+            .scale(scaleX, scaleY, scaleZ);
 
         dirty = false;
 
         if (gizmoEnabled) {
-            logger.trace("Updated transform matrix (gizmo enabled): pos=({},{},{}), rot=({},{},{}), scale={}, determinant={}",
+            logger.trace("Updated transform matrix (gizmo enabled): pos=({},{},{}), rot=({},{},{}), scale=({},{},{}), determinant={}",
                         String.format("%.1f", positionX), String.format("%.1f", positionY), String.format("%.1f", positionZ),
                         String.format("%.1f", rotationX), String.format("%.1f", rotationY), String.format("%.1f", rotationZ),
-                        String.format("%.2f", scale), String.format("%.3f", transformMatrix.determinant()));
+                        String.format("%.2f", scaleX), String.format("%.2f", scaleY), String.format("%.2f", scaleZ),
+                        String.format("%.3f", transformMatrix.determinant()));
         } else {
-            logger.trace("Updated transform matrix (gizmo disabled): rot=({},{},{}), scale={}, determinant={}",
+            logger.trace("Updated transform matrix (gizmo disabled): rot=({},{},{}), scale=({},{},{}), determinant={}",
                         String.format("%.1f", rotationX), String.format("%.1f", rotationY), String.format("%.1f", rotationZ),
-                        String.format("%.2f", scale), String.format("%.3f", transformMatrix.determinant()));
+                        String.format("%.2f", scaleX), String.format("%.2f", scaleY), String.format("%.2f", scaleZ),
+                        String.format("%.3f", transformMatrix.determinant()));
         }
     }
 
@@ -167,7 +201,10 @@ public class TransformState {
     public float getRotationX() { return rotationX; }
     public float getRotationY() { return rotationY; }
     public float getRotationZ() { return rotationZ; }
-    public float getScale() { return scale; }
+    public float getScaleX() { return scaleX; }
+    public float getScaleY() { return scaleY; }
+    public float getScaleZ() { return scaleZ; }
+    public float getScale() { return scaleX; } // Backward compatibility - returns X scale
     public boolean isGizmoEnabled() { return gizmoEnabled; }
     public boolean isDirty() { return dirty; }
 
@@ -185,7 +222,7 @@ public class TransformState {
 
     @Override
     public String toString() {
-        return String.format("TransformState{pos=(%.1f,%.1f,%.1f), rot=(%.1f,%.1f,%.1f), scale=%.2f, gizmo=%s}",
-                           positionX, positionY, positionZ, rotationX, rotationY, rotationZ, scale, gizmoEnabled);
+        return String.format("TransformState{pos=(%.1f,%.1f,%.1f), rot=(%.1f,%.1f,%.1f), scale=(%.2f,%.2f,%.2f), gizmo=%s}",
+                           positionX, positionY, positionZ, rotationX, rotationY, rotationZ, scaleX, scaleY, scaleZ, gizmoEnabled);
     }
 }

@@ -121,9 +121,9 @@ public class GizmoInteractionHandler {
                 transformState.getRotationZ()
             );
             Vector3f scale = new Vector3f(
-                transformState.getScale(),
-                transformState.getScale(),
-                transformState.getScale()
+                transformState.getScaleX(),
+                transformState.getScaleY(),
+                transformState.getScaleZ()
             );
 
             gizmoState.startDrag(
@@ -400,28 +400,67 @@ public class GizmoInteractionHandler {
 
     /**
      * Handles scale drag operation.
-     * Note: TransformState only supports uniform scaling currently.
+     * Supports both uniform and per-axis scaling based on gizmo state.
      *
-     * @param mouseDelta Mouse movement since drag start
+     * @param mouseDelta Mouse movement since drag start (in ImGui screen space)
      * @param constraint Active axis constraint
      */
     private void handleScaleDrag(Vector2f mouseDelta, AxisConstraint constraint) {
         Vector3f startScale = gizmoState.getDragStartObjectScale();
 
-        // Calculate scale factor from mouse movement
-        // Use vertical mouse movement (more intuitive)
-        float scaleFactor = 1.0f + (mouseDelta.y * 0.01f);
+        // Coordinate system correction for screen-space to world-space projection:
+        // - X: Negate to match clip-space projection direction
+        // - Y: Keep as-is (ImGui Y-down works correctly with clip-space Y-up)
+        Vector2f correctedDelta = new Vector2f(-mouseDelta.x, mouseDelta.y);
 
-        // Apply snap if enabled
-        if (gizmoState.isSnapEnabled()) {
-            scaleFactor = snapToIncrement(scaleFactor, gizmoState.getSnapIncrement() * 0.1f);
+        // Check if uniform scaling is enabled or if center box is dragged
+        boolean shouldScaleUniformly = gizmoState.isUniformScaling() || constraint == AxisConstraint.NONE;
+
+        if (shouldScaleUniformly) {
+            // Uniform scaling: use vertical mouse movement (more intuitive)
+            // Negate to match expected direction: drag up = increase scale
+            float scaleFactor = 1.0f - (correctedDelta.y * 0.1f);
+
+            // Apply snap if enabled
+            if (gizmoState.isSnapEnabled()) {
+                scaleFactor = snapToIncrement(scaleFactor, gizmoState.getSnapIncrement() * 0.1f);
+            }
+
+            float newScaleValue = startScale.x * scaleFactor;
+            transformState.setScale(newScaleValue);
+        } else {
+            // Per-axis scaling: project mouse movement onto the specific axis direction
+            Vector3f axis = getAxisVector(constraint);
+            float movement = RaycastUtil.projectScreenDeltaOntoAxis(
+                correctedDelta,
+                axis,
+                viewMatrix,
+                projectionMatrix,
+                viewportWidth,
+                viewportHeight
+            );
+
+            // Convert movement to scale factor (increased rate for responsiveness)
+            float scaleFactor = 1.0f + (movement * 0.1f);
+
+            // Apply snap if enabled
+            if (gizmoState.isSnapEnabled()) {
+                scaleFactor = snapToIncrement(scaleFactor, gizmoState.getSnapIncrement() * 0.1f);
+            }
+
+            // Update only the active axis
+            float newScaleX = startScale.x;
+            float newScaleY = startScale.y;
+            float newScaleZ = startScale.z;
+
+            switch (constraint) {
+                case X -> newScaleX = startScale.x * scaleFactor;
+                case Y -> newScaleY = startScale.y * scaleFactor;
+                case Z -> newScaleZ = startScale.z * scaleFactor;
+            }
+
+            transformState.setScale(newScaleX, newScaleY, newScaleZ);
         }
-
-        // TransformState only supports uniform scaling
-        // So all axis constraints result in uniform scaling
-        float newScaleValue = startScale.x * scaleFactor;
-
-        transformState.setScale(newScaleValue);
     }
 
     /**

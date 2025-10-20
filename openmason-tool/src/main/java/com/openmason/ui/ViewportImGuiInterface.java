@@ -388,13 +388,30 @@ public class ViewportImGuiInterface {
 
             ImGui.separator();
 
-            // Display mode-specific information
-            if (currentMode == GizmoState.Mode.TRANSLATE) {
+            // Display mode-specific controls and information
+            if (currentMode == GizmoState.Mode.SCALE) {
+                // Uniform scaling toggle (only for Scale mode)
+                boolean uniformScaling = viewport3D.getGizmoUniformScaling();
+                if (ImGui.checkbox("Uniform Scaling", uniformScaling)) {
+                    viewport3D.setGizmoUniformScaling(!uniformScaling);
+                    logger.info("Uniform scaling toggled: {}", !uniformScaling);
+                }
+                if (ImGui.isItemHovered()) {
+                    ImGui.setTooltip("When enabled, all axes scale together. When disabled, each axis scales independently.");
+                }
+
+                ImGui.separator();
+
+                // Help text for scale mode
+                if (uniformScaling) {
+                    ImGui.textWrapped("Uniform scaling ON: Drag any handle to scale all axes together.");
+                } else {
+                    ImGui.textWrapped("Uniform scaling OFF: Drag colored box handles to scale individual axes - X (red), Y (green), or Z (blue). Drag the center white box to scale uniformly.");
+                }
+            } else if (currentMode == GizmoState.Mode.TRANSLATE) {
                 ImGui.textWrapped("Drag the colored arrows to move along X (red), Y (green), or Z (blue) axes.");
             } else if (currentMode == GizmoState.Mode.ROTATE) {
                 ImGui.textWrapped("Drag the circular grabbers to rotate around X (red), Y (green), or Z (blue) axes.");
-            } else if (currentMode == GizmoState.Mode.SCALE) {
-                ImGui.textWrapped("Drag the colored box handles to scale along X (red), Y (green), or Z (blue) axes. Drag the center white box to scale uniformly.");
             }
 
         }

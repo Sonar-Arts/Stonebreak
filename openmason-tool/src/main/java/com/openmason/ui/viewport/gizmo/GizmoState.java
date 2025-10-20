@@ -45,6 +45,9 @@ public class GizmoState {
     private boolean snapEnabled = false;
     private float snapIncrement = 0.5f; // Default snap increment
 
+    // Scale mode settings
+    private boolean uniformScaling = true; // Default to uniform scaling
+
     // Highlight intensity for visual feedback
     private float hoverIntensity = 1.5f;  // Brightness multiplier on hover
     private float activeIntensity = 2.0f; // Brightness multiplier when active
@@ -322,6 +325,27 @@ public class GizmoState {
         return activeIntensity;
     }
 
+    // ========== Scale Mode Settings ==========
+
+    /**
+     * Checks if uniform scaling is enabled.
+     * When enabled, all axes scale together. When disabled, each axis scales independently.
+     *
+     * @return true if uniform scaling is enabled, false otherwise
+     */
+    public boolean isUniformScaling() {
+        return uniformScaling;
+    }
+
+    /**
+     * Sets whether uniform scaling is enabled.
+     *
+     * @param uniform true for uniform scaling, false for per-axis scaling
+     */
+    public void setUniformScaling(boolean uniform) {
+        this.uniformScaling = uniform;
+    }
+
     /**
      * Gets the intensity multiplier for a given constraint.
      *
@@ -365,5 +389,6 @@ public class GizmoState {
         enabled = true;
         snapEnabled = false;
         snapIncrement = 0.5f;
+        uniformScaling = true;
     }
 }

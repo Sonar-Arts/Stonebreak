@@ -602,4 +602,12 @@ public class OpenMason3DViewport {
     public GizmoState.Mode getGizmoMode() {
         return gizmoRenderer.getCurrentMode();
     }
+
+    public void setGizmoUniformScaling(boolean uniform) {
+        gizmoState.setUniformScaling(uniform);
+    }
+
+    public boolean getGizmoUniformScaling() {
+        return gizmoState.isUniformScaling();
+    }
 }
