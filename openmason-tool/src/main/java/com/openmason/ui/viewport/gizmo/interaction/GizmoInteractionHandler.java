@@ -417,7 +417,9 @@ public class GizmoInteractionHandler {
         boolean shouldScaleUniformly = gizmoState.isUniformScaling() || constraint == AxisConstraint.NONE;
 
         if (shouldScaleUniformly) {
-            // Uniform scaling: use vertical mouse movement (more intuitive)
+            // Uniform scaling: apply proportional scale factor to all axes
+            // This preserves the model's shape while scaling uniformly
+            // Use vertical mouse movement (more intuitive)
             // Negate to match expected direction: drag up = increase scale
             float scaleFactor = 1.0f - (correctedDelta.y * 0.1f);
 
@@ -426,8 +428,11 @@ public class GizmoInteractionHandler {
                 scaleFactor = snapToIncrement(scaleFactor, gizmoState.getSnapIncrement() * 0.1f);
             }
 
-            float newScaleValue = startScale.x * scaleFactor;
-            transformState.setScale(newScaleValue);
+            // Apply the same scale factor to all three axes proportionally
+            float newScaleX = startScale.x * scaleFactor;
+            float newScaleY = startScale.y * scaleFactor;
+            float newScaleZ = startScale.z * scaleFactor;
+            transformState.setScale(newScaleX, newScaleY, newScaleZ);
         } else {
             // Per-axis scaling: project mouse movement onto the specific axis direction
             Vector3f axis = getAxisVector(constraint);

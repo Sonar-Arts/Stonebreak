@@ -8,6 +8,7 @@ import com.openmason.ui.themes.application.DensityManager;
 import com.openmason.ui.themes.application.StyleApplicator;
 import imgui.ImGui;
 import imgui.flag.*;
+import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;
 import imgui.type.ImString;
@@ -42,7 +43,15 @@ public class PropertyPanelImGui {
     private final ImFloat rotationX = new ImFloat(0.0f);
     private final ImFloat rotationY = new ImFloat(0.0f);
     private final ImFloat rotationZ = new ImFloat(0.0f);
-    private final ImFloat scale = new ImFloat(1.0f);
+    private final ImFloat scaleX = new ImFloat(1.0f);
+    private final ImFloat scaleY = new ImFloat(1.0f);
+    private final ImFloat scaleZ = new ImFloat(1.0f);
+    private final ImBoolean uniformScaleMode = new ImBoolean(true);
+
+    // Base scale values for proportional uniform scaling
+    private float baseScaleX = 1.0f;
+    private float baseScaleY = 1.0f;
+    private float baseScaleZ = 1.0f;
     
     // Note: Gizmo controls moved to View menu
     
@@ -206,7 +215,14 @@ public class PropertyPanelImGui {
                     rotationX.set(viewport3D.getModelRotationX());
                     rotationY.set(viewport3D.getModelRotationY());
                     rotationZ.set(viewport3D.getModelRotationZ());
-                    scale.set(viewport3D.getModelScale());
+
+                    // Sync individual scale values from TransformState via viewport
+                    scaleX.set(viewport3D.getModelScaleX());
+                    scaleY.set(viewport3D.getModelScaleY());
+                    scaleZ.set(viewport3D.getModelScaleZ());
+
+                    // Sync uniform scaling mode from gizmo state
+                    uniformScaleMode.set(viewport3D.getGizmoUniformScaling());
                 } catch (Exception e) {
                     logger.warn("Error syncing transform values from viewport, using defaults", e);
                     // Use safe defaults if viewport values are invalid
@@ -259,12 +275,35 @@ public class PropertyPanelImGui {
             
             ImGui.separator();
             ImGui.text("Scale:");
-            
-            // Check if scale is at boundaries for visual feedback
-            float currentScale = scale.get();
-            boolean atMinScale = Math.abs(currentScale - minScale) < 0.01f;
-            boolean atMaxScale = Math.abs(currentScale - maxScale) < 0.01f;
-            
+
+            // Uniform mode toggle
+            if (ImGui.checkbox("Uniform Scaling", uniformScaleMode)) {
+                // Checkbox state was toggled - sync to gizmo
+                if (viewport3D != null) {
+                    viewport3D.setGizmoUniformScaling(uniformScaleMode.get());
+                }
+                // Capture current scale values as base for proportional scaling
+                if (uniformScaleMode.get()) {
+                    baseScaleX = scaleX.get();
+                    baseScaleY = scaleY.get();
+                    baseScaleZ = scaleZ.get();
+                }
+            }
+
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Toggle between uniform (all axes) and non-uniform (per-axis) scaling");
+            }
+
+            ImGui.separator();
+
+            // Check if any scale is at boundaries for visual feedback
+            boolean atMinScale = Math.abs(scaleX.get() - minScale) < 0.01f ||
+                                 Math.abs(scaleY.get() - minScale) < 0.01f ||
+                                 Math.abs(scaleZ.get() - minScale) < 0.01f;
+            boolean atMaxScale = Math.abs(scaleX.get() - maxScale) < 0.01f ||
+                                 Math.abs(scaleY.get() - maxScale) < 0.01f ||
+                                 Math.abs(scaleZ.get() - maxScale) < 0.01f;
+
             if (atMinScale || atMaxScale) {
                 if (atMinScale) {
                     ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange for min
@@ -276,9 +315,81 @@ public class PropertyPanelImGui {
                     ImGui.popStyleColor();
                 }
             }
-            
-            if (ImGui.sliderFloat("##scale", scale.getData(), minScale, maxScale, "%.2f")) {
-                updateModelTransform();
+
+            // Scale controls - always show X, Y, Z sliders
+            // In uniform mode, they scale proportionally (preserving shape)
+            if (uniformScaleMode.get()) {
+                // Uniform mode: proportional scaling preserves shape
+
+                // X slider
+                if (ImGui.sliderFloat("X##scaleX", scaleX.getData(), minScale, maxScale, "%.2f")) {
+                    if (ImGui.isItemActive()) {
+                        // User is actively dragging X - apply proportional scaling
+                        if (baseScaleX > 0.001f) {
+                            float scaleFactor = scaleX.get() / baseScaleX;
+                            scaleY.set(Math.max(minScale, Math.min(maxScale, baseScaleY * scaleFactor)));
+                            scaleZ.set(Math.max(minScale, Math.min(maxScale, baseScaleZ * scaleFactor)));
+                        }
+                    }
+                    updateModelTransform();
+                }
+                // Capture base values when user starts dragging (item just became active)
+                if (ImGui.isItemActivated()) {
+                    baseScaleX = scaleX.get();
+                    baseScaleY = scaleY.get();
+                    baseScaleZ = scaleZ.get();
+                }
+
+                // Y slider
+                if (ImGui.sliderFloat("Y##scaleY", scaleY.getData(), minScale, maxScale, "%.2f")) {
+                    if (ImGui.isItemActive()) {
+                        // User is actively dragging Y - apply proportional scaling
+                        if (baseScaleY > 0.001f) {
+                            float scaleFactor = scaleY.get() / baseScaleY;
+                            scaleX.set(Math.max(minScale, Math.min(maxScale, baseScaleX * scaleFactor)));
+                            scaleZ.set(Math.max(minScale, Math.min(maxScale, baseScaleZ * scaleFactor)));
+                        }
+                    }
+                    updateModelTransform();
+                }
+                // Capture base values when user starts dragging
+                if (ImGui.isItemActivated()) {
+                    baseScaleX = scaleX.get();
+                    baseScaleY = scaleY.get();
+                    baseScaleZ = scaleZ.get();
+                }
+
+                // Z slider
+                if (ImGui.sliderFloat("Z##scaleZ", scaleZ.getData(), minScale, maxScale, "%.2f")) {
+                    if (ImGui.isItemActive()) {
+                        // User is actively dragging Z - apply proportional scaling
+                        if (baseScaleZ > 0.001f) {
+                            float scaleFactor = scaleZ.get() / baseScaleZ;
+                            scaleX.set(Math.max(minScale, Math.min(maxScale, baseScaleX * scaleFactor)));
+                            scaleY.set(Math.max(minScale, Math.min(maxScale, baseScaleY * scaleFactor)));
+                        }
+                    }
+                    updateModelTransform();
+                }
+                // Capture base values when user starts dragging
+                if (ImGui.isItemActivated()) {
+                    baseScaleX = scaleX.get();
+                    baseScaleY = scaleY.get();
+                    baseScaleZ = scaleZ.get();
+                }
+            } else {
+                // Non-uniform mode: sliders move independently
+                if (ImGui.sliderFloat("X##scaleX", scaleX.getData(), minScale, maxScale, "%.2f")) {
+                    updateModelTransform();
+                }
+
+                if (ImGui.sliderFloat("Y##scaleY", scaleY.getData(), minScale, maxScale, "%.2f")) {
+                    updateModelTransform();
+                }
+
+                if (ImGui.sliderFloat("Z##scaleZ", scaleZ.getData(), minScale, maxScale, "%.2f")) {
+                    updateModelTransform();
+                }
             }
             
             // Reset button
@@ -583,15 +694,17 @@ public class PropertyPanelImGui {
     private void updateModelTransform() {
         // Track user interaction
         lastUserInteractionTime = System.currentTimeMillis();
-        
-        // logger.debug("Updating model transform: pos=({}, {}, {}), rot=({}, {}, {}), scale={}", 
+
+        // logger.debug("Updating model transform: pos=({}, {}, {}), rot=({}, {}, {}), scale=({}, {}, {})",
         //             positionX.get(), positionY.get(), positionZ.get(),
-        //             rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
-        
+        //             rotationX.get(), rotationY.get(), rotationZ.get(),
+        //             scaleX.get(), scaleY.get(), scaleZ.get());
+
         try {
             if (viewport3D != null) {
                 viewport3D.setModelTransform(positionX.get(), positionY.get(), positionZ.get(),
-                                           rotationX.get(), rotationY.get(), rotationZ.get(), scale.get());
+                                           rotationX.get(), rotationY.get(), rotationZ.get(),
+                                           scaleX.get(), scaleY.get(), scaleZ.get());
                 viewport3D.requestRender();
             }
         } catch (Exception e) {
@@ -621,8 +734,14 @@ public class PropertyPanelImGui {
         if (Float.isNaN(rotationZ.get()) || Float.isInfinite(rotationZ.get())) {
             rotationZ.set(0.0f);
         }
-        if (Float.isNaN(scale.get()) || Float.isInfinite(scale.get()) || scale.get() <= 0.0f) {
-            scale.set(1.0f);
+        if (Float.isNaN(scaleX.get()) || Float.isInfinite(scaleX.get()) || scaleX.get() <= 0.0f) {
+            scaleX.set(1.0f);
+        }
+        if (Float.isNaN(scaleY.get()) || Float.isInfinite(scaleY.get()) || scaleY.get() <= 0.0f) {
+            scaleY.set(1.0f);
+        }
+        if (Float.isNaN(scaleZ.get()) || Float.isInfinite(scaleZ.get()) || scaleZ.get() <= 0.0f) {
+            scaleZ.set(1.0f);
         }
     }
     
@@ -640,15 +759,24 @@ public class PropertyPanelImGui {
         rotationX.set(0.0f);
         rotationY.set(0.0f);
         rotationZ.set(0.0f);
-        scale.set(1.0f);
-        
+        scaleX.set(1.0f);
+        scaleY.set(1.0f);
+        scaleZ.set(1.0f);
+        uniformScaleMode.set(true);
+
+        // Reset base scale values
+        baseScaleX = 1.0f;
+        baseScaleY = 1.0f;
+        baseScaleZ = 1.0f;
+
         // Reset both UI and viewport
         if (viewport3D != null) {
             viewport3D.resetModelTransform();
+            viewport3D.setGizmoUniformScaling(true);
         } else {
             updateModelTransform();
         }
-        
+
         statusMessage = "Transform reset to defaults";
         // logger.info("Transform reset to default values");
     }

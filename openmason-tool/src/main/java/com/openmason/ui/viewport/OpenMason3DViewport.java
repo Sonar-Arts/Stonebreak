@@ -419,11 +419,22 @@ public class OpenMason3DViewport {
     }
 
     /**
-     * Set model transform with position.
+     * Set model transform with position (uniform scale).
      */
     public void setModelTransform(float posX, float posY, float posZ,
                                   float rotX, float rotY, float rotZ, float scale) {
         transformState.setTransform(posX, posY, posZ, rotX, rotY, rotZ, scale);
+    }
+
+    /**
+     * Set model transform with position and non-uniform scale.
+     */
+    public void setModelTransform(float posX, float posY, float posZ,
+                                  float rotX, float rotY, float rotZ,
+                                  float scaleX, float scaleY, float scaleZ) {
+        transformState.setPosition(posX, posY, posZ);
+        transformState.setRotation(rotX, rotY, rotZ);
+        transformState.setScale(scaleX, scaleY, scaleZ);
     }
 
     /**
@@ -518,6 +529,9 @@ public class OpenMason3DViewport {
     public float getModelRotationY() { return transformState.getRotationY(); }
     public float getModelRotationZ() { return transformState.getRotationZ(); }
     public float getModelScale() { return transformState.getScale(); }
+    public float getModelScaleX() { return transformState.getScaleX(); }
+    public float getModelScaleY() { return transformState.getScaleY(); }
+    public float getModelScaleZ() { return transformState.getScaleZ(); }
     public float getMinScale() { return TransformState.getMinScale(); }
     public float getMaxScale() { return TransformState.getMaxScale(); }
 
