@@ -68,9 +68,6 @@ public class OpenMason3DViewport {
     private final ItemRenderer itemRenderer;
     private final TextureAtlas textureAtlas;
 
-    // Transform gizmo
-    private final TransformGizmo transformGizmo;
-
     // Model loading
     private final AsyncModelLoader modelLoader;
 
@@ -105,9 +102,6 @@ public class OpenMason3DViewport {
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
         this.textureAtlas = new TextureAtlas("Viewport_CowAtlas");
-
-        // Initialize transform gizmo
-        this.transformGizmo = new TransformGizmo();
 
         // Initialize model loader
         this.modelLoader = new AsyncModelLoader();
@@ -166,17 +160,11 @@ public class OpenMason3DViewport {
             // Initialize texture atlas
             textureAtlas.initialize();
 
-            // Initialize transform gizmo
-            transformGizmo.initialize();
-
-            // Connect gizmo to input handler
-            inputHandler.setTransformGizmo(transformGizmo);
-
             // Create render pipeline (after all dependencies initialized)
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
                 modelRenderer, blockRenderer, itemRenderer,
-                textureAtlas, transformGizmo
+                textureAtlas
             );
 
             // Update state
@@ -443,10 +431,6 @@ public class OpenMason3DViewport {
             textureAtlas.close();
         }
 
-        if (transformGizmo != null) {
-            transformGizmo.cleanup();
-        }
-
         resourceManager.close();
         shaderManager.cleanup();
 
@@ -460,7 +444,6 @@ public class OpenMason3DViewport {
     public Camera getCamera() { return camera; }
     public ModelRenderer getModelRenderer() { return modelRenderer; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
-    public TransformGizmo getTransformGizmo() { return transformGizmo; }
 
     public boolean isShowGrid() { return viewportState.isShowGrid(); }
     public void setShowGrid(boolean showGrid) {
@@ -478,11 +461,6 @@ public class OpenMason3DViewport {
     public boolean isAxesVisible() { return viewportState.isShowAxes(); }
     public void setAxesVisible(boolean visible) {
         this.viewportState = viewportState.toBuilder().showAxes(visible).build();
-    }
-
-    public boolean isGizmoEnabled() { return transformState.isGizmoEnabled(); }
-    public void setGizmoEnabled(boolean enabled) {
-        transformState.setGizmoEnabled(enabled);
     }
 
     public int getColorTexture() { return resourceManager.getFramebuffer().getColorTextureId(); }

@@ -65,11 +65,6 @@ public class ViewMenuHandler {
             viewportOperations.toggleWireframe(viewport);
         }
 
-        boolean gizmoEnabled = (viewport != null) ? viewport.isGizmoEnabled() : false;
-        if (ImGui.menuItem("Transform Gizmo", "Ctrl+T", gizmoEnabled)) {
-            viewportOperations.toggleTransformGizmo(viewport);
-        }
-
         ImGui.separator();
 
         if (ImGui.menuItem("Show 3D Viewport", "Ctrl+1", true)) {

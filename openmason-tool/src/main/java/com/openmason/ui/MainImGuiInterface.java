@@ -624,10 +624,6 @@ public class MainImGuiInterface {
         viewportOperations.toggleWireframe(viewport3D);
     }
 
-    public void toggleTransformGizmo() {
-        viewportOperations.toggleTransformGizmo(viewport3D);
-    }
-
     public void switchToVariant(String variantName) {
         viewportOperations.switchTextureVariant(viewport3D, transformState, variantName);
     }

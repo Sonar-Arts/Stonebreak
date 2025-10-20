@@ -4,7 +4,6 @@ import com.openmason.rendering.BlockRenderer;
 import com.openmason.rendering.ItemRenderer;
 import com.openmason.rendering.ModelRenderer;
 import com.openmason.rendering.TextureAtlas;
-import com.openmason.ui.viewport.TransformGizmo;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
 import com.openmason.ui.viewport.shaders.ShaderManager;
 import com.openmason.ui.viewport.shaders.ShaderProgram;
@@ -34,14 +33,12 @@ public class RenderPipeline {
     // Specialized renderers
     private final GridRenderer gridRenderer;
     private final TestCubeRenderer testCubeRenderer;
-    private final GizmoRenderer gizmoRenderer;
 
     // External renderers (models, blocks, items)
     private final ModelRenderer modelRenderer;
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
     private final TextureAtlas textureAtlas;
-    private final TransformGizmo transformGizmo;
 
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
@@ -52,18 +49,16 @@ public class RenderPipeline {
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                          ModelRenderer modelRenderer, BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                         TextureAtlas textureAtlas, TransformGizmo transformGizmo) {
+                         TextureAtlas textureAtlas) {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
         this.gridRenderer = new GridRenderer();
         this.testCubeRenderer = new TestCubeRenderer();
-        this.gizmoRenderer = new GizmoRenderer();
         this.modelRenderer = modelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
         this.textureAtlas = textureAtlas;
-        this.transformGizmo = transformGizmo;
     }
 
     /**
@@ -106,11 +101,6 @@ public class RenderPipeline {
             // Restore polygon mode after content rendering
             if (viewportState.isWireframeMode()) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            }
-
-            // PASS 3: Render transform gizmo (isolated context)
-            if (transformState.isGizmoEnabled()) {
-                renderGizmo(transformState);
             }
 
             // Unbind framebuffer
@@ -281,18 +271,6 @@ public class RenderPipeline {
             logger.trace("Test cube rendered (fallback)");
         } catch (Exception e) {
             logger.error("Error rendering test cube", e);
-        }
-    }
-
-    /**
-     * Render gizmo pass (isolated context).
-     */
-    private void renderGizmo(TransformState transformState) {
-        try {
-            ShaderProgram gizmoShader = shaderManager.getShaderProgram(ShaderType.GIZMO);
-            gizmoRenderer.render(transformGizmo, gizmoShader, context, transformState);
-        } catch (Exception e) {
-            logger.error("Error rendering gizmo", e);
         }
     }
 
