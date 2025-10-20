@@ -18,7 +18,7 @@ public final class BoxGeometry {
 
     private static final float BOX_SIZE = 0.08f; // Size of scale handles relative to gizmo
     private static final float CENTER_BOX_SIZE = 0.12f; // Size of center uniform scale box
-    private static final float LINE_LENGTH = 0.7f; // Length of axis lines before boxes
+    private static final float LINE_LENGTH = 1.0f; // Length of axis lines to box center (ensures attachment)
 
     // Private constructor to prevent instantiation (utility class)
     private BoxGeometry() {

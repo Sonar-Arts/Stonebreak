@@ -375,6 +375,17 @@ public class ViewportImGuiInterface {
                 ImGui.setTooltip("Rotate the model using circular grabbers (R key)");
             }
 
+            ImGui.sameLine();
+
+            // Scale mode radio button
+            if (ImGui.radioButton("Scale Mode", currentMode == GizmoState.Mode.SCALE)) {
+                viewport3D.setGizmoMode(GizmoState.Mode.SCALE);
+                logger.info("Switched to Scale mode");
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Scale the model using box handles (S key)");
+            }
+
             ImGui.separator();
 
             // Display mode-specific information
@@ -382,6 +393,8 @@ public class ViewportImGuiInterface {
                 ImGui.textWrapped("Drag the colored arrows to move along X (red), Y (green), or Z (blue) axes.");
             } else if (currentMode == GizmoState.Mode.ROTATE) {
                 ImGui.textWrapped("Drag the circular grabbers to rotate around X (red), Y (green), or Z (blue) axes.");
+            } else if (currentMode == GizmoState.Mode.SCALE) {
+                ImGui.textWrapped("Drag the colored box handles to scale along X (red), Y (green), or Z (blue) axes. Drag the center white box to scale uniformly.");
             }
 
         }
