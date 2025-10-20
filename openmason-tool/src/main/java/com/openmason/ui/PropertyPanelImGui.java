@@ -146,11 +146,6 @@ public class PropertyPanelImGui {
             renderDiagnosticsSection();
             ImGui.separator();
             renderStatusSection();
-            
-            // Optional theme info section for debugging
-            if (themeSystemAvailable && logger.isDebugEnabled()) {
-                renderThemeDebugSection();
-            }
         }
         ImGui.end();
         
@@ -1018,41 +1013,7 @@ public class PropertyPanelImGui {
             logger.debug("Error restoring default styles", e);
         }
     }
-    
-    /**
-     * Render theme debug information (only shown when debug logging is enabled).
-     */
-    private void renderThemeDebugSection() {
-        if (ImGui.collapsingHeader("Theme Debug Info")) {
-            ImGui.indent();
-            
-            try {
-                ThemeDefinition currentTheme = themeManager.getCurrentTheme();
-                if (currentTheme != null) {
-                    ImGui.text("Current Theme: " + currentTheme.getName());
-                    ImGui.text("Theme Type: " + currentTheme.getType().getDisplayName());
-                }
-                
-                DensityManager.UIDensity density = themeManager.getCurrentDensity();
-                if (density != null) {
-                    ImGui.text("UI Density: " + density.getDisplayName());
-                }
-                
-                ImGui.text("Preview Mode: " + (themeManager.isPreviewMode() ? "Active" : "Inactive"));
-                
-                if (ImGui.button("Refresh Theme Stats")) {
-                    String stats = themeManager.getThemeStatistics();
-                    logger.debug("Theme Statistics: {}", stats);
-                }
-                
-            } catch (Exception e) {
-                ImGui.text("Error getting theme info: " + e.getMessage());
-            }
-            
-            ImGui.unindent();
-        }
-    }
-    
+
     /**
      * Get theme manager instance (for external components).
      */
