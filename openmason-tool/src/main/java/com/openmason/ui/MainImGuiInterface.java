@@ -1,11 +1,10 @@
 package com.openmason.ui;
 
-import com.openmason.block.BlockManager;
-import com.openmason.item.ItemManager;
 import com.openmason.model.ModelManager;
+import com.openmason.ui.components.modelBrowser.ModelBrowserController;
+import com.openmason.ui.components.modelBrowser.ModelBrowserImGui;
+import com.openmason.ui.components.modelBrowser.events.*;
 import com.openmason.ui.config.WindowConfig;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemType;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.dialogs.PreferencesDialog;
@@ -18,14 +17,14 @@ import com.openmason.ui.themes.utils.ImGuiHelpers;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.toolbar.ToolbarRenderer;
 import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.ItemType;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImFloat;
-import imgui.type.ImInt;
-import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,10 +40,12 @@ import java.util.Map;
  * - Dialog windows → ui.dialogs package
  * - Menu operations → ui.menus package
  * - Toolbar rendering → ui.toolbar package
+ * - Model Browser → ui.components.modelBrowser package
  *
  * Reduced from 1700+ lines to ~300 lines by following Single Responsibility Principle.
+ * Implements ModelBrowserListener to handle model browser events using Observer pattern.
  */
-public class MainImGuiInterface {
+public class MainImGuiInterface implements ModelBrowserListener {
 
     private static final Logger logger = LoggerFactory.getLogger(MainImGuiInterface.class);
 
@@ -67,6 +68,7 @@ public class MainImGuiInterface {
     private final PreferencesManager preferencesManager;
     private final LogoManager logoManager;
     private PropertyPanelImGui propertyPanelImGui;
+    private ModelBrowserImGui modelBrowserImGui;
 
     // Dialogs
     private final PreferencesDialog preferencesDialog;
@@ -85,14 +87,6 @@ public class MainImGuiInterface {
     // Window Configurations
     private final WindowConfig viewportConfig = WindowConfig.forViewport();
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
-    private final WindowConfig modelBrowserConfig = WindowConfig.forModelBrowser();
-
-    // Model Browser State
-    private final ImString searchText = new ImString("", 256);
-    private final String[] filters = {"All Models", "Cow Models", "Recent Files"};
-    private final ImInt currentFilterIndex = new ImInt(0);
-    private String selectedModelInfo = "No model selected";
-    private final String[] recentFiles = {"standard_cow.json", "example_model.json"};
 
     // Camera settings (shared with PreferencesDialog)
     private final ImFloat cameraMouseSensitivity = new ImFloat(3.0f);
@@ -175,6 +169,7 @@ public class MainImGuiInterface {
         try {
             setupViewport();
             setupPropertiesPanel();
+            setupModelBrowser();
             performanceService.updateAll(viewport3D);
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
@@ -213,6 +208,26 @@ public class MainImGuiInterface {
             }
         } catch (Exception e) {
             logger.error("Failed to setup properties panel", e);
+        }
+    }
+
+    /**
+     * Setup model browser component.
+     */
+    private void setupModelBrowser() {
+        try {
+            // Create controller with required dependencies
+            ModelBrowserController controller = new ModelBrowserController(modelOperations, statusService);
+
+            // Create UI component with controller and visibility state
+            modelBrowserImGui = new ModelBrowserImGui(controller, uiVisibilityState.getShowModelBrowser());
+
+            // Register this as a listener to receive model browser events
+            controller.addListener(this);
+
+            logger.debug("Model Browser initialized successfully");
+        } catch (Exception e) {
+            logger.error("Failed to setup model browser", e);
         }
     }
 
@@ -284,246 +299,61 @@ public class MainImGuiInterface {
      * Render model browser panel.
      */
     private void renderModelBrowser() {
-        ImGuiHelpers.configureWindowConstraints(modelBrowserConfig);
-
-        if (ImGui.begin("Model Browser", uiVisibilityState.getShowModelBrowser())) {
-            ImGuiHelpers.configureWindowSize(modelBrowserConfig);
-            ImGuiHelpers.configureWindowPosition(modelBrowserConfig);
-
-            renderModelBrowserControls();
-            ImGui.separator();
-            renderModelTree();
-            ImGui.separator();
-            renderModelInfo();
-        }
-        ImGui.end();
-    }
-
-    /**
-     * Render model browser controls.
-     */
-    private void renderModelBrowserControls() {
-        ImGui.text("Search:");
-        ImGui.sameLine();
-        if (ImGui.inputText("##search", searchText)) {
-            // Filter functionality placeholder
-        }
-
-        ImGui.text("Filter:");
-        ImGui.sameLine();
-        ImGui.combo("##filter", currentFilterIndex, filters);
-    }
-
-    /**
-     * Render model tree.
-     */
-    private void renderModelTree() {
-        if (ImGui.treeNode("Available Models")) {
-            // Entity Models section
-            if (ImGui.treeNode("Entity Models")) {
-                if (ImGui.treeNode("Cow Models")) {
-                    if (ImGui.selectable("Standard Cow", false)) {
-                        modelOperations.selectModel("Standard Cow", "default");
-                        selectedModelInfo = "Selected: Standard Cow (default variant)";
-                    }
-                    ImGui.treePop();
-                }
-                ImGui.treePop();
-            }
-
-            // Blocks section
-            if (ImGui.treeNode("Blocks")) {
-                renderBlocksTree();
-                ImGui.treePop();
-            }
-
-            // Items section
-            if (ImGui.treeNode("Items")) {
-                renderItemsTree();
-                ImGui.treePop();
-            }
-
-            if (ImGui.treeNode("Recent Files")) {
-                for (String recentFile : recentFiles) {
-                    if (ImGui.selectable(recentFile, false)) {
-                        modelOperations.loadRecentFile(recentFile);
-                    }
-                }
-                ImGui.treePop();
-            }
-
-            ImGui.treePop();
+        if (modelBrowserImGui != null) {
+            modelBrowserImGui.render();
         }
     }
 
-    /**
-     * Render blocks tree with all available block types.
-     */
-    private void renderBlocksTree() {
-        // Get all available blocks
-        java.util.List<BlockType> allBlocks = BlockManager.getAvailableBlocks();
-
-        // Organize blocks by category
-        java.util.List<BlockType> terrainBlocks = new java.util.ArrayList<>();
-        java.util.List<BlockType> oreBlocks = new java.util.ArrayList<>();
-        java.util.List<BlockType> woodBlocks = new java.util.ArrayList<>();
-        java.util.List<BlockType> plantBlocks = new java.util.ArrayList<>();
-        java.util.List<BlockType> otherBlocks = new java.util.ArrayList<>();
-
-        for (BlockType block : allBlocks) {
-            String name = block.name().toUpperCase();
-            if (name.contains("ORE")) {
-                oreBlocks.add(block);
-            } else if (name.contains("WOOD") || name.contains("LOG") || name.contains("PLANK") ||
-                       name.contains("PINE") || name.contains("ELM")) {
-                woodBlocks.add(block);
-            } else if (name.contains("LEAVES") || name.contains("DANDELION") || name.contains("ROSE")) {
-                plantBlocks.add(block);
-            } else if (name.contains("DIRT") || name.contains("GRASS") || name.contains("STONE") ||
-                       name.contains("SAND") || name.contains("GRAVEL") || name.contains("CLAY")) {
-                terrainBlocks.add(block);
-            } else {
-                otherBlocks.add(block);
-            }
-        }
-
-        // Render categorized blocks
-        if (!terrainBlocks.isEmpty() && ImGui.treeNode("Terrain Blocks")) {
-            for (BlockType block : terrainBlocks) {
-                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
-                    selectBlock(block);
-                }
-            }
-            ImGui.treePop();
-        }
-
-        if (!oreBlocks.isEmpty() && ImGui.treeNode("Ore Blocks")) {
-            for (BlockType block : oreBlocks) {
-                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
-                    selectBlock(block);
-                }
-            }
-            ImGui.treePop();
-        }
-
-        if (!woodBlocks.isEmpty() && ImGui.treeNode("Wood Blocks")) {
-            for (BlockType block : woodBlocks) {
-                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
-                    selectBlock(block);
-                }
-            }
-            ImGui.treePop();
-        }
-
-        if (!plantBlocks.isEmpty() && ImGui.treeNode("Plants")) {
-            for (BlockType block : plantBlocks) {
-                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
-                    selectBlock(block);
-                }
-            }
-            ImGui.treePop();
-        }
-
-        if (!otherBlocks.isEmpty() && ImGui.treeNode("Other Blocks")) {
-            for (BlockType block : otherBlocks) {
-                if (ImGui.selectable(BlockManager.getDisplayName(block), false)) {
-                    selectBlock(block);
-                }
-            }
-            ImGui.treePop();
-        }
-    }
+    // ===========================
+    // ModelBrowserListener Implementation (Observer Pattern)
+    // ===========================
 
     /**
-     * Handle block selection - communicate with viewport to display the block.
+     * Handle block selection events from the Model Browser.
+     * Forwards the event to the viewport for display.
      */
-    private void selectBlock(BlockType blockType) {
+    @Override
+    public void onBlockSelected(BlockSelectedEvent event) {
         try {
             if (viewport3D != null) {
-                viewport3D.setSelectedBlock(blockType);
-                selectedModelInfo = "Selected: " + BlockManager.getDisplayName(blockType) + " (Block)";
-                statusService.updateStatus("Loaded block: " + BlockManager.getDisplayName(blockType));
+                viewport3D.setSelectedBlock(event.getBlockType());
+                logger.debug("Block selected via event: {}", event.getBlockType());
             }
         } catch (Exception e) {
-            logger.error("Failed to select block: " + blockType, e);
-            statusService.updateStatus("Error loading block: " + e.getMessage());
+            logger.error("Failed to handle block selection event", e);
         }
     }
 
     /**
-     * Render items tree with all available voxelizable item types.
+     * Handle item selection events from the Model Browser.
+     * Forwards the event to the viewport for display.
      */
-    private void renderItemsTree() {
-        // Get all available voxelizable items
-        java.util.List<ItemType> allItems = ItemManager.getVoxelizableItems();
-
-        // Organize items by category
-        java.util.List<ItemType> toolItems = new java.util.ArrayList<>();
-        java.util.List<ItemType> materialItems = new java.util.ArrayList<>();
-        java.util.List<ItemType> otherItems = new java.util.ArrayList<>();
-
-        for (ItemType item : allItems) {
-            String name = item.name().toUpperCase();
-            if (name.contains("PICKAXE") || name.contains("AXE") || name.contains("BUCKET")) {
-                toolItems.add(item);
-            } else if (name.contains("STICK")) {
-                materialItems.add(item);
-            } else {
-                otherItems.add(item);
-            }
-        }
-
-        // Render categorized items
-        if (!toolItems.isEmpty() && ImGui.treeNode("Tools")) {
-            for (ItemType item : toolItems) {
-                if (ImGui.selectable(ItemManager.getDisplayName(item), false)) {
-                    selectItem(item);
-                }
-            }
-            ImGui.treePop();
-        }
-
-        if (!materialItems.isEmpty() && ImGui.treeNode("Materials")) {
-            for (ItemType item : materialItems) {
-                if (ImGui.selectable(ItemManager.getDisplayName(item), false)) {
-                    selectItem(item);
-                }
-            }
-            ImGui.treePop();
-        }
-
-        if (!otherItems.isEmpty() && ImGui.treeNode("Other Items")) {
-            for (ItemType item : otherItems) {
-                if (ImGui.selectable(ItemManager.getDisplayName(item), false)) {
-                    selectItem(item);
-                }
-            }
-            ImGui.treePop();
-        }
-    }
-
-    /**
-     * Handle item selection - communicate with viewport to display the item.
-     */
-    private void selectItem(ItemType itemType) {
+    @Override
+    public void onItemSelected(ItemSelectedEvent event) {
         try {
             if (viewport3D != null) {
-                viewport3D.setSelectedItem(itemType);
-                selectedModelInfo = "Selected: " + ItemManager.getDisplayName(itemType) + " (Item)";
-                statusService.updateStatus("Loaded item: " + ItemManager.getDisplayName(itemType));
+                viewport3D.setSelectedItem(event.getItemType());
+                logger.debug("Item selected via event: {}", event.getItemType());
             }
         } catch (Exception e) {
-            logger.error("Failed to select item: " + itemType, e);
-            statusService.updateStatus("Error loading item: " + e.getMessage());
+            logger.error("Failed to handle item selection event", e);
         }
     }
 
     /**
-     * Render model info display.
+     * Handle model selection events from the Model Browser.
+     * Forwards the event to the viewport for display.
      */
-    private void renderModelInfo() {
-        ImGui.text("Model Info:");
-        ImGui.textWrapped(selectedModelInfo);
+    @Override
+    public void onModelSelected(ModelSelectedEvent event) {
+        try {
+            if (viewport3D != null) {
+                viewport3D.loadModel(event.getModelName());
+                logger.debug("Model selected via event: {}", event.getModelName());
+            }
+        } catch (Exception e) {
+            logger.error("Failed to handle model selection event", e);
+        }
     }
 
     /**
