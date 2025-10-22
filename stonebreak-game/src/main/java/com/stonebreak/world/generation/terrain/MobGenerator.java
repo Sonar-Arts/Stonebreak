@@ -1,11 +1,11 @@
-package com.stonebreak.world.generation.mobs;
+package com.stonebreak.world.generation.terrain;
 
 import java.util.Random;
 
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
-import com.stonebreak.world.generation.mobs.animals.AnimalGenerator;
+import com.stonebreak.world.generation.terrain.animals.AnimalGenerator;
 
 /**
  * Central coordinator for mob generation during world generation.

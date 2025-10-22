@@ -1,4 +1,4 @@
-package com.stonebreak.world.generation.mobs.animals;
+package com.stonebreak.world.generation.terrain.animals;
 
 import java.util.Random;
 
