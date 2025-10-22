@@ -16,7 +16,12 @@ public enum ApplicationState {
     /**
      * Main interface is displayed - user is actively using a tool.
      */
-    MAIN_INTERFACE;
+    MAIN_INTERFACE,
+
+    /**
+     * Texture creator is displayed - user is creating/editing textures.
+     */
+    TEXTURE_CREATOR;
 
     /**
      * Check if the application is in the welcome screen state.
@@ -32,5 +37,13 @@ public enum ApplicationState {
      */
     public boolean isMainInterface() {
         return this == MAIN_INTERFACE;
+    }
+
+    /**
+     * Check if the application is in the texture creator state.
+     * @return true if in texture creator state
+     */
+    public boolean isTextureCreator() {
+        return this == TEXTURE_CREATOR;
     }
 }

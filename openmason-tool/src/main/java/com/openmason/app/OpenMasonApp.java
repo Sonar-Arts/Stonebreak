@@ -10,6 +10,7 @@ import com.openmason.ui.ViewportImGuiInterface;
 import com.openmason.ui.WelcomeScreenImGui;
 import com.openmason.ui.ToolCard;
 import com.openmason.ui.themes.core.ThemeManager;
+import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
@@ -55,6 +56,7 @@ public class OpenMasonApp {
     private WelcomeScreenImGui welcomeScreen;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
+    private TextureCreatorImGui textureCreatorInterface;
 
     // Application state
     private ApplicationState currentState = ApplicationState.WELCOME_SCREEN;
@@ -376,6 +378,9 @@ public class OpenMasonApp {
             viewportInterface = new ViewportImGuiInterface();
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
+            // Initialize texture creator interface
+            textureCreatorInterface = new TextureCreatorImGui();
+
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
                 viewportInterface.setWindowHandle(window);
@@ -434,6 +439,16 @@ public class OpenMasonApp {
                     logger.error("Error rendering viewport interface", e);
                 }
             }
+        } else if (currentState.isTextureCreator()) {
+            // Render texture creator interface
+            if (textureCreatorInterface != null) {
+                try {
+                    textureCreatorInterface.render();
+                    textureCreatorInterface.update(deltaTime);
+                } catch (Exception e) {
+                    logger.error("Error rendering texture creator interface", e);
+                }
+            }
         }
     }
     
@@ -455,10 +470,13 @@ public class OpenMasonApp {
             "Additional tool coming soon."
         ));
 
-        welcomeScreen.addToolCard(ToolCard.comingSoon(
-            "Placeholder 2",
-            "Additional tool coming soon."
-        ));
+        // Texture Creator (Placeholder #2)
+        ToolCard textureCreatorTool = new ToolCard(
+            "Texture Creator",
+            "Create and edit 16x16 block/item textures and 64x48 block cross textures with layer support and PNG export.",
+            this::transitionToTextureCreator
+        );
+        welcomeScreen.addToolCard(textureCreatorTool);
 
         welcomeScreen.addToolCard(ToolCard.comingSoon(
             "Placeholder 3",
@@ -473,6 +491,15 @@ public class OpenMasonApp {
         logger.info("Transitioning to main interface");
         currentState = ApplicationState.MAIN_INTERFACE;
         shouldApplyDefaultLayout = true;
+    }
+
+    /**
+     * Transition from welcome screen to texture creator.
+     */
+    private void transitionToTextureCreator() {
+        logger.info("Transitioning to texture creator");
+        currentState = ApplicationState.TEXTURE_CREATOR;
+        // Note: Texture creator uses its own layout, no need for default docking layout
     }
 
     /**
@@ -501,6 +528,10 @@ public class OpenMasonApp {
                 // Cleanup UI interfaces (while OpenGL context is still valid)
                 if (viewportInterface != null) {
                     viewportInterface.dispose();
+                }
+
+                if (textureCreatorInterface != null) {
+                    textureCreatorInterface.dispose();
                 }
 
                 // Cleanup theme manager

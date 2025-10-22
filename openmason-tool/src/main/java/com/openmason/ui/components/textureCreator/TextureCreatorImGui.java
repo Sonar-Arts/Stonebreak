@@ -1,0 +1,289 @@
+package com.openmason.ui.components.textureCreator;
+
+import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.panels.*;
+import imgui.ImGui;
+import imgui.ImGuiViewport;
+import imgui.flag.ImGuiDockNodeFlags;
+import imgui.flag.ImGuiStyleVar;
+import imgui.flag.ImGuiWindowFlags;
+import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Main UI interface for the Texture Creator tool.
+ *
+ * Follows SOLID principles:
+ * - Single Responsibility: Only handles UI rendering
+ * - Delegates business logic to TextureCreatorController
+ *
+ * @author Open Mason Team
+ */
+public class TextureCreatorImGui {
+
+    private static final Logger logger = LoggerFactory.getLogger(TextureCreatorImGui.class);
+
+    // Dependencies
+    private final TextureCreatorState state;
+    private final TextureCreatorController controller;
+
+    // UI Panels
+    private final ToolbarPanel toolbarPanel;
+    private final CanvasPanel canvasPanel;
+    private final LayerPanelRenderer layerPanel;
+    private final ColorPanel colorPanel;
+
+    /**
+     * Create texture creator UI.
+     */
+    public TextureCreatorImGui() {
+        this.state = new TextureCreatorState();
+        this.controller = new TextureCreatorController(state);
+
+        // Initialize panels
+        this.toolbarPanel = new ToolbarPanel();
+        this.canvasPanel = new CanvasPanel();
+        this.layerPanel = new LayerPanelRenderer();
+        this.colorPanel = new ColorPanel();
+
+        // Set default tool
+        state.setCurrentTool(toolbarPanel.getCurrentTool());
+
+        logger.info("Texture Creator UI initialized");
+    }
+
+    /**
+     * Render the texture creator interface.
+     * Called every frame.
+     */
+    public void render() {
+        // Render main menu bar
+        renderMenuBar();
+
+        // Render dockspace container
+        renderDockSpace();
+
+        // Render all tool windows (they will dock into the dockspace)
+        renderToolsPanel();
+        renderCanvasPanel();
+        renderLayersPanel();
+        renderColorPanel();
+    }
+
+    /**
+     * Render main docking space container.
+     * Follows the same pattern as MainImGuiInterface.
+     */
+    private void renderDockSpace() {
+        int windowFlags = ImGuiWindowFlags.NoDocking;
+
+        ImGuiViewport viewport = ImGui.getMainViewport();
+        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY());
+        ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY());
+        ImGui.setNextWindowViewport(viewport.getID());
+
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowBorderSize, 0.0f);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
+
+        windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoCollapse |
+                ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove |
+                ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoNavFocus;
+
+        ImGui.begin("TextureCreatorDockspace", windowFlags);
+        ImGui.popStyleVar(3);
+
+        int dockspaceId = ImGui.getID("TextureCreatorDockSpace");
+        ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
+
+        ImGui.end();
+    }
+
+    /**
+     * Render tools panel window.
+     */
+    private void renderToolsPanel() {
+        if (ImGui.begin("Tools")) {
+            toolbarPanel.render();
+
+            // Update current tool in state
+            if (toolbarPanel.getCurrentTool() != state.getCurrentTool()) {
+                state.setCurrentTool(toolbarPanel.getCurrentTool());
+            }
+        }
+        ImGui.end();
+    }
+
+    /**
+     * Render canvas panel window.
+     */
+    private void renderCanvasPanel() {
+        if (ImGui.begin("Canvas")) {
+            PixelCanvas compositedCanvas = controller.getCompositedCanvas();
+            PixelCanvas activeCanvas = controller.getActiveLayerCanvas();
+
+            if (compositedCanvas != null) {
+                // Display composited view, but draw on active layer
+                canvasPanel.render(compositedCanvas, activeCanvas, controller.getCanvasState(),
+                                 state.getCurrentTool(), colorPanel.getCurrentColor(),
+                                 state.getShowGrid().get(),
+                                 controller.getCommandHistory(),
+                                 controller::notifyLayerModified,
+                                 colorPanel::setColor);  // Pass color picker callback
+            } else {
+                ImGui.text("No layers");
+            }
+        }
+        ImGui.end();
+    }
+
+    /**
+     * Render layers panel window.
+     */
+    private void renderLayersPanel() {
+        if (ImGui.begin("Layers")) {
+            layerPanel.render(controller.getLayerManager());
+        }
+        ImGui.end();
+    }
+
+    /**
+     * Render color panel window.
+     */
+    private void renderColorPanel() {
+        if (ImGui.begin("Color")) {
+            colorPanel.render();
+            // Update color in state
+            state.setCurrentColor(colorPanel.getCurrentColor());
+        }
+        ImGui.end();
+    }
+
+
+    /**
+     * Render menu bar.
+     */
+    private void renderMenuBar() {
+        if (ImGui.beginMainMenuBar()) {
+            if (ImGui.beginMenu("File")) {
+                if (ImGui.menuItem("New", "Ctrl+N")) {
+                    // TODO: Show new texture dialog
+                }
+                if (ImGui.menuItem("Open", "Ctrl+O")) {
+                    // TODO: Show open dialog
+                }
+                if (ImGui.menuItem("Save", "Ctrl+S")) {
+                    // TODO: Show save dialog
+                }
+                if (ImGui.menuItem("Export", "Ctrl+E")) {
+                    // TODO: Show export dialog
+                }
+                ImGui.separator();
+                if (ImGui.menuItem("Exit")) {
+                    // TODO: Handle exit
+                }
+                ImGui.endMenu();
+            }
+
+            if (ImGui.beginMenu("Edit")) {
+                boolean canUndo = controller.getCommandHistory().canUndo();
+                boolean canRedo = controller.getCommandHistory().canRedo();
+
+                if (ImGui.menuItem("Undo", "Ctrl+Z", false, canUndo)) {
+                    controller.undo();
+                }
+                if (ImGui.menuItem("Redo", "Ctrl+Y", false, canRedo)) {
+                    controller.redo();
+                }
+                ImGui.endMenu();
+            }
+
+            if (ImGui.beginMenu("View")) {
+                ImGui.menuItem("Grid", "G", state.getShowGrid());
+                if (ImGui.menuItem("Zoom In", "+")) {
+                    controller.getCanvasState().zoomIn(1.2f);
+                }
+                if (ImGui.menuItem("Zoom Out", "-")) {
+                    controller.getCanvasState().zoomOut(1.2f);
+                }
+                if (ImGui.menuItem("Reset View", "0")) {
+                    controller.getCanvasState().resetView();
+                }
+                ImGui.endMenu();
+            }
+
+            // Status info on right side
+            ImGui.sameLine(ImGui.getWindowSizeX() - 300);
+            ImGui.text(String.format("Canvas: %s | Zoom: %.0f%%",
+                                    state.getCurrentCanvasSize().getDisplayName(),
+                                    controller.getCanvasState().getZoomLevel() * 100));
+
+            ImGui.endMainMenuBar();
+        }
+    }
+
+    /**
+     * Update texture creator state.
+     * @param deltaTime time since last frame
+     */
+    public void update(float deltaTime) {
+        // Handle keyboard shortcuts
+        handleKeyboardShortcuts();
+    }
+
+    /**
+     * Handle keyboard shortcuts.
+     */
+    private void handleKeyboardShortcuts() {
+        boolean ctrl = ImGui.getIO().getKeyCtrl();
+
+        // Undo/Redo
+        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_Z)) {
+            controller.undo();
+        }
+        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_Y)) {
+            controller.redo();
+        }
+
+        // Grid toggle
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_G)) {
+            state.getShowGrid().set(!state.getShowGrid().get());
+        }
+
+        // Zoom
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_EQUAL) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_ADD)) {
+            controller.getCanvasState().zoomIn(1.2f);
+        }
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_MINUS) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_SUBTRACT)) {
+            controller.getCanvasState().zoomOut(1.2f);
+        }
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_0) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_0)) {
+            controller.getCanvasState().resetView();
+        }
+    }
+
+    /**
+     * Get the texture creator state.
+     * @return state object
+     */
+    public TextureCreatorState getState() {
+        return state;
+    }
+
+    /**
+     * Get the texture creator controller.
+     * @return controller
+     */
+    public TextureCreatorController getController() {
+        return controller;
+    }
+
+    /**
+     * Cleanup resources on shutdown.
+     */
+    public void dispose() {
+        canvasPanel.dispose();
+        logger.info("Texture Creator UI disposed");
+    }
+}
