@@ -40,6 +40,7 @@ public class TextureCreatorState {
     private int currentColor; // RGBA packed as int
     private String currentFilePath;
     private boolean unsavedChanges;
+    private boolean isProjectFile; // true if opened/saved as .OMT, false for new/PNG
     private final ImBoolean showGrid;
     private final ImBoolean showLayersPanel;
     private final ImBoolean showColorPanel;
@@ -54,6 +55,7 @@ public class TextureCreatorState {
         this.currentColor = 0xFF000000; // Black, full alpha
         this.currentFilePath = null;
         this.unsavedChanges = false;
+        this.isProjectFile = false;
         this.showGrid = new ImBoolean(true);
         this.showLayersPanel = new ImBoolean(true);
         this.showColorPanel = new ImBoolean(true);
@@ -138,5 +140,21 @@ public class TextureCreatorState {
      */
     public void markAsModified() {
         this.unsavedChanges = true;
+    }
+
+    /**
+     * Check if current file is a project file (.OMT).
+     * @return true if project file, false if new or PNG
+     */
+    public boolean isProjectFile() {
+        return isProjectFile;
+    }
+
+    /**
+     * Set whether current file is a project file (.OMT).
+     * @param isProjectFile true if project file
+     */
+    public void setIsProjectFile(boolean isProjectFile) {
+        this.isProjectFile = isProjectFile;
     }
 }

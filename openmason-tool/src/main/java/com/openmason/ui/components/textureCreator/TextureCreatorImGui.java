@@ -3,6 +3,7 @@ package com.openmason.ui.components.textureCreator;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.panels.*;
+import com.openmason.ui.dialogs.ExportFormatDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.services.StatusService;
@@ -42,6 +43,9 @@ public class TextureCreatorImGui {
     private final ColorPanel colorPanel;
     private final PreferencesPanel preferencesPanel;
 
+    // Dialogs
+    private final ExportFormatDialog exportFormatDialog;
+
     // Window visibility flags
     private boolean showPreferencesWindow = false;
 
@@ -59,6 +63,9 @@ public class TextureCreatorImGui {
         // Initialize file dialog service
         StatusService statusService = new StatusService();
         this.fileDialogService = new FileDialogService(statusService);
+
+        // Initialize dialogs
+        this.exportFormatDialog = new ExportFormatDialog();
 
         // Initialize panels
         this.toolbarPanel = new ToolbarPanel();
@@ -97,6 +104,9 @@ public class TextureCreatorImGui {
         if (showPreferencesWindow) {
             renderPreferencesWindow();
         }
+
+        // Render export format dialog if open
+        exportFormatDialog.render();
     }
 
     /**
@@ -219,14 +229,30 @@ public class TextureCreatorImGui {
                 if (ImGui.menuItem("New", "Ctrl+N")) {
                     // TODO: Show new texture dialog
                 }
-                if (ImGui.menuItem("Open", "Ctrl+O")) {
-                    handleOpenPNG();
+                if (ImGui.menuItem("Open Project...", "Ctrl+O")) {
+                    handleOpenProject();
                 }
-                if (ImGui.menuItem("Save", "Ctrl+S")) {
-                    handleSavePNG();
+                if (ImGui.menuItem("Save Project", "Ctrl+S")) {
+                    handleSaveProject();
                 }
-                if (ImGui.menuItem("Export", "Ctrl+E")) {
-                    handleExportPNG();
+                if (ImGui.menuItem("Save Project As...", "Ctrl+Shift+S")) {
+                    handleSaveProjectAs();
+                }
+                ImGui.separator();
+                if (ImGui.menuItem("Import PNG...")) {
+                    handleImportPNG();
+                }
+                if (ImGui.beginMenu("Export")) {
+                    if (ImGui.menuItem("Export...", "Ctrl+E")) {
+                        handleExport();
+                    }
+                    if (ImGui.menuItem("Export as PNG...")) {
+                        handleExportPNG();
+                    }
+                    if (ImGui.menuItem("Export as OMT...")) {
+                        handleExportOMT();
+                    }
+                    ImGui.endMenu();
                 }
                 ImGui.separator();
                 if (ImGui.menuItem("Exit")) {
@@ -295,16 +321,19 @@ public class TextureCreatorImGui {
      */
     private void handleKeyboardShortcuts() {
         boolean ctrl = ImGui.getIO().getKeyCtrl();
+        boolean shift = ImGui.getIO().getKeyShift();
 
         // File operations
         if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_O)) {
-            handleOpenPNG();
+            handleOpenProject();
         }
-        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_S)) {
-            handleSavePNG();
+        if (ctrl && shift && ImGui.isKeyPressed(GLFW.GLFW_KEY_S)) {
+            handleSaveProjectAs();
+        } else if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_S)) {
+            handleSaveProject();
         }
         if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_E)) {
-            handleExportPNG();
+            handleExport();
         }
 
         // Preferences
@@ -338,11 +367,61 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Handle opening PNG file.
+     * Handle opening project file (.OMT).
      */
-    private void handleOpenPNG() {
+    private void handleOpenProject() {
+        fileDialogService.showOpenOMTDialog(filePath -> {
+            logger.info("Opening project file: {}", filePath);
+            boolean success = controller.loadProject(filePath);
+            if (success) {
+                logger.info("Successfully loaded project: {}", filePath);
+            } else {
+                logger.error("Failed to load project: {}", filePath);
+            }
+        });
+    }
+
+    /**
+     * Handle saving project (smart save).
+     * If project has a file path, save directly. Otherwise, show Save As dialog.
+     */
+    private void handleSaveProject() {
+        if (state.hasFilePath() && state.isProjectFile()) {
+            // Save directly to existing file
+            logger.info("Saving project to: {}", state.getCurrentFilePath());
+            boolean success = controller.saveProject(state.getCurrentFilePath());
+            if (success) {
+                logger.info("Successfully saved project");
+            } else {
+                logger.error("Failed to save project");
+            }
+        } else {
+            // Show Save As dialog
+            handleSaveProjectAs();
+        }
+    }
+
+    /**
+     * Handle saving project as (always shows dialog).
+     */
+    private void handleSaveProjectAs() {
+        fileDialogService.showSaveOMTDialog(filePath -> {
+            logger.info("Saving project as: {}", filePath);
+            boolean success = controller.saveProject(filePath);
+            if (success) {
+                logger.info("Successfully saved project: {}", filePath);
+            } else {
+                logger.error("Failed to save project: {}", filePath);
+            }
+        });
+    }
+
+    /**
+     * Handle importing PNG as a new layer.
+     */
+    private void handleImportPNG() {
         fileDialogService.showOpenPNGDialog(filePath -> {
-            logger.info("Opening PNG file: {}", filePath);
+            logger.info("Importing PNG file: {}", filePath);
             boolean success = controller.importTexture(filePath);
             if (success) {
                 logger.info("Successfully imported PNG: {}", filePath);
@@ -353,25 +432,49 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Handle saving PNG file.
+     * Handle export (shows format selection dialog).
      */
-    private void handleSavePNG() {
-        fileDialogService.showSavePNGDialog(filePath -> {
-            logger.info("Saving PNG file: {}", filePath);
-            boolean success = controller.exportTexture(filePath);
-            if (success) {
-                logger.info("Successfully saved PNG: {}", filePath);
-            } else {
-                logger.error("Failed to save PNG: {}", filePath);
+    private void handleExport() {
+        exportFormatDialog.show(format -> {
+            switch (format) {
+                case PNG:
+                    handleExportPNG();
+                    break;
+                case OMT:
+                    handleExportOMT();
+                    break;
             }
         });
     }
 
     /**
-     * Handle exporting PNG file (same as save for now).
+     * Handle exporting as PNG (flattened image).
      */
     private void handleExportPNG() {
-        handleSavePNG();
+        fileDialogService.showSavePNGDialog(filePath -> {
+            logger.info("Exporting as PNG: {}", filePath);
+            boolean success = controller.exportTexture(filePath);
+            if (success) {
+                logger.info("Successfully exported PNG: {}", filePath);
+            } else {
+                logger.error("Failed to export PNG: {}", filePath);
+            }
+        });
+    }
+
+    /**
+     * Handle exporting as OMT (project copy).
+     */
+    private void handleExportOMT() {
+        fileDialogService.showSaveOMTDialog(filePath -> {
+            logger.info("Exporting as OMT: {}", filePath);
+            boolean success = controller.saveProject(filePath);
+            if (success) {
+                logger.info("Successfully exported OMT: {}", filePath);
+            } else {
+                logger.error("Failed to export OMT: {}", filePath);
+            }
+        });
     }
 
     /**

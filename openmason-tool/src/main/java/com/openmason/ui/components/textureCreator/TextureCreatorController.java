@@ -72,7 +72,84 @@ public class TextureCreatorController {
     }
 
     /**
-     * Export texture to PNG file.
+     * Save project to .OMT file (preserves all layers and project state).
+     *
+     * @param filePath output file path
+     * @return true if save succeeded
+     */
+    public boolean saveProject(String filePath) {
+        boolean success = exporter.exportToOMT(layerManager, filePath);
+
+        if (success) {
+            state.setCurrentFilePath(filePath);
+            state.setIsProjectFile(true);
+            state.markAsSaved();
+            logger.info("Saved project to: {}", filePath);
+        }
+
+        return success;
+    }
+
+    /**
+     * Load project from .OMT file (restores all layers and project state).
+     *
+     * @param filePath input file path
+     * @return true if load succeeded
+     */
+    public boolean loadProject(String filePath) {
+        LayerManager loadedManager = importer.importFromOMT(filePath);
+
+        if (loadedManager == null) {
+            logger.error("Failed to load project from: {}", filePath);
+            return false;
+        }
+
+        logger.debug("Loaded project has {} layers", loadedManager.getLayerCount());
+        for (int i = 0; i < loadedManager.getLayerCount(); i++) {
+            Layer layer = loadedManager.getLayer(i);
+            logger.debug("Layer {}: name='{}', visible={}, opacity={}",
+                        i, layer.getName(), layer.isVisible(), layer.getOpacity());
+        }
+
+        // Clear existing layers (keep at least one to avoid errors)
+        while (layerManager.getLayerCount() > 1) {
+            layerManager.removeLayer(layerManager.getLayerCount() - 1);
+        }
+
+        logger.debug("Current layer manager has {} layers after clearing", layerManager.getLayerCount());
+
+        // Add all loaded layers first (they will be at indices 1, 2, 3, etc.)
+        for (int i = 0; i < loadedManager.getLayerCount(); i++) {
+            Layer loadedLayer = loadedManager.getLayer(i);
+            layerManager.addLayerAt(i + 1, loadedLayer);
+            logger.debug("Added layer {} at index {}", loadedLayer.getName(), i + 1);
+        }
+
+        logger.debug("Current layer manager has {} layers after adding", layerManager.getLayerCount());
+
+        // Now remove the remaining default layer at index 0
+        // (Safe to do now since we have other layers)
+        layerManager.removeLayer(0);
+        logger.debug("Removed default layer, now have {} layers", layerManager.getLayerCount());
+
+        // Set the active layer index (no adjustment needed)
+        layerManager.setActiveLayer(loadedManager.getActiveLayerIndex());
+        logger.debug("Set active layer to index {}", loadedManager.getActiveLayerIndex());
+
+        // Update state
+        state.setCurrentFilePath(filePath);
+        state.setIsProjectFile(true);
+        state.markAsSaved();
+
+        // Clear command history since we're loading a new project
+        commandHistory.clear();
+
+        logger.info("Loaded project from: {} with {} layers", filePath, loadedManager.getLayerCount());
+        return true;
+    }
+
+    /**
+     * Export texture to PNG file (flattens all visible layers).
      *
      * @param filePath output file path
      * @return true if export succeeded
@@ -85,8 +162,8 @@ public class TextureCreatorController {
         boolean success = exporter.exportToPNG(composite, filePath);
 
         if (success) {
-            state.setCurrentFilePath(filePath);
-            state.markAsSaved();
+            // Note: We DON'T update currentFilePath or mark as saved for exports
+            // Exports are separate from the project file
             logger.info("Exported texture to: {}", filePath);
         }
 

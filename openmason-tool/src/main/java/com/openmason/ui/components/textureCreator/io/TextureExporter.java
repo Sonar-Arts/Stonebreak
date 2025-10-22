@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator.io;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.layers.LayerManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImageWrite;
 import org.slf4j.Logger;
@@ -10,16 +11,24 @@ import java.io.File;
 import java.nio.ByteBuffer;
 
 /**
- * Texture exporter - exports pixel canvas to PNG files.
+ * Texture exporter - exports pixel canvas to PNG files and .OMT project files.
  *
  * Uses STB Image Write for PNG encoding.
- * Follows SOLID principles - Single Responsibility: PNG export only.
+ * Follows SOLID principles - Single Responsibility: Texture export operations.
  *
  * @author Open Mason Team
  */
 public class TextureExporter {
 
     private static final Logger logger = LoggerFactory.getLogger(TextureExporter.class);
+    private final OMTSerializer omtSerializer;
+
+    /**
+     * Create texture exporter with .OMT support.
+     */
+    public TextureExporter() {
+        this.omtSerializer = new OMTSerializer();
+    }
 
     /**
      * Export canvas to PNG file.
@@ -99,5 +108,43 @@ public class TextureExporter {
             logger.warn("Invalid file path: {}", filePath, e);
             return false;
         }
+    }
+
+    /**
+     * Export layer manager to .OMT project file.
+     *
+     * The .OMT format preserves all layer information including:
+     * - Layer names, visibility, and opacity
+     * - Pixel data for each layer
+     * - Active layer selection
+     * - Canvas dimensions
+     *
+     * @param layerManager layer manager to export
+     * @param filePath output file path
+     * @return true if export succeeded
+     */
+    public boolean exportToOMT(LayerManager layerManager, String filePath) {
+        if (layerManager == null) {
+            logger.error("Cannot export null layer manager");
+            return false;
+        }
+
+        if (filePath == null || filePath.trim().isEmpty()) {
+            logger.error("Invalid file path");
+            return false;
+        }
+
+        // Delegate to OMT serializer
+        return omtSerializer.save(layerManager, filePath);
+    }
+
+    /**
+     * Validate .OMT file path for writing.
+     *
+     * @param filePath file path to validate
+     * @return true if path is valid and writable
+     */
+    public boolean validateOMTFilePath(String filePath) {
+        return omtSerializer.validateFilePath(filePath);
     }
 }

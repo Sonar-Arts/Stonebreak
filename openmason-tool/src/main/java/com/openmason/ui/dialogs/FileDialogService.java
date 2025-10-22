@@ -250,4 +250,119 @@ public class FileDialogService {
     public interface SavePNGCallback {
         void onSave(String filePath);
     }
+
+    /**
+     * Show open OMT (Open Mason Texture) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showOpenOMTDialog(OpenCallback callback) {
+        statusService.updateStatus("Opening OMT project...");
+
+        try {
+            // Initialize NFD
+            int initResult = NFD_Init();
+            if (initResult != NFD_OKAY) {
+                logger.error("Failed to initialize NFD: {}", NFD_GetError());
+                statusService.updateStatus("Error: Failed to initialize file dialog");
+                return;
+            }
+
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                // Create filter for OMT files
+                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
+                filters.get(0)
+                        .name(stack.UTF8("Open Mason Texture"))
+                        .spec(stack.UTF8("omt"));
+
+                PointerBuffer outPath = stack.mallocPointer(1);
+
+                // Show open dialog
+                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+                    logger.info("Selected OMT file: {}", selectedPath);
+                    callback.onOpen(selectedPath);
+                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled OMT open dialog");
+                    statusService.updateStatus("Open cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening file dialog");
+                }
+            }
+
+            NFD_Quit();
+
+        } catch (Exception e) {
+            logger.error("Error showing open OMT dialog", e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Show save OMT (Open Mason Texture) dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showSaveOMTDialog(SaveOMTCallback callback) {
+        statusService.updateStatus("Saving OMT project...");
+
+        try {
+            // Initialize NFD
+            int initResult = NFD_Init();
+            if (initResult != NFD_OKAY) {
+                logger.error("Failed to initialize NFD: {}", NFD_GetError());
+                statusService.updateStatus("Error: Failed to initialize file dialog");
+                return;
+            }
+
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                // Create filter for OMT files
+                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
+                filters.get(0)
+                        .name(stack.UTF8("Open Mason Texture"))
+                        .spec(stack.UTF8("omt"));
+
+                PointerBuffer outPath = stack.mallocPointer(1);
+
+                // Show save dialog
+                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8("texture.omt"));
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+
+                    // Ensure .omt extension
+                    if (!selectedPath.toLowerCase().endsWith(".omt")) {
+                        selectedPath += ".omt";
+                    }
+
+                    logger.info("Save OMT to file: {}", selectedPath);
+                    callback.onSave(selectedPath);
+                    statusService.updateStatus("Saved: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled OMT save dialog");
+                    statusService.updateStatus("Save cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening save dialog");
+                }
+            }
+
+            NFD_Quit();
+
+        } catch (Exception e) {
+            logger.error("Error showing save OMT dialog", e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Callback interface for OMT save operations.
+     */
+    public interface SaveOMTCallback {
+        void onSave(String filePath);
+    }
 }

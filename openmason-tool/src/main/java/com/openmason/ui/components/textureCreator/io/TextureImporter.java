@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator.io;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.layers.LayerManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
 import org.slf4j.Logger;
@@ -10,16 +11,24 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
 /**
- * Texture importer - imports PNG files to pixel canvas.
+ * Texture importer - imports PNG files to pixel canvas and .OMT project files to layer manager.
  *
  * Uses STB Image for PNG decoding.
- * Follows SOLID principles - Single Responsibility: PNG import only.
+ * Follows SOLID principles - Single Responsibility: Texture import operations.
  *
  * @author Open Mason Team
  */
 public class TextureImporter {
 
     private static final Logger logger = LoggerFactory.getLogger(TextureImporter.class);
+    private final OMTDeserializer omtDeserializer;
+
+    /**
+     * Create texture importer with .OMT support.
+     */
+    public TextureImporter() {
+        this.omtDeserializer = new OMTDeserializer();
+    }
 
     /**
      * Import PNG file to canvas.
@@ -140,5 +149,37 @@ public class TextureImporter {
 
         java.io.File file = new java.io.File(filePath);
         return file.exists() && file.isFile() && filePath.toLowerCase().endsWith(".png");
+    }
+
+    /**
+     * Import .OMT project file to layer manager.
+     *
+     * The .OMT format restores all layer information including:
+     * - Layer names, visibility, and opacity
+     * - Pixel data for each layer
+     * - Active layer selection
+     * - Canvas dimensions
+     *
+     * @param filePath input file path
+     * @return loaded layer manager, or null if failed
+     */
+    public LayerManager importFromOMT(String filePath) {
+        if (filePath == null || filePath.trim().isEmpty()) {
+            logger.error("Invalid file path");
+            return null;
+        }
+
+        // Delegate to OMT deserializer
+        return omtDeserializer.load(filePath);
+    }
+
+    /**
+     * Validate .OMT file path for reading.
+     *
+     * @param filePath file path to validate
+     * @return true if path exists and is a .OMT file
+     */
+    public boolean validateOMTFilePath(String filePath) {
+        return omtDeserializer.validateFilePath(filePath);
     }
 }
