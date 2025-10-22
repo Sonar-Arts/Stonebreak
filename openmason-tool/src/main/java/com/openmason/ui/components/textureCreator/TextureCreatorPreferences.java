@@ -4,6 +4,9 @@ import com.openmason.ui.preferences.PreferencesManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Texture creator preferences for rendering and UI settings.
  *
@@ -11,6 +14,10 @@ import org.slf4j.LoggerFactory;
  * - Single Responsibility: Only manages preferences state
  * - Provides observable properties for UI binding
  * - Delegates persistence to PreferencesManager
+ *
+ * Features:
+ * - Grid opacity settings
+ * - Color history persistence
  *
  * @author Open Mason Team
  */
@@ -83,8 +90,30 @@ public class TextureCreatorPreferences {
         return (int) (getGridOpacity() * 255.0f);
     }
 
+    /**
+     * Get color history.
+     * @return list of colors (packed RGBA ints), empty list if none
+     */
+    public List<Integer> getColorHistory() {
+        return preferencesManager.getTextureEditorColorHistory();
+    }
+
+    /**
+     * Set color history.
+     * Auto-saves to preferences file.
+     * @param colorHistory list of colors (packed RGBA ints)
+     */
+    public void setColorHistory(List<Integer> colorHistory) {
+        if (colorHistory == null) {
+            colorHistory = new ArrayList<>();
+        }
+        preferencesManager.setTextureEditorColorHistory(colorHistory);
+        logger.debug("Color history updated with {} colors (saved to preferences)", colorHistory.size());
+    }
+
     @Override
     public String toString() {
-        return String.format("TextureCreatorPreferences{gridOpacity=%.2f}", getGridOpacity());
+        return String.format("TextureCreatorPreferences{gridOpacity=%.2f, colorHistory=%d colors}",
+                           getGridOpacity(), getColorHistory().size());
     }
 }

@@ -7,6 +7,8 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -25,6 +27,7 @@ public class PreferencesManager {
 
     // Texture Creator preferences
     private static final String TEXTURE_EDITOR_GRID_OPACITY_KEY = "texture.editor.grid.opacity";
+    private static final String TEXTURE_EDITOR_COLOR_HISTORY_KEY = "texture.editor.color.history";
 
     // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
@@ -32,6 +35,7 @@ public class PreferencesManager {
 
     // Default values - Texture Creator
     private static final float DEFAULT_TEXTURE_GRID_OPACITY = 0.5f;
+    private static final String DEFAULT_COLOR_HISTORY = ""; // Empty list
     
     private final Properties properties;
     private final Path preferencesPath;
@@ -91,6 +95,7 @@ public class PreferencesManager {
 
         // Texture Creator defaults
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
+        properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
     }
     
     // Camera Settings
@@ -203,6 +208,62 @@ public class PreferencesManager {
      */
     public void resetTextureCreatorToDefaults() {
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
+        properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
+        savePreferences();
+    }
+
+    /**
+     * Get texture editor color history.
+     * Returns a list of colors (packed RGBA ints) from most recent to oldest.
+     *
+     * @return list of colors, empty if none
+     */
+    public List<Integer> getTextureEditorColorHistory() {
+        String value = properties.getProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY);
+        List<Integer> colors = new ArrayList<>();
+
+        if (value != null && !value.trim().isEmpty()) {
+            // Parse comma-separated list of hex color values
+            String[] hexColors = value.split(",");
+            for (String hex : hexColors) {
+                try {
+                    hex = hex.trim();
+                    if (!hex.isEmpty()) {
+                        // Parse as unsigned integer (hex string without 0x prefix)
+                        long colorLong = Long.parseLong(hex, 16);
+                        colors.add((int)colorLong);
+                    }
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid color in history: {}", hex);
+                }
+            }
+        }
+
+        return colors;
+    }
+
+    /**
+     * Set texture editor color history.
+     * Saves a list of colors (packed RGBA ints) as comma-separated hex values.
+     * KISS approach: Simple string serialization.
+     *
+     * @param colors list of colors (packed RGBA ints)
+     */
+    public void setTextureEditorColorHistory(List<Integer> colors) {
+        if (colors == null || colors.isEmpty()) {
+            properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
+        } else {
+            // Serialize as comma-separated hex values
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < colors.size(); i++) {
+                if (i > 0) {
+                    sb.append(",");
+                }
+                // Convert to hex string (8 hex digits for RGBA)
+                sb.append(String.format("%08X", colors.get(i)));
+            }
+            properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, sb.toString());
+        }
         savePreferences();
     }
 }

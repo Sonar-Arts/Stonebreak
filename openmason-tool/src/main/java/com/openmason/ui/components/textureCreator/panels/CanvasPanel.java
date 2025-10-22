@@ -34,6 +34,9 @@ public class CanvasPanel {
     // Callback for when color is picked (receives picked color)
     private java.util.function.IntConsumer onColorPickedCallback = null;
 
+    // Callback for when color is used on canvas (receives color that was used)
+    private java.util.function.IntConsumer onColorUsedCallback = null;
+
     // Current draw command (active during a drawing operation)
     private DrawCommand currentDrawCommand = null;
 
@@ -58,15 +61,18 @@ public class CanvasPanel {
      * @param commandHistory command history for undo/redo
      * @param onDrawCallback callback invoked when drawing occurs (can be null)
      * @param onColorPickedCallback callback invoked when color is picked (can be null)
+     * @param onColorUsedCallback callback invoked when color is used on canvas (can be null)
      */
     public void render(PixelCanvas displayCanvas, PixelCanvas drawingCanvas, CanvasState canvasState,
                       DrawingTool currentTool, int currentColor, boolean showGrid,
                       float gridOpacity,
                       CommandHistory commandHistory, Runnable onDrawCallback,
-                      java.util.function.IntConsumer onColorPickedCallback) {
+                      java.util.function.IntConsumer onColorPickedCallback,
+                      java.util.function.IntConsumer onColorUsedCallback) {
 
         this.onDrawCallback = onDrawCallback;
         this.onColorPickedCallback = onColorPickedCallback;
+        this.onColorUsedCallback = onColorUsedCallback;
 
         if (displayCanvas == null || canvasState == null) {
             ImGui.text("No canvas available");
@@ -190,6 +196,12 @@ public class CanvasPanel {
                 if (currentDrawCommand != null && currentDrawCommand.hasChanges() && commandHistory != null) {
                     commandHistory.executeCommand(currentDrawCommand);
                     logger.debug("Executed draw command: {}", currentDrawCommand.getDescription());
+
+                    // Notify that a color was used on the canvas
+                    if (onColorUsedCallback != null) {
+                        onColorUsedCallback.accept(currentColor);
+                        logger.debug("Color used on canvas: 0x{}", Integer.toHexString(currentColor));
+                    }
                 }
             }
             currentDrawCommand = null;

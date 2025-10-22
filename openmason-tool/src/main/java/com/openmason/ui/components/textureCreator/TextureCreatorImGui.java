@@ -66,10 +66,13 @@ public class TextureCreatorImGui {
         this.colorPanel = new ColorPanel();
         this.preferencesPanel = new PreferencesPanel();
 
+        // Load color history from preferences
+        colorPanel.setColorHistory(preferences.getColorHistory());
+
         // Set default tool
         state.setCurrentTool(toolbarPanel.getCurrentTool());
 
-        logger.info("Texture Creator UI initialized with preferences persistence");
+        logger.info("Texture Creator UI initialized with preferences persistence and color history");
     }
 
     /**
@@ -155,7 +158,11 @@ public class TextureCreatorImGui {
                                  preferences.getGridOpacity(),
                                  controller.getCommandHistory(),
                                  controller::notifyLayerModified,
-                                 colorPanel::setColor);  // Pass color picker callback
+                                 colorPanel::setColor,  // Color picker callback
+                                 (color) -> {  // Color used callback
+                                     colorPanel.addColorToHistory(color);
+                                     preferences.setColorHistory(colorPanel.getColorHistory());
+                                 });
             } else {
                 ImGui.text("No layers");
             }
@@ -179,6 +186,7 @@ public class TextureCreatorImGui {
     private void renderColorPanel() {
         if (ImGui.begin("Color")) {
             colorPanel.render();
+
             // Update color in state
             state.setCurrentColor(colorPanel.getCurrentColor());
         }
@@ -385,7 +393,10 @@ public class TextureCreatorImGui {
      * Cleanup resources on shutdown.
      */
     public void dispose() {
+        // Save color history before disposing
+        preferences.setColorHistory(colorPanel.getColorHistory());
+
         canvasPanel.dispose();
-        logger.info("Texture Creator UI disposed");
+        logger.info("Texture Creator UI disposed (color history saved)");
     }
 }
