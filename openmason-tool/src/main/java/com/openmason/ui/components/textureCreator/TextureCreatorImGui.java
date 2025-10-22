@@ -289,13 +289,28 @@ public class TextureCreatorImGui {
                     controller.getCanvasState().resetView();
                 }
 
-                ImGui.separator();
-
-                if (ImGui.menuItem("Preferences", "Ctrl+,")) {
-                    showPreferencesWindow = !showPreferencesWindow;
-                }
                 ImGui.endMenu();
             }
+
+            // Preferences button - standalone for easy access
+            // Style it to look like a menu item (flat appearance)
+            ImGui.sameLine();
+            ImGui.separator();
+            ImGui.sameLine();
+
+            // Apply flat styling to match menu items
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 0.40f);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.26f, 0.59f, 0.98f, 1.0f);
+
+            if (ImGui.button("Preferences")) {
+                showPreferencesWindow = !showPreferencesWindow;
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Open preferences window (Ctrl+,)");
+            }
+
+            ImGui.popStyleColor(3);
 
             // Status info on right side
             ImGui.sameLine(ImGui.getWindowSizeX() - 300);
