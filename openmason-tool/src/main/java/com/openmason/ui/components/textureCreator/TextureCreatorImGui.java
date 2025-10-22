@@ -3,12 +3,14 @@ package com.openmason.ui.components.textureCreator;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.panels.*;
 import com.openmason.ui.dialogs.FileDialogService;
+import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.services.StatusService;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
+import imgui.type.ImBoolean;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,12 +32,17 @@ public class TextureCreatorImGui {
     private final TextureCreatorState state;
     private final TextureCreatorController controller;
     private final FileDialogService fileDialogService;
+    private final TextureCreatorPreferences preferences;
 
     // UI Panels
     private final ToolbarPanel toolbarPanel;
     private final CanvasPanel canvasPanel;
     private final LayerPanelRenderer layerPanel;
     private final ColorPanel colorPanel;
+    private final PreferencesPanel preferencesPanel;
+
+    // Window visibility flags
+    private boolean showPreferencesWindow = false;
 
     /**
      * Create texture creator UI.
@@ -43,6 +50,10 @@ public class TextureCreatorImGui {
     public TextureCreatorImGui() {
         this.state = new TextureCreatorState();
         this.controller = new TextureCreatorController(state);
+
+        // Initialize preferences with persistence
+        PreferencesManager preferencesManager = new PreferencesManager();
+        this.preferences = new TextureCreatorPreferences(preferencesManager);
 
         // Initialize file dialog service
         StatusService statusService = new StatusService();
@@ -53,11 +64,12 @@ public class TextureCreatorImGui {
         this.canvasPanel = new CanvasPanel();
         this.layerPanel = new LayerPanelRenderer();
         this.colorPanel = new ColorPanel();
+        this.preferencesPanel = new PreferencesPanel();
 
         // Set default tool
         state.setCurrentTool(toolbarPanel.getCurrentTool());
 
-        logger.info("Texture Creator UI initialized");
+        logger.info("Texture Creator UI initialized with preferences persistence");
     }
 
     /**
@@ -76,6 +88,11 @@ public class TextureCreatorImGui {
         renderCanvasPanel();
         renderLayersPanel();
         renderColorPanel();
+
+        // Render preferences window if visible
+        if (showPreferencesWindow) {
+            renderPreferencesWindow();
+        }
     }
 
     /**
@@ -135,6 +152,7 @@ public class TextureCreatorImGui {
                 canvasPanel.render(compositedCanvas, activeCanvas, controller.getCanvasState(),
                                  state.getCurrentTool(), colorPanel.getCurrentColor(),
                                  state.getShowGrid().get(),
+                                 preferences.getGridOpacity(),
                                  controller.getCommandHistory(),
                                  controller::notifyLayerModified,
                                  colorPanel::setColor);  // Pass color picker callback
@@ -165,6 +183,21 @@ public class TextureCreatorImGui {
             state.setCurrentColor(colorPanel.getCurrentColor());
         }
         ImGui.end();
+    }
+
+    /**
+     * Render preferences window.
+     */
+    private void renderPreferencesWindow() {
+        ImBoolean isOpen = new ImBoolean(showPreferencesWindow);
+
+        if (ImGui.begin("Preferences", isOpen)) {
+            preferencesPanel.render(preferences);
+        }
+        ImGui.end();
+
+        // Update visibility flag
+        showPreferencesWindow = isOpen.get();
     }
 
 
@@ -208,6 +241,9 @@ public class TextureCreatorImGui {
 
             if (ImGui.beginMenu("View")) {
                 ImGui.menuItem("Grid", "G", state.getShowGrid());
+
+                ImGui.separator();
+
                 if (ImGui.menuItem("Zoom In", "+")) {
                     controller.getCanvasState().zoomIn(1.2f);
                 }
@@ -216,6 +252,12 @@ public class TextureCreatorImGui {
                 }
                 if (ImGui.menuItem("Reset View", "0")) {
                     controller.getCanvasState().resetView();
+                }
+
+                ImGui.separator();
+
+                if (ImGui.menuItem("Preferences", "Ctrl+,")) {
+                    showPreferencesWindow = !showPreferencesWindow;
                 }
                 ImGui.endMenu();
             }
@@ -254,6 +296,11 @@ public class TextureCreatorImGui {
         }
         if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_E)) {
             handleExportPNG();
+        }
+
+        // Preferences
+        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_COMMA)) {
+            showPreferencesWindow = !showPreferencesWindow;
         }
 
         // Undo/Redo

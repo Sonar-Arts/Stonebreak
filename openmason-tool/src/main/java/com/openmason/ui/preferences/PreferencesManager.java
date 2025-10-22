@@ -18,12 +18,20 @@ public class PreferencesManager {
     private static final Logger logger = LoggerFactory.getLogger(PreferencesManager.class);
     
     private static final String PREFERENCES_FILE = "openmason-tool/preferences.properties";
+
+    // 3D Model Viewer preferences
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
     private static final String PROPERTIES_COMPACT_MODE_KEY = "ui.properties.compact.mode";
 
-    // Default values
+    // Texture Creator preferences
+    private static final String TEXTURE_EDITOR_GRID_OPACITY_KEY = "texture.editor.grid.opacity";
+
+    // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
     private static final boolean DEFAULT_PROPERTIES_COMPACT_MODE = true;
+
+    // Default values - Texture Creator
+    private static final float DEFAULT_TEXTURE_GRID_OPACITY = 0.5f;
     
     private final Properties properties;
     private final Path preferencesPath;
@@ -77,8 +85,12 @@ public class PreferencesManager {
      * Set default preference values.
      */
     private void setDefaults() {
+        // 3D Model Viewer defaults
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
         properties.setProperty(PROPERTIES_COMPACT_MODE_KEY, String.valueOf(DEFAULT_PROPERTIES_COMPACT_MODE));
+
+        // Texture Creator defaults
+        properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
     }
     
     // Camera Settings
@@ -151,11 +163,46 @@ public class PreferencesManager {
     public Path getPreferencesPath() {
         return preferencesPath;
     }
-    
+
     /**
      * Check if preferences file exists.
      */
     public boolean preferencesFileExists() {
         return Files.exists(preferencesPath);
+    }
+
+    // Texture Creator Settings
+
+    /**
+     * Get texture editor grid opacity setting.
+     * Controls both minor grid lines and major grid lines (every 4th).
+     */
+    public float getTextureEditorGridOpacity() {
+        String value = properties.getProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid texture editor grid opacity value: {}, using default", value);
+            }
+        }
+        return DEFAULT_TEXTURE_GRID_OPACITY;
+    }
+
+    /**
+     * Set texture editor grid opacity setting.
+     * Controls both minor grid lines and major grid lines (every 4th).
+     */
+    public void setTextureEditorGridOpacity(float opacity) {
+        properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(opacity));
+        savePreferences();
+    }
+
+    /**
+     * Reset texture creator settings to defaults.
+     */
+    public void resetTextureCreatorToDefaults() {
+        properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
+        savePreferences();
     }
 }

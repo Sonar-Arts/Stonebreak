@@ -54,12 +54,14 @@ public class CanvasPanel {
      * @param currentTool currently selected drawing tool (can be null)
      * @param currentColor current drawing color
      * @param showGrid whether to show grid overlay
+     * @param gridOpacity opacity for grid lines (0.0 to 1.0)
      * @param commandHistory command history for undo/redo
      * @param onDrawCallback callback invoked when drawing occurs (can be null)
      * @param onColorPickedCallback callback invoked when color is picked (can be null)
      */
     public void render(PixelCanvas displayCanvas, PixelCanvas drawingCanvas, CanvasState canvasState,
                       DrawingTool currentTool, int currentColor, boolean showGrid,
+                      float gridOpacity,
                       CommandHistory commandHistory, Runnable onDrawCallback,
                       java.util.function.IntConsumer onColorPickedCallback) {
 
@@ -90,8 +92,8 @@ public class CanvasPanel {
             cursorPos.y + centerOffsetY
         );
 
-        // Render the display canvas (composited view)
-        renderer.render(displayCanvas, canvasState, showGrid);
+        // Render the display canvas (composited view) with opacity setting
+        renderer.render(displayCanvas, canvasState, showGrid, gridOpacity);
 
         // Handle mouse input for drawing and navigation on the drawing canvas (active layer)
         handleInput(drawingCanvas != null ? drawingCanvas : displayCanvas, canvasState,

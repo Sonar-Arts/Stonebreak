@@ -31,8 +31,7 @@ public class CanvasRenderer {
     private int textureHeight = 0;
 
     // Grid rendering settings (visible on checkerboard background)
-    private static final int GRID_COLOR_LIGHT = ImColor.rgba(0, 0, 0, 100);      // Black with medium alpha for minor lines
-    private static final int GRID_COLOR_DARK = ImColor.rgba(0, 0, 0, 200);       // Black with higher alpha for major lines
+    // Note: Alpha values are now controlled by preferences (gridOpacity and quadrantOverlayOpacity)
     private static final float GRID_LINE_THICKNESS = 1.5f;                        // Slightly thicker for better visibility
 
     // Transparency checkerboard settings (like Photoshop/GIMP)
@@ -137,8 +136,10 @@ public class CanvasRenderer {
      * @param canvas pixel canvas to render
      * @param canvasState canvas view state (zoom, pan)
      * @param showGrid whether to show grid overlay
+     * @param gridOpacity opacity for grid lines (0.0 to 1.0)
      */
-    public void render(PixelCanvas canvas, CanvasState canvasState, boolean showGrid) {
+    public void render(PixelCanvas canvas, CanvasState canvasState, boolean showGrid,
+                      float gridOpacity) {
         if (canvas == null || canvasState == null) {
             ImGui.text("No canvas");
             return;
@@ -179,7 +180,7 @@ public class CanvasRenderer {
 
         // Render grid if enabled
         if (showGrid) {
-            renderGrid(canvas, canvasState, canvasX, canvasY);
+            renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
         }
 
         // Render canvas border on top of everything
@@ -241,13 +242,16 @@ public class CanvasRenderer {
 
     /**
      * Render grid overlay on canvas.
+     * Uses the same opacity for both minor and major grid lines, but with different color intensity.
      *
      * @param canvas pixel canvas
      * @param canvasState canvas view state
      * @param canvasX canvas display X position
      * @param canvasY canvas display Y position
+     * @param gridOpacity opacity for all grid lines (0.0 to 1.0)
      */
-    private void renderGrid(PixelCanvas canvas, CanvasState canvasState, float canvasX, float canvasY) {
+    private void renderGrid(PixelCanvas canvas, CanvasState canvasState, float canvasX, float canvasY,
+                           float gridOpacity) {
         ImDrawList drawList = ImGui.getWindowDrawList();
         float zoom = canvasState.getZoomLevel();
 
@@ -259,14 +263,23 @@ public class CanvasRenderer {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
+        // Calculate alpha value (0-255) from opacity (0.0-1.0)
+        int baseAlpha = (int) (gridOpacity * 255.0f);
+
+        // Create grid colors with same opacity but different intensity
+        // Minor lines: lighter (60% intensity) for subtle guidance
+        // Major lines: darker (100% intensity) for stronger quadrant divisions
+        int minorLineColor = ImColor.rgba(0, 0, 0, (int)(baseAlpha * 0.6f));  // 60% intensity
+        int majorLineColor = ImColor.rgba(0, 0, 0, baseAlpha);                // 100% intensity
+
         // Draw vertical lines
         for (int x = 0; x <= width; x++) {
             float lineX = canvasX + x * zoom;
             float startY = canvasY;
             float endY = canvasY + height * zoom;
 
-            // Highlight every 4th line
-            int color = (x % 4 == 0) ? GRID_COLOR_DARK : GRID_COLOR_LIGHT;
+            // Every 4th line is a major line for quadrant division
+            int color = (x % 4 == 0) ? majorLineColor : minorLineColor;
 
             drawList.addLine(lineX, startY, lineX, endY, color, GRID_LINE_THICKNESS);
         }
@@ -277,8 +290,8 @@ public class CanvasRenderer {
             float startX = canvasX;
             float endX = canvasX + width * zoom;
 
-            // Highlight every 4th line
-            int color = (y % 4 == 0) ? GRID_COLOR_DARK : GRID_COLOR_LIGHT;
+            // Every 4th line is a major line for quadrant division
+            int color = (y % 4 == 0) ? majorLineColor : minorLineColor;
 
             drawList.addLine(startX, lineY, endX, lineY, color, GRID_LINE_THICKNESS);
         }
