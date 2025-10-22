@@ -1,5 +1,7 @@
 package com.openmason.ui.components.textureCreator.panels;
 
+import com.openmason.ui.components.textureCreator.commands.CommandHistory;
+import com.openmason.ui.components.textureCreator.commands.LayerCommand;
 import com.openmason.ui.components.textureCreator.layers.Layer;
 import com.openmason.ui.components.textureCreator.layers.LayerManager;
 import imgui.ImGui;
@@ -37,8 +39,9 @@ public class LayerPanelRenderer {
      * Render the layers panel.
      *
      * @param layerManager layer manager instance
+     * @param commandHistory command history for undo/redo support
      */
-    public void render(LayerManager layerManager) {
+    public void render(LayerManager layerManager, CommandHistory commandHistory) {
         if (layerManager == null) {
             ImGui.text("No layer manager");
             return;
@@ -47,12 +50,12 @@ public class LayerPanelRenderer {
         ImGui.beginChild("##layers_panel", 0, 0, false);
 
         // Header with add/remove buttons
-        renderLayerControls(layerManager);
+        renderLayerControls(layerManager, commandHistory);
 
         ImGui.separator();
 
         // Layer list
-        renderLayerList(layerManager);
+        renderLayerList(layerManager, commandHistory);
 
         ImGui.endChild();
     }
@@ -61,12 +64,21 @@ public class LayerPanelRenderer {
      * Render layer control buttons (Add, Remove, Duplicate).
      *
      * @param layerManager layer manager
+     * @param commandHistory command history for undo support
      */
-    private void renderLayerControls(LayerManager layerManager) {
+    private void renderLayerControls(LayerManager layerManager, CommandHistory commandHistory) {
         // Add layer button
         if (ImGui.button("Add Layer")) {
             int layerCount = layerManager.getLayerCount();
-            layerManager.addLayer("Layer " + (layerCount + 1));
+            String layerName = "Layer " + (layerCount + 1);
+
+            if (commandHistory != null) {
+                LayerCommand cmd = LayerCommand.addLayer(layerManager, layerName);
+                commandHistory.executeCommand(cmd);
+                logger.debug("Executed add layer command: {}", layerName);
+            } else {
+                layerManager.addLayer(layerName);
+            }
         }
 
         ImGui.sameLine();
@@ -80,7 +92,13 @@ public class LayerPanelRenderer {
         if (ImGui.button("Remove")) {
             int activeIndex = layerManager.getActiveLayerIndex();
             if (activeIndex >= 0 && canRemove) {
-                layerManager.removeLayer(activeIndex);
+                if (commandHistory != null) {
+                    LayerCommand cmd = LayerCommand.removeLayer(layerManager, activeIndex);
+                    commandHistory.executeCommand(cmd);
+                    logger.debug("Executed remove layer command at index: {}", activeIndex);
+                } else {
+                    layerManager.removeLayer(activeIndex);
+                }
             }
         }
 
@@ -94,7 +112,13 @@ public class LayerPanelRenderer {
         if (ImGui.button("Duplicate")) {
             int activeIndex = layerManager.getActiveLayerIndex();
             if (activeIndex >= 0) {
-                layerManager.duplicateLayer(activeIndex);
+                if (commandHistory != null) {
+                    LayerCommand cmd = LayerCommand.duplicateLayer(layerManager, activeIndex);
+                    commandHistory.executeCommand(cmd);
+                    logger.debug("Executed duplicate layer command at index: {}", activeIndex);
+                } else {
+                    layerManager.duplicateLayer(activeIndex);
+                }
             }
         }
     }
@@ -103,8 +127,9 @@ public class LayerPanelRenderer {
      * Render list of layers.
      *
      * @param layerManager layer manager
+     * @param commandHistory command history for undo support
      */
-    private void renderLayerList(LayerManager layerManager) {
+    private void renderLayerList(LayerManager layerManager, CommandHistory commandHistory) {
         int layerCount = layerManager.getLayerCount();
         int activeIndex = layerManager.getActiveLayerIndex();
 
@@ -113,7 +138,7 @@ public class LayerPanelRenderer {
             Layer layer = layerManager.getLayer(i);
             boolean isActive = (i == activeIndex);
 
-            renderLayerItem(layerManager, layer, i, isActive);
+            renderLayerItem(layerManager, layer, i, isActive, commandHistory);
         }
     }
 
@@ -124,8 +149,9 @@ public class LayerPanelRenderer {
      * @param layer layer to render
      * @param index layer index
      * @param isActive whether this is the active layer
+     * @param commandHistory command history for undo support
      */
-    private void renderLayerItem(LayerManager layerManager, Layer layer, int index, boolean isActive) {
+    private void renderLayerItem(LayerManager layerManager, Layer layer, int index, boolean isActive, CommandHistory commandHistory) {
         ImGui.pushID(index);
 
         // Background highlight for active layer
@@ -177,7 +203,7 @@ public class LayerPanelRenderer {
 
         // Layer reordering buttons
         ImGui.sameLine();
-        renderLayerOrderButtons(layerManager, index);
+        renderLayerOrderButtons(layerManager, index, commandHistory);
 
         ImGui.endChild();
 
@@ -193,8 +219,9 @@ public class LayerPanelRenderer {
      *
      * @param layerManager layer manager
      * @param index current layer index
+     * @param commandHistory command history for undo support
      */
-    private void renderLayerOrderButtons(LayerManager layerManager, int index) {
+    private void renderLayerOrderButtons(LayerManager layerManager, int index, CommandHistory commandHistory) {
         int layerCount = layerManager.getLayerCount();
 
         // Move up button (towards higher index)
@@ -204,7 +231,13 @@ public class LayerPanelRenderer {
         }
 
         if (ImGui.button("^##up_" + index)) {
-            layerManager.moveLayer(index, index + 1);
+            if (commandHistory != null) {
+                LayerCommand cmd = LayerCommand.moveLayer(layerManager, index, index + 1);
+                commandHistory.executeCommand(cmd);
+                logger.debug("Executed move layer command: {} -> {}", index, index + 1);
+            } else {
+                layerManager.moveLayer(index, index + 1);
+            }
         }
 
         if (!canMoveUp) {
@@ -220,7 +253,13 @@ public class LayerPanelRenderer {
         }
 
         if (ImGui.button("v##down_" + index)) {
-            layerManager.moveLayer(index, index - 1);
+            if (commandHistory != null) {
+                LayerCommand cmd = LayerCommand.moveLayer(layerManager, index, index - 1);
+                commandHistory.executeCommand(cmd);
+                logger.debug("Executed move layer command: {} -> {}", index, index - 1);
+            } else {
+                layerManager.moveLayer(index, index - 1);
+            }
         }
 
         if (!canMoveDown) {

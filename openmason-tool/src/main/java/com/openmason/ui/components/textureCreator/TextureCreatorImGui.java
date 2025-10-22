@@ -143,7 +143,7 @@ public class TextureCreatorImGui {
      */
     private void renderLayersPanel() {
         if (ImGui.begin("Layers")) {
-            layerPanel.render(controller.getLayerManager());
+            layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
         }
         ImGui.end();
     }
