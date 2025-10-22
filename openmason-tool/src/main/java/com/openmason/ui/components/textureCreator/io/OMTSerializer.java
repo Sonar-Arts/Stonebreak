@@ -149,10 +149,6 @@ public class OMTSerializer {
         String json = objectMapper.writeValueAsString(new ManifestDTO(document));
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
-        logger.debug("Writing manifest.json: {} bytes, content preview: {}",
-                    jsonBytes.length,
-                    json.length() > 100 ? json.substring(0, 100) + "..." : json);
-
         // Write JSON to ZIP
         zos.write(jsonBytes);
         zos.flush(); // Ensure data is written to stream

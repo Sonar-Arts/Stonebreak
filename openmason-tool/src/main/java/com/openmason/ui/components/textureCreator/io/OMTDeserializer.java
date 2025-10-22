@@ -161,12 +161,9 @@ public class OMTDeserializer {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int bytesRead;
-        int totalBytesRead = 0;
         while ((bytesRead = zis.read(buffer)) != -1) {
             baos.write(buffer, 0, bytesRead);
-            totalBytesRead += bytesRead;
         }
-        logger.debug("Read {} bytes from ZIP entry", totalBytesRead);
         return baos.toByteArray();
     }
 
@@ -260,17 +257,8 @@ public class OMTDeserializer {
         // (Safe to do now since we have other layers)
         layerManager.removeLayer(0);
 
-        logger.info("Built LayerManager with {} layers from OMT file", layerManager.getLayerCount());
-        for (int i = 0; i < layerManager.getLayerCount(); i++) {
-            Layer layer = layerManager.getLayer(i);
-            logger.debug("  Layer {}: name='{}', visible={}, opacity={}, canvas={}x{}",
-                        i, layer.getName(), layer.isVisible(), layer.getOpacity(),
-                        layer.getCanvas().getWidth(), layer.getCanvas().getHeight());
-        }
-
         // Set active layer (no need to adjust index since we added then removed)
         layerManager.setActiveLayer(document.getActiveLayerIndex());
-        logger.debug("Active layer set to index {}", document.getActiveLayerIndex());
 
         return layerManager;
     }

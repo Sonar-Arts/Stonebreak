@@ -104,37 +104,23 @@ public class TextureCreatorController {
             return false;
         }
 
-        logger.debug("Loaded project has {} layers", loadedManager.getLayerCount());
-        for (int i = 0; i < loadedManager.getLayerCount(); i++) {
-            Layer layer = loadedManager.getLayer(i);
-            logger.debug("Layer {}: name='{}', visible={}, opacity={}",
-                        i, layer.getName(), layer.isVisible(), layer.getOpacity());
-        }
-
         // Clear existing layers (keep at least one to avoid errors)
         while (layerManager.getLayerCount() > 1) {
             layerManager.removeLayer(layerManager.getLayerCount() - 1);
         }
 
-        logger.debug("Current layer manager has {} layers after clearing", layerManager.getLayerCount());
-
         // Add all loaded layers first (they will be at indices 1, 2, 3, etc.)
         for (int i = 0; i < loadedManager.getLayerCount(); i++) {
             Layer loadedLayer = loadedManager.getLayer(i);
             layerManager.addLayerAt(i + 1, loadedLayer);
-            logger.debug("Added layer {} at index {}", loadedLayer.getName(), i + 1);
         }
-
-        logger.debug("Current layer manager has {} layers after adding", layerManager.getLayerCount());
 
         // Now remove the remaining default layer at index 0
         // (Safe to do now since we have other layers)
         layerManager.removeLayer(0);
-        logger.debug("Removed default layer, now have {} layers", layerManager.getLayerCount());
 
         // Set the active layer index (no adjustment needed)
         layerManager.setActiveLayer(loadedManager.getActiveLayerIndex());
-        logger.debug("Set active layer to index {}", loadedManager.getActiveLayerIndex());
 
         // Update state
         state.setCurrentFilePath(filePath);
