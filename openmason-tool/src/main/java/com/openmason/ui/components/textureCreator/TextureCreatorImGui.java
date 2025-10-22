@@ -502,8 +502,9 @@ public class TextureCreatorImGui {
 
         // Cleanup OpenGL resources
         canvasPanel.dispose();
+        layerPanel.dispose();
         TextureToolIconManager.getInstance().dispose();
 
-        logger.info("Texture Creator UI disposed (color history saved, icons cleaned up)");
+        logger.info("Texture Creator UI disposed (color history saved, layer thumbnails cleaned up, icons cleaned up)");
     }
 }

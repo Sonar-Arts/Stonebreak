@@ -26,6 +26,7 @@ public class PixelCanvas {
     private final int width;
     private final int height;
     private final int[] pixels; // RGBA packed as int
+    private long modificationVersion; // Incremented on each modification for cache invalidation
 
     /**
      * Create new pixel canvas with specified dimensions.
@@ -41,6 +42,7 @@ public class PixelCanvas {
         this.width = width;
         this.height = height;
         this.pixels = new int[width * height];
+        this.modificationVersion = 0L;
 
         // Initialize to transparent
         Arrays.fill(pixels, 0x00000000);
@@ -68,6 +70,16 @@ public class PixelCanvas {
      */
     public int[] getPixels() {
         return pixels;
+    }
+
+    /**
+     * Get modification version for cache invalidation.
+     * Increments whenever canvas content changes.
+     *
+     * @return modification version number
+     */
+    public long getModificationVersion() {
+        return modificationVersion;
     }
 
     /**
@@ -100,6 +112,7 @@ public class PixelCanvas {
 
         int index = y * width + x;
         pixels[index] = color;
+        modificationVersion++;
     }
 
     /**
@@ -109,6 +122,7 @@ public class PixelCanvas {
      */
     public void fill(int color) {
         Arrays.fill(pixels, color);
+        modificationVersion++;
     }
 
     /**
@@ -130,6 +144,7 @@ public class PixelCanvas {
         }
 
         System.arraycopy(source.pixels, 0, this.pixels, 0, pixels.length);
+        modificationVersion++;
     }
 
     /**
