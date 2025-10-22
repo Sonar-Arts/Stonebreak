@@ -2,6 +2,8 @@ package com.openmason.ui.components.textureCreator;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.panels.*;
+import com.openmason.ui.dialogs.FileDialogService;
+import com.openmason.ui.services.StatusService;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -27,6 +29,7 @@ public class TextureCreatorImGui {
     // Dependencies
     private final TextureCreatorState state;
     private final TextureCreatorController controller;
+    private final FileDialogService fileDialogService;
 
     // UI Panels
     private final ToolbarPanel toolbarPanel;
@@ -40,6 +43,10 @@ public class TextureCreatorImGui {
     public TextureCreatorImGui() {
         this.state = new TextureCreatorState();
         this.controller = new TextureCreatorController(state);
+
+        // Initialize file dialog service
+        StatusService statusService = new StatusService();
+        this.fileDialogService = new FileDialogService(statusService);
 
         // Initialize panels
         this.toolbarPanel = new ToolbarPanel();
@@ -171,13 +178,13 @@ public class TextureCreatorImGui {
                     // TODO: Show new texture dialog
                 }
                 if (ImGui.menuItem("Open", "Ctrl+O")) {
-                    // TODO: Show open dialog
+                    handleOpenPNG();
                 }
                 if (ImGui.menuItem("Save", "Ctrl+S")) {
-                    // TODO: Show save dialog
+                    handleSavePNG();
                 }
                 if (ImGui.menuItem("Export", "Ctrl+E")) {
-                    // TODO: Show export dialog
+                    handleExportPNG();
                 }
                 ImGui.separator();
                 if (ImGui.menuItem("Exit")) {
@@ -238,6 +245,17 @@ public class TextureCreatorImGui {
     private void handleKeyboardShortcuts() {
         boolean ctrl = ImGui.getIO().getKeyCtrl();
 
+        // File operations
+        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_O)) {
+            handleOpenPNG();
+        }
+        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_S)) {
+            handleSavePNG();
+        }
+        if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_E)) {
+            handleExportPNG();
+        }
+
         // Undo/Redo
         if (ctrl && ImGui.isKeyPressed(GLFW.GLFW_KEY_Z)) {
             controller.undo();
@@ -261,6 +279,43 @@ public class TextureCreatorImGui {
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_0) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_0)) {
             controller.getCanvasState().resetView();
         }
+    }
+
+    /**
+     * Handle opening PNG file.
+     */
+    private void handleOpenPNG() {
+        fileDialogService.showOpenPNGDialog(filePath -> {
+            logger.info("Opening PNG file: {}", filePath);
+            boolean success = controller.importTexture(filePath);
+            if (success) {
+                logger.info("Successfully imported PNG: {}", filePath);
+            } else {
+                logger.error("Failed to import PNG: {}", filePath);
+            }
+        });
+    }
+
+    /**
+     * Handle saving PNG file.
+     */
+    private void handleSavePNG() {
+        fileDialogService.showSavePNGDialog(filePath -> {
+            logger.info("Saving PNG file: {}", filePath);
+            boolean success = controller.exportTexture(filePath);
+            if (success) {
+                logger.info("Successfully saved PNG: {}", filePath);
+            } else {
+                logger.error("Failed to save PNG: {}", filePath);
+            }
+        });
+    }
+
+    /**
+     * Handle exporting PNG file (same as save for now).
+     */
+    private void handleExportPNG() {
+        handleSavePNG();
     }
 
     /**

@@ -1,6 +1,10 @@
 package com.openmason.ui.dialogs;
 
 import com.openmason.ui.services.StatusService;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.util.nfd.NFDFilterItem;
+import org.lwjgl.util.nfd.NativeFileDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -8,10 +12,14 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.io.File;
 
+import static org.lwjgl.util.nfd.NativeFileDialog.*;
+
 /**
  * File dialog service for open/save/export operations.
  * Follows Single Responsibility Principle - only handles file dialogs.
  * Follows DRY - eliminates duplicated file chooser code.
+ *
+ * Uses LWJGL NFD for native file dialogs (PNG files) and Swing for legacy model dialogs.
  */
 public class FileDialogService {
 
@@ -119,5 +127,127 @@ public class FileDialogService {
      */
     public interface ExportCallback {
         void onExport(File file, String format);
+    }
+
+    /**
+     * Show open PNG dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showOpenPNGDialog(OpenCallback callback) {
+        statusService.updateStatus("Opening PNG file...");
+
+        try {
+            // Initialize NFD
+            int initResult = NFD_Init();
+            if (initResult != NFD_OKAY) {
+                logger.error("Failed to initialize NFD: {}", NFD_GetError());
+                statusService.updateStatus("Error: Failed to initialize file dialog");
+                return;
+            }
+
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                // Create filter for PNG files
+                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
+                filters.get(0)
+                        .name(stack.UTF8("PNG Image"))
+                        .spec(stack.UTF8("png"));
+
+                PointerBuffer outPath = stack.mallocPointer(1);
+
+                // Show open dialog
+                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+                    logger.info("Selected file: {}", selectedPath);
+                    callback.onOpen(selectedPath);
+                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled file dialog");
+                    statusService.updateStatus("Open cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening file dialog");
+                }
+            }
+
+            NFD_Quit();
+
+        } catch (Exception e) {
+            logger.error("Error showing open PNG dialog", e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Show save PNG dialog using native file dialog.
+     * @param callback callback to receive selected file path
+     */
+    public void showSavePNGDialog(SavePNGCallback callback) {
+        statusService.updateStatus("Saving PNG file...");
+
+        try {
+            // Initialize NFD
+            int initResult = NFD_Init();
+            if (initResult != NFD_OKAY) {
+                logger.error("Failed to initialize NFD: {}", NFD_GetError());
+                statusService.updateStatus("Error: Failed to initialize file dialog");
+                return;
+            }
+
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                // Create filter for PNG files
+                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
+                filters.get(0)
+                        .name(stack.UTF8("PNG Image"))
+                        .spec(stack.UTF8("png"));
+
+                PointerBuffer outPath = stack.mallocPointer(1);
+
+                // Show save dialog
+                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8("texture.png"));
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+
+                    // Ensure .png extension
+                    if (!selectedPath.toLowerCase().endsWith(".png")) {
+                        selectedPath += ".png";
+                    }
+
+                    logger.info("Save to file: {}", selectedPath);
+                    callback.onSave(selectedPath);
+                    statusService.updateStatus("Saved: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled save dialog");
+                    statusService.updateStatus("Save cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening save dialog");
+                }
+            }
+
+            NFD_Quit();
+
+        } catch (Exception e) {
+            logger.error("Error showing save PNG dialog", e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Callback interface for open operations.
+     */
+    public interface OpenCallback {
+        void onOpen(String filePath);
+    }
+
+    /**
+     * Callback interface for PNG save operations.
+     */
+    public interface SavePNGCallback {
+        void onSave(String filePath);
     }
 }

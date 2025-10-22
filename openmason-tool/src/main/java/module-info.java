@@ -9,6 +9,7 @@ module com.openmason {
     requires org.lwjgl.opengl;
     requires org.lwjgl.glfw;
     requires org.lwjgl.stb;
+    requires org.lwjgl.nfd;
     requires org.joml;
     
     // Dear ImGui for modern UI
