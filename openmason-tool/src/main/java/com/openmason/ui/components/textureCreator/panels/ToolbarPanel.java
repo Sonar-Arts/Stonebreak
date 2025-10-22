@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator.panels;
 
+import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.tools.*;
 import imgui.ImGui;
 import org.slf4j.Logger;
@@ -9,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Toolbar panel renderer - displays tool selection buttons.
+ * Toolbar panel renderer - displays tool selection buttons with SVG icons.
  *
  * Follows SOLID principles - Single Responsibility: renders toolbar UI only.
  *
@@ -21,12 +22,14 @@ public class ToolbarPanel {
 
     private final List<DrawingTool> tools;
     private DrawingTool currentTool;
+    private final TextureToolIconManager iconManager;
 
     /**
      * Create toolbar panel with all available tools.
      */
     public ToolbarPanel() {
         this.tools = new ArrayList<>();
+        this.iconManager = TextureToolIconManager.getInstance();
 
         // Initialize all tools
         tools.add(new PencilTool());
@@ -50,18 +53,41 @@ public class ToolbarPanel {
         ImGui.text("Tools");
         ImGui.separator();
 
-        // Render tool buttons
+        // Icon rendering configuration
+        float iconDisplaySize = 20.0f; // Render icons at 20x20 (smaller than 32x32)
+        float buttonPadding = 4.0f;    // Padding around icon
+
+        // Add spacing between buttons
+        ImGui.spacing();
+
         for (int i = 0; i < tools.size(); i++) {
             DrawingTool tool = tools.get(i);
             boolean isSelected = (tool == currentTool);
+            int textureId = iconManager.getIconTexture(tool.getName());
 
             // Highlight selected tool
             if (isSelected) {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
             }
 
-            // Tool button
-            if (ImGui.button(tool.getName() + "##tool_" + i, 120, 30)) {
+            // Add padding to button for centered icon
+            ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FramePadding, buttonPadding, buttonPadding);
+
+            // Tool icon button
+            boolean clicked;
+            if (textureId != -1) {
+                // Use icon button with smaller display size
+                clicked = ImGui.imageButton(textureId, iconDisplaySize, iconDisplaySize);
+            } else {
+                // Fallback to text button if icon not loaded
+                ImGui.popStyleVar(); // Remove padding for text button
+                clicked = ImGui.button(tool.getName() + "##tool_" + i, iconDisplaySize + buttonPadding * 2, iconDisplaySize + buttonPadding * 2);
+                ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FramePadding, buttonPadding, buttonPadding); // Re-apply for consistency
+            }
+
+            ImGui.popStyleVar(); // Pop frame padding
+
+            if (clicked) {
                 setCurrentTool(tool);
             }
 
@@ -69,10 +95,13 @@ public class ToolbarPanel {
                 ImGui.popStyleColor();
             }
 
-            // Tooltip
+            // Tooltip showing tool name
             if (ImGui.isItemHovered()) {
-                ImGui.setTooltip(tool.getDescription());
+                ImGui.setTooltip(tool.getName());
             }
+
+            // Add small spacing between buttons
+            ImGui.spacing();
         }
 
         ImGui.endChild();

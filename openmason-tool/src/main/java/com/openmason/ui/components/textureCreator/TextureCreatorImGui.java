@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.panels.*;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.preferences.PreferencesManager;
@@ -396,7 +397,10 @@ public class TextureCreatorImGui {
         // Save color history before disposing
         preferences.setColorHistory(colorPanel.getColorHistory());
 
+        // Cleanup OpenGL resources
         canvasPanel.dispose();
-        logger.info("Texture Creator UI disposed (color history saved)");
+        TextureToolIconManager.getInstance().dispose();
+
+        logger.info("Texture Creator UI disposed (color history saved, icons cleaned up)");
     }
 }

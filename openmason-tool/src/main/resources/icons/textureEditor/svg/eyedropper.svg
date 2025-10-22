@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Minimalist Eyedropper/Color Picker icon - Blue -->
+
+  <!-- Rubber bulb -->
+  <circle cx="25" cy="7" r="4"
+          fill="#3498DB" stroke="#2980B9" stroke-width="1.5"/>
+
+  <!-- Glass tube -->
+  <path d="M23 10 L21 12 L9 24 L7 26 L5 24 L7 22 L19 10 L21 8 L23 10 Z"
+        fill="#AED6F1" stroke="#5DADE2" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- Eyedropper tip -->
+  <path d="M7 26 L5 24 L3 26 L5 28 L7 26 Z"
+        fill="#7F8C8D" stroke="#5D6D7E" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

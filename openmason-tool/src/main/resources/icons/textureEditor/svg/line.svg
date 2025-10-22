@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Minimalist Line tool icon - Green (Centered) -->
+
+  <!-- Main line - perfectly bisects center -->
+  <line x1="6" y1="26" x2="26" y2="6"
+        stroke="#27AE60" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Start endpoint -->
+  <circle cx="6" cy="26" r="2"
+          fill="#27AE60" stroke="#229954" stroke-width="1.5"/>
+
+  <!-- End endpoint -->
+  <circle cx="26" cy="6" r="2"
+          fill="#27AE60" stroke="#229954" stroke-width="1.5"/>
+</svg>

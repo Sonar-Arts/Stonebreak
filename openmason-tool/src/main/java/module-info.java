@@ -20,7 +20,11 @@ module com.openmason {
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.core;
     requires com.fasterxml.jackson.annotation;
-    
+
+    // Apache Batik for SVG icon processing (automatic modules)
+    requires batik.transcoder;
+    requires batik.codec;
+
     // Logging
     requires org.slf4j;
     requires ch.qos.logback.classic;
@@ -28,6 +32,7 @@ module com.openmason {
     // Java base modules
     requires java.desktop;
     requires java.prefs;
+    requires java.xml;
     
     // Stonebreak Game Module for model system access
     requires stonebreak.game;
