@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.dialogs.ImportPNGDialog;
 import com.openmason.ui.components.textureCreator.dialogs.NewTextureDialog;
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.panels.*;
@@ -46,10 +47,14 @@ public class TextureCreatorImGui {
 
     // Dialogs
     private final NewTextureDialog newTextureDialog;
+    private final ImportPNGDialog importPNGDialog;
     private final ExportFormatDialog exportFormatDialog;
 
     // Window visibility flags
     private boolean showPreferencesWindow = false;
+
+    // Pending import state (stores file path while dialog is open)
+    private String pendingImportPath = null;
 
     /**
      * Create texture creator UI.
@@ -68,6 +73,7 @@ public class TextureCreatorImGui {
 
         // Initialize dialogs
         this.newTextureDialog = new NewTextureDialog();
+        this.importPNGDialog = new ImportPNGDialog();
         this.exportFormatDialog = new ExportFormatDialog();
 
         // Initialize panels
@@ -110,12 +116,25 @@ public class TextureCreatorImGui {
 
         // Render dialogs
         newTextureDialog.render();
+        importPNGDialog.render();
         exportFormatDialog.render();
 
         // Check for confirmed new texture selection
         TextureCreatorState.CanvasSize selectedSize = newTextureDialog.getSelectedCanvasSize();
         if (selectedSize != null) {
             controller.newTexture(selectedSize);
+        }
+
+        // Check for confirmed import PNG selection
+        TextureCreatorState.CanvasSize importSize = importPNGDialog.getSelectedCanvasSize();
+        if (importSize != null && pendingImportPath != null) {
+            boolean success = controller.importTexture(pendingImportPath, importSize);
+            if (success) {
+                logger.info("Successfully imported PNG: {} to {} canvas", pendingImportPath, importSize.getDisplayName());
+            } else {
+                logger.error("Failed to import PNG: {}", pendingImportPath);
+            }
+            pendingImportPath = null; // Clear pending path
         }
     }
 
@@ -443,16 +462,47 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Handle importing PNG as a new layer.
+     * Handle importing PNG with intelligent dimension detection.
+     * - Detects PNG dimensions
+     * - Auto-imports if exact match (16x16 or 64x48)
+     * - Shows dialog for other sizes
      */
     private void handleImportPNG() {
         fileDialogService.showOpenPNGDialog(filePath -> {
-            logger.info("Importing PNG file: {}", filePath);
-            boolean success = controller.importTexture(filePath);
-            if (success) {
-                logger.info("Successfully imported PNG: {}", filePath);
+            logger.info("Detecting PNG dimensions: {}", filePath);
+
+            // Detect PNG dimensions
+            int[] dimensions = controller.getImporter().getPNGDimensions(filePath);
+
+            if (dimensions == null) {
+                logger.error("Failed to detect PNG dimensions: {}", filePath);
+                return;
+            }
+
+            int width = dimensions[0];
+            int height = dimensions[1];
+
+            logger.debug("PNG dimensions detected: {}x{}", width, height);
+
+            // Check for exact match - auto-import without dialog
+            if ((width == 16 && height == 16) || (width == 64 && height == 48)) {
+                TextureCreatorState.CanvasSize targetSize =
+                    (width == 16) ? TextureCreatorState.CanvasSize.SIZE_16x16
+                                  : TextureCreatorState.CanvasSize.SIZE_64x48;
+
+                logger.info("Exact match detected, auto-importing to {} canvas", targetSize.getDisplayName());
+
+                boolean success = controller.importTexture(filePath, targetSize);
+                if (success) {
+                    logger.info("Successfully auto-imported PNG: {}", filePath);
+                } else {
+                    logger.error("Failed to auto-import PNG: {}", filePath);
+                }
             } else {
-                logger.error("Failed to import PNG: {}", filePath);
+                // Non-matching size - show dialog for user to choose target
+                logger.info("Non-standard size ({}x{}), showing import dialog", width, height);
+                pendingImportPath = filePath;
+                importPNGDialog.show(width, height);
             }
         });
     }

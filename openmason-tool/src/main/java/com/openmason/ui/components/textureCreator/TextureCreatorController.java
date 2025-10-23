@@ -147,32 +147,44 @@ public class TextureCreatorController {
     }
 
     /**
-     * Import texture from PNG file.
+     * Import texture from PNG file with specified target canvas size.
+     * Creates a new canvas (replaces current) with the target size.
      *
      * @param filePath input file path
+     * @param targetSize target canvas size (16x16 or 64x48)
      * @return true if import succeeded
      */
-    public boolean importTexture(String filePath) {
-        TextureCreatorState.CanvasSize size = state.getCurrentCanvasSize();
-
-        // Import and resize to current canvas size
-        PixelCanvas imported = importer.importFromPNGResized(filePath, size.getWidth(), size.getHeight());
+    public boolean importTexture(String filePath, TextureCreatorState.CanvasSize targetSize) {
+        // Import and resize to target canvas size
+        PixelCanvas imported = importer.importFromPNGResized(filePath, targetSize.getWidth(), targetSize.getHeight());
 
         if (imported == null) {
             logger.error("Failed to import texture from: {}", filePath);
             return false;
         }
 
-        // Create new layer with imported content
-        Layer importedLayer = new Layer("Imported", size.getWidth(), size.getHeight());
-        importedLayer.getCanvas().copyFrom(imported);
-
-        layerManager.addLayerAt(layerManager.getLayerCount(), importedLayer);
-
+        // Update state with new canvas size
+        state.setCurrentCanvasSize(targetSize);
         state.setCurrentFilePath(filePath);
+        state.setIsProjectFile(false); // PNG import is not a project file
         state.markAsModified();
 
-        logger.info("Imported texture from: {}", filePath);
+        // Create new layer manager with target canvas size
+        // This replaces the entire canvas (similar to newTexture)
+        this.layerManager = new LayerManager(targetSize.getWidth(), targetSize.getHeight());
+
+        // Replace the default "Background" layer with imported content
+        layerManager.renameLayer(0, "Imported");
+        Layer backgroundLayer = layerManager.getLayer(0);
+        backgroundLayer.getCanvas().copyFrom(imported);
+
+        // Clear command history
+        commandHistory.clear();
+
+        // Reset canvas view
+        canvasState.resetView();
+
+        logger.info("Imported texture from: {} to {} canvas", filePath, targetSize.getDisplayName());
         return true;
     }
 

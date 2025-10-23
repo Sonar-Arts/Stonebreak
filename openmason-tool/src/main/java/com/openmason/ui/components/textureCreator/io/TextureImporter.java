@@ -31,6 +31,43 @@ public class TextureImporter {
     }
 
     /**
+     * Get PNG file dimensions without loading the full image.
+     * Lightweight operation for dimension detection.
+     *
+     * @param filePath input file path
+     * @return array [width, height] or null if failed
+     */
+    public int[] getPNGDimensions(String filePath) {
+        if (filePath == null || filePath.trim().isEmpty()) {
+            logger.error("Invalid file path");
+            return null;
+        }
+
+        try {
+            // Prepare buffers for image info
+            IntBuffer width = BufferUtils.createIntBuffer(1);
+            IntBuffer height = BufferUtils.createIntBuffer(1);
+            IntBuffer channels = BufferUtils.createIntBuffer(1);
+
+            // Load image info only (don't load pixel data)
+            if (!STBImage.stbi_info(filePath, width, height, channels)) {
+                logger.error("Failed to read PNG info: {} - {}", filePath, STBImage.stbi_failure_reason());
+                return null;
+            }
+
+            int imageWidth = width.get(0);
+            int imageHeight = height.get(0);
+
+            logger.debug("Detected PNG dimensions: {}x{} from {}", imageWidth, imageHeight, filePath);
+            return new int[]{imageWidth, imageHeight};
+
+        } catch (Exception e) {
+            logger.error("Error reading PNG dimensions", e);
+            return null;
+        }
+    }
+
+    /**
      * Import PNG file to canvas.
      *
      * @param filePath input file path
