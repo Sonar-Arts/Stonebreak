@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator.tools;
 
+import com.openmason.ui.components.textureCreator.canvas.CubeNetValidator;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 
@@ -88,9 +89,12 @@ public class LineTool implements DrawingTool {
         int currentY = y0;
 
         while (true) {
-            // Save original pixel before drawing preview
-            saveOriginalPixel(currentX, currentY, canvas);
-            canvas.setPixel(currentX, currentY, color);
+            // Check if pixel is in editable region for cube net canvases
+            if (CubeNetValidator.isEditablePixel(currentX, currentY, canvas.getWidth(), canvas.getHeight())) {
+                // Save original pixel before drawing preview
+                saveOriginalPixel(currentX, currentY, canvas);
+                canvas.setPixel(currentX, currentY, color);
+            }
 
             if (currentX == x1 && currentY == y1) break;
 
@@ -166,6 +170,11 @@ public class LineTool implements DrawingTool {
     private void setPixelWithUndo(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
         if (!canvas.isValidCoordinate(x, y)) {
             return;
+        }
+
+        // Check if pixel is in editable region for cube net canvases
+        if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
+            return; // Don't draw in non-editable regions
         }
 
         int oldColor = canvas.getPixel(x, y);

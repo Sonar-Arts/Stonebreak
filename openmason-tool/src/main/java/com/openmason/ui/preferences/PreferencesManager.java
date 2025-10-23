@@ -27,6 +27,7 @@ public class PreferencesManager {
 
     // Texture Creator preferences
     private static final String TEXTURE_EDITOR_GRID_OPACITY_KEY = "texture.editor.grid.opacity";
+    private static final String TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY = "texture.editor.cube.net.overlay.opacity";
     private static final String TEXTURE_EDITOR_COLOR_HISTORY_KEY = "texture.editor.color.history";
 
     // Default values - 3D Model Viewer
@@ -35,6 +36,7 @@ public class PreferencesManager {
 
     // Default values - Texture Creator
     private static final float DEFAULT_TEXTURE_GRID_OPACITY = 0.5f;
+    private static final float DEFAULT_CUBE_NET_OVERLAY_OPACITY = 0.5f;
     private static final String DEFAULT_COLOR_HISTORY = ""; // Empty list
     
     private final Properties properties;
@@ -95,6 +97,7 @@ public class PreferencesManager {
 
         // Texture Creator defaults
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
+        properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(DEFAULT_CUBE_NET_OVERLAY_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
     }
     
@@ -204,10 +207,36 @@ public class PreferencesManager {
     }
 
     /**
+     * Get texture editor cube net overlay opacity setting.
+     * Controls the opacity of face labels and boundaries for 64x48 cube net textures.
+     */
+    public float getTextureEditorCubeNetOverlayOpacity() {
+        String value = properties.getProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid cube net overlay opacity value: {}, using default", value);
+            }
+        }
+        return DEFAULT_CUBE_NET_OVERLAY_OPACITY;
+    }
+
+    /**
+     * Set texture editor cube net overlay opacity setting.
+     * Controls the opacity of face labels and boundaries for 64x48 cube net textures.
+     */
+    public void setTextureEditorCubeNetOverlayOpacity(float opacity) {
+        properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(opacity));
+        savePreferences();
+    }
+
+    /**
      * Reset texture creator settings to defaults.
      */
     public void resetTextureCreatorToDefaults() {
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
+        properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(DEFAULT_CUBE_NET_OVERLAY_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
         savePreferences();
     }

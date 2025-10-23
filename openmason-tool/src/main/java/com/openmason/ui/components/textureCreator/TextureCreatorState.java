@@ -17,7 +17,7 @@ public class TextureCreatorState {
     // Canvas dimensions
     public enum CanvasSize {
         SIZE_16x16(16, 16, "16x16 (Block/Item)"),
-        SIZE_64x48(64, 48, "64x48 (Block Cross)");
+        SIZE_64x48(64, 48, "Block Texture");
 
         private final int width;
         private final int height;

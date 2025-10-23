@@ -22,8 +22,9 @@ public class PreferencesPanel {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesPanel.class);
 
-    // ImGui state holder for slider (required by ImGui API)
+    // ImGui state holders for sliders (required by ImGui API)
     private final ImFloat gridOpacitySlider = new ImFloat();
+    private final ImFloat cubeNetOverlayOpacitySlider = new ImFloat();
 
     /**
      * Create preferences panel.
@@ -45,6 +46,7 @@ public class PreferencesPanel {
 
         // Sync ImGui state with preferences
         gridOpacitySlider.set(preferences.getGridOpacity());
+        cubeNetOverlayOpacitySlider.set(preferences.getCubeNetOverlayOpacity());
 
         // === Grid Rendering Section ===
         if (ImGui.collapsingHeader("Grid Rendering")) {
@@ -66,6 +68,34 @@ public class PreferencesPanel {
                                  TextureCreatorPreferences.MAX_OPACITY,
                                  "%.2f")) {
                 preferences.setGridOpacity(gridOpacitySlider.get());
+            }
+
+            ImGui.spacing();
+            ImGui.unindent();
+        }
+
+        ImGui.spacing();
+
+        // === Cube Net Overlay Section ===
+        if (ImGui.collapsingHeader("Cube Net Overlay")) {
+            ImGui.spacing();
+            ImGui.indent();
+
+            // Cube Net Overlay Opacity Slider
+            ImGui.text("Overlay Opacity");
+            ImGui.sameLine();
+            ImGui.textDisabled("(?)");
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Controls opacity of face labels and boundaries for 64x48 cube net textures.\n" +
+                                "Shows TOP, LEFT, FRONT, RIGHT, BACK, BOTTOM face regions.\n" +
+                                "Only visible when editing 64x48 canvases.");
+            }
+
+            if (ImGui.sliderFloat("##cubeNetOverlayOpacity", cubeNetOverlayOpacitySlider.getData(),
+                                 TextureCreatorPreferences.MIN_OPACITY,
+                                 TextureCreatorPreferences.MAX_OPACITY,
+                                 "%.2f")) {
+                preferences.setCubeNetOverlayOpacity(cubeNetOverlayOpacitySlider.get());
             }
 
             ImGui.spacing();

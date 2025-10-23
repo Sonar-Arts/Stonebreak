@@ -29,8 +29,9 @@ public class TextureCreatorPreferences {
     public static final float MIN_OPACITY = 0.0f;
     public static final float MAX_OPACITY = 1.0f;
 
-    // Default opacity value (must match PreferencesManager default)
+    // Default opacity values (must match PreferencesManager defaults)
     public static final float DEFAULT_GRID_OPACITY = 0.5f;
+    public static final float DEFAULT_CUBE_NET_OVERLAY_OPACITY = 0.5f;
 
     private final PreferencesManager preferencesManager;
 
@@ -59,6 +60,25 @@ public class TextureCreatorPreferences {
         float clamped = clamp(opacity, MIN_OPACITY, MAX_OPACITY);
         preferencesManager.setTextureEditorGridOpacity(clamped);
         logger.debug("Grid opacity set to: {} (saved to preferences)", clamped);
+    }
+
+    /**
+     * Get cube net overlay opacity.
+     * @return opacity value (0.0 to 1.0)
+     */
+    public float getCubeNetOverlayOpacity() {
+        return preferencesManager.getTextureEditorCubeNetOverlayOpacity();
+    }
+
+    /**
+     * Set cube net overlay opacity.
+     * Auto-saves to preferences file.
+     * @param opacity opacity value (0.0 to 1.0)
+     */
+    public void setCubeNetOverlayOpacity(float opacity) {
+        float clamped = clamp(opacity, MIN_OPACITY, MAX_OPACITY);
+        preferencesManager.setTextureEditorCubeNetOverlayOpacity(clamped);
+        logger.debug("Cube net overlay opacity set to: {} (saved to preferences)", clamped);
     }
 
     /**
@@ -91,6 +111,15 @@ public class TextureCreatorPreferences {
     }
 
     /**
+     * Get cube net overlay alpha value as integer (0-255).
+     * Useful for ImGui color calculations.
+     * @return alpha value (0-255)
+     */
+    public int getCubeNetOverlayAlpha() {
+        return (int) (getCubeNetOverlayOpacity() * 255.0f);
+    }
+
+    /**
      * Get color history.
      * @return list of colors (packed RGBA ints), empty list if none
      */
@@ -113,7 +142,7 @@ public class TextureCreatorPreferences {
 
     @Override
     public String toString() {
-        return String.format("TextureCreatorPreferences{gridOpacity=%.2f, colorHistory=%d colors}",
-                           getGridOpacity(), getColorHistory().size());
+        return String.format("TextureCreatorPreferences{gridOpacity=%.2f, cubeNetOverlayOpacity=%.2f, colorHistory=%d colors}",
+                           getGridOpacity(), getCubeNetOverlayOpacity(), getColorHistory().size());
     }
 }

@@ -25,7 +25,7 @@ public class TextureCreatorController {
 
     private final TextureCreatorState state;
     private final CanvasState canvasState;
-    private final LayerManager layerManager;
+    private LayerManager layerManager; // Not final - can be replaced when creating new texture
     private final CommandHistory commandHistory;
     private final TextureExporter exporter;
     private final TextureImporter importer;
@@ -56,17 +56,22 @@ public class TextureCreatorController {
      * @param canvasSize canvas size
      */
     public void newTexture(TextureCreatorState.CanvasSize canvasSize) {
+        // TODO: Warn if unsaved changes
+
+        // Update state
         state.setCurrentCanvasSize(canvasSize);
         state.setCurrentFilePath(null);
         state.setUnsavedChanges(false);
 
-        // TODO: Warn if unsaved changes
+        // Create new layer manager with correct canvas size
+        // This automatically creates a default "Background" layer
+        this.layerManager = new LayerManager(canvasSize.getWidth(), canvasSize.getHeight());
 
-        // Create new layer manager
-        LayerManager newManager = new LayerManager(canvasSize.getWidth(), canvasSize.getHeight());
-
-        // Clear history
+        // Clear command history
         commandHistory.clear();
+
+        // Reset canvas view
+        canvasState.resetView();
 
         logger.info("Created new texture: {}", canvasSize.getDisplayName());
     }
@@ -104,23 +109,8 @@ public class TextureCreatorController {
             return false;
         }
 
-        // Clear existing layers (keep at least one to avoid errors)
-        while (layerManager.getLayerCount() > 1) {
-            layerManager.removeLayer(layerManager.getLayerCount() - 1);
-        }
-
-        // Add all loaded layers first (they will be at indices 1, 2, 3, etc.)
-        for (int i = 0; i < loadedManager.getLayerCount(); i++) {
-            Layer loadedLayer = loadedManager.getLayer(i);
-            layerManager.addLayerAt(i + 1, loadedLayer);
-        }
-
-        // Now remove the remaining default layer at index 0
-        // (Safe to do now since we have other layers)
-        layerManager.removeLayer(0);
-
-        // Set the active layer index (no adjustment needed)
-        layerManager.setActiveLayer(loadedManager.getActiveLayerIndex());
+        // Replace the entire layer manager with the loaded one
+        this.layerManager = loadedManager;
 
         // Update state
         state.setCurrentFilePath(filePath);

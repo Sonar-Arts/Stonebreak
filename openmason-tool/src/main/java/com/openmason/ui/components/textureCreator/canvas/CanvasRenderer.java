@@ -43,10 +43,14 @@ public class CanvasRenderer {
     private static final int CANVAS_BORDER_COLOR = ImColor.rgba(0, 0, 0, 255);  // Solid black border
     private static final float CANVAS_BORDER_THICKNESS = 1.0f;
 
+    // Cube net overlay renderer (for 64x48 textures)
+    private final CubeNetOverlayRenderer cubeNetOverlayRenderer;
+
     /**
      * Create canvas renderer.
      */
     public CanvasRenderer() {
+        this.cubeNetOverlayRenderer = new CubeNetOverlayRenderer();
         logger.debug("Canvas renderer created");
     }
 
@@ -137,9 +141,10 @@ public class CanvasRenderer {
      * @param canvasState canvas view state (zoom, pan)
      * @param showGrid whether to show grid overlay
      * @param gridOpacity opacity for grid lines (0.0 to 1.0)
+     * @param cubeNetOverlayOpacity opacity for cube net overlay (0.0 to 1.0)
      */
     public void render(PixelCanvas canvas, CanvasState canvasState, boolean showGrid,
-                      float gridOpacity) {
+                      float gridOpacity, float cubeNetOverlayOpacity) {
         if (canvas == null || canvasState == null) {
             ImGui.text("No canvas");
             return;
@@ -171,7 +176,11 @@ public class CanvasRenderer {
         // Render transparency checkerboard background first
         renderCheckerboard(canvas, canvasState, canvasX, canvasY, displayWidth, displayHeight);
 
-        // Render texture as image on top of checkerboard
+        // Render cube net overlay (for 64x48 textures) between checkerboard and texture
+        cubeNetOverlayRenderer.render(canvas.getWidth(), canvas.getHeight(),
+                                      canvasX, canvasY, zoom, cubeNetOverlayOpacity);
+
+        // Render texture as image on top of checkerboard and overlay
         ImGui.setCursorScreenPos(canvasX, canvasY);
         ImGui.image(textureId, displayWidth, displayHeight,
                    0, 0, 1, 1, // UV coordinates (normal)

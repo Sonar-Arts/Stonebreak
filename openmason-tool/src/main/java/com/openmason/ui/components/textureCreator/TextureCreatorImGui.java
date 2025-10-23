@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.dialogs.NewTextureDialog;
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.panels.*;
 import com.openmason.ui.dialogs.ExportFormatDialog;
@@ -44,6 +45,7 @@ public class TextureCreatorImGui {
     private final PreferencesPanel preferencesPanel;
 
     // Dialogs
+    private final NewTextureDialog newTextureDialog;
     private final ExportFormatDialog exportFormatDialog;
 
     // Window visibility flags
@@ -65,6 +67,7 @@ public class TextureCreatorImGui {
         this.fileDialogService = new FileDialogService(statusService);
 
         // Initialize dialogs
+        this.newTextureDialog = new NewTextureDialog();
         this.exportFormatDialog = new ExportFormatDialog();
 
         // Initialize panels
@@ -105,8 +108,15 @@ public class TextureCreatorImGui {
             renderPreferencesWindow();
         }
 
-        // Render export format dialog if open
+        // Render dialogs
+        newTextureDialog.render();
         exportFormatDialog.render();
+
+        // Check for confirmed new texture selection
+        TextureCreatorState.CanvasSize selectedSize = newTextureDialog.getSelectedCanvasSize();
+        if (selectedSize != null) {
+            controller.newTexture(selectedSize);
+        }
     }
 
     /**
@@ -167,6 +177,7 @@ public class TextureCreatorImGui {
                                  state.getCurrentTool(), colorPanel.getCurrentColor(),
                                  state.getShowGrid().get(),
                                  preferences.getGridOpacity(),
+                                 preferences.getCubeNetOverlayOpacity(),
                                  controller.getCommandHistory(),
                                  controller::notifyLayerModified,
                                  colorPanel::setColor,  // Color picker callback
@@ -227,7 +238,7 @@ public class TextureCreatorImGui {
         if (ImGui.beginMainMenuBar()) {
             if (ImGui.beginMenu("File")) {
                 if (ImGui.menuItem("New", "Ctrl+N")) {
-                    // TODO: Show new texture dialog
+                    newTextureDialog.show();
                 }
                 if (ImGui.menuItem("Open Project...", "Ctrl+O")) {
                     handleOpenProject();
