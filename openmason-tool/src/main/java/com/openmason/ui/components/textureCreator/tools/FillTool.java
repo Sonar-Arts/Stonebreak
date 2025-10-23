@@ -38,10 +38,14 @@ public class FillTool implements DrawingTool {
 
     /**
      * Flood fill algorithm (4-connected).
+     * Respects selection bounds when a selection is active.
      */
     private void floodFill(PixelCanvas canvas, int startX, int startY, int targetColor, int fillColor, DrawCommand command) {
         Queue<int[]> queue = new LinkedList<>();
         queue.offer(new int[]{startX, startY});
+
+        // Track visited pixels to prevent infinite loops
+        boolean[][] visited = new boolean[canvas.getWidth()][canvas.getHeight()];
 
         while (!queue.isEmpty()) {
             int[] pos = queue.poll();
@@ -53,9 +57,20 @@ public class FillTool implements DrawingTool {
                 continue;
             }
 
+            // Skip if already visited (prevents infinite loops)
+            if (visited[x][y]) {
+                continue;
+            }
+            visited[x][y] = true;
+
             // Skip if pixel is in non-editable region for cube net canvases
             if (!CubeNetValidator.isEditablePixel(x, y, canvas.getWidth(), canvas.getHeight())) {
                 continue; // Don't fill non-editable regions
+            }
+
+            // Skip if pixel is outside selection bounds (if selection is active)
+            if (canvas.hasActiveSelection() && !canvas.getActiveSelection().contains(x, y)) {
+                continue; // Don't fill outside selection
             }
 
             // Skip if not target color

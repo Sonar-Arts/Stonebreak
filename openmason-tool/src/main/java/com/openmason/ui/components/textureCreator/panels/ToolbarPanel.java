@@ -37,6 +37,8 @@ public class ToolbarPanel {
         tools.add(new FillTool());
         tools.add(new ColorPickerTool());
         tools.add(new LineTool());
+        tools.add(new RectangleSelectionTool());
+        tools.add(new MoveTool());
 
         // Set default tool
         currentTool = tools.get(0); // Pencil

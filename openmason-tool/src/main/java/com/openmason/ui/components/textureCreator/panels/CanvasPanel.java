@@ -5,8 +5,12 @@ import com.openmason.ui.components.textureCreator.canvas.CanvasState;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.CommandHistory;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
+import com.openmason.ui.components.textureCreator.commands.TranslateSelectionCommand;
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
+import com.openmason.ui.components.textureCreator.tools.MoveTool;
+import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.slf4j.Logger;
@@ -37,6 +41,9 @@ public class CanvasPanel {
     // Callback for when color is used on canvas (receives color that was used)
     private java.util.function.IntConsumer onColorUsedCallback = null;
 
+    // Callback for when selection is created (receives SelectionRegion or null to clear)
+    private java.util.function.Consumer<SelectionRegion> onSelectionCreatedCallback = null;
+
     // Current draw command (active during a drawing operation)
     private DrawCommand currentDrawCommand = null;
 
@@ -56,6 +63,7 @@ public class CanvasPanel {
      * @param canvasState view state (zoom, pan)
      * @param currentTool currently selected drawing tool (can be null)
      * @param currentColor current drawing color
+     * @param currentSelection current active selection region (can be null)
      * @param showGrid whether to show grid overlay
      * @param gridOpacity opacity for grid lines (0.0 to 1.0)
      * @param cubeNetOverlayOpacity opacity for cube net overlay (0.0 to 1.0)
@@ -63,17 +71,20 @@ public class CanvasPanel {
      * @param onDrawCallback callback invoked when drawing occurs (can be null)
      * @param onColorPickedCallback callback invoked when color is picked (can be null)
      * @param onColorUsedCallback callback invoked when color is used on canvas (can be null)
+     * @param onSelectionCreatedCallback callback invoked when selection is created/cleared (can be null)
      */
     public void render(PixelCanvas displayCanvas, PixelCanvas drawingCanvas, CanvasState canvasState,
-                      DrawingTool currentTool, int currentColor, boolean showGrid,
-                      float gridOpacity, float cubeNetOverlayOpacity,
+                      DrawingTool currentTool, int currentColor, SelectionRegion currentSelection,
+                      boolean showGrid, float gridOpacity, float cubeNetOverlayOpacity,
                       CommandHistory commandHistory, Runnable onDrawCallback,
                       java.util.function.IntConsumer onColorPickedCallback,
-                      java.util.function.IntConsumer onColorUsedCallback) {
+                      java.util.function.IntConsumer onColorUsedCallback,
+                      java.util.function.Consumer<SelectionRegion> onSelectionCreatedCallback) {
 
         this.onDrawCallback = onDrawCallback;
         this.onColorPickedCallback = onColorPickedCallback;
         this.onColorUsedCallback = onColorUsedCallback;
+        this.onSelectionCreatedCallback = onSelectionCreatedCallback;
 
         if (displayCanvas == null || canvasState == null) {
             ImGui.text("No canvas available");
@@ -99,11 +110,29 @@ public class CanvasPanel {
             cursorPos.y + centerOffsetY
         );
 
+        // Get selection preview bounds if using selection or move tool
+        int[] selectionPreviewBounds = null;
+        if (currentTool instanceof RectangleSelectionTool) {
+            RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
+            selectionPreviewBounds = selectionTool.getSelectionPreviewBounds();
+        } else if (currentTool instanceof MoveTool) {
+            MoveTool moveTool = (MoveTool) currentTool;
+            selectionPreviewBounds = moveTool.getTranslationPreviewBounds();
+        }
+
         // Render the display canvas (composited view) with opacity settings
-        renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity);
+        renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
+                       currentSelection, selectionPreviewBounds);
+
+        // Sync selection to canvas instances for constraint checking
+        PixelCanvas targetCanvas = drawingCanvas != null ? drawingCanvas : displayCanvas;
+        targetCanvas.setActiveSelection(currentSelection);
+        if (displayCanvas != targetCanvas) {
+            displayCanvas.setActiveSelection(currentSelection);
+        }
 
         // Handle mouse input for drawing and navigation on the drawing canvas (active layer)
-        handleInput(drawingCanvas != null ? drawingCanvas : displayCanvas, canvasState,
+        handleInput(targetCanvas, canvasState,
                    currentTool, currentColor, canvasRegionMin, commandHistory);
 
         ImGui.endChild();
@@ -192,8 +221,48 @@ public class CanvasPanel {
                     onColorPickedCallback.accept(pickedColor);
                     logger.debug("Color picked: 0x{}", Integer.toHexString(pickedColor));
                 }
+            }
+            // Handle rectangle selection tool
+            else if (currentTool instanceof RectangleSelectionTool) {
+                RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
+
+                // Handle selection creation/update
+                if (selectionTool.wasSelectionCreated()) {
+                    SelectionRegion createdSelection = selectionTool.getCreatedSelection();
+                    if (onSelectionCreatedCallback != null) {
+                        onSelectionCreatedCallback.accept(createdSelection);
+                        if (createdSelection != null) {
+                            logger.debug("Selection created: {}", createdSelection.getBounds());
+                        } else {
+                            logger.debug("Selection cleared");
+                        }
+                    }
+                    selectionTool.clearSelectionCreatedFlag();
+                }
+            }
+            // Handle move tool
+            else if (currentTool instanceof MoveTool) {
+                MoveTool moveTool = (MoveTool) currentTool;
+
+                // Handle translation command
+                if (moveTool.wasTranslationPerformed()) {
+                    TranslateSelectionCommand translateCommand = moveTool.getTranslationCommand();
+                    if (translateCommand != null && commandHistory != null) {
+                        commandHistory.executeCommand(translateCommand);
+                        logger.debug("Executed translate command: {}", translateCommand.getDescription());
+                    }
+
+                    // Update selection to new position
+                    SelectionRegion updatedSelection = moveTool.getUpdatedSelection();
+                    if (updatedSelection != null && onSelectionCreatedCallback != null) {
+                        onSelectionCreatedCallback.accept(updatedSelection);
+                        logger.debug("Selection moved to: {}", updatedSelection.getBounds());
+                    }
+
+                    moveTool.clearTranslationPerformedFlag();
+                }
             } else {
-                // Execute the command if it has changes (non-color-picker tools)
+                // Execute the command if it has changes (non-color-picker/selection tools)
                 if (currentDrawCommand != null && currentDrawCommand.hasChanges() && commandHistory != null) {
                     commandHistory.executeCommand(currentDrawCommand);
                     logger.debug("Executed draw command: {}", currentDrawCommand.getDescription());

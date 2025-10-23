@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator;
 
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import imgui.type.ImBoolean;
 
@@ -41,6 +42,7 @@ public class TextureCreatorState {
     private String currentFilePath;
     private boolean unsavedChanges;
     private boolean isProjectFile; // true if opened/saved as .OMT, false for new/PNG
+    private SelectionRegion currentSelection; // Active selection region (null if no selection)
     private final ImBoolean showGrid;
     private final ImBoolean showLayersPanel;
     private final ImBoolean showColorPanel;
@@ -56,6 +58,7 @@ public class TextureCreatorState {
         this.currentFilePath = null;
         this.unsavedChanges = false;
         this.isProjectFile = false;
+        this.currentSelection = null; // No selection by default
         this.showGrid = new ImBoolean(true);
         this.showLayersPanel = new ImBoolean(true);
         this.showColorPanel = new ImBoolean(true);
@@ -156,5 +159,36 @@ public class TextureCreatorState {
      */
     public void setIsProjectFile(boolean isProjectFile) {
         this.isProjectFile = isProjectFile;
+    }
+
+    /**
+     * Get the current selection region.
+     * @return The current selection, or null if no selection exists
+     */
+    public SelectionRegion getCurrentSelection() {
+        return currentSelection;
+    }
+
+    /**
+     * Set the current selection region.
+     * @param selection The selection region to set (can be null to clear selection)
+     */
+    public void setCurrentSelection(SelectionRegion selection) {
+        this.currentSelection = selection;
+    }
+
+    /**
+     * Check if a selection is currently active.
+     * @return true if there is an active selection, false otherwise
+     */
+    public boolean hasSelection() {
+        return currentSelection != null && !currentSelection.isEmpty();
+    }
+
+    /**
+     * Clear the current selection.
+     */
+    public void clearSelection() {
+        this.currentSelection = null;
     }
 }

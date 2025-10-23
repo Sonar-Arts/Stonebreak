@@ -1,5 +1,7 @@
 package com.openmason.ui.components.textureCreator.canvas;
 
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
+import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
@@ -46,11 +48,15 @@ public class CanvasRenderer {
     // Cube net overlay renderer (for 64x48 textures)
     private final CubeNetOverlayRenderer cubeNetOverlayRenderer;
 
+    // Selection renderer
+    private final SelectionRenderer selectionRenderer;
+
     /**
      * Create canvas renderer.
      */
     public CanvasRenderer() {
         this.cubeNetOverlayRenderer = new CubeNetOverlayRenderer();
+        this.selectionRenderer = new SelectionRenderer();
         logger.debug("Canvas renderer created");
     }
 
@@ -142,9 +148,12 @@ public class CanvasRenderer {
      * @param showGrid whether to show grid overlay
      * @param gridOpacity opacity for grid lines (0.0 to 1.0)
      * @param cubeNetOverlayOpacity opacity for cube net overlay (0.0 to 1.0)
+     * @param currentSelection current active selection region (nullable)
+     * @param selectionPreviewBounds preview selection bounds during drag [startX, startY, endX, endY] (nullable)
      */
     public void render(PixelCanvas canvas, CanvasState canvasState, boolean showGrid,
-                      float gridOpacity, float cubeNetOverlayOpacity) {
+                      float gridOpacity, float cubeNetOverlayOpacity,
+                      SelectionRegion currentSelection, int[] selectionPreviewBounds) {
         if (canvas == null || canvasState == null) {
             ImGui.text("No canvas");
             return;
@@ -192,8 +201,37 @@ public class CanvasRenderer {
             renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
         }
 
+        // Render selection overlay
+        renderSelection(canvasX, canvasY, zoom, currentSelection, selectionPreviewBounds);
+
         // Render canvas border on top of everything
         renderCanvasBorder(canvasX, canvasY, displayWidth, displayHeight);
+    }
+
+    /**
+     * Render selection overlay (both active selection and preview during drag).
+     *
+     * @param canvasX canvas display X position
+     * @param canvasY canvas display Y position
+     * @param zoom current zoom level
+     * @param currentSelection active selection region (nullable)
+     * @param selectionPreviewBounds preview bounds [startX, startY, endX, endY] (nullable)
+     */
+    private void renderSelection(float canvasX, float canvasY, float zoom,
+                                 SelectionRegion currentSelection, int[] selectionPreviewBounds) {
+        ImDrawList drawList = ImGui.getWindowDrawList();
+
+        // Render preview selection during drag
+        if (selectionPreviewBounds != null && selectionPreviewBounds.length == 4) {
+            selectionRenderer.renderPreview(drawList,
+                    selectionPreviewBounds[0], selectionPreviewBounds[1],
+                    selectionPreviewBounds[2], selectionPreviewBounds[3],
+                    canvasX, canvasY, zoom);
+        }
+        // Render active selection (if no preview is being dragged)
+        else if (currentSelection != null && !currentSelection.isEmpty()) {
+            selectionRenderer.render(drawList, currentSelection, canvasX, canvasY, zoom);
+        }
     }
 
     /**

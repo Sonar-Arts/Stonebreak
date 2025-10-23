@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator.canvas;
 
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,7 @@ public class PixelCanvas {
     private final int height;
     private final int[] pixels; // RGBA packed as int
     private long modificationVersion; // Incremented on each modification for cache invalidation
+    private SelectionRegion activeSelection; // Active selection region (null if no selection)
 
     /**
      * Create new pixel canvas with specified dimensions.
@@ -43,6 +45,7 @@ public class PixelCanvas {
         this.height = height;
         this.pixels = new int[width * height];
         this.modificationVersion = 0L;
+        this.activeSelection = null; // No selection by default
 
         // Initialize to transparent
         Arrays.fill(pixels, 0x00000000);
@@ -100,6 +103,7 @@ public class PixelCanvas {
 
     /**
      * Set pixel color at coordinates.
+     * If a selection is active, only pixels within the selection bounds can be modified.
      *
      * @param x pixel X coordinate
      * @param y pixel Y coordinate
@@ -108,6 +112,13 @@ public class PixelCanvas {
     public void setPixel(int x, int y, int color) {
         if (!isValidCoordinate(x, y)) {
             return; // Silently ignore out-of-bounds
+        }
+
+        // Selection constraint: if selection is active, only allow modifications within selection
+        if (activeSelection != null && !activeSelection.isEmpty()) {
+            if (!activeSelection.contains(x, y)) {
+                return; // Pixel is outside selection - ignore modification
+            }
         }
 
         int index = y * width + x;
@@ -242,5 +253,40 @@ public class PixelCanvas {
         }
 
         return bytes;
+    }
+
+    /**
+     * Set the active selection region.
+     * When a selection is active, only pixels within the selection can be modified.
+     *
+     * @param selection The selection region to set (null to clear selection)
+     */
+    public void setActiveSelection(SelectionRegion selection) {
+        this.activeSelection = selection;
+    }
+
+    /**
+     * Get the active selection region.
+     *
+     * @return The active selection, or null if no selection is active
+     */
+    public SelectionRegion getActiveSelection() {
+        return activeSelection;
+    }
+
+    /**
+     * Clear the active selection.
+     */
+    public void clearSelection() {
+        this.activeSelection = null;
+    }
+
+    /**
+     * Check if a selection is currently active.
+     *
+     * @return true if a selection is active, false otherwise
+     */
+    public boolean hasActiveSelection() {
+        return activeSelection != null && !activeSelection.isEmpty();
     }
 }

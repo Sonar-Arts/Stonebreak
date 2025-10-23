@@ -194,6 +194,7 @@ public class TextureCreatorImGui {
                 // Display composited view, but draw on active layer
                 canvasPanel.render(compositedCanvas, activeCanvas, controller.getCanvasState(),
                                  state.getCurrentTool(), colorPanel.getCurrentColor(),
+                                 state.getCurrentSelection(),  // Current selection region
                                  state.getShowGrid().get(),
                                  preferences.getGridOpacity(),
                                  preferences.getCubeNetOverlayOpacity(),
@@ -203,7 +204,8 @@ public class TextureCreatorImGui {
                                  (color) -> {  // Color used callback
                                      colorPanel.addColorToHistory(color);
                                      preferences.setColorHistory(colorPanel.getColorHistory());
-                                 });
+                                 },
+                                 state::setCurrentSelection);  // Selection created callback
             } else {
                 ImGui.text("No layers");
             }
@@ -397,6 +399,11 @@ public class TextureCreatorImGui {
         // Grid toggle
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_G)) {
             state.getShowGrid().set(!state.getShowGrid().get());
+        }
+
+        // Selection operations
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            state.clearSelection();
         }
 
         // Zoom

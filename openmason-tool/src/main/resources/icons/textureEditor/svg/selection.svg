@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Selection rectangle with dashed outline -->
+  <rect x="4" y="4" width="24" height="24"
+        fill="none"
+        stroke="#3399FF"
+        stroke-width="2"
+        stroke-dasharray="4,2"/>
+
+  <!-- Inner highlight for contrast -->
+  <rect x="6" y="6" width="20" height="20"
+        fill="none"
+        stroke="#FFFFFF"
+        stroke-width="1"
+        stroke-dasharray="3,2"/>
+
+  <!-- Corner handles for visual clarity -->
+  <circle cx="4" cy="4" r="2" fill="#3399FF" stroke="#FFFFFF" stroke-width="1"/>
+  <circle cx="28" cy="4" r="2" fill="#3399FF" stroke="#FFFFFF" stroke-width="1"/>
+  <circle cx="4" cy="28" r="2" fill="#3399FF" stroke="#FFFFFF" stroke-width="1"/>
+  <circle cx="28" cy="28" r="2" fill="#3399FF" stroke="#FFFFFF" stroke-width="1"/>
+</svg>
