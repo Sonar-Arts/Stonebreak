@@ -106,9 +106,6 @@ openmason-tool/imgui.ini
 # IDE-specific files and folders
 Problems/
 
-# Fonts folder
-fonts/
-
 # XML inspection parser
 XMLInspectionParser.java
 
