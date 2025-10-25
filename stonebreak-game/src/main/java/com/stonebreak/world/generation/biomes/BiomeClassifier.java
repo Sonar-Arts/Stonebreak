@@ -76,66 +76,73 @@ public class BiomeClassifier {
     /**
      * Initializes the Whittaker diagram lookup table with biome distributions.
      *
+     * Phase 4: Expanded to 10 biomes with ecological distribution across climate zones.
+     *
      * Table is organized as [temperature_row][moisture_column]:
      * - Row 0 (coldest): 0.0 - 0.167 temperature
      * - Row 5 (hottest): 0.833 - 1.0 temperature
      * - Col 0 (driest): 0.0 - 0.167 moisture
      * - Col 5 (wettest): 0.833 - 1.0 moisture
+     *
+     * Ecological zones:
+     * - Cold Zone (Rows 0-1): TUNDRA (dry) → TAIGA (moderate) → SNOWY_PLAINS (moist) → ICE_FIELDS (very wet)
+     * - Temperate Zone (Rows 2-3): STONY_PEAKS/GRAVEL_BEACH (dry/coastal) → PLAINS (moderate-wet)
+     * - Hot Zone (Rows 4-5): BADLANDS (very dry) → DESERT (dry) → RED_SAND_DESERT (moderate-hot) → PLAINS (hot-wet)
      */
     private void initializeWhittakerTable() {
         // Row 0 (coldest): Temperature [0.0, 0.167)
-        // Cold regions transition from plains (dry) to snowy plains (wet)
-        whittakerTable[0][0] = BiomeType.PLAINS;         // Cold + Very Dry
-        whittakerTable[0][1] = BiomeType.PLAINS;         // Cold + Dry
-        whittakerTable[0][2] = BiomeType.SNOWY_PLAINS;   // Cold + Moderate-Dry
-        whittakerTable[0][3] = BiomeType.SNOWY_PLAINS;   // Cold + Moderate-Wet
-        whittakerTable[0][4] = BiomeType.SNOWY_PLAINS;   // Cold + Wet
-        whittakerTable[0][5] = BiomeType.SNOWY_PLAINS;   // Cold + Very Wet
+        // Cold regions: tundra (dry) → ice fields (very wet)
+        whittakerTable[0][0] = BiomeType.TUNDRA;         // Cold + Very Dry - Frozen wasteland
+        whittakerTable[0][1] = BiomeType.TUNDRA;         // Cold + Dry - Permafrost plains
+        whittakerTable[0][2] = BiomeType.TUNDRA;         // Cold + Moderate-Dry - Sparse tundra
+        whittakerTable[0][3] = BiomeType.ICE_FIELDS;     // Cold + Moderate-Wet - Glacial transition
+        whittakerTable[0][4] = BiomeType.ICE_FIELDS;     // Cold + Wet - Glacier fields
+        whittakerTable[0][5] = BiomeType.ICE_FIELDS;     // Cold + Very Wet - Ice sheets
 
         // Row 1 (cool): Temperature [0.167, 0.333)
-        // Cool regions with more plains at low moisture
-        whittakerTable[1][0] = BiomeType.PLAINS;         // Cool + Very Dry
-        whittakerTable[1][1] = BiomeType.PLAINS;         // Cool + Dry
-        whittakerTable[1][2] = BiomeType.PLAINS;         // Cool + Moderate-Dry
-        whittakerTable[1][3] = BiomeType.SNOWY_PLAINS;   // Cool + Moderate-Wet
-        whittakerTable[1][4] = BiomeType.SNOWY_PLAINS;   // Cool + Wet
-        whittakerTable[1][5] = BiomeType.SNOWY_PLAINS;   // Cool + Very Wet
+        // Cool regions: tundra/taiga transition → snowy plains → ice fields
+        whittakerTable[1][0] = BiomeType.TUNDRA;         // Cool + Very Dry - Barren tundra
+        whittakerTable[1][1] = BiomeType.TUNDRA;         // Cool + Dry - Sparse tundra
+        whittakerTable[1][2] = BiomeType.TAIGA;          // Cool + Moderate-Dry - Boreal forest
+        whittakerTable[1][3] = BiomeType.SNOWY_PLAINS;   // Cool + Moderate-Wet - Snowy grasslands
+        whittakerTable[1][4] = BiomeType.SNOWY_PLAINS;   // Cool + Wet - Snow-covered plains
+        whittakerTable[1][5] = BiomeType.ICE_FIELDS;     // Cool + Very Wet - Glacial edges
 
         // Row 2 (temperate-cool): Temperature [0.333, 0.5)
-        // Temperate regions with deserts in dry areas
-        whittakerTable[2][0] = BiomeType.DESERT;         // Temperate-Cool + Very Dry
-        whittakerTable[2][1] = BiomeType.DESERT;         // Temperate-Cool + Dry
-        whittakerTable[2][2] = BiomeType.PLAINS;         // Temperate-Cool + Moderate-Dry
-        whittakerTable[2][3] = BiomeType.PLAINS;         // Temperate-Cool + Moderate-Wet
-        whittakerTable[2][4] = BiomeType.PLAINS;         // Temperate-Cool + Wet
-        whittakerTable[2][5] = BiomeType.PLAINS;         // Temperate-Cool + Very Wet
+        // Temperate regions: stony peaks/beach → plains
+        whittakerTable[2][0] = BiomeType.STONY_PEAKS;    // Temperate-Cool + Very Dry - Rocky mountains
+        whittakerTable[2][1] = BiomeType.GRAVEL_BEACH;   // Temperate-Cool + Dry - Coastal shores
+        whittakerTable[2][2] = BiomeType.PLAINS;         // Temperate-Cool + Moderate-Dry - Grasslands
+        whittakerTable[2][3] = BiomeType.GRAVEL_BEACH;   // Temperate-Cool + Moderate-Wet - Sandy beaches
+        whittakerTable[2][4] = BiomeType.PLAINS;         // Temperate-Cool + Wet - Lush plains
+        whittakerTable[2][5] = BiomeType.PLAINS;         // Temperate-Cool + Very Wet - Wetland plains
 
         // Row 3 (temperate-warm): Temperature [0.5, 0.667)
-        // Warm temperate regions
-        whittakerTable[3][0] = BiomeType.DESERT;         // Temperate-Warm + Very Dry
-        whittakerTable[3][1] = BiomeType.DESERT;         // Temperate-Warm + Dry
-        whittakerTable[3][2] = BiomeType.PLAINS;         // Temperate-Warm + Moderate-Dry
-        whittakerTable[3][3] = BiomeType.PLAINS;         // Temperate-Warm + Moderate-Wet
-        whittakerTable[3][4] = BiomeType.PLAINS;         // Temperate-Warm + Wet
-        whittakerTable[3][5] = BiomeType.PLAINS;         // Temperate-Warm + Very Wet
+        // Warm temperate regions: desert → plains
+        whittakerTable[3][0] = BiomeType.DESERT;         // Temperate-Warm + Very Dry - Arid desert
+        whittakerTable[3][1] = BiomeType.DESERT;         // Temperate-Warm + Dry - Sandy desert
+        whittakerTable[3][2] = BiomeType.PLAINS;         // Temperate-Warm + Moderate-Dry - Savanna-like
+        whittakerTable[3][3] = BiomeType.PLAINS;         // Temperate-Warm + Moderate-Wet - Temperate grasslands
+        whittakerTable[3][4] = BiomeType.PLAINS;         // Temperate-Warm + Wet - Fertile plains
+        whittakerTable[3][5] = BiomeType.PLAINS;         // Temperate-Warm + Very Wet - Wetlands
 
         // Row 4 (hot): Temperature [0.667, 0.833)
-        // Hot regions with red sand desert appearing at moderate+ moisture
-        whittakerTable[4][0] = BiomeType.RED_SAND_DESERT; // Hot + Very Dry
-        whittakerTable[4][1] = BiomeType.DESERT;          // Hot + Dry
-        whittakerTable[4][2] = BiomeType.RED_SAND_DESERT; // Hot + Moderate-Dry
-        whittakerTable[4][3] = BiomeType.RED_SAND_DESERT; // Hot + Moderate-Wet
-        whittakerTable[4][4] = BiomeType.PLAINS;          // Hot + Wet (grasslands)
-        whittakerTable[4][5] = BiomeType.PLAINS;          // Hot + Very Wet (grasslands)
+        // Hot regions: badlands/desert → red sand desert → plains
+        whittakerTable[4][0] = BiomeType.BADLANDS;       // Hot + Very Dry - Eroded badlands
+        whittakerTable[4][1] = BiomeType.DESERT;         // Hot + Dry - Hot desert
+        whittakerTable[4][2] = BiomeType.RED_SAND_DESERT; // Hot + Moderate-Dry - Volcanic desert
+        whittakerTable[4][3] = BiomeType.RED_SAND_DESERT; // Hot + Moderate-Wet - Volcanic hills
+        whittakerTable[4][4] = BiomeType.PLAINS;         // Hot + Wet - Hot grasslands
+        whittakerTable[4][5] = BiomeType.PLAINS;         // Hot + Very Wet - Tropical grasslands
 
         // Row 5 (hottest): Temperature [0.833, 1.0]
-        // Hottest regions with volcanic red sand desert dominant
-        whittakerTable[5][0] = BiomeType.RED_SAND_DESERT; // Very Hot + Very Dry
-        whittakerTable[5][1] = BiomeType.DESERT;          // Very Hot + Dry
-        whittakerTable[5][2] = BiomeType.RED_SAND_DESERT; // Very Hot + Moderate-Dry
-        whittakerTable[5][3] = BiomeType.RED_SAND_DESERT; // Very Hot + Moderate-Wet
-        whittakerTable[5][4] = BiomeType.RED_SAND_DESERT; // Very Hot + Wet
-        whittakerTable[5][5] = BiomeType.PLAINS;          // Very Hot + Very Wet (tropical grasslands)
+        // Hottest regions: badlands → volcanic deserts → tropical plains
+        whittakerTable[5][0] = BiomeType.BADLANDS;       // Very Hot + Very Dry - Mesa badlands
+        whittakerTable[5][1] = BiomeType.DESERT;         // Very Hot + Dry - Scorching desert
+        whittakerTable[5][2] = BiomeType.RED_SAND_DESERT; // Very Hot + Moderate-Dry - Volcanic wasteland
+        whittakerTable[5][3] = BiomeType.RED_SAND_DESERT; // Very Hot + Moderate-Wet - Volcanic terrain
+        whittakerTable[5][4] = BiomeType.RED_SAND_DESERT; // Very Hot + Wet - Hot volcanic region
+        whittakerTable[5][5] = BiomeType.PLAINS;         // Very Hot + Very Wet - Tropical plains
     }
 
     /**

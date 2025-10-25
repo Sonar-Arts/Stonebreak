@@ -64,6 +64,27 @@ public class SurfaceDecorationGenerator {
                     case RED_SAND_DESERT:
                         generateClayPatches(world, chunk, x, z, worldX, worldZ, surfaceHeight);
                         break;
+
+                    // Phase 4: New biome decorations
+                    case TUNDRA:
+                        generateTundraFeatures(world, chunk, x, z, worldX, worldZ, surfaceHeight);
+                        break;
+                    case TAIGA:
+                        generateTaigaSnow(world, chunk, x, z, worldX, worldZ, surfaceHeight, snowLayerManager);
+                        break;
+                    case STONY_PEAKS:
+                        generateStonesAndOres(world, chunk, x, z, worldX, worldZ, surfaceHeight);
+                        break;
+                    case GRAVEL_BEACH:
+                        generateBeachMixture(world, chunk, x, z, worldX, worldZ, surfaceHeight);
+                        break;
+                    case ICE_FIELDS:
+                        generateGlacialFeatures(world, chunk, x, z, worldX, worldZ, surfaceHeight, snowLayerManager);
+                        break;
+                    case BADLANDS:
+                        generateBadlandsFeatures(world, chunk, x, z, worldX, worldZ, surfaceHeight);
+                        break;
+
                     default:
                         // No decorations for other biomes currently
                         break;
@@ -175,6 +196,142 @@ public class SurfaceDecorationGenerator {
             }
         }
     }
+
+    // ==================== Phase 4: New Biome Decoration Methods ====================
+
+    /**
+     * Generates tundra features: sparse ice patches, gravel deposits, exposed stone.
+     */
+    private void generateTundraFeatures(World world, Chunk chunk, int x, int z,
+                                        int worldX, int worldZ, int surfaceHeight) {
+        if (surfaceHeight <= 64) return;
+
+        BlockType surfaceBlock = chunk.getBlock(x, surfaceHeight - 1, z);
+        if ((surfaceBlock == BlockType.GRAVEL || surfaceBlock == BlockType.STONE) &&
+            chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+
+            float featureChance = deterministicRandom.getFloat(worldX, worldZ, "tundra_feature");
+
+            if (featureChance < 0.01f) { // 1% chance for ice patches
+                world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.ICE);
+            } else if (featureChance < 0.03f) { // 2% chance for gravel deposits
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.GRAVEL);
+            }
+        }
+    }
+
+    /**
+     * Generates taiga snow layers (less dense than SNOWY_PLAINS).
+     */
+    private void generateTaigaSnow(World world, Chunk chunk, int x, int z,
+                                   int worldX, int worldZ, int surfaceHeight,
+                                   SnowLayerManager snowLayerManager) {
+        if (surfaceHeight <= 64) return;
+
+        if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT &&
+            chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+
+            if (deterministicRandom.shouldGenerate(worldX, worldZ, "taiga_snow", 0.03f)) {
+                world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
+                // 1-2 snow layers (less than SNOWY_PLAINS)
+                int layers = 1 + deterministicRandom.getInt(worldX, worldZ, "taiga_snow_layers", 2);
+                snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
+            }
+        }
+    }
+
+    /**
+     * Generates stony peaks features: gravel slopes and exposed ores.
+     */
+    private void generateStonesAndOres(World world, Chunk chunk, int x, int z,
+                                       int worldX, int worldZ, int surfaceHeight) {
+        if (surfaceHeight <= 64) return;
+
+        BlockType surfaceBlock = chunk.getBlock(x, surfaceHeight - 1, z);
+        if ((surfaceBlock == BlockType.STONE || surfaceBlock == BlockType.COBBLESTONE) &&
+            chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+
+            float featureChance = deterministicRandom.getFloat(worldX, worldZ, "stony_peaks_feature");
+
+            // 5% chance for gravel slopes
+            if (featureChance < 0.05f) {
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.GRAVEL);
+            }
+            // Surface coal ore exposure (more common in mountains)
+            else if (featureChance < 0.08f && surfaceBlock == BlockType.STONE) {
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.COAL_ORE);
+            }
+        }
+    }
+
+    /**
+     * Generates gravel beach mixture of gravel and sand.
+     */
+    private void generateBeachMixture(World world, Chunk chunk, int x, int z,
+                                      int worldX, int worldZ, int surfaceHeight) {
+        if (surfaceHeight <= 60 || surfaceHeight >= 68) return; // Beach elevation range
+
+        if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRAVEL) {
+            // 40% of gravel patches become sand for mixture
+            if (deterministicRandom.shouldGenerate(worldX, worldZ, "beach_sand_mix", 0.4f)) {
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.SAND);
+            }
+        }
+    }
+
+    /**
+     * Generates glacial features: dense ice blocks and multi-layer snow.
+     */
+    private void generateGlacialFeatures(World world, Chunk chunk, int x, int z,
+                                         int worldX, int worldZ, int surfaceHeight,
+                                         SnowLayerManager snowLayerManager) {
+        if (surfaceHeight <= 64) return;
+
+        BlockType surfaceBlock = chunk.getBlock(x, surfaceHeight - 1, z);
+        if ((surfaceBlock == BlockType.ICE || surfaceBlock == BlockType.SNOW) &&
+            chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+
+            float featureChance = deterministicRandom.getFloat(worldX, worldZ, "glacial_feature");
+
+            // 60% chance for heavy snow layers (glacial environment)
+            if (featureChance < 0.6f) {
+                world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
+                // 2-4 snow layers (deeper than other biomes)
+                int layers = 2 + deterministicRandom.getInt(worldX, worldZ, "glacial_snow_layers", 3);
+                snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
+            }
+        }
+    }
+
+    /**
+     * Generates badlands features: clay bands and red sand cobblestone formations.
+     */
+    private void generateBadlandsFeatures(World world, Chunk chunk, int x, int z,
+                                          int worldX, int worldZ, int surfaceHeight) {
+        if (surfaceHeight <= 64) return;
+
+        BlockType surfaceBlock = chunk.getBlock(x, surfaceHeight - 1, z);
+        if ((surfaceBlock == BlockType.RED_SAND || surfaceBlock == BlockType.CLAY) &&
+            chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
+
+            float featureChance = deterministicRandom.getFloat(worldX, worldZ, "badlands_feature");
+
+            // 3% chance for clay bands (sedimentary layers)
+            if (featureChance < 0.03f && surfaceBlock == BlockType.RED_SAND) {
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.CLAY);
+            }
+            // 2% chance for gravel deposits
+            else if (featureChance < 0.05f) {
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.GRAVEL);
+            }
+            // 1% chance for red sand cobblestone (weathered rock)
+            else if (featureChance < 0.06f && surfaceBlock == BlockType.RED_SAND) {
+                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.RED_SAND_COBBLESTONE);
+            }
+        }
+    }
+
+    // ==================== Helper Methods ====================
 
     /**
      * Finds the surface height for a given column in the chunk.

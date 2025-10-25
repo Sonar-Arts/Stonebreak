@@ -45,6 +45,38 @@ public class BiomeHeightConfig {
     // - 12.5 block amplitude (10-15 block range) for distinct frozen hills
     public static final BiomeConfig SNOWY_PLAINS = new BiomeConfig(100.0f, 12.5f);
 
+    // Phase 4: New biome height configurations
+
+    // TUNDRA: Flat to gently rolling barren landscape
+    // - 150-block scale creates large, gentle undulations
+    // - 6.0 block amplitude for minimal variation (permafrost wasteland)
+    public static final BiomeConfig TUNDRA = new BiomeConfig(150.0f, 6.0f);
+
+    // TAIGA: Moderate hills with forest cover
+    // - 80-block scale creates medium-frequency rolling hills
+    // - 12.0 block amplitude for forested hill terrain
+    public static final BiomeConfig TAIGA = new BiomeConfig(80.0f, 12.0f);
+
+    // STONY_PEAKS: Extreme rocky terrain with jagged mountains
+    // - 40-block scale creates high-frequency, sharp variations
+    // - 20.0 block amplitude for dramatic mountainous elevation
+    public static final BiomeConfig STONY_PEAKS = new BiomeConfig(40.0f, 20.0f);
+
+    // GRAVEL_BEACH: Very flat shoreline terrain
+    // - 180-block scale creates very large, gentle curves
+    // - 2.0 block amplitude for minimal coastal variation
+    public static final BiomeConfig GRAVEL_BEACH = new BiomeConfig(180.0f, 2.0f);
+
+    // ICE_FIELDS: Smooth, glacier-like terrain
+    // - 120-block scale creates large, smooth undulations
+    // - 8.0 block amplitude for gentle frozen landscape
+    public static final BiomeConfig ICE_FIELDS = new BiomeConfig(120.0f, 8.0f);
+
+    // BADLANDS: Eroded plateaus and mesas
+    // - 60-block scale creates medium-frequency mesa terrain
+    // - 15.0 block amplitude for dramatic plateau elevation
+    public static final BiomeConfig BADLANDS = new BiomeConfig(60.0f, 15.0f);
+
     /**
      * Gets the configuration for a specific biome type.
      *
@@ -57,6 +89,12 @@ public class BiomeHeightConfig {
             case DESERT -> DESERT;
             case RED_SAND_DESERT -> RED_SAND_DESERT;
             case SNOWY_PLAINS -> SNOWY_PLAINS;
+            case TUNDRA -> TUNDRA;
+            case TAIGA -> TAIGA;
+            case STONY_PEAKS -> STONY_PEAKS;
+            case GRAVEL_BEACH -> GRAVEL_BEACH;
+            case ICE_FIELDS -> ICE_FIELDS;
+            case BADLANDS -> BADLANDS;
         };
     }
 }

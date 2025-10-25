@@ -58,6 +58,8 @@ public class VegetationGenerator {
 
     /**
      * Generates trees based on biome type.
+     *
+     * Phase 4: Added vegetation for TAIGA and TUNDRA biomes.
      */
     private void generateTreesForBiome(World world, Chunk chunk, BiomeType biome, int x, int z,
                                        int worldX, int worldZ, int surfaceHeight) {
@@ -78,6 +80,23 @@ public class VegetationGenerator {
         } else if (biome == BiomeType.SNOWY_PLAINS) {
             if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) {
                 if (deterministicRandom.shouldGenerate(worldX, worldZ, "pine_tree", 0.015f) && surfaceHeight > 64) {
+                    TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
+                }
+            }
+        }
+        // Phase 4: New biome vegetation
+        else if (biome == BiomeType.TAIGA) {
+            // Dense pine forest (3% spawn rate - denser than SNOWY_PLAINS)
+            if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.SNOWY_DIRT) {
+                if (deterministicRandom.shouldGenerate(worldX, worldZ, "taiga_pine_tree", 0.03f) && surfaceHeight > 64) {
+                    TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
+                }
+            }
+        } else if (biome == BiomeType.TUNDRA) {
+            // Very sparse pine trees (0.3% spawn rate - survival trees)
+            if (chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.GRAVEL ||
+                chunk.getBlock(x, surfaceHeight - 1, z) == BlockType.STONE) {
+                if (deterministicRandom.shouldGenerate(worldX, worldZ, "tundra_pine_tree", 0.003f) && surfaceHeight > 64) {
                     TreeGenerator.generatePineTree(world, chunk, x, surfaceHeight, z);
                 }
             }

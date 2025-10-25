@@ -261,20 +261,33 @@ public class TerrainGenerationSystem {
     /**
      * Gets the subsurface block type for a biome.
      *
+     * Phase 4: Expanded to handle 10 biomes with appropriate subsurface materials.
+     *
      * @param biome Biome type
      * @return Subsurface block type
      */
     private BlockType getSubsurfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
+            // Original 4 biomes
             case RED_SAND_DESERT -> BlockType.RED_SANDSTONE;
             case DESERT -> BlockType.SANDSTONE;
             case PLAINS, SNOWY_PLAINS -> BlockType.DIRT;
+
+            // Phase 4: New biomes
+            case TUNDRA -> BlockType.STONE;  // Frozen permafrost bedrock
+            case TAIGA -> BlockType.DIRT;  // Forest soil
+            case STONY_PEAKS -> BlockType.STONE;  // Solid rock mountains
+            case GRAVEL_BEACH -> BlockType.SAND;  // Sandy subsurface beneath gravel
+            case ICE_FIELDS -> BlockType.ICE;  // Deep glacial ice layers
+            case BADLANDS -> BlockType.RED_SANDSTONE;  // Sedimentary layers beneath badlands
         };
     }
 
     /**
      * Gets the surface block type for a biome.
+     *
+     * Phase 4: Expanded to handle 10 biomes with mixed block types where applicable.
      *
      * @param biome Biome type
      * @return Surface block type
@@ -282,10 +295,19 @@ public class TerrainGenerationSystem {
     private BlockType getSurfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
+            // Original 4 biomes
             case DESERT -> BlockType.SAND;
             case RED_SAND_DESERT -> BlockType.RED_SAND;
             case PLAINS -> BlockType.GRASS;
             case SNOWY_PLAINS -> BlockType.SNOWY_DIRT;
+
+            // Phase 4: New biomes
+            case TUNDRA -> BlockType.GRAVEL;  // Permafrost-like gravel surface
+            case TAIGA -> BlockType.SNOWY_DIRT;  // Snow-covered forest floor
+            case STONY_PEAKS -> BlockType.STONE;  // Exposed rocky peaks
+            case GRAVEL_BEACH -> BlockType.GRAVEL;  // Gravel shoreline (mixed with sand in decorations)
+            case ICE_FIELDS -> BlockType.ICE;  // Glacial ice surface
+            case BADLANDS -> BlockType.RED_SAND;  // Eroded red sand mesas
         };
     }
 
