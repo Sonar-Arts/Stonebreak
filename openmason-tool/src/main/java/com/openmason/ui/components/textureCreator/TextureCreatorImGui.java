@@ -56,6 +56,9 @@ public class TextureCreatorImGui {
     // Pending import state (stores file path while dialog is open)
     private String pendingImportPath = null;
 
+    // Callback for returning to welcome screen
+    private Runnable backToWelcomeCallback;
+
     /**
      * Create texture creator UI.
      */
@@ -285,6 +288,12 @@ public class TextureCreatorImGui {
                         handleExportOMT();
                     }
                     ImGui.endMenu();
+                }
+                ImGui.separator();
+                if (ImGui.menuItem("Back to Welcome Menu")) {
+                    if (backToWelcomeCallback != null) {
+                        backToWelcomeCallback.run();
+                    }
                 }
                 ImGui.separator();
                 if (ImGui.menuItem("Exit")) {
@@ -574,6 +583,14 @@ public class TextureCreatorImGui {
      */
     public TextureCreatorController getController() {
         return controller;
+    }
+
+    /**
+     * Set callback for returning to welcome screen.
+     * This callback will be invoked when the user selects "Back to Welcome Menu" from the File menu.
+     */
+    public void setBackToWelcomeCallback(Runnable callback) {
+        this.backToWelcomeCallback = callback;
     }
 
     /**

@@ -381,6 +381,10 @@ public class OpenMasonApp {
             // Initialize texture creator interface
             textureCreatorInterface = new TextureCreatorImGui();
 
+            // Wire up back to welcome menu callbacks
+            mainInterface.setBackToWelcomeCallback(this::transitionToWelcomeScreen);
+            textureCreatorInterface.setBackToWelcomeCallback(this::transitionToWelcomeScreen);
+
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
                 viewportInterface.setWindowHandle(window);
@@ -500,6 +504,14 @@ public class OpenMasonApp {
         logger.info("Transitioning to texture creator");
         currentState = ApplicationState.TEXTURE_CREATOR;
         // Note: Texture creator uses its own layout, no need for default docking layout
+    }
+
+    /**
+     * Transition back to welcome screen from any tool.
+     */
+    private void transitionToWelcomeScreen() {
+        logger.info("Transitioning back to welcome screen");
+        currentState = ApplicationState.WELCOME_SCREEN;
     }
 
     /**

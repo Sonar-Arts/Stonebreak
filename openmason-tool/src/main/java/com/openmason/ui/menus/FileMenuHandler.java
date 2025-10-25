@@ -29,6 +29,7 @@ public class FileMenuHandler {
     private OpenMason3DViewport viewport;
     private LogoManager logoManager;
     private ThemeManager themeManager;
+    private Runnable backToWelcomeCallback;
 
     public FileMenuHandler(ModelState modelState, ModelOperationService modelOperations,
                            FileDialogService fileDialogService, StatusService statusService) {
@@ -57,6 +58,13 @@ public class FileMenuHandler {
      */
     public void setThemeManager(ThemeManager themeManager) {
         this.themeManager = themeManager;
+    }
+
+    /**
+     * Set callback for returning to welcome screen.
+     */
+    public void setBackToWelcomeCallback(Runnable callback) {
+        this.backToWelcomeCallback = callback;
     }
 
     /**
@@ -102,6 +110,14 @@ public class FileMenuHandler {
                 }
             }
             ImGui.endMenu();
+        }
+
+        ImGui.separator();
+
+        if (ImGui.menuItem("Back to Welcome Menu")) {
+            if (backToWelcomeCallback != null) {
+                backToWelcomeCallback.run();
+            }
         }
 
         ImGui.separator();

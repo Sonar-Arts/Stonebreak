@@ -76,6 +76,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     // Menu System
     private final MenuBarCoordinator menuBarCoordinator;
+    private FileMenuHandler fileMenuHandler;
 
     // Toolbar
     private final ToolbarRenderer toolbarRenderer;
@@ -132,7 +133,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager);
 
         // Initialize menu handlers
-        FileMenuHandler fileMenu = new FileMenuHandler(modelState, modelOperations,
+        this.fileMenuHandler = new FileMenuHandler(modelState, modelOperations,
                 fileDialogService, statusService);
         EditMenuHandler editMenu = new EditMenuHandler(uiVisibilityState, statusService);
         ViewMenuHandler viewMenu = new ViewMenuHandler(uiVisibilityState, viewportState,
@@ -143,7 +144,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         HelpMenuHandler helpMenu = new HelpMenuHandler(uiVisibilityState);
 
         this.menuBarCoordinator = new MenuBarCoordinator(uiVisibilityState, logoManager,
-                fileMenu, editMenu, viewMenu, toolsMenu, themeMenu, helpMenu);
+                fileMenuHandler, editMenu, viewMenu, toolsMenu, themeMenu, helpMenu);
 
         // Initialize toolbar
         this.toolbarRenderer = new ToolbarRenderer(uiVisibilityState, modelState, modelOperations,
@@ -153,9 +154,9 @@ public class MainImGuiInterface implements ModelBrowserListener {
         initializeComponents();
 
         // Wire up viewport references after initialization
-        fileMenu.setViewport(viewport3D);
-        fileMenu.setLogoManager(logoManager);
-        fileMenu.setThemeManager(themeManager);
+        fileMenuHandler.setViewport(viewport3D);
+        fileMenuHandler.setLogoManager(logoManager);
+        fileMenuHandler.setThemeManager(themeManager);
         viewMenu.setViewport(viewport3D);
         toolsMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
@@ -465,5 +466,15 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     public void switchToVariant(String variantName) {
         viewportOperations.switchTextureVariant(viewport3D, transformState, variantName);
+    }
+
+    /**
+     * Set callback for returning to welcome screen.
+     * This callback will be invoked when the user selects "Back to Welcome Menu" from the File menu.
+     */
+    public void setBackToWelcomeCallback(Runnable callback) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setBackToWelcomeCallback(callback);
+        }
     }
 }
