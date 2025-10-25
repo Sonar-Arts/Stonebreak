@@ -5,6 +5,8 @@ import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.biomes.BiomeBlendResult;
 import com.stonebreak.world.generation.biomes.BiomeHeightModifier;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.config.NoiseConfigFactory;
+import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.Map;
@@ -14,30 +16,40 @@ import java.util.Map;
  * Generates terrain height based on continentalness values, producing varied landscapes
  * from deep oceans to high mountain peaks.
  *
- * Phase 1 Enhancement: Adds biome-specific height modifications using additive noise layers.
+ * Phase 1 Enhancement: Uses configurable noise parameters for different terrain characteristics.
  * Phase 3 Enhancement: Adds blended height generation for smooth biome transitions.
  * Architecture: Base Height (continentalness) + Biome Modifier + Blending = Final Height
  *
  * Follows Single Responsibility Principle - only handles height calculations.
+ * Follows Dependency Inversion Principle - configuration injected via constructor.
+ *
+ * Implements IHeightMapGenerator for dependency inversion and testability.
  */
-public class HeightMapGenerator {
+public class HeightMapGenerator implements IHeightMapGenerator {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
 
     private final long seed;
     private final NoiseGenerator continentalnessNoise;
     private final SplineInterpolator terrainSpline;
     private final BiomeHeightModifier biomeHeightModifier;
+    private final ErosionNoiseGenerator erosionNoise;
+    private final float continentalnessNoiseScale;
 
     /**
-     * Creates a new height map generator with the given seed.
+     * Creates a new height map generator with the given seed and configuration.
+     * Uses continentalness noise config for large-scale landmass distribution.
+     * Phase 1: Adds erosion noise for subtle terrain variation.
      *
      * @param seed World seed for deterministic generation
+     * @param config Terrain generation configuration
      */
-    public HeightMapGenerator(long seed) {
+    public HeightMapGenerator(long seed, TerrainGenerationConfig config) {
         this.seed = seed;
-        this.continentalnessNoise = new NoiseGenerator(seed + 2);
+        this.continentalnessNoise = new NoiseGenerator(seed + 2, NoiseConfigFactory.continentalness());
         this.biomeHeightModifier = new BiomeHeightModifier(seed);
+        this.erosionNoise = new ErosionNoiseGenerator(seed, config);
         this.terrainSpline = new SplineInterpolator();
+        this.continentalnessNoiseScale = config.continentalnessNoiseScale;
         initializeTerrainSpline();
     }
 
@@ -64,6 +76,7 @@ public class HeightMapGenerator {
      * @param z World Z coordinate
      * @return Base terrain height at the given position (clamped to world bounds)
      */
+    @Override
     public int generateHeight(int x, int z) {
         float continentalness = getContinentalness(x, z);
         int height = (int) terrainSpline.interpolate(continentalness);
@@ -89,6 +102,7 @@ public class HeightMapGenerator {
      * @param z          World Z coordinate
      * @return Final height with biome-specific modifications applied (clamped to world bounds)
      */
+    @Override
     public int applyBiomeModifier(int baseHeight, BiomeType biome, int x, int z) {
         int heightDelta = biomeHeightModifier.calculateHeightDelta(biome, x, z);
         int modifiedHeight = baseHeight + heightDelta;
@@ -98,6 +112,7 @@ public class HeightMapGenerator {
     /**
      * Generates blended height using weighted biome influences.
      *
+     * Phase 1: Adds erosion noise for subtle terrain variation.
      * Phase 3: Creates smooth terrain transitions between biomes by blending
      * heights from multiple nearby biomes based on their weights.
      *
@@ -107,7 +122,8 @@ public class HeightMapGenerator {
      *    - Calculate height with that biome's modifier
      *    - Multiply by biome's weight
      *    - Add to total
-     * 3. Return weighted average of all biome heights
+     * 3. Apply erosion noise for weathering effects
+     * 4. Return weighted average of all biome heights
      *
      * This eliminates harsh height cliffs at biome boundaries, creating
      * natural-looking transitions (e.g., desert gradually rising into mountains).
@@ -118,11 +134,14 @@ public class HeightMapGenerator {
      * @param z           World Z coordinate
      * @return Blended height from multiple biomes (clamped to world bounds)
      */
+    @Override
     public int generateBlendedHeight(int baseHeight, BiomeBlendResult blendResult, int x, int z) {
         // If one biome is strongly dominant (>80% weight), skip blending for performance
         if (blendResult.isStronglyDominant(0.8f)) {
             BiomeType dominantBiome = blendResult.getDominantBiome();
-            return applyBiomeModifier(baseHeight, dominantBiome, x, z);
+            int height = applyBiomeModifier(baseHeight, dominantBiome, x, z);
+            // Apply erosion noise for subtle variation
+            return erosionNoise.applyErosion(height, x, z);
         }
 
         // Blend heights from all influencing biomes
@@ -139,8 +158,13 @@ public class HeightMapGenerator {
             blendedHeight += biomeHeight * weight;
         }
 
-        // Round and clamp to world bounds
+        // Round to integer
         int finalHeight = Math.round(blendedHeight);
+
+        // Apply erosion noise for subtle weathering effects
+        finalHeight = erosionNoise.applyErosion(finalHeight, x, z);
+
+        // Clamp to world bounds
         return Math.max(1, Math.min(finalHeight, WORLD_HEIGHT - 1));
     }
 
@@ -152,8 +176,9 @@ public class HeightMapGenerator {
      * @param z World Z coordinate
      * @return Continentalness value in range [-1.0, 1.0]
      */
+    @Override
     public float getContinentalness(int x, int z) {
-        return continentalnessNoise.noise(x / 800.0f, z / 800.0f);
+        return continentalnessNoise.noise(x / continentalnessNoiseScale, z / continentalnessNoiseScale);
     }
 
     /**
@@ -161,7 +186,32 @@ public class HeightMapGenerator {
      *
      * @return World seed
      */
+    @Override
     public long getSeed() {
         return seed;
+    }
+
+    /**
+     * Gets the erosion noise value at the specified position.
+     * This is the raw noise value before being applied to height.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Erosion noise value in range approximately [-0.3, 0.3]
+     */
+    public float getErosionNoiseValue(int x, int z) {
+        return erosionNoise.getErosionNoise(x, z);
+    }
+
+    /**
+     * Gets the base terrain height (before erosion) at the specified position.
+     * Useful for debugging to see the effect of erosion noise.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Base height before erosion effects
+     */
+    public int getBaseHeightBeforeErosion(int x, int z) {
+        return generateHeight(x, z);
     }
 }

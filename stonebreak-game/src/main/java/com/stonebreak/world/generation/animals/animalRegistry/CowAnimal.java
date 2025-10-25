@@ -1,8 +1,8 @@
-package com.stonebreak.world.generation.terrain.animals.animalRegistry;
+package com.stonebreak.world.generation.animals.animalRegistry;
 
 import java.util.Random;
 
-import com.stonebreak.world.generation.terrain.animals.Animal;
+import com.stonebreak.world.generation.animals.Animal;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 

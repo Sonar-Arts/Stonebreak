@@ -1,9 +1,7 @@
 package com.stonebreak.world.generation.biomes;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Data class representing the result of biome blending calculations.
@@ -71,23 +69,6 @@ public class BiomeBlendResult {
      */
     public Map<BiomeType, Float> getWeights() {
         return Map.copyOf(biomeWeights);
-    }
-
-    /**
-     * Gets the top N biomes sorted by weight (descending).
-     *
-     * Useful for blending between the most influential biomes while ignoring
-     * biomes with negligible weight.
-     *
-     * @param n Number of top biomes to return
-     * @return List of top N biomes sorted by weight (highest first)
-     */
-    public List<BiomeType> getTopNBiomes(int n) {
-        return biomeWeights.entrySet().stream()
-                .sorted(Map.Entry.<BiomeType, Float>comparingByValue().reversed())
-                .limit(n)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
     }
 
     /**

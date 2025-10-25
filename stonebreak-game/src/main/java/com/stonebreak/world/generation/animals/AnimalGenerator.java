@@ -1,4 +1,4 @@
-package com.stonebreak.world.generation.terrain.animals;
+package com.stonebreak.world.generation.animals;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -6,7 +6,7 @@ import java.util.Random;
 
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
-import com.stonebreak.world.generation.terrain.animals.animalRegistry.CowAnimal;
+import com.stonebreak.world.generation.animals.animalRegistry.CowAnimal;
 
 /**
  * Handles spawning of animals in the world during chunk generation.

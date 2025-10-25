@@ -1,23 +1,40 @@
 package com.stonebreak.world.generation;
 
+import com.stonebreak.world.generation.config.NoiseConfig;
+
 import java.util.Random;
 
 /**
  * Implements a Simplex Noise generator for terrain generation.
- * This is a more robust implementation with proper error handling.
+ * Now supports configurable noise parameters for different use cases.
+ *
+ * Phase 1 Enhancement: Accepts NoiseConfig to customize octaves, persistence, and lacunarity.
+ * This allows different noise characteristics for continentalness, erosion, detail, etc.
+ *
+ * Implements INoiseGenerator for dependency inversion and testability.
  */
-public class NoiseGenerator {
-    
-    private static final int OCTAVES = 8;
-    private static final double PERSISTENCE = 0.45;
-    private static final double LACUNARITY = 2.0;
-    
+public class NoiseGenerator implements INoiseGenerator {
+
+    private final int octaves;
+    private final double persistence;
+    private final double lacunarity;
+
     private final int[] permutation;
     @SuppressWarnings("unused")
     private final int seed;
-    
-    public NoiseGenerator(long seed) {
+
+    /**
+     * Creates a noise generator with specified configuration.
+     *
+     * @param seed World seed for deterministic generation
+     * @param config Noise parameters (octaves, persistence, lacunarity)
+     */
+    public NoiseGenerator(long seed, NoiseConfig config) {
         this.seed = (int) (seed % Integer.MAX_VALUE);
+        this.octaves = config.getOctaves();
+        this.persistence = config.getPersistence();
+        this.lacunarity = config.getLacunarity();
+
         Random random = new Random(seed);
         permutation = new int[512];
         
@@ -41,26 +58,28 @@ public class NoiseGenerator {
      * Gets noise value in 2D space.
      * @return Noise value in the range [-1, 1]
      */
+    @Override
     public float noise(float x, float y) {
         return (float) getFractalNoise(x, y);
     }
     
     /**
      * Combines multiple octaves of simplex noise for more natural terrain.
+     * Uses configurable octaves, persistence, and lacunarity values.
      */
     private double getFractalNoise(float x, float y) {
         double total = 0;
         double frequency = 1;
         double amplitude = 1;
         double maxValue = 0;
-        
-        for (int i = 0; i < OCTAVES; i++) {
+
+        for (int i = 0; i < octaves; i++) {
             total += getSimplexNoise(x * frequency, y * frequency) * amplitude;
             maxValue += amplitude;
-            amplitude *= PERSISTENCE;
-            frequency *= LACUNARITY;
+            amplitude *= persistence;
+            frequency *= lacunarity;
         }
-        
+
         // Normalize the result
         return total / maxValue;
     }    /**

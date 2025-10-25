@@ -1,11 +1,11 @@
 package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.generation.biomes.BiomeBlendResult;
 import com.stonebreak.world.generation.biomes.BiomeBlender;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
@@ -14,7 +14,6 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
-import com.stonebreak.world.generation.terrain.MobGenerator;
 import com.stonebreak.world.DeterministicRandom;
 
 import java.util.Random;
@@ -43,6 +42,9 @@ public class TerrainGenerationSystem {
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
 
+    // Progress reporting
+    private final LoadingProgressReporter progressReporter;
+
     // Legacy fields maintained for compatibility
     private final long seed;
     private final Random animalRandom;
@@ -51,82 +53,68 @@ public class TerrainGenerationSystem {
 
     /**
      * Creates a new terrain generation system with the given seed.
-     * Initializes all subsystem generators.
+     * Initializes all subsystem generators with default configuration.
+     * Uses null progress reporter (no progress updates).
      *
      * @param seed World seed for deterministic generation
      */
     public TerrainGenerationSystem(long seed) {
+        this(seed, TerrainGenerationConfig.defaultConfig(), LoadingProgressReporter.NULL);
+    }
+
+    /**
+     * Creates a new terrain generation system with the given seed and configuration.
+     * Initializes all subsystem generators with the provided configuration.
+     * Uses null progress reporter (no progress updates).
+     *
+     * @param seed World seed for deterministic generation
+     * @param config Terrain generation configuration
+     */
+    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config) {
+        this(seed, config, LoadingProgressReporter.NULL);
+    }
+
+    /**
+     * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
+     * Initializes all subsystem generators with the provided configuration.
+     *
+     * @param seed World seed for deterministic generation
+     * @param config Terrain generation configuration
+     * @param progressReporter Progress reporter for loading screen updates
+     */
+    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, LoadingProgressReporter progressReporter) {
         this.seed = seed;
         this.animalRandom = new Random(); // Use current time for truly random animal spawning
         this.deterministicRandom = new DeterministicRandom(seed);
+        this.progressReporter = progressReporter;
 
-        // Initialize specialized generators
-        this.heightMapGenerator = new HeightMapGenerator(seed);
-        this.biomeManager = new BiomeManager(seed);
-        this.biomeBlender = new BiomeBlender();
+        // Initialize specialized generators with injected configuration
+        this.heightMapGenerator = new HeightMapGenerator(seed, config);
+        this.biomeManager = new BiomeManager(seed, config);
+        this.biomeBlender = new BiomeBlender(config);
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
     }
 
     /**
-     * Generates terrain height for the specified world position.
-     * Delegates to HeightMapGenerator.
+     * Gets the biome manager for biome queries.
+     * Consumers can directly query biomes, temperature, and moisture.
      *
-     * @param x World X coordinate
-     * @param z World Z coordinate
-     * @return Terrain height at the given position
+     * @return The biome manager
      */
-    public int generateTerrainHeight(int x, int z) {
-        return heightMapGenerator.generateHeight(x, z);
+    public BiomeManager getBiomeManager() {
+        return biomeManager;
     }
 
     /**
-     * Gets the continentalness value at the specified world position.
-     * Delegates to HeightMapGenerator.
+     * Gets the height map generator for height queries.
+     * Consumers can directly query terrain height.
      *
-     * @param x World X coordinate
-     * @param z World Z coordinate
-     * @return Continentalness value in range [-1.0, 1.0]
+     * @return The height map generator
      */
-    public float getContinentalnessAt(int x, int z) {
-        return heightMapGenerator.getContinentalness(x, z);
-    }
-
-    /**
-     * Generates moisture value for determining biomes.
-     * Delegates to BiomeManager.
-     *
-     * @param x World X coordinate
-     * @param z World Z coordinate
-     * @return Moisture value in range [0.0, 1.0]
-     */
-    public float generateMoisture(int x, int z) {
-        return biomeManager.getMoisture(x, z);
-    }
-
-    /**
-     * Generates temperature value for determining biomes.
-     * Delegates to BiomeManager.
-     *
-     * @param x World X coordinate
-     * @param z World Z coordinate
-     * @return Temperature value in range [0.0, 1.0]
-     */
-    public float generateTemperature(int x, int z) {
-        return biomeManager.getTemperature(x, z);
-    }
-
-    /**
-     * Determines the biome type based on temperature and moisture values.
-     * Delegates to BiomeManager.
-     *
-     * @param x World X coordinate
-     * @param z World Z coordinate
-     * @return The biome type at the given position
-     */
-    public BiomeType getBiomeType(int x, int z) {
-        return biomeManager.getBiome(x, z);
+    public HeightMapGenerator getHeightMapGenerator() {
+        return heightMapGenerator;
     }
 
     /**
@@ -139,31 +127,13 @@ public class TerrainGenerationSystem {
     }
 
     /**
-     * Gets the random instance for animal spawning (truly random, not deterministic).
-     *
-     * @return Random instance for animal spawning
-     */
-    public Random getAnimalRandom() {
-        return animalRandom;
-    }
-
-    /**
-     * Gets the random lock for animal spawning synchronization.
-     *
-     * @return Object used as synchronization lock
-     */
-    public Object getAnimalRandomLock() {
-        return animalRandomLock;
-    }
-
-    /**
      * Updates loading progress during world generation.
+     * Delegates to the injected progress reporter.
+     *
+     * @param stageName Name of the current generation stage
      */
     private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
+        progressReporter.updateProgress(stageName);
     }
     
     /**
@@ -193,10 +163,11 @@ public class TerrainGenerationSystem {
                     updateLoadingProgress("Determining Biomes & Blending");
                 }
 
+                // Phase 1: Altitude-based temperature for realistic mountain snow
                 // Phase 3: Generate blended height for smooth biome transitions
-                // Architecture: Base Height (continentalness) + Biome Modifier + Blending
+                // Architecture: Base Height (continentalness) + Biome Modifier + Blending + Altitude Chill
                 int baseHeight = heightMapGenerator.generateHeight(worldX, worldZ);
-                BiomeBlendResult blendResult = biomeBlender.getBlendedBiome(biomeManager, worldX, worldZ);
+                BiomeBlendResult blendResult = biomeBlender.getBlendedBiomeAtHeight(biomeManager, worldX, worldZ, baseHeight);
                 int height = heightMapGenerator.generateBlendedHeight(baseHeight, blendResult, worldX, worldZ);
 
                 // Get dominant biome for block type determination
@@ -373,5 +344,110 @@ public class TerrainGenerationSystem {
         return world.hasChunkAt(chunkX + 1, chunkZ) &&      // East
                world.hasChunkAt(chunkX, chunkZ + 1) &&      // South
                world.hasChunkAt(chunkX + 1, chunkZ + 1);    // Southeast
+    }
+
+    // ========================================
+    // Public API - Terrain Query Methods
+    // ========================================
+    // These methods provide a unified interface for querying terrain properties.
+    // They delegate to the appropriate subsystem generators (BiomeManager, HeightMapGenerator).
+
+    /**
+     * Gets the continentalness value at the specified world position.
+     * Continentalness determines whether terrain is ocean, coast, or land.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Continentalness value in range [-1.0, 1.0]
+     */
+    public float getContinentalnessAt(int x, int z) {
+        return heightMapGenerator.getContinentalness(x, z);
+    }
+
+    /**
+     * Gets the biome type at the specified world position.
+     * Uses sea level for temperature calculation.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return The biome type at the given position
+     */
+    public BiomeType getBiomeType(int x, int z) {
+        return biomeManager.getBiome(x, z);
+    }
+
+    /**
+     * Gets the moisture value at the specified world position.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Moisture value in range [0.0, 1.0]
+     */
+    public float generateMoisture(int x, int z) {
+        return biomeManager.getMoisture(x, z);
+    }
+
+    /**
+     * Gets the temperature value at the specified world position.
+     * Uses sea level for temperature calculation.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Temperature value in range [0.0, 1.0]
+     */
+    public float generateTemperature(int x, int z) {
+        return biomeManager.getTemperature(x, z);
+    }
+
+    /**
+     * Gets the erosion noise value at the specified world position.
+     * Erosion adds subtle terrain variation (weathering effects).
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Erosion noise value in range approximately [-0.3, 0.3]
+     */
+    public float getErosionNoiseAt(int x, int z) {
+        return heightMapGenerator.getErosionNoiseValue(x, z);
+    }
+
+    /**
+     * Gets the base terrain height before biome modifiers and erosion.
+     * This is just the continentalness-based height.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Base terrain height (clamped to world bounds)
+     */
+    public int getBaseHeightBeforeErosion(int x, int z) {
+        return heightMapGenerator.getBaseHeightBeforeErosion(x, z);
+    }
+
+    /**
+     * Gets the terrain height with biome modifiers but before erosion.
+     * Useful for debugging to see erosion's effect.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Terrain height with biome modifier but before erosion
+     */
+    public int getHeightBeforeErosion(int x, int z) {
+        int baseHeight = heightMapGenerator.generateHeight(x, z);
+        BiomeType biome = biomeManager.getBiome(x, z);
+        return heightMapGenerator.applyBiomeModifier(baseHeight, biome, x, z);
+    }
+
+    /**
+     * Gets the actual final terrain height as used in world generation.
+     * This is the final height including biome modifiers and erosion.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Final terrain height used in generation
+     */
+    public int getFinalTerrainHeight(int x, int z) {
+        int baseHeight = heightMapGenerator.generateHeight(x, z);
+        BiomeBlendResult blendResult = biomeBlender.getBlendedBiomeAtHeight(biomeManager, x, z, baseHeight);
+        return heightMapGenerator.generateBlendedHeight(baseHeight, blendResult, x, z);
     }
 }

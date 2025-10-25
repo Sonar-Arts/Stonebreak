@@ -333,6 +333,38 @@ public class World {
     }
 
     /**
+     * Gets the erosion noise value at the specified world position.
+     * Phase 1: Erosion adds subtle terrain variation (weathering effects).
+     */
+    public float getErosionNoiseAt(int x, int z) {
+        return terrainSystem.getErosionNoiseAt(x, z);
+    }
+
+    /**
+     * Gets the base terrain height before biome modifiers and erosion.
+     * This is just the continentalness-based height.
+     */
+    public int getBaseHeight(int x, int z) {
+        return terrainSystem.getBaseHeightBeforeErosion(x, z);
+    }
+
+    /**
+     * Gets the terrain height with biome modifiers but before erosion.
+     * Useful for debugging to see erosion's effect.
+     */
+    public int getHeightBeforeErosion(int x, int z) {
+        return terrainSystem.getHeightBeforeErosion(x, z);
+    }
+
+    /**
+     * Gets the actual final terrain height as used in world generation.
+     * This is the final height including biome modifiers and erosion.
+     */
+    public int getFinalTerrainHeight(int x, int z) {
+        return terrainSystem.getFinalTerrainHeight(x, z);
+    }
+
+    /**
      * Gets a cached chunk position for coordinate lookup.
      */
     public ChunkPosition getCachedChunkPosition(int x, int z) {

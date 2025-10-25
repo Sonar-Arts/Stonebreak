@@ -1,6 +1,7 @@
 package com.stonebreak.world.generation.biomes;
 
 import com.stonebreak.world.generation.NoiseGenerator;
+import com.stonebreak.world.generation.config.NoiseConfigFactory;
 
 /**
  * Applies biome-specific height modifications to the base terrain heightmap.
@@ -10,6 +11,7 @@ import com.stonebreak.world.generation.NoiseGenerator;
  * distinct terrain characteristics for each biome (gentle plains, flat deserts,
  * rolling volcanic hills, snowy tundra hills, etc.).
  *
+ * Phase 1 Enhancement: Uses biomeDetail noise config for consistent terrain character.
  * Architecture follows industry-standard multi-noise layering pattern:
  *   Final Height = Base Height (continentalness) + Biome Modifier (this class)
  *
@@ -25,12 +27,13 @@ public class BiomeHeightModifier {
 
     /**
      * Creates a new biome height modifier with a dedicated noise generator.
+     * Uses biomeDetail noise config for appropriate biome-specific terrain variation.
      *
      * @param seed The world seed (offset by +3 for independent noise from other generators)
      */
     public BiomeHeightModifier(long seed) {
         // Use seed + 3 to ensure this noise is independent from moisture (seed) and temperature (seed + 1)
-        this.detailNoise = new NoiseGenerator(seed + 3);
+        this.detailNoise = new NoiseGenerator(seed + 3, NoiseConfigFactory.biomeDetail());
     }
 
     /**
@@ -57,19 +60,5 @@ public class BiomeHeightModifier {
         int heightDelta = (int) (noise * config.amplitude);
 
         return heightDelta;
-    }
-
-    /**
-     * Convenience method for logging/debugging: gets noise scale for a biome.
-     */
-    public static float getNoiseScale(BiomeType biome) {
-        return BiomeHeightConfig.getConfig(biome).noiseScale;
-    }
-
-    /**
-     * Convenience method for logging/debugging: gets amplitude for a biome.
-     */
-    public static float getAmplitude(BiomeType biome) {
-        return BiomeHeightConfig.getConfig(biome).amplitude;
     }
 }

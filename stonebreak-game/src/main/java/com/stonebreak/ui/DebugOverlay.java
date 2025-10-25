@@ -96,6 +96,12 @@ public class DebugOverlay {
         // Get continentalness value at player position
         float continentalness = world.getContinentalnessAt(x, z);
 
+        // Get terrain generation debug values (Phase 1)
+        float erosionNoise = world.getErosionNoiseAt(x, z);
+        int baseHeight = world.getBaseHeight(x, z);  // Continentalness only
+        int heightBeforeErosion = world.getHeightBeforeErosion(x, z);  // With biome modifiers
+        int finalHeight = world.getFinalTerrainHeight(x, z);  // With erosion
+
         // Calculate facing direction from camera's front vector
         Vector3f front = player.getCamera().getFront();
         String facing = getCardinalDirection(front);
@@ -112,6 +118,12 @@ public class DebugOverlay {
         debug.append(String.format("Temperature: %.3f\n", temperature));
         debug.append(String.format("Moisture: %.3f\n", moisture));
         debug.append(String.format("Continentalness: %.3f\n", continentalness));
+        debug.append("\n");
+        debug.append("─── Terrain Noise (Phase 1) ───\n");
+        debug.append(String.format("Erosion Noise: %.3f\n", erosionNoise));
+        debug.append(String.format("Base Height: %d (continentalness)\n", baseHeight));
+        debug.append(String.format("Before Erosion: %d (Δ%+d biome)\n", heightBeforeErosion, heightBeforeErosion - baseHeight));
+        debug.append(String.format("Final Height: %d (Δ%+d erosion)\n", finalHeight, finalHeight - heightBeforeErosion));
         debug.append("\n");
         debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
         debug.append(String.format("Memory: %d/%d MB\n", usedMemory, maxMemory));

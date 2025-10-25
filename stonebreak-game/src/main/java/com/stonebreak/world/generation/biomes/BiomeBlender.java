@@ -1,63 +1,56 @@
 package com.stonebreak.world.generation.biomes;
 
+import com.stonebreak.world.generation.config.TerrainGenerationConfig;
+
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Blends biomes using multi-sample weighted interpolation to create smooth transitions.
  *
- * Phase 3 of the biome enhancement system: eliminates harsh biome borders by sampling
- * multiple surrounding positions and blending their biome influences based on distance.
+ * Phase 1 Enhancement: Supports altitude-based temperature for realistic mountain snow.
+ * Phase 3 Enhancement: Eliminates harsh biome borders by sampling multiple surrounding positions
+ *                      and blending their biome influences based on distance.
  *
  * Algorithm:
- * 1. Sample biomes in a grid around the target position (default: 5x5 grid)
+ * 1. Sample biomes in a grid around the target position (configurable grid size)
  * 2. Calculate weight for each sample based on distance (inverse square falloff)
  * 3. Accumulate weights per biome type
  * 4. Normalize weights to sum to 1.0
  * 5. Return BiomeBlendResult with weighted biome influences
  *
- * Configuration:
- * - SAMPLE_RADIUS: Grid size for sampling (2 = 5x5 grid, 1 = 3x3 grid)
- * - SAMPLE_SPACING: Distance between samples in blocks (default: 8)
- * - BLEND_DISTANCE: Maximum distance for blending influence in grid units
- *
  * Performance:
  * - Default 5x5 grid = 25 biome lookups per position
  * - Can be reduced to 3x3 (9 lookups) for better performance
  * - Recommended: cache results per chunk column
+ *
+ * Follows Dependency Inversion Principle - configuration injected via constructor.
  */
 public class BiomeBlender {
 
-    /**
-     * Radius of the sampling grid.
-     * - 2 creates a 5x5 grid (25 samples)
-     * - 1 creates a 3x3 grid (9 samples)
-     */
-    private static final int SAMPLE_RADIUS = 2;
+    private final int sampleRadius;
+    private final int sampleSpacing;
+    private final float blendDistance;
+    private final float minWeightThreshold;
 
     /**
-     * Spacing between samples in world blocks.
-     * Larger values create broader transitions but may miss small biomes.
-     * Default: 8 blocks (good balance of smoothness and detail)
+     * Creates a biome blender with the specified configuration.
+     *
+     * @param config Terrain generation configuration
      */
-    private static final int SAMPLE_SPACING = 8;
+    public BiomeBlender(TerrainGenerationConfig config) {
+        this.sampleRadius = config.biomeBlendSampleRadius;
+        this.sampleSpacing = config.biomeBlendSampleSpacing;
+        this.blendDistance = config.biomeBlendDistance;
+        this.minWeightThreshold = config.biomeBlendMinWeightThreshold;
+    }
 
     /**
-     * Maximum distance for blending influence in grid units.
-     * Samples farther than this have zero weight.
-     * Default: 32.0 grid units
-     */
-    private static final float BLEND_DISTANCE = 32.0f;
-
-    /**
-     * Minimum weight threshold for including a biome in the result.
-     * Biomes with weight below this are excluded to reduce noise.
-     * Default: 0.01 (1% influence)
-     */
-    private static final float MIN_WEIGHT_THRESHOLD = 0.01f;
-
-    /**
-     * Calculates blended biome influences at a specific position.
+     * Calculates blended biome influences at a specific position and height.
+     *
+     * Phase 1: Uses height for altitude-based temperature calculation.
+     * Approximates all samples at the same height for performance
+     * (terrain doesn't vary dramatically within the 8-block sample spacing).
      *
      * Samples biomes in a grid around the position and computes weighted
      * influences based on distance. Returns a BiomeBlendResult containing
@@ -66,20 +59,22 @@ public class BiomeBlender {
      * @param biomeManager The biome manager for querying biomes
      * @param x            World X coordinate
      * @param z            World Z coordinate
+     * @param height       Terrain height at this position (affects temperature)
      * @return BiomeBlendResult with weighted biome influences
      */
-    public BiomeBlendResult getBlendedBiome(BiomeManager biomeManager, int x, int z) {
+    public BiomeBlendResult getBlendedBiomeAtHeight(BiomeManager biomeManager, int x, int z, int height) {
         Map<BiomeType, Float> biomeWeights = new HashMap<>();
 
         // Sample surrounding positions in a grid
-        for (int dx = -SAMPLE_RADIUS; dx <= SAMPLE_RADIUS; dx++) {
-            for (int dz = -SAMPLE_RADIUS; dz <= SAMPLE_RADIUS; dz++) {
+        for (int dx = -sampleRadius; dx <= sampleRadius; dx++) {
+            for (int dz = -sampleRadius; dz <= sampleRadius; dz++) {
                 // Calculate sample position
-                int sampleX = x + dx * SAMPLE_SPACING;
-                int sampleZ = z + dz * SAMPLE_SPACING;
+                int sampleX = x + dx * sampleSpacing;
+                int sampleZ = z + dz * sampleSpacing;
 
-                // Get biome at sample position
-                BiomeType biome = biomeManager.getBiome(sampleX, sampleZ);
+                // Get biome at sample position with altitude-adjusted temperature
+                // Use center point's height for all samples (reasonable approximation)
+                BiomeType biome = biomeManager.getBiomeAtHeight(sampleX, sampleZ, height);
 
                 // Calculate weight based on distance
                 float distance = (float) Math.sqrt(dx * dx + dz * dz);
@@ -96,7 +91,7 @@ public class BiomeBlender {
         normalizeWeights(biomeWeights);
 
         // Remove biomes with negligible influence
-        biomeWeights.entrySet().removeIf(entry -> entry.getValue() < MIN_WEIGHT_THRESHOLD);
+        biomeWeights.entrySet().removeIf(entry -> entry.getValue() < minWeightThreshold);
 
         return new BiomeBlendResult(biomeWeights);
     }
@@ -107,14 +102,14 @@ public class BiomeBlender {
      * Uses inverse square falloff: weight decreases with distance squared.
      * This creates smooth, natural-looking transitions.
      *
-     * Formula: weight = max(0, 1 - (distance / BLEND_DISTANCE))
+     * Formula: weight = max(0, 1 - (distance / blendDistance))
      *
      * @param distance Distance from target position in grid units
      * @return Weight in range [0.0, 1.0]
      */
     private float calculateWeight(float distance) {
         // Linear falloff (can be changed to other falloff functions)
-        float weight = Math.max(0, 1.0f - (distance / BLEND_DISTANCE));
+        float weight = Math.max(0, 1.0f - (distance / blendDistance));
 
         // Square the weight for smoother falloff (optional, can be removed for linear)
         // Squared falloff creates more distinct biome centers with gentler edges
@@ -146,35 +141,5 @@ public class BiomeBlender {
 
         // Normalize each weight
         biomeWeights.replaceAll((biome, weight) -> weight / totalWeight);
-    }
-
-    /**
-     * Gets the sample radius used for blending.
-     * Useful for debugging or visualization.
-     *
-     * @return Sample radius (grid cells from center)
-     */
-    public static int getSampleRadius() {
-        return SAMPLE_RADIUS;
-    }
-
-    /**
-     * Gets the sample spacing in world blocks.
-     * Useful for debugging or visualization.
-     *
-     * @return Sample spacing in blocks
-     */
-    public static int getSampleSpacing() {
-        return SAMPLE_SPACING;
-    }
-
-    /**
-     * Gets the blend distance.
-     * Useful for debugging or visualization.
-     *
-     * @return Blend distance in grid units
-     */
-    public static float getBlendDistance() {
-        return BLEND_DISTANCE;
     }
 }

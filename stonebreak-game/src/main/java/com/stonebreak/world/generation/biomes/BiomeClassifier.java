@@ -171,24 +171,4 @@ public class BiomeClassifier {
 
         return whittakerTable[tempIndex][moistureIndex];
     }
-
-    /**
-     * Gets the number of temperature divisions in the table.
-     * Useful for debugging or visualization tools.
-     *
-     * @return Number of temperature divisions
-     */
-    public int getTemperatureDivisions() {
-        return TEMP_DIVISIONS;
-    }
-
-    /**
-     * Gets the number of moisture divisions in the table.
-     * Useful for debugging or visualization tools.
-     *
-     * @return Number of moisture divisions
-     */
-    public int getMoistureDivisions() {
-        return MOISTURE_DIVISIONS;
-    }
 }
