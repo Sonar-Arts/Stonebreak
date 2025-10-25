@@ -3,6 +3,7 @@ package com.openmason.ui.components.textureCreator.panels;
 import com.openmason.ui.components.textureCreator.canvas.CanvasRenderer;
 import com.openmason.ui.components.textureCreator.canvas.CanvasState;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.commands.Command;
 import com.openmason.ui.components.textureCreator.commands.CommandHistory;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.commands.TranslateSelectionCommand;
@@ -110,19 +111,26 @@ public class CanvasPanel {
             cursorPos.y + centerOffsetY
         );
 
-        // Get selection preview bounds if using selection or move tool
+        // Get selection preview bounds if using selection tool
         int[] selectionPreviewBounds = null;
         if (currentTool instanceof RectangleSelectionTool) {
             RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
             selectionPreviewBounds = selectionTool.getSelectionPreviewBounds();
-        } else if (currentTool instanceof MoveTool) {
-            MoveTool moveTool = (MoveTool) currentTool;
-            selectionPreviewBounds = moveTool.getTranslationPreviewBounds();
         }
+        // Note: MoveTool now renders its own transform preview via transform handles
 
         // Render the display canvas (composited view) with opacity settings
         renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
                        currentSelection, selectionPreviewBounds);
+
+        // Render transform handles if using move tool with active selection
+        if (currentTool instanceof MoveTool && currentSelection != null && !currentSelection.isEmpty()) {
+            MoveTool moveTool = (MoveTool) currentTool;
+            imgui.ImDrawList drawList = imgui.ImGui.getWindowDrawList();
+            float canvasX = canvasRegionMin.x + canvasState.getPanOffsetX();
+            float canvasY = canvasRegionMin.y + canvasState.getPanOffsetY();
+            moveTool.renderTransformHandles(drawList, canvasX, canvasY, zoom);
+        }
 
         // Sync selection to canvas instances for constraint checking
         PixelCanvas targetCanvas = drawingCanvas != null ? drawingCanvas : displayCanvas;
@@ -157,11 +165,12 @@ public class CanvasPanel {
             return;
         }
 
-        // Get mouse position
+        // Get mouse position and keyboard state
         ImVec2 mousePos = ImGui.getMousePos();
         boolean leftMouseDown = ImGui.isMouseDown(0);   // Left button for drawing
         boolean middleMouseDown = ImGui.isMouseDown(2); // Middle button for panning
         float mouseWheel = ImGui.getIO().getMouseWheel();
+        boolean shiftHeld = ImGui.getIO().getKeyShift(); // Shift key for constrained operations
 
         // Handle zoom with mouse wheel
         if (mouseWheel != 0.0f) {
@@ -181,6 +190,29 @@ public class CanvasPanel {
             }
         } else if (canvasState.isPanning()) {
             canvasState.stopPanning();
+        }
+
+        // Update MoveTool with current selection, shift key state, and hovered handle
+        if (currentTool instanceof MoveTool && !canvasState.isPanning()) {
+            MoveTool moveTool = (MoveTool) currentTool;
+
+            // Update selection (generates handles if needed)
+            SelectionRegion activeSelection = canvas.getActiveSelection();
+            float zoom = canvasState.getZoomLevel();
+            moveTool.updateSelection(activeSelection, zoom);
+
+            moveTool.setShiftHeld(shiftHeld);
+
+            // Update hovered handle for cursor feedback
+            int[] canvasCoords = new int[2];
+            boolean validCoords = canvasState.screenToCanvasCoords(
+                mousePos.x, mousePos.y,
+                canvasRegionMin.x, canvasRegionMin.y,
+                canvasCoords
+            );
+            if (validCoords && canvas.isValidCoordinate(canvasCoords[0], canvasCoords[1])) {
+                moveTool.updateHoveredHandle(canvasCoords[0], canvasCoords[1]);
+            }
         }
 
         // Handle drawing with left mouse button
@@ -244,22 +276,22 @@ public class CanvasPanel {
             else if (currentTool instanceof MoveTool) {
                 MoveTool moveTool = (MoveTool) currentTool;
 
-                // Handle translation command
-                if (moveTool.wasTranslationPerformed()) {
-                    TranslateSelectionCommand translateCommand = moveTool.getTranslationCommand();
-                    if (translateCommand != null && commandHistory != null) {
-                        commandHistory.executeCommand(translateCommand);
-                        logger.debug("Executed translate command: {}", translateCommand.getDescription());
+                // Handle transform command (move, scale, stretch, or rotate)
+                if (moveTool.wasTransformPerformed()) {
+                    Command transformCommand = moveTool.getCompletedCommand();
+                    if (transformCommand != null && commandHistory != null) {
+                        commandHistory.executeCommand(transformCommand);
+                        logger.debug("Executed transform command: {}", transformCommand.getDescription());
                     }
 
-                    // Update selection to new position
+                    // Update selection to new position/size
                     SelectionRegion updatedSelection = moveTool.getUpdatedSelection();
                     if (updatedSelection != null && onSelectionCreatedCallback != null) {
                         onSelectionCreatedCallback.accept(updatedSelection);
-                        logger.debug("Selection moved to: {}", updatedSelection.getBounds());
+                        logger.debug("Selection transformed to: {}", updatedSelection.getBounds());
                     }
 
-                    moveTool.clearTranslationPerformedFlag();
+                    moveTool.clearTransformPerformedFlag();
                 }
             } else {
                 // Execute the command if it has changes (non-color-picker/selection tools)
