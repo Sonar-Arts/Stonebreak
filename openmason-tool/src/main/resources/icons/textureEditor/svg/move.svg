@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Four-directional move cursor icon -->
+
+  <!-- Vertical line -->
+  <line x1="16" y1="6" x2="16" y2="26" stroke="#3399FF" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Horizontal line -->
+  <line x1="6" y1="16" x2="26" y2="16" stroke="#3399FF" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Up arrow -->
+  <path d="M 16 6 L 12 10 M 16 6 L 20 10" stroke="#3399FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Down arrow -->
+  <path d="M 16 26 L 12 22 M 16 26 L 20 22" stroke="#3399FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Left arrow -->
+  <path d="M 6 16 L 10 12 M 6 16 L 10 20" stroke="#3399FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Right arrow -->
+  <path d="M 26 16 L 22 12 M 26 16 L 22 20" stroke="#3399FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Center dot for clarity -->
+  <circle cx="16" cy="16" r="3" fill="#3399FF" stroke="#FFFFFF" stroke-width="1"/>
+</svg>

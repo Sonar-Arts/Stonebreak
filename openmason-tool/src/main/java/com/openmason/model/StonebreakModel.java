@@ -17,7 +17,7 @@ import org.joml.Vector3f;
 /**
  * Integration bridge between Stonebreak game data and Open Mason UI.
  * Combines model definition and texture data into a unified interface
- * for the 3D model development tool.
+ * for the voxel game engine and development toolset.
  */
 public class StonebreakModel {
     private final ModelDefinition.CowModelDefinition modelDefinition;

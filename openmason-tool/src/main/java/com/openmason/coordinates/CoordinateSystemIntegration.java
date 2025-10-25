@@ -23,11 +23,7 @@ import org.joml.Vector3f;
 public class CoordinateSystemIntegration {
     
     // Cache for texture coordinate lookups
-    private static final java.util.Map<String, float[]> textureCoordinateCache = 
-        new java.util.concurrent.ConcurrentHashMap<>();
-    
-    // Cache for vertex data
-    private static final java.util.Map<String, float[]> vertexDataCache = 
+    private static final java.util.Map<String, float[]> textureCoordinateCache =
         new java.util.concurrent.ConcurrentHashMap<>();
     
     /**
@@ -297,182 +293,11 @@ public class CoordinateSystemIntegration {
     }
     
     /**
-     * Validate coordinate system integration compatibility.
-     * Tests that both coordinate systems work together correctly.
-     * 
-     * @return true if integration is working correctly, false otherwise
-     */
-    public static boolean validateIntegration() {
-        System.out.println("[CoordinateSystemIntegration] Validating coordinate system integration...");
-        
-        try {
-            // Test atlas coordinate system
-            boolean atlasValid = AtlasCoordinateSystem.runComprehensiveValidation();
-            System.out.println();
-            
-            // Test model coordinate system
-            boolean modelValid = ModelCoordinateSystem.runComprehensiveValidation();
-            System.out.println();
-            
-            // Test integration with actual model part
-            System.out.println("  Testing integration with sample model part...");
-            
-            ModelDefinition.ModelPart testPart = new ModelDefinition.ModelPart(
-                "test_head",
-                new ModelDefinition.Position(0.0f, 1.5f, 0.0f),
-                new ModelDefinition.Size(1.0f, 1.0f, 1.0f),
-                "cow_head"
-            );
-            
-            // Test integration with all variants
-            String[] variants = {"default", "angus", "highland", "jersey"};
-            int successfulIntegrations = 0;
-            
-            for (String variant : variants) {
-                IntegratedPartData integrated = generateIntegratedPartData(testPart, variant, true);
-                if (integrated != null && integrated.isValid()) {
-                    successfulIntegrations++;
-                    System.out.println("    ✓ " + variant + " variant integrated successfully");
-                } else {
-                    System.err.println("    ✗ " + variant + " variant integration failed");
-                }
-            }
-            
-            boolean integrationValid = successfulIntegrations == variants.length;
-            
-            boolean allValid = atlasValid && modelValid && integrationValid;
-            
-            System.out.println();
-            System.out.println("[CoordinateSystemIntegration] Integration validation " + 
-                (allValid ? "PASSED" : "FAILED"));
-            
-            if (allValid) {
-                System.out.println("  ✓ Atlas coordinate system validated");
-                System.out.println("  ✓ Model coordinate system validated");
-                System.out.println("  ✓ System integration working");
-                System.out.println("  ✓ All texture variants supported");
-                System.out.println("  ✓ 1:1 Stonebreak compatibility achieved");
-            }
-            
-            return allValid;
-            
-        } catch (Exception e) {
-            System.err.println("[CoordinateSystemIntegration] Integration validation failed: " + e.getMessage());
-            e.printStackTrace();
-            return false;
-        }
-    }
-    
-    /**
-     * Test integration with existing CowTextureLoader.
-     * Ensures compatibility with the existing texture system.
-     * 
-     * @return true if compatibility test passes, false otherwise
-     */
-    public static boolean testTextureAtlasCompatibility() {
-        System.out.println("[CoordinateSystemIntegration] Testing texture atlas compatibility...");
-        
-        try {
-            // Initialize texture atlas if not already done
-            // Texture system initialization is automatic
-            
-            // Test coordinate conversion compatibility
-            String[] variants = CowTextureLoader.getAvailableVariants();
-            String[] testFaces = {"HEAD_FRONT", "BODY_LEFT", "LEG_FRONT_LEFT_FRONT"};
-            
-            int totalTests = 0;
-            int passedTests = 0;
-            
-            for (String variant : variants) {
-                for (String faceName : testFaces) {
-                    totalTests++;
-                    
-                    // Get coordinates from existing system
-                    CowTextureDefinition.AtlasCoordinate atlasCoord = 
-                        CowTextureLoader.getAtlasCoordinate(variant, faceName);
-                    
-                    if (atlasCoord != null) {
-                        // Test conversion through new coordinate system
-                        AtlasCoordinateSystem.UVCoordinate uv = AtlasCoordinateSystem.gridToUV(
-                            atlasCoord.getAtlasX(), atlasCoord.getAtlasY());
-                        
-                        if (uv != null) {
-                            // Convert back to validate accuracy
-                            AtlasCoordinateSystem.AtlasCoordinate backToAtlas = 
-                                AtlasCoordinateSystem.uvToGrid(uv.getU(), uv.getV());
-                            
-                            if (backToAtlas != null && 
-                                backToAtlas.getAtlasX() == atlasCoord.getAtlasX() &&
-                                backToAtlas.getAtlasY() == atlasCoord.getAtlasY()) {
-                                passedTests++;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            boolean compatibilityTest = passedTests == totalTests;
-            
-            System.out.println("  Compatibility test results: " + passedTests + "/" + totalTests + " passed");
-            
-            if (compatibilityTest) {
-                System.out.println("  ✓ Texture atlas compatibility confirmed");
-            } else {
-                System.err.println("  ✗ Texture atlas compatibility test failed");
-            }
-            
-            return compatibilityTest;
-            
-        } catch (Exception e) {
-            System.err.println("[CoordinateSystemIntegration] Texture atlas compatibility test failed: " + e.getMessage());
-            return false;
-        }
-    }
-    
-    /**
      * Clear all coordinate system caches.
      * Call this when texture definitions or models are reloaded.
      */
     public static void clearCaches() {
         textureCoordinateCache.clear();
-        vertexDataCache.clear();
         System.out.println("[CoordinateSystemIntegration] All coordinate caches cleared");
-    }
-    
-    /**
-     * Get cache statistics for performance monitoring.
-     * 
-     * @return String with cache statistics
-     */
-    public static String getCacheStatistics() {
-        return String.format(
-            "[CoordinateSystemIntegration] Cache Statistics:\n" +
-            "  Texture Coordinates: %d entries\n" +
-            "  Vertex Data: %d entries\n" +
-            "  Total Memory Usage: ~%d KB",
-            textureCoordinateCache.size(),
-            vertexDataCache.size(),
-            (textureCoordinateCache.size() * 48 + vertexDataCache.size() * 72) * 4 / 1024
-        );
-    }
-    
-    /**
-     * Get integration system information for debugging.
-     * 
-     * @return String with comprehensive system information
-     */
-    public static String getSystemInfo() {
-        return String.format(
-            "CoordinateSystemIntegration {\n" +
-            "  Atlas System: %s\n" +
-            "  Model System: %s\n" +
-            "  Caching: Enabled\n" +
-            "  Compatibility: Stonebreak 1:1\n" +
-            "  %s\n" +
-            "}",
-            AtlasCoordinateSystem.getSystemInfo().replace("\n", "\n  "),
-            ModelCoordinateSystem.getSystemInfo().replace("\n", "\n  "),
-            getCacheStatistics().replace("\n", "\n  ")
-        );
     }
 }

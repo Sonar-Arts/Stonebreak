@@ -45,6 +45,9 @@ public class ResourceManager {
         shaderProgram.createUniform("u_cameraPos");
         shaderProgram.createUniform("u_underwaterFogDensity");
         shaderProgram.createUniform("u_underwaterFogColor");
+        shaderProgram.createUniform("u_ambientLight");
+        shaderProgram.createUniform("u_sunDirection");
+        shaderProgram.createUniform("u_viewPos");
     }
     
     private String getVertexShaderSource() {
@@ -75,7 +78,8 @@ public class ResourceManager {
                    vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                    vec3 pos = position;
                    // Apply GPU-side water surface displacement to avoid remeshing for waves
-                   if (waterHeight > 0.0 && !u_isUIElement && u_waterAnimationEnabled) {
+                   // Use threshold of 0.01 to distinguish actual water from epsilon flags
+                   if (waterHeight > 0.01 && !u_isUIElement && u_waterAnimationEnabled) {
                        const float MIN_WATER_SURFACE = 0.125;
                        const float MAX_WAVE_DELTA = 0.18;
                        // World-space wave using simple, seamless functions
@@ -114,8 +118,12 @@ public class ResourceManager {
 
                    // Apply depth offset for water blocks to prevent z-fighting
                    vec4 clipPos = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
-                   if (waterHeight > 0.0 && u_waterDepthOffset != 0.0) {
+                   if (waterHeight > 0.01 && u_waterDepthOffset != 0.0) {
                        clipPos.z += u_waterDepthOffset * clipPos.w;
+                   }
+                   if (isAlphaTested > 0.5 && !u_isUIElement) {
+                       const float ALPHA_DEPTH_OFFSET = -0.0006;
+                       clipPos.z += ALPHA_DEPTH_OFFSET * clipPos.w;
                    }
                    gl_Position = clipPos;
                    if (u_transformUVsForItem) {
@@ -148,6 +156,9 @@ public class ResourceManager {
                uniform vec3 u_cameraPos;
                uniform float u_underwaterFogDensity;
                uniform vec3 u_underwaterFogColor;
+               uniform float u_ambientLight;
+               uniform vec3 u_sunDirection;
+               uniform vec3 u_viewPos;
                void main() {
                    if (u_isText) {
                        float alpha = texture(texture_sampler, outTexCoord).a;
@@ -155,27 +166,77 @@ public class ResourceManager {
                    } else if (u_useSolidColor) {
                        fragColor = u_color;
                    } else {
-                       vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
-                       float ambient = u_isUIElement ? 0.8 : 0.3;
-                       float diffuse = max(dot(outNormal, lightDir), 0.0);
-                       float brightness = u_isUIElement ? 0.8 : (ambient + diffuse * 0.7);
                        vec4 textureColor = texture(texture_sampler, outTexCoord);
                        float sampledAlpha = textureColor.a;
+
+                       // UI elements get simple flat lighting
+                       if (u_isUIElement) {
+                           float brightness = 0.9;
+
+                           if (v_isAlphaTested > 0.5) {
+                               if (sampledAlpha < 0.1) discard;
+                               fragColor = vec4(textureColor.rgb * brightness, 1.0);
+                           } else if (v_waterHeight > 0.0) {
+                               if (u_renderPass == 0) discard;
+                               else fragColor = vec4(textureColor.rgb * brightness, sampledAlpha);
+                           } else {
+                               if (u_renderPass == 0) fragColor = vec4(textureColor.rgb * brightness, 1.0);
+                               else discard;
+                           }
+                           return;
+                       }
+
+                       // --- Phong Lighting Model for World Objects ---
+                       vec3 norm = normalize(outNormal);
+                       vec3 lightDir = normalize(u_sunDirection);
+                       vec3 viewDir = normalize(u_viewPos - fragPos);
+
+                       // Ambient component (base lighting from sky/environment)
+                       float ambientStrength = u_ambientLight * 0.4; // Scale down ambient
+                       vec3 ambient = ambientStrength * textureColor.rgb;
+
+                       // Diffuse component (directional sunlight)
+                       float diff = max(dot(norm, lightDir), 0.0);
+                       // Only apply full diffuse during daytime
+                       float diffuseStrength = 0.6 * u_ambientLight;
+                       vec3 diffuse = diff * diffuseStrength * textureColor.rgb;
+
+                       // Specular component (shiny highlights)
+                       float specularStrength = 0.3;
+                       vec3 halfwayDir = normalize(lightDir + viewDir);
+                       float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
+                       // Only water and ice get strong specular
+                       float specularIntensity = (v_waterHeight > 0.0) ? 0.5 : 0.1;
+                       vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * vec3(1.0);
+
+                       // Combine lighting components
+                       vec3 result = ambient + diffuse + specular;
+
+                       // Ensure minimum visibility even at night
+                       result = max(result, textureColor.rgb * 0.15);
 
                        if (v_isAlphaTested > 0.5) {
                            if (sampledAlpha < 0.1) {
                                discard;
                            }
-                           fragColor = vec4(textureColor.rgb * brightness, 1.0);
-                       } else if (v_waterHeight > 0.0) {
+                           // Always render alpha-tested blocks in opaque pass, discard in transparent
+                           if (u_renderPass == 0) {
+                               fragColor = vec4(result, 1.0);
+                           } else {
+                               discard;
+                           }
+                       } else if (v_waterHeight > 0.01) {
+                           // Water blocks are rendered in transparent pass only
+                           // Use threshold of 0.01 to distinguish actual water from epsilon flags
                            if (u_renderPass == 0) {
                                discard;
                            } else {
-                               fragColor = vec4(textureColor.rgb * brightness, sampledAlpha);
+                               fragColor = vec4(result, sampledAlpha);
                            }
                        } else {
+                           // Regular opaque blocks are rendered in opaque pass only
                            if (u_renderPass == 0) {
-                               fragColor = vec4(textureColor.rgb * brightness, 1.0);
+                               fragColor = vec4(result, 1.0);
                            } else {
                                discard;
                            }

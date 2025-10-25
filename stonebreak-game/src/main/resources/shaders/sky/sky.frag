@@ -6,6 +6,7 @@ in vec3 cameraPos;
 
 uniform float time;
 uniform vec3 sunDirection;
+uniform vec3 skyColor; // Base sky color from TimeOfDay system
 
 out vec4 FragColor;
 
@@ -41,19 +42,20 @@ float fbm(vec2 p) {
     return value;
 }
 
-vec3 getSkyColor(vec3 direction) {
+vec3 getTimedSkyColor(vec3 direction) {
     // Use full range of elevation (-1 to 1) for smoother transitions
     float elevation = direction.y;
-    
-    // Colors for different sky regions
-    vec3 horizonColor = vec3(0.8, 0.9, 1.0);   // Very light blue at horizon
-    vec3 zenithColor = vec3(0.4, 0.7, 1.0);    // Deeper blue at zenith  
-    vec3 groundColor = vec3(0.6, 0.8, 0.9);    // Lighter blue below horizon
-    
+
+    // Use skyColor uniform as base, then create gradient variants
+    // Horizon is brighter, zenith is the base color, ground is slightly darker
+    vec3 horizonColor = skyColor * 1.2;          // 20% brighter at horizon
+    vec3 zenithColor = skyColor;                 // Base color at zenith
+    vec3 groundColor = skyColor * 0.8;           // 20% darker below horizon
+
     // Add distance-based fading to reduce hard edges
     float horizontalDistance = length(vec2(direction.x, direction.z));
     float edgeFade = 1.0 - smoothstep(0.85, 0.98, horizontalDistance);
-    
+
     // Smooth transitions with enhanced horizon blending
     float t;
     if (elevation >= 0.0) {
@@ -149,18 +151,18 @@ vec3 getCloudContribution(vec3 direction) {
 
 void main() {
     vec3 direction = normalize(viewDirection);
-    
-    // Get base sky color
-    vec3 skyColor = getSkyColor(direction);
+
+    // Get base sky color (using time-based color from uniform)
+    vec3 baseSkyColor = getTimedSkyColor(direction);
     
     // Add sun contribution
     vec3 sunContribution = getSunContribution(direction);
     
     // Add cloud contribution
     vec3 cloudContribution = getCloudContribution(direction);
-    
+
     // Combine all contributions
-    vec3 finalColor = skyColor + sunContribution;
+    vec3 finalColor = baseSkyColor + sunContribution;
     
     // Blend clouds on top with proper alpha compositing
     finalColor = mix(finalColor, cloudContribution, min(1.0, length(cloudContribution)));

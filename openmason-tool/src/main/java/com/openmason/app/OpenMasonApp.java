@@ -7,6 +7,10 @@ import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.ViewportImGuiInterface;
+import com.openmason.ui.WelcomeScreenImGui;
+import com.openmason.ui.ToolCard;
+import com.openmason.ui.themes.core.ThemeManager;
+import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
@@ -24,13 +28,13 @@ import static org.lwjgl.system.MemoryUtil.NULL;
 
 /**
  * Main Dear ImGui application class for OpenMason tool.
- * Provides professional 3D model development environment with 1:1 rendering parity to Stonebreak.
+ * Provides professional voxel game engine and development toolset with 1:1 rendering parity to Stonebreak.
  */
 public class OpenMasonApp {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(OpenMasonApp.class);
-    
-    private static final String APP_TITLE = "OpenMason - Professional 3D Model Development Tool";
+
+    private static final String APP_TITLE = "OpenMason - Voxel Game Engine & Toolset";
     private static final int MIN_WIDTH = 1200;
     private static final int MIN_HEIGHT = 800;
     private static final int DEFAULT_WIDTH = 1600;
@@ -48,10 +52,14 @@ public class OpenMasonApp {
     private AppLifecycle appLifecycle;
     
     // UI Interfaces
+    private ThemeManager themeManager;
+    private WelcomeScreenImGui welcomeScreen;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
-    
+    private TextureCreatorImGui textureCreatorInterface;
+
     // Application state
+    private ApplicationState currentState = ApplicationState.WELCOME_SCREEN;
     private boolean shouldClose = false;
     private boolean shouldApplyDefaultLayout = false;
     private boolean imguiInitialized = false;
@@ -132,20 +140,27 @@ public class OpenMasonApp {
         // Get window size from config
         int width = appConfig.getLastWindowWidth();
         int height = appConfig.getLastWindowHeight();
-        
+
+        // Validate dimensions - use defaults if invalid
+        if (width <= 0 || height <= 0) {
+            logger.warn("Invalid window dimensions from config: {}x{}, using defaults", width, height);
+            width = DEFAULT_WIDTH;
+            height = DEFAULT_HEIGHT;
+        }
+
         logger.info("Attempting to create GLFW window with dimensions: {}x{}", width, height);
-        
+
         // Create window
         window = glfwCreateWindow(width, height, APP_TITLE, NULL, NULL);
         if (window == NULL) {
             logger.error("Failed to create GLFW window with dimensions {}x{}, trying default size", width, height);
-            
+
             // Try with default dimensions as fallback
             window = glfwCreateWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, APP_TITLE, NULL, NULL);
             if (window == NULL) {
                 throw new RuntimeException("Failed to create GLFW window even with default dimensions " + DEFAULT_WIDTH + "x" + DEFAULT_HEIGHT);
             }
-            
+
             logger.info("Successfully created GLFW window with default dimensions: {}x{}", DEFAULT_WIDTH, DEFAULT_HEIGHT);
         } else {
             logger.info("Successfully created GLFW window with dimensions: {}x{}", width, height);
@@ -230,29 +245,70 @@ public class OpenMasonApp {
      */
     private void initializeImGui() {
         // logger.debug("Initializing Dear ImGui...");
-        
+
         // Initialize ImGui context
         ImGui.createContext();
-        
+
         // Configure ImGui IO
         ImGuiIO io = ImGui.getIO();
         setupImGuiLayout(io);
         io.addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);  // Enable keyboard navigation
         io.addConfigFlags(ImGuiConfigFlags.DockingEnable);      // Enable docking
         io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);    // Enable viewports
-        
-        // Setup Dear ImGui style (dark theme to match original)
-        if (appConfig.isDarkThemeEnabled()) {
-            ImGui.styleColorsDark();
-        } else {
-            ImGui.styleColorsLight();
-        }
-        
+
+        // Load JetBrains Mono font
+        loadCustomFonts(io);
+
         // Initialize platform/renderer bindings
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
-        
+
         // logger.debug("Dear ImGui initialized successfully");
+    }
+
+    /**
+     * Load custom fonts for the application (JetBrains Mono).
+     */
+    private void loadCustomFonts(ImGuiIO io) {
+        try {
+            // Define font paths (module-specific to avoid conflicts with stonebreak-game)
+            String fontPath = "openmason-tool/src/main/resources/masonFonts/";
+            String regularFont = fontPath + "JetBrainsMono-Regular.ttf";
+            String boldFont = fontPath + "JetBrainsMono-Bold.ttf";
+            String mediumFont = fontPath + "JetBrainsMono-Medium.ttf";
+
+            // Font configuration
+            float fontSize = 16.0f;
+
+            // Load default UI font (Regular)
+            java.io.File regularFontFile = new java.io.File(regularFont);
+            if (regularFontFile.exists()) {
+                io.getFonts().addFontFromFileTTF(regularFont, fontSize);
+                logger.info("Loaded JetBrains Mono Regular font ({}px)", fontSize);
+            } else {
+                logger.warn("JetBrains Mono Regular font not found at: {}", regularFont);
+            }
+
+            // Load bold variant for headings (optional - can be accessed programmatically)
+            java.io.File boldFontFile = new java.io.File(boldFont);
+            if (boldFontFile.exists()) {
+                io.getFonts().addFontFromFileTTF(boldFont, fontSize);
+                logger.info("Loaded JetBrains Mono Bold font ({}px)", fontSize);
+            }
+
+            // Load medium variant (optional)
+            java.io.File mediumFontFile = new java.io.File(mediumFont);
+            if (mediumFontFile.exists()) {
+                io.getFonts().addFontFromFileTTF(mediumFont, fontSize);
+                logger.info("Loaded JetBrains Mono Medium font ({}px)", fontSize);
+            }
+
+            // Build font atlas
+            io.getFonts().build();
+
+        } catch (Exception e) {
+            logger.error("Failed to load custom fonts, using ImGui default font", e);
+        }
     }
     
     /**
@@ -303,15 +359,28 @@ public class OpenMasonApp {
      */
     private void initializeUI() {
         // logger.debug("Initializing UI interfaces...");
-        
+
         try {
-            // Initialize main interface
-            mainInterface = new MainImGuiInterface();
-            
+            // Create ThemeManager instance (dependency injection)
+            themeManager = new ThemeManager();
+
+            // Initialize theme system for ImGui
+            themeManager.initializeForImGui();
+
+            // Initialize welcome screen with theme manager
+            welcomeScreen = new WelcomeScreenImGui(themeManager);
+            setupWelcomeScreenTools();
+
+            // Initialize main interface with theme manager
+            mainInterface = new MainImGuiInterface(themeManager);
+
             // Initialize viewport interface and inject the shared viewport
             viewportInterface = new ViewportImGuiInterface();
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
-            
+
+            // Initialize texture creator interface
+            textureCreatorInterface = new TextureCreatorImGui();
+
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
                 viewportInterface.setWindowHandle(window);
@@ -319,7 +388,7 @@ public class OpenMasonApp {
             } else {
                 logger.error("Cannot set window handle - window not created");
             }
-            
+
             // logger.debug("UI interfaces initialized successfully");
         } catch (Exception e) {
             logger.error("Failed to initialize UI interfaces", e);
@@ -333,28 +402,106 @@ public class OpenMasonApp {
     private void renderUI() {
         // Calculate delta time for animations
         float deltaTime = ImGui.getIO().getDeltaTime();
-        
-        // Render main interface
-        if (mainInterface != null) {
-            try {
-                mainInterface.render();
-                mainInterface.update(deltaTime);
-            } catch (Exception e) {
-                logger.error("Error rendering main interface", e);
+
+        // Render based on application state
+        if (currentState.isWelcomeScreen()) {
+            // Render welcome screen
+            if (welcomeScreen != null) {
+                try {
+                    welcomeScreen.render();
+                    welcomeScreen.update(deltaTime);
+
+                    // Check if welcome screen should close (user clicked X)
+                    if (welcomeScreen.shouldClose()) {
+                        shouldClose = true;
+                    }
+                } catch (Exception e) {
+                    logger.error("Error rendering welcome screen", e);
+                }
             }
-        }
-        
-        // Render viewport interface
-        if (viewportInterface != null) {
-            try {
-                viewportInterface.render();
-                viewportInterface.update(deltaTime);
-            } catch (Exception e) {
-                logger.error("Error rendering viewport interface", e);
+        } else if (currentState.isMainInterface()) {
+            // Render main interface
+            if (mainInterface != null) {
+                try {
+                    mainInterface.render();
+                    mainInterface.update(deltaTime);
+                } catch (Exception e) {
+                    logger.error("Error rendering main interface", e);
+                }
+            }
+
+            // Render viewport interface
+            if (viewportInterface != null) {
+                try {
+                    viewportInterface.render();
+                    viewportInterface.update(deltaTime);
+                } catch (Exception e) {
+                    logger.error("Error rendering viewport interface", e);
+                }
+            }
+        } else if (currentState.isTextureCreator()) {
+            // Render texture creator interface
+            if (textureCreatorInterface != null) {
+                try {
+                    textureCreatorInterface.render();
+                    textureCreatorInterface.update(deltaTime);
+                } catch (Exception e) {
+                    logger.error("Error rendering texture creator interface", e);
+                }
             }
         }
     }
     
+    /**
+     * Setup tool cards for the welcome screen.
+     */
+    private void setupWelcomeScreenTools() {
+        // 3D Model Viewer
+        ToolCard modelViewerTool = new ToolCard(
+            "3D Model Viewer",
+            "View and inspect 3D voxel models with professional viewport controls and real-time rendering.",
+            this::transitionToMainInterface
+        );
+        welcomeScreen.addToolCard(modelViewerTool);
+
+        // Future tools (placeholders)
+        welcomeScreen.addToolCard(ToolCard.comingSoon(
+            "Placeholder 1",
+            "Additional tool coming soon."
+        ));
+
+        // Texture Creator (Placeholder #2)
+        ToolCard textureCreatorTool = new ToolCard(
+            "Texture Creator",
+            "Create and edit 16x16 block/item textures and 64x48 block cross textures with layer support and PNG export.",
+            this::transitionToTextureCreator
+        );
+        welcomeScreen.addToolCard(textureCreatorTool);
+
+        welcomeScreen.addToolCard(ToolCard.comingSoon(
+            "Placeholder 3",
+            "Additional tool coming soon."
+        ));
+    }
+
+    /**
+     * Transition from welcome screen to main interface.
+     */
+    private void transitionToMainInterface() {
+        logger.info("Transitioning to main interface");
+        currentState = ApplicationState.MAIN_INTERFACE;
+        shouldApplyDefaultLayout = true;
+    }
+
+    /**
+     * Transition from welcome screen to texture creator.
+     */
+    private void transitionToTextureCreator() {
+        logger.info("Transitioning to texture creator");
+        currentState = ApplicationState.TEXTURE_CREATOR;
+        // Note: Texture creator uses its own layout, no need for default docking layout
+    }
+
     /**
      * Cleanup application resources.
      */
@@ -366,12 +513,32 @@ public class OpenMasonApp {
             if (openglContextCreated && window != NULL) {
                 // CRITICAL: Ensure OpenGL context is current before any OpenGL cleanup
                 glfwMakeContextCurrent(window);
-                
-                // Cleanup UI interfaces first (while OpenGL context is still valid)
+
+                // Cleanup CBR resource manager FIRST (if initialized)
+                // This must happen on the OpenGL thread to avoid "No context is current" errors
+                try {
+                    if (com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.isInitialized()) {
+                        com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.getInstance().close();
+                        logger.info("CBRResourceManager cleaned up successfully");
+                    }
+                } catch (Exception e) {
+                    logger.error("Error cleaning up CBRResourceManager", e);
+                }
+
+                // Cleanup UI interfaces (while OpenGL context is still valid)
                 if (viewportInterface != null) {
                     viewportInterface.dispose();
                 }
-                
+
+                if (textureCreatorInterface != null) {
+                    textureCreatorInterface.dispose();
+                }
+
+                // Cleanup theme manager
+                if (themeManager != null) {
+                    themeManager.dispose();
+                }
+
                 // Cleanup ImGui OpenGL resources (while context is still valid)
                 if (imguiInitialized) {
                     if (imGuiGl3 != null) {
@@ -385,6 +552,11 @@ public class OpenMasonApp {
             } else {
                 // If no OpenGL context, only cleanup non-OpenGL ImGui resources
                 if (imguiInitialized) {
+                    // Cleanup theme manager
+                    if (themeManager != null) {
+                        themeManager.dispose();
+                    }
+
                     if (imGuiGlfw != null) {
                         imGuiGlfw.dispose();
                     }
@@ -508,11 +680,6 @@ public class OpenMasonApp {
      * Main method - application entry point.
      */
     public static void main(String[] args) {
-        // Check for validation test argument
-        if (args.length > 0 && "--validate".equals(args[0])) {
-            runValidationTest();
-            return;
-        }
         
         // logger.info("Launching OpenMason with args: {}", String.join(" ", args));
         
@@ -527,16 +694,5 @@ public class OpenMasonApp {
         }
     }
     
-    /**
-     * Run validation test for Stonebreak integration
-     */
-    private static void runValidationTest() {
-        try {
-            com.openmason.test.SimpleValidationTest.runValidation();
-        } catch (Exception e) {
-            System.err.println("Validation test failed: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
+
 }

@@ -27,6 +27,7 @@ import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.TextureAtlas;
 import com.stonebreak.rendering.gameWorld.sky.SkyRenderer;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.World;
 
 /**
@@ -68,12 +69,20 @@ public class WorldRenderer {
      * Renders the 3D world including chunks, entities, and world effects.
      */
     public void renderWorld(World world, Player player, float totalTime) {
+        // Debug: Log first call
+        if (debugRenderWorldCount < 1) {
+            System.out.println("[WorldRenderer.renderWorld] Called! world=" + (world != null) + " player=" + (player != null));
+            debugRenderWorldCount++;
+        }
+
         // Clear any pending OpenGL errors from previous operations
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
-        
+
+        // Get time of day system for lighting
+        com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
         // Render sky first (before world geometry for proper depth testing)
-        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime);
+        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, timeOfDay);
         checkGLError("After sky rendering");
         
         // Ensure proper depth function for world geometry
@@ -102,7 +111,13 @@ public class WorldRenderer {
         checkGLError("After updateAnimatedWater");
         
         // Get visible chunks
-        Map<World.ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
+        Map<ChunkPosition, Chunk> visibleChunks = getVisibleChunks(world, player);
+
+        // Debug: Log chunk count
+        if (debugVisibleChunksCount < 1) {
+            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks");
+            debugVisibleChunksCount++;
+        }
 
         // Render opaque pass
         renderOpaquePass(visibleChunks);
@@ -161,6 +176,21 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_useSolidColor", false); // World objects are textured
         shaderProgram.setUniform("u_isText", false);        // World objects are not text
         shaderProgram.setUniform("u_isUIElement", false);   // World objects are not UI elements
+        shaderProgram.setUniform("u_transformUVsForItem", false); // Chunks use atlas UVs directly
+
+        // Set lighting uniforms from TimeOfDay system
+        com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
+        if (timeOfDay != null) {
+            shaderProgram.setUniform("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shaderProgram.setUniform("u_sunDirection", timeOfDay.getSunDirection());
+        } else {
+            // Fallback to default lighting if TimeOfDay not initialized
+            shaderProgram.setUniform("u_ambientLight", 1.0f);
+            shaderProgram.setUniform("u_sunDirection", new Vector3f(0.5f, 1.0f, 0.3f).normalize());
+        }
+
+        // Set view position for specular lighting calculations
+        shaderProgram.setUniform("u_viewPos", player.getCamera().getPosition());
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
@@ -190,30 +220,38 @@ public class WorldRenderer {
     /**
      * Get visible chunks around the player.
      */
-    private Map<World.ChunkPosition, Chunk> getVisibleChunks(World world, Player player) {
+    private Map<ChunkPosition, Chunk> getVisibleChunks(World world, Player player) {
         int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         return world.getChunksAroundPlayer(playerChunkX, playerChunkZ);
     }
-    
+
     /**
      * Render opaque pass (non-water parts of chunks).
      */
-    private void renderOpaquePass(Map<World.ChunkPosition, Chunk> visibleChunks) {
+    private void renderOpaquePass(Map<ChunkPosition, Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         shaderProgram.setUniform("u_waterDepthOffset", 0.0f); // No depth offset for opaque pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
 
+        // Debug: Log first time
+        if (debugOpaquePassCount < 1) {
+            System.out.println("[WorldRenderer.renderOpaquePass] Rendering " + visibleChunks.size() + " chunks");
+            debugOpaquePassCount++;
+        }
+
         for (Chunk chunk : visibleChunks.values()) {
             chunk.render(); // Shader will discard water fragments
         }
     }
-    
+
+    private static int debugOpaquePassCount = 0;
+
     /**
      * Render transparent pass (water parts of chunks).
      */
-    private void renderTransparentPass(Map<World.ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void renderTransparentPass(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent/water pass
         shaderProgram.setUniform("u_waterDepthOffset", -0.0001f); // Negative offset to pull water slightly closer
         glDepthMask(false); // Disable depth writing for transparent objects
@@ -231,7 +269,7 @@ public class WorldRenderer {
     /**
      * Sort chunks from back to front for proper transparent rendering.
      */
-    private void sortChunksBackToFront(Map<World.ChunkPosition, Chunk> visibleChunks, Player player) {
+    private void sortChunksBackToFront(Map<ChunkPosition, Chunk> visibleChunks, Player player) {
         reusableSortedChunks.clear();
         reusableSortedChunks.addAll(visibleChunks.values());
         Vector3f playerPos = player.getPosition();
@@ -399,6 +437,9 @@ public class WorldRenderer {
         }
     }
     
+    private static int debugRenderWorldCount = 0;
+    private static int debugVisibleChunksCount = 0;
+
     /**
      * Checks for OpenGL errors and logs them with context information.
      */

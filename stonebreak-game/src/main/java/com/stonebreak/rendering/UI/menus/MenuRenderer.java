@@ -617,12 +617,594 @@ public class MenuRenderer extends BaseRenderer {
         try (MemoryStack stack = stackPush()) {
             float x = centerX - width / 2.0f;
             float lineHeight = 1.5f;
-            
+
             // Draw the separator line with a subtle color
             nvgBeginPath(vg);
             nvgRect(vg, x, y, width, lineHeight);
             nvgFillColor(vg, nvgRGBA(150, 150, 150, 100, NVGColor.malloc(stack)));
             nvgFill(vg);
         }
+    }
+
+    /**
+     * Renders the world selection screen with scrollable world list and UI elements.
+     */
+    public void renderWorldSelectScreen(int width, int height, java.util.List<String> worldList, int selectedIndex,
+                                       boolean showCreateDialog, int scrollOffset, int visibleItems, boolean createButtonSelected) {
+        float centerX = width / 2.0f;
+        float centerY = height / 2.0f;
+
+        // Draw three-section background
+        drawTriSectionBackground(width, height);
+
+        // Calculate panel dimensions
+        float panelWidth = Math.min(600, width * 0.8f);
+        float panelHeight = Math.min(500, height * 0.8f);
+        float panelX = centerX - panelWidth / 2;
+        float panelY = centerY - panelHeight / 2;
+
+        // Draw main panel
+        drawMinecraftPanel(panelX, panelY, panelWidth, panelHeight);
+
+        // Draw title
+        float titleY = panelY + 40;
+        drawSettingsTitle(centerX, titleY, "SELECT WORLD");
+
+        // Calculate world list area
+        float listStartY = titleY + 60;
+        float listHeight = panelHeight - 160; // Leave space for title and buttons
+        float itemHeight = 40;
+
+        // Draw world list
+        if (!worldList.isEmpty()) {
+            for (int i = 0; i < Math.min(visibleItems, worldList.size()); i++) {
+                int worldIndex = i + scrollOffset;
+                if (worldIndex >= worldList.size()) break;
+
+                String worldName = worldList.get(worldIndex);
+                float itemY = listStartY + i * itemHeight;
+                boolean isSelected = worldIndex == selectedIndex;
+
+                // Draw world item background
+                try (MemoryStack stack = stackPush()) {
+                    if (isSelected) {
+                        nvgBeginPath(vg);
+                        nvgRect(vg, panelX + 10, itemY, panelWidth - 20, itemHeight - 2);
+                        nvgFillColor(vg, nvgRGBA(100, 100, 120, 200, NVGColor.malloc(stack)));
+                        nvgFill(vg);
+                    }
+
+                    // Draw world name
+                    nvgFontSize(vg, 18);
+                    nvgFontFace(vg, getFontName());
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                    nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+                    nvgText(vg, panelX + 20, itemY + itemHeight / 2, worldName);
+                }
+            }
+        } else {
+            // No worlds message
+            try (MemoryStack stack = stackPush()) {
+                nvgFontSize(vg, 16);
+                nvgFontFace(vg, getFontName());
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+                nvgText(vg, centerX, listStartY + listHeight / 2, "No worlds found. Create a new world to get started!");
+            }
+        }
+
+        // Draw buttons at bottom
+        float buttonY = panelY + panelHeight - 60;
+        float buttonWidth = 120;
+        float buttonHeight = 35;
+        float buttonSpacing = 20;
+
+        // Create New World button
+        float createButtonX = centerX - buttonWidth - buttonSpacing / 2;
+        drawMinecraftButton("Create New", createButtonX, buttonY, buttonWidth, buttonHeight, createButtonSelected);
+
+        // Load Selected World button (only show if world is selected)
+        if (selectedIndex >= 0 && selectedIndex < worldList.size()) {
+            float loadButtonX = centerX + buttonSpacing / 2;
+            drawMinecraftButton("Load World", loadButtonX, buttonY, buttonWidth, buttonHeight, false);
+        }
+
+        // Back button
+        float backButtonX = panelX + 10;
+        float backButtonY = panelY + 10;
+        drawMinecraftButton("Back", backButtonX, backButtonY, 80, 30, false);
+    }
+
+    /**
+     * Renders the create world dialog container background.
+     */
+    public void renderCreateDialogContainer(int width, int height) {
+        float centerX = width / 2.0f;
+        float centerY = height / 2.0f;
+
+        // Calculate dialog dimensions
+        float dialogWidth = Math.min(400, width * 0.6f);
+        float dialogHeight = Math.min(300, height * 0.5f);
+        float dialogX = centerX - dialogWidth / 2;
+        float dialogY = centerY - dialogHeight / 2;
+
+        // Draw semi-transparent overlay
+        try (MemoryStack stack = stackPush()) {
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, width, height);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 120, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+
+        // Draw dialog panel
+        drawMinecraftPanel(dialogX, dialogY, dialogWidth, dialogHeight);
+
+        // Draw dialog title
+        float titleY = dialogY + 40;
+        drawSettingsTitle(centerX, titleY, "CREATE NEW WORLD");
+
+        // Draw labels for input fields
+        try (MemoryStack stack = stackPush()) {
+            nvgFontSize(vg, 16);
+            nvgFontFace(vg, getFontName());
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+
+            // World name label
+            nvgText(vg, dialogX + 20, dialogY + 100, "World Name:");
+
+            // Seed label
+            nvgText(vg, dialogX + 20, dialogY + 160, "Seed (optional):");
+        }
+    }
+
+    // ===== Text Input Rendering Methods =====
+
+    public void drawTextInputBackground(float x, float y, float width, float height, boolean focused, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+
+        // Background color - darker when focused
+        if (focused) {
+            nvgFillColor(vg, nvgRGBA(40, 40, 40, 255, NVGColor.malloc(stack)));
+        } else {
+            nvgFillColor(vg, nvgRGBA(30, 30, 30, 255, NVGColor.malloc(stack)));
+        }
+        nvgFill(vg);
+    }
+
+    public void drawTextInputBorder(float x, float y, float width, float height, boolean focused, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, width, height);
+
+        // Border color - blue when focused, gray when not
+        if (focused) {
+            nvgStrokeColor(vg, nvgRGBA(100, 150, 255, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 2.0f);
+        } else {
+            nvgStrokeColor(vg, nvgRGBA(100, 100, 100, 255, NVGColor.malloc(stack)));
+            nvgStrokeWidth(vg, 1.0f);
+        }
+        nvgStroke(vg);
+    }
+
+    public void drawTextInputIcon(float x, float y, float size, String iconType, MemoryStack stack) {
+        // Simple icon drawing - can be enhanced with actual icons later
+        nvgBeginPath(vg);
+        nvgCircle(vg, x + size/2, y + size/2, size/3);
+        nvgFillColor(vg, nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
+        nvgFill(vg);
+    }
+
+    public void drawTextInputText(float x, float y, String text, boolean isPlaceholder, MemoryStack stack) {
+        nvgFontSize(vg, 16);
+        nvgFontFace(vg, getFontName());
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+
+        if (isPlaceholder) {
+            // Placeholder text - lighter gray
+            nvgFillColor(vg, nvgRGBA(150, 150, 150, 255, NVGColor.malloc(stack)));
+        } else {
+            // Regular text - white
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        }
+
+        nvgText(vg, x, y, text);
+    }
+
+    public void drawTextInputCursor(float x, float y1, float y2, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x, y1);
+        nvgLineTo(vg, x, y2);
+        nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStroke(vg);
+    }
+
+    public void drawValidationIndicator(float x, float y, float size, boolean isValid, MemoryStack stack) {
+        nvgBeginPath(vg);
+        nvgCircle(vg, x + size/2, y + size/2, size/2);
+
+        if (isValid) {
+            // Green checkmark circle
+            nvgFillColor(vg, nvgRGBA(50, 200, 50, 255, NVGColor.malloc(stack)));
+        } else {
+            // Red error circle
+            nvgFillColor(vg, nvgRGBA(200, 50, 50, 255, NVGColor.malloc(stack)));
+        }
+        nvgFill(vg);
+
+        // Draw simple indicator mark
+        nvgBeginPath(vg);
+        if (isValid) {
+            // Simple checkmark
+            float centerX = x + size/2;
+            float centerY = y + size/2;
+            nvgMoveTo(vg, centerX - size/4, centerY);
+            nvgLineTo(vg, centerX - size/8, centerY + size/8);
+            nvgLineTo(vg, centerX + size/4, centerY - size/4);
+        } else {
+            // Simple X
+            float centerX = x + size/2;
+            float centerY = y + size/2;
+            nvgMoveTo(vg, centerX - size/4, centerY - size/4);
+            nvgLineTo(vg, centerX + size/4, centerY + size/4);
+            nvgMoveTo(vg, centerX + size/4, centerY - size/4);
+            nvgLineTo(vg, centerX - size/4, centerY + size/4);
+        }
+        nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+        nvgStrokeWidth(vg, 1.5f);
+        nvgStroke(vg);
+    }
+
+    /**
+     * Draws a three-section background for the world select screen.
+     * Top section (15%): dirt texture
+     * Middle section (70%): stone texture
+     * Bottom section (15%): dirt texture
+     */
+    private void drawTriSectionBackground(int width, int height) {
+        // Calculate section heights
+        float topHeight = height * 0.15f;
+        float middleHeight = height * 0.70f;
+        float bottomHeight = height * 0.15f;
+
+        float middleY = topHeight;
+        float bottomY = topHeight + middleHeight;
+
+        // Draw top dirt section
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, width, topHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add overlay for consistency
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, 0, width, topHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 40, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+
+        // Draw middle stone section
+        drawStoneBackground(0, middleY, width, middleHeight);
+
+        // Add subtle gradient at top of stone section
+        try (MemoryStack stack = stackPush()) {
+            NVGPaint gradientPaint = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, 0, middleY, 0, middleY + 20,
+                nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)),
+                nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)), gradientPaint);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, middleY, width, 20);
+            nvgFillPaint(vg, gradientPaint);
+            nvgFill(vg);
+        }
+
+        // Draw bottom dirt section
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, 0, bottomY, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, bottomY, width, bottomHeight);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add overlay for consistency
+                nvgBeginPath(vg);
+                nvgRect(vg, 0, bottomY, width, bottomHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 40, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws a stone background texture extracted from the panel rendering logic.
+     * Used for the middle section of the world select screen.
+     */
+    private void drawStoneBackground(float x, float y, float w, float h) {
+        try (MemoryStack stack = stackPush()) {
+            // Base stone color fill
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillColor(vg, nvgRGBA(95, 95, 95, 255, NVGColor.malloc(stack)));
+            nvgFill(vg);
+
+            // Add stone texture pattern - similar to drawMinecraftPanel but adapted for background
+            int textureRows = (int)(h / 12) + 1; // Adapt rows based on height
+            int textureCols = (int)(w / 12) + 1; // Adapt columns based on width
+
+            for (int i = 0; i < textureRows * textureCols; i++) {
+                float px = x + (i % textureCols) * 12;
+                float py = y + (i / textureCols) * 12;
+
+                // Skip if outside bounds
+                if (px >= x + w || py >= y + h) continue;
+
+                float size = 8; // Slightly smaller for background
+
+                nvgBeginPath(vg);
+                nvgRect(vg, px + (i % 3), py + (i % 2), size, size);
+
+                int variation = (i * 17) % 40;
+                nvgFillColor(vg, nvgRGBA(75 + variation/2, 75 + variation/2, 75 + variation/2, 80, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+
+            // Add subtle overall overlay to blend the texture
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, w, h);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 20, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+    }
+
+    // ===== ENHANCED THREE-SECTION BACKGROUND RENDERING =====
+    // Added for SOLID-compliant WorldSelectScreen architecture
+
+    /**
+     * Draws an enhanced three-section background with configurable section heights.
+     * Integrates with the new SOLID-based world select screen architecture.
+     *
+     * @param width screen width
+     * @param height screen height
+     * @param topHeightPercent height percentage for top section (0.0-1.0)
+     * @param middleHeightPercent height percentage for middle section (0.0-1.0)
+     * @param bottomHeightPercent height percentage for bottom section (0.0-1.0)
+     */
+    public void drawEnhancedTriSectionBackground(int width, int height,
+                                               float topHeightPercent, float middleHeightPercent, float bottomHeightPercent) {
+        // Validate percentages
+        if (Math.abs((topHeightPercent + middleHeightPercent + bottomHeightPercent) - 1.0f) > 0.001f) {
+            System.err.println("Warning: Section height percentages don't sum to 1.0, using defaults");
+            drawTriSectionBackground(width, height);
+            return;
+        }
+
+        // Calculate section heights
+        float topHeight = height * topHeightPercent;
+        float middleHeight = height * middleHeightPercent;
+        float bottomHeight = height * bottomHeightPercent;
+
+        float middleY = topHeight;
+        float bottomY = topHeight + middleHeight;
+
+        // Draw top section with enhanced styling
+        drawEnhancedTopSection(0, 0, width, topHeight);
+
+        // Draw middle section with enhanced styling
+        drawEnhancedMiddleSection(0, middleY, width, middleHeight);
+
+        // Draw bottom section with enhanced styling
+        drawEnhancedBottomSection(0, bottomY, width, bottomHeight);
+
+        // Add section separators for better visual distinction
+        drawSectionSeparators(width, topHeight, middleY, bottomY);
+    }
+
+    /**
+     * Draws the enhanced top section (navigation area).
+     */
+    private void drawEnhancedTopSection(float x, float y, float width, float height) {
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                // Draw dirt texture
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, x, y, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add darker overlay for navigation area distinction
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 50, NVGColor.malloc(stack)));
+                nvgFill(vg);
+
+                // Add subtle bottom gradient to blend into middle section
+                NVGPaint gradientPaint = NVGPaint.malloc(stack);
+                nvgLinearGradient(vg, x, y + height - 15f, x, y + height,
+                    nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)),
+                    nvgRGBA(0, 0, 0, 30, NVGColor.malloc(stack)), gradientPaint);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y + height - 15f, width, 15f);
+                nvgFillPaint(vg, gradientPaint);
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws the enhanced middle section (world list area) with optimized styling for content display.
+     */
+    private void drawEnhancedMiddleSection(float x, float y, float width, float height) {
+        try (MemoryStack stack = stackPush()) {
+            // Draw stone background with lighter overlay for better content visibility
+            drawStoneBackground(x, y, width, height);
+
+            // Add content-optimized overlay - lighter than default for better readability
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, height);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 15, NVGColor.malloc(stack))); // Lighter than default 20
+            nvgFill(vg);
+
+            // Add subtle top gradient from top section
+            NVGPaint topGradient = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, x, y, x, y + 20,
+                nvgRGBA(0, 0, 0, 40, NVGColor.malloc(stack)),
+                nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)), topGradient);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y, width, 20);
+            nvgFillPaint(vg, topGradient);
+            nvgFill(vg);
+
+            // Add subtle bottom gradient to bottom section
+            NVGPaint bottomGradient = NVGPaint.malloc(stack);
+            nvgLinearGradient(vg, x, y + height - 20, x, y + height,
+                nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)),
+                nvgRGBA(0, 0, 0, 25, NVGColor.malloc(stack)), bottomGradient);
+
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y + height - 20, width, 20);
+            nvgFillPaint(vg, bottomGradient);
+            nvgFill(vg);
+        }
+    }
+
+    /**
+     * Draws the enhanced bottom section (action area).
+     */
+    private void drawEnhancedBottomSection(float x, float y, float width, float height) {
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                // Draw dirt texture
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                nvgImagePattern(vg, x, y, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                // Add slightly darker overlay for action area distinction
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, 45, NVGColor.malloc(stack)));
+                nvgFill(vg);
+
+                // Add subtle top gradient to blend with middle section
+                NVGPaint gradientPaint = NVGPaint.malloc(stack);
+                nvgLinearGradient(vg, x, y, x, y + 15f,
+                    nvgRGBA(0, 0, 0, 30, NVGColor.malloc(stack)),
+                    nvgRGBA(0, 0, 0, 0, NVGColor.malloc(stack)), gradientPaint);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, 15f);
+                nvgFillPaint(vg, gradientPaint);
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws subtle separators between sections for better visual distinction.
+     */
+    private void drawSectionSeparators(float width, float topHeight, float middleY, float bottomY) {
+        try (MemoryStack stack = stackPush()) {
+            // Top-Middle separator (subtle line)
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, topHeight - 1, width, 2);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)));
+            nvgFill(vg);
+
+            // Middle-Bottom separator (subtle line)
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, bottomY - 1, width, 2);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 60, NVGColor.malloc(stack)));
+            nvgFill(vg);
+        }
+    }
+
+    /**
+     * Draws individual section backgrounds for the new panel system.
+     * Allows rendering specific sections independently.
+     *
+     * @param sectionType 0=top, 1=middle, 2=bottom
+     * @param x section x coordinate
+     * @param y section y coordinate
+     * @param width section width
+     * @param height section height
+     */
+    public void drawSectionBackground(int sectionType, float x, float y, float width, float height) {
+        switch (sectionType) {
+            case 0: // Top section
+                drawEnhancedTopSection(x, y, width, height);
+                break;
+            case 1: // Middle section
+                drawEnhancedMiddleSection(x, y, width, height);
+                break;
+            case 2: // Bottom section
+                drawEnhancedBottomSection(x, y, width, height);
+                break;
+            default:
+                System.err.println("Warning: Invalid section type " + sectionType + ", using middle section");
+                drawEnhancedMiddleSection(x, y, width, height);
+                break;
+        }
+    }
+
+    /**
+     * Creates a customized three-section background using section bounds from the layout system.
+     * This method integrates directly with the new SOLID architecture.
+     */
+    public void drawLayoutBasedTriSectionBackground(
+            com.stonebreak.ui.worldSelect.SectionBounds topSection,
+            com.stonebreak.ui.worldSelect.SectionBounds middleSection,
+            com.stonebreak.ui.worldSelect.SectionBounds bottomSection) {
+
+        if (topSection == null || middleSection == null || bottomSection == null) {
+            System.err.println("Warning: Section bounds are null, falling back to default background");
+            drawTriSectionBackground(800, 600); // Fallback with default dimensions
+            return;
+        }
+
+        // Draw each section using its specific bounds
+        drawEnhancedTopSection(
+            topSection.getX(),
+            topSection.getY(),
+            topSection.getWidth(),
+            topSection.getHeight()
+        );
+
+        drawEnhancedMiddleSection(
+            middleSection.getX(),
+            middleSection.getY(),
+            middleSection.getWidth(),
+            middleSection.getHeight()
+        );
+
+        drawEnhancedBottomSection(
+            bottomSection.getX(),
+            bottomSection.getY(),
+            bottomSection.getWidth(),
+            bottomSection.getHeight()
+        );
+
+        // Draw separators at the boundaries
+        float width = Math.max(topSection.getWidth(), Math.max(middleSection.getWidth(), bottomSection.getWidth()));
+        drawSectionSeparators(width, topSection.getBottom(), middleSection.getY(), bottomSection.getY());
     }
 }

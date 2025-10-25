@@ -79,7 +79,7 @@ public class TextureSystemValidator {
      */
     public static void main(String[] args) {
         String projectRoot = System.getProperty("user.dir");
-        String blockIdsPath = projectRoot + "/stonebreak-game/src/main/resources/Blocks/Block_ids.JSON";
+        String blockIdsPath = projectRoot + "/stonebreak-game/src/main/resources/blocks/Block_ids.JSON";
         String itemIdsPath = projectRoot + "/stonebreak-game/src/main/resources/Items/Item_ids.JSON";
         
         validateSystem(blockIdsPath, itemIdsPath);

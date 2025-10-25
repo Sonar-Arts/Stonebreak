@@ -34,6 +34,7 @@ public class ChatCommandExecutor {
         registerCommand(new Test3DFarCommand());
         registerCommand(new DiagnoseOpenALCommand());
         registerCommand(new VoxelAdjCommand());
+        registerCommand(new TimeSetCommand());
     }
 
     /**

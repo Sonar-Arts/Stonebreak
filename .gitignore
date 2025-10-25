@@ -106,9 +106,6 @@ openmason-tool/imgui.ini
 # IDE-specific files and folders
 Problems/
 
-# Fonts folder
-fonts/
-
 # XML inspection parser
 XMLInspectionParser.java
 
@@ -124,6 +121,9 @@ AGENTS.md
 # Crash Logs
 Crash_log.txt
 
+# Chunk GL Errors
+chunk_gl_errors.txt
+
 # W.I.P. Textures not integrated into game
 /DevTextures/
 
@@ -134,3 +134,7 @@ Crash_log.txt
 /backups/
 /worlds/
 /Dev Working/
+
+# Open Mason Theme
+theme.ini
+Theme.ini

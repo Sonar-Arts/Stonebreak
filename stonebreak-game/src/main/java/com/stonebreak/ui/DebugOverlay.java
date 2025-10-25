@@ -20,13 +20,23 @@ import com.stonebreak.mobs.cow.CowAI;
 import java.util.List;
 import java.util.ArrayDeque;
 
+// OpenGL imports for GPU information
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL20.*;
+
 public class DebugOverlay {
     private boolean visible = false;
-    
+
     // FPS averaging
     private static final int FPS_SAMPLE_SIZE = 60; // Average over 60 frames
     private ArrayDeque<Float> fpsHistory = new ArrayDeque<>(FPS_SAMPLE_SIZE);
     private float averageFPS = 0.0f;
+
+    // GPU information cache (queried once to avoid repeated OpenGL calls)
+    private String gpuVendor = null;
+    private String gpuRenderer = null;
+    private String gpuVersion = null;
+    private boolean gpuInfoQueried = false;
 
     public DebugOverlay() {
     }
@@ -100,6 +110,15 @@ public class DebugOverlay {
         debug.append(String.format("Pending Mesh: %d\n", world.getPendingMeshBuildCount()));
         debug.append(String.format("Pending GL: %d\n", world.getPendingGLUploadCount()));
         debug.append("\n");
+
+        // Add GPU information
+        queryGPUInfo(); // Query GPU info if not already done
+        debug.append("─── Graphics Card ───\n");
+        debug.append(String.format("GPU: %s\n", gpuRenderer != null ? gpuRenderer : "Unknown"));
+        debug.append(String.format("Vendor: %s\n", gpuVendor != null ? gpuVendor : "Unknown"));
+        debug.append(String.format("OpenGL: %s\n", gpuVersion != null ? gpuVersion : "Unknown"));
+        debug.append("\n");
+
         debug.append("Path Visualization: ON\n");
 
         // Add water state monitoring
@@ -117,15 +136,15 @@ public class DebugOverlay {
      */
     private void updateAverageFPS() {
         float currentFPS = 1.0f / Game.getDeltaTime();
-        
+
         // Add current FPS to history
         fpsHistory.addLast(currentFPS);
-        
+
         // Remove oldest FPS if we exceed sample size
         if (fpsHistory.size() > FPS_SAMPLE_SIZE) {
             fpsHistory.removeFirst();
         }
-        
+
         // Calculate average
         if (!fpsHistory.isEmpty()) {
             float sum = 0.0f;
@@ -133,6 +152,42 @@ public class DebugOverlay {
                 sum += fps;
             }
             averageFPS = sum / fpsHistory.size();
+        }
+    }
+
+    /**
+     * Queries GPU information from OpenGL.
+     * Only queries once and caches the results to avoid repeated OpenGL calls.
+     */
+    private void queryGPUInfo() {
+        if (gpuInfoQueried) {
+            return; // Already queried, use cached values
+        }
+
+        try {
+            // Query GPU information from OpenGL
+            gpuVendor = glGetString(GL_VENDOR);
+            gpuRenderer = glGetString(GL_RENDERER);
+            gpuVersion = glGetString(GL_VERSION);
+
+            // Clean up the strings (remove null terminators and extra whitespace)
+            if (gpuVendor != null) {
+                gpuVendor = gpuVendor.trim();
+            }
+            if (gpuRenderer != null) {
+                gpuRenderer = gpuRenderer.trim();
+            }
+            if (gpuVersion != null) {
+                gpuVersion = gpuVersion.trim();
+            }
+
+            gpuInfoQueried = true;
+        } catch (Exception e) {
+            // If OpenGL query fails, set error messages
+            gpuVendor = "Error querying GPU";
+            gpuRenderer = "Error querying GPU";
+            gpuVersion = "Error querying OpenGL version";
+            gpuInfoQueried = true; // Don't try again
         }
     }
 
