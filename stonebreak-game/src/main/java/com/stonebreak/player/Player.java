@@ -61,6 +61,11 @@ public class Player {      // Player settings
     private float previousY;
     private boolean wasFalling;
 
+    // Spawn protection to prevent instant death when loading chunks
+    private boolean spawnProtection;
+    private float spawnProtectionTimer;
+    private static final float SPAWN_PROTECTION_DURATION = 2.0f; // 2 seconds of spawn protection
+
     // Block placement validation service
     private final IBlockPlacementService blockPlacementService;
     // Inventory
@@ -121,6 +126,10 @@ public class Player {      // Player settings
         this.isDead = false;
         this.previousY = position.y;
         this.wasFalling = false;
+
+        // Initialize spawn protection (active for initial spawn)
+        this.spawnProtection = true;
+        this.spawnProtectionTimer = 0.0f;
     }
       /**
      * Updates the player's position and camera.
@@ -129,6 +138,21 @@ public class Player {      // Player settings
         // Don't update if dead
         if (isDead) {
             return;
+        }
+
+        // Update spawn protection timer
+        if (spawnProtection) {
+            spawnProtectionTimer += Game.getDeltaTime();
+            if (spawnProtectionTimer >= SPAWN_PROTECTION_DURATION) {
+                spawnProtection = false;
+                System.out.println("Spawn protection ended - fall damage now active");
+            }
+
+            // Also disable spawn protection early if player is safely on ground
+            if (onGround && spawnProtectionTimer > 0.5f) {
+                spawnProtection = false;
+                System.out.println("Spawn protection ended early - player safely on ground");
+            }
         }
 
         // Check if player is in water
@@ -572,6 +596,14 @@ public class Player {      // Player settings
      * Player takes 1 heart (2 health) of damage for every 3 blocks fallen.
      */
     private void calculateFallDamage() {
+        // Don't calculate fall damage during spawn protection
+        if (spawnProtection) {
+            // Reset fall tracking during spawn protection to prevent damage after protection ends
+            previousY = position.y;
+            wasFalling = false;
+            return;
+        }
+
         // Track if player is currently falling
         if (!onGround && velocity.y < 0) {
             wasFalling = true;
@@ -730,6 +762,11 @@ public class Player {      // Player settings
         // Reset fall damage tracking
         previousY = position.y;
         wasFalling = false;
+
+        // Enable spawn protection to prevent instant death from chunks loading
+        spawnProtection = true;
+        spawnProtectionTimer = 0.0f;
+        System.out.println("Spawn protection enabled - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");
 
         // Reset camera
         camera.setPosition(position.x, position.y + PLAYER_HEIGHT * 0.8f, position.z);
@@ -1976,10 +2013,18 @@ public class Player {      // Player settings
                 inventory.resetToStartingItems();
             }
 
+            // Enable spawn protection for new worlds
+            spawnProtection = true;
+            spawnProtectionTimer = 0.0f;
+            System.out.println("Spawn protection enabled for new world - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");
+
             System.out.println("Player data reset for new world");
         } else {
             // Player data was loaded from save - preserve position and state
-            System.out.println("Player data loaded from save - preserving position and state");
+            // But still enable spawn protection to prevent instant death from chunk loading
+            spawnProtection = true;
+            spawnProtectionTimer = 0.0f;
+            System.out.println("Player data loaded from save - preserving position and state (spawn protection enabled)");
         }
     }
 
