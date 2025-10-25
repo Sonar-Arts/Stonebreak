@@ -605,7 +605,7 @@ public class Player {      // Player settings
         }
 
         // Track if player is currently falling
-        if (!onGround && velocity.y < 0) {
+        if (!onGround && velocity.y < 0 && !isFlying) {
             wasFalling = true;
         }
 
