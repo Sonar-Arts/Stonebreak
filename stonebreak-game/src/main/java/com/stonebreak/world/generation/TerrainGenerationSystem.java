@@ -5,6 +5,7 @@ import com.stonebreak.world.generation.biomes.BiomeBlendResult;
 import com.stonebreak.world.generation.biomes.BiomeBlender;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.climate.ClimateRegionManager;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
@@ -25,6 +26,7 @@ import java.util.Random;
  *
  * Enhancements:
  * - Phase 1: Biome-specific height variations for distinct terrain characteristics
+ *            Multi-scale climate system for large-scale biome distribution
  * - Phase 2: Whittaker diagram biome classification for ecological accuracy
  * - Phase 3: Biome blending for smooth, natural transitions
  *
@@ -36,6 +38,7 @@ public class TerrainGenerationSystem {
 
     // Subsystem generators
     private final HeightMapGenerator heightMapGenerator;
+    private final ClimateRegionManager climateRegionManager;
     private final BiomeManager biomeManager;
     private final BiomeBlender biomeBlender;
     private final OreGenerator oreGenerator;
@@ -78,6 +81,8 @@ public class TerrainGenerationSystem {
      * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
      * Initializes all subsystem generators with the provided configuration.
      *
+     * Phase 1: Initializes ClimateRegionManager for multi-scale climate system.
+     *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
      * @param progressReporter Progress reporter for loading screen updates
@@ -89,8 +94,10 @@ public class TerrainGenerationSystem {
         this.progressReporter = progressReporter;
 
         // Initialize specialized generators with injected configuration
+        // Phase 1: Initialize ClimateRegionManager first, then pass to BiomeManager
         this.heightMapGenerator = new HeightMapGenerator(seed, config);
-        this.biomeManager = new BiomeManager(seed, config);
+        this.climateRegionManager = new ClimateRegionManager(seed, config);
+        this.biomeManager = new BiomeManager(seed, config, climateRegionManager);
         this.biomeBlender = new BiomeBlender(config);
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);

@@ -1,9 +1,13 @@
 package com.stonebreak.world.generation.biomes;
 
 import com.stonebreak.world.generation.NoiseGenerator;
+import com.stonebreak.world.generation.climate.ClimateRegionManager;
+import com.stonebreak.world.generation.climate.ClimateRegionType;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.operations.WorldConfiguration;
+
+import java.util.List;
 
 /**
  * Manages biome determination based on temperature and moisture values.
@@ -11,6 +15,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *
  * Phase 1 Enhancement: Uses separate noise configs for moisture and temperature.
  *                      Implements altitude-based temperature chill (Luanti-inspired).
+ *                      Implements multi-scale climate system with regional biome filtering.
  * Phase 2 Enhancement: Uses Whittaker diagram classification for accurate ecological biome distribution.
  *
  * Follows Single Responsibility Principle - only handles biome logic.
@@ -22,6 +27,7 @@ public class BiomeManager implements IBiomeManager {
     private final NoiseGenerator moistureNoise;
     private final NoiseGenerator temperatureNoise;
     private final BiomeClassifier classifier;
+    private final ClimateRegionManager climateRegionManager;
     private final float altitudeChillFactor;
     private final float moistureNoiseScale;
     private final float temperatureNoiseScale;
@@ -32,13 +38,17 @@ public class BiomeManager implements IBiomeManager {
      * Creates a new biome manager with the given seed and configuration.
      * Uses different noise configs for moisture and temperature to create varied climate patterns.
      *
+     * Phase 1: Accepts ClimateRegionManager for multi-scale climate system.
+     *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
+     * @param climateRegionManager Manager for climate region determination
      */
-    public BiomeManager(long seed, TerrainGenerationConfig config) {
+    public BiomeManager(long seed, TerrainGenerationConfig config, ClimateRegionManager climateRegionManager) {
         this.moistureNoise = new NoiseGenerator(seed, NoiseConfigFactory.moisture());
         this.temperatureNoise = new NoiseGenerator(seed + 1, NoiseConfigFactory.temperature());
         this.classifier = new BiomeClassifier();
+        this.climateRegionManager = climateRegionManager;
         this.altitudeChillFactor = config.altitudeChillFactor;
         this.moistureNoiseScale = config.moistureNoiseScale;
         this.temperatureNoiseScale = config.temperatureNoiseScale;
@@ -62,6 +72,7 @@ public class BiomeManager implements IBiomeManager {
      *
      * Phase 1: Implements altitude-based temperature chill (Luanti-inspired).
      *          Mountains naturally become colder and get snow on peaks.
+     *          Implements multi-scale climate system with regional biome filtering.
      * Phase 2: Uses Whittaker diagram classifier for ecological biome distribution.
      *
      * @param x World X coordinate
@@ -74,8 +85,12 @@ public class BiomeManager implements IBiomeManager {
         float moisture = getMoisture(x, z);
         float temperature = getTemperatureAtHeight(x, z, height);
 
-        // Use Whittaker classification for accurate ecological biome mapping
-        return classifier.classify(temperature, moisture);
+        // Phase 1: Get climate region and filter allowed biomes
+        ClimateRegionType climateRegion = climateRegionManager.getClimateRegion(x, z, temperature, moisture);
+        List<BiomeType> allowedBiomes = climateRegion.getAllowedBiomes();
+
+        // Use Whittaker classification with climate region filtering
+        return classifier.classifyWithFilter(temperature, moisture, allowedBiomes);
     }
 
     /**

@@ -58,14 +58,30 @@ public class TerrainGenerationConfig {
     /**
      * Scale factor for moisture noise sampling.
      * Larger values create broader moisture zones.
+     * Phase 1: Increased from 200.0 to 1500.0 for larger biomes (7.5x increase).
      */
     public final float moistureNoiseScale;
 
     /**
      * Scale factor for temperature noise sampling.
      * Larger values create broader temperature zones.
+     * Phase 1: Increased from 300.0 to 2000.0 for larger biomes (6.7x increase).
      */
     public final float temperatureNoiseScale;
+
+    /**
+     * Scale factor for continentalness climate noise sampling.
+     * Very large scale (10,000 blocks) for massive continental patterns.
+     * Phase 1: Used by ClimateRegionManager to determine oceanic vs coastal vs inland regions.
+     */
+    public final float continentalnessClimateNoiseScale;
+
+    /**
+     * Scale factor for region weirdness noise sampling.
+     * Large scale (8,000 blocks) for regional variety.
+     * Phase 1: Used by ClimateRegionManager to add variety to climate regions.
+     */
+    public final float regionWeirdnessNoiseScale;
 
     // ========== Height Map Configuration ==========
 
@@ -99,6 +115,8 @@ public class TerrainGenerationConfig {
         this.altitudeChillFactor = builder.altitudeChillFactor;
         this.moistureNoiseScale = builder.moistureNoiseScale;
         this.temperatureNoiseScale = builder.temperatureNoiseScale;
+        this.continentalnessClimateNoiseScale = builder.continentalnessClimateNoiseScale;
+        this.regionWeirdnessNoiseScale = builder.regionWeirdnessNoiseScale;
         this.continentalnessNoiseScale = builder.continentalnessNoiseScale;
         this.erosionNoiseScale = builder.erosionNoiseScale;
         this.erosionStrengthFactor = builder.erosionStrengthFactor;
@@ -127,8 +145,10 @@ public class TerrainGenerationConfig {
 
         // Climate - Defaults
         private float altitudeChillFactor = 200.0f;
-        private float moistureNoiseScale = 200.0f;
-        private float temperatureNoiseScale = 300.0f;
+        private float moistureNoiseScale = 1500.0f;  // Phase 1: Increased from 200.0 (7.5x)
+        private float temperatureNoiseScale = 2000.0f;  // Phase 1: Increased from 300.0 (6.7x)
+        private float continentalnessClimateNoiseScale = 10000.0f;  // Phase 1: New field
+        private float regionWeirdnessNoiseScale = 8000.0f;  // Phase 1: New field
 
         // Height Map - Defaults
         private float continentalnessNoiseScale = 800.0f;
@@ -197,6 +217,22 @@ public class TerrainGenerationConfig {
             return this;
         }
 
+        public Builder continentalnessClimateNoiseScale(float scale) {
+            if (scale <= 0) {
+                throw new IllegalArgumentException("Continentalness climate noise scale must be positive, got: " + scale);
+            }
+            this.continentalnessClimateNoiseScale = scale;
+            return this;
+        }
+
+        public Builder regionWeirdnessNoiseScale(float scale) {
+            if (scale <= 0) {
+                throw new IllegalArgumentException("Region weirdness noise scale must be positive, got: " + scale);
+            }
+            this.regionWeirdnessNoiseScale = scale;
+            return this;
+        }
+
         // Height Map Setters
 
         public Builder continentalnessNoiseScale(float scale) {
@@ -245,6 +281,8 @@ public class TerrainGenerationConfig {
                 ", altitudeChillFactor=" + altitudeChillFactor +
                 ", moistureNoiseScale=" + moistureNoiseScale +
                 ", temperatureNoiseScale=" + temperatureNoiseScale +
+                ", continentalnessClimateNoiseScale=" + continentalnessClimateNoiseScale +
+                ", regionWeirdnessNoiseScale=" + regionWeirdnessNoiseScale +
                 ", continentalnessNoiseScale=" + continentalnessNoiseScale +
                 ", erosionNoiseScale=" + erosionNoiseScale +
                 ", erosionStrengthFactor=" + erosionStrengthFactor +

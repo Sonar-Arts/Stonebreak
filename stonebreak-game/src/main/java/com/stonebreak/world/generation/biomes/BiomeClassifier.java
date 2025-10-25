@@ -171,4 +171,60 @@ public class BiomeClassifier {
 
         return whittakerTable[tempIndex][moistureIndex];
     }
+
+    /**
+     * Classifies a biome based on temperature and moisture values, filtered by allowed biomes.
+     *
+     * Phase 1 Enhancement: Supports climate region filtering for multi-scale biome distribution.
+     * If the normally selected biome is not in the allowed list, searches for the closest
+     * allowed biome in the Whittaker table.
+     *
+     * @param temperature Temperature value in range [0.0, 1.0] (0 = coldest, 1 = hottest)
+     * @param moisture Moisture value in range [0.0, 1.0] (0 = driest, 1 = wettest)
+     * @param allowedBiomes List of biomes allowed in the current climate region
+     * @return The biome type at this temperature/moisture combination, filtered by allowed biomes
+     */
+    public BiomeType classifyWithFilter(float temperature, float moisture, java.util.List<BiomeType> allowedBiomes) {
+        // First try the normal classification
+        BiomeType selectedBiome = classify(temperature, moisture);
+
+        // If the selected biome is allowed, return it
+        if (allowedBiomes.contains(selectedBiome)) {
+            return selectedBiome;
+        }
+
+        // Otherwise, find the closest allowed biome in the Whittaker table
+        // Simple approach (KISS): search the table for the first allowed biome
+        // More sophisticated approach could calculate distance, but this is sufficient for Phase 1
+        int tempIndex = (int) (temperature * (TEMP_DIVISIONS - 1));
+        int moistureIndex = (int) (moisture * (MOISTURE_DIVISIONS - 1));
+        tempIndex = Math.min(tempIndex, TEMP_DIVISIONS - 1);
+        moistureIndex = Math.min(moistureIndex, MOISTURE_DIVISIONS - 1);
+
+        // Search in expanding circles around the target position
+        for (int radius = 1; radius < Math.max(TEMP_DIVISIONS, MOISTURE_DIVISIONS); radius++) {
+            for (int dt = -radius; dt <= radius; dt++) {
+                for (int dm = -radius; dm <= radius; dm++) {
+                    // Only check cells at the current radius (not interior)
+                    if (Math.abs(dt) != radius && Math.abs(dm) != radius) {
+                        continue;
+                    }
+
+                    int t = tempIndex + dt;
+                    int m = moistureIndex + dm;
+
+                    // Check bounds
+                    if (t >= 0 && t < TEMP_DIVISIONS && m >= 0 && m < MOISTURE_DIVISIONS) {
+                        BiomeType candidateBiome = whittakerTable[t][m];
+                        if (allowedBiomes.contains(candidateBiome)) {
+                            return candidateBiome;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: return the first allowed biome (should never reach here in practice)
+        return allowedBiomes.get(0);
+    }
 }
