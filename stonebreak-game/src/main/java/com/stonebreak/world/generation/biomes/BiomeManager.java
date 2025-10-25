@@ -6,11 +6,14 @@ import com.stonebreak.world.generation.NoiseGenerator;
  * Manages biome determination based on temperature and moisture values.
  * Uses noise functions to generate climate patterns across the world.
  *
+ * Phase 2 Enhancement: Uses Whittaker diagram classification for accurate ecological biome distribution.
+ *
  * Follows Single Responsibility Principle - only handles biome logic.
  */
 public class BiomeManager {
     private final NoiseGenerator terrainNoise;
     private final NoiseGenerator temperatureNoise;
+    private final BiomeClassifier classifier;
 
     /**
      * Creates a new biome manager with the given seed.
@@ -20,10 +23,14 @@ public class BiomeManager {
     public BiomeManager(long seed) {
         this.terrainNoise = new NoiseGenerator(seed);
         this.temperatureNoise = new NoiseGenerator(seed + 1);
+        this.classifier = new BiomeClassifier();
     }
 
     /**
      * Determines the biome type based on temperature and moisture values.
+     *
+     * Phase 2: Uses Whittaker diagram classifier for ecological biome distribution.
+     * Replaces hard-coded if/else logic with a proper 2D lookup table.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
@@ -33,25 +40,8 @@ public class BiomeManager {
         float moisture = getMoisture(x, z);
         float temperature = getTemperature(x, z);
 
-        if (temperature > 0.65f) { // Hot
-            if (moisture < 0.35f) {
-                return BiomeType.DESERT;
-            } else {
-                return BiomeType.RED_SAND_DESERT; // Hot and somewhat moist/varied = Red Sand Desert
-            }
-        } else if (temperature < 0.35f) { // Cold
-            if (moisture > 0.6f) {
-                return BiomeType.SNOWY_PLAINS; // Cold and moist = snowy plains
-            } else {
-                return BiomeType.PLAINS; // Cold but dry = regular plains
-            }
-        } else { // Temperate
-            if (moisture < 0.3f) {
-                return BiomeType.DESERT; // Temperate but dry = also desert like
-            } else {
-                return BiomeType.PLAINS;
-            }
-        }
+        // Use Whittaker classification for accurate ecological biome mapping
+        return classifier.classify(temperature, moisture);
     }
 
     /**

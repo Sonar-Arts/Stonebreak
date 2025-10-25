@@ -2,6 +2,8 @@ package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.world.generation.biomes.BiomeBlendResult;
+import com.stonebreak.world.generation.biomes.BiomeBlender;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -22,6 +24,11 @@ import java.util.Random;
  * This class follows the Controller pattern - coordinating various generators
  * without containing detailed generation logic.
  *
+ * Enhancements:
+ * - Phase 1: Biome-specific height variations for distinct terrain characteristics
+ * - Phase 2: Whittaker diagram biome classification for ecological accuracy
+ * - Phase 3: Biome blending for smooth, natural transitions
+ *
  * Refactored to follow SOLID principles with modular, single-responsibility components.
  */
 public class TerrainGenerationSystem {
@@ -31,6 +38,7 @@ public class TerrainGenerationSystem {
     // Subsystem generators
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
+    private final BiomeBlender biomeBlender;
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -55,6 +63,7 @@ public class TerrainGenerationSystem {
         // Initialize specialized generators
         this.heightMapGenerator = new HeightMapGenerator(seed);
         this.biomeManager = new BiomeManager(seed);
+        this.biomeBlender = new BiomeBlender();
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
@@ -179,15 +188,19 @@ public class TerrainGenerationSystem {
                 int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
                 int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
 
-                // Delegate height generation to HeightMapGenerator
-                int height = heightMapGenerator.generateHeight(worldX, worldZ);
-
                 // Update progress for biome determination
                 if (x == 0 && z == 0) {
-                    updateLoadingProgress("Determining Biomes");
+                    updateLoadingProgress("Determining Biomes & Blending");
                 }
-                // Delegate biome determination to BiomeManager
-                BiomeType biome = biomeManager.getBiome(worldX, worldZ);
+
+                // Phase 3: Generate blended height for smooth biome transitions
+                // Architecture: Base Height (continentalness) + Biome Modifier + Blending
+                int baseHeight = heightMapGenerator.generateHeight(worldX, worldZ);
+                BiomeBlendResult blendResult = biomeBlender.getBlendedBiome(biomeManager, worldX, worldZ);
+                int height = heightMapGenerator.generateBlendedHeight(baseHeight, blendResult, worldX, worldZ);
+
+                // Get dominant biome for block type determination
+                BiomeType biome = blendResult.getDominantBiome();
 
                 // Generate blocks based on height and biome
                 if (x == 8 && z == 8) { // Update progress mid-chunk
