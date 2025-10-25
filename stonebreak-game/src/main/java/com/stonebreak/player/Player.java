@@ -83,9 +83,6 @@ public class Player {      // Player settings
     private static final float FLY_SPEED = MOVE_SPEED * 2.5f; // Flight movement speed (250% of walking speed)
     private static final float FLY_VERTICAL_SPEED = 15.0f; // Vertical flight speed (ascent/descent)
 
-    // Player health
-    private float health = 20.0f; // Player health (full health)
-
     // Save/load state tracking
     private boolean isLoadedFromSave = false; // Track if player data was loaded from save
 
@@ -1836,13 +1833,6 @@ public class Player {      // Player settings
      */
     public boolean isOnGround() {
         return onGround;
-    }
-
-    /**
-     * Returns the player's current health.
-     */
-    public float getHealth() {
-        return health;
     }
 
     /**
