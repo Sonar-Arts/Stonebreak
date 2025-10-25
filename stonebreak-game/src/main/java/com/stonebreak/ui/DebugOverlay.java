@@ -4,6 +4,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.blocks.Water;
 import com.stonebreak.blocks.waterSystem.WaterBlock;
 import com.stonebreak.blocks.waterSystem.WaterSystem;
@@ -87,6 +88,11 @@ public class DebugOverlay {
         BlockType blockBelow = world.getBlockAt(x, y - 1, z);
         String blockBelowName = blockBelow != null ? blockBelow.name() : "Unknown";
 
+        // Get biome information at player position
+        BiomeType biome = world.getBiomeAt(x, z);
+        float temperature = world.getTemperatureAt(x, z);
+        float moisture = world.getMoistureAt(x, z);
+
         // Get continentalness value at player position
         float continentalness = world.getContinentalnessAt(x, z);
 
@@ -102,6 +108,9 @@ public class DebugOverlay {
         debug.append(String.format("Chunk: %d %d in %d %d\n", x & 15, z & 15, chunkX, chunkZ));
         debug.append(String.format("Facing: %s\n", facing));
         debug.append(String.format("Block Below: %s\n", blockBelowName));
+        debug.append(String.format("Biome: %s\n", biome.name()));
+        debug.append(String.format("Temperature: %.3f\n", temperature));
+        debug.append(String.format("Moisture: %.3f\n", moisture));
         debug.append(String.format("Continentalness: %.3f\n", continentalness));
         debug.append("\n");
         debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));

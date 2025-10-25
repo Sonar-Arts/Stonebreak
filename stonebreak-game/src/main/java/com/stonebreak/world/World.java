@@ -18,6 +18,7 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -309,7 +310,28 @@ public class World {
     public float getContinentalnessAt(int x, int z) {
         return terrainSystem.getContinentalnessAt(x, z);
     }
-    
+
+    /**
+     * Gets the biome at the specified world position.
+     */
+    public BiomeType getBiomeAt(int x, int z) {
+        return terrainSystem.getBiomeType(x, z);
+    }
+
+    /**
+     * Gets the moisture value at the specified world position.
+     */
+    public float getMoistureAt(int x, int z) {
+        return terrainSystem.generateMoisture(x, z);
+    }
+
+    /**
+     * Gets the temperature value at the specified world position.
+     */
+    public float getTemperatureAt(int x, int z) {
+        return terrainSystem.generateTemperature(x, z);
+    }
+
     /**
      * Gets a cached chunk position for coordinate lookup.
      */
