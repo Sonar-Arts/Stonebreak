@@ -1,115 +1,119 @@
 package com.stonebreak.world.generation.biomes;
 
-import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.generation.climate.ClimateRegionManager;
-import com.stonebreak.world.generation.climate.ClimateRegionType;
-import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
+import com.stonebreak.world.generation.noise.MultiNoiseParameters;
+import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
 
-import java.util.List;
-
 /**
- * Manages biome determination based on temperature and moisture values.
- * Uses noise functions to generate climate patterns across the world.
+ * Manages biome determination using multi-noise parameter selection.
  *
- * Phase 1 Enhancement: Uses separate noise configs for moisture and temperature.
- *                      Implements altitude-based temperature chill (Luanti-inspired).
- *                      Implements multi-scale climate system with regional biome filtering.
- * Phase 2 Enhancement: Uses Whittaker diagram classification for accurate ecological biome distribution.
+ * NEW SYSTEM: Biomes selected based on 6 parameters instead of just 2.
+ * - Continentalness: Inland vs coastal
+ * - Erosion: Flat vs mountainous
+ * - Peaks & Valleys: Height variation
+ * - Weirdness: Normal vs rare variants
+ * - Temperature: Cold to hot
+ * - Humidity: Dry to wet
  *
- * Follows Single Responsibility Principle - only handles biome logic.
- * Follows Dependency Inversion Principle - configuration injected via constructor.
+ * This replaces the old Whittaker diagram + climate region system with a more
+ * flexible multi-dimensional lookup that allows:
+ * - Same biome in different terrain (flat desert AND hilly desert)
+ * - Rare biome variants (high weirdness)
+ * - Better biome-terrain alignment (mountains get mountain biomes)
  *
- * Implements IBiomeManager for dependency inversion and testability.
+ * Architecture:
+ * - NoiseRouter: Samples all 6 parameters at any world position
+ * - BiomeParameterTable: Defines acceptable ranges for each biome
+ * - This class: Coordinates sampling and lookup
+ *
+ * Follows Single Responsibility Principle - only handles biome selection logic.
+ * Follows Dependency Inversion Principle - configuration and router injected.
+ *
+ * Implements IBiomeManager for interface compatibility.
  */
 public class BiomeManager implements IBiomeManager {
-    private final NoiseGenerator moistureNoise;
-    private final NoiseGenerator temperatureNoise;
-    private final BiomeClassifier classifier;
-    private final ClimateRegionManager climateRegionManager;
-    private final float altitudeChillFactor;
-    private final float moistureNoiseScale;
-    private final float temperatureNoiseScale;
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
+    private final NoiseRouter noiseRouter;
+    private final BiomeParameterTable parameterTable;
+    private final int seaLevel;
 
     /**
-     * Creates a new biome manager with the given seed and configuration.
-     * Uses different noise configs for moisture and temperature to create varied climate patterns.
-     *
-     * Phase 1: Accepts ClimateRegionManager for multi-scale climate system.
+     * Creates a new biome manager with multi-noise parameter selection.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
-     * @param climateRegionManager Manager for climate region determination
      */
-    public BiomeManager(long seed, TerrainGenerationConfig config, ClimateRegionManager climateRegionManager) {
-        this.moistureNoise = new NoiseGenerator(seed, NoiseConfigFactory.moisture());
-        this.temperatureNoise = new NoiseGenerator(seed + 1, NoiseConfigFactory.temperature());
-        this.classifier = new BiomeClassifier();
-        this.climateRegionManager = climateRegionManager;
-        this.altitudeChillFactor = config.altitudeChillFactor;
-        this.moistureNoiseScale = config.moistureNoiseScale;
-        this.temperatureNoiseScale = config.temperatureNoiseScale;
+    public BiomeManager(long seed, TerrainGenerationConfig config) {
+        this.noiseRouter = new NoiseRouter(seed, config);
+        this.parameterTable = new BiomeParameterTable();
+        this.seaLevel = WorldConfiguration.SEA_LEVEL;
     }
 
     /**
-     * Determines the biome type based on temperature and moisture values at sea level.
-     * Uses sea level temperature (no altitude adjustment).
+     * Determines the biome type at a world position (using sea level temperature).
+     *
+     * Samples all 6 parameters at sea level and selects matching biome from parameter table.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @return The biome type at the given position (at sea level)
+     * @return The biome type at the given position
      */
     @Override
     public BiomeType getBiome(int x, int z) {
-        return getBiomeAtHeight(x, z, SEA_LEVEL);
+        return getBiomeAtHeight(x, z, seaLevel);
     }
 
     /**
-     * Determines the biome type based on temperature and moisture values at a specific height.
+     * Determines the biome type at a world position with altitude-adjusted temperature.
      *
-     * Phase 1: Implements altitude-based temperature chill (Luanti-inspired).
-     *          Mountains naturally become colder and get snow on peaks.
-     *          Implements multi-scale climate system with regional biome filtering.
-     * Phase 2: Uses Whittaker diagram classifier for ecological biome distribution.
+     * Multi-Noise System:
+     * 1. Sample all 6 parameters via NoiseRouter
+     * 2. Temperature automatically adjusted for altitude (colder at high elevations)
+     * 3. Lookup biome in parameter table using 6D point
+     * 4. If multiple matches, choose closest by weighted distance
+     * 5. If no matches, fall back to nearest biome (should be rare)
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @param height Terrain height at this position (affects temperature)
+     * @param height Terrain height (affects temperature via altitude chill)
      * @return The biome type at the given position and height
      */
     @Override
     public BiomeType getBiomeAtHeight(int x, int z, int height) {
-        float moisture = getMoisture(x, z);
-        float temperature = getTemperatureAtHeight(x, z, height);
+        // Sample all 6 parameters (temperature altitude-adjusted)
+        MultiNoiseParameters params = noiseRouter.sampleParameters(x, z, height);
 
-        // Phase 1: Get climate region and filter allowed biomes
-        ClimateRegionType climateRegion = climateRegionManager.getClimateRegion(x, z, temperature, moisture);
-        List<BiomeType> allowedBiomes = climateRegion.getAllowedBiomes();
-
-        // Use Whittaker classification with climate region filtering
-        return classifier.classifyWithFilter(temperature, moisture, allowedBiomes);
+        // Select biome from parameter table
+        return parameterTable.selectBiome(params);
     }
 
     /**
-     * Generates moisture value for determining biomes.
-     * Uses moisture-specific noise config for appropriate climate patterns.
+     * Gets multi-noise parameters at a position (for external use/debugging).
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @return Moisture value in range [0.0, 1.0]
+     * @param height Terrain height
+     * @return All 6 parameters at this position
      */
-    @Override
-    public float getMoisture(int x, int z) {
-        float nx = x / moistureNoiseScale;
-        float nz = z / moistureNoiseScale;
-        return moistureNoise.noise(nx + 100, nz + 100) * 0.5f + 0.5f;
+    public MultiNoiseParameters getParameters(int x, int z, int height) {
+        return noiseRouter.sampleParameters(x, z, height);
     }
 
     /**
-     * Generates base temperature value at sea level.
+     * Gets the moisture/humidity value at a position.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Humidity value in range [0.0, 1.0]
+     */
+    @Override
+    public float getMoisture(int x, int z) {
+        return noiseRouter.getHumidity(x, z);
+    }
+
+    /**
+     * Gets the base temperature value at sea level.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
@@ -117,40 +121,65 @@ public class BiomeManager implements IBiomeManager {
      */
     @Override
     public float getTemperature(int x, int z) {
-        return getTemperatureAtHeight(x, z, SEA_LEVEL);
+        return noiseRouter.getTemperature(x, z);
     }
 
     /**
-     * Generates temperature value at a specific height.
+     * Gets the temperature value at a specific height (altitude-adjusted).
      *
-     * Phase 1 Enhancement: Implements altitude chill - temperature decreases with height.
-     * Inspired by Luanti's valleys mapgen altitude chill system.
-     *
-     * Example: At height 270 (200 blocks above sea level 70):
-     *   - Base temperature: 0.8 (hot)
-     *   - Altitude adjustment: -200/altitudeChillFactor = -1.0
-     *   - Final temperature: max(0.0, 0.8 - 1.0) = 0.0 (cold, snowy peaks)
+     * Temperature decreases with altitude above sea level:
+     * - Sea level: base temperature
+     * - +100 blocks: temperature - 0.5 (assuming altitudeChillFactor = 200)
+     * - +200 blocks: temperature - 1.0 (fully cold)
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @param height Terrain height (affects cooling)
+     * @param height Terrain height
      * @return Temperature value in range [0.0, 1.0] adjusted for altitude
      */
     @Override
     public float getTemperatureAtHeight(int x, int z, int height) {
-        float nx = x / temperatureNoiseScale;
-        float nz = z / temperatureNoiseScale;
-        float baseTemperature = temperatureNoise.noise(nx - 50, nz - 50) * 0.5f + 0.5f;
+        MultiNoiseParameters params = noiseRouter.sampleParameters(x, z, height);
+        return params.temperature;
+    }
 
-        // Apply altitude chill: higher elevation = colder
-        // Only apply chill above sea level
-        if (height > SEA_LEVEL) {
-            float altitudeAboveSeaLevel = height - SEA_LEVEL;
-            float temperatureDecrease = altitudeAboveSeaLevel / altitudeChillFactor;
-            baseTemperature -= temperatureDecrease;
-        }
+    /**
+     * Gets the continentalness value at a position.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Continentalness in range [-1.0, 1.0]
+     */
+    public float getContinentalness(int x, int z) {
+        return noiseRouter.getContinentalness(x, z);
+    }
 
-        // Clamp to valid range [0.0, 1.0]
-        return Math.max(0.0f, Math.min(1.0f, baseTemperature));
+    /**
+     * Gets the erosion value at a position.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Erosion in range [-1.0, 1.0]
+     */
+    public float getErosion(int x, int z) {
+        return noiseRouter.getErosion(x, z);
+    }
+
+    /**
+     * Gets the noise router (for external systems that need direct parameter access).
+     *
+     * @return The noise router
+     */
+    public NoiseRouter getNoiseRouter() {
+        return noiseRouter;
+    }
+
+    /**
+     * Gets the biome parameter table (for debugging/visualization).
+     *
+     * @return The biome parameter table
+     */
+    public BiomeParameterTable getParameterTable() {
+        return parameterTable;
     }
 }

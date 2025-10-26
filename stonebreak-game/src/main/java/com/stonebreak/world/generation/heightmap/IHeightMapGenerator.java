@@ -1,13 +1,17 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.generation.biomes.BiomeBlendResult;
 import com.stonebreak.world.generation.biomes.BiomeType;
 
 /**
  * Interface for terrain height map generation.
  *
  * Defines the contract for generating terrain heights based on various noise
- * functions, biome modifiers, and blending systems.
+ * functions and multi-noise parameters.
+ *
+ * Multi-Noise System:
+ * - Heights generated from continentalness, erosion, PV, and weirdness
+ * - Biomes no longer influence terrain height
+ * - Terrain-independent generation allows same biome on varied terrain
  *
  * Implementations can use different height generation strategies:
  * - Spline-based continentalness mapping (current implementation)
@@ -25,7 +29,7 @@ public interface IHeightMapGenerator {
 
     /**
      * Generates base terrain height for the specified world position.
-     * This returns the height from continentalness only, without biome-specific modifications.
+     * This returns the height from continentalness only, without any modifiers.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
@@ -34,33 +38,12 @@ public interface IHeightMapGenerator {
     int generateHeight(int x, int z);
 
     /**
-     * Applies biome-specific height modification to the base terrain height.
+     * DEPRECATED: Biome-specific height modification no longer used in multi-noise system.
      *
-     * Different biomes have different terrain characteristics (gentle plains,
-     * flat deserts, rolling hills, jagged mountains, etc.).
-     *
-     * @param baseHeight The base height from continentalness
-     * @param biome      The biome type at this location
-     * @param x          World X coordinate
-     * @param z          World Z coordinate
-     * @return Final height with biome-specific modifications applied (clamped to world bounds)
+     * @deprecated Biomes no longer affect terrain height
      */
+    @Deprecated
     int applyBiomeModifier(int baseHeight, BiomeType biome, int x, int z);
-
-    /**
-     * Generates blended height using weighted biome influences.
-     *
-     * Creates smooth terrain transitions between biomes by blending heights from
-     * multiple nearby biomes based on their weights. Also applies erosion noise
-     * for subtle weathering effects.
-     *
-     * @param baseHeight  The base height from continentalness
-     * @param blendResult The biome blend result with weighted influences
-     * @param x           World X coordinate
-     * @param z           World Z coordinate
-     * @return Blended height from multiple biomes (clamped to world bounds)
-     */
-    int generateBlendedHeight(int baseHeight, BiomeBlendResult blendResult, int x, int z);
 
     /**
      * Gets the continentalness value at the specified world position.

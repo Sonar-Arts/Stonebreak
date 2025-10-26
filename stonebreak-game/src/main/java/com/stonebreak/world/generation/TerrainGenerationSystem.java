@@ -1,16 +1,14 @@
 package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.biomes.BiomeBlendResult;
-import com.stonebreak.world.generation.biomes.BiomeBlender;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.climate.ClimateRegionManager;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
@@ -24,11 +22,18 @@ import java.util.Random;
  * This class follows the Controller pattern - coordinating various generators
  * without containing detailed generation logic.
  *
- * Enhancements:
- * - Phase 1: Biome-specific height variations for distinct terrain characteristics
- *            Multi-scale climate system for large-scale biome distribution
- * - Phase 2: Whittaker diagram biome classification for ecological accuracy
- * - Phase 3: Biome blending for smooth, natural transitions
+ * Multi-Noise System:
+ * - Terrain generates independently from biomes (continentalness + erosion + PV + weirdness)
+ * - Biomes selected using 6 parameters (adds temperature + humidity to terrain parameters)
+ * - Same biome can appear on varied terrain (flat deserts AND hilly deserts)
+ * - Rare biome variants via weirdness parameter
+ *
+ * Generation Order:
+ * 1. Sample multi-noise parameters (6D point in parameter space)
+ * 2. Generate terrain height from parameters (terrain-independent)
+ * 3. Select biome from parameters (biome adapts to terrain)
+ * 4. Apply surface materials based on biome
+ * 5. Populate features (ores, vegetation, decorations)
  *
  * Refactored to follow SOLID principles with modular, single-responsibility components.
  */
@@ -38,9 +43,7 @@ public class TerrainGenerationSystem {
 
     // Subsystem generators
     private final HeightMapGenerator heightMapGenerator;
-    private final ClimateRegionManager climateRegionManager;
     private final BiomeManager biomeManager;
-    private final BiomeBlender biomeBlender;
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -82,7 +85,7 @@ public class TerrainGenerationSystem {
      * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
      * Initializes all subsystem generators with the provided configuration.
      *
-     * Phase 1: Initializes ClimateRegionManager for multi-scale climate system.
+     * Multi-Noise System: Terrain and biomes generate independently using shared parameters.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
@@ -95,11 +98,9 @@ public class TerrainGenerationSystem {
         this.progressReporter = progressReporter;
 
         // Initialize specialized generators with injected configuration
-        // Phase 1: Initialize ClimateRegionManager first, then pass to BiomeManager
+        // Multi-Noise System: HeightMapGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
         this.heightMapGenerator = new HeightMapGenerator(seed, config);
-        this.climateRegionManager = new ClimateRegionManager(seed, config);
-        this.biomeManager = new BiomeManager(seed, config, climateRegionManager);
-        this.biomeBlender = new BiomeBlender(config);
+        this.biomeManager = new BiomeManager(seed, config);
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
@@ -152,43 +153,56 @@ public class TerrainGenerationSystem {
      * Uses chunk.setBlock() which internally uses CCO API for block operations.
      * Mesh generation happens automatically via CCO dirty tracking when chunk is rendered.
      *
+     * MULTI-NOISE SYSTEM:
+     * 1. Sample parameters (continentalness, erosion, PV, weirdness, temperature, humidity)
+     * 2. Generate height from parameters (terrain-independent, no biome influence)
+     * 3. Select biome from parameters (biome adapts to terrain)
+     * 4. Apply surface materials based on biome
+     *
      * @param chunkX Chunk X coordinate
      * @param chunkZ Chunk Z coordinate
      * @return Generated chunk with terrain (no features yet)
      */
     public Chunk generateTerrainOnly(int chunkX, int chunkZ) {
-        updateLoadingProgress("Generating Base Terrain Shape");
+        updateLoadingProgress("Generating Multi-Noise Terrain");
         Chunk chunk = new Chunk(chunkX, chunkZ);
 
-        // Generate terrain - chunk.setBlock() uses CCO BlockWriter internally
+        // Generate terrain using multi-noise system
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
                 // Calculate absolute world coordinates
                 int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
                 int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
 
-                // Update progress for biome determination
+                // Update progress indicators
                 if (x == 0 && z == 0) {
-                    updateLoadingProgress("Determining Biomes & Blending");
+                    updateLoadingProgress("Sampling Noise Parameters");
                 }
 
-                // Phase 1: Altitude-based temperature for realistic mountain snow
-                // Phase 3: Generate blended height for smooth biome transitions
-                // Architecture: Base Height (continentalness) + Biome Modifier + Blending + Altitude Chill
-                int baseHeight = heightMapGenerator.generateHeight(worldX, worldZ);
-                BiomeBlendResult blendResult = biomeBlender.getBlendedBiomeAtHeight(biomeManager, worldX, worldZ, baseHeight);
-                int height = heightMapGenerator.generateBlendedHeight(baseHeight, blendResult, worldX, worldZ);
+                // STEP 1: Sample all 6 parameters at this position (sea level for initial sampling)
+                MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(worldX, worldZ, SEA_LEVEL);
 
-                // Get dominant biome for block type determination
-                BiomeType biome = blendResult.getDominantBiome();
+                // STEP 2: Generate terrain height from parameters (INDEPENDENT of biome)
+                // Continentalness → base height
+                // Erosion → flat vs mountainous
+                // Peaks & Valleys → amplify extremes
+                // Weirdness → plateaus, mesas
+                int height = heightMapGenerator.generateHeight(worldX, worldZ, params);
 
-                // Generate blocks based on height and biome
-                if (x == 8 && z == 8) { // Update progress mid-chunk
-                    updateLoadingProgress("Applying Biome Materials");
+                // STEP 3: Select biome using parameters with altitude-adjusted temperature
+                // Re-sample with actual height for accurate temperature
+                MultiNoiseParameters adjustedParams = biomeManager.getNoiseRouter().sampleParameters(worldX, worldZ, height);
+                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, height);
+
+                // Update progress mid-chunk
+                if (x == 8 && z == 8) {
+                    updateLoadingProgress("Applying Surface Materials");
                 }
+
+                // STEP 4: Generate blocks for this column
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    // NEW: Check 3D density to determine if block should be solid
-                    // This creates overhangs, caves, and arches in appropriate biomes
+                    // Check 3D density to determine if block should be solid
+                    // Creates overhangs, caves, and arches in appropriate biomes
                     boolean isSolid = densityFunction.isSolid(worldX, y, worldZ, height, biome);
 
                     if (!isSolid) {
@@ -197,7 +211,8 @@ public class TerrainGenerationSystem {
                         continue;
                     }
 
-                    // If solid, determine the material type
+                    // If solid, determine the material type based on biome
+                    // Biome only affects materials, NOT height
                     BlockType blockType = determineBlockType(worldX, y, worldZ, height, biome);
                     chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
                 }
@@ -421,53 +436,39 @@ public class TerrainGenerationSystem {
 
     /**
      * Gets the erosion noise value at the specified world position.
-     * Erosion adds subtle terrain variation (weathering effects).
+     * Erosion determines flat vs mountainous terrain.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @return Erosion noise value in range approximately [-0.3, 0.3]
+     * @return Erosion noise value in range [-1.0, 1.0]
      */
     public float getErosionNoiseAt(int x, int z) {
-        return heightMapGenerator.getErosionNoiseValue(x, z);
+        return biomeManager.getErosion(x, z);
     }
 
     /**
-     * Gets the base terrain height before biome modifiers and erosion.
-     * This is just the continentalness-based height.
+     * Gets the base terrain height from continentalness only.
+     * This is before erosion, PV, and weirdness are applied.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
      * @return Base terrain height (clamped to world bounds)
      */
     public int getBaseHeightBeforeErosion(int x, int z) {
-        return heightMapGenerator.getBaseHeightBeforeErosion(x, z);
-    }
-
-    /**
-     * Gets the terrain height with biome modifiers but before erosion.
-     * Useful for debugging to see erosion's effect.
-     *
-     * @param x World X coordinate
-     * @param z World Z coordinate
-     * @return Terrain height with biome modifier but before erosion
-     */
-    public int getHeightBeforeErosion(int x, int z) {
-        int baseHeight = heightMapGenerator.generateHeight(x, z);
-        BiomeType biome = biomeManager.getBiome(x, z);
-        return heightMapGenerator.applyBiomeModifier(baseHeight, biome, x, z);
+        return heightMapGenerator.generateHeight(x, z);
     }
 
     /**
      * Gets the actual final terrain height as used in world generation.
-     * This is the final height including biome modifiers and erosion.
+     * Uses multi-noise parameters to generate height (terrain-independent).
      *
      * @param x World X coordinate
      * @param z World Z coordinate
      * @return Final terrain height used in generation
      */
     public int getFinalTerrainHeight(int x, int z) {
-        int baseHeight = heightMapGenerator.generateHeight(x, z);
-        BiomeBlendResult blendResult = biomeBlender.getBlendedBiomeAtHeight(biomeManager, x, z, baseHeight);
-        return heightMapGenerator.generateBlendedHeight(baseHeight, blendResult, x, z);
+        // Sample parameters and generate height using multi-noise system
+        MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(x, z, SEA_LEVEL);
+        return heightMapGenerator.generateHeight(x, z, params);
     }
 }

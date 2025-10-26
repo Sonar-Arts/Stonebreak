@@ -349,11 +349,11 @@ public class World {
     }
 
     /**
-     * Gets the terrain height with biome modifiers but before erosion.
-     * Useful for debugging to see erosion's effect.
+     * Gets the base terrain height from continentalness only.
+     * This is before erosion, PV, and weirdness are applied.
      */
     public int getHeightBeforeErosion(int x, int z) {
-        return terrainSystem.getHeightBeforeErosion(x, z);
+        return terrainSystem.getBaseHeightBeforeErosion(x, z);
     }
 
     /**
