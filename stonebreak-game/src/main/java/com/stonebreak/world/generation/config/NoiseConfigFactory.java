@@ -151,6 +151,77 @@ public class NoiseConfigFactory {
     }
 
     /**
+     * Ridged noise: Sharp mountain ridges and peak formations.
+     * Medium frequency for defined ridge lines.
+     *
+     * Characteristics:
+     * - 5 octaves for clean, defined ridges
+     * - 0.45 persistence for moderate detail
+     * - 2.5 lacunarity for dramatic frequency jumps
+     *
+     * Used by RidgedNoiseGenerator for sharp mountain peaks.
+     *
+     * @return Noise config for ridged terrain generation
+     */
+    public static NoiseConfig ridged() {
+        return new NoiseConfig(5, 0.45, 2.5);
+    }
+
+    /**
+     * Terrain Peaks & Valleys noise: Amplifies terrain extremes.
+     * Medium frequency for overall terrain drama.
+     *
+     * Characteristics:
+     * - 5 octaves for balanced amplification
+     * - 0.55 persistence for prominent features
+     * - 2.3 lacunarity for varied scales
+     *
+     * Used by PeaksValleysNoiseGenerator to make high areas higher
+     * and low areas lower, creating dramatic height differences.
+     *
+     * @return Noise config for peaks & valleys terrain shaping
+     */
+    public static NoiseConfig terrainPeaksValleys() {
+        return new NoiseConfig(5, 0.55, 2.3);
+    }
+
+    /**
+     * Terrain weirdness noise: Plateaus, mesas, and terraced formations.
+     * Medium frequency for regional unusual terrain features.
+     *
+     * Characteristics:
+     * - 6 octaves for detailed terrace patterns
+     * - 0.5 persistence for balanced features
+     * - 2.2 lacunarity for moderate variation
+     *
+     * Used by WeirdnessNoiseGenerator for flat-topped mesas,
+     * terraced hillsides, and plateau formations.
+     *
+     * @return Noise config for weirdness/plateau generation
+     */
+    public static NoiseConfig terrainWeirdness() {
+        return new NoiseConfig(6, 0.5, 2.2);
+    }
+
+    /**
+     * 3D density noise: Volumetric terrain for overhangs and caves.
+     * Medium frequency for natural-looking 3D features.
+     *
+     * Characteristics:
+     * - 4 octaves for moderate 3D detail (expensive in 3D)
+     * - 0.5 persistence for balanced density variation
+     * - 2.0 lacunarity (standard)
+     *
+     * Used by Noise3D for density-based terrain generation,
+     * enabling overhangs, natural arches, and cave entrances.
+     *
+     * @return Noise config for 3D density terrain
+     */
+    public static NoiseConfig density3D() {
+        return new NoiseConfig(4, 0.5, 2.0);
+    }
+
+    /**
      * Continentalness climate noise: Large-scale regional climate distribution.
      * Very low frequency (10,000-block scale) for massive continental patterns.
      *

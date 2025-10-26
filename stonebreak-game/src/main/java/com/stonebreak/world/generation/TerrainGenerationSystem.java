@@ -44,6 +44,7 @@ public class TerrainGenerationSystem {
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
+    private final com.stonebreak.world.generation.heightmap.DensityFunction densityFunction;
 
     // Progress reporting
     private final LoadingProgressReporter progressReporter;
@@ -102,6 +103,7 @@ public class TerrainGenerationSystem {
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
+        this.densityFunction = new com.stonebreak.world.generation.heightmap.DensityFunction(seed);
     }
 
     /**
@@ -185,6 +187,17 @@ public class TerrainGenerationSystem {
                     updateLoadingProgress("Applying Biome Materials");
                 }
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
+                    // NEW: Check 3D density to determine if block should be solid
+                    // This creates overhangs, caves, and arches in appropriate biomes
+                    boolean isSolid = densityFunction.isSolid(worldX, y, worldZ, height, biome);
+
+                    if (!isSolid) {
+                        // 3D noise says this should be air (overhang/cave)
+                        chunk.setBlock(x, y, z, BlockType.AIR);
+                        continue;
+                    }
+
+                    // If solid, determine the material type
                     BlockType blockType = determineBlockType(worldX, y, worldZ, height, biome);
                     chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
                 }

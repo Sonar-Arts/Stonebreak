@@ -105,6 +105,41 @@ public class TerrainGenerationConfig {
      */
     public final float erosionStrengthFactor;
 
+    // ========== 3D Terrain Configuration ==========
+
+    /**
+     * Whether to enable 3D density-based terrain features.
+     * When true, uses 3D noise to create overhangs, caves, and arches.
+     * When false, uses traditional 2D heightmap only (faster).
+     */
+    public final boolean enable3DTerrain;
+
+    /**
+     * Density threshold for solid/air determination.
+     * Values > threshold are solid, values < threshold are air.
+     * Typical: 0.0 (balanced), negative values create more air, positive values create more solid.
+     */
+    public final float densityThreshold;
+
+    /**
+     * Scale factor for 3D density noise sampling.
+     * Larger values create smoother, broader 3D features.
+     * Smaller values create more intricate, detailed features.
+     */
+    public final float densityScale;
+
+    /**
+     * Start of 3D sampling transition zone (relative to surface height).
+     * Example: -10 means start sampling 10 blocks below surface.
+     */
+    public final int densityTransitionZoneMin;
+
+    /**
+     * End of 3D sampling transition zone (relative to surface height).
+     * Example: +20 means stop sampling 20 blocks above surface.
+     */
+    public final int densityTransitionZoneMax;
+
     // ========== Private Constructor ==========
 
     private TerrainGenerationConfig(Builder builder) {
@@ -120,6 +155,11 @@ public class TerrainGenerationConfig {
         this.continentalnessNoiseScale = builder.continentalnessNoiseScale;
         this.erosionNoiseScale = builder.erosionNoiseScale;
         this.erosionStrengthFactor = builder.erosionStrengthFactor;
+        this.enable3DTerrain = builder.enable3DTerrain;
+        this.densityThreshold = builder.densityThreshold;
+        this.densityScale = builder.densityScale;
+        this.densityTransitionZoneMin = builder.densityTransitionZoneMin;
+        this.densityTransitionZoneMax = builder.densityTransitionZoneMax;
     }
 
     // ========== Default Configuration Factory ==========
@@ -156,6 +196,13 @@ public class TerrainGenerationConfig {
         // Erosion - Defaults
         private float erosionNoiseScale = 40.0f;
         private float erosionStrengthFactor = 0.05f;
+
+        // 3D Terrain - Defaults
+        private boolean enable3DTerrain = true;  // Enable 3D features by default
+        private float densityThreshold = 0.0f;  // Balanced threshold
+        private float densityScale = 60.0f;  // Smooth 3D features
+        private int densityTransitionZoneMin = -10;  // Start 10 blocks below surface
+        private int densityTransitionZoneMax = 20;  // End 20 blocks above surface
 
         // Biome Blending Setters
 
@@ -261,6 +308,45 @@ public class TerrainGenerationConfig {
             return this;
         }
 
+        // 3D Terrain Setters
+
+        public Builder enable3DTerrain(boolean enable) {
+            this.enable3DTerrain = enable;
+            return this;
+        }
+
+        public Builder densityThreshold(float threshold) {
+            if (threshold < -1.0f || threshold > 1.0f) {
+                throw new IllegalArgumentException("Density threshold must be in [-1, 1], got: " + threshold);
+            }
+            this.densityThreshold = threshold;
+            return this;
+        }
+
+        public Builder densityScale(float scale) {
+            if (scale <= 0) {
+                throw new IllegalArgumentException("Density scale must be positive, got: " + scale);
+            }
+            this.densityScale = scale;
+            return this;
+        }
+
+        public Builder densityTransitionZoneMin(int min) {
+            if (min > 0) {
+                throw new IllegalArgumentException("Transition zone min must be <= 0, got: " + min);
+            }
+            this.densityTransitionZoneMin = min;
+            return this;
+        }
+
+        public Builder densityTransitionZoneMax(int max) {
+            if (max < 0) {
+                throw new IllegalArgumentException("Transition zone max must be >= 0, got: " + max);
+            }
+            this.densityTransitionZoneMax = max;
+            return this;
+        }
+
         /**
          * Builds the immutable configuration object.
          *
@@ -286,6 +372,11 @@ public class TerrainGenerationConfig {
                 ", continentalnessNoiseScale=" + continentalnessNoiseScale +
                 ", erosionNoiseScale=" + erosionNoiseScale +
                 ", erosionStrengthFactor=" + erosionStrengthFactor +
+                ", enable3DTerrain=" + enable3DTerrain +
+                ", densityThreshold=" + densityThreshold +
+                ", densityScale=" + densityScale +
+                ", densityTransitionZoneMin=" + densityTransitionZoneMin +
+                ", densityTransitionZoneMax=" + densityTransitionZoneMax +
                 '}';
     }
 }

@@ -33,6 +33,7 @@ public class HeightMapGenerator implements IHeightMapGenerator {
     private final SplineInterpolator terrainSpline;
     private final BiomeHeightModifier biomeHeightModifier;
     private final ErosionNoiseGenerator erosionNoise;
+    private final TerrainShaper terrainShaper;
     private final float continentalnessNoiseScale;
 
     /**
@@ -48,6 +49,7 @@ public class HeightMapGenerator implements IHeightMapGenerator {
         this.continentalnessNoise = new NoiseGenerator(seed + 2, NoiseConfigFactory.continentalness());
         this.biomeHeightModifier = new BiomeHeightModifier(seed);
         this.erosionNoise = new ErosionNoiseGenerator(seed, config);
+        this.terrainShaper = new TerrainShaper(seed);
         this.terrainSpline = new SplineInterpolator();
         this.continentalnessNoiseScale = config.continentalnessNoiseScale;
         initializeTerrainSpline();
@@ -140,6 +142,10 @@ public class HeightMapGenerator implements IHeightMapGenerator {
         if (blendResult.isStronglyDominant(0.8f)) {
             BiomeType dominantBiome = blendResult.getDominantBiome();
             int height = applyBiomeModifier(baseHeight, dominantBiome, x, z);
+
+            // NEW: Apply terrain shaping (PV, Ridged, Weirdness noise)
+            height = terrainShaper.shapeHeight(height, dominantBiome, x, z);
+
             // Apply erosion noise for subtle variation
             return erosionNoise.applyErosion(height, x, z);
         }
@@ -153,6 +159,9 @@ public class HeightMapGenerator implements IHeightMapGenerator {
 
             // Calculate height for this biome
             int biomeHeight = applyBiomeModifier(baseHeight, biome, x, z);
+
+            // NEW: Apply terrain shaping for this biome
+            biomeHeight = terrainShaper.shapeHeight(biomeHeight, biome, x, z);
 
             // Add weighted contribution
             blendedHeight += biomeHeight * weight;
