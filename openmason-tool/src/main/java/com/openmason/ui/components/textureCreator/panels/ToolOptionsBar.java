@@ -2,7 +2,6 @@ package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import com.openmason.ui.components.textureCreator.tools.FreeSelectionTool;
-import com.openmason.ui.components.textureCreator.tools.MoveTool;
 import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
@@ -88,9 +87,7 @@ public class ToolOptionsBar {
                 ImGui.alignTextToFramePadding();
 
                 // Render tool-specific options based on tool type
-                if (currentTool instanceof MoveTool) {
-                    renderMoveToolOptions((MoveTool) currentTool);
-                } else if (currentTool instanceof RectangleSelectionTool) {
+                if (currentTool instanceof RectangleSelectionTool) {
                     renderRectangleSelectionOptions((RectangleSelectionTool) currentTool);
                 } else if (currentTool instanceof FreeSelectionTool) {
                     renderFreeSelectionOptions((FreeSelectionTool) currentTool);
@@ -122,35 +119,8 @@ public class ToolOptionsBar {
      * @return true if the tool has options, false otherwise
      */
     private boolean hasOptions(DrawingTool tool) {
-        return tool instanceof MoveTool ||
-               tool instanceof RectangleSelectionTool ||
+        return tool instanceof RectangleSelectionTool ||
                tool instanceof FreeSelectionTool;
-    }
-
-    /**
-     * Render options for the Move tool.
-     *
-     * Options:
-     * - Uniform Scaling: Forces proportional scaling on both axes (like holding Shift)
-     *
-     * @param tool The MoveTool instance
-     */
-    private void renderMoveToolOptions(MoveTool tool) {
-        // Label for the tool
-        ImGui.text("Move Tool:");
-        ImGui.sameLine(0, OPTION_SPACING);
-
-        // Uniform Scaling checkbox
-        ImBoolean uniformScaling = new ImBoolean(tool.isUniformScaling());
-        if (ImGui.checkbox("Uniform Scaling", uniformScaling)) {
-            tool.setUniformScaling(uniformScaling.get());
-            logger.debug("Move tool uniform scaling: {}", uniformScaling.get());
-        }
-
-        // Tooltip
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("When enabled, scales both axes proportionally for all transform operations\n(same as holding Shift key)");
-        }
     }
 
     /**

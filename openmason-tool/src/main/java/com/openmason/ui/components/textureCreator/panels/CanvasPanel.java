@@ -12,7 +12,6 @@ import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import com.openmason.ui.components.textureCreator.tools.FreeSelectionTool;
-import com.openmason.ui.components.textureCreator.tools.MoveTool;
 import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
 import com.openmason.ui.components.textureCreator.tools.selection.PixelPreview;
 import imgui.ImGui;
@@ -122,7 +121,6 @@ public class CanvasPanel {
             RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
             selectionPreviewBounds = selectionTool.getSelectionPreviewBounds();
         }
-        // Note: MoveTool and FreeSelectionTool render their own previews below
 
         // Render the display canvas (composited view) with opacity settings
         renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
@@ -138,15 +136,6 @@ public class CanvasPanel {
                 float canvasY = canvasRegionMin.y + canvasState.getPanOffsetY();
                 selectionRenderer.renderPixelPreview(drawList, pixelPreview.getPixels(), canvasX, canvasY, zoom);
             }
-        }
-
-        // Render transform handles if using move tool with active selection
-        if (currentTool instanceof MoveTool && currentSelection != null && !currentSelection.isEmpty()) {
-            MoveTool moveTool = (MoveTool) currentTool;
-            imgui.ImDrawList drawList = imgui.ImGui.getWindowDrawList();
-            float canvasX = canvasRegionMin.x + canvasState.getPanOffsetX();
-            float canvasY = canvasRegionMin.y + canvasState.getPanOffsetY();
-            moveTool.renderTransformHandles(drawList, canvasX, canvasY, zoom);
         }
 
         // Sync selection to canvas instances for constraint checking
@@ -207,29 +196,6 @@ public class CanvasPanel {
             }
         } else if (canvasState.isPanning()) {
             canvasState.stopPanning();
-        }
-
-        // Update MoveTool with current selection, shift key state, and hovered handle
-        if (currentTool instanceof MoveTool && !canvasState.isPanning()) {
-            MoveTool moveTool = (MoveTool) currentTool;
-
-            // Update selection (generates handles if needed)
-            SelectionRegion activeSelection = canvas.getActiveSelection();
-            float zoom = canvasState.getZoomLevel();
-            moveTool.updateSelection(activeSelection, zoom);
-
-            moveTool.setShiftHeld(shiftHeld);
-
-            // Update hovered handle for cursor feedback
-            int[] canvasCoords = new int[2];
-            boolean validCoords = canvasState.screenToCanvasCoords(
-                mousePos.x, mousePos.y,
-                canvasRegionMin.x, canvasRegionMin.y,
-                canvasCoords
-            );
-            if (validCoords && canvas.isValidCoordinate(canvasCoords[0], canvasCoords[1])) {
-                moveTool.updateHoveredHandle(canvasCoords[0], canvasCoords[1]);
-            }
         }
 
         // Handle drawing with left mouse button
@@ -305,28 +271,6 @@ public class CanvasPanel {
                         }
                     }
                     freeSelectionTool.clearSelectionCreatedFlag();
-                }
-            }
-            // Handle move tool
-            else if (currentTool instanceof MoveTool) {
-                MoveTool moveTool = (MoveTool) currentTool;
-
-                // Handle transform command (move, scale, stretch, or rotate)
-                if (moveTool.wasTransformPerformed()) {
-                    Command transformCommand = moveTool.getCompletedCommand();
-                    if (transformCommand != null && commandHistory != null) {
-                        commandHistory.executeCommand(transformCommand);
-                        logger.debug("Executed transform command: {}", transformCommand.getDescription());
-                    }
-
-                    // Update selection to new position/size
-                    SelectionRegion updatedSelection = moveTool.getUpdatedSelection();
-                    if (updatedSelection != null && onSelectionCreatedCallback != null) {
-                        onSelectionCreatedCallback.accept(updatedSelection);
-                        logger.debug("Selection transformed to: {}", updatedSelection.getBounds());
-                    }
-
-                    moveTool.clearTransformPerformedFlag();
                 }
             } else {
                 // Execute the command if it has changes (non-color-picker/selection tools)
