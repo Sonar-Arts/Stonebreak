@@ -1,7 +1,7 @@
 package com.openmason.ui;
 
 /**
- * Represents a tool option displayed in the welcome screen.
+ * Represents a tool option displayed in the Home screen.
  * Immutable data class following SOLID principles.
  */
 public class ToolCard {

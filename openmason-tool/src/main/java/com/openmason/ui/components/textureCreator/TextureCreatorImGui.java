@@ -56,8 +56,8 @@ public class TextureCreatorImGui {
     // Pending import state (stores file path while dialog is open)
     private String pendingImportPath = null;
 
-    // Callback for returning to welcome screen
-    private Runnable backToWelcomeCallback;
+    // Callback for returning to Home screen
+    private Runnable backToHomeCallback;
 
     /**
      * Create texture creator UI.
@@ -290,9 +290,9 @@ public class TextureCreatorImGui {
                     ImGui.endMenu();
                 }
                 ImGui.separator();
-                if (ImGui.menuItem("Back to Welcome Menu")) {
-                    if (backToWelcomeCallback != null) {
-                        backToWelcomeCallback.run();
+                if (ImGui.menuItem("Home Screen")) {
+                    if (backToHomeCallback != null) {
+                        backToHomeCallback.run();
                     }
                 }
                 ImGui.separator();
@@ -586,11 +586,11 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Set callback for returning to welcome screen.
-     * This callback will be invoked when the user selects "Back to Welcome Menu" from the File menu.
+     * Set callback for returning to Home screen.
+     * This callback will be invoked when the user selects "Home Screen" from the File menu.
      */
-    public void setBackToWelcomeCallback(Runnable callback) {
-        this.backToWelcomeCallback = callback;
+    public void setBackToHomeCallback(Runnable callback) {
+        this.backToHomeCallback = callback;
     }
 
     /**

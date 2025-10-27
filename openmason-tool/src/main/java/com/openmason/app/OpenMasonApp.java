@@ -7,13 +7,12 @@ import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.ViewportImGuiInterface;
-import com.openmason.ui.WelcomeScreenImGui;
+import com.openmason.ui.HomeScreenOM;
 import com.openmason.ui.ToolCard;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,13 +52,13 @@ public class OpenMasonApp {
     
     // UI Interfaces
     private ThemeManager themeManager;
-    private WelcomeScreenImGui welcomeScreen;
+    private HomeScreenOM homeScreen;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
     private TextureCreatorImGui textureCreatorInterface;
 
     // Application state
-    private ApplicationState currentState = ApplicationState.WELCOME_SCREEN;
+    private ApplicationState currentState = ApplicationState.HOME_SCREEN;
     private boolean shouldClose = false;
     private boolean shouldApplyDefaultLayout = false;
     private boolean imguiInitialized = false;
@@ -367,9 +366,9 @@ public class OpenMasonApp {
             // Initialize theme system for ImGui
             themeManager.initializeForImGui();
 
-            // Initialize welcome screen with theme manager
-            welcomeScreen = new WelcomeScreenImGui(themeManager);
-            setupWelcomeScreenTools();
+            // Initialize Home screen with theme manager
+            homeScreen = new HomeScreenOM(themeManager);
+            setupHomeScreenTools();
 
             // Initialize main interface with theme manager
             mainInterface = new MainImGuiInterface(themeManager);
@@ -381,9 +380,9 @@ public class OpenMasonApp {
             // Initialize texture creator interface
             textureCreatorInterface = new TextureCreatorImGui();
 
-            // Wire up back to welcome menu callbacks
-            mainInterface.setBackToWelcomeCallback(this::transitionToWelcomeScreen);
-            textureCreatorInterface.setBackToWelcomeCallback(this::transitionToWelcomeScreen);
+            // Wire up back to Home screen callbacks
+            mainInterface.setBackToHomeCallback(this::transitionToHomeScreen);
+            textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
 
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
@@ -408,19 +407,19 @@ public class OpenMasonApp {
         float deltaTime = ImGui.getIO().getDeltaTime();
 
         // Render based on application state
-        if (currentState.isWelcomeScreen()) {
-            // Render welcome screen
-            if (welcomeScreen != null) {
+        if (currentState.isHomeScreen()) {
+            // Render Home screen
+            if (homeScreen != null) {
                 try {
-                    welcomeScreen.render();
-                    welcomeScreen.update(deltaTime);
+                    homeScreen.render();
+                    homeScreen.update(deltaTime);
 
-                    // Check if welcome screen should close (user clicked X)
-                    if (welcomeScreen.shouldClose()) {
+                    // Check if Home screen should close (user clicked X)
+                    if (homeScreen.shouldClose()) {
                         shouldClose = true;
                     }
                 } catch (Exception e) {
-                    logger.error("Error rendering welcome screen", e);
+                    logger.error("Error rendering Home screen", e);
                 }
             }
         } else if (currentState.isMainInterface()) {
@@ -457,19 +456,19 @@ public class OpenMasonApp {
     }
     
     /**
-     * Setup tool cards for the welcome screen.
+     * Setup tool cards for the Home screen.
      */
-    private void setupWelcomeScreenTools() {
+    private void setupHomeScreenTools() {
         // 3D Model Viewer
         ToolCard modelViewerTool = new ToolCard(
             "3D Model Viewer",
             "View and inspect 3D voxel models with professional viewport controls and real-time rendering.",
             this::transitionToMainInterface
         );
-        welcomeScreen.addToolCard(modelViewerTool);
+        homeScreen.addToolCard(modelViewerTool);
 
         // Future tools (placeholders)
-        welcomeScreen.addToolCard(ToolCard.comingSoon(
+        homeScreen.addToolCard(ToolCard.comingSoon(
             "Placeholder 1",
             "Additional tool coming soon."
         ));
@@ -480,16 +479,16 @@ public class OpenMasonApp {
             "Create and edit 16x16 block/item textures and 64x48 block cross textures with layer support and PNG export.",
             this::transitionToTextureCreator
         );
-        welcomeScreen.addToolCard(textureCreatorTool);
+        homeScreen.addToolCard(textureCreatorTool);
 
-        welcomeScreen.addToolCard(ToolCard.comingSoon(
+        homeScreen.addToolCard(ToolCard.comingSoon(
             "Placeholder 3",
             "Additional tool coming soon."
         ));
     }
 
     /**
-     * Transition from welcome screen to main interface.
+     * Transition from Home screen to main interface.
      */
     private void transitionToMainInterface() {
         logger.info("Transitioning to main interface");
@@ -498,7 +497,7 @@ public class OpenMasonApp {
     }
 
     /**
-     * Transition from welcome screen to texture creator.
+     * Transition from Home screen to texture creator.
      */
     private void transitionToTextureCreator() {
         logger.info("Transitioning to texture creator");
@@ -507,11 +506,11 @@ public class OpenMasonApp {
     }
 
     /**
-     * Transition back to welcome screen from any tool.
+     * Transition back to Home screen from any tool.
      */
-    private void transitionToWelcomeScreen() {
-        logger.info("Transitioning back to welcome screen");
-        currentState = ApplicationState.WELCOME_SCREEN;
+    private void transitionToHomeScreen() {
+        logger.info("Transitioning back to Home screen");
+        currentState = ApplicationState.HOME_SCREEN;
     }
 
     /**

@@ -469,12 +469,12 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
-     * Set callback for returning to welcome screen.
-     * This callback will be invoked when the user selects "Back to Welcome Menu" from the File menu.
+     * Set callback for returning to Home screen.
+     * This callback will be invoked when the user selects "Home Screen" from the File menu.
      */
-    public void setBackToWelcomeCallback(Runnable callback) {
+    public void setBackToHomeCallback(Runnable callback) {
         if (fileMenuHandler != null) {
-            fileMenuHandler.setBackToWelcomeCallback(callback);
+            fileMenuHandler.setBackToHomeCallback(callback);
         }
     }
 }

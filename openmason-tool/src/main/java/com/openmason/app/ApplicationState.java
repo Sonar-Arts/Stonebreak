@@ -9,9 +9,9 @@ package com.openmason.app;
 public enum ApplicationState {
 
     /**
-     * Welcome screen is displayed - user selects a tool to open.
+     * Home screen is displayed - user selects a tool to open.
      */
-    WELCOME_SCREEN,
+    HOME_SCREEN,
 
     /**
      * Main interface is displayed - user is actively using a tool.
@@ -24,11 +24,11 @@ public enum ApplicationState {
     TEXTURE_CREATOR;
 
     /**
-     * Check if the application is in the welcome screen state.
-     * @return true if in welcome screen state
+     * Check if the application is in the Home screen state.
+     * @return true if in Home screen state
      */
-    public boolean isWelcomeScreen() {
-        return this == WELCOME_SCREEN;
+    public boolean isHomeScreen() {
+        return this == HOME_SCREEN;
     }
 
     /**
