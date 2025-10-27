@@ -2,24 +2,29 @@ package com.openmason.ui.components.textureCreator.commands;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.selection.RectangularSelection;
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 
+import java.awt.Rectangle;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Command for scaling a rectangular selection.
+ * Command for scaling any selection region.
+ * Works with rectangular, free-form, and any SelectionRegion implementation.
  * Uses bilinear interpolation for smooth scaling.
+ * Scaling always produces a rectangular result.
  * <p>
  * SOLID: Single responsibility - handles selection scaling only
  * Command Pattern: Supports undo/redo
  * KISS: Straightforward scaling algorithm without over-engineering
+ * Open/Closed: Accepts any SelectionRegion type for source
  *
  * @author Open Mason Team
  */
 public class ScaleSelectionCommand implements Command {
 
     private final PixelCanvas canvas;
-    private final RectangularSelection originalSelection;
+    private final SelectionRegion originalSelection;
     private final RectangularSelection scaledSelection;
 
     // Pixel backup for undo (sparse storage)
@@ -29,10 +34,10 @@ public class ScaleSelectionCommand implements Command {
      * Create a scale selection command.
      *
      * @param canvas The pixel canvas to modify
-     * @param originalSelection The original selection bounds
-     * @param scaledSelection The new scaled selection bounds
+     * @param originalSelection The original selection region (any type)
+     * @param scaledSelection The new scaled selection bounds (always rectangular)
      */
-    public ScaleSelectionCommand(PixelCanvas canvas, RectangularSelection originalSelection,
+    public ScaleSelectionCommand(PixelCanvas canvas, SelectionRegion originalSelection,
                                 RectangularSelection scaledSelection) {
         this.canvas = canvas;
         this.originalSelection = originalSelection;
@@ -47,11 +52,18 @@ public class ScaleSelectionCommand implements Command {
      * Backup pixels from both source and destination regions.
      */
     private void backupPixels() {
-        // Backup source pixels
-        backupRegion(originalSelection.getX1(), originalSelection.getY1(),
-                    originalSelection.getX2(), originalSelection.getY2());
+        // Backup source pixels (respecting selection shape)
+        Rectangle origBounds = originalSelection.getBounds();
+        for (int y = origBounds.y; y < origBounds.y + origBounds.height; y++) {
+            for (int x = origBounds.x; x < origBounds.x + origBounds.width; x++) {
+                if (originalSelection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
+                    int key = y * canvas.getWidth() + x;
+                    affectedPixels.put(key, canvas.getPixel(x, y));
+                }
+            }
+        }
 
-        // Backup destination pixels (in case they don't overlap)
+        // Backup destination pixels (always rectangular)
         backupRegion(scaledSelection.getX1(), scaledSelection.getY1(),
                     scaledSelection.getX2(), scaledSelection.getY2());
     }
@@ -78,31 +90,35 @@ public class ScaleSelectionCommand implements Command {
         canvas.setActiveSelection(null);
 
         try {
-            // Extract original pixels
-            int origX1 = originalSelection.getX1();
-            int origY1 = originalSelection.getY1();
-            int origX2 = originalSelection.getX2();
-            int origY2 = originalSelection.getY2();
-            int origWidth = origX2 - origX1 + 1;
-            int origHeight = origY2 - origY1 + 1;
+            // Extract original pixels (respecting selection shape)
+            Rectangle origBounds = originalSelection.getBounds();
+            int origX1 = origBounds.x;
+            int origY1 = origBounds.y;
+            int origWidth = origBounds.width;
+            int origHeight = origBounds.height;
 
             // Create buffer for original pixels
+            // For free-form selections, transparent pixels represent non-selected areas
             int[][] originalPixels = new int[origHeight][origWidth];
             for (int y = 0; y < origHeight; y++) {
                 for (int x = 0; x < origWidth; x++) {
                     int canvasX = origX1 + x;
                     int canvasY = origY1 + y;
-                    if (canvas.isValidCoordinate(canvasX, canvasY)) {
+                    if (originalSelection.contains(canvasX, canvasY) && canvas.isValidCoordinate(canvasX, canvasY)) {
                         originalPixels[y][x] = canvas.getPixel(canvasX, canvasY);
+                    } else {
+                        originalPixels[y][x] = 0x00000000; // Transparent for non-selected pixels
                     }
                 }
             }
 
-            // Clear original region to transparent
-            for (int y = origY1; y <= origY2; y++) {
-                for (int x = origX1; x <= origX2; x++) {
-                    if (canvas.isValidCoordinate(x, y)) {
-                        canvas.setPixel(x, y, 0x00000000);
+            // Clear original region to transparent (only selected pixels)
+            for (int y = 0; y < origHeight; y++) {
+                for (int x = 0; x < origWidth; x++) {
+                    int canvasX = origX1 + x;
+                    int canvasY = origY1 + y;
+                    if (originalSelection.contains(canvasX, canvasY) && canvas.isValidCoordinate(canvasX, canvasY)) {
+                        canvas.setPixel(canvasX, canvasY, 0x00000000);
                     }
                 }
             }
@@ -204,9 +220,9 @@ public class ScaleSelectionCommand implements Command {
 
     @Override
     public String getDescription() {
+        Rectangle origBounds = originalSelection.getBounds();
         return String.format("Scale selection from %dx%d to %dx%d",
-            originalSelection.getX2() - originalSelection.getX1() + 1,
-            originalSelection.getY2() - originalSelection.getY1() + 1,
+            origBounds.width, origBounds.height,
             scaledSelection.getX2() - scaledSelection.getX1() + 1,
             scaledSelection.getY2() - scaledSelection.getY1() + 1);
     }

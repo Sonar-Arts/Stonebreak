@@ -2,6 +2,7 @@ package com.openmason.ui.components.textureCreator.tools;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.*;
+import com.openmason.ui.components.textureCreator.selection.FreeSelection;
 import com.openmason.ui.components.textureCreator.selection.RectangularSelection;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.transform.TransformHandle;
@@ -9,7 +10,9 @@ import com.openmason.ui.components.textureCreator.transform.TransformHandleRende
 import imgui.ImDrawList;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Move tool with Photoshop-style transform controls - COMPLETE REWRITE.
@@ -34,7 +37,7 @@ public class MoveTool implements DrawingTool {
     private static final double CORNER_HANDLE_RADIUS = 1.0;      // Corner handles - pixel-perfect
     private static final double EDGE_HANDLE_RADIUS = 1.0;        // Edge handles - pixel-perfect
     private static final double ROTATION_HANDLE_RADIUS = 1.0;    // Rotation handle - pixel-perfect
-    private static final double CENTER_HANDLE_RADIUS = 1.0;      // Center handle - pixel-perfect
+    private static final double CENTER_HANDLE_RADIUS = 3.0;      // Center handle - larger for easier clicking
     private static final double ROTATION_HANDLE_SCREEN_OFFSET = 40.0; // Distance above top edge in screen pixels (constant regardless of zoom)
 
     // Transform state enum
@@ -48,7 +51,7 @@ public class MoveTool implements DrawingTool {
 
     // Current state
     private DragState dragState = DragState.IDLE;
-    private RectangularSelection currentSelection = null;
+    private SelectionRegion currentSelection = null;
     private List<TransformHandle> handles = new ArrayList<>();
     private TransformHandle hoveredHandle = null;
     private TransformHandle activeHandle = null;
@@ -61,12 +64,20 @@ public class MoveTool implements DrawingTool {
     private int previewX1, previewY1, previewX2, previewY2;
     private double rotationAngleDegrees = 0.0;
 
+    // Scale tracking (for maintaining free selection shapes)
+    private int scaleAnchorX, scaleAnchorY;
+    private double scaleFactorX, scaleFactorY;
+
     // Rotated geometry tracking (for live rotation visualization)
     private double[] rotatedCorners = null; // [x1,y1, x2,y1, x2,y2, x1,y2] - 4 corners (8 values)
     private List<TransformHandle> rotatedHandles = null; // Handles in rotated positions
+    private FreeSelection rotatedFreeSelectionPreview = null; // Preview of rotated free selection
 
     // Keyboard state
     private boolean shiftHeld = false;
+
+    // Tool options
+    private boolean uniformScaling = false; // When true, forces proportional/uniform scaling
 
     // Result for CanvasPanel
     private Command completedCommand = null;
@@ -88,10 +99,9 @@ public class MoveTool implements DrawingTool {
             // Clicked on a specific handle (corner/edge/rotation) - start the appropriate drag operation
             startDrag(clicked, x, y);
         } else if (currentSelection.contains(x, y)) {
-            // Clicked inside selection bounds (not on a handle) - check if center handle is close enough
+            // Clicked anywhere inside selection (not on a transform handle) - start moving
             TransformHandle centerHandle = findCenterHandle();
-            if (centerHandle != null && centerHandle.contains(x, y)) {
-                // Mouse is within center handle's hit radius AND inside selection
+            if (centerHandle != null) {
                 startDrag(centerHandle, x, y);
             }
         }
@@ -131,10 +141,13 @@ public class MoveTool implements DrawingTool {
         // Clear rotated geometry
         rotatedCorners = null;
         rotatedHandles = null;
+        rotatedFreeSelectionPreview = null;
     }
 
     /**
      * Updates the current selection and regenerates handles.
+     * Works with any SelectionRegion type (rectangular, free-form, etc.)
+     * Handles are generated based on the selection's bounding box.
      *
      * @param selection The selection region to update
      * @param zoom Current zoom level (for screen-space handle positioning)
@@ -142,9 +155,9 @@ public class MoveTool implements DrawingTool {
     public void updateSelection(SelectionRegion selection, float zoom) {
         currentZoom = zoom;
 
-        if (selection instanceof RectangularSelection rectSelection) {
-            if (!rectSelection.equals(currentSelection)) {
-                currentSelection = rectSelection;
+        if (selection != null && !selection.isEmpty()) {
+            if (!selection.equals(currentSelection)) {
+                currentSelection = selection;
                 generateHandles();
             }
         } else {
@@ -158,6 +171,26 @@ public class MoveTool implements DrawingTool {
      */
     public void setShiftHeld(boolean shiftHeld) {
         this.shiftHeld = shiftHeld;
+    }
+
+    /**
+     * Sets whether uniform scaling should be enabled for transform operations.
+     * When true, forces proportional/uniform scaling on both axes (same as holding Shift key).
+     * Applies to both corner scaling and edge stretching.
+     *
+     * @param uniform true to enable uniform scaling, false to allow independent axis scaling
+     */
+    public void setUniformScaling(boolean uniform) {
+        this.uniformScaling = uniform;
+    }
+
+    /**
+     * Checks if uniform scaling is enabled for transform operations.
+     *
+     * @return true if uniform scaling is enabled, false otherwise
+     */
+    public boolean isUniformScaling() {
+        return uniformScaling;
     }
 
     /**
@@ -188,6 +221,11 @@ public class MoveTool implements DrawingTool {
             // Render rotated selection outline
             renderer.renderRotatedSelection(drawList, rotatedCorners, canvasX, canvasY, zoom);
 
+            // Render rotated free selection preview if available
+            if (rotatedFreeSelectionPreview != null) {
+                renderRotatedFreeSelectionPreview(drawList, canvasX, canvasY, zoom);
+            }
+
             // Render rotated handles
             renderer.render(drawList, rotatedHandles, hoveredHandle, canvasX, canvasY, zoom);
 
@@ -215,11 +253,12 @@ public class MoveTool implements DrawingTool {
         dragStartX = x;
         dragStartY = y;
 
-        // Store original selection bounds
-        originalX1 = currentSelection.getX1();
-        originalY1 = currentSelection.getY1();
-        originalX2 = currentSelection.getX2();
-        originalY2 = currentSelection.getY2();
+        // Store original selection bounds (works for any selection type)
+        java.awt.Rectangle bounds = currentSelection.getBounds();
+        originalX1 = bounds.x;
+        originalY1 = bounds.y;
+        originalX2 = bounds.x + bounds.width - 1;
+        originalY2 = bounds.y + bounds.height - 1;
 
         // Initialize preview to original
         previewX1 = originalX1;
@@ -258,30 +297,39 @@ public class MoveTool implements DrawingTool {
         int anchorX = anchor[0];
         int anchorY = anchor[1];
 
+        // Store anchor for command creation
+        scaleAnchorX = anchorX;
+        scaleAnchorY = anchorY;
+
         // Get original dragged corner position
         int[] origCorner = getCornerPosition(activeHandle.getType(), originalX1, originalY1, originalX2, originalY2);
         int origCornerX = origCorner[0];
         int origCornerY = origCorner[1];
 
-        // Calculate scale factors
-        double originalWidth = Math.abs(origCornerX - anchorX);
-        double originalHeight = Math.abs(origCornerY - anchorY);
-        double newWidth = Math.abs(currentX - anchorX);
-        double newHeight = Math.abs(currentY - anchorY);
+        // Calculate scale factors (preserve sign for flipping)
+        double originalWidth = origCornerX - anchorX;
+        double originalHeight = origCornerY - anchorY;
+        double newWidth = currentX - anchorX;
+        double newHeight = currentY - anchorY;
 
         // Prevent division by zero
-        if (originalWidth < 1) originalWidth = 1;
-        if (originalHeight < 1) originalHeight = 1;
+        if (Math.abs(originalWidth) < 1) originalWidth = originalWidth < 0 ? -1 : 1;
+        if (Math.abs(originalHeight) < 1) originalHeight = originalHeight < 0 ? -1 : 1;
 
         double scaleX = newWidth / originalWidth;
         double scaleY = newHeight / originalHeight;
 
-        // Proportional scaling with Shift
-        if (shiftHeld) {
-            double uniformScale = Math.max(scaleX, scaleY);
-            scaleX = uniformScale;
-            scaleY = uniformScale;
+        // Proportional scaling with Shift or uniform scaling option (use absolute values for comparison)
+        if (shiftHeld || uniformScaling) {
+            double uniformScale = Math.max(Math.abs(scaleX), Math.abs(scaleY));
+            // Preserve signs
+            scaleX = uniformScale * Math.signum(scaleX);
+            scaleY = uniformScale * Math.signum(scaleY);
         }
+
+        // Store scale factors for command creation
+        scaleFactorX = scaleX;
+        scaleFactorY = scaleY;
 
         // Calculate new bounds
         int newX1 = anchorX + (int) Math.round((originalX1 - anchorX) * scaleX);
@@ -303,12 +351,98 @@ public class MoveTool implements DrawingTool {
         previewX2 = originalX2;
         previewY2 = originalY2;
 
-        // Modify only the dragged edge
+        // Original dimensions
+        int originalWidth = originalX2 - originalX1;
+        int originalHeight = originalY2 - originalY1;
+
+        // Calculate scale factor for the dragged edge
+        double primaryScaleFactor = 1.0;
+        boolean isVerticalEdge = false;
+
+        // Determine primary scale factor and anchor based on dragged edge
         switch (activeHandle.getType()) {
-            case EDGE_TOP -> previewY1 = currentY;
-            case EDGE_BOTTOM -> previewY2 = currentY;
-            case EDGE_LEFT -> previewX1 = currentX;
-            case EDGE_RIGHT -> previewX2 = currentX;
+            case EDGE_TOP -> {
+                int deltaY = currentY - originalY1;
+                int newHeight = originalHeight - deltaY;
+                primaryScaleFactor = (double) newHeight / originalHeight;
+                isVerticalEdge = true;
+                scaleAnchorX = originalX1;
+                scaleAnchorY = originalY2;
+            }
+            case EDGE_BOTTOM -> {
+                int deltaY = currentY - originalY2;
+                int newHeight = originalHeight + deltaY;
+                primaryScaleFactor = (double) newHeight / originalHeight;
+                isVerticalEdge = true;
+                scaleAnchorX = originalX1;
+                scaleAnchorY = originalY1;
+            }
+            case EDGE_LEFT -> {
+                int deltaX = currentX - originalX1;
+                int newWidth = originalWidth - deltaX;
+                primaryScaleFactor = (double) newWidth / originalWidth;
+                isVerticalEdge = false;
+                scaleAnchorX = originalX2;
+                scaleAnchorY = originalY1;
+            }
+            case EDGE_RIGHT -> {
+                int deltaX = currentX - originalX2;
+                int newWidth = originalWidth + deltaX;
+                primaryScaleFactor = (double) newWidth / originalWidth;
+                isVerticalEdge = false;
+                scaleAnchorX = originalX1;
+                scaleAnchorY = originalY1;
+            }
+        }
+
+        // Apply uniform scaling if enabled (or Shift held)
+        if (shiftHeld || uniformScaling) {
+            // Both axes scale by the same factor
+            scaleFactorX = primaryScaleFactor;
+            scaleFactorY = primaryScaleFactor;
+
+            // Calculate new bounds with uniform scaling from anchor
+            int newX1 = scaleAnchorX + (int) Math.round((originalX1 - scaleAnchorX) * scaleFactorX);
+            int newY1 = scaleAnchorY + (int) Math.round((originalY1 - scaleAnchorY) * scaleFactorY);
+            int newX2 = scaleAnchorX + (int) Math.round((originalX2 - scaleAnchorX) * scaleFactorX);
+            int newY2 = scaleAnchorY + (int) Math.round((originalY2 - scaleAnchorY) * scaleFactorY);
+
+            previewX1 = newX1;
+            previewY1 = newY1;
+            previewX2 = newX2;
+            previewY2 = newY2;
+        } else {
+            // Non-uniform scaling - only move the dragged edge, keep all others at original positions
+            scaleFactorX = 1.0;
+            scaleFactorY = 1.0;
+
+            // Update only the dragged edge based on which edge is being stretched
+            switch (activeHandle.getType()) {
+                case EDGE_TOP -> {
+                    scaleFactorY = primaryScaleFactor;
+                    previewY1 = scaleAnchorY + (int) Math.round((originalY1 - scaleAnchorY) * scaleFactorY);
+                    previewY2 = originalY2; // Anchor edge stays fixed
+                    // X coordinates already set to original values at start of method
+                }
+                case EDGE_BOTTOM -> {
+                    scaleFactorY = primaryScaleFactor;
+                    previewY1 = originalY1; // Anchor edge stays fixed
+                    previewY2 = scaleAnchorY + (int) Math.round((originalY2 - scaleAnchorY) * scaleFactorY);
+                    // X coordinates already set to original values at start of method
+                }
+                case EDGE_LEFT -> {
+                    scaleFactorX = primaryScaleFactor;
+                    previewX1 = scaleAnchorX + (int) Math.round((originalX1 - scaleAnchorX) * scaleFactorX);
+                    previewX2 = originalX2; // Anchor edge stays fixed
+                    // Y coordinates already set to original values at start of method
+                }
+                case EDGE_RIGHT -> {
+                    scaleFactorX = primaryScaleFactor;
+                    previewX1 = originalX1; // Anchor edge stays fixed
+                    previewX2 = scaleAnchorX + (int) Math.round((originalX2 - scaleAnchorX) * scaleFactorX);
+                    // Y coordinates already set to original values at start of method
+                }
+            }
         }
 
         // Normalize
@@ -341,9 +475,31 @@ public class MoveTool implements DrawingTool {
             rotationAngleDegrees = Math.round(rotationAngleDegrees / 15.0) * 15.0;
         }
 
+        // Snap to cardinal angles (0, 90, 180, 270) within 5° threshold
+        double normalizedAngle = rotationAngleDegrees % 360;
+        if (normalizedAngle < 0) normalizedAngle += 360;
+
+        double[] cardinalAngles = {0, 90, 180, 270, 360};
+        double snapThreshold = 5.0;
+        for (double cardinalAngle : cardinalAngles) {
+            if (Math.abs(normalizedAngle - cardinalAngle) < snapThreshold) {
+                rotationAngleDegrees = cardinalAngle;
+                if (cardinalAngle == 360) rotationAngleDegrees = 0; // Normalize 360 to 0
+                break;
+            }
+        }
+
         // Calculate rotated geometry for live visualization
         calculateRotatedCorners();
         generateRotatedHandles();
+
+        // Generate rotated free selection preview if applicable
+        if (currentSelection instanceof FreeSelection) {
+            FreeSelection freeSelection = (FreeSelection) currentSelection;
+            rotatedFreeSelectionPreview = freeSelection.rotate(rotationAngleDegrees);
+        } else {
+            rotatedFreeSelectionPreview = null;
+        }
     }
 
     // ==================== COMMAND CREATION ====================
@@ -353,6 +509,7 @@ public class MoveTool implements DrawingTool {
         int deltaY = previewY1 - originalY1;
 
         if (deltaX != 0 || deltaY != 0) {
+            // TranslateSelectionCommand works with any SelectionRegion type
             completedCommand = new TranslateSelectionCommand(canvas, currentSelection, deltaX, deltaY);
             updatedSelection = currentSelection.translate(deltaX, deltaY);
             transformPerformed = true;
@@ -360,19 +517,81 @@ public class MoveTool implements DrawingTool {
     }
 
     private void createScaleCommand(PixelCanvas canvas) {
-        RectangularSelection scaledSelection = new RectangularSelection(previewX1, previewY1, previewX2, previewY2);
+        // Check if we're scaling a free selection - maintain its shape
+        if (currentSelection instanceof FreeSelection) {
+            FreeSelection freeSelection = (FreeSelection) currentSelection;
 
-        if (!scaledSelection.equals(currentSelection)) {
-            completedCommand = new ScaleSelectionCommand(canvas, currentSelection, scaledSelection);
-            updatedSelection = scaledSelection;
-            transformPerformed = true;
+            // Scale the free selection to maintain its shape
+            FreeSelection scaledFreeSelection =
+                freeSelection.scale(scaleAnchorX, scaleAnchorY, scaleFactorX, scaleFactorY);
+
+            // For non-uniform edge stretching, trim the scaled selection to exact target bounds
+            // This removes fill artifacts at anchor edges while maintaining free-form shape
+            boolean isNonUniformStretch = (Math.abs(scaleFactorX - 1.0) < 0.001 && Math.abs(scaleFactorY - 1.0) >= 0.001) ||
+                                         (Math.abs(scaleFactorY - 1.0) < 0.001 && Math.abs(scaleFactorX - 1.0) >= 0.001);
+
+            if (isNonUniformStretch) {
+                // Trim pixels outside target bounds to prevent anchor edge artifacts
+                scaledFreeSelection = trimFreeSelectionToBounds(scaledFreeSelection, previewX1, previewY1, previewX2, previewY2);
+            }
+
+            if (!scaledFreeSelection.equals(currentSelection)) {
+                // Use rectangular bounds for the command, but maintain the free selection
+                RectangularSelection targetBounds = new RectangularSelection(previewX1, previewY1, previewX2, previewY2);
+                completedCommand = new ScaleSelectionCommand(canvas, currentSelection, targetBounds);
+                updatedSelection = scaledFreeSelection; // Update to scaled free selection, not rectangle
+                transformPerformed = true;
+            }
+        } else {
+            // Rectangular selection - normal behavior
+            RectangularSelection scaledSelection = new RectangularSelection(previewX1, previewY1, previewX2, previewY2);
+
+            if (!scaledSelection.equals(currentSelection)) {
+                completedCommand = new ScaleSelectionCommand(canvas, currentSelection, scaledSelection);
+                updatedSelection = scaledSelection;
+                transformPerformed = true;
+            }
         }
+    }
+
+    /**
+     * Trims a free selection to only include pixels within the specified bounds.
+     * Used to remove fill artifacts at anchor edges during non-uniform scaling.
+     *
+     * @param selection The free selection to trim
+     * @param x1 Left bound (inclusive)
+     * @param y1 Top bound (inclusive)
+     * @param x2 Right bound (inclusive)
+     * @param y2 Bottom bound (inclusive)
+     * @return A new FreeSelection containing only pixels within bounds
+     */
+    private FreeSelection trimFreeSelectionToBounds(FreeSelection selection, int x1, int y1, int x2, int y2) {
+        Set<FreeSelection.Pixel> trimmedPixels = new HashSet<>();
+
+        for (FreeSelection.Pixel pixel : selection.getPixels()) {
+            if (pixel.x >= x1 && pixel.x <= x2 && pixel.y >= y1 && pixel.y <= y2) {
+                trimmedPixels.add(pixel);
+            }
+        }
+
+        // If no pixels remain after trimming, return original selection
+        return trimmedPixels.isEmpty() ? selection : new FreeSelection(trimmedPixels);
     }
 
     private void createRotateCommand(PixelCanvas canvas) {
         if (Math.abs(rotationAngleDegrees) > 0.1) {
+            // RotateSelectionCommand works with any SelectionRegion type
             completedCommand = new RotateSelectionCommand(canvas, currentSelection, rotationAngleDegrees);
-            updatedSelection = currentSelection; // Bounds don't change for rotation
+
+            // For free selections, update to rotated coordinates
+            if (currentSelection instanceof FreeSelection) {
+                FreeSelection freeSelection = (FreeSelection) currentSelection;
+                updatedSelection = freeSelection.rotate(rotationAngleDegrees);
+            } else {
+                // Rectangular selection bounds don't change for rotation
+                updatedSelection = currentSelection;
+            }
+
             transformPerformed = true;
         }
     }
@@ -386,10 +605,12 @@ public class MoveTool implements DrawingTool {
             return;
         }
 
-        int x1 = currentSelection.getX1();
-        int y1 = currentSelection.getY1();
-        int x2 = currentSelection.getX2();
-        int y2 = currentSelection.getY2();
+        // Use bounds for any selection type (rectangular, free-form, etc.)
+        java.awt.Rectangle bounds = currentSelection.getBounds();
+        int x1 = bounds.x;
+        int y1 = bounds.y;
+        int x2 = bounds.x + bounds.width - 1;
+        int y2 = bounds.y + bounds.height - 1;
 
         // Calculate visual box edges (selection box goes from x1 to x2+1 in canvas space)
         double boxRight = x2 + 1;
@@ -508,6 +729,27 @@ public class MoveTool implements DrawingTool {
         float y2 = canvasY + (previewY2 + 1) * zoom;  // +1 to match selection rendering
 
         drawList.addRect(x1, y1, x2, y2, color, 0.0f, 0, 2.0f);
+    }
+
+    /**
+     * Renders the rotated free selection preview during rotation.
+     */
+    private void renderRotatedFreeSelectionPreview(ImDrawList drawList, float canvasX, float canvasY, float zoom) {
+        if (rotatedFreeSelectionPreview == null) {
+            return;
+        }
+
+        int previewColor = imgui.ImColor.rgba(100, 150, 255, 100); // Blue semi-transparent
+
+        // Render each pixel in the rotated selection
+        for (FreeSelection.Pixel pixel : rotatedFreeSelectionPreview.getPixels()) {
+            float x1 = canvasX + pixel.x * zoom;
+            float y1 = canvasY + pixel.y * zoom;
+            float x2 = x1 + zoom;
+            float y2 = y1 + zoom;
+
+            drawList.addRectFilled(x1, y1, x2, y2, previewColor);
+        }
     }
 
     // ==================== ROTATION GEOMETRY CALCULATION ====================
@@ -639,8 +881,10 @@ public class MoveTool implements DrawingTool {
         updatedSelection = null;
         transformPerformed = false;
         shiftHeld = false;
+        uniformScaling = false; // Reset uniform scaling option
         rotatedCorners = null;
         rotatedHandles = null;
+        rotatedFreeSelectionPreview = null;
     }
 
     @Override

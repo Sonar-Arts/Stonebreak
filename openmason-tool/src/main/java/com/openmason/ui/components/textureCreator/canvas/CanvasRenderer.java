@@ -229,8 +229,9 @@ public class CanvasRenderer {
                     canvasX, canvasY, zoom);
         }
         // Render active selection (if no preview is being dragged)
+        // Note: renderSelection() dispatches to correct renderer for rectangle or free-form selections
         else if (currentSelection != null && !currentSelection.isEmpty()) {
-            selectionRenderer.render(drawList, currentSelection, canvasX, canvasY, zoom);
+            selectionRenderer.renderSelection(drawList, currentSelection, canvasX, canvasY, zoom);
         }
     }
 

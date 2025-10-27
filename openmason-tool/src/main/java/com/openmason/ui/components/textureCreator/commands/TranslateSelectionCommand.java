@@ -1,24 +1,27 @@
 package com.openmason.ui.components.textureCreator.commands;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
-import com.openmason.ui.components.textureCreator.selection.RectangularSelection;
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 
+import java.awt.Rectangle;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Command for translating (moving) a rectangular selection.
+ * Command for translating (moving) any selection region.
+ * Works with rectangular, free-form, and any SelectionRegion implementation.
  * Implements cut-and-paste behavior: original location becomes transparent.
  *
  * SOLID: Single responsibility - handles selection translation only
  * Command Pattern: Supports undo/redo
+ * Open/Closed: Works with any SelectionRegion type via interface
  *
  * @author Open Mason Team
  */
 public class TranslateSelectionCommand implements Command {
 
     private final PixelCanvas canvas;
-    private final RectangularSelection originalSelection;
+    private final SelectionRegion originalSelection;
     private final int deltaX;
     private final int deltaY;
 
@@ -30,11 +33,11 @@ public class TranslateSelectionCommand implements Command {
      * Create a translate selection command.
      *
      * @param canvas The pixel canvas to modify
-     * @param originalSelection The original selection bounds
+     * @param originalSelection The original selection region (any type)
      * @param deltaX Horizontal translation distance
      * @param deltaY Vertical translation distance
      */
-    public TranslateSelectionCommand(PixelCanvas canvas, RectangularSelection originalSelection,
+    public TranslateSelectionCommand(PixelCanvas canvas, SelectionRegion originalSelection,
                                      int deltaX, int deltaY) {
         this.canvas = canvas;
         this.originalSelection = originalSelection;
@@ -49,17 +52,21 @@ public class TranslateSelectionCommand implements Command {
 
     /**
      * Backup pixels from both source and destination regions.
+     * Uses selection.contains() to support any selection shape.
      */
     private void backupPixels() {
-        int x1 = originalSelection.getX1();
-        int y1 = originalSelection.getY1();
-        int x2 = originalSelection.getX2();
-        int y2 = originalSelection.getY2();
+        // Get bounding box for iteration
+        Rectangle bounds = originalSelection.getBounds();
+        int x1 = bounds.x;
+        int y1 = bounds.y;
+        int x2 = bounds.x + bounds.width - 1;
+        int y2 = bounds.y + bounds.height - 1;
 
-        // Backup source pixels (will be cleared to transparent)
+        // Backup source pixels (only pixels actually in selection)
         for (int y = y1; y <= y2; y++) {
             for (int x = x1; x <= x2; x++) {
-                if (canvas.isValidCoordinate(x, y)) {
+                // Check if pixel is actually in the selection (supports free-form selections)
+                if (originalSelection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
                     int key = y * canvas.getWidth() + x;
                     originalPixels.put(key, canvas.getPixel(x, y));
                 }
@@ -67,18 +74,19 @@ public class TranslateSelectionCommand implements Command {
         }
 
         // Backup destination pixels (will be overwritten)
-        int destX1 = x1 + deltaX;
-        int destY1 = y1 + deltaY;
-        int destX2 = x2 + deltaX;
-        int destY2 = y2 + deltaY;
+        // Iterate over same shape, translated
+        for (int y = y1; y <= y2; y++) {
+            for (int x = x1; x <= x2; x++) {
+                if (originalSelection.contains(x, y)) {
+                    int destX = x + deltaX;
+                    int destY = y + deltaY;
 
-        for (int y = destY1; y <= destY2; y++) {
-            for (int x = destX1; x <= destX2; x++) {
-                if (canvas.isValidCoordinate(x, y)) {
-                    int key = y * canvas.getWidth() + x;
-                    // Only backup if not already in original pixels (avoid double-backup for overlap)
-                    if (!originalPixels.containsKey(key)) {
-                        destinationOriginalPixels.put(key, canvas.getPixel(x, y));
+                    if (canvas.isValidCoordinate(destX, destY)) {
+                        int key = destY * canvas.getWidth() + destX;
+                        // Only backup if not already in original pixels (avoid double-backup for overlap)
+                        if (!originalPixels.containsKey(key)) {
+                            destinationOriginalPixels.put(key, canvas.getPixel(destX, destY));
+                        }
                     }
                 }
             }
@@ -91,16 +99,17 @@ public class TranslateSelectionCommand implements Command {
         canvas.setActiveSelection(null);
 
         try {
-            int x1 = originalSelection.getX1();
-            int y1 = originalSelection.getY1();
-            int x2 = originalSelection.getX2();
-            int y2 = originalSelection.getY2();
+            Rectangle bounds = originalSelection.getBounds();
+            int x1 = bounds.x;
+            int y1 = bounds.y;
+            int x2 = bounds.x + bounds.width - 1;
+            int y2 = bounds.y + bounds.height - 1;
 
             // Step 1: Clear original location to transparent (cut behavior)
-            // Do this first, using saved pixels to paste later
+            // Only clear pixels that are actually in the selection
             for (int y = y1; y <= y2; y++) {
                 for (int x = x1; x <= x2; x++) {
-                    if (canvas.isValidCoordinate(x, y)) {
+                    if (originalSelection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
                         canvas.setPixel(x, y, 0x00000000); // Transparent
                     }
                 }
@@ -110,14 +119,16 @@ public class TranslateSelectionCommand implements Command {
             // This happens after clearing, so overlap doesn't matter
             for (int y = y1; y <= y2; y++) {
                 for (int x = x1; x <= x2; x++) {
-                    int destX = x + deltaX;
-                    int destY = y + deltaY;
+                    if (originalSelection.contains(x, y)) {
+                        int destX = x + deltaX;
+                        int destY = y + deltaY;
 
-                    if (canvas.isValidCoordinate(destX, destY)) {
-                        int key = y * canvas.getWidth() + x;
-                        Integer pixelColor = originalPixels.get(key);
-                        if (pixelColor != null) {
-                            canvas.setPixel(destX, destY, pixelColor);
+                        if (canvas.isValidCoordinate(destX, destY)) {
+                            int key = y * canvas.getWidth() + x;
+                            Integer pixelColor = originalPixels.get(key);
+                            if (pixelColor != null) {
+                                canvas.setPixel(destX, destY, pixelColor);
+                            }
                         }
                     }
                 }

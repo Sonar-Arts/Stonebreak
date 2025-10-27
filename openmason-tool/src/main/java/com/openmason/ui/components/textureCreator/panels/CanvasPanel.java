@@ -8,10 +8,13 @@ import com.openmason.ui.components.textureCreator.commands.CommandHistory;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.commands.TranslateSelectionCommand;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
+import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
+import com.openmason.ui.components.textureCreator.tools.FreeSelectionTool;
 import com.openmason.ui.components.textureCreator.tools.MoveTool;
 import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
+import com.openmason.ui.components.textureCreator.tools.selection.PixelPreview;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.slf4j.Logger;
@@ -30,6 +33,7 @@ public class CanvasPanel {
     private static final Logger logger = LoggerFactory.getLogger(CanvasPanel.class);
 
     private final CanvasRenderer renderer;
+    private final SelectionRenderer selectionRenderer;
     private boolean isMouseDown = false;
     private boolean wasMouseDown = false;
 
@@ -53,6 +57,7 @@ public class CanvasPanel {
      */
     public CanvasPanel() {
         this.renderer = new CanvasRenderer();
+        this.selectionRenderer = new SelectionRenderer();
         logger.debug("Canvas panel created");
     }
 
@@ -111,17 +116,29 @@ public class CanvasPanel {
             cursorPos.y + centerOffsetY
         );
 
-        // Get selection preview bounds if using selection tool
+        // Get selection preview bounds if using rectangle selection tool
         int[] selectionPreviewBounds = null;
         if (currentTool instanceof RectangleSelectionTool) {
             RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
             selectionPreviewBounds = selectionTool.getSelectionPreviewBounds();
         }
-        // Note: MoveTool now renders its own transform preview via transform handles
+        // Note: MoveTool and FreeSelectionTool render their own previews below
 
         // Render the display canvas (composited view) with opacity settings
         renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
                        currentSelection, selectionPreviewBounds);
+
+        // Render free selection pixel preview if using free selection tool
+        if (currentTool instanceof FreeSelectionTool) {
+            FreeSelectionTool freeSelectionTool = (FreeSelectionTool) currentTool;
+            PixelPreview pixelPreview = freeSelectionTool.getPixelPreview();
+            if (pixelPreview != null) {
+                imgui.ImDrawList drawList = imgui.ImGui.getWindowDrawList();
+                float canvasX = canvasRegionMin.x + canvasState.getPanOffsetX();
+                float canvasY = canvasRegionMin.y + canvasState.getPanOffsetY();
+                selectionRenderer.renderPixelPreview(drawList, pixelPreview.getPixels(), canvasX, canvasY, zoom);
+            }
+        }
 
         // Render transform handles if using move tool with active selection
         if (currentTool instanceof MoveTool && currentSelection != null && !currentSelection.isEmpty()) {
@@ -264,12 +281,30 @@ public class CanvasPanel {
                     if (onSelectionCreatedCallback != null) {
                         onSelectionCreatedCallback.accept(createdSelection);
                         if (createdSelection != null) {
-                            logger.debug("Selection created: {}", createdSelection.getBounds());
+                            logger.debug("Rectangle selection created: {}", createdSelection.getBounds());
                         } else {
                             logger.debug("Selection cleared");
                         }
                     }
                     selectionTool.clearSelectionCreatedFlag();
+                }
+            }
+            // Handle free selection tool
+            else if (currentTool instanceof FreeSelectionTool) {
+                FreeSelectionTool freeSelectionTool = (FreeSelectionTool) currentTool;
+
+                // Handle selection creation/update
+                if (freeSelectionTool.wasSelectionCreated()) {
+                    SelectionRegion createdSelection = freeSelectionTool.getCreatedSelection();
+                    if (onSelectionCreatedCallback != null) {
+                        onSelectionCreatedCallback.accept(createdSelection);
+                        if (createdSelection != null) {
+                            logger.debug("Free selection created: {}", createdSelection.getBounds());
+                        } else {
+                            logger.debug("Selection cleared");
+                        }
+                    }
+                    freeSelectionTool.clearSelectionCreatedFlag();
                 }
             }
             // Handle move tool

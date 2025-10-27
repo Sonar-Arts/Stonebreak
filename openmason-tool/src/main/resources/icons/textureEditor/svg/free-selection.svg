@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Free-form lasso selection path -->
+  <path d="M 6,8 Q 8,5 12,6 T 18,4 Q 22,3 25,6 T 28,12 Q 29,16 26,20 T 22,26 Q 18,28 14,26 T 8,22 Q 5,18 6,14 T 6,8 Z"
+        fill="none"
+        stroke="#3399FF"
+        stroke-width="2"
+        stroke-dasharray="4,2"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Inner highlight for contrast -->
+  <path d="M 7,9 Q 9,7 12,7 T 17,5 Q 21,4 24,7 T 27,12 Q 28,15 25,19 T 21,25 Q 17,27 14,25 T 9,21 Q 6,17 7,13 T 7,9 Z"
+        fill="none"
+        stroke="#FFFFFF"
+        stroke-width="1"
+        stroke-dasharray="3,2"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Brush cursor indicator at start point -->
+  <circle cx="6" cy="8" r="2.5" fill="#3399FF" stroke="#FFFFFF" stroke-width="1.5"/>
+
+  <!-- Small dots along path to indicate hand-drawn nature -->
+  <circle cx="12" cy="6" r="1" fill="#3399FF" opacity="0.6"/>
+  <circle cx="18" cy="4" r="1" fill="#3399FF" opacity="0.6"/>
+  <circle cx="25" cy="6" r="1" fill="#3399FF" opacity="0.6"/>
+  <circle cx="14" cy="26" r="1" fill="#3399FF" opacity="0.6"/>
+</svg>

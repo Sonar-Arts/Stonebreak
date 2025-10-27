@@ -40,6 +40,7 @@ public class TextureCreatorImGui {
 
     // UI Panels
     private final ToolbarPanel toolbarPanel;
+    private final ToolOptionsBar toolOptionsBar;
     private final CanvasPanel canvasPanel;
     private final LayerPanelRenderer layerPanel;
     private final ColorPanel colorPanel;
@@ -81,6 +82,7 @@ public class TextureCreatorImGui {
 
         // Initialize panels
         this.toolbarPanel = new ToolbarPanel();
+        this.toolOptionsBar = new ToolOptionsBar();
         this.canvasPanel = new CanvasPanel();
         this.layerPanel = new LayerPanelRenderer();
         this.colorPanel = new ColorPanel();
@@ -102,6 +104,9 @@ public class TextureCreatorImGui {
     public void render() {
         // Render main menu bar
         renderMenuBar();
+
+        // Render tool options toolbar (below menu bar)
+        renderToolOptionsBar();
 
         // Render dockspace container
         renderDockSpace();
@@ -144,13 +149,19 @@ public class TextureCreatorImGui {
     /**
      * Render main docking space container.
      * Follows the same pattern as MainImGuiInterface.
+     * Adjusts positioning to account for tool options toolbar.
      */
     private void renderDockSpace() {
         int windowFlags = ImGuiWindowFlags.NoDocking;
 
         ImGuiViewport viewport = ImGui.getMainViewport();
-        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY());
-        ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY());
+
+        // Calculate toolbar height (0 if not visible)
+        float toolbarHeight = toolOptionsBar.getHeight(state.getCurrentTool());
+
+        // Position dockspace below menu bar and toolbar
+        ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY() + toolbarHeight);
+        ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY() - toolbarHeight);
         ImGui.setNextWindowViewport(viewport.getID());
 
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
@@ -254,6 +265,14 @@ public class TextureCreatorImGui {
         showPreferencesWindow = isOpen.get();
     }
 
+
+    /**
+     * Render tool options toolbar.
+     * Only visible when the current tool has options to display.
+     */
+    private void renderToolOptionsBar() {
+        toolOptionsBar.render(state.getCurrentTool());
+    }
 
     /**
      * Render menu bar.

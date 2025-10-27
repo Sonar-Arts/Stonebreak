@@ -1,26 +1,29 @@
 package com.openmason.ui.components.textureCreator.commands;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
-import com.openmason.ui.components.textureCreator.selection.RectangularSelection;
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 
+import java.awt.Rectangle;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Command for rotating a rectangular selection around its center.
+ * Command for rotating any selection region around its center.
+ * Works with rectangular, free-form, and any SelectionRegion implementation.
  * Uses bilinear interpolation for smooth rotation.
  * <p>
  * SOLID: Single responsibility - handles selection rotation only
  * Command Pattern: Supports undo/redo
  * KISS: Straightforward rotation algorithm
  * YAGNI: Center rotation only (no movable pivot)
+ * Open/Closed: Works with any SelectionRegion type via interface
  *
  * @author Open Mason Team
  */
 public class RotateSelectionCommand implements Command {
 
     private final PixelCanvas canvas;
-    private final RectangularSelection selection;
+    private final SelectionRegion selection;
     private final double rotationDegrees;
 
     // Pixel backup for undo
@@ -30,10 +33,10 @@ public class RotateSelectionCommand implements Command {
      * Create a rotate selection command.
      *
      * @param canvas The pixel canvas to modify
-     * @param selection The selection bounds
+     * @param selection The selection region (any type)
      * @param rotationDegrees Rotation angle in degrees (positive = clockwise)
      */
-    public RotateSelectionCommand(PixelCanvas canvas, RectangularSelection selection,
+    public RotateSelectionCommand(PixelCanvas canvas, SelectionRegion selection,
                                   double rotationDegrees) {
         this.canvas = canvas;
         this.selection = selection;
@@ -46,16 +49,18 @@ public class RotateSelectionCommand implements Command {
 
     /**
      * Backup pixels in the selection region.
+     * Uses contains() to support free-form selections.
      */
     private void backupPixels() {
-        int x1 = selection.getX1();
-        int y1 = selection.getY1();
-        int x2 = selection.getX2();
-        int y2 = selection.getY2();
+        Rectangle bounds = selection.getBounds();
+        int x1 = bounds.x;
+        int y1 = bounds.y;
+        int x2 = bounds.x + bounds.width - 1;
+        int y2 = bounds.y + bounds.height - 1;
 
         for (int y = y1; y <= y2; y++) {
             for (int x = x1; x <= x2; x++) {
-                if (canvas.isValidCoordinate(x, y)) {
+                if (selection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
                     int key = y * canvas.getWidth() + x;
                     affectedPixels.put(key, canvas.getPixel(x, y));
                 }
@@ -69,21 +74,22 @@ public class RotateSelectionCommand implements Command {
         canvas.setActiveSelection(null);
 
         try {
-            int x1 = selection.getX1();
-            int y1 = selection.getY1();
-            int x2 = selection.getX2();
-            int y2 = selection.getY2();
-            int width = x2 - x1 + 1;
-            int height = y2 - y1 + 1;
+            Rectangle bounds = selection.getBounds();
+            int x1 = bounds.x;
+            int y1 = bounds.y;
+            int width = bounds.width;
+            int height = bounds.height;
 
-            // Extract original pixels
+            // Extract original pixels (respecting selection shape)
             int[][] originalPixels = new int[height][width];
             for (int y = 0; y < height; y++) {
                 for (int x = 0; x < width; x++) {
                     int canvasX = x1 + x;
                     int canvasY = y1 + y;
-                    if (canvas.isValidCoordinate(canvasX, canvasY)) {
+                    if (selection.contains(canvasX, canvasY) && canvas.isValidCoordinate(canvasX, canvasY)) {
                         originalPixels[y][x] = canvas.getPixel(canvasX, canvasY);
+                    } else {
+                        originalPixels[y][x] = 0x00000000; // Transparent for non-selected pixels
                     }
                 }
             }
@@ -97,11 +103,13 @@ public class RotateSelectionCommand implements Command {
             double cos = Math.cos(angleRad);
             double sin = Math.sin(angleRad);
 
-            // Clear selection area to transparent
-            for (int y = y1; y <= y2; y++) {
-                for (int x = x1; x <= x2; x++) {
-                    if (canvas.isValidCoordinate(x, y)) {
-                        canvas.setPixel(x, y, 0x00000000);
+            // Clear selection area to transparent (only selected pixels)
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int canvasX = x1 + x;
+                    int canvasY = y1 + y;
+                    if (selection.contains(canvasX, canvasY) && canvas.isValidCoordinate(canvasX, canvasY)) {
+                        canvas.setPixel(canvasX, canvasY, 0x00000000);
                     }
                 }
             }
