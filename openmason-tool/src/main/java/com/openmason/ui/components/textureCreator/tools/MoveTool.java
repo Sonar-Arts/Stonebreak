@@ -3,12 +3,12 @@ package com.openmason.ui.components.textureCreator.tools;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.*;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
-import com.openmason.ui.components.textureCreator.tools.moveTool.commands.TransformCommandFactory;
-import com.openmason.ui.components.textureCreator.tools.moveTool.handles.HandleManager;
-import com.openmason.ui.components.textureCreator.tools.moveTool.rendering.TransformPreviewRenderer;
-import com.openmason.ui.components.textureCreator.tools.moveTool.state.DragState;
-import com.openmason.ui.components.textureCreator.tools.moveTool.state.TransformState;
-import com.openmason.ui.components.textureCreator.tools.moveTool.transform.TransformCalculator;
+import com.openmason.ui.components.textureCreator.tools.movetool.commands.TransformCommandFactory;
+import com.openmason.ui.components.textureCreator.tools.movetool.handles.HandleManager;
+import com.openmason.ui.components.textureCreator.tools.movetool.rendering.TransformPreviewRenderer;
+import com.openmason.ui.components.textureCreator.tools.movetool.state.DragState;
+import com.openmason.ui.components.textureCreator.tools.movetool.state.TransformState;
+import com.openmason.ui.components.textureCreator.tools.movetool.transform.TransformCalculator;
 import com.openmason.ui.components.textureCreator.transform.TransformHandle;
 import imgui.ImDrawList;
 

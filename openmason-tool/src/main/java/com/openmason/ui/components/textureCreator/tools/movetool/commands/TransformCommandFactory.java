@@ -1,4 +1,4 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.commands;
+package com.openmason.ui.components.textureCreator.tools.movetool.commands;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.Command;
@@ -8,7 +8,7 @@ import com.openmason.ui.components.textureCreator.commands.TranslateSelectionCom
 import com.openmason.ui.components.textureCreator.selection.FreeSelection;
 import com.openmason.ui.components.textureCreator.selection.RectangularSelection;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
-import com.openmason.ui.components.textureCreator.tools.moveTool.state.TransformState;
+import com.openmason.ui.components.textureCreator.tools.movetool.state.TransformState;
 
 import java.util.HashSet;
 import java.util.Set;

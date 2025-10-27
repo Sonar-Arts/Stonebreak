@@ -1,8 +1,8 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.transform;
+package com.openmason.ui.components.textureCreator.tools.movetool.transform;
 
 import com.openmason.ui.components.textureCreator.selection.FreeSelection;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
-import com.openmason.ui.components.textureCreator.tools.moveTool.state.TransformState;
+import com.openmason.ui.components.textureCreator.tools.movetool.state.TransformState;
 import com.openmason.ui.components.textureCreator.transform.TransformHandle;
 
 import java.util.ArrayList;
@@ -320,8 +320,7 @@ public class TransformCalculator {
     }
 
     private double snapToCardinalAngles(double angle) {
-        double normalizedAngle = angle % 360;
-        if (normalizedAngle < 0) normalizedAngle += 360;
+        double normalizedAngle = GeometryHelper.normalizeAngle(angle);
 
         double[] cardinalAngles = {0, 90, 180, 270, 360};
         double snapThreshold = 5.0;

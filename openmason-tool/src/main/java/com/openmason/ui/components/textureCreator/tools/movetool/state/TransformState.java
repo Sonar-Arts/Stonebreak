@@ -1,4 +1,4 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.state;
+package com.openmason.ui.components.textureCreator.tools.movetool.state;
 
 import com.openmason.ui.components.textureCreator.selection.FreeSelection;
 import com.openmason.ui.components.textureCreator.transform.TransformHandle;

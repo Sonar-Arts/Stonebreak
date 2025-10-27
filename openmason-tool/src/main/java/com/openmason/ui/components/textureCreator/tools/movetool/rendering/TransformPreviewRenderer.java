@@ -1,8 +1,8 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.rendering;
+package com.openmason.ui.components.textureCreator.tools.movetool.rendering;
 
 import com.openmason.ui.components.textureCreator.selection.FreeSelection;
-import com.openmason.ui.components.textureCreator.tools.moveTool.state.DragState;
-import com.openmason.ui.components.textureCreator.tools.moveTool.state.TransformState;
+import com.openmason.ui.components.textureCreator.tools.movetool.state.DragState;
+import com.openmason.ui.components.textureCreator.tools.movetool.state.TransformState;
 import com.openmason.ui.components.textureCreator.transform.TransformHandle;
 import com.openmason.ui.components.textureCreator.transform.TransformHandleRenderer;
 import imgui.ImDrawList;

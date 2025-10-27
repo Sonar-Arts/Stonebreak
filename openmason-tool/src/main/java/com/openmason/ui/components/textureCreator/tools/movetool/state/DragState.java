@@ -1,4 +1,4 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.state;
+package com.openmason.ui.components.textureCreator.tools.movetool.state;
 
 /**
  * Enumeration of possible drag states during transform operations.

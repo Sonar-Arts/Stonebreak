@@ -1,9 +1,15 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.transform;
+package com.openmason.ui.components.textureCreator.tools.movetool.transform;
 
 /**
- * Utility class for geometric calculations, primarily rotation operations.
- * Follows KISS and YAGNI principles - only essential geometry operations.
- * All methods are static and stateless.
+ * Utility class for geometric calculations used in transform operations.
+ * Follows KISS and YAGNI principles - implements only operations actively used by the transform system.
+ * All methods are static and stateless for thread-safe operation.
+ *
+ * Operations:
+ * - Point and rectangle rotation (rotatePoint, calculateRotatedCorners)
+ * - Distance calculation (calculateDistance)
+ * - Center point calculation (calculateCenter)
+ * - Angle normalization (normalizeAngle)
  *
  * @author Open Mason Team
  */
@@ -98,5 +104,20 @@ public class GeometryHelper {
         double centerX = (x1 + boxRight) / 2.0;
         double centerY = (y1 + boxBottom) / 2.0;
         return new double[]{centerX, centerY};
+    }
+
+    /**
+     * Normalizes an angle to the range [0, 360).
+     * Used for angle snapping and cardinal angle detection.
+     *
+     * @param angleDegrees Angle in degrees
+     * @return Normalized angle in the range [0, 360)
+     */
+    public static double normalizeAngle(double angleDegrees) {
+        double normalized = angleDegrees % 360;
+        if (normalized < 0) {
+            normalized += 360;
+        }
+        return normalized;
     }
 }

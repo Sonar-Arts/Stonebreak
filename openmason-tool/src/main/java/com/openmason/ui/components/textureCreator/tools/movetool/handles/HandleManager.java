@@ -1,7 +1,7 @@
-package com.openmason.ui.components.textureCreator.tools.moveTool.handles;
+package com.openmason.ui.components.textureCreator.tools.movetool.handles;
 
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
-import com.openmason.ui.components.textureCreator.tools.moveTool.transform.GeometryHelper;
+import com.openmason.ui.components.textureCreator.tools.movetool.transform.GeometryHelper;
 import com.openmason.ui.components.textureCreator.transform.TransformHandle;
 
 import java.util.ArrayList;
