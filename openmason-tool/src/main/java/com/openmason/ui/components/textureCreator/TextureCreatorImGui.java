@@ -305,12 +305,17 @@ public class TextureCreatorImGui {
             if (ImGui.beginMenu("Edit")) {
                 boolean canUndo = controller.getCommandHistory().canUndo();
                 boolean canRedo = controller.getCommandHistory().canRedo();
+                boolean hasSelection = state.getCurrentSelection() != null && !state.getCurrentSelection().isEmpty();
 
                 if (ImGui.menuItem("Undo", "Ctrl+Z", false, canUndo)) {
                     controller.undo();
                 }
                 if (ImGui.menuItem("Redo", "Ctrl+Y", false, canRedo)) {
                     controller.redo();
+                }
+                ImGui.separator();
+                if (ImGui.menuItem("Delete Selection", "Del", false, hasSelection)) {
+                    controller.deleteSelection();
                 }
                 ImGui.endMenu();
             }
@@ -413,6 +418,9 @@ public class TextureCreatorImGui {
         // Selection operations
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             state.clearSelection();
+        }
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_DELETE) || ImGui.isKeyPressed(GLFW.GLFW_KEY_BACKSPACE)) {
+            controller.deleteSelection();
         }
 
         // Zoom

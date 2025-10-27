@@ -283,4 +283,55 @@ public class TextureCreatorController {
         layerManager.markCompositeDirty();
         state.markAsModified();
     }
+
+    /**
+     * Delete the contents of the current selection.
+     * Sets all pixels within the selection to transparent.
+     */
+    public void deleteSelection() {
+        com.openmason.ui.components.textureCreator.selection.SelectionRegion selection = state.getCurrentSelection();
+
+        if (selection == null || selection.isEmpty()) {
+            logger.debug("No active selection to delete");
+            return;
+        }
+
+        Layer activeLayer = layerManager.getActiveLayer();
+        if (activeLayer == null) {
+            logger.warn("No active layer to delete selection from");
+            return;
+        }
+
+        PixelCanvas canvas = activeLayer.getCanvas();
+        java.awt.Rectangle bounds = selection.getBounds();
+
+        // Create command for undo/redo support
+        com.openmason.ui.components.textureCreator.commands.DrawCommand deleteCommand =
+            new com.openmason.ui.components.textureCreator.commands.DrawCommand(canvas, "Delete Selection");
+
+        // Delete all pixels within selection
+        int pixelsDeleted = 0;
+        for (int y = bounds.y; y < bounds.y + bounds.height; y++) {
+            for (int x = bounds.x; x < bounds.x + bounds.width; x++) {
+                if (canvas.isValidCoordinate(x, y) && selection.contains(x, y)) {
+                    int oldColor = canvas.getPixel(x, y);
+                    int newColor = 0x00000000; // Transparent
+
+                    if (oldColor != newColor) {
+                        deleteCommand.recordPixelChange(x, y, oldColor, newColor);
+                        pixelsDeleted++;
+                    }
+                }
+            }
+        }
+
+        // Only execute if pixels were changed
+        if (deleteCommand.hasChanges()) {
+            commandHistory.executeCommand(deleteCommand);
+            notifyLayerModified();
+            logger.info("Deleted {} pixels from selection", pixelsDeleted);
+        } else {
+            logger.debug("No pixels to delete in selection (all already transparent)");
+        }
+    }
 }
