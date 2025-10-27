@@ -11,8 +11,6 @@ import java.util.List;
  * Manages transform handles generation and lookup.
  * Responsible for creating handles around selection bounds and finding handles based on mouse position.
  * Follows Single Responsibility Principle - only handles handle management.
- *
- * @author Open Mason Team
  */
 public class HandleManager {
 
@@ -74,7 +72,7 @@ public class HandleManager {
     }
 
     /**
-     * Finds the nearest handle to the given point using distance-based selection.
+     * Finds the nearest handle to the given point using exact pixel-based distance calculation.
      * Returns the handle only if the mouse is within its hit radius.
      *
      * @param x Mouse x coordinate in canvas space
@@ -92,13 +90,15 @@ public class HandleManager {
                 continue;
             }
 
-            if (handle.contains(x, y)) {
-                double distance = GeometryHelper.calculateDistance(x, y, handle.getX(), handle.getY());
+            // Calculate exact pixel distance once
+            double dx = x - handle.getX();
+            double dy = y - handle.getY();
+            double distance = Math.sqrt(dx * dx + dy * dy);
 
-                if (distance < nearestDistance) {
-                    nearest = handle;
-                    nearestDistance = distance;
-                }
+            // Check if within hit radius and closer than current nearest
+            if (distance <= handle.getHitRadius() && distance < nearestDistance) {
+                nearest = handle;
+                nearestDistance = distance;
             }
         }
 

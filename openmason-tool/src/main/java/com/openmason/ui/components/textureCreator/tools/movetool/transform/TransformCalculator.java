@@ -45,27 +45,21 @@ public class TransformCalculator {
      */
     public void updateScaling(TransformState state, int currentX, int currentY,
                               TransformHandle activeHandle, boolean proportional) {
-        // Get anchor point (opposite corner)
+        // Get anchor point (opposite corner) and store for command creation
         int[] anchor = getAnchorForCorner(activeHandle.getType(), state);
-        int anchorX = anchor[0];
-        int anchorY = anchor[1];
-
-        // Store anchor for command creation
-        state.setScaleAnchorX(anchorX);
-        state.setScaleAnchorY(anchorY);
+        state.setScaleAnchorX(anchor[0]);
+        state.setScaleAnchorY(anchor[1]);
 
         // Get original dragged corner position
         int[] origCorner = getCornerPosition(activeHandle.getType(),
             state.getOriginalX1(), state.getOriginalY1(),
             state.getOriginalX2(), state.getOriginalY2());
-        int origCornerX = origCorner[0];
-        int origCornerY = origCorner[1];
 
         // Calculate scale factors (preserve sign for flipping)
-        double originalWidth = origCornerX - anchorX;
-        double originalHeight = origCornerY - anchorY;
-        double newWidth = currentX - anchorX;
-        double newHeight = currentY - anchorY;
+        double originalWidth = origCorner[0] - anchor[0];
+        double originalHeight = origCorner[1] - anchor[1];
+        double newWidth = currentX - anchor[0];
+        double newHeight = currentY - anchor[1];
 
         // Prevent division by zero
         if (Math.abs(originalWidth) < 1) originalWidth = originalWidth < 0 ? -1 : 1;
@@ -74,29 +68,15 @@ public class TransformCalculator {
         double scaleX = newWidth / originalWidth;
         double scaleY = newHeight / originalHeight;
 
-        // Proportional scaling (use absolute values for comparison)
+        // Proportional scaling - use larger scale factor and preserve signs
         if (proportional) {
             double uniformScale = Math.max(Math.abs(scaleX), Math.abs(scaleY));
-            // Preserve signs
             scaleX = uniformScale * Math.signum(scaleX);
             scaleY = uniformScale * Math.signum(scaleY);
         }
 
-        // Store scale factors for command creation
-        state.setScaleFactorX(scaleX);
-        state.setScaleFactorY(scaleY);
-
-        // Calculate new bounds
-        int newX1 = anchorX + (int) Math.round((state.getOriginalX1() - anchorX) * scaleX);
-        int newY1 = anchorY + (int) Math.round((state.getOriginalY1() - anchorY) * scaleY);
-        int newX2 = anchorX + (int) Math.round((state.getOriginalX2() - anchorX) * scaleX);
-        int newY2 = anchorY + (int) Math.round((state.getOriginalY2() - anchorY) * scaleY);
-
-        // Normalize (ensure x1 < x2, y1 < y2)
-        state.setPreviewX1(Math.min(newX1, newX2));
-        state.setPreviewY1(Math.min(newY1, newY2));
-        state.setPreviewX2(Math.max(newX1, newX2));
-        state.setPreviewY2(Math.max(newY1, newY2));
+        // Apply scaling and normalize bounds
+        applyScaling(state, anchor[0], anchor[1], scaleX, scaleY);
     }
 
     /**
@@ -110,28 +90,56 @@ public class TransformCalculator {
      */
     public void updateStretching(TransformState state, int currentX, int currentY,
                                  TransformHandle activeHandle, boolean uniform) {
-        // Start with original bounds
-        state.setPreviewX1(state.getOriginalX1());
-        state.setPreviewY1(state.getOriginalY1());
-        state.setPreviewX2(state.getOriginalX2());
-        state.setPreviewY2(state.getOriginalY2());
-
-        // Original dimensions
         int originalWidth = state.getOriginalX2() - state.getOriginalX1();
         int originalHeight = state.getOriginalY2() - state.getOriginalY1();
 
-        // Calculate scale factor for the dragged edge
-        double primaryScaleFactor = calculateEdgeScaleFactor(state, currentX, currentY, activeHandle);
+        // Calculate scale factor and anchor for the dragged edge
+        double scaleFactor;
+        int anchorX, anchorY;
+        double scaleX = 1.0, scaleY = 1.0;
 
-        // Apply uniform scaling if enabled
-        if (uniform) {
-            applyUniformEdgeScaling(state, primaryScaleFactor, activeHandle);
-        } else {
-            applyNonUniformEdgeScaling(state, primaryScaleFactor, activeHandle);
+        switch (activeHandle.getType()) {
+            case EDGE_TOP -> {
+                int newHeight = originalHeight - (currentY - state.getOriginalY1());
+                scaleFactor = (double) newHeight / originalHeight;
+                anchorX = state.getOriginalX1();
+                anchorY = state.getOriginalY2();
+                scaleY = scaleFactor;
+            }
+            case EDGE_BOTTOM -> {
+                int newHeight = originalHeight + (currentY - state.getOriginalY2());
+                scaleFactor = (double) newHeight / originalHeight;
+                anchorX = state.getOriginalX1();
+                anchorY = state.getOriginalY1();
+                scaleY = scaleFactor;
+            }
+            case EDGE_LEFT -> {
+                int newWidth = originalWidth - (currentX - state.getOriginalX1());
+                scaleFactor = (double) newWidth / originalWidth;
+                anchorX = state.getOriginalX2();
+                anchorY = state.getOriginalY1();
+                scaleX = scaleFactor;
+            }
+            case EDGE_RIGHT -> {
+                int newWidth = originalWidth + (currentX - state.getOriginalX2());
+                scaleFactor = (double) newWidth / originalWidth;
+                anchorX = state.getOriginalX1();
+                anchorY = state.getOriginalY1();
+                scaleX = scaleFactor;
+            }
+            default -> throw new IllegalArgumentException("Not an edge: " + activeHandle.getType());
         }
 
-        // Normalize
-        normalizePreviewBounds(state);
+        // Uniform scaling applies the edge's scale factor to both axes
+        if (uniform) {
+            scaleX = scaleFactor;
+            scaleY = scaleFactor;
+        }
+
+        // Store anchor and apply scaling
+        state.setScaleAnchorX(anchorX);
+        state.setScaleAnchorY(anchorY);
+        applyScaling(state, anchorX, anchorY, scaleX, scaleY);
     }
 
     /**
@@ -194,6 +202,28 @@ public class TransformCalculator {
 
     // ==================== PRIVATE HELPER METHODS ====================
 
+    /**
+     * Applies scaling transformation from an anchor point and normalizes bounds.
+     * Common logic used by both corner scaling and edge stretching.
+     */
+    private void applyScaling(TransformState state, int anchorX, int anchorY, double scaleX, double scaleY) {
+        // Store scale factors for command creation
+        state.setScaleFactorX(scaleX);
+        state.setScaleFactorY(scaleY);
+
+        // Calculate new bounds from anchor
+        int newX1 = anchorX + (int) Math.round((state.getOriginalX1() - anchorX) * scaleX);
+        int newY1 = anchorY + (int) Math.round((state.getOriginalY1() - anchorY) * scaleY);
+        int newX2 = anchorX + (int) Math.round((state.getOriginalX2() - anchorX) * scaleX);
+        int newY2 = anchorY + (int) Math.round((state.getOriginalY2() - anchorY) * scaleY);
+
+        // Normalize bounds (ensure x1 < x2, y1 < y2)
+        state.setPreviewX1(Math.min(newX1, newX2));
+        state.setPreviewY1(Math.min(newY1, newY2));
+        state.setPreviewX2(Math.max(newX1, newX2));
+        state.setPreviewY2(Math.max(newY1, newY2));
+    }
+
     private int[] getAnchorForCorner(TransformHandle.Type cornerType, TransformState state) {
         return switch (cornerType) {
             case CORNER_TOP_LEFT -> new int[]{state.getOriginalX2(), state.getOriginalY2()};
@@ -214,171 +244,59 @@ public class TransformCalculator {
         };
     }
 
-    private double calculateEdgeScaleFactor(TransformState state, int currentX, int currentY,
-                                            TransformHandle activeHandle) {
-        int originalWidth = state.getOriginalX2() - state.getOriginalX1();
-        int originalHeight = state.getOriginalY2() - state.getOriginalY1();
-
-        return switch (activeHandle.getType()) {
-            case EDGE_TOP -> {
-                int deltaY = currentY - state.getOriginalY1();
-                int newHeight = originalHeight - deltaY;
-                state.setScaleAnchorX(state.getOriginalX1());
-                state.setScaleAnchorY(state.getOriginalY2());
-                yield (double) newHeight / originalHeight;
-            }
-            case EDGE_BOTTOM -> {
-                int deltaY = currentY - state.getOriginalY2();
-                int newHeight = originalHeight + deltaY;
-                state.setScaleAnchorX(state.getOriginalX1());
-                state.setScaleAnchorY(state.getOriginalY1());
-                yield (double) newHeight / originalHeight;
-            }
-            case EDGE_LEFT -> {
-                int deltaX = currentX - state.getOriginalX1();
-                int newWidth = originalWidth - deltaX;
-                state.setScaleAnchorX(state.getOriginalX2());
-                state.setScaleAnchorY(state.getOriginalY1());
-                yield (double) newWidth / originalWidth;
-            }
-            case EDGE_RIGHT -> {
-                int deltaX = currentX - state.getOriginalX2();
-                int newWidth = originalWidth + deltaX;
-                state.setScaleAnchorX(state.getOriginalX1());
-                state.setScaleAnchorY(state.getOriginalY1());
-                yield (double) newWidth / originalWidth;
-            }
-            default -> throw new IllegalArgumentException("Not an edge: " + activeHandle.getType());
-        };
-    }
-
-    private void applyUniformEdgeScaling(TransformState state, double scaleFactor,
-                                         TransformHandle activeHandle) {
-        // Both axes scale by the same factor
-        state.setScaleFactorX(scaleFactor);
-        state.setScaleFactorY(scaleFactor);
-
-        // Calculate new bounds with uniform scaling from anchor
-        int anchorX = state.getScaleAnchorX();
-        int anchorY = state.getScaleAnchorY();
-
-        int newX1 = anchorX + (int) Math.round((state.getOriginalX1() - anchorX) * scaleFactor);
-        int newY1 = anchorY + (int) Math.round((state.getOriginalY1() - anchorY) * scaleFactor);
-        int newX2 = anchorX + (int) Math.round((state.getOriginalX2() - anchorX) * scaleFactor);
-        int newY2 = anchorY + (int) Math.round((state.getOriginalY2() - anchorY) * scaleFactor);
-
-        state.setPreviewX1(newX1);
-        state.setPreviewY1(newY1);
-        state.setPreviewX2(newX2);
-        state.setPreviewY2(newY2);
-    }
-
-    private void applyNonUniformEdgeScaling(TransformState state, double scaleFactor,
-                                            TransformHandle activeHandle) {
-        // Non-uniform scaling - only move the dragged edge
-        state.setScaleFactorX(1.0);
-        state.setScaleFactorY(1.0);
-
-        int anchorX = state.getScaleAnchorX();
-        int anchorY = state.getScaleAnchorY();
-
-        switch (activeHandle.getType()) {
-            case EDGE_TOP -> {
-                state.setScaleFactorY(scaleFactor);
-                state.setPreviewY1(anchorY + (int) Math.round((state.getOriginalY1() - anchorY) * scaleFactor));
-                state.setPreviewY2(state.getOriginalY2());
-            }
-            case EDGE_BOTTOM -> {
-                state.setScaleFactorY(scaleFactor);
-                state.setPreviewY1(state.getOriginalY1());
-                state.setPreviewY2(anchorY + (int) Math.round((state.getOriginalY2() - anchorY) * scaleFactor));
-            }
-            case EDGE_LEFT -> {
-                state.setScaleFactorX(scaleFactor);
-                state.setPreviewX1(anchorX + (int) Math.round((state.getOriginalX1() - anchorX) * scaleFactor));
-                state.setPreviewX2(state.getOriginalX2());
-            }
-            case EDGE_RIGHT -> {
-                state.setScaleFactorX(scaleFactor);
-                state.setPreviewX1(state.getOriginalX1());
-                state.setPreviewX2(anchorX + (int) Math.round((state.getOriginalX2() - anchorX) * scaleFactor));
-            }
-        }
-    }
-
-    private void normalizePreviewBounds(TransformState state) {
-        if (state.getPreviewX1() > state.getPreviewX2()) {
-            int temp = state.getPreviewX1();
-            state.setPreviewX1(state.getPreviewX2());
-            state.setPreviewX2(temp);
-        }
-        if (state.getPreviewY1() > state.getPreviewY2()) {
-            int temp = state.getPreviewY1();
-            state.setPreviewY1(state.getPreviewY2());
-            state.setPreviewY2(temp);
-        }
-    }
-
     private double snapToCardinalAngles(double angle) {
         double normalizedAngle = GeometryHelper.normalizeAngle(angle);
-
-        double[] cardinalAngles = {0, 90, 180, 270, 360};
         double snapThreshold = 5.0;
 
+        // Snap to 0°, 90°, 180°, 270° if within threshold
+        double[] cardinalAngles = {0, 90, 180, 270};
         for (double cardinalAngle : cardinalAngles) {
             if (Math.abs(normalizedAngle - cardinalAngle) < snapThreshold) {
-                return cardinalAngle == 360 ? 0 : cardinalAngle;
+                return cardinalAngle;
             }
+        }
+
+        // Check 360° wraps to 0°
+        if (Math.abs(normalizedAngle - 360) < snapThreshold) {
+            return 0;
         }
 
         return angle;
     }
 
-    private List<TransformHandle> generateRotatedHandles(TransformState state, double[] rotatedCorners) {
-        List<TransformHandle> rotatedHandles = new ArrayList<>();
+    private List<TransformHandle> generateRotatedHandles(TransformState state, double[] corners) {
+        // Handle radii match HandleManager configuration
+        final double HANDLE_RADIUS = 1.0;
+        final double ROTATION_OFFSET = 40.0;
 
-        // Handle configuration
-        double CORNER_HANDLE_RADIUS = 1.0;
-        double EDGE_HANDLE_RADIUS = 1.0;
-        double ROTATION_HANDLE_RADIUS = 1.0;
-        double ROTATION_HANDLE_SCREEN_OFFSET = 40.0;
+        List<TransformHandle> handles = new ArrayList<>();
 
-        // Extract rotated corners
-        double x1 = rotatedCorners[0];
-        double y1 = rotatedCorners[1];
-        double x2 = rotatedCorners[2];
-        double y2 = rotatedCorners[3];
-        double x3 = rotatedCorners[4];
-        double y3 = rotatedCorners[5];
-        double x4 = rotatedCorners[6];
-        double y4 = rotatedCorners[7];
+        // Corner handles (4 corners)
+        handles.add(new TransformHandle(TransformHandle.Type.CORNER_TOP_LEFT, corners[0], corners[1], HANDLE_RADIUS));
+        handles.add(new TransformHandle(TransformHandle.Type.CORNER_TOP_RIGHT, corners[2], corners[3], HANDLE_RADIUS));
+        handles.add(new TransformHandle(TransformHandle.Type.CORNER_BOTTOM_RIGHT, corners[4], corners[5], HANDLE_RADIUS));
+        handles.add(new TransformHandle(TransformHandle.Type.CORNER_BOTTOM_LEFT, corners[6], corners[7], HANDLE_RADIUS));
 
-        // Corner handles at rotated positions
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.CORNER_TOP_LEFT, x1, y1, CORNER_HANDLE_RADIUS));
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.CORNER_TOP_RIGHT, x2, y2, CORNER_HANDLE_RADIUS));
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.CORNER_BOTTOM_RIGHT, x3, y3, CORNER_HANDLE_RADIUS));
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.CORNER_BOTTOM_LEFT, x4, y4, CORNER_HANDLE_RADIUS));
+        // Edge handles (midpoints between corners)
+        handles.add(new TransformHandle(TransformHandle.Type.EDGE_TOP,
+            (corners[0] + corners[2]) / 2.0, (corners[1] + corners[3]) / 2.0, HANDLE_RADIUS));
+        handles.add(new TransformHandle(TransformHandle.Type.EDGE_RIGHT,
+            (corners[2] + corners[4]) / 2.0, (corners[3] + corners[5]) / 2.0, HANDLE_RADIUS));
+        handles.add(new TransformHandle(TransformHandle.Type.EDGE_BOTTOM,
+            (corners[4] + corners[6]) / 2.0, (corners[5] + corners[7]) / 2.0, HANDLE_RADIUS));
+        handles.add(new TransformHandle(TransformHandle.Type.EDGE_LEFT,
+            (corners[6] + corners[0]) / 2.0, (corners[7] + corners[1]) / 2.0, HANDLE_RADIUS));
 
-        // Edge handles at rotated midpoints
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.EDGE_TOP, (x1 + x2) / 2.0, (y1 + y2) / 2.0, EDGE_HANDLE_RADIUS));
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.EDGE_RIGHT, (x2 + x3) / 2.0, (y2 + y3) / 2.0, EDGE_HANDLE_RADIUS));
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.EDGE_BOTTOM, (x3 + x4) / 2.0, (y3 + y4) / 2.0, EDGE_HANDLE_RADIUS));
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.EDGE_LEFT, (x4 + x1) / 2.0, (y4 + y1) / 2.0, EDGE_HANDLE_RADIUS));
-
-        // Rotation handle - rotate the top center point
+        // Rotation handle - positioned above center, rotated with selection
         double[] center = GeometryHelper.calculateCenter(
             state.getOriginalX1(), state.getOriginalY1(),
             state.getOriginalX2(), state.getOriginalY2());
-        double centerX = center[0];
-        double centerY = center[1];
+        double[] rotatedPosition = GeometryHelper.rotatePoint(
+            center[0], state.getOriginalY1() - ROTATION_OFFSET,
+            center[0], center[1], state.getRotationAngleDegrees());
+        handles.add(new TransformHandle(TransformHandle.Type.ROTATION,
+            rotatedPosition[0], rotatedPosition[1], HANDLE_RADIUS));
 
-        // Note: This assumes zoom of 1.0 - will need to be adjusted if zoom is needed
-        double topCenterY = state.getOriginalY1() - ROTATION_HANDLE_SCREEN_OFFSET;
-        double[] rotatedTopCenter = GeometryHelper.rotatePoint(
-            centerX, topCenterY, centerX, centerY, state.getRotationAngleDegrees());
-        rotatedHandles.add(new TransformHandle(TransformHandle.Type.ROTATION,
-            rotatedTopCenter[0], rotatedTopCenter[1], ROTATION_HANDLE_RADIUS));
-
-        return rotatedHandles;
+        return handles;
     }
 }
