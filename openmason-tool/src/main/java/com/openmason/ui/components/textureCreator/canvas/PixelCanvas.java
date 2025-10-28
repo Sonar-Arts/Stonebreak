@@ -29,6 +29,7 @@ public class PixelCanvas {
     private final int[] pixels; // RGBA packed as int
     private long modificationVersion; // Incremented on each modification for cache invalidation
     private SelectionRegion activeSelection; // Active selection region (null if no selection)
+    private boolean bypassSelectionConstraint = false; // Temporarily bypass selection constraint for special operations
 
     /**
      * Create new pixel canvas with specified dimensions.
@@ -115,7 +116,8 @@ public class PixelCanvas {
         }
 
         // Selection constraint: if selection is active, only allow modifications within selection
-        if (activeSelection != null && !activeSelection.isEmpty()) {
+        // (unless bypass is enabled for special operations like move tool)
+        if (!bypassSelectionConstraint && activeSelection != null && !activeSelection.isEmpty()) {
             if (!activeSelection.contains(x, y)) {
                 return; // Pixel is outside selection - ignore modification
             }
@@ -288,5 +290,25 @@ public class PixelCanvas {
      */
     public boolean hasActiveSelection() {
         return activeSelection != null && !activeSelection.isEmpty();
+    }
+
+    /**
+     * Temporarily bypass the selection constraint.
+     * This allows special operations (like move tool) to write pixels outside the selection bounds.
+     * IMPORTANT: Must be re-enabled after the operation completes.
+     *
+     * @param bypass true to bypass selection constraint, false to enforce it
+     */
+    public void setBypassSelectionConstraint(boolean bypass) {
+        this.bypassSelectionConstraint = bypass;
+    }
+
+    /**
+     * Check if selection constraint is currently bypassed.
+     *
+     * @return true if bypass is enabled, false otherwise
+     */
+    public boolean isBypassSelectionConstraint() {
+        return bypassSelectionConstraint;
     }
 }

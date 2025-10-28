@@ -2,6 +2,7 @@ package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.tools.*;
+import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +40,7 @@ public class ToolbarPanel {
         tools.add(new LineTool());
         tools.add(new RectangleSelectionTool());
         tools.add(new FreeSelectionTool());
+        tools.add(new MoveToolController());
 
         // Set default tool
         currentTool = tools.get(0); // Pencil

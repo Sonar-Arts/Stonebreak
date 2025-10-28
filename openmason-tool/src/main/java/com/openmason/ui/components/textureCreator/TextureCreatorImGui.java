@@ -436,6 +436,14 @@ public class TextureCreatorImGui {
 
         // Selection operations
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            // If move tool is active with extracted pixels, restore them before clearing
+            if (toolbarPanel.getCurrentTool() instanceof com.openmason.ui.components.textureCreator.tools.move.MoveToolController) {
+                com.openmason.ui.components.textureCreator.tools.move.MoveToolController moveTool =
+                        (com.openmason.ui.components.textureCreator.tools.move.MoveToolController) toolbarPanel.getCurrentTool();
+                if (moveTool.isActive()) {
+                    moveTool.cancelAndReset(controller.getActiveLayerCanvas());
+                }
+            }
             state.clearSelection();
         }
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_DELETE) || ImGui.isKeyPressed(GLFW.GLFW_KEY_BACKSPACE)) {

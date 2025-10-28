@@ -3,17 +3,17 @@ package com.openmason.ui.components.textureCreator.panels;
 import com.openmason.ui.components.textureCreator.canvas.CanvasRenderer;
 import com.openmason.ui.components.textureCreator.canvas.CanvasState;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
-import com.openmason.ui.components.textureCreator.commands.Command;
 import com.openmason.ui.components.textureCreator.commands.CommandHistory;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
-import com.openmason.ui.components.textureCreator.commands.TranslateSelectionCommand;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import com.openmason.ui.components.textureCreator.tools.FreeSelectionTool;
 import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
+import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import com.openmason.ui.components.textureCreator.tools.selection.PixelPreview;
+import com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.slf4j.Logger;
@@ -136,6 +136,22 @@ public class CanvasPanel {
                 float canvasY = canvasRegionMin.y + canvasState.getPanOffsetY();
                 selectionRenderer.renderPixelPreview(drawList, pixelPreview.getPixels(), canvasX, canvasY, zoom);
             }
+        }
+
+        // Render move tool overlay if using move tool
+        if (currentTool instanceof MoveToolController) {
+            MoveToolController moveTool = (MoveToolController) currentTool;
+            imgui.ImDrawList drawList = imgui.ImGui.getWindowDrawList();
+
+            // Update hovered handle for cursor feedback
+            ImVec2 mousePos = ImGui.getMousePos();
+
+            moveTool.updateHoveredHandle(mousePos.x, mousePos.y, currentSelection, canvasState,
+                    canvasRegionMin.x, canvasRegionMin.y);
+
+            // Render move tool overlay (handles, preview, etc.)
+            moveTool.renderOverlay(drawList, currentSelection, canvasState,
+                    canvasRegionMin.x, canvasRegionMin.y);
         }
 
         // Sync selection to canvas instances for constraint checking
@@ -271,6 +287,28 @@ public class CanvasPanel {
                         }
                     }
                     freeSelectionTool.clearSelectionCreatedFlag();
+                }
+            }
+            // Handle move tool
+            else if (currentTool instanceof MoveToolController) {
+                MoveToolController moveTool = (MoveToolController) currentTool;
+
+                // Check if there's a pending command to execute
+                MoveSelectionCommand pendingCommand = moveTool.getPendingCommand();
+                if (pendingCommand != null && pendingCommand.hasChanges() && commandHistory != null) {
+                    commandHistory.executeCommand(pendingCommand);
+                    logger.debug("Executed move command: {}", pendingCommand.getDescription());
+
+                    // Update selection to transformed selection
+                    SelectionRegion transformedSelection = pendingCommand.getTransformedSelection();
+                    if (onSelectionCreatedCallback != null) {
+                        onSelectionCreatedCallback.accept(transformedSelection);
+                        if (transformedSelection != null) {
+                            logger.debug("Selection transformed: {}", transformedSelection.getBounds());
+                        }
+                    }
+
+                    moveTool.clearPendingCommand();
                 }
             } else {
                 // Execute the command if it has changes (non-color-picker/selection tools)
