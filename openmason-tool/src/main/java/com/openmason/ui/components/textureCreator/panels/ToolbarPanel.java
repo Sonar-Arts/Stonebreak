@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
+import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.tools.*;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import imgui.ImGui;
@@ -14,6 +15,7 @@ import java.util.List;
  * Toolbar panel renderer - displays tool selection buttons with SVG icons.
  *
  * Follows SOLID principles - Single Responsibility: renders toolbar UI only.
+ * Now supports SelectionManager injection for move tool integration.
  *
  * @author Open Mason Team
  */
@@ -24,6 +26,7 @@ public class ToolbarPanel {
     private final List<DrawingTool> tools;
     private DrawingTool currentTool;
     private final TextureToolIconManager iconManager;
+    private MoveToolController moveToolInstance; // Reference to move tool for configuration
 
     /**
      * Create toolbar panel with all available tools.
@@ -40,12 +43,27 @@ public class ToolbarPanel {
         tools.add(new LineTool());
         tools.add(new RectangleSelectionTool());
         tools.add(new FreeSelectionTool());
-        tools.add(new MoveToolController());
+
+        // Store move tool reference for later configuration
+        moveToolInstance = new MoveToolController();
+        tools.add(moveToolInstance);
 
         // Set default tool
         currentTool = tools.get(0); // Pencil
 
         logger.debug("Toolbar panel created with {} tools", tools.size());
+    }
+
+    /**
+     * Configures the move tool with the SelectionManager.
+     * Should be called after TextureCreatorState is initialized.
+     * @param selectionManager The SelectionManager to use
+     */
+    public void setSelectionManager(SelectionManager selectionManager) {
+        if (moveToolInstance != null) {
+            moveToolInstance.setSelectionManager(selectionManager);
+            logger.debug("Move tool configured with SelectionManager");
+        }
     }
 
     /**

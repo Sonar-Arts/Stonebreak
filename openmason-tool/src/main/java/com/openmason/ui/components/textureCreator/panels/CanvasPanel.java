@@ -154,12 +154,10 @@ public class CanvasPanel {
                     canvasRegionMin.x, canvasRegionMin.y);
         }
 
-        // Sync selection to canvas instances for constraint checking
+        // Note: Selection is now automatically available to canvases through SelectionManager
+        // which is wired up in TextureCreatorImGui.renderCanvasPanel()
+        // No need to manually sync selection here - canvases get it from SelectionManager
         PixelCanvas targetCanvas = drawingCanvas != null ? drawingCanvas : displayCanvas;
-        targetCanvas.setActiveSelection(currentSelection);
-        if (displayCanvas != targetCanvas) {
-            displayCanvas.setActiveSelection(currentSelection);
-        }
 
         // Handle mouse input for drawing and navigation on the drawing canvas (active layer)
         handleInput(targetCanvas, canvasState,

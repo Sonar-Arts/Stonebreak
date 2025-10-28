@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator.canvas;
 
+import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,7 @@ import java.util.Arrays;
  *
  * Stores pixel data as a simple RGBA integer array.
  * Follows KISS principle - straightforward data structure with clear operations.
+ * Now integrates with SelectionManager for centralized selection state.
  *
  * Pixel format: 0xAABBGGRR (alpha, blue, green, red)
  * - Alpha: bits 24-31
@@ -28,7 +30,8 @@ public class PixelCanvas {
     private final int height;
     private final int[] pixels; // RGBA packed as int
     private long modificationVersion; // Incremented on each modification for cache invalidation
-    private SelectionRegion activeSelection; // Active selection region (null if no selection)
+    private SelectionRegion activeSelection; // Active selection region (null if no selection) - legacy
+    private SelectionManager selectionManager; // Optional centralized selection manager
     private boolean bypassSelectionConstraint = false; // Temporarily bypass selection constraint for special operations
 
     /**
@@ -258,37 +261,64 @@ public class PixelCanvas {
     }
 
     /**
-     * Set the active selection region.
+     * Sets the SelectionManager for this canvas.
+     * When set, the canvas will use the SelectionManager's selection instead of its own.
+     * @param selectionManager The SelectionManager instance (can be null)
+     */
+    public void setSelectionManager(SelectionManager selectionManager) {
+        this.selectionManager = selectionManager;
+    }
+
+    /**
+     * Set the active selection region (legacy method).
+     * When SelectionManager is set, this method has no effect as selection is managed centrally.
      * When a selection is active, only pixels within the selection can be modified.
      *
      * @param selection The selection region to set (null to clear selection)
      */
     public void setActiveSelection(SelectionRegion selection) {
+        if (selectionManager != null) {
+            logger.warn("setActiveSelection called but SelectionManager is active - use SelectionManager instead");
+            return;
+        }
         this.activeSelection = selection;
     }
 
     /**
      * Get the active selection region.
+     * If SelectionManager is set, returns its selection; otherwise returns local selection.
      *
      * @return The active selection, or null if no selection is active
      */
     public SelectionRegion getActiveSelection() {
+        if (selectionManager != null) {
+            return selectionManager.getActiveSelection();
+        }
         return activeSelection;
     }
 
     /**
      * Clear the active selection.
+     * If SelectionManager is set, clears it through the manager; otherwise clears locally.
      */
     public void clearSelection() {
-        this.activeSelection = null;
+        if (selectionManager != null) {
+            selectionManager.clearSelection();
+        } else {
+            this.activeSelection = null;
+        }
     }
 
     /**
      * Check if a selection is currently active.
+     * If SelectionManager is set, checks its selection; otherwise checks local selection.
      *
      * @return true if a selection is active, false otherwise
      */
     public boolean hasActiveSelection() {
+        if (selectionManager != null) {
+            return selectionManager.hasActiveSelection();
+        }
         return activeSelection != null && !activeSelection.isEmpty();
     }
 

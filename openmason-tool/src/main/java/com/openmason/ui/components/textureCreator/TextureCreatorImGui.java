@@ -91,10 +91,14 @@ public class TextureCreatorImGui {
         // Load color history from preferences
         colorPanel.setColorHistory(preferences.getColorHistory());
 
+        // Wire up SelectionManager across components
+        toolbarPanel.setSelectionManager(state.getSelectionManager());
+        logger.debug("Selection manager wired to toolbar panel (move tool)");
+
         // Set default tool
         state.setCurrentTool(toolbarPanel.getCurrentTool());
 
-        logger.info("Texture Creator UI initialized with preferences persistence and color history");
+        logger.info("Texture Creator UI initialized with preferences persistence, color history, and selection management");
     }
 
     /**
@@ -203,6 +207,14 @@ public class TextureCreatorImGui {
         if (ImGui.begin("Canvas")) {
             PixelCanvas compositedCanvas = controller.getCompositedCanvas();
             PixelCanvas activeCanvas = controller.getActiveLayerCanvas();
+
+            // Wire up SelectionManager to active canvas
+            if (activeCanvas != null) {
+                activeCanvas.setSelectionManager(state.getSelectionManager());
+            }
+            if (compositedCanvas != null) {
+                compositedCanvas.setSelectionManager(state.getSelectionManager());
+            }
 
             if (compositedCanvas != null) {
                 // Display composited view, but draw on active layer

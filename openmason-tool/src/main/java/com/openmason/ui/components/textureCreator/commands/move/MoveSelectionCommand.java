@@ -2,6 +2,7 @@ package com.openmason.ui.components.textureCreator.commands.move;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.Command;
+import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.tools.move.modules.TransformState;
 
@@ -12,10 +13,12 @@ import java.util.Map;
 /**
  * Command for moving/transforming a selection.
  * Supports undo/redo by storing original and transformed pixel states.
+ * Now integrates with SelectionManager for centralized selection state management.
  */
 public class MoveSelectionCommand implements Command {
 
     private final PixelCanvas canvas;
+    private final SelectionManager selectionManager;
     private final SelectionRegion originalSelection;
     private final SelectionRegion transformedSelection;
     private final TransformState transform;
@@ -33,12 +36,14 @@ public class MoveSelectionCommand implements Command {
     private boolean isFirstExecution = true;
 
     public MoveSelectionCommand(PixelCanvas canvas,
+                                SelectionManager selectionManager,
                                 SelectionRegion originalSelection,
                                 SelectionRegion transformedSelection,
                                 TransformState transform,
                                 Map<Point, Integer> originalPixels,
                                 Map<Point, Integer> transformedPixels) {
         this.canvas = canvas;
+        this.selectionManager = selectionManager;
         this.originalSelection = originalSelection;
         this.transformedSelection = transformedSelection;
         this.transform = transform;
@@ -72,6 +77,10 @@ public class MoveSelectionCommand implements Command {
         // Skip the actual work to avoid clearing pixels in overlapping regions
         if (isFirstExecution) {
             System.out.println("[MoveSelectionCommand] First execution - pixels already in place, skipping");
+
+            // Update selection to transformed position using SelectionManager
+            selectionManager.setActiveSelection(transformedSelection);
+
             isFirstExecution = false;
             return;
         }
@@ -88,6 +97,11 @@ public class MoveSelectionCommand implements Command {
             canvas.setBypassSelectionConstraint(false);
         }
 
+        // Update selection to transformed position using SelectionManager
+        selectionManager.setActiveSelection(transformedSelection);
+        System.out.println("[MoveSelectionCommand] Updated selection to transformed position: " +
+                (transformedSelection != null ? transformedSelection.getBounds() : "null"));
+
         System.out.println("[MoveSelectionCommand] execute() complete");
 
         // Note: canvas modification version is automatically incremented by setPixel() calls
@@ -100,14 +114,19 @@ public class MoveSelectionCommand implements Command {
         // Bypass selection constraint for undo operations
         canvas.setBypassSelectionConstraint(true);
         try {
-            // Restore overwritten pixels at destination
-            restoreOverwrittenPixels();
+            // Clear the transformed pixels at destination
+            clearTransformedPixels();
 
             // Restore original pixels at source location
             restoreOriginalPixels();
         } finally {
             canvas.setBypassSelectionConstraint(false);
         }
+
+        // Restore the selection to its original position using SelectionManager
+        selectionManager.setActiveSelection(originalSelection);
+        System.out.println("[MoveSelectionCommand] Restored selection to original position: " +
+                (originalSelection != null ? originalSelection.getBounds() : "null"));
 
         // Reset first execution flag so next execute (redo) will actually execute
         isFirstExecution = false;
@@ -129,6 +148,14 @@ public class MoveSelectionCommand implements Command {
                 if (originalSelection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
                     canvas.setPixel(x, y, 0x00000000); // Transparent
                 }
+            }
+        }
+    }
+
+    private void clearTransformedPixels() {
+        for (Point point : transformedPixels.keySet()) {
+            if (canvas.isValidCoordinate(point.x, point.y)) {
+                canvas.setPixel(point.x, point.y, 0x00000000); // Transparent
             }
         }
     }

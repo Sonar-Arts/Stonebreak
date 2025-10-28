@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator;
 
+import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import imgui.type.ImBoolean;
@@ -10,6 +11,7 @@ import imgui.type.ImBoolean;
  * Follows SOLID principles:
  * - Single Responsibility: Only manages texture creator state
  * - Immutable where possible for thread safety
+ * - Now delegates selection management to SelectionManager for centralized control
  *
  * @author Open Mason Team
  */
@@ -42,7 +44,7 @@ public class TextureCreatorState {
     private String currentFilePath;
     private boolean unsavedChanges;
     private boolean isProjectFile; // true if opened/saved as .OMT, false for new/PNG
-    private SelectionRegion currentSelection; // Active selection region (null if no selection)
+    private final SelectionManager selectionManager; // Centralized selection management
     private final ImBoolean showGrid;
     private final ImBoolean showLayersPanel;
     private final ImBoolean showColorPanel;
@@ -58,7 +60,7 @@ public class TextureCreatorState {
         this.currentFilePath = null;
         this.unsavedChanges = false;
         this.isProjectFile = false;
-        this.currentSelection = null; // No selection by default
+        this.selectionManager = new SelectionManager(); // Initialize selection manager
         this.showGrid = new ImBoolean(true);
         this.showLayersPanel = new ImBoolean(true);
         this.showColorPanel = new ImBoolean(true);
@@ -162,33 +164,45 @@ public class TextureCreatorState {
     }
 
     /**
-     * Get the current selection region.
+     * Get the SelectionManager for this texture creator.
+     * @return The SelectionManager instance
+     */
+    public SelectionManager getSelectionManager() {
+        return selectionManager;
+    }
+
+    /**
+     * Get the current selection region (convenience method).
+     * Delegates to SelectionManager.
      * @return The current selection, or null if no selection exists
      */
     public SelectionRegion getCurrentSelection() {
-        return currentSelection;
+        return selectionManager.getActiveSelection();
     }
 
     /**
-     * Set the current selection region.
+     * Set the current selection region (convenience method).
+     * Delegates to SelectionManager.
      * @param selection The selection region to set (can be null to clear selection)
      */
     public void setCurrentSelection(SelectionRegion selection) {
-        this.currentSelection = selection;
+        selectionManager.setActiveSelection(selection);
     }
 
     /**
-     * Check if a selection is currently active.
+     * Check if a selection is currently active (convenience method).
+     * Delegates to SelectionManager.
      * @return true if there is an active selection, false otherwise
      */
     public boolean hasSelection() {
-        return currentSelection != null && !currentSelection.isEmpty();
+        return selectionManager.hasActiveSelection();
     }
 
     /**
-     * Clear the current selection.
+     * Clear the current selection (convenience method).
+     * Delegates to SelectionManager.
      */
     public void clearSelection() {
-        this.currentSelection = null;
+        selectionManager.clearSelection();
     }
 }

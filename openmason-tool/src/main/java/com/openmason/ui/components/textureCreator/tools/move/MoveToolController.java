@@ -3,6 +3,7 @@ package com.openmason.ui.components.textureCreator.tools.move;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand;
+import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import com.openmason.ui.components.textureCreator.tools.move.modules.*;
@@ -14,6 +15,7 @@ import java.util.Map;
 /**
  * Main controller for the move tool.
  * Implements a state machine for handling selection transformation.
+ * Now integrates with SelectionManager for centralized selection state management.
  */
 public class MoveToolController implements DrawingTool {
 
@@ -26,6 +28,9 @@ public class MoveToolController implements DrawingTool {
     }
 
     private State currentState = State.IDLE;
+
+    // Selection manager (optional - can be null for standalone usage)
+    private SelectionManager selectionManager;
 
     // Modules
     private final HandleDetector handleDetector;
@@ -55,11 +60,21 @@ public class MoveToolController implements DrawingTool {
     private MoveSelectionCommand pendingCommand;
 
     public MoveToolController() {
+        this.selectionManager = null; // Will be set externally
         this.handleDetector = new HandleDetector();
         this.transformCalculator = new TransformCalculator();
         this.renderer = new SelectionTransformRenderer();
         this.pixelTransformer = new PixelTransformer();
         reset();
+    }
+
+    /**
+     * Sets the SelectionManager for this move tool.
+     * Should be called after construction to enable selection state management.
+     * @param selectionManager The SelectionManager instance
+     */
+    public void setSelectionManager(SelectionManager selectionManager) {
+        this.selectionManager = selectionManager;
     }
 
     @Override
@@ -126,8 +141,14 @@ public class MoveToolController implements DrawingTool {
     @Override
     public void onMouseUp(int color, PixelCanvas canvas, DrawCommand command) {
         if (currentState == State.DRAGGING_HANDLE || currentState == State.DRAGGING_SELECTION) {
-            // Return to clicked state after dragging
-            currentState = State.CLICKED_SELECTION;
+            // Commit the transform if pixels were moved
+            if (pixelsExtracted && !currentTransform.isIdentity()) {
+                commitTransform(canvas);
+                currentState = State.IDLE;
+            } else {
+                // Return to clicked state after dragging (no actual transform)
+                currentState = State.CLICKED_SELECTION;
+            }
             dragStart = null;
             draggedHandle = null;
         }
@@ -291,9 +312,10 @@ public class MoveToolController implements DrawingTool {
         System.out.println("[MoveToolController] Transformed selection bounds: " +
                 (transformedSelection != null ? transformedSelection.getBounds() : "null"));
 
-        // Create command
+        // Create command (with SelectionManager if available)
         pendingCommand = new MoveSelectionCommand(
                 canvas,
+                selectionManager,
                 originalSelection,
                 transformedSelection,
                 currentTransform,
@@ -306,10 +328,15 @@ public class MoveToolController implements DrawingTool {
         // Execute command (already applied to canvas during dragging, but this updates undo stack)
         // Note: Command will be added to history by external controller
 
-        // Update selection
+        // Update selection using SelectionManager if available, otherwise update canvas directly
         if (transformedSelection != null) {
-            canvas.setActiveSelection(transformedSelection);
-            System.out.println("[MoveToolController] Updated canvas active selection");
+            if (selectionManager != null) {
+                selectionManager.setActiveSelection(transformedSelection);
+                System.out.println("[MoveToolController] Updated selection via SelectionManager");
+            } else {
+                canvas.setActiveSelection(transformedSelection);
+                System.out.println("[MoveToolController] Updated canvas active selection (no SelectionManager)");
+            }
         }
 
         // Clear canvas reference before reset so pixels aren't restored
