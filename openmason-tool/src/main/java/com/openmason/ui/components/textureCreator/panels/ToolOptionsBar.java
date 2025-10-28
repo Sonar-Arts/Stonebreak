@@ -1,7 +1,6 @@
 package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
-import com.openmason.ui.components.textureCreator.tools.FreeSelectionTool;
 import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
@@ -89,8 +88,6 @@ public class ToolOptionsBar {
                 // Render tool-specific options based on tool type
                 if (currentTool instanceof RectangleSelectionTool) {
                     renderRectangleSelectionOptions((RectangleSelectionTool) currentTool);
-                } else if (currentTool instanceof FreeSelectionTool) {
-                    renderFreeSelectionOptions((FreeSelectionTool) currentTool);
                 }
             }
             // If no options, toolbar shows empty space (no dummy needed, window size handles it)
@@ -119,8 +116,7 @@ public class ToolOptionsBar {
      * @return true if the tool has options, false otherwise
      */
     private boolean hasOptions(DrawingTool tool) {
-        return tool instanceof RectangleSelectionTool ||
-               tool instanceof FreeSelectionTool;
+        return tool instanceof RectangleSelectionTool;
     }
 
     /**
@@ -146,38 +142,6 @@ public class ToolOptionsBar {
         // Tooltip
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip("When enabled, constrains rectangle to 1:1 square ratio");
-        }
-    }
-
-    /**
-     * Render options for the Free Selection tool.
-     *
-     * Options:
-     * - Brush Size: Controls the pixel brush size for free-form selection
-     *
-     * @param tool The FreeSelectionTool instance
-     */
-    private void renderFreeSelectionOptions(FreeSelectionTool tool) {
-        // Label for the tool
-        ImGui.text("Free Selection:");
-        ImGui.sameLine(0, OPTION_SPACING);
-
-        // Brush Size label
-        ImGui.text("Brush Size:");
-        ImGui.sameLine(0, OPTION_SPACING / 2);
-
-        // Brush Size slider
-        ImInt brushSize = new ImInt(tool.getBrushSize());
-        ImGui.pushItemWidth(150.0f); // Fixed width for slider
-        if (ImGui.sliderInt("##BrushSize", brushSize.getData(), 1, 10)) {
-            tool.setBrushSize(brushSize.get());
-            logger.debug("Free selection brush size: {}", brushSize.get());
-        }
-        ImGui.popItemWidth();
-
-        // Tooltip
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Size of the brush in pixels (1-10)");
         }
     }
 

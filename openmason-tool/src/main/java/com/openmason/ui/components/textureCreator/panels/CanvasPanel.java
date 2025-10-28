@@ -9,10 +9,8 @@ import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
-import com.openmason.ui.components.textureCreator.tools.FreeSelectionTool;
 import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
-import com.openmason.ui.components.textureCreator.tools.selection.PixelPreview;
 import com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -125,18 +123,6 @@ public class CanvasPanel {
         // Render the display canvas (composited view) with opacity settings
         renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
                        currentSelection, selectionPreviewBounds);
-
-        // Render free selection pixel preview if using free selection tool
-        if (currentTool instanceof FreeSelectionTool) {
-            FreeSelectionTool freeSelectionTool = (FreeSelectionTool) currentTool;
-            PixelPreview pixelPreview = freeSelectionTool.getPixelPreview();
-            if (pixelPreview != null) {
-                imgui.ImDrawList drawList = imgui.ImGui.getWindowDrawList();
-                float canvasX = canvasRegionMin.x + canvasState.getPanOffsetX();
-                float canvasY = canvasRegionMin.y + canvasState.getPanOffsetY();
-                selectionRenderer.renderPixelPreview(drawList, pixelPreview.getPixels(), canvasX, canvasY, zoom);
-            }
-        }
 
         // Render move tool overlay if using move tool
         if (currentTool instanceof MoveToolController) {
@@ -277,24 +263,6 @@ public class CanvasPanel {
                         }
                     }
                     selectionTool.clearSelectionCreatedFlag();
-                }
-            }
-            // Handle free selection tool
-            else if (currentTool instanceof FreeSelectionTool) {
-                FreeSelectionTool freeSelectionTool = (FreeSelectionTool) currentTool;
-
-                // Handle selection creation/update
-                if (freeSelectionTool.wasSelectionCreated()) {
-                    SelectionRegion createdSelection = freeSelectionTool.getCreatedSelection();
-                    if (onSelectionCreatedCallback != null) {
-                        onSelectionCreatedCallback.accept(createdSelection);
-                        if (createdSelection != null) {
-                            logger.debug("Free selection created: {}", createdSelection.getBounds());
-                        } else {
-                            logger.debug("Selection cleared");
-                        }
-                    }
-                    freeSelectionTool.clearSelectionCreatedFlag();
                 }
             }
             // Handle move tool

@@ -512,7 +512,7 @@ public class MoveToolController implements DrawingTool {
 
     @Override
     public String getName() {
-        return "Move Tool";
+        return "Move";
     }
 
     @Override

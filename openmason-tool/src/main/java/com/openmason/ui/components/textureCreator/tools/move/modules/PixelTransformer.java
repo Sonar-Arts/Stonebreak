@@ -160,6 +160,12 @@ public class PixelTransformer {
             int scaledWidth = (int) Math.round(originalBounds.width * Math.abs(transform.getScaleX()));
             int scaledHeight = (int) Math.round(originalBounds.height * Math.abs(transform.getScaleY()));
 
+            // Calculate where the scaled region should start based on the pivot point
+            // Transform the top-left corner (0,0) to find the new position
+            Point transformedTopLeft = transformPoint(0, 0, pivotX, pivotY, transform);
+            int scaledStartX = originalBounds.x + transformedTopLeft.x;
+            int scaledStartY = originalBounds.y + transformedTopLeft.y;
+
             for (int destY = 0; destY < scaledHeight; destY++) {
                 for (int destX = 0; destX < scaledWidth; destX++) {
                     // Linear mapping ensures edge-to-edge: dest [0, scaled-1] → source [0, original-1]
@@ -171,7 +177,8 @@ public class PixelTransformer {
                     int color = sampleBilinear(originalPixels, sourceX, sourceY, originalBounds.width, originalBounds.height);
 
                     if ((color & 0xFF000000) != 0) {
-                        Point absolutePoint = new Point(originalBounds.x + destX, originalBounds.y + destY);
+                        // Use the pivot-adjusted start position
+                        Point absolutePoint = new Point(scaledStartX + destX, scaledStartY + destY);
                         transformedPixels.put(absolutePoint, color);
                     }
                 }
@@ -435,13 +442,13 @@ public class PixelTransformer {
         int maxX = Integer.MIN_VALUE;
         int maxY = Integer.MIN_VALUE;
 
-        // Transform the four corners to find bounding box
-        // Use width-1 and height-1 because pixels are 0-indexed
+        // Transform the four extent corners to find bounding box
+        // Use width and height (not width-1, height-1) to get the actual extent of the region
         Point[] corners = new Point[] {
-            new Point(0, 0),  // Top-left
-            new Point(originalBounds.width - 1, 0),  // Top-right
-            new Point(0, originalBounds.height - 1),  // Bottom-left
-            new Point(originalBounds.width - 1, originalBounds.height - 1)  // Bottom-right
+            new Point(0, 0),  // Top-left extent
+            new Point(originalBounds.width, 0),  // Top-right extent
+            new Point(0, originalBounds.height),  // Bottom-left extent
+            new Point(originalBounds.width, originalBounds.height)  // Bottom-right extent
         };
 
         for (Point corner : corners) {
@@ -458,8 +465,8 @@ public class PixelTransformer {
         }
 
         // Create rectangular selection from bounding box
-        // Add 1 to width/height because pixels are inclusive (minX to maxX includes both endpoints)
-        Rectangle transformedBounds = new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
+        // Width and height are the difference between max and min (extent size)
+        Rectangle transformedBounds = new Rectangle(minX, minY, maxX - minX, maxY - minY);
         return new com.openmason.ui.components.textureCreator.selection.RectangularSelection(transformedBounds);
     }
 
