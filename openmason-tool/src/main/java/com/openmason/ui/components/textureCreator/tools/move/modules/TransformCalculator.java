@@ -44,10 +44,9 @@ public class TransformCalculator {
 
         // Get original bounds
         Rectangle originalBounds = originalSelection.getBounds();
-        Point pivot = new Point(
-                originalBounds.x + originalBounds.width / 2,
-                originalBounds.y + originalBounds.height / 2
-        );
+
+        // Calculate pivot point based on handle type (which edge/corner should stay fixed)
+        Point pivot = calculatePivot(handleType, originalBounds);
 
         // For dragging the selection body (no handle), just translate
         if (!handleType.affectsScaleX() && !handleType.affectsScaleY() && !handleType.isRotation()) {
@@ -102,64 +101,64 @@ public class TransformCalculator {
         double scaleX = 1.0;
         double scaleY = 1.0;
 
+        // No offsets needed - the pivot point handles keeping the opposite edge/corner fixed!
+        int offsetX = 0;
+        int offsetY = 0;
+
         // Calculate scale based on handle direction and drag distance
-        // Formula: scale = (originalSize + dragDelta) / originalSize = 1 + (dragDelta / originalSize)
         switch (handleType) {
             case TOP_LEFT:
-                // Dragging left/up shrinks (negative dx/dy), dragging right/down grows
-                scaleX = 1.0 + (double)(-dx * 2) / originalBounds.width;  // *2 because handle moves half the distance
-                scaleY = 1.0 + (double)(-dy * 2) / originalBounds.height;
+            case BOTTOM_LEFT:
+            case MIDDLE_LEFT:
+                // Dragging left edge - scale X by negative delta
+                scaleX = 1.0 - (double)dx / originalBounds.width;
                 break;
             case TOP_RIGHT:
-                // Dragging right grows X, dragging up shrinks Y
-                scaleX = 1.0 + (double)(dx * 2) / originalBounds.width;
-                scaleY = 1.0 + (double)(-dy * 2) / originalBounds.height;
+            case BOTTOM_RIGHT:
+            case MIDDLE_RIGHT:
+                // Dragging right edge - scale X by positive delta
+                scaleX = 1.0 + (double)dx / originalBounds.width;
+                break;
+        }
+
+        switch (handleType) {
+            case TOP_LEFT:
+            case TOP_RIGHT:
+            case TOP_CENTER:
+                // Dragging top edge - scale Y by negative delta
+                scaleY = 1.0 - (double)dy / originalBounds.height;
                 break;
             case BOTTOM_LEFT:
-                // Dragging left shrinks X, dragging down grows Y
-                scaleX = 1.0 + (double)(-dx * 2) / originalBounds.width;
-                scaleY = 1.0 + (double)(dy * 2) / originalBounds.height;
-                break;
             case BOTTOM_RIGHT:
-                // Dragging right grows X, dragging down grows Y
-                scaleX = 1.0 + (double)(dx * 2) / originalBounds.width;
-                scaleY = 1.0 + (double)(dy * 2) / originalBounds.height;
-                break;
-            case TOP_CENTER:
-                // Dragging up shrinks Y, dragging down grows Y
-                scaleY = 1.0 + (double)(-dy * 2) / originalBounds.height;
-                break;
             case BOTTOM_CENTER:
-                // Dragging down grows Y, dragging up shrinks Y
-                scaleY = 1.0 + (double)(dy * 2) / originalBounds.height;
-                break;
-            case MIDDLE_LEFT:
-                // Dragging left shrinks X, dragging right grows X
-                scaleX = 1.0 + (double)(-dx * 2) / originalBounds.width;
-                break;
-            case MIDDLE_RIGHT:
-                // Dragging right grows X, dragging left shrinks X
-                scaleX = 1.0 + (double)(dx * 2) / originalBounds.width;
+                // Dragging bottom edge - scale Y by positive delta
+                scaleY = 1.0 + (double)dy / originalBounds.height;
                 break;
         }
 
         // Maintain aspect ratio for corner handles if requested
         if (maintainAspectRatio && handleType.isCorner()) {
-            double avgScale = (scaleX + scaleY) / 2.0;
+            // Use the larger absolute scale to maintain aspect ratio
+            double avgScale = (Math.abs(scaleX - 1.0) > Math.abs(scaleY - 1.0)) ? scaleX : scaleY;
             scaleX = avgScale;
             scaleY = avgScale;
+            // No offset recalculation needed - pivot handles everything!
         }
 
-        // Prevent negative or zero scaling
-        scaleX = Math.max(0.1, scaleX);
-        scaleY = Math.max(0.1, scaleY);
+        // Enforce minimum size constraint (1x1 pixel)
+        double minScaleX = 1.0 / originalBounds.width;
+        double minScaleY = 1.0 / originalBounds.height;
+        scaleX = Math.max(minScaleX, scaleX);
+        scaleY = Math.max(minScaleY, scaleY);
 
         // Prevent excessive scaling
         scaleX = Math.min(10.0, scaleX);
         scaleY = Math.min(10.0, scaleY);
 
+        // Apply translation offset to keep opposite corner fixed
         return currentTransform.toBuilder()
                 .scale(scaleX, scaleY)
+                .translate(offsetX, offsetY)
                 .pivot(pivot)
                 .build();
     }
@@ -195,5 +194,64 @@ public class TransformCalculator {
                 .rotate(newRotation)
                 .pivot(center)
                 .build();
+    }
+
+    /**
+     * Calculates the pivot point based on which handle is being dragged.
+     * The pivot is the fixed point that doesn't move during scaling.
+     * Returns absolute coordinates.
+     */
+    private Point calculatePivot(HandleType handleType, Rectangle bounds) {
+        int pivotX, pivotY;
+
+        switch (handleType) {
+            case TOP_LEFT:
+                // Bottom-right corner stays fixed
+                pivotX = bounds.x + bounds.width;
+                pivotY = bounds.y + bounds.height;
+                break;
+            case TOP_RIGHT:
+                // Bottom-left corner stays fixed
+                pivotX = bounds.x;
+                pivotY = bounds.y + bounds.height;
+                break;
+            case BOTTOM_LEFT:
+                // Top-right corner stays fixed
+                pivotX = bounds.x + bounds.width;
+                pivotY = bounds.y;
+                break;
+            case BOTTOM_RIGHT:
+                // Top-left corner stays fixed
+                pivotX = bounds.x;
+                pivotY = bounds.y;
+                break;
+            case TOP_CENTER:
+                // Bottom edge stays fixed
+                pivotX = bounds.x + bounds.width / 2;
+                pivotY = bounds.y + bounds.height;
+                break;
+            case BOTTOM_CENTER:
+                // Top edge stays fixed
+                pivotX = bounds.x + bounds.width / 2;
+                pivotY = bounds.y;
+                break;
+            case MIDDLE_LEFT:
+                // Right edge stays fixed
+                pivotX = bounds.x + bounds.width;
+                pivotY = bounds.y + bounds.height / 2;
+                break;
+            case MIDDLE_RIGHT:
+                // Left edge stays fixed
+                pivotX = bounds.x;
+                pivotY = bounds.y + bounds.height / 2;
+                break;
+            default:
+                // Center for anything else
+                pivotX = bounds.x + bounds.width / 2;
+                pivotY = bounds.y + bounds.height / 2;
+                break;
+        }
+
+        return new Point(pivotX, pivotY);
     }
 }

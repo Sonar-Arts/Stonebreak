@@ -214,6 +214,11 @@ public class CanvasPanel {
 
         // Handle drawing with left mouse button
         if (leftMouseDown && currentTool != null && !canvasState.isPanning()) {
+            // Update modifier keys for move tool
+            if (currentTool instanceof MoveToolController) {
+                ((MoveToolController) currentTool).setModifierKeys(shiftHeld);
+            }
+
             // Convert screen coordinates to canvas pixel coordinates
             int[] canvasCoords = new int[2];
             boolean validCoords = canvasState.screenToCanvasCoords(
@@ -222,7 +227,12 @@ public class CanvasPanel {
                 canvasCoords
             );
 
-            if (validCoords && canvas.isValidCoordinate(canvasCoords[0], canvasCoords[1])) {
+            // For move tool, allow coordinates outside canvas bounds (for scaling to edges)
+            // For other tools, constrain to canvas bounds
+            boolean allowOutOfBounds = currentTool instanceof MoveToolController;
+            boolean coordsValid = validCoords && (allowOutOfBounds || canvas.isValidCoordinate(canvasCoords[0], canvasCoords[1]));
+
+            if (coordsValid) {
                 // Create new draw command when starting a drawing operation
                 if (!wasMouseDown) {
                     currentDrawCommand = new DrawCommand(canvas, currentTool.getName());

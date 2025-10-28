@@ -111,9 +111,10 @@ public class PixelTransformer {
                                                       Rectangle originalBounds) {
         Map<Point, Integer> transformedPixels = new HashMap<>();
 
-        // Get pivot point (center of selection)
-        int pivotX = originalBounds.width / 2;
-        int pivotY = originalBounds.height / 2;
+        // Get pivot point from transform (convert from absolute to relative coordinates)
+        Point absolutePivot = transform.getPivot();
+        int pivotX = absolutePivot.x - originalBounds.x;
+        int pivotY = absolutePivot.y - originalBounds.y;
 
         // Apply transformation to each pixel
         for (Map.Entry<Point, Integer> entry : originalPixels.entrySet()) {
@@ -148,9 +149,10 @@ public class PixelTransformer {
                                                                  Rectangle originalBounds) {
         Map<Point, Integer> transformedPixels = new HashMap<>();
 
-        // Get pivot point (center of selection)
-        int pivotX = originalBounds.width / 2;
-        int pivotY = originalBounds.height / 2;
+        // Get pivot point from transform (convert from absolute to relative coordinates)
+        Point absolutePivot = transform.getPivot();
+        int pivotX = absolutePivot.x - originalBounds.x;
+        int pivotY = absolutePivot.y - originalBounds.y;
 
         // Calculate transformed bounds to know which pixels to generate
         int scaledWidth = (int) Math.ceil(originalBounds.width * Math.abs(transform.getScaleX()));
@@ -388,9 +390,10 @@ public class PixelTransformer {
         // Extract pixels and transform them to get actual bounding box
         Rectangle originalBounds = originalSelection.getBounds();
 
-        // Get pivot point (center of selection)
-        int pivotX = originalBounds.width / 2;
-        int pivotY = originalBounds.height / 2;
+        // Get pivot point from transform (convert from absolute to relative coordinates)
+        Point absolutePivot = transform.getPivot();
+        int pivotX = absolutePivot.x - originalBounds.x;
+        int pivotY = absolutePivot.y - originalBounds.y;
 
         // Find min/max coordinates of transformed bounds
         int minX = Integer.MAX_VALUE;

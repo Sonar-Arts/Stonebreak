@@ -56,6 +56,9 @@ public class MoveToolController implements DrawingTool {
     // Visual feedback
     private HandleType hoveredHandle;
 
+    // Modifier keys
+    private boolean shiftKeyHeld = false;
+
     // Command for undo/redo (created on commit)
     private MoveSelectionCommand pendingCommand;
 
@@ -75,6 +78,15 @@ public class MoveToolController implements DrawingTool {
      */
     public void setSelectionManager(SelectionManager selectionManager) {
         this.selectionManager = selectionManager;
+    }
+
+    /**
+     * Updates the modifier key states.
+     * Should be called before mouse events to ensure correct behavior.
+     * @param shiftHeld Whether the Shift key is currently held
+     */
+    public void setModifierKeys(boolean shiftHeld) {
+        this.shiftKeyHeld = shiftHeld;
     }
 
     @Override
@@ -192,8 +204,9 @@ public class MoveToolController implements DrawingTool {
         Point startPoint = draggedHandle.isRotation() ? dragStart : originalDragStart;
 
         // Calculate new transform
-        // Corner handles maintain aspect ratio by default (like Photoshop)
-        boolean maintainAspectRatio = draggedHandle.isCorner();
+        // Corner handles: Shift key locks aspect ratio (independent scaling by default)
+        // Edge handles: Never maintain aspect ratio (single-axis scaling)
+        boolean maintainAspectRatio = draggedHandle.isCorner() && shiftKeyHeld;
         TransformState newTransform = transformCalculator.calculateTransform(
                 draggedHandle,
                 startPoint,

@@ -172,13 +172,15 @@ public class HandleDetector {
         int scaledWidth = (int) Math.round(bounds.width * transform.getScaleX());
         int scaledHeight = (int) Math.round(bounds.height * transform.getScaleY());
 
-        // Calculate offset due to scaling (scale happens from center)
-        int scaleOffsetX = (bounds.width - scaledWidth) / 2;
-        int scaleOffsetY = (bounds.height - scaledHeight) / 2;
+        // Calculate position from pivot point
+        // The pivot is the fixed point that doesn't move during scaling
+        Point absolutePivot = transform.getPivot();
+        int relativePivotX = absolutePivot.x - bounds.x;
+        int relativePivotY = absolutePivot.y - bounds.y;
 
-        // Apply translation
-        int translatedX = bounds.x + transform.getTranslateX() + scaleOffsetX;
-        int translatedY = bounds.y + transform.getTranslateY() + scaleOffsetY;
+        // The top-left corner position after scaling from the pivot
+        int translatedX = absolutePivot.x - (int) Math.round(relativePivotX * transform.getScaleX()) + transform.getTranslateX();
+        int translatedY = absolutePivot.y - (int) Math.round(relativePivotY * transform.getScaleY()) + transform.getTranslateY();
 
         // Note: Rotation is not applied to bounds rectangle (would need oriented bounding box)
         // Rotation is applied to individual pixels during transformation
