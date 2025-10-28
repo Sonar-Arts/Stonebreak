@@ -177,10 +177,14 @@ public class CanvasRenderer {
         float centerOffsetX = Math.max(0, (availableRegion.x - displayWidth) / 2.0f);
         float centerOffsetY = Math.max(0, (availableRegion.y - displayHeight) / 2.0f);
 
-        // Get cursor position for rendering with centering offset
-        ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        float canvasX = cursorPos.x + centerOffsetX + canvasState.getPanOffsetX();
-        float canvasY = cursorPos.y + centerOffsetY + canvasState.getPanOffsetY();
+        // Set cursor to centered position (relative to window)
+        ImGui.setCursorPos(centerOffsetX + canvasState.getPanOffsetX(),
+                          centerOffsetY + canvasState.getPanOffsetY());
+
+        // Get absolute screen position for ImDrawList rendering
+        ImVec2 imagePos = ImGui.getCursorScreenPos();
+        float canvasX = imagePos.x;
+        float canvasY = imagePos.y;
 
         // Render transparency checkerboard background first
         renderCheckerboard(canvas, canvasState, canvasX, canvasY, displayWidth, displayHeight);
@@ -190,7 +194,7 @@ public class CanvasRenderer {
                                       canvasX, canvasY, zoom, cubeNetOverlayOpacity);
 
         // Render texture as image on top of checkerboard and overlay
-        ImGui.setCursorScreenPos(canvasX, canvasY);
+        // Note: cursor is already at correct position from setCursorPos above
         ImGui.image(textureId, displayWidth, displayHeight,
                    0, 0, 1, 1, // UV coordinates (normal)
                    1, 1, 1, 1, // Tint color (white = no tint)

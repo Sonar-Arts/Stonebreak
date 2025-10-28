@@ -154,38 +154,63 @@ public class PixelTransformer {
         int pivotX = absolutePivot.x - originalBounds.x;
         int pivotY = absolutePivot.y - originalBounds.y;
 
-        // Calculate transformed bounds to know which pixels to generate
-        int scaledWidth = (int) Math.ceil(originalBounds.width * Math.abs(transform.getScaleX()));
-        int scaledHeight = (int) Math.ceil(originalBounds.height * Math.abs(transform.getScaleY()));
+        // Different logic for scaling-only vs rotation
+        if (transform.getRotationDegrees() == 0) {
+            // SCALING ONLY: Use edge-to-edge mapping for perfect fill
+            int scaledWidth = (int) Math.round(originalBounds.width * Math.abs(transform.getScaleX()));
+            int scaledHeight = (int) Math.round(originalBounds.height * Math.abs(transform.getScaleY()));
 
-        // Expand by a margin to account for rotation
-        int margin = Math.max(scaledWidth, scaledHeight);
-        int minX = -margin;
-        int minY = -margin;
-        int maxX = scaledWidth + margin;
-        int maxY = scaledHeight + margin;
+            for (int destY = 0; destY < scaledHeight; destY++) {
+                for (int destX = 0; destX < scaledWidth; destX++) {
+                    // Linear mapping ensures edge-to-edge: dest [0, scaled-1] → source [0, original-1]
+                    double sourceX = (scaledWidth == 1) ? (originalBounds.width - 1) / 2.0
+                                                         : destX * (originalBounds.width - 1) / (double) (scaledWidth - 1);
+                    double sourceY = (scaledHeight == 1) ? (originalBounds.height - 1) / 2.0
+                                                          : destY * (originalBounds.height - 1) / (double) (scaledHeight - 1);
 
-        // For each potential destination pixel
-        for (int destY = minY; destY <= maxY; destY++) {
-            for (int destX = minX; destX <= maxX; destX++) {
-                // Apply inverse transform to find source coordinate (with fractional precision)
-                SourceCoordinate sourceCoord = inverseTransformPointFractional(destX, destY, pivotX, pivotY, transform);
+                    int color = sampleBilinear(originalPixels, sourceX, sourceY, originalBounds.width, originalBounds.height);
 
-                // Check if source point is within original bounds
-                if (sourceCoord.x >= 0 && sourceCoord.x < originalBounds.width &&
-                    sourceCoord.y >= 0 && sourceCoord.y < originalBounds.height) {
-
-                    // Sample color with bilinear interpolation
-                    int color = sampleBilinear(originalPixels, sourceCoord.x, sourceCoord.y);
-
-                    // Skip fully transparent pixels
                     if ((color & 0xFF000000) != 0) {
-                        // Convert to absolute canvas coordinates
-                        Point absolutePoint = new Point(
-                                originalBounds.x + destX,
-                                originalBounds.y + destY
-                        );
+                        Point absolutePoint = new Point(originalBounds.x + destX, originalBounds.y + destY);
                         transformedPixels.put(absolutePoint, color);
+                    }
+                }
+            }
+        } else {
+            // ROTATION: Use inverse transform (bounding box approach)
+            Point[] corners = new Point[] {
+                new Point(0, 0),
+                new Point(originalBounds.width - 1, 0),
+                new Point(0, originalBounds.height - 1),
+                new Point(originalBounds.width - 1, originalBounds.height - 1)
+            };
+
+            int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+
+            for (Point corner : corners) {
+                Point transformed = transformPoint(corner.x, corner.y, pivotX, pivotY, transform);
+                minX = Math.min(minX, transformed.x);
+                minY = Math.min(minY, transformed.y);
+                maxX = Math.max(maxX, transformed.x);
+                maxY = Math.max(maxY, transformed.y);
+            }
+
+            for (int destY = minY; destY <= maxY; destY++) {
+                for (int destX = minX; destX <= maxX; destX++) {
+                    SourceCoordinate sourceCoord = inverseTransformPointFractional(destX, destY, pivotX, pivotY, transform);
+
+                    // Allow margin for bilinear sampling at edges
+                    if (sourceCoord.x >= -0.5 && sourceCoord.x <= originalBounds.width - 0.5 &&
+                        sourceCoord.y >= -0.5 && sourceCoord.y <= originalBounds.height - 0.5) {
+
+                        int color = sampleBilinear(originalPixels, sourceCoord.x, sourceCoord.y,
+                                                   originalBounds.width, originalBounds.height);
+
+                        if ((color & 0xFF000000) != 0) {
+                            Point absolutePoint = new Point(originalBounds.x + destX, originalBounds.y + destY);
+                            transformedPixels.put(absolutePoint, color);
+                        }
                     }
                 }
             }
@@ -247,13 +272,18 @@ public class PixelTransformer {
     }
 
     /**
-     * Sample color using bilinear interpolation.
+     * Sample color using bilinear interpolation with edge clamping.
+     * Interpolates between 4 surrounding pixels for smooth color and opacity blending.
+     * Edge pixels are clamped (repeated) so stretched images extend fully.
+     *
      * @param pixels Source pixels (relative coordinates)
      * @param fx Fractional x coordinate
      * @param fy Fractional y coordinate
+     * @param width Maximum width for clamping
+     * @param height Maximum height for clamping
      * @return Interpolated color
      */
-    private int sampleBilinear(Map<Point, Integer> pixels, double fx, double fy) {
+    private int sampleBilinear(Map<Point, Integer> pixels, double fx, double fy, int width, int height) {
         // Get integer and fractional parts
         int x0 = (int) Math.floor(fx);
         int y0 = (int) Math.floor(fy);
@@ -263,22 +293,26 @@ public class PixelTransformer {
         double dx = fx - x0;
         double dy = fy - y0;
 
+        // Clamp all coordinates to valid bounds [0, width-1] and [0, height-1]
+        // This makes edge pixels repeat, ensuring stretched images extend fully
+        x0 = Math.max(0, Math.min(width - 1, x0));
+        x1 = Math.max(0, Math.min(width - 1, x1));
+        y0 = Math.max(0, Math.min(height - 1, y0));
+        y1 = Math.max(0, Math.min(height - 1, y1));
+
         // Get the four surrounding pixels
-        int c00 = getPixelOrTransparent(pixels, x0, y0);
-        int c10 = getPixelOrTransparent(pixels, x1, y0);
-        int c01 = getPixelOrTransparent(pixels, x0, y1);
-        int c11 = getPixelOrTransparent(pixels, x1, y1);
+        Point p00 = new Point(x0, y0);
+        Point p10 = new Point(x1, y0);
+        Point p01 = new Point(x0, y1);
+        Point p11 = new Point(x1, y1);
+
+        int c00 = pixels.getOrDefault(p00, 0x00000000);
+        int c10 = pixels.getOrDefault(p10, 0x00000000);
+        int c01 = pixels.getOrDefault(p01, 0x00000000);
+        int c11 = pixels.getOrDefault(p11, 0x00000000);
 
         // Interpolate
         return interpolateColors(c00, c10, c01, c11, dx, dy);
-    }
-
-    /**
-     * Get pixel color or transparent if not found.
-     */
-    private int getPixelOrTransparent(Map<Point, Integer> pixels, int x, int y) {
-        Point key = new Point(x, y);
-        return pixels.getOrDefault(key, 0x00000000);
     }
 
     /**
@@ -402,11 +436,12 @@ public class PixelTransformer {
         int maxY = Integer.MIN_VALUE;
 
         // Transform the four corners to find bounding box
+        // Use width-1 and height-1 because pixels are 0-indexed
         Point[] corners = new Point[] {
             new Point(0, 0),  // Top-left
-            new Point(originalBounds.width, 0),  // Top-right
-            new Point(0, originalBounds.height),  // Bottom-left
-            new Point(originalBounds.width, originalBounds.height)  // Bottom-right
+            new Point(originalBounds.width - 1, 0),  // Top-right
+            new Point(0, originalBounds.height - 1),  // Bottom-left
+            new Point(originalBounds.width - 1, originalBounds.height - 1)  // Bottom-right
         };
 
         for (Point corner : corners) {
@@ -423,7 +458,8 @@ public class PixelTransformer {
         }
 
         // Create rectangular selection from bounding box
-        Rectangle transformedBounds = new Rectangle(minX, minY, maxX - minX, maxY - minY);
+        // Add 1 to width/height because pixels are inclusive (minX to maxX includes both endpoints)
+        Rectangle transformedBounds = new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
         return new com.openmason.ui.components.textureCreator.selection.RectangularSelection(transformedBounds);
     }
 
