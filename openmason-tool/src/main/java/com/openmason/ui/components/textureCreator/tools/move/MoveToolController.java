@@ -199,32 +199,22 @@ public class MoveToolController implements DrawingTool {
 
         Point currentPoint = new Point(x, y);
 
-        // For rotation, use incremental calculation (frame-by-frame delta)
-        // For scaling, use cumulative calculation (total delta from original start)
-        Point startPoint = draggedHandle.isRotation() ? dragStart : originalDragStart;
-
-        // Calculate new transform
+        // Always use cumulative calculation from original drag start for all transforms
+        // This ensures mathematical correctness by avoiding floating-point accumulation
         // Corner handles: Shift key locks aspect ratio (independent scaling by default)
         // Edge handles: Never maintain aspect ratio (single-axis scaling)
         boolean maintainAspectRatio = draggedHandle.isCorner() && shiftKeyHeld;
         TransformState newTransform = transformCalculator.calculateTransform(
                 draggedHandle,
-                startPoint,
+                originalDragStart,  // Always use original start for cumulative calculation
                 currentPoint,
                 originalSelection,
                 currentTransform,
                 maintainAspectRatio
         );
 
-        // For rotation, accumulate the change; for scaling, replace the transform
-        if (draggedHandle.isRotation()) {
-            currentTransform = newTransform;
-            // Update drag start for next rotation frame (incremental)
-            dragStart = currentPoint;
-        } else {
-            // For scaling, use the calculated transform directly (cumulative from original start)
-            currentTransform = newTransform;
-        }
+        // Update transform (no special handling needed - all transforms are absolute)
+        currentTransform = newTransform;
 
         // Apply transform and update canvas
         applyTransformToCanvas(canvas);

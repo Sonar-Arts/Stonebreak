@@ -163,7 +163,7 @@ public class TransformCalculator {
                 .build();
     }
 
-    private TransformState calculateRotation(Point dragStart,
+    private TransformState calculateRotation(Point originalDragStart,
                                              Point dragCurrent,
                                              SelectionRegion originalSelection,
                                              TransformState currentTransform) {
@@ -175,23 +175,21 @@ public class TransformCalculator {
                 bounds.y + bounds.height / 2
         );
 
-        // Calculate angles from center to drag points
-        double angleStart = Math.atan2(dragStart.y - center.y, dragStart.x - center.x);
+        // Calculate absolute angles from center to drag points
+        double angleStart = Math.atan2(originalDragStart.y - center.y, originalDragStart.x - center.x);
         double angleCurrent = Math.atan2(dragCurrent.y - center.y, dragCurrent.x - center.x);
 
-        // Calculate rotation delta in degrees
-        double deltaRadians = angleCurrent - angleStart;
-        double deltaDegrees = Math.toDegrees(deltaRadians);
-
-        // Add to current rotation
-        double newRotation = currentTransform.getRotationDegrees() + deltaDegrees;
+        // Calculate absolute rotation (total rotation from original start to current position)
+        double rotationRadians = angleCurrent - angleStart;
+        double rotationDegrees = Math.toDegrees(rotationRadians);
 
         // Normalize to 0-360 range
-        while (newRotation < 0) newRotation += 360;
-        while (newRotation >= 360) newRotation -= 360;
+        while (rotationDegrees < 0) rotationDegrees += 360;
+        while (rotationDegrees >= 360) rotationDegrees -= 360;
 
+        // Return absolute rotation (not accumulated with existing rotation)
         return currentTransform.toBuilder()
-                .rotate(newRotation)
+                .rotate(rotationDegrees)
                 .pivot(center)
                 .build();
     }
