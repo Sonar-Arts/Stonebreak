@@ -9,7 +9,9 @@ import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
-import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
+import com.openmason.ui.components.textureCreator.tools.selection.SelectionTool;
+import com.openmason.ui.components.textureCreator.tools.selection.SelectionPreview;
+import com.openmason.ui.components.textureCreator.tools.selection.RectanglePreview;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand;
 import imgui.ImGui;
@@ -113,11 +115,22 @@ public class CanvasPanel {
             cursorPos.y + centerOffsetY
         );
 
-        // Get selection preview bounds if using rectangle selection tool
+        // Get selection preview bounds if using selection tool
         int[] selectionPreviewBounds = null;
-        if (currentTool instanceof RectangleSelectionTool) {
-            RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
-            selectionPreviewBounds = selectionTool.getSelectionPreviewBounds();
+        if (currentTool instanceof SelectionTool) {
+            SelectionTool selectionTool = (SelectionTool) currentTool;
+            SelectionPreview preview = selectionTool.getPreview();
+
+            // Extract bounds from preview (currently only RectanglePreview supported in renderer)
+            if (preview instanceof RectanglePreview) {
+                RectanglePreview rectPreview = (RectanglePreview) preview;
+                selectionPreviewBounds = new int[]{
+                    rectPreview.getStartX(),
+                    rectPreview.getStartY(),
+                    rectPreview.getEndX(),
+                    rectPreview.getEndY()
+                };
+            }
         }
 
         // Render the display canvas (composited view) with opacity settings
@@ -247,22 +260,22 @@ public class CanvasPanel {
                     logger.debug("Color picked: 0x{}", Integer.toHexString(pickedColor));
                 }
             }
-            // Handle rectangle selection tool
-            else if (currentTool instanceof RectangleSelectionTool) {
-                RectangleSelectionTool selectionTool = (RectangleSelectionTool) currentTool;
+            // Handle selection tools (rectangle, ellipse, lasso, etc.)
+            else if (currentTool instanceof SelectionTool) {
+                SelectionTool selectionTool = (SelectionTool) currentTool;
 
                 // Handle selection creation/update
-                if (selectionTool.wasSelectionCreated()) {
-                    SelectionRegion createdSelection = selectionTool.getCreatedSelection();
+                if (selectionTool.hasSelection()) {
+                    SelectionRegion createdSelection = selectionTool.getSelection();
                     if (onSelectionCreatedCallback != null) {
                         onSelectionCreatedCallback.accept(createdSelection);
                         if (createdSelection != null) {
-                            logger.debug("Rectangle selection created: {}", createdSelection.getBounds());
+                            logger.debug("Selection created: {}", createdSelection.getBounds());
                         } else {
                             logger.debug("Selection cleared");
                         }
                     }
-                    selectionTool.clearSelectionCreatedFlag();
+                    selectionTool.clearSelection();
                 }
             }
             // Handle move tool

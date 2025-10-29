@@ -1,7 +1,6 @@
 package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
-import com.openmason.ui.components.textureCreator.tools.RectangleSelectionTool;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiCol;
@@ -86,9 +85,8 @@ public class ToolOptionsBar {
                 ImGui.alignTextToFramePadding();
 
                 // Render tool-specific options based on tool type
-                if (currentTool instanceof RectangleSelectionTool) {
-                    renderRectangleSelectionOptions((RectangleSelectionTool) currentTool);
-                }
+                // Currently no tools have options (removed unused fixed aspect ratio feature)
+                // Future tools with options can be added here
             }
             // If no options, toolbar shows empty space (no dummy needed, window size handles it)
 
@@ -116,34 +114,14 @@ public class ToolOptionsBar {
      * @return true if the tool has options, false otherwise
      */
     private boolean hasOptions(DrawingTool tool) {
-        return tool instanceof RectangleSelectionTool;
+        // Currently no tools have options (removed unused fixed aspect ratio feature)
+        // Future: add checks for tools with configurable options
+        return false;
     }
 
-    /**
-     * Render options for the Rectangle Selection tool.
-     *
-     * Options:
-     * - Fixed Aspect Ratio: Constrains selection to 1:1 square ratio
-     *
-     * @param tool The RectangleSelectionTool instance
-     */
-    private void renderRectangleSelectionOptions(RectangleSelectionTool tool) {
-        // Label for the tool
-        ImGui.text("Rectangle Selection:");
-        ImGui.sameLine(0, OPTION_SPACING);
-
-        // Fixed Aspect Ratio checkbox
-        ImBoolean fixedAspectRatio = new ImBoolean(tool.isFixedAspectRatio());
-        if (ImGui.checkbox("Fixed Aspect Ratio", fixedAspectRatio)) {
-            tool.setFixedAspectRatio(fixedAspectRatio.get());
-            logger.debug("Rectangle selection fixed aspect ratio: {}", fixedAspectRatio.get());
-        }
-
-        // Tooltip
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("When enabled, constrains rectangle to 1:1 square ratio");
-        }
-    }
+    // Future tool option rendering methods can be added here
+    // Example:
+    // private void renderToolOptions(SpecificTool tool) { ... }
 
     /**
      * Render a subtle separator line at the bottom of the toolbar.
