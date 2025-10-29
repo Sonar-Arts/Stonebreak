@@ -51,9 +51,9 @@ public class BiomeManager implements IBiomeManager {
     }
 
     /**
-     * Determines the biome type at a world position (using sea level temperature).
+     * Determines the biome type at a world position.
      *
-     * Samples all 6 parameters at sea level and selects matching biome from parameter table.
+     * Samples all 6 parameters from noise and selects matching biome from parameter table.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
@@ -65,23 +65,23 @@ public class BiomeManager implements IBiomeManager {
     }
 
     /**
-     * Determines the biome type at a world position with altitude-adjusted temperature.
+     * Determines the biome type at a world position.
      *
      * Multi-Noise System:
      * 1. Sample all 6 parameters via NoiseRouter
-     * 2. Temperature automatically adjusted for altitude (colder at high elevations)
+     * 2. All parameters sampled from noise (temperature is purely 2D noise-based)
      * 3. Lookup biome in parameter table using 6D point
      * 4. If multiple matches, choose closest by weighted distance
      * 5. If no matches, fall back to nearest biome (should be rare)
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @param height Terrain height (affects temperature via altitude chill)
-     * @return The biome type at the given position and height
+     * @param height Terrain height (unused, kept for API compatibility)
+     * @return The biome type at the given position
      */
     @Override
     public BiomeType getBiomeAtHeight(int x, int z, int height) {
-        // Sample all 6 parameters (temperature altitude-adjusted)
+        // Sample all 6 parameters from noise
         MultiNoiseParameters params = noiseRouter.sampleParameters(x, z, height);
 
         // Select biome from parameter table
@@ -113,11 +113,13 @@ public class BiomeManager implements IBiomeManager {
     }
 
     /**
-     * Gets the base temperature value at sea level.
+     * Gets the temperature value at a position.
+     *
+     * Temperature is purely noise-based without altitude adjustment.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @return Temperature value in range [0.0, 1.0] at sea level
+     * @return Temperature value in range [0.0, 1.0] based on noise
      */
     @Override
     public float getTemperature(int x, int z) {
@@ -125,17 +127,16 @@ public class BiomeManager implements IBiomeManager {
     }
 
     /**
-     * Gets the temperature value at a specific height (altitude-adjusted).
+     * Gets the temperature value at a position.
      *
-     * Temperature decreases with altitude above sea level:
-     * - Sea level: base temperature
-     * - +100 blocks: temperature - 0.5 (assuming altitudeChillFactor = 200)
-     * - +200 blocks: temperature - 1.0 (fully cold)
+     * Temperature is purely noise-based without altitude adjustment.
+     * This method exists for API compatibility and returns the same value
+     * as getTemperature(x, z) regardless of height.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
-     * @param height Terrain height
-     * @return Temperature value in range [0.0, 1.0] adjusted for altitude
+     * @param height Terrain height (unused, kept for API compatibility)
+     * @return Temperature value in range [0.0, 1.0] based on noise
      */
     @Override
     public float getTemperatureAtHeight(int x, int z, int height) {

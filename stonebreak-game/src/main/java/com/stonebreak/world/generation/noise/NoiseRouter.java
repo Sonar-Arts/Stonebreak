@@ -82,14 +82,14 @@ public class NoiseRouter {
     }
 
     /**
-     * Samples all six parameters at a world position with altitude-adjusted temperature.
+     * Samples all six parameters at a world position.
      *
-     * Temperature decreases with altitude above sea level, creating natural snow on
-     * mountain peaks. This follows Luanti's altitude chill system.
+     * All parameters are sampled from noise at the given X/Z coordinates.
+     * Temperature is purely noise-based without altitude adjustment.
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
-     * @param height Terrain height (affects temperature calculation)
+     * @param height Terrain height (unused for temperature, kept for API compatibility)
      * @return Multi-noise parameters at this position
      */
     public MultiNoiseParameters sampleParameters(int worldX, int worldZ, int height) {
@@ -108,7 +108,7 @@ public class NoiseRouter {
         // Sample weirdness (scale 200 blocks per unit)
         float weirdness = weirdnessNoise.noise(worldX / 200.0f, worldZ / 200.0f);
 
-        // Sample temperature with altitude adjustment
+        // Sample temperature (height parameter unused but passed for consistency)
         float temperature = sampleTemperature(worldX, worldZ, height);
 
         // Sample humidity (moisture)
@@ -128,34 +128,26 @@ public class NoiseRouter {
     }
 
     /**
-     * Samples temperature with altitude adjustment.
+     * Samples temperature based purely on noise at X/Z coordinates.
      *
-     * Temperature decreases with altitude above sea level:
-     * - Sea level: base temperature from noise
-     * - +100 blocks: temperature - 0.5 (assuming altitudeChillFactor = 200)
-     * - +200 blocks: temperature - 1.0 (fully cold, snowy)
+     * Temperature is determined solely by 2D noise patterns without any
+     * altitude-based adjustment. This allows biomes to be fully controlled
+     * by the multi-noise parameter system.
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
-     * @param height Terrain height
+     * @param height Terrain height (unused, kept for API compatibility)
      * @return Temperature in range [0.0, 1.0]
      */
     private float sampleTemperature(int worldX, int worldZ, int height) {
-        // Base temperature from noise
-        float baseTemperature = temperatureNoise.noise(
+        // Temperature from noise only (no altitude adjustment)
+        float temperature = temperatureNoise.noise(
                 worldX / config.temperatureNoiseScale - 50,
                 worldZ / config.temperatureNoiseScale - 50
         ) * 0.5f + 0.5f;  // Map from [-1, 1] to [0, 1]
 
-        // Apply altitude chill above sea level
-        if (height > seaLevel) {
-            float altitudeAboveSeaLevel = height - seaLevel;
-            float temperatureDecrease = altitudeAboveSeaLevel / altitudeChillFactor;
-            baseTemperature -= temperatureDecrease;
-        }
-
-        // Clamp to valid range
-        return Math.max(0.0f, Math.min(1.0f, baseTemperature));
+        // Clamp to valid range (should already be in range, but ensure safety)
+        return Math.max(0.0f, Math.min(1.0f, temperature));
     }
 
     /**
