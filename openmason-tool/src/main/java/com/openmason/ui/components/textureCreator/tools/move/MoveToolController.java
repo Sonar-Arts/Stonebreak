@@ -27,6 +27,7 @@ public class MoveToolController implements DrawingTool {
     private MoveToolSession session;
     private TransformPreviewLayer previewLayer;
     private TransformHandle hoveredHandle = TransformHandle.NONE;
+    private boolean hoveredInRotationMode = false;
     private MoveSelectionCommand pendingCommand;
 
     private DragContext dragContext;
@@ -68,7 +69,7 @@ public class MoveToolController implements DrawingTool {
         TransformationState newTransform;
         if (dragContext.translation) {
             newTransform = computeTranslationTransform(canvasX, canvasY);
-        } else if (isRotationHandle(dragContext.handle)) {
+        } else if (dragContext.rotation) {
             newTransform = computeRotationTransform(canvasX, canvasY);
         } else {
             newTransform = computeScaleTransform(canvasX, canvasY);
@@ -92,6 +93,7 @@ public class MoveToolController implements DrawingTool {
         previewLayer = null;
         dragContext = null;
         hoveredHandle = TransformHandle.NONE;
+        hoveredInRotationMode = false;
     }
 
     @Override
@@ -110,6 +112,7 @@ public class MoveToolController implements DrawingTool {
         previewLayer = null;
         dragContext = null;
         hoveredHandle = TransformHandle.NONE;
+        hoveredInRotationMode = false;
         // Keep pendingCommand so CanvasPanel can still apply it if required
     }
 
@@ -151,13 +154,22 @@ public class MoveToolController implements DrawingTool {
 
         if (selection == null || selection.isEmpty()) {
             hoveredHandle = TransformHandle.NONE;
-        return;
+            hoveredInRotationMode = false;
+            return;
         }
 
         Rectangle bounds = selection.getBounds();
         TransformationState transform = session != null ? session.transform() : TransformationState.identity();
 
         hoveredHandle = overlayRenderer.detectHandle(mouseX, mouseY, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
+
+        // Check if we're hovering in rotation mode (outside corner)
+        if (hoveredHandle != TransformHandle.NONE && overlayRenderer.isCornerHandle(hoveredHandle)) {
+            hoveredInRotationMode = overlayRenderer.isInRotationMode(
+                    mouseX, mouseY, hoveredHandle, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
+        } else {
+            hoveredInRotationMode = false;
+        }
     }
 
     public void renderOverlay(ImDrawList drawList,
@@ -180,7 +192,8 @@ public class MoveToolController implements DrawingTool {
                 canvasDisplayX,
                 canvasDisplayY,
                 hoveredHandle,
-                dragContext != null ? dragContext.handle : TransformHandle.NONE);
+                dragContext != null ? dragContext.handle : TransformHandle.NONE,
+                hoveredInRotationMode || (dragContext != null && dragContext.rotation));
     }
 
     public MoveSelectionCommand getPendingCommand() {
@@ -219,7 +232,9 @@ public class MoveToolController implements DrawingTool {
         if (session == null) {
             return;
         }
-        dragContext = DragContext.forHandle(handle, session.snapshot(), session.transform(), startX, startY);
+
+        // Use the rotation mode detected during hover
+        dragContext = DragContext.forHandle(handle, session.snapshot(), session.transform(), startX, startY, hoveredInRotationMode);
     }
 
     private void startTranslation(double startX, double startY) {
@@ -336,6 +351,7 @@ public class MoveToolController implements DrawingTool {
         previewLayer = null;
         session = null;
         hoveredHandle = TransformHandle.NONE;
+        hoveredInRotationMode = false;
     }
 
     private static boolean affectsXAxis(TransformHandle handle) {
@@ -364,13 +380,6 @@ public class MoveToolController implements DrawingTool {
             default:
                 return false;
         }
-    }
-
-    private static boolean isRotationHandle(TransformHandle handle) {
-        return handle == TransformHandle.ROTATE_NORTH
-                || handle == TransformHandle.ROTATE_EAST
-                || handle == TransformHandle.ROTATE_SOUTH
-                || handle == TransformHandle.ROTATE_WEST;
     }
 
     private static double snapSize(double rawSize) {
@@ -423,6 +432,7 @@ public class MoveToolController implements DrawingTool {
     private static final class DragContext {
         final TransformHandle handle;
         final boolean translation;
+        final boolean rotation;
         final SelectionSnapshot snapshot;
         final TransformationState baseTransform;
         final double startCanvasX;
@@ -435,6 +445,7 @@ public class MoveToolController implements DrawingTool {
 
         private DragContext(TransformHandle handle,
                             boolean translation,
+                            boolean rotation,
                             SelectionSnapshot snapshot,
                             TransformationState baseTransform,
                             double startCanvasX,
@@ -446,6 +457,7 @@ public class MoveToolController implements DrawingTool {
                             double initialAngle) {
             this.handle = handle;
             this.translation = translation;
+            this.rotation = rotation;
             this.snapshot = snapshot;
             this.baseTransform = baseTransform;
             this.startCanvasX = startCanvasX;
@@ -469,6 +481,7 @@ public class MoveToolController implements DrawingTool {
             return new DragContext(
                     TransformHandle.NONE,
                     true,
+                    false,
                     snapshot,
                     baseTransform,
                     startCanvasX,
@@ -485,7 +498,8 @@ public class MoveToolController implements DrawingTool {
                                      SelectionSnapshot snapshot,
                                      TransformationState baseTransform,
                                      double startCanvasX,
-                                     double startCanvasY) {
+                                     double startCanvasY,
+                                     boolean isRotationMode) {
             double[] anchorLocal = anchorLocal(handle, snapshot);
             double[] anchorCanvas = TransformMath.mapLocalToCanvas(
                     anchorLocal[0],
@@ -503,6 +517,7 @@ public class MoveToolController implements DrawingTool {
             return new DragContext(
                     handle,
                     false,
+                    isRotationMode,
                     snapshot,
                     baseTransform,
                     startCanvasX,
