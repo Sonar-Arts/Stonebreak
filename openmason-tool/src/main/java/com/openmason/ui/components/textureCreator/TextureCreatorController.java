@@ -276,6 +276,19 @@ public class TextureCreatorController {
     }
 
     /**
+     * Get composited canvas of all layers EXCEPT the active layer.
+     * Useful for multi-layer preview during transformations.
+     * @return background canvas (all layers except active), or null if no active layer
+     */
+    public PixelCanvas getBackgroundCanvas() {
+        Layer activeLayer = layerManager.getActiveLayer();
+        if (activeLayer == null) {
+            return null;
+        }
+        return layerManager.compositeLayersExcluding(activeLayer);
+    }
+
+    /**
      * Notify that the active layer has been modified.
      * This marks the composite cache as dirty so it will be regenerated.
      */

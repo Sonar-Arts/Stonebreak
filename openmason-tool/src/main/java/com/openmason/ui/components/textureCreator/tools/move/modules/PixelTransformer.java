@@ -15,60 +15,6 @@ import java.util.Map;
 public class PixelTransformer {
 
     /**
-     * Extracts pixels from the canvas within the selection region.
-     * Stores pixels relative to selection bounds (0,0) = top-left of selection.
-     *
-     * @param canvas The pixel canvas
-     * @param selection The selection region
-     * @return Map of relative coordinates to pixel colors
-     */
-    public Map<Point, Integer> extractSelectionPixels(PixelCanvas canvas, SelectionRegion selection) {
-        Map<Point, Integer> pixels = new HashMap<>();
-
-        if (selection == null || selection.isEmpty()) {
-            return pixels;
-        }
-
-        Rectangle bounds = selection.getBounds();
-
-        // Extract pixels within selection bounds
-        for (int y = bounds.y; y < bounds.y + bounds.height; y++) {
-            for (int x = bounds.x; x < bounds.x + bounds.width; x++) {
-                if (selection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
-                    // Store as relative coordinates
-                    Point relativePoint = new Point(x - bounds.x, y - bounds.y);
-                    int color = canvas.getPixel(x, y);
-                    pixels.put(relativePoint, color);
-                }
-            }
-        }
-
-        return pixels;
-    }
-
-    /**
-     * Clears pixels in the selection area (sets to transparent).
-     *
-     * @param canvas The pixel canvas
-     * @param selection The selection region
-     */
-    public void clearSelectionArea(PixelCanvas canvas, SelectionRegion selection) {
-        if (selection == null || selection.isEmpty()) {
-            return;
-        }
-
-        Rectangle bounds = selection.getBounds();
-
-        for (int y = bounds.y; y < bounds.y + bounds.height; y++) {
-            for (int x = bounds.x; x < bounds.x + bounds.width; x++) {
-                if (selection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
-                    canvas.setPixel(x, y, 0x00000000); // Transparent
-                }
-            }
-        }
-    }
-
-    /**
      * Applies transformation to extracted pixels with interpolation.
      * Returns a new map with transformed coordinates.
      * Uses bilinear interpolation when scaling to create smooth intermediate pixels.
@@ -347,23 +293,6 @@ public class PixelTransformer {
 
         // Pack back to ABGR format: 0xAABBGGRR
         return (a << 24) | (b << 16) | (g << 8) | r;
-    }
-
-    /**
-     * Pastes transformed pixels onto the canvas.
-     *
-     * @param canvas The pixel canvas
-     * @param pixels Map of absolute canvas coordinates to pixel colors
-     */
-    public void pastePixels(PixelCanvas canvas, Map<Point, Integer> pixels) {
-        for (Map.Entry<Point, Integer> entry : pixels.entrySet()) {
-            Point point = entry.getKey();
-            int color = entry.getValue();
-
-            if (canvas.isValidCoordinate(point.x, point.y)) {
-                canvas.setPixel(point.x, point.y, color);
-            }
-        }
     }
 
     /**

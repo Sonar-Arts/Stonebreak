@@ -207,6 +207,7 @@ public class TextureCreatorImGui {
         if (ImGui.begin("Canvas")) {
             PixelCanvas compositedCanvas = controller.getCompositedCanvas();
             PixelCanvas activeCanvas = controller.getActiveLayerCanvas();
+            PixelCanvas backgroundCanvas = controller.getBackgroundCanvas();  // All layers except active
 
             // Wire up SelectionManager to active canvas
             if (activeCanvas != null) {
@@ -218,7 +219,9 @@ public class TextureCreatorImGui {
 
             if (compositedCanvas != null) {
                 // Display composited view, but draw on active layer
-                canvasPanel.render(compositedCanvas, activeCanvas, controller.getCanvasState(),
+                // Pass backgroundCanvas for multi-layer transform preview
+                canvasPanel.render(compositedCanvas, activeCanvas, backgroundCanvas,
+                                 controller.getCanvasState(),
                                  state.getCurrentTool(), colorPanel.getCurrentColor(),
                                  state.getCurrentSelection(),  // Current selection region
                                  state.getShowGrid().get(),

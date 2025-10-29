@@ -324,6 +324,50 @@ public class LayerManager {
     }
 
     /**
+     * Composite all visible layers EXCEPT a specified layer.
+     * Useful for creating background context during layer transformations.
+     * This is NOT cached as it's used for temporary preview purposes.
+     *
+     * @param excludeLayer Layer to exclude from compositing (typically the active layer)
+     * @return composited canvas with excluded layer omitted
+     */
+    public PixelCanvas compositeLayersExcluding(Layer excludeLayer) {
+        PixelCanvas result = new PixelCanvas(canvasWidth, canvasHeight);
+
+        // Composite layers from bottom to top, excluding the specified layer
+        for (Layer layer : layers) {
+            if (layer == excludeLayer) {
+                continue; // Skip the excluded layer
+            }
+            if (!layer.isVisible()) {
+                continue; // Skip invisible layers
+            }
+
+            PixelCanvas layerCanvas = layer.getCanvas();
+            float opacity = layer.getOpacity();
+
+            // Blend each pixel
+            for (int y = 0; y < canvasHeight; y++) {
+                for (int x = 0; x < canvasWidth; x++) {
+                    int srcPixel = layerCanvas.getPixel(x, y);
+
+                    // Apply layer opacity to pixel alpha
+                    int[] rgba = PixelCanvas.unpackRGBA(srcPixel);
+                    rgba[3] = (int) (rgba[3] * opacity);
+                    int adjustedPixel = PixelCanvas.packRGBA(rgba[0], rgba[1], rgba[2], rgba[3]);
+
+                    // Blend with destination
+                    int dstPixel = result.getPixel(x, y);
+                    int blended = PixelCanvas.blendColors(adjustedPixel, dstPixel);
+                    result.setPixel(x, y, blended);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
      * Mark the compositing cache as dirty (needs to be regenerated).
      * Call this whenever layer pixel data changes.
      */

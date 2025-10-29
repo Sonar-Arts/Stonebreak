@@ -36,22 +36,14 @@ public class MoveToolController implements DrawingTool {
     private final HandleDetector handleDetector;
     private final TransformCalculator transformCalculator;
     private final SelectionTransformRenderer renderer;
-    private final PixelTransformer pixelTransformer;
 
-    // Transform state
-    private SelectionRegion originalSelection;
-    private TransformState currentTransform;
-    private Map<Point, Integer> extractedPixels;
-    private Map<Point, Integer> transformedPixels;
+    // Non-destructive transform layer (replaces extractedPixels/transformedPixels/pixelsExtracted)
+    private TransformLayer activeLayer;
 
     // Drag tracking
     private Point dragStart;
     private Point originalDragStart; // Store original start point for scaling calculations
     private HandleType draggedHandle;
-    private boolean pixelsExtracted;
-
-    // Canvas reference for restoration
-    private PixelCanvas canvasWithExtractedPixels;
 
     // Visual feedback
     private HandleType hoveredHandle;
@@ -67,7 +59,6 @@ public class MoveToolController implements DrawingTool {
         this.handleDetector = new HandleDetector();
         this.transformCalculator = new TransformCalculator();
         this.renderer = new SelectionTransformRenderer();
-        this.pixelTransformer = new PixelTransformer();
         reset();
     }
 
@@ -102,20 +93,14 @@ public class MoveToolController implements DrawingTool {
             return;
         }
 
-        // Check if clicking inside selection bounds (transformed)
+        // Check if clicking inside selection bounds
         Rectangle bounds = selection.getBounds();
-
-        // Apply transform to check if click is inside transformed selection
-        int transformedX = x - currentTransform.getTranslateX();
-        int transformedY = y - currentTransform.getTranslateY();
-        boolean insideSelection = selection.contains(transformedX, transformedY);
+        boolean insideSelection = selection.contains(x, y);
 
         if (currentState == State.IDLE) {
             if (insideSelection) {
                 // First click on selection - enter clicked state (show handles)
                 currentState = State.CLICKED_SELECTION;
-                originalSelection = selection;
-                currentTransform = TransformState.identity();
             }
         } else if (currentState == State.CLICKED_SELECTION) {
             // Check if a handle was clicked (hoveredHandle is set by updateHoveredHandle)
@@ -127,14 +112,14 @@ public class MoveToolController implements DrawingTool {
                 startSelectionDrag(x, y, selection, canvas);
             } else {
                 // Clicked outside selection - commit if we have changes
-                if (pixelsExtracted) {
+                if (activeLayer != null && activeLayer.hasChanges()) {
                     commitTransform(canvas);
                 }
                 currentState = State.IDLE;
             }
         } else {
             // In other states, clicking outside commits
-            if (!insideSelection && pixelsExtracted) {
+            if (!insideSelection && activeLayer != null && activeLayer.hasChanges()) {
                 commitTransform(canvas);
                 currentState = State.IDLE;
             }
@@ -153,8 +138,8 @@ public class MoveToolController implements DrawingTool {
     @Override
     public void onMouseUp(int color, PixelCanvas canvas, DrawCommand command) {
         if (currentState == State.DRAGGING_HANDLE || currentState == State.DRAGGING_SELECTION) {
-            // Commit the transform if pixels were moved
-            if (pixelsExtracted && !currentTransform.isIdentity()) {
+            // Commit the transform if layer has changes
+            if (activeLayer != null && activeLayer.hasChanges()) {
                 commitTransform(canvas);
                 currentState = State.IDLE;
             } else {
@@ -172,28 +157,24 @@ public class MoveToolController implements DrawingTool {
         dragStart = new Point(x, y);
         originalDragStart = new Point(x, y); // Store original start for cumulative calculations
 
-        // Extract pixels on first drag
-        if (!pixelsExtracted) {
-            extractPixels(selection, canvas);
+        // Create non-destructive transform layer on first drag
+        if (activeLayer == null) {
+            activeLayer = new TransformLayer(canvas, selection);
         }
-
-        originalSelection = selection;
     }
 
     private void startSelectionDrag(int x, int y, SelectionRegion selection, PixelCanvas canvas) {
         currentState = State.DRAGGING_SELECTION;
         dragStart = new Point(x, y);
 
-        // Extract pixels on first drag
-        if (!pixelsExtracted) {
-            extractPixels(selection, canvas);
+        // Create non-destructive transform layer on first drag
+        if (activeLayer == null) {
+            activeLayer = new TransformLayer(canvas, selection);
         }
-
-        originalSelection = selection;
     }
 
     private void continueHandleDrag(int x, int y, PixelCanvas canvas) {
-        if (dragStart == null || draggedHandle == null) {
+        if (dragStart == null || draggedHandle == null || activeLayer == null) {
             return;
         }
 
@@ -208,20 +189,17 @@ public class MoveToolController implements DrawingTool {
                 draggedHandle,
                 originalDragStart,  // Always use original start for cumulative calculation
                 currentPoint,
-                originalSelection,
-                currentTransform,
+                activeLayer.getOriginalSelection(),
+                activeLayer.getTransform(),
                 maintainAspectRatio
         );
 
-        // Update transform (no special handling needed - all transforms are absolute)
-        currentTransform = newTransform;
-
-        // Apply transform and update canvas
-        applyTransformToCanvas(canvas);
+        // Update layer transform (non-destructive - canvas NOT modified)
+        activeLayer.setTransform(newTransform);
     }
 
     private void continueSelectionDrag(int x, int y, PixelCanvas canvas) {
-        if (dragStart == null) {
+        if (dragStart == null || activeLayer == null) {
             return;
         }
 
@@ -232,104 +210,63 @@ public class MoveToolController implements DrawingTool {
         int dy = currentPoint.y - dragStart.y;
 
         // Update transform
-        currentTransform = currentTransform.toBuilder()
+        TransformState currentTransform = activeLayer.getTransform();
+        TransformState newTransform = currentTransform.toBuilder()
                 .translate(
                         currentTransform.getTranslateX() + dx,
                         currentTransform.getTranslateY() + dy
                 )
                 .build();
 
-        // Apply transform and update canvas
-        applyTransformToCanvas(canvas);
+        // Update layer transform (non-destructive - canvas NOT modified)
+        activeLayer.setTransform(newTransform);
 
         // Update drag start for next frame
         dragStart = currentPoint;
     }
 
-    private void extractPixels(SelectionRegion selection, PixelCanvas canvas) {
-        // Extract pixels from selection
-        extractedPixels = pixelTransformer.extractSelectionPixels(canvas, selection);
-
-        // Clear original area (cut-style)
-        // Bypass selection constraint to allow clearing
-        canvas.setBypassSelectionConstraint(true);
-        try {
-            pixelTransformer.clearSelectionArea(canvas, selection);
-        } finally {
-            canvas.setBypassSelectionConstraint(false);
-        }
-
-        pixelsExtracted = true;
-        canvasWithExtractedPixels = canvas; // Store reference for potential restoration
-    }
-
-    private void applyTransformToCanvas(PixelCanvas canvas) {
-        if (!pixelsExtracted || extractedPixels == null) {
-            return;
-        }
-
-        // Bypass selection constraint to allow pasting outside original selection bounds
-        canvas.setBypassSelectionConstraint(true);
-        try {
-            // Clear canvas in original area (already done) and transformed area
-            if (transformedPixels != null) {
-                // Clear previous transformed pixels
-                for (Point point : transformedPixels.keySet()) {
-                    if (canvas.isValidCoordinate(point.x, point.y)) {
-                        canvas.setPixel(point.x, point.y, 0x00000000);
-                    }
-                }
-            }
-
-            // Apply transform to pixels
-            Rectangle originalBounds = originalSelection.getBounds();
-            transformedPixels = pixelTransformer.applyTransform(
-                    extractedPixels, currentTransform, originalBounds);
-
-            // Paste transformed pixels
-            pixelTransformer.pastePixels(canvas, transformedPixels);
-        } finally {
-            canvas.setBypassSelectionConstraint(false);
-        }
-
-        // Note: canvas modification version is automatically incremented by setPixel() calls
-    }
 
     private void commitTransform(PixelCanvas canvas) {
-        if (!pixelsExtracted || extractedPixels == null) {
-            System.out.println("[MoveToolController] commitTransform: no pixels extracted");
+        if (activeLayer == null) {
+            System.out.println("[MoveToolController] commitTransform: no active layer");
             return;
         }
 
-        System.out.println("[MoveToolController] Committing transform: " + currentTransform);
-        System.out.println("[MoveToolController] Original selection bounds: " + originalSelection.getBounds());
+        TransformState transform = activeLayer.getTransform();
+        SelectionRegion originalSelection = activeLayer.getOriginalSelection();
+        Rectangle originalBounds = activeLayer.getOriginalBounds();
+
+        System.out.println("[MoveToolController] Committing transform: " + transform);
+        System.out.println("[MoveToolController] Original selection bounds: " + originalBounds);
 
         // Create absolute coordinate map for original pixels
         Map<Point, Integer> absoluteOriginalPixels = createAbsolutePixelMap(
-                extractedPixels, originalSelection.getBounds());
+                activeLayer.getOriginalPixels(), originalBounds);
+
+        // Get transformed pixels from layer (cached for performance)
+        Map<Point, Integer> transformedPixels = activeLayer.getTransformedPixels();
 
         // Create transformed selection
-        SelectionRegion transformedSelection = pixelTransformer.transformSelection(
-                originalSelection, currentTransform);
+        SelectionRegion transformedSelection = activeLayer.getTransformedSelection();
 
         System.out.println("[MoveToolController] Transformed selection bounds: " +
                 (transformedSelection != null ? transformedSelection.getBounds() : "null"));
 
-        // Create command (with SelectionManager if available)
+        // Commit layer to canvas (ONLY place canvas is modified)
+        activeLayer.commitToCanvas(canvas);
+
+        // Create command for undo/redo
         pendingCommand = new MoveSelectionCommand(
                 canvas,
                 selectionManager,
                 originalSelection,
                 transformedSelection,
-                currentTransform,
+                transform,
                 absoluteOriginalPixels,
                 transformedPixels
         );
 
         System.out.println("[MoveToolController] Created pending command: " + pendingCommand.getDescription());
-
-        // Execute command (already applied to canvas during dragging, but this updates undo stack)
-        // Note: Command will be added to history by external controller
 
         // Update selection using SelectionManager if available, otherwise update canvas directly
         if (transformedSelection != null) {
@@ -342,8 +279,9 @@ public class MoveToolController implements DrawingTool {
             }
         }
 
-        // Clear canvas reference before reset so pixels aren't restored
-        canvasWithExtractedPixels = null;
+        // Discard layer (no longer needed)
+        activeLayer.discard();
+        activeLayer = null;
 
         reset();
         System.out.println("[MoveToolController] Reset complete, pending command should still exist");
@@ -376,13 +314,16 @@ public class MoveToolController implements DrawingTool {
                               currentState == State.DRAGGING_HANDLE ||
                               currentState == State.DRAGGING_SELECTION);
 
+        // Get transform from active layer (or identity if no layer)
+        TransformState transform = (activeLayer != null) ? activeLayer.getTransform() : TransformState.identity();
+
         // Render selection with handles
-        renderer.render(drawList, selection, canvasState, currentTransform, showHandles, hoveredHandle,
+        renderer.render(drawList, selection, canvasState, transform, showHandles, hoveredHandle,
                 canvasDisplayX, canvasDisplayY);
 
-        // Render preview during drag
-        if (currentState == State.DRAGGING_HANDLE || currentState == State.DRAGGING_SELECTION) {
-            renderer.renderPreview(drawList, selection, canvasState, currentTransform,
+        // Render preview during drag (composite layer overlay)
+        if ((currentState == State.DRAGGING_HANDLE || currentState == State.DRAGGING_SELECTION) && activeLayer != null) {
+            renderer.renderPreview(drawList, selection, canvasState, transform,
                     canvasDisplayX, canvasDisplayY);
         }
     }
@@ -395,7 +336,10 @@ public class MoveToolController implements DrawingTool {
             return;
         }
 
-        hoveredHandle = handleDetector.getHandleAt(mouseX, mouseY, selection, canvasState, currentTransform,
+        // Get transform from active layer (or identity if no layer)
+        TransformState transform = (activeLayer != null) ? activeLayer.getTransform() : TransformState.identity();
+
+        hoveredHandle = handleDetector.getHandleAt(mouseX, mouseY, selection, canvasState, transform,
                 canvasDisplayX, canvasDisplayY);
     }
 
@@ -409,55 +353,22 @@ public class MoveToolController implements DrawingTool {
 
     /**
      * Resets the tool state. This is called when switching tools or canceling operations.
-     * Automatically restores pixels if they were extracted but not committed.
+     * Non-destructive: simply discards the layer without canvas modification.
      */
     @Override
     public void reset() {
-        // Auto-restore pixels if they were extracted but not committed
-        if (pixelsExtracted && canvasWithExtractedPixels != null &&
-            extractedPixels != null && originalSelection != null) {
-
-            System.out.println("[MoveToolController] Auto-restoring pixels on reset");
-
-            // Bypass selection constraint for restoration
-            canvasWithExtractedPixels.setBypassSelectionConstraint(true);
-            try {
-                // Clear any transformed pixels
-                if (transformedPixels != null) {
-                    for (Point point : transformedPixels.keySet()) {
-                        if (canvasWithExtractedPixels.isValidCoordinate(point.x, point.y)) {
-                            canvasWithExtractedPixels.setPixel(point.x, point.y, 0x00000000);
-                        }
-                    }
-                }
-
-                // Restore original pixels
-                Rectangle originalBounds = originalSelection.getBounds();
-                for (Map.Entry<Point, Integer> entry : extractedPixels.entrySet()) {
-                    Point relativePoint = entry.getKey();
-                    int absoluteX = originalBounds.x + relativePoint.x;
-                    int absoluteY = originalBounds.y + relativePoint.y;
-
-                    if (canvasWithExtractedPixels.isValidCoordinate(absoluteX, absoluteY)) {
-                        canvasWithExtractedPixels.setPixel(absoluteX, absoluteY, entry.getValue());
-                    }
-                }
-            } finally {
-                canvasWithExtractedPixels.setBypassSelectionConstraint(false);
-            }
+        // Discard active layer if it exists (non-destructive - canvas never modified)
+        if (activeLayer != null) {
+            System.out.println("[MoveToolController] Discarding active layer on reset (non-destructive)");
+            activeLayer.discard();
+            activeLayer = null;
         }
 
         currentState = State.IDLE;
-        originalSelection = null;
-        currentTransform = TransformState.identity();
-        extractedPixels = null;
-        transformedPixels = null;
         dragStart = null;
         originalDragStart = null;
         draggedHandle = null;
-        pixelsExtracted = false;
         hoveredHandle = null;
-        canvasWithExtractedPixels = null;
         // Note: pendingCommand is NOT cleared here - it must survive until executed by CanvasPanel
         // Use clearPendingCommand() to explicitly clear it after execution
     }
@@ -465,35 +376,15 @@ public class MoveToolController implements DrawingTool {
     /**
      * Cancels the current transformation and restores original state.
      * Called when user presses ESC or switches tools without committing.
+     * Non-destructive: canvas never modified, so just discard layer.
      */
     public void cancelAndReset(PixelCanvas canvas) {
-        if (pixelsExtracted && extractedPixels != null && originalSelection != null) {
-            // Bypass selection constraint for restoration
-            canvas.setBypassSelectionConstraint(true);
-            try {
-                // Clear any transformed pixels
-                if (transformedPixels != null) {
-                    for (Point point : transformedPixels.keySet()) {
-                        if (canvas.isValidCoordinate(point.x, point.y)) {
-                            canvas.setPixel(point.x, point.y, 0x00000000); // Clear to transparent
-                        }
-                    }
-                }
-
-                // Restore original pixels at original location
-                Rectangle originalBounds = originalSelection.getBounds();
-                for (Map.Entry<Point, Integer> entry : extractedPixels.entrySet()) {
-                    Point relativePoint = entry.getKey();
-                    int absoluteX = originalBounds.x + relativePoint.x;
-                    int absoluteY = originalBounds.y + relativePoint.y;
-
-                    if (canvas.isValidCoordinate(absoluteX, absoluteY)) {
-                        canvas.setPixel(absoluteX, absoluteY, entry.getValue());
-                    }
-                }
-            } finally {
-                canvas.setBypassSelectionConstraint(false);
-            }
+        // Perfect non-destructive cancel: canvas never modified during preview!
+        // Just discard the layer - no restoration needed
+        if (activeLayer != null) {
+            System.out.println("[MoveToolController] Canceling transform (non-destructive)");
+            activeLayer.discard();
+            activeLayer = null;
         }
 
         reset();
@@ -516,5 +407,24 @@ public class MoveToolController implements DrawingTool {
 
     public State getCurrentState() {
         return currentState;
+    }
+
+    /**
+     * Gets the active transform layer for rendering.
+     * Used by rendering pipeline to composite layer overlay.
+     *
+     * @return Active transform layer, or null if no active transform
+     */
+    public TransformLayer getActiveLayer() {
+        return activeLayer;
+    }
+
+    /**
+     * Checks if there is an active transform layer.
+     *
+     * @return true if layer exists, false otherwise
+     */
+    public boolean hasActiveLayer() {
+        return activeLayer != null;
     }
 }

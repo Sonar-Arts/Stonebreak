@@ -65,6 +65,7 @@ public class CanvasPanel {
      *
      * @param displayCanvas pixel canvas to display (composited view)
      * @param drawingCanvas pixel canvas for drawing operations (active layer)
+     * @param backgroundCanvas pixel canvas with all layers except active (for multi-layer preview, can be null)
      * @param canvasState view state (zoom, pan)
      * @param currentTool currently selected drawing tool (can be null)
      * @param currentColor current drawing color
@@ -78,7 +79,8 @@ public class CanvasPanel {
      * @param onColorUsedCallback callback invoked when color is used on canvas (can be null)
      * @param onSelectionCreatedCallback callback invoked when selection is created/cleared (can be null)
      */
-    public void render(PixelCanvas displayCanvas, PixelCanvas drawingCanvas, CanvasState canvasState,
+    public void render(PixelCanvas displayCanvas, PixelCanvas drawingCanvas, PixelCanvas backgroundCanvas,
+                      CanvasState canvasState,
                       DrawingTool currentTool, int currentColor, SelectionRegion currentSelection,
                       boolean showGrid, float gridOpacity, float cubeNetOverlayOpacity,
                       CommandHistory commandHistory, Runnable onDrawCallback,
@@ -133,8 +135,26 @@ public class CanvasPanel {
             }
         }
 
+        // Check if move tool has an active transform layer for preview
+        PixelCanvas canvasToRender = displayCanvas;
+        if (currentTool instanceof MoveToolController) {
+            MoveToolController moveTool = (MoveToolController) currentTool;
+            if (moveTool.hasActiveLayer() && drawingCanvas != null) {
+                // Create preview canvas with transformed layer composited
+                if (backgroundCanvas != null) {
+                    // Multi-layer preview: composite background + transformed active layer
+                    // This shows the transformation in full context with all other layers
+                    canvasToRender = moveTool.getActiveLayer()
+                            .createMultiLayerPreviewCanvas(backgroundCanvas, drawingCanvas);
+                } else {
+                    // Single-layer preview: just the transformed active layer
+                    canvasToRender = moveTool.getActiveLayer().createPreviewCanvas(drawingCanvas);
+                }
+            }
+        }
+
         // Render the display canvas (composited view) with opacity settings
-        renderer.render(displayCanvas, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
+        renderer.render(canvasToRender, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
                        currentSelection, selectionPreviewBounds);
 
         // Render move tool overlay if using move tool
