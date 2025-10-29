@@ -98,26 +98,13 @@ public class SelectionRenderer {
             return;
         }
 
-        // Update marching ants animation
         updateAnimation();
 
-        // Get bounds for rendering
-        java.awt.Rectangle bounds = selection.getBounds();
-
-        // Convert canvas coordinates to screen coordinates
-        float x1 = canvasX + bounds.x * zoom;
-        float y1 = canvasY + bounds.y * zoom;
-        float x2 = canvasX + (bounds.x + bounds.width) * zoom;
-        float y2 = canvasY + (bounds.y + bounds.height) * zoom;
-
-        // Draw outer selection outline (bright blue, 2px thick)
-        drawList.addRect(x1, y1, x2, y2, SELECTION_OUTER_COLOR, 0.0f, 0, 2.0f);
-
-        // Draw inner selection outline (white, 1px thick, inset by 2px for visibility)
-        float inset = 2.0f;
-        drawList.addRect(x1 + inset, y1 + inset,
-                        x2 - inset, y2 - inset,
-                        SELECTION_INNER_COLOR, 0.0f, 0, 1.0f);
+        if (selection.getType() == SelectionRegion.SelectionType.RECTANGLE) {
+            renderRectangular(drawList, selection, canvasX, canvasY, zoom);
+        } else {
+            renderFreeform(drawList, selection, canvasX, canvasY, zoom);
+        }
     }
 
     /**
@@ -169,26 +156,67 @@ public class SelectionRenderer {
         }
     }
 
-    /**
-     * Renders any selection region.
-     *
-     * @param drawList  ImGui draw list to render to
-     * @param selection The selection region to render
-     * @param canvasX   Canvas x-position in screen coordinates
-     * @param canvasY   Canvas y-position in screen coordinates
-     * @param zoom      Current zoom level
-     */
     public void renderSelection(ImDrawList drawList, SelectionRegion selection,
                                 float canvasX, float canvasY, float zoom) {
-        // Render bounds (works for RectangularSelection and other selection types)
         render(drawList, selection, canvasX, canvasY, zoom);
     }
 
-    /**
-     * Resets animation state.
-     */
     public void reset() {
         animationOffset = 0;
         lastAnimationTime = System.currentTimeMillis();
+    }
+
+    private void renderRectangular(ImDrawList drawList, SelectionRegion selection,
+                                   float canvasX, float canvasY, float zoom) {
+        java.awt.Rectangle bounds = selection.getBounds();
+        float x1 = canvasX + bounds.x * zoom;
+        float y1 = canvasY + bounds.y * zoom;
+        float x2 = canvasX + (bounds.x + bounds.width) * zoom;
+        float y2 = canvasY + (bounds.y + bounds.height) * zoom;
+
+        drawList.addRect(x1, y1, x2, y2, SELECTION_OUTER_COLOR, 0.0f, 0, 2.0f);
+
+        float inset = Math.max(1.0f, zoom * 0.1f);
+        drawList.addRect(x1 + inset, y1 + inset,
+                        x2 - inset, y2 - inset,
+                        SELECTION_INNER_COLOR, 0.0f, 0, 1.0f);
+    }
+
+    private void renderFreeform(ImDrawList drawList, SelectionRegion selection,
+                                float canvasX, float canvasY, float zoom) {
+        java.awt.Rectangle bounds = selection.getBounds();
+        int maxX = bounds.x + bounds.width;
+        int maxY = bounds.y + bounds.height;
+
+        float fillOpacity = zoom < 1.5f ? 0.15f : 0.25f;
+        int fillColor = ImColor.rgba(51, 153, 255, (int) (fillOpacity * 255));
+
+        for (int y = bounds.y; y < maxY; y++) {
+            for (int x = bounds.x; x < maxX; x++) {
+                if (!selection.contains(x, y)) {
+                    continue;
+                }
+
+                float sx1 = canvasX + x * zoom;
+                float sy1 = canvasY + y * zoom;
+                float sx2 = sx1 + zoom;
+                float sy2 = sy1 + zoom;
+
+                drawList.addRectFilled(sx1, sy1, sx2, sy2, fillColor);
+
+                if (!selection.contains(x - 1, y)) {
+                    drawList.addLine(sx1, sy1, sx1, sy2, SELECTION_OUTER_COLOR, 1.0f);
+                }
+                if (!selection.contains(x + 1, y)) {
+                    drawList.addLine(sx2, sy1, sx2, sy2, SELECTION_OUTER_COLOR, 1.0f);
+                }
+                if (!selection.contains(x, y - 1)) {
+                    drawList.addLine(sx1, sy1, sx2, sy1, SELECTION_OUTER_COLOR, 1.0f);
+                }
+                if (!selection.contains(x, y + 1)) {
+                    drawList.addLine(sx1, sy2, sx2, sy2, SELECTION_OUTER_COLOR, 1.0f);
+                }
+            }
+        }
     }
 }

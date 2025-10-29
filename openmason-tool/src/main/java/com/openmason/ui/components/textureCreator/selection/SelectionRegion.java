@@ -18,7 +18,8 @@ public interface SelectionRegion {
         RECTANGLE,
         ELLIPSE,
         LASSO,
-        MAGIC_WAND
+        MAGIC_WAND,
+        FREEFORM
     }
 
     /**

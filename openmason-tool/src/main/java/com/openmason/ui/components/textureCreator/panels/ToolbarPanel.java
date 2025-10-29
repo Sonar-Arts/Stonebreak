@@ -27,6 +27,7 @@ public class ToolbarPanel {
     private DrawingTool currentTool;
     private final TextureToolIconManager iconManager;
     private MoveToolController moveToolInstance; // Reference to move tool for configuration
+    private SelectionBrushTool selectionBrushTool; // Reference to brush tool for configuration
 
     /**
      * Create toolbar panel with all available tools.
@@ -42,6 +43,8 @@ public class ToolbarPanel {
         tools.add(new ColorPickerTool());
         tools.add(new LineTool());
         tools.add(new RectangleSelectionTool());
+        selectionBrushTool = new SelectionBrushTool();
+        tools.add(selectionBrushTool);
 
         // Store move tool reference for later configuration
         moveToolInstance = new MoveToolController();
@@ -62,6 +65,10 @@ public class ToolbarPanel {
         if (moveToolInstance != null) {
             moveToolInstance.setSelectionManager(selectionManager);
             logger.debug("Move tool configured with SelectionManager");
+        }
+        if (selectionBrushTool != null) {
+            selectionBrushTool.setSelectionManager(selectionManager);
+            logger.debug("Selection brush configured with SelectionManager");
         }
     }
 

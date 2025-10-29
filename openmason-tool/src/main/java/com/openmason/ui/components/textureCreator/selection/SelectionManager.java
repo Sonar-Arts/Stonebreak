@@ -178,9 +178,15 @@ public class SelectionManager {
             return true;
         }
 
-        // Both non-null - compare bounds and type
-        return !oldSelection.getBounds().equals(newSelection.getBounds()) ||
-               oldSelection.getType() != newSelection.getType();
+        if (oldSelection.getType() != newSelection.getType()) {
+            return true;
+        }
+
+        if (!oldSelection.getBounds().equals(newSelection.getBounds())) {
+            return true;
+        }
+
+        return !oldSelection.equals(newSelection);
     }
 
     /**

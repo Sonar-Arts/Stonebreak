@@ -13,6 +13,7 @@ import com.openmason.ui.components.textureCreator.tools.selection.SelectionTool;
 import com.openmason.ui.components.textureCreator.tools.selection.SelectionPreview;
 import com.openmason.ui.components.textureCreator.tools.selection.RectanglePreview;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
+import com.openmason.ui.components.textureCreator.tools.SelectionBrushTool;
 import com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -210,6 +211,8 @@ public class CanvasPanel {
         boolean middleMouseDown = ImGui.isMouseDown(2); // Middle button for panning
         float mouseWheel = ImGui.getIO().getMouseWheel();
         boolean shiftHeld = ImGui.getIO().getKeyShift(); // Shift key for constrained operations
+        boolean ctrlHeld = ImGui.getIO().getKeyCtrl();
+        boolean altHeld = ImGui.getIO().getKeyAlt();
 
         // Handle zoom with mouse wheel
         if (mouseWheel != 0.0f) {
@@ -236,6 +239,8 @@ public class CanvasPanel {
             // Update modifier keys for move tool
             if (currentTool instanceof MoveToolController) {
                 ((MoveToolController) currentTool).setModifierKeys(shiftHeld);
+            } else if (currentTool instanceof SelectionBrushTool) {
+                ((SelectionBrushTool) currentTool).updateModifierState(ctrlHeld, altHeld);
             }
 
             // Convert screen coordinates to canvas pixel coordinates

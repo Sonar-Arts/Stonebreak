@@ -46,7 +46,7 @@ public final class TransformedSelectionRegion implements SelectionRegion {
 
     @Override
     public SelectionType getType() {
-        return SelectionType.LASSO;
+        return SelectionType.FREEFORM;
     }
 
     @Override
@@ -59,5 +59,22 @@ public final class TransformedSelectionRegion implements SelectionRegion {
         Rectangle moved = new Rectangle(bounds);
         moved.translate(dx, dy);
         return new TransformedSelectionRegion(moved, mask, pixelCount);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof TransformedSelectionRegion)) return false;
+        TransformedSelectionRegion other = (TransformedSelectionRegion) obj;
+        return pixelCount == other.pixelCount &&
+                bounds.equals(other.bounds) &&
+                java.util.Arrays.equals(mask, other.mask);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = java.util.Objects.hash(bounds, pixelCount);
+        result = 31 * result + java.util.Arrays.hashCode(mask);
+        return result;
     }
 }
