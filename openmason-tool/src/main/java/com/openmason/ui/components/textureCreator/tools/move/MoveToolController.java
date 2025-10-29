@@ -6,341 +6,181 @@ import com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCom
 import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
-import com.openmason.ui.components.textureCreator.tools.move.modules.*;
+import imgui.ImDrawList;
 
-import java.awt.Point;
 import java.awt.Rectangle;
-import java.util.Map;
+import java.util.Objects;
 
 /**
- * Main controller for the move tool.
- * Implements a state machine for handling selection transformation.
- * Now integrates with SelectionManager for centralized selection state management.
+ * Modernised move tool implementation with non-destructive previews and precise
+ * transformation maths. The controller orchestrates interaction state while
+ * delegating rendering and geometry to dedicated helper classes to keep the
+ * behaviour easy to maintain.
  */
 public class MoveToolController implements DrawingTool {
 
-    // Tool state
-    private enum State {
-        IDLE,               // No interaction
-        CLICKED_SELECTION,  // Selection clicked, showing handles
-        DRAGGING_HANDLE,    // Actively dragging a handle
-        DRAGGING_SELECTION  // Actively dragging selection body
-    }
+    private final TransformOverlayRenderer overlayRenderer = new TransformOverlayRenderer();
 
-    private State currentState = State.IDLE;
-
-    // Selection manager (optional - can be null for standalone usage)
     private SelectionManager selectionManager;
+    private SelectionManager.SelectionChangeListener selectionListener;
 
-    // Modules
-    private final HandleDetector handleDetector;
-    private final TransformCalculator transformCalculator;
-    private final SelectionTransformRenderer renderer;
-
-    // Non-destructive transform layer (replaces extractedPixels/transformedPixels/pixelsExtracted)
-    private TransformLayer activeLayer;
-
-    // Drag tracking
-    private Point dragStart;
-    private Point originalDragStart; // Store original start point for scaling calculations
-    private HandleType draggedHandle;
-
-    // Visual feedback
-    private HandleType hoveredHandle;
-
-    // Modifier keys
-    private boolean shiftKeyHeld = false;
-
-    // Command for undo/redo (created on commit)
+    private MoveToolSession session;
+    private TransformPreviewLayer previewLayer;
+    private TransformHandle hoveredHandle = TransformHandle.NONE;
     private MoveSelectionCommand pendingCommand;
 
-    public MoveToolController() {
-        this.selectionManager = null; // Will be set externally
-        this.handleDetector = new HandleDetector();
-        this.transformCalculator = new TransformCalculator();
-        this.renderer = new SelectionTransformRenderer();
-        reset();
-    }
+    private DragContext dragContext;
+    private boolean shiftHeld = false;
 
-    /**
-     * Sets the SelectionManager for this move tool.
-     * Should be called after construction to enable selection state management.
-     * @param selectionManager The SelectionManager instance
-     */
-    public void setSelectionManager(SelectionManager selectionManager) {
-        this.selectionManager = selectionManager;
-    }
-
-    /**
-     * Updates the modifier key states.
-     * Should be called before mouse events to ensure correct behavior.
-     * @param shiftHeld Whether the Shift key is currently held
-     */
-    public void setModifierKeys(boolean shiftHeld) {
-        this.shiftKeyHeld = shiftHeld;
-    }
+    private SelectionRegion lastSelection;
 
     @Override
     public void onMouseDown(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
-        // Note: x, y are already in canvas coordinates
-        // Handle detection is done externally in updateHoveredHandle via screen coordinates
-
-        // Get current selection from canvas
-        SelectionRegion selection = canvas.getActiveSelection();
-
+        SelectionRegion selection = getActiveSelection(canvas);
         if (selection == null || selection.isEmpty()) {
-            currentState = State.IDLE;
+            resetInternalState();
             return;
         }
 
-        // Check if clicking inside selection bounds
-        Rectangle bounds = selection.getBounds();
-        boolean insideSelection = selection.contains(x, y);
+        ensureSession(canvas, selection);
 
-        if (currentState == State.IDLE) {
-            if (insideSelection) {
-                // First click on selection - enter clicked state (show handles)
-                currentState = State.CLICKED_SELECTION;
-            }
-        } else if (currentState == State.CLICKED_SELECTION) {
-            // Check if a handle was clicked (hoveredHandle is set by updateHoveredHandle)
-            if (hoveredHandle != null) {
-                // Start dragging the handle
-                startHandleDrag(hoveredHandle, x, y, selection, canvas);
-            } else if (insideSelection) {
-                // Start dragging selection body
-                startSelectionDrag(x, y, selection, canvas);
-            } else {
-                // Clicked outside selection - commit if we have changes
-                if (activeLayer != null && activeLayer.hasChanges()) {
-                    commitTransform(canvas);
-                }
-                currentState = State.IDLE;
-            }
+        double canvasX = x + 0.5;
+        double canvasY = y + 0.5;
+
+        if (hoveredHandle != TransformHandle.NONE) {
+            startHandleDrag(hoveredHandle, canvasX, canvasY);
+        } else if (selection.contains(x, y)) {
+            startTranslation(canvasX, canvasY);
         } else {
-            // In other states, clicking outside commits
-            if (!insideSelection && activeLayer != null && activeLayer.hasChanges()) {
-                commitTransform(canvas);
-                currentState = State.IDLE;
-            }
+            resetInternalState();
         }
     }
 
     @Override
     public void onMouseDrag(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
-        if (currentState == State.DRAGGING_HANDLE) {
-            continueHandleDrag(x, y, canvas);
-        } else if (currentState == State.DRAGGING_SELECTION) {
-            continueSelectionDrag(x, y, canvas);
+        if (dragContext == null || session == null) {
+            return;
         }
+
+        double canvasX = x + 0.5;
+        double canvasY = y + 0.5;
+
+        TransformationState newTransform;
+        if (dragContext.translation) {
+            newTransform = computeTranslationTransform(canvasX, canvasY);
+        } else if (isRotationHandle(dragContext.handle)) {
+            newTransform = computeRotationTransform(canvasX, canvasY);
+        } else {
+            newTransform = computeScaleTransform(canvasX, canvasY);
+        }
+
+        session.updateTransformation(newTransform);
+        previewLayer = session.createPreviewLayer();
     }
 
     @Override
     public void onMouseUp(int color, PixelCanvas canvas, DrawCommand command) {
-        if (currentState == State.DRAGGING_HANDLE || currentState == State.DRAGGING_SELECTION) {
-            // Commit the transform if layer has changes
-            if (activeLayer != null && activeLayer.hasChanges()) {
-                commitTransform(canvas);
-                currentState = State.IDLE;
-            } else {
-                // Return to clicked state after dragging (no actual transform)
-                currentState = State.CLICKED_SELECTION;
-            }
-            dragStart = null;
-            draggedHandle = null;
-        }
-    }
-
-    private void startHandleDrag(HandleType handle, int x, int y, SelectionRegion selection, PixelCanvas canvas) {
-        currentState = State.DRAGGING_HANDLE;
-        draggedHandle = handle;
-        dragStart = new Point(x, y);
-        originalDragStart = new Point(x, y); // Store original start for cumulative calculations
-
-        // Create non-destructive transform layer on first drag
-        if (activeLayer == null) {
-            activeLayer = new TransformLayer(canvas, selection);
-        }
-    }
-
-    private void startSelectionDrag(int x, int y, SelectionRegion selection, PixelCanvas canvas) {
-        currentState = State.DRAGGING_SELECTION;
-        dragStart = new Point(x, y);
-
-        // Create non-destructive transform layer on first drag
-        if (activeLayer == null) {
-            activeLayer = new TransformLayer(canvas, selection);
-        }
-    }
-
-    private void continueHandleDrag(int x, int y, PixelCanvas canvas) {
-        if (dragStart == null || draggedHandle == null || activeLayer == null) {
+        if (dragContext == null || session == null) {
             return;
         }
 
-        Point currentPoint = new Point(x, y);
+        if (session.hasPreview()) {
+            pendingCommand = session.createCommand(canvas, selectionManager);
+        }
 
-        // Always use cumulative calculation from original drag start for all transforms
-        // This ensures mathematical correctness by avoiding floating-point accumulation
-        // Corner handles: Shift key locks aspect ratio (independent scaling by default)
-        // Edge handles: Never maintain aspect ratio (single-axis scaling)
-        boolean maintainAspectRatio = draggedHandle.isCorner() && shiftKeyHeld;
-        TransformState newTransform = transformCalculator.calculateTransform(
-                draggedHandle,
-                originalDragStart,  // Always use original start for cumulative calculation
-                currentPoint,
-                activeLayer.getOriginalSelection(),
-                activeLayer.getTransform(),
-                maintainAspectRatio
-        );
-
-        // Update layer transform (non-destructive - canvas NOT modified)
-        activeLayer.setTransform(newTransform);
+        session = null;
+        previewLayer = null;
+        dragContext = null;
+        hoveredHandle = TransformHandle.NONE;
     }
 
-    private void continueSelectionDrag(int x, int y, PixelCanvas canvas) {
-        if (dragStart == null || activeLayer == null) {
-            return;
-        }
-
-        Point currentPoint = new Point(x, y);
-
-        // Calculate translation
-        int dx = currentPoint.x - dragStart.x;
-        int dy = currentPoint.y - dragStart.y;
-
-        // Update transform
-        TransformState currentTransform = activeLayer.getTransform();
-        TransformState newTransform = currentTransform.toBuilder()
-                .translate(
-                        currentTransform.getTranslateX() + dx,
-                        currentTransform.getTranslateY() + dy
-                )
-                .build();
-
-        // Update layer transform (non-destructive - canvas NOT modified)
-        activeLayer.setTransform(newTransform);
-
-        // Update drag start for next frame
-        dragStart = currentPoint;
+    @Override
+    public String getName() {
+        return "Move";
     }
 
+    @Override
+    public String getDescription() {
+        return "Translate, rotate, and scale selections non-destructively";
+    }
 
-    private void commitTransform(PixelCanvas canvas) {
-        if (activeLayer == null) {
-            System.out.println("[MoveToolController] commitTransform: no active layer");
-            return;
-        }
+    @Override
+    public void reset() {
+        session = null;
+        previewLayer = null;
+        dragContext = null;
+        hoveredHandle = TransformHandle.NONE;
+        // Keep pendingCommand so CanvasPanel can still apply it if required
+    }
 
-        TransformState transform = activeLayer.getTransform();
-        SelectionRegion originalSelection = activeLayer.getOriginalSelection();
-        Rectangle originalBounds = activeLayer.getOriginalBounds();
-
-        System.out.println("[MoveToolController] Committing transform: " + transform);
-        System.out.println("[MoveToolController] Original selection bounds: " + originalBounds);
-
-        // Create absolute coordinate map for original pixels
-        Map<Point, Integer> absoluteOriginalPixels = createAbsolutePixelMap(
-                activeLayer.getOriginalPixels(), originalBounds);
-
-        // Get transformed pixels from layer (cached for performance)
-        Map<Point, Integer> transformedPixels = activeLayer.getTransformedPixels();
-
-        // Create transformed selection
-        SelectionRegion transformedSelection = activeLayer.getTransformedSelection();
-
-        System.out.println("[MoveToolController] Transformed selection bounds: " +
-                (transformedSelection != null ? transformedSelection.getBounds() : "null"));
-
-        // Commit layer to canvas (ONLY place canvas is modified)
-        activeLayer.commitToCanvas(canvas);
-
-        // Create command for undo/redo
-        pendingCommand = new MoveSelectionCommand(
-                canvas,
-                selectionManager,
-                originalSelection,
-                transformedSelection,
-                transform,
-                absoluteOriginalPixels,
-                transformedPixels
-        );
-
-        System.out.println("[MoveToolController] Created pending command: " + pendingCommand.getDescription());
-
-        // Update selection using SelectionManager if available, otherwise update canvas directly
-        if (transformedSelection != null) {
-            if (selectionManager != null) {
-                selectionManager.setActiveSelection(transformedSelection);
-                System.out.println("[MoveToolController] Updated selection via SelectionManager");
-            } else {
-                canvas.setActiveSelection(transformedSelection);
-                System.out.println("[MoveToolController] Updated canvas active selection (no SelectionManager)");
-            }
-        }
-
-        // Discard layer (no longer needed)
-        activeLayer.discard();
-        activeLayer = null;
-
+    public void cancelAndReset(PixelCanvas canvas) {
         reset();
-        System.out.println("[MoveToolController] Reset complete, pending command should still exist");
+        pendingCommand = null;
     }
 
-    private Map<Point, Integer> createAbsolutePixelMap(Map<Point, Integer> relativePixels, Rectangle bounds) {
-        java.util.HashMap<Point, Integer> absolutePixels = new java.util.HashMap<>();
+    public void setModifierKeys(boolean shiftHeld) {
+        this.shiftHeld = shiftHeld;
+    }
 
-        for (Map.Entry<Point, Integer> entry : relativePixels.entrySet()) {
-            Point relativePoint = entry.getKey();
-            Point absolutePoint = new Point(
-                    bounds.x + relativePoint.x,
-                    bounds.y + relativePoint.y
-            );
-            absolutePixels.put(absolutePoint, entry.getValue());
+    public void setSelectionManager(SelectionManager manager) {
+        if (selectionListener != null && selectionManager != null) {
+            selectionManager.removeSelectionChangeListener(selectionListener);
         }
 
-        return absolutePixels;
+        this.selectionManager = manager;
+
+        if (manager != null) {
+            selectionListener = (oldSel, newSel) -> {
+                if (!Objects.equals(lastSelection, newSel)) {
+                    reset();
+                    lastSelection = newSel;
+                }
+            };
+            manager.addSelectionChangeListener(selectionListener);
+        } else {
+            selectionListener = null;
+        }
     }
 
-    public void renderOverlay(imgui.ImDrawList drawList, SelectionRegion selection,
+    public void updateHoveredHandle(float mouseX,
+                                    float mouseY,
+                                    SelectionRegion selection,
+                                    com.openmason.ui.components.textureCreator.canvas.CanvasState canvasState,
+                                    float canvasDisplayX,
+                                    float canvasDisplayY) {
+
+        if (selection == null || selection.isEmpty()) {
+            hoveredHandle = TransformHandle.NONE;
+        return;
+        }
+
+        Rectangle bounds = selection.getBounds();
+        TransformationState transform = session != null ? session.transform() : TransformationState.identity();
+
+        hoveredHandle = overlayRenderer.detectHandle(mouseX, mouseY, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
+    }
+
+    public void renderOverlay(ImDrawList drawList,
+                              SelectionRegion selection,
                               com.openmason.ui.components.textureCreator.canvas.CanvasState canvasState,
-                              float canvasDisplayX, float canvasDisplayY) {
+                              float canvasDisplayX,
+                              float canvasDisplayY) {
+
         if (selection == null || selection.isEmpty()) {
             return;
         }
 
-        // Determine if we should show handles
-        boolean showHandles = (currentState == State.CLICKED_SELECTION ||
-                              currentState == State.DRAGGING_HANDLE ||
-                              currentState == State.DRAGGING_SELECTION);
+        Rectangle bounds = selection.getBounds();
+        TransformationState transform = session != null ? session.transform() : TransformationState.identity();
 
-        // Get transform from active layer (or identity if no layer)
-        TransformState transform = (activeLayer != null) ? activeLayer.getTransform() : TransformState.identity();
-
-        // Render selection with handles
-        renderer.render(drawList, selection, canvasState, transform, showHandles, hoveredHandle,
-                canvasDisplayX, canvasDisplayY);
-
-        // Render preview during drag (composite layer overlay)
-        if ((currentState == State.DRAGGING_HANDLE || currentState == State.DRAGGING_SELECTION) && activeLayer != null) {
-            renderer.renderPreview(drawList, selection, canvasState, transform,
-                    canvasDisplayX, canvasDisplayY);
-        }
-    }
-
-    public void updateHoveredHandle(float mouseX, float mouseY, SelectionRegion selection,
-                                    com.openmason.ui.components.textureCreator.canvas.CanvasState canvasState,
-                                    float canvasDisplayX, float canvasDisplayY) {
-        if (selection == null || currentState == State.IDLE) {
-            hoveredHandle = null;
-            return;
-        }
-
-        // Get transform from active layer (or identity if no layer)
-        TransformState transform = (activeLayer != null) ? activeLayer.getTransform() : TransformState.identity();
-
-        hoveredHandle = handleDetector.getHandleAt(mouseX, mouseY, selection, canvasState, transform,
-                canvasDisplayX, canvasDisplayY);
+        overlayRenderer.render(drawList,
+                bounds,
+                transform,
+                canvasState,
+                canvasDisplayX,
+                canvasDisplayY,
+                hoveredHandle,
+                dragContext != null ? dragContext.handle : TransformHandle.NONE);
     }
 
     public MoveSelectionCommand getPendingCommand() {
@@ -351,80 +191,328 @@ public class MoveToolController implements DrawingTool {
         pendingCommand = null;
     }
 
-    /**
-     * Resets the tool state. This is called when switching tools or canceling operations.
-     * Non-destructive: simply discards the layer without canvas modification.
-     */
-    @Override
-    public void reset() {
-        // Discard active layer if it exists (non-destructive - canvas never modified)
-        if (activeLayer != null) {
-            System.out.println("[MoveToolController] Discarding active layer on reset (non-destructive)");
-            activeLayer.discard();
-            activeLayer = null;
-        }
-
-        currentState = State.IDLE;
-        dragStart = null;
-        originalDragStart = null;
-        draggedHandle = null;
-        hoveredHandle = null;
-        // Note: pendingCommand is NOT cleared here - it must survive until executed by CanvasPanel
-        // Use clearPendingCommand() to explicitly clear it after execution
+    public boolean hasActiveLayer() {
+        return previewLayer != null;
     }
 
-    /**
-     * Cancels the current transformation and restores original state.
-     * Called when user presses ESC or switches tools without committing.
-     * Non-destructive: canvas never modified, so just discard layer.
-     */
-    public void cancelAndReset(PixelCanvas canvas) {
-        // Perfect non-destructive cancel: canvas never modified during preview!
-        // Just discard the layer - no restoration needed
-        if (activeLayer != null) {
-            System.out.println("[MoveToolController] Canceling transform (non-destructive)");
-            activeLayer.discard();
-            activeLayer = null;
-        }
-
-        reset();
-        clearPendingCommand();
-    }
-
-    @Override
-    public String getName() {
-        return "Move";
-    }
-
-    @Override
-    public String getDescription() {
-        return "Move, scale, and rotate selections";
+    public TransformPreviewLayer getActiveLayer() {
+        return previewLayer;
     }
 
     public boolean isActive() {
-        return currentState != State.IDLE;
+        return dragContext != null || (session != null && session.hasPreview());
     }
 
-    public State getCurrentState() {
-        return currentState;
+    public TransformationState getLiveTransform() {
+        return session != null ? session.transform() : TransformationState.identity();
     }
 
-    /**
-     * Gets the active transform layer for rendering.
-     * Used by rendering pipeline to composite layer overlay.
-     *
-     * @return Active transform layer, or null if no active transform
-     */
-    public TransformLayer getActiveLayer() {
-        return activeLayer;
+    private void ensureSession(PixelCanvas canvas, SelectionRegion selection) {
+        if (session == null || lastSelection == null || !lastSelection.equals(selection)) {
+            session = MoveToolSession.capture(canvas, selection);
+            previewLayer = null;
+            lastSelection = selection;
+        }
     }
 
-    /**
-     * Checks if there is an active transform layer.
-     *
-     * @return true if layer exists, false otherwise
-     */
-    public boolean hasActiveLayer() {
-        return activeLayer != null;
+    private void startHandleDrag(TransformHandle handle, double startX, double startY) {
+        if (session == null) {
+            return;
+        }
+        dragContext = DragContext.forHandle(handle, session.snapshot(), session.transform(), startX, startY);
+    }
+
+    private void startTranslation(double startX, double startY) {
+        if (session == null) {
+            return;
+        }
+        dragContext = DragContext.forTranslation(session.snapshot(), session.transform(), startX, startY);
+    }
+
+    private TransformationState computeTranslationTransform(double canvasX, double canvasY) {
+        double deltaX = canvasX - dragContext.startCanvasX;
+        double deltaY = canvasY - dragContext.startCanvasY;
+
+        if (shiftHeld) {
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                deltaY = 0.0;
+            } else {
+                deltaX = 0.0;
+            }
+        }
+
+        return dragContext.baseTransform.addTranslation(deltaX, deltaY);
+    }
+
+    private TransformationState computeRotationTransform(double canvasX, double canvasY) {
+        double currentAngle = Math.atan2(canvasY - dragContext.pivotCanvasY, canvasX - dragContext.pivotCanvasX);
+        double deltaDegrees = Math.toDegrees(currentAngle - dragContext.initialAngle);
+
+        if (shiftHeld) {
+            deltaDegrees = Math.round(deltaDegrees / 15.0) * 15.0;
+        }
+
+        return dragContext.baseTransform.withRotation(dragContext.baseTransform.rotationDegrees() + deltaDegrees);
+    }
+
+    private TransformationState computeScaleTransform(double canvasX, double canvasY) {
+        SelectionSnapshot snapshot = dragContext.snapshot;
+        TransformationState base = dragContext.baseTransform;
+
+        double[] local = TransformMath.mapCanvasToLocal(canvasX, canvasY, snapshot, base);
+        double width = Math.max(snapshot.width(), 1);
+        double height = Math.max(snapshot.height(), 1);
+
+        double targetWidthPixels = width * base.scaleX();
+        double targetHeightPixels = height * base.scaleY();
+
+        switch (dragContext.handle) {
+            case SCALE_NORTH_EAST:
+            case SCALE_EAST:
+            case SCALE_SOUTH_EAST:
+                targetWidthPixels = snapSize(local[0]);
+                break;
+            case SCALE_NORTH_WEST:
+            case SCALE_WEST:
+            case SCALE_SOUTH_WEST:
+                targetWidthPixels = snapSize(width - local[0]);
+                break;
+            default:
+                break;
+        }
+
+        switch (dragContext.handle) {
+            case SCALE_NORTH_WEST:
+            case SCALE_NORTH:
+            case SCALE_NORTH_EAST:
+                targetHeightPixels = snapSize(height - local[1]);
+                break;
+            case SCALE_SOUTH_WEST:
+            case SCALE_SOUTH:
+            case SCALE_SOUTH_EAST:
+                targetHeightPixels = snapSize(local[1]);
+                break;
+            default:
+                break;
+        }
+
+        boolean affectsX = affectsXAxis(dragContext.handle);
+        boolean affectsY = affectsYAxis(dragContext.handle);
+
+        if (shiftHeld && (affectsX || affectsY)) {
+            double lockedPixels = Math.max(targetWidthPixels, targetHeightPixels);
+            targetWidthPixels = lockedPixels;
+            targetHeightPixels = lockedPixels;
+            affectsX = true;
+            affectsY = true;
+        }
+
+        double targetScaleX = affectsX ? ensureScale(targetWidthPixels / width, base.scaleX()) : base.scaleX();
+        double targetScaleY = affectsY ? ensureScale(targetHeightPixels / height, base.scaleY()) : base.scaleY();
+
+        TransformationState scaled = base.withScale(targetScaleX, targetScaleY);
+
+        double[] newAnchorCanvas = TransformMath.mapLocalToCanvas(
+                dragContext.anchorLocal[0],
+                dragContext.anchorLocal[1],
+                snapshot,
+                scaled);
+
+        double deltaX = dragContext.anchorCanvas[0] - newAnchorCanvas[0];
+        double deltaY = dragContext.anchorCanvas[1] - newAnchorCanvas[1];
+
+        return scaled.withTranslation(base.translateX() + deltaX, base.translateY() + deltaY);
+    }
+
+    private SelectionRegion getActiveSelection(PixelCanvas canvas) {
+        if (selectionManager != null) {
+            return selectionManager.getActiveSelection();
+        }
+        return canvas.getActiveSelection();
+    }
+
+    private void resetInternalState() {
+        dragContext = null;
+        previewLayer = null;
+        session = null;
+        hoveredHandle = TransformHandle.NONE;
+    }
+
+    private static boolean affectsXAxis(TransformHandle handle) {
+        switch (handle) {
+            case SCALE_NORTH_EAST:
+            case SCALE_SOUTH_EAST:
+            case SCALE_NORTH_WEST:
+            case SCALE_SOUTH_WEST:
+            case SCALE_EAST:
+            case SCALE_WEST:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean affectsYAxis(TransformHandle handle) {
+        switch (handle) {
+            case SCALE_NORTH_EAST:
+            case SCALE_SOUTH_EAST:
+            case SCALE_NORTH_WEST:
+            case SCALE_SOUTH_WEST:
+            case SCALE_NORTH:
+            case SCALE_SOUTH:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isRotationHandle(TransformHandle handle) {
+        return handle == TransformHandle.ROTATE_NORTH
+                || handle == TransformHandle.ROTATE_EAST
+                || handle == TransformHandle.ROTATE_SOUTH
+                || handle == TransformHandle.ROTATE_WEST;
+    }
+
+    private static double snapSize(double rawSize) {
+        double snapped = Math.round(rawSize);
+        if (Double.isNaN(snapped) || Double.isInfinite(snapped)) {
+            snapped = 1.0;
+        }
+        if (Math.abs(snapped) < 1.0) {
+            snapped = Math.copySign(1.0, snapped == 0.0 ? 1.0 : snapped);
+        }
+        return snapped;
+    }
+
+    private static double ensureScale(double candidate, double fallback) {
+        if (Double.isNaN(candidate) || Double.isInfinite(candidate)) {
+            return fallback;
+        }
+        if (Math.abs(candidate) < 0.01) {
+            return Math.copySign(0.01, candidate == 0.0 ? 1.0 : candidate);
+        }
+        return candidate;
+    }
+
+    private static double[] anchorLocal(TransformHandle handle, SelectionSnapshot snapshot) {
+        double width = snapshot.width();
+        double height = snapshot.height();
+
+        switch (handle) {
+            case SCALE_NORTH_WEST:
+                return new double[]{width, height};
+            case SCALE_NORTH_EAST:
+                return new double[]{0.0, height};
+            case SCALE_SOUTH_EAST:
+                return new double[]{0.0, 0.0};
+            case SCALE_SOUTH_WEST:
+                return new double[]{width, 0.0};
+            case SCALE_NORTH:
+                return new double[]{width / 2.0, height};
+            case SCALE_EAST:
+                return new double[]{0.0, height / 2.0};
+            case SCALE_SOUTH:
+                return new double[]{width / 2.0, 0.0};
+            case SCALE_WEST:
+                return new double[]{width, height / 2.0};
+            default:
+                return new double[]{width / 2.0, height / 2.0};
+        }
+    }
+
+    private static final class DragContext {
+        final TransformHandle handle;
+        final boolean translation;
+        final SelectionSnapshot snapshot;
+        final TransformationState baseTransform;
+        final double startCanvasX;
+        final double startCanvasY;
+        final double[] anchorLocal;
+        final double[] anchorCanvas;
+        final double pivotCanvasX;
+        final double pivotCanvasY;
+        final double initialAngle;
+
+        private DragContext(TransformHandle handle,
+                            boolean translation,
+                            SelectionSnapshot snapshot,
+                            TransformationState baseTransform,
+                            double startCanvasX,
+                            double startCanvasY,
+                            double[] anchorLocal,
+                            double[] anchorCanvas,
+                            double pivotCanvasX,
+                            double pivotCanvasY,
+                            double initialAngle) {
+            this.handle = handle;
+            this.translation = translation;
+            this.snapshot = snapshot;
+            this.baseTransform = baseTransform;
+            this.startCanvasX = startCanvasX;
+            this.startCanvasY = startCanvasY;
+            this.anchorLocal = anchorLocal;
+            this.anchorCanvas = anchorCanvas;
+            this.pivotCanvasX = pivotCanvasX;
+            this.pivotCanvasY = pivotCanvasY;
+            this.initialAngle = initialAngle;
+        }
+
+        static DragContext forTranslation(SelectionSnapshot snapshot,
+                                          TransformationState baseTransform,
+                                          double startCanvasX,
+                                          double startCanvasY) {
+            double[] pivot = TransformMath.mapLocalToCanvas(
+                    snapshot.width() / 2.0,
+                    snapshot.height() / 2.0,
+                    snapshot,
+                    baseTransform);
+            return new DragContext(
+                    TransformHandle.NONE,
+                    true,
+                    snapshot,
+                    baseTransform,
+                    startCanvasX,
+                    startCanvasY,
+                    null,
+                    null,
+                    pivot[0],
+                    pivot[1],
+                    0.0
+            );
+        }
+
+        static DragContext forHandle(TransformHandle handle,
+                                     SelectionSnapshot snapshot,
+                                     TransformationState baseTransform,
+                                     double startCanvasX,
+                                     double startCanvasY) {
+            double[] anchorLocal = anchorLocal(handle, snapshot);
+            double[] anchorCanvas = TransformMath.mapLocalToCanvas(
+                    anchorLocal[0],
+                    anchorLocal[1],
+                    snapshot,
+                    baseTransform);
+            double[] pivotCanvas = TransformMath.mapLocalToCanvas(
+                    snapshot.width() / 2.0,
+                    snapshot.height() / 2.0,
+                    snapshot,
+                    baseTransform);
+
+            double initialAngle = Math.atan2(startCanvasY - pivotCanvas[1], startCanvasX - pivotCanvas[0]);
+
+            return new DragContext(
+                    handle,
+                    false,
+                    snapshot,
+                    baseTransform,
+                    startCanvasX,
+                    startCanvasY,
+                    anchorLocal,
+                    anchorCanvas,
+                    pivotCanvas[0],
+                    pivotCanvas[1],
+                    initialAngle
+            );
+        }
     }
 }

@@ -4,237 +4,226 @@ import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.Command;
 import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
-import com.openmason.ui.components.textureCreator.tools.move.modules.TransformState;
+import com.openmason.ui.components.textureCreator.tools.move.SelectionSnapshot;
+import com.openmason.ui.components.textureCreator.tools.move.TransformedImage;
+import com.openmason.ui.components.textureCreator.tools.move.TransformedSelectionRegion;
+import com.openmason.ui.components.textureCreator.tools.move.TransformationState;
 
-import java.awt.Point;
-import java.util.HashMap;
-import java.util.Map;
+import java.awt.Rectangle;
+import java.util.Objects;
 
 /**
- * Command for moving/transforming a selection.
- * Supports undo/redo by storing original and transformed pixel states.
- * Now integrates with SelectionManager for centralized selection state management.
+ * Applies the finalised transformation computed by the move tool. The command
+ * stores original pixel data, overwritten destination pixels, and updated
+ * selection information to provide reversible non-destructive editing.
  */
-public class MoveSelectionCommand implements Command {
+public final class MoveSelectionCommand implements Command {
 
     private final PixelCanvas canvas;
     private final SelectionManager selectionManager;
     private final SelectionRegion originalSelection;
-    private final SelectionRegion transformedSelection;
-    private final TransformState transform;
+    private final SelectionSnapshot snapshot;
+    private final TransformationState transform;
+    private final TransformedImage transformedImage;
+    private final TransformedSelectionRegion transformedSelection;
 
-    // Store original pixels (from source area) and their positions
-    private final Map<Point, Integer> originalPixels;
+    private final int[] overwrittenPixels;
+    private final boolean[] overwrittenMask;
 
-    // Store transformed pixels (at destination area) and their positions
-    private final Map<Point, Integer> transformedPixels;
-
-    // Store pixels that were overwritten at destination (for undo)
-    private final Map<Point, Integer> overwrittenPixels;
-
-    // Track if this is the first execution (pixels already in place) or a redo
-    private boolean isFirstExecution = true;
-
-    public MoveSelectionCommand(PixelCanvas canvas,
-                                SelectionManager selectionManager,
-                                SelectionRegion originalSelection,
-                                SelectionRegion transformedSelection,
-                                TransformState transform,
-                                Map<Point, Integer> originalPixels,
-                                Map<Point, Integer> transformedPixels) {
+    private MoveSelectionCommand(PixelCanvas canvas,
+                                 SelectionManager selectionManager,
+                                 SelectionRegion originalSelection,
+                                 SelectionSnapshot snapshot,
+                                 TransformationState transform,
+                                 TransformedImage transformedImage,
+                                 TransformedSelectionRegion transformedSelection,
+                                 int[] overwrittenPixels,
+                                 boolean[] overwrittenMask) {
         this.canvas = canvas;
         this.selectionManager = selectionManager;
         this.originalSelection = originalSelection;
-        this.transformedSelection = transformedSelection;
+        this.snapshot = snapshot;
         this.transform = transform;
-        this.originalPixels = new HashMap<>(originalPixels);
-        this.transformedPixels = new HashMap<>(transformedPixels);
-        this.overwrittenPixels = new HashMap<>();
-
-        // Capture pixels that will be overwritten at destination
-        captureOverwrittenPixels();
+        this.transformedImage = transformedImage;
+        this.transformedSelection = transformedSelection;
+        this.overwrittenPixels = overwrittenPixels;
+        this.overwrittenMask = overwrittenMask;
     }
 
-    private void captureOverwrittenPixels() {
-        for (Point point : transformedPixels.keySet()) {
-            if (canvas.isValidCoordinate(point.x, point.y)) {
-                int existingColor = canvas.getPixel(point.x, point.y);
-                overwrittenPixels.put(point, existingColor);
+    public static MoveSelectionCommand create(PixelCanvas canvas,
+                                              SelectionManager selectionManager,
+                                              SelectionRegion originalSelection,
+                                              SelectionSnapshot snapshot,
+                                              TransformationState transform,
+                                              TransformedImage transformedImage,
+                                              TransformedSelectionRegion transformedSelection) {
+        Objects.requireNonNull(canvas, "canvas");
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(transform, "transform");
+        Objects.requireNonNull(transformedImage, "transformedImage");
+
+        if (transform.isIdentity() || transformedImage.isEmpty()) {
+            return null;
+        }
+
+        Rectangle bounds = transformedImage.bounds();
+        int[] overwrittenPixels = new int[bounds.width * bounds.height];
+        boolean[] overwrittenMask = new boolean[bounds.width * bounds.height];
+
+        boolean[] mask = transformedImage.mask();
+
+        for (int dy = 0; dy < bounds.height; dy++) {
+            int canvasY = bounds.y + dy;
+            for (int dx = 0; dx < bounds.width; dx++) {
+                int index = dy * bounds.width + dx;
+                if (!mask[index]) {
+                    continue;
+                }
+                overwrittenMask[index] = true;
+                overwrittenPixels[index] = canvas.getPixel(bounds.x + dx, canvasY);
             }
         }
+
+        return new MoveSelectionCommand(
+                canvas,
+                selectionManager,
+                originalSelection,
+                snapshot,
+                transform,
+                transformedImage,
+                transformedSelection,
+                overwrittenPixels,
+                overwrittenMask
+        );
     }
 
     @Override
     public void execute() {
-        System.out.println("[MoveSelectionCommand] execute() called (isFirstExecution=" + isFirstExecution + ")");
-        System.out.println("[MoveSelectionCommand] Original pixels count: " + originalPixels.size());
-        System.out.println("[MoveSelectionCommand] Transformed pixels count: " + transformedPixels.size());
-        System.out.println("[MoveSelectionCommand] Original selection: " + originalSelection.getBounds());
-        System.out.println("[MoveSelectionCommand] Transformed selection: " +
-                (transformedSelection != null ? transformedSelection.getBounds() : "null"));
-
-        // On first execution, pixels are already at destination from dragging
-        // Skip the actual work to avoid clearing pixels in overlapping regions
-        if (isFirstExecution) {
-            System.out.println("[MoveSelectionCommand] First execution - pixels already in place, skipping");
-
-            // Update selection to transformed position using SelectionManager
-            selectionManager.setActiveSelection(transformedSelection);
-
-            isFirstExecution = false;
-            return;
-        }
-
-        // For redo: clear source and paste destination
-        System.out.println("[MoveSelectionCommand] Redo - clearing source and pasting destination");
-
-        // Bypass selection constraint for redo operations
         canvas.setBypassSelectionConstraint(true);
         try {
             clearSourceArea();
-            pasteTransformedPixels();
+            applyTransformedPixels();
         } finally {
             canvas.setBypassSelectionConstraint(false);
         }
 
-        // Update selection to transformed position using SelectionManager
-        selectionManager.setActiveSelection(transformedSelection);
-        System.out.println("[MoveSelectionCommand] Updated selection to transformed position: " +
-                (transformedSelection != null ? transformedSelection.getBounds() : "null"));
-
-        System.out.println("[MoveSelectionCommand] execute() complete");
-
-        // Note: canvas modification version is automatically incremented by setPixel() calls
+        if (selectionManager != null && transformedSelection != null) {
+            selectionManager.setActiveSelection(transformedSelection);
+        }
     }
 
     @Override
     public void undo() {
-        System.out.println("[MoveSelectionCommand] undo() called");
-
-        // Bypass selection constraint for undo operations
         canvas.setBypassSelectionConstraint(true);
         try {
-            // Clear the transformed pixels at destination
-            clearTransformedPixels();
-
-            // Restore original pixels at source location
-            restoreOriginalPixels();
+            restoreOverwrittenPixels();
+            restoreSourcePixels();
         } finally {
             canvas.setBypassSelectionConstraint(false);
         }
 
-        // Restore the selection to its original position using SelectionManager
-        selectionManager.setActiveSelection(originalSelection);
-        System.out.println("[MoveSelectionCommand] Restored selection to original position: " +
-                (originalSelection != null ? originalSelection.getBounds() : "null"));
-
-        // Reset first execution flag so next execute (redo) will actually execute
-        isFirstExecution = false;
-
-        System.out.println("[MoveSelectionCommand] undo() complete");
-
-        // Note: canvas modification version is automatically incremented by setPixel() calls
-    }
-
-    private void clearSourceArea() {
-        if (originalSelection == null || originalSelection.isEmpty()) {
-            return;
-        }
-
-        java.awt.Rectangle bounds = originalSelection.getBounds();
-
-        for (int y = bounds.y; y < bounds.y + bounds.height; y++) {
-            for (int x = bounds.x; x < bounds.x + bounds.width; x++) {
-                if (originalSelection.contains(x, y) && canvas.isValidCoordinate(x, y)) {
-                    canvas.setPixel(x, y, 0x00000000); // Transparent
-                }
-            }
-        }
-    }
-
-    private void clearTransformedPixels() {
-        for (Point point : transformedPixels.keySet()) {
-            if (canvas.isValidCoordinate(point.x, point.y)) {
-                canvas.setPixel(point.x, point.y, 0x00000000); // Transparent
-            }
-        }
-    }
-
-    private void pasteTransformedPixels() {
-        for (Map.Entry<Point, Integer> entry : transformedPixels.entrySet()) {
-            Point point = entry.getKey();
-            int color = entry.getValue();
-
-            if (canvas.isValidCoordinate(point.x, point.y)) {
-                canvas.setPixel(point.x, point.y, color);
-            }
-        }
-    }
-
-    private void restoreOverwrittenPixels() {
-        for (Map.Entry<Point, Integer> entry : overwrittenPixels.entrySet()) {
-            Point point = entry.getKey();
-            int color = entry.getValue();
-
-            if (canvas.isValidCoordinate(point.x, point.y)) {
-                canvas.setPixel(point.x, point.y, color);
-            }
-        }
-    }
-
-    private void restoreOriginalPixels() {
-        for (Map.Entry<Point, Integer> entry : originalPixels.entrySet()) {
-            Point point = entry.getKey();
-            int color = entry.getValue();
-
-            if (canvas.isValidCoordinate(point.x, point.y)) {
-                canvas.setPixel(point.x, point.y, color);
-            }
+        if (selectionManager != null && originalSelection != null) {
+            selectionManager.setActiveSelection(originalSelection);
         }
     }
 
     @Override
     public String getDescription() {
-        if (transform.isIdentity()) {
-            return "Move Selection";
+        StringBuilder builder = new StringBuilder("Transform selection");
+        if (!isZero(transform.translateX()) || !isZero(transform.translateY())) {
+            builder.append(String.format(" — move (%.1f, %.1f)", transform.translateX(), transform.translateY()));
         }
-
-        StringBuilder desc = new StringBuilder("Transform Selection: ");
-        boolean hasChanges = false;
-
-        if (transform.getTranslateX() != 0 || transform.getTranslateY() != 0) {
-            desc.append(String.format("move (%d, %d)", transform.getTranslateX(), transform.getTranslateY()));
-            hasChanges = true;
+        if (!isOne(transform.scaleX()) || !isOne(transform.scaleY())) {
+            builder.append(String.format(" — scale (%.3f, %.3f)", transform.scaleX(), transform.scaleY()));
         }
-
-        if (transform.getScaleX() != 1.0 || transform.getScaleY() != 1.0) {
-            if (hasChanges) desc.append(", ");
-            desc.append(String.format("scale (%.2f, %.2f)", transform.getScaleX(), transform.getScaleY()));
-            hasChanges = true;
+        if (!isZero(transform.rotationDegrees())) {
+            builder.append(String.format(" — rotate %.1f°", transform.rotationDegrees()));
         }
-
-        if (transform.getRotationDegrees() != 0.0) {
-            if (hasChanges) desc.append(", ");
-            desc.append(String.format("rotate %.1f°", transform.getRotationDegrees()));
-        }
-
-        return desc.toString();
+        return builder.toString();
     }
 
     public boolean hasChanges() {
-        return !transformedPixels.isEmpty() || !originalPixels.isEmpty();
+        return transformedSelection != null && !transformedSelection.isEmpty();
     }
 
     public SelectionRegion getTransformedSelection() {
         return transformedSelection;
     }
 
-    public TransformState getTransform() {
+    public TransformationState getTransform() {
         return transform;
     }
 
-    @Override
-    public String toString() {
-        return getDescription();
+    private void clearSourceArea() {
+        Rectangle bounds = snapshot.bounds();
+        boolean[] mask = snapshot.mask();
+
+        for (int dy = 0; dy < bounds.height; dy++) {
+            int canvasY = bounds.y + dy;
+            for (int dx = 0; dx < bounds.width; dx++) {
+                int index = dy * bounds.width + dx;
+                if (!mask[index]) {
+                    continue;
+                }
+                canvas.setPixel(bounds.x + dx, canvasY, 0x00000000);
+            }
+        }
+    }
+
+    private void applyTransformedPixels() {
+        Rectangle bounds = transformedImage.bounds();
+        boolean[] mask = transformedImage.mask();
+        int[] pixels = transformedImage.pixels();
+
+        for (int dy = 0; dy < bounds.height; dy++) {
+            int canvasY = bounds.y + dy;
+            for (int dx = 0; dx < bounds.width; dx++) {
+                int index = dy * bounds.width + dx;
+                if (!mask[index]) {
+                    continue;
+                }
+                canvas.setPixel(bounds.x + dx, canvasY, pixels[index]);
+            }
+        }
+    }
+
+    private void restoreOverwrittenPixels() {
+        Rectangle bounds = transformedImage.bounds();
+
+        for (int dy = 0; dy < bounds.height; dy++) {
+            int canvasY = bounds.y + dy;
+            for (int dx = 0; dx < bounds.width; dx++) {
+                int index = dy * bounds.width + dx;
+                if (!overwrittenMask[index]) {
+                    continue;
+                }
+                canvas.setPixel(bounds.x + dx, canvasY, overwrittenPixels[index]);
+            }
+        }
+    }
+
+    private void restoreSourcePixels() {
+        Rectangle bounds = snapshot.bounds();
+        boolean[] mask = snapshot.mask();
+        int[] pixels = snapshot.pixels();
+
+        for (int dy = 0; dy < bounds.height; dy++) {
+            int canvasY = bounds.y + dy;
+            for (int dx = 0; dx < bounds.width; dx++) {
+                int index = dy * bounds.width + dx;
+                if (!mask[index]) {
+                    continue;
+                }
+                canvas.setPixel(bounds.x + dx, canvasY, pixels[index]);
+            }
+        }
+    }
+
+    private static boolean isZero(double value) {
+        return Math.abs(value) < 1.0e-6;
+    }
+
+    private static boolean isOne(double value) {
+        return Math.abs(value - 1.0) < 1.0e-6;
     }
 }

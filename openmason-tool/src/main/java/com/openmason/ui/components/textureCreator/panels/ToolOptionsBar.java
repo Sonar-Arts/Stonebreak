@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
+import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiCol;
@@ -71,22 +72,19 @@ public class ToolOptionsBar {
 
         if (ImGui.begin("##ToolOptionsBar", flags)) {
             if (hasOptions) {
-                // Center content vertically - use AlignTextToFramePadding for all elements
                 float framePaddingY = ImGui.getStyle().getFramePaddingY();
                 float textHeight = ImGui.getTextLineHeight();
                 float frameHeight = textHeight + framePaddingY * 2;
                 float verticalOffset = (TOOLBAR_HEIGHT - frameHeight) / 2.0f;
 
-                // Set cursor position for centered content
                 ImGui.setCursorPosX(LEFT_PADDING);
                 ImGui.setCursorPosY(verticalOffset);
 
-                // Align text to frame padding for consistent vertical alignment
                 ImGui.alignTextToFramePadding();
 
-                // Render tool-specific options based on tool type
-                // Currently no tools have options (removed unused fixed aspect ratio feature)
-                // Future tools with options can be added here
+                if (currentTool instanceof MoveToolController) {
+                    renderMoveToolOptions((MoveToolController) currentTool);
+                }
             }
             // If no options, toolbar shows empty space (no dummy needed, window size handles it)
 
@@ -114,9 +112,23 @@ public class ToolOptionsBar {
      * @return true if the tool has options, false otherwise
      */
     private boolean hasOptions(DrawingTool tool) {
-        // Currently no tools have options (removed unused fixed aspect ratio feature)
-        // Future: add checks for tools with configurable options
+        if (tool instanceof MoveToolController) {
+            return true;
+        }
         return false;
+    }
+
+    private void renderMoveToolOptions(MoveToolController moveTool) {
+        var transform = moveTool.getLiveTransform();
+        ImGui.text(String.format("Move Δ(%.1f, %.1f) px", transform.translateX(), transform.translateY()));
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+        ImGui.text(String.format("Scale %.3f × %.3f", transform.scaleX(), transform.scaleY()));
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+        ImGui.text(String.format("Rotate %.1f°", transform.rotationDegrees()));
+        if (moveTool.hasActiveLayer()) {
+            ImGui.sameLine(0.0f, OPTION_SPACING);
+            ImGui.text("Preview active");
+        }
     }
 
     // Future tool option rendering methods can be added here
