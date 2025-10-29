@@ -10,17 +10,35 @@ import java.awt.Rectangle;
 
 /**
  * Renders the selection with transformation handles and visual feedback.
- * Provides visual cues for the transform state.
+ * Styled to match Photoshop's transform controls with hollow handles,
+ * marching ants, and professional visual feedback.
  */
 public class SelectionTransformRenderer {
 
+    // Handle sizing
     private static final int HANDLE_SIZE = 8;
-    private static final int ROTATION_HANDLE_SIZE = 10;
-    private static final int HANDLE_COLOR_NORMAL = ImGui.getColorU32(255, 255, 255, 255);
-    private static final int HANDLE_COLOR_BORDER = ImGui.getColorU32(0, 0, 0, 255);
-    private static final int SELECTION_OUTLINE_COLOR = ImGui.getColorU32(0, 150, 255, 255);
-    private static final int SELECTION_FILL_COLOR = ImGui.getColorU32(0, 150, 255, 0); // Fully transparent
-    private static final int ROTATION_LINE_COLOR = ImGui.getColorU32(0, 150, 255, 180);
+    private static final int HANDLE_BORDER_THICKNESS = 1;
+    private static final int ROTATION_HANDLE_RADIUS = 5;
+    private static final int CENTER_PIVOT_SIZE = 6;
+
+    // Line thicknesses
+    private static final float SELECTION_OUTLINE_THICKNESS = 1.0f;
+    private static final float ROTATION_LINE_THICKNESS = 1.0f;
+    private static final float HANDLE_BORDER_WIDTH = 1.5f;
+
+    // Colors - Photoshop-style grayscale with subtle blue accents
+    private static final int COLOR_BLACK = ImGui.getColorU32(0, 0, 0, 255);
+    private static final int COLOR_WHITE = ImGui.getColorU32(255, 255, 255, 255);
+    private static final int COLOR_GRAY_DARK = ImGui.getColorU32(60, 60, 60, 255);
+    private static final int COLOR_GRAY_LIGHT = ImGui.getColorU32(200, 200, 200, 255);
+    private static final int COLOR_BLUE_ACCENT = ImGui.getColorU32(0, 120, 215, 255);
+    private static final int COLOR_BLUE_HOVER = ImGui.getColorU32(80, 160, 235, 255);
+    private static final int COLOR_PREVIEW_DASH = ImGui.getColorU32(255, 200, 0, 255);
+
+    // Marching ants animation
+    private static final int MARCHING_ANTS_DASH_LENGTH = 4;
+    private static final int MARCHING_ANTS_GAP_LENGTH = 4;
+    private float marchingAntsOffset = 0.0f;
 
     private final HandleDetector handleDetector;
 
@@ -30,6 +48,7 @@ public class SelectionTransformRenderer {
 
     /**
      * Renders the selection with transformation handles.
+     * Features Photoshop-style marching ants animation and hollow handles.
      *
      * @param drawList ImGui draw list
      * @param selection The selection region
@@ -53,64 +72,121 @@ public class SelectionTransformRenderer {
             return;
         }
 
-        // Get transformed bounds
+        // Update marching ants animation
+        updateMarchingAntsAnimation();
+
+        // Get transformed bounds and screen coordinates
         Rectangle canvasBounds = selection.getBounds();
         Rectangle transformedBounds = applyTransformToBounds(canvasBounds, transform);
 
-        // Convert to screen coordinates
-        float[] screenCoords = new float[2];
+        Point topLeft = canvasToScreen(canvasState, transformedBounds.x, transformedBounds.y,
+                                       canvasDisplayX, canvasDisplayY);
+        Point topRight = canvasToScreen(canvasState, transformedBounds.x + transformedBounds.width,
+                                        transformedBounds.y, canvasDisplayX, canvasDisplayY);
+        Point bottomLeft = canvasToScreen(canvasState, transformedBounds.x,
+                                          transformedBounds.y + transformedBounds.height,
+                                          canvasDisplayX, canvasDisplayY);
+        Point bottomRight = canvasToScreen(canvasState, transformedBounds.x + transformedBounds.width,
+                                           transformedBounds.y + transformedBounds.height,
+                                           canvasDisplayX, canvasDisplayY);
 
-        canvasState.canvasToScreenCoords(transformedBounds.x, transformedBounds.y,
-                canvasDisplayX, canvasDisplayY, screenCoords);
-        Point topLeft = new Point((int)screenCoords[0], (int)screenCoords[1]);
-
-        canvasState.canvasToScreenCoords(transformedBounds.x + transformedBounds.width,
-                transformedBounds.y, canvasDisplayX, canvasDisplayY, screenCoords);
-        Point topRight = new Point((int)screenCoords[0], (int)screenCoords[1]);
-
-        canvasState.canvasToScreenCoords(transformedBounds.x,
-                transformedBounds.y + transformedBounds.height,
-                canvasDisplayX, canvasDisplayY, screenCoords);
-        Point bottomLeft = new Point((int)screenCoords[0], (int)screenCoords[1]);
-
-        canvasState.canvasToScreenCoords(transformedBounds.x + transformedBounds.width,
-                transformedBounds.y + transformedBounds.height,
-                canvasDisplayX, canvasDisplayY, screenCoords);
-        Point bottomRight = new Point((int)screenCoords[0], (int)screenCoords[1]);
-
-        // Draw selection outline
-        drawList.addQuad(
-                (float)topLeft.x, (float)topLeft.y,
-                (float)topRight.x, (float)topRight.y,
-                (float)bottomRight.x, (float)bottomRight.y,
-                (float)bottomLeft.x, (float)bottomLeft.y,
-                SELECTION_OUTLINE_COLOR,
-                2.0f
-        );
-
-        // Draw semi-transparent fill
-        drawList.addQuadFilled(
-                (float)topLeft.x, (float)topLeft.y,
-                (float)topRight.x, (float)topRight.y,
-                (float)bottomRight.x, (float)bottomRight.y,
-                (float)bottomLeft.x, (float)bottomLeft.y,
-                SELECTION_FILL_COLOR
-        );
+        // Draw marching ants border (Photoshop-style animated dashed line)
+        drawMarchingAnts(drawList, topLeft, topRight, bottomRight, bottomLeft);
 
         // Draw handles if requested
         if (showHandles) {
             renderHandles(drawList, selection, canvasState, transform, hoveredHandle,
-                    canvasDisplayX, canvasDisplayY);
+                    canvasDisplayX, canvasDisplayY, topLeft, topRight, bottomLeft, bottomRight);
+
+            // Draw center pivot point
+            drawCenterPivot(drawList, transform, canvasState, canvasDisplayX, canvasDisplayY);
         }
     }
 
+    /**
+     * Updates the marching ants animation offset for smooth scrolling effect.
+     */
+    private void updateMarchingAntsAnimation() {
+        marchingAntsOffset += 0.5f; // Adjust speed as needed
+        if (marchingAntsOffset >= MARCHING_ANTS_DASH_LENGTH + MARCHING_ANTS_GAP_LENGTH) {
+            marchingAntsOffset = 0.0f;
+        }
+    }
+
+    /**
+     * Converts canvas coordinates to screen coordinates.
+     */
+    private Point canvasToScreen(CanvasState canvasState, int canvasX, int canvasY,
+                                 float canvasDisplayX, float canvasDisplayY) {
+        float[] screenCoords = new float[2];
+        canvasState.canvasToScreenCoords(canvasX, canvasY, canvasDisplayX, canvasDisplayY, screenCoords);
+        return new Point((int)screenCoords[0], (int)screenCoords[1]);
+    }
+
+    /**
+     * Draws animated marching ants border around the selection (Photoshop-style).
+     */
+    private void drawMarchingAnts(ImDrawList drawList, Point p1, Point p2, Point p3, Point p4) {
+        // Draw black outline first (background)
+        drawDashedLine(drawList, p1, p2, COLOR_BLACK,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, 0);
+        drawDashedLine(drawList, p2, p3, COLOR_BLACK,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, 0);
+        drawDashedLine(drawList, p3, p4, COLOR_BLACK,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, 0);
+        drawDashedLine(drawList, p4, p1, COLOR_BLACK,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, 0);
+
+        // Draw white dashes on top (animated)
+        drawDashedLine(drawList, p1, p2, COLOR_WHITE,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, marchingAntsOffset);
+        drawDashedLine(drawList, p2, p3, COLOR_WHITE,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, marchingAntsOffset);
+        drawDashedLine(drawList, p3, p4, COLOR_WHITE,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, marchingAntsOffset);
+        drawDashedLine(drawList, p4, p1, COLOR_WHITE,
+                      MARCHING_ANTS_DASH_LENGTH, MARCHING_ANTS_GAP_LENGTH, marchingAntsOffset);
+    }
+
+    /**
+     * Draws the center pivot point crosshair.
+     */
+    private void drawCenterPivot(ImDrawList drawList, TransformState transform,
+                                 CanvasState canvasState, float canvasDisplayX, float canvasDisplayY) {
+        Point pivot = transform.getPivot();
+        Point screenPivot = canvasToScreen(canvasState, pivot.x, pivot.y, canvasDisplayX, canvasDisplayY);
+
+        int halfSize = CENTER_PIVOT_SIZE / 2;
+
+        // Draw outer circle
+        drawList.addCircle(screenPivot.x, screenPivot.y, halfSize + 1, COLOR_BLACK, 12, 1.5f);
+        drawList.addCircle(screenPivot.x, screenPivot.y, halfSize, COLOR_WHITE, 12, 1.0f);
+
+        // Draw crosshair
+        drawList.addLine(screenPivot.x - halfSize, screenPivot.y,
+                        screenPivot.x + halfSize, screenPivot.y, COLOR_BLACK, 1.5f);
+        drawList.addLine(screenPivot.x, screenPivot.y - halfSize,
+                        screenPivot.x, screenPivot.y + halfSize, COLOR_BLACK, 1.5f);
+        drawList.addLine(screenPivot.x - halfSize + 1, screenPivot.y,
+                        screenPivot.x + halfSize - 1, screenPivot.y, COLOR_WHITE, 1.0f);
+        drawList.addLine(screenPivot.x, screenPivot.y - halfSize + 1,
+                        screenPivot.x, screenPivot.y + halfSize - 1, COLOR_WHITE, 1.0f);
+    }
+
+    /**
+     * Renders all transformation handles (Photoshop-style hollow squares and rotation handle).
+     */
     private void renderHandles(ImDrawList drawList,
                                SelectionRegion selection,
                                CanvasState canvasState,
                                TransformState transform,
                                HandleType hoveredHandle,
                                float canvasDisplayX,
-                               float canvasDisplayY) {
+                               float canvasDisplayY,
+                               Point topLeft,
+                               Point topRight,
+                               Point bottomLeft,
+                               Point bottomRight) {
 
         HandleDetector.HandlePositions positions = handleDetector.calculateHandlePositions(
                 selection, canvasState, transform, canvasDisplayX, canvasDisplayY);
@@ -119,75 +195,88 @@ public class SelectionTransformRenderer {
             return;
         }
 
+        // Draw transform bounds outline (clean, thin line)
+        drawList.addLine(topLeft.x, topLeft.y, topRight.x, topRight.y,
+                        COLOR_GRAY_DARK, SELECTION_OUTLINE_THICKNESS);
+        drawList.addLine(topRight.x, topRight.y, bottomRight.x, bottomRight.y,
+                        COLOR_GRAY_DARK, SELECTION_OUTLINE_THICKNESS);
+        drawList.addLine(bottomRight.x, bottomRight.y, bottomLeft.x, bottomLeft.y,
+                        COLOR_GRAY_DARK, SELECTION_OUTLINE_THICKNESS);
+        drawList.addLine(bottomLeft.x, bottomLeft.y, topLeft.x, topLeft.y,
+                        COLOR_GRAY_DARK, SELECTION_OUTLINE_THICKNESS);
+
         // Draw rotation line (connecting top-center to rotation handle)
         Point topCenter = positions.topCenter;
         Point rotation = positions.rotation;
-        drawList.addLine((float)topCenter.x, (float)topCenter.y, (float)rotation.x, (float)rotation.y, ROTATION_LINE_COLOR, 1.5f);
+        drawList.addLine(topCenter.x, topCenter.y, rotation.x, rotation.y,
+                        COLOR_GRAY_LIGHT, ROTATION_LINE_THICKNESS);
 
-        // Draw resize handles (squares)
-        drawHandle(drawList, positions.topLeft, hoveredHandle == HandleType.TOP_LEFT);
-        drawHandle(drawList, positions.topRight, hoveredHandle == HandleType.TOP_RIGHT);
-        drawHandle(drawList, positions.bottomLeft, hoveredHandle == HandleType.BOTTOM_LEFT);
-        drawHandle(drawList, positions.bottomRight, hoveredHandle == HandleType.BOTTOM_RIGHT);
-        drawHandle(drawList, positions.topCenter, hoveredHandle == HandleType.TOP_CENTER);
-        drawHandle(drawList, positions.bottomCenter, hoveredHandle == HandleType.BOTTOM_CENTER);
-        drawHandle(drawList, positions.middleLeft, hoveredHandle == HandleType.MIDDLE_LEFT);
-        drawHandle(drawList, positions.middleRight, hoveredHandle == HandleType.MIDDLE_RIGHT);
+        // Draw resize handles (hollow squares - Photoshop style)
+        drawHollowHandle(drawList, positions.topLeft, hoveredHandle == HandleType.TOP_LEFT);
+        drawHollowHandle(drawList, positions.topRight, hoveredHandle == HandleType.TOP_RIGHT);
+        drawHollowHandle(drawList, positions.bottomLeft, hoveredHandle == HandleType.BOTTOM_LEFT);
+        drawHollowHandle(drawList, positions.bottomRight, hoveredHandle == HandleType.BOTTOM_RIGHT);
+        drawHollowHandle(drawList, positions.topCenter, hoveredHandle == HandleType.TOP_CENTER);
+        drawHollowHandle(drawList, positions.bottomCenter, hoveredHandle == HandleType.BOTTOM_CENTER);
+        drawHollowHandle(drawList, positions.middleLeft, hoveredHandle == HandleType.MIDDLE_LEFT);
+        drawHollowHandle(drawList, positions.middleRight, hoveredHandle == HandleType.MIDDLE_RIGHT);
 
-        // Draw rotation handle (circle)
+        // Draw rotation handle (hollow circle with icon)
         drawRotationHandle(drawList, rotation, hoveredHandle == HandleType.ROTATION);
     }
 
-    private void drawHandle(ImDrawList drawList, Point position, boolean isHovered) {
+    /**
+     * Draws a hollow square handle (Photoshop-style).
+     * Handles are white with black borders, highlighted with blue when hovered.
+     */
+    private void drawHollowHandle(ImDrawList drawList, Point position, boolean isHovered) {
         int halfSize = HANDLE_SIZE / 2;
 
-        // Draw border (black outline)
-        drawList.addRectFilled(
-                (float)(position.x - halfSize - 1),
-                (float)(position.y - halfSize - 1),
-                (float)(position.x + halfSize + 1),
-                (float)(position.y + halfSize + 1),
-                HANDLE_COLOR_BORDER
-        );
+        float x1 = position.x - halfSize;
+        float y1 = position.y - halfSize;
+        float x2 = position.x + halfSize;
+        float y2 = position.y + halfSize;
 
-        // Draw handle (white fill, or highlighted if hovered)
-        int fillColor = isHovered
-                ? ImGui.getColorU32(100, 200, 255, 255)
-                : HANDLE_COLOR_NORMAL;
+        // Draw white background fill
+        drawList.addRectFilled(x1, y1, x2, y2, COLOR_WHITE);
 
-        drawList.addRectFilled(
-                (float)(position.x - halfSize),
-                (float)(position.y - halfSize),
-                (float)(position.x + halfSize),
-                (float)(position.y + halfSize),
-                fillColor
-        );
+        // Draw outer border (black)
+        drawList.addRect(x1, y1, x2, y2, COLOR_BLACK, 0.0f, 0, HANDLE_BORDER_WIDTH);
+
+        // Draw highlight if hovered (subtle blue inner border)
+        if (isHovered) {
+            drawList.addRect(x1 + 1, y1 + 1, x2 - 1, y2 - 1,
+                           COLOR_BLUE_HOVER, 0.0f, 0, 1.0f);
+        }
     }
 
+    /**
+     * Draws a hollow circular rotation handle (Photoshop-style).
+     * Features a rotation icon inside the circle.
+     */
     private void drawRotationHandle(ImDrawList drawList, Point position, boolean isHovered) {
-        int radius = ROTATION_HANDLE_SIZE / 2;
+        // Draw white fill
+        drawList.addCircleFilled(position.x, position.y, ROTATION_HANDLE_RADIUS, COLOR_WHITE, 16);
 
-        // Draw border (black outline)
-        drawList.addCircleFilled((float)position.x, (float)position.y, (float)(radius + 1), HANDLE_COLOR_BORDER);
+        // Draw outer border (black)
+        drawList.addCircle(position.x, position.y, ROTATION_HANDLE_RADIUS,
+                          COLOR_BLACK, 16, HANDLE_BORDER_WIDTH);
 
-        // Draw handle (white fill, or highlighted if hovered)
-        int fillColor = isHovered
-                ? ImGui.getColorU32(100, 200, 255, 255)
-                : HANDLE_COLOR_NORMAL;
+        // Draw highlight if hovered (subtle blue inner circle)
+        if (isHovered) {
+            drawList.addCircle(position.x, position.y, ROTATION_HANDLE_RADIUS - 1,
+                             COLOR_BLUE_HOVER, 16, 1.0f);
+        }
 
-        drawList.addCircleFilled((float)position.x, (float)position.y, (float)radius, fillColor);
+        // Draw rotation icon (curved arrow suggestion)
+        int iconSize = 3;
+        int iconColor = isHovered ? COLOR_BLUE_ACCENT : COLOR_GRAY_DARK;
 
-        // Draw crosshair inside rotation handle
-        drawList.addLine(
-                (float)(position.x - radius + 2), (float)position.y,
-                (float)(position.x + radius - 2), (float)position.y,
-                HANDLE_COLOR_BORDER, 1.0f
-        );
-        drawList.addLine(
-                (float)position.x, (float)(position.y - radius + 2),
-                (float)position.x, (float)(position.y + radius - 2),
-                HANDLE_COLOR_BORDER, 1.0f
-        );
+        // Simple crosshair-like rotation indicator
+        drawList.addLine(position.x - iconSize, position.y,
+                        position.x + iconSize, position.y, iconColor, 1.0f);
+        drawList.addLine(position.x, position.y - iconSize,
+                        position.x, position.y + iconSize, iconColor, 1.0f);
     }
 
     private Rectangle applyTransformToBounds(Rectangle bounds, TransformState transform) {
@@ -251,20 +340,30 @@ public class SelectionTransformRenderer {
         drawDashedQuad(drawList, topLeft, topRight, bottomRight, bottomLeft);
     }
 
+    /**
+     * Draws a dashed quadrilateral for preview visualization.
+     */
     private void drawDashedQuad(ImDrawList drawList, Point p1, Point p2, Point p3, Point p4) {
-        // Use yellow/orange for preview to make it more visible
-        int dashColor = ImGui.getColorU32(255, 200, 0, 255);
-        int dashLength = 5;
-        int gapLength = 3;
-
-        drawDashedLine(drawList, p1, p2, dashColor, dashLength, gapLength);
-        drawDashedLine(drawList, p2, p3, dashColor, dashLength, gapLength);
-        drawDashedLine(drawList, p3, p4, dashColor, dashLength, gapLength);
-        drawDashedLine(drawList, p4, p1, dashColor, dashLength, gapLength);
+        // Draw preview outline with contrasting color
+        drawDashedLine(drawList, p1, p2, COLOR_PREVIEW_DASH, 5, 3, 0);
+        drawDashedLine(drawList, p2, p3, COLOR_PREVIEW_DASH, 5, 3, 0);
+        drawDashedLine(drawList, p3, p4, COLOR_PREVIEW_DASH, 5, 3, 0);
+        drawDashedLine(drawList, p4, p1, COLOR_PREVIEW_DASH, 5, 3, 0);
     }
 
+    /**
+     * Draws a dashed line with optional animation offset for marching ants effect.
+     *
+     * @param drawList ImGui draw list
+     * @param start Start point
+     * @param end End point
+     * @param color Line color
+     * @param dashLength Length of each dash segment
+     * @param gapLength Length of each gap segment
+     * @param offset Animation offset for marching ants (0 for static lines)
+     */
     private void drawDashedLine(ImDrawList drawList, Point start, Point end,
-                               int color, int dashLength, int gapLength) {
+                               int color, int dashLength, int gapLength, float offset) {
         int dx = end.x - start.x;
         int dy = end.y - start.y;
         double length = Math.sqrt(dx * dx + dy * dy);
@@ -272,20 +371,25 @@ public class SelectionTransformRenderer {
         if (length == 0) return;
 
         double segmentLength = dashLength + gapLength;
-        int numSegments = (int) (length / segmentLength);
+        int numSegments = (int) Math.ceil((length + offset) / segmentLength);
 
         for (int i = 0; i <= numSegments; i++) {
-            double t1 = (i * segmentLength) / length;
-            double t2 = Math.min(1.0, (i * segmentLength + dashLength) / length);
+            double t1 = (i * segmentLength - offset) / length;
+            double t2 = Math.min(1.0, (i * segmentLength - offset + dashLength) / length);
 
-            if (t1 >= 1.0) break;
+            // Skip segments that are completely outside the line
+            if (t2 <= 0.0 || t1 >= 1.0) continue;
 
-            int x1 = start.x + (int) (dx * t1);
-            int y1 = start.y + (int) (dy * t1);
-            int x2 = start.x + (int) (dx * t2);
-            int y2 = start.y + (int) (dy * t2);
+            // Clamp to line bounds
+            t1 = Math.max(0.0, t1);
+            t2 = Math.min(1.0, t2);
 
-            drawList.addLine((float)x1, (float)y1, (float)x2, (float)y2, color, 1.5f);
+            float x1 = start.x + (float) (dx * t1);
+            float y1 = start.y + (float) (dy * t1);
+            float x2 = start.x + (float) (dx * t2);
+            float y2 = start.y + (float) (dy * t2);
+
+            drawList.addLine(x1, y1, x2, y2, color, SELECTION_OUTLINE_THICKNESS);
         }
     }
 }
