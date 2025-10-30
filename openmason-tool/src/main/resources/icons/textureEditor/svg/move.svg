@@ -3,26 +3,26 @@
   <!-- Move/Transform tool icon - shows selection with transform handles -->
 
   <!-- Selection rectangle -->
-  <rect x="8" y="10" width="16" height="14"
+  <rect x="8" y="9" width="16" height="14"
         fill="none"
         stroke="#3399FF"
         stroke-width="1.5"
         stroke-dasharray="3,2"/>
 
   <!-- Corner resize handles -->
-  <rect x="6" y="8" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="22" y="8" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="6" y="20" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="22" y="20" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="6" y="7" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="22" y="7" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="6" y="19" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="22" y="19" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
 
   <!-- Edge resize handles -->
-  <rect x="14" y="8" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="14" y="20" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="6" y="14" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="22" y="14" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="14" y="7" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="14" y="19" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="6" y="13" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <rect x="22" y="13" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
 
   <!-- Rotation handle line (from top center to rotation handle) -->
-  <line x1="16" y1="8" x2="16" y2="4" stroke="#3399FF" stroke-width="1.5"/>
+  <line x1="16" y1="7" x2="16" y2="4" stroke="#3399FF" stroke-width="1.5"/>
 
   <!-- Rotation handle (circle at top) -->
   <circle cx="16" cy="4" r="2.5" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
@@ -33,16 +33,16 @@
   <!-- Move cursor in center (subtle four-way arrows) -->
   <g opacity="0.6">
     <!-- Vertical line -->
-    <line x1="16" y1="15" x2="16" y2="19" stroke="#4A90E2" stroke-width="1" stroke-linecap="round"/>
+    <line x1="16" y1="14" x2="16" y2="18" stroke="#4A90E2" stroke-width="1" stroke-linecap="round"/>
     <!-- Horizontal line -->
-    <line x1="14" y1="17" x2="18" y2="17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round"/>
+    <line x1="14" y1="16" x2="18" y2="16" stroke="#4A90E2" stroke-width="1" stroke-linecap="round"/>
     <!-- Up arrow -->
-    <path d="M 16 15 L 15 16 M 16 15 L 17 16" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
+    <path d="M 16 14 L 15 15 M 16 14 L 17 15" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
     <!-- Down arrow -->
-    <path d="M 16 19 L 15 18 M 16 19 L 17 18" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
+    <path d="M 16 18 L 15 17 M 16 18 L 17 17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
     <!-- Left arrow -->
-    <path d="M 14 17 L 15 16 M 14 17 L 15 18" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
+    <path d="M 14 16 L 15 15 M 14 16 L 15 17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
     <!-- Right arrow -->
-    <path d="M 18 17 L 17 16 M 18 17 L 17 18" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
+    <path d="M 18 16 L 17 15 M 18 16 L 17 17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
   </g>
 </svg>
