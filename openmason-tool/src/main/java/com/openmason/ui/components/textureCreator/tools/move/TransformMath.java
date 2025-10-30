@@ -86,12 +86,12 @@ final class TransformMath {
         }
 
         Rectangle sourceBounds = snapshot.bounds();
-        // Transform corner edges directly (no expansion needed)
+        // Transform pixel center corners (where actual corner pixels are)
         double[][] corners = new double[][]{
-                mapLocalToCanvas(0.0, 0.0, snapshot, transform),
-                mapLocalToCanvas(sourceBounds.width, 0.0, snapshot, transform),
-                mapLocalToCanvas(sourceBounds.width, sourceBounds.height, snapshot, transform),
-                mapLocalToCanvas(0.0, sourceBounds.height, snapshot, transform)
+                mapLocalToCanvas(0.5, 0.5, snapshot, transform),
+                mapLocalToCanvas(sourceBounds.width - 0.5, 0.5, snapshot, transform),
+                mapLocalToCanvas(sourceBounds.width - 0.5, sourceBounds.height - 0.5, snapshot, transform),
+                mapLocalToCanvas(0.5, sourceBounds.height - 0.5, snapshot, transform)
         };
 
         double minX = Double.POSITIVE_INFINITY;
@@ -105,6 +105,12 @@ final class TransformMath {
             minY = Math.min(minY, corner[1]);
             maxY = Math.max(maxY, corner[1]);
         }
+
+        // Expand by 0.5 pixels since corners are pixel centers, not edges
+        minX -= 0.5;
+        maxX += 0.5;
+        minY -= 0.5;
+        maxY += 0.5;
 
         int canvasWidth = snapshot.canvasWidth();
         int canvasHeight = snapshot.canvasHeight();
@@ -141,15 +147,15 @@ final class TransformMath {
 
                 double[] local = mapCanvasToLocal(sampleX, sampleY, snapshot, transform);
 
-                // Check bounds BEFORE rounding to avoid replicating edge pixels
-                // Allow small tolerance for floating-point precision (0.5 is the rounding threshold)
-                if (local[0] < -0.5 || local[0] >= snapshot.width() - 0.5 ||
-                    local[1] < -0.5 || local[1] >= snapshot.height() - 0.5) {
+                // Use floor for nearest-neighbor sampling (pixel owns [n, n+1))
+                int localX = (int) Math.floor(local[0]);
+                int localY = (int) Math.floor(local[1]);
+
+                // Check bounds after flooring
+                if (localX < 0 || localX >= snapshot.width() ||
+                    localY < 0 || localY >= snapshot.height()) {
                     continue;
                 }
-
-                int localX = (int) Math.round(local[0]);
-                int localY = (int) Math.round(local[1]);
 
                 int sourceIndex = snapshot.indexFor(localX, localY);
                 if (!snapshot.mask()[sourceIndex]) {
