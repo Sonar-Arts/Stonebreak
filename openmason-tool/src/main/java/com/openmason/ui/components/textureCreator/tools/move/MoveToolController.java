@@ -27,7 +27,6 @@ public class MoveToolController implements DrawingTool {
     private MoveToolSession session;
     private TransformPreviewLayer previewLayer;
     private TransformHandle hoveredHandle = TransformHandle.NONE;
-    private boolean hoveredInRotationMode = false;
     private MoveSelectionCommand pendingCommand;
 
     private DragContext dragContext;
@@ -93,7 +92,6 @@ public class MoveToolController implements DrawingTool {
         previewLayer = null;
         dragContext = null;
         hoveredHandle = TransformHandle.NONE;
-        hoveredInRotationMode = false;
     }
 
     @Override
@@ -112,7 +110,6 @@ public class MoveToolController implements DrawingTool {
         previewLayer = null;
         dragContext = null;
         hoveredHandle = TransformHandle.NONE;
-        hoveredInRotationMode = false;
         // Keep pendingCommand so CanvasPanel can still apply it if required
     }
 
@@ -154,7 +151,6 @@ public class MoveToolController implements DrawingTool {
 
         if (selection == null || selection.isEmpty()) {
             hoveredHandle = TransformHandle.NONE;
-            hoveredInRotationMode = false;
             return;
         }
 
@@ -162,14 +158,6 @@ public class MoveToolController implements DrawingTool {
         TransformationState transform = session != null ? session.transform() : TransformationState.identity();
 
         hoveredHandle = overlayRenderer.detectHandle(mouseX, mouseY, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
-
-        // Check if we're hovering in rotation mode (outside corner)
-        if (hoveredHandle != TransformHandle.NONE && overlayRenderer.isCornerHandle(hoveredHandle)) {
-            hoveredInRotationMode = overlayRenderer.isInRotationMode(
-                    mouseX, mouseY, hoveredHandle, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
-        } else {
-            hoveredInRotationMode = false;
-        }
     }
 
     public void renderOverlay(ImDrawList drawList,
@@ -192,8 +180,7 @@ public class MoveToolController implements DrawingTool {
                 canvasDisplayX,
                 canvasDisplayY,
                 hoveredHandle,
-                dragContext != null ? dragContext.handle : TransformHandle.NONE,
-                hoveredInRotationMode || (dragContext != null && dragContext.rotation));
+                dragContext != null ? dragContext.handle : TransformHandle.NONE);
     }
 
     public MoveSelectionCommand getPendingCommand() {
@@ -233,8 +220,9 @@ public class MoveToolController implements DrawingTool {
             return;
         }
 
-        // Use the rotation mode detected during hover
-        dragContext = DragContext.forHandle(handle, session.snapshot(), session.transform(), startX, startY, hoveredInRotationMode);
+        // Check if this is the dedicated rotation handle
+        boolean isRotation = (handle == TransformHandle.ROTATE);
+        dragContext = DragContext.forHandle(handle, session.snapshot(), session.transform(), startX, startY, isRotation);
     }
 
     private void startTranslation(double startX, double startY) {
@@ -261,7 +249,11 @@ public class MoveToolController implements DrawingTool {
 
     private TransformationState computeRotationTransform(double canvasX, double canvasY) {
         double currentAngle = Math.atan2(canvasY - dragContext.pivotCanvasY, canvasX - dragContext.pivotCanvasX);
-        double deltaDegrees = Math.toDegrees(currentAngle - dragContext.initialAngle);
+        double deltaRadians = currentAngle - dragContext.initialAngle;
+
+        // Normalize delta to [-π, π] to avoid jumps at ±180° boundary
+        deltaRadians = Math.atan2(Math.sin(deltaRadians), Math.cos(deltaRadians));
+        double deltaDegrees = Math.toDegrees(deltaRadians);
 
         if (shiftHeld) {
             deltaDegrees = Math.round(deltaDegrees / 15.0) * 15.0;
@@ -351,7 +343,6 @@ public class MoveToolController implements DrawingTool {
         previewLayer = null;
         session = null;
         hoveredHandle = TransformHandle.NONE;
-        hoveredInRotationMode = false;
     }
 
     private static boolean affectsXAxis(TransformHandle handle) {

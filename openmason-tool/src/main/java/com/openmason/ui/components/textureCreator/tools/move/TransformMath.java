@@ -86,6 +86,7 @@ final class TransformMath {
         }
 
         Rectangle sourceBounds = snapshot.bounds();
+        // Transform corner edges directly (no expansion needed)
         double[][] corners = new double[][]{
                 mapLocalToCanvas(0.0, 0.0, snapshot, transform),
                 mapLocalToCanvas(sourceBounds.width, 0.0, snapshot, transform),
@@ -139,14 +140,22 @@ final class TransformMath {
                 double sampleX = canvasX + 0.5;
 
                 double[] local = mapCanvasToLocal(sampleX, sampleY, snapshot, transform);
-                int localX = (int) Math.floor(local[0]);
-                int localY = (int) Math.floor(local[1]);
 
-                if (!snapshot.isInside(localX, localY)) {
+                // Check bounds BEFORE rounding to avoid replicating edge pixels
+                // Allow small tolerance for floating-point precision (0.5 is the rounding threshold)
+                if (local[0] < -0.5 || local[0] >= snapshot.width() - 0.5 ||
+                    local[1] < -0.5 || local[1] >= snapshot.height() - 0.5) {
                     continue;
                 }
 
+                int localX = (int) Math.round(local[0]);
+                int localY = (int) Math.round(local[1]);
+
                 int sourceIndex = snapshot.indexFor(localX, localY);
+                if (!snapshot.mask()[sourceIndex]) {
+                    continue;
+                }
+
                 int destIndex = dy * destWidth + dx;
 
                 destMask[destIndex] = true;

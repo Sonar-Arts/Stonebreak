@@ -48,8 +48,7 @@ final class TransformOverlayRenderer {
                 float canvasDisplayX,
                 float canvasDisplayY,
                 TransformHandle hovered,
-                TransformHandle active,
-                boolean inRotationMode) {
+                TransformHandle active) {
 
         double[][] corners = computeCorners(bounds, transform);
         float[][] screenCorners = toScreen(corners, canvasState, canvasDisplayX, canvasDisplayY);
@@ -59,9 +58,13 @@ final class TransformOverlayRenderer {
         Map<TransformHandle, float[]> handlePositions = computeHandlePositions(
                 corners, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
 
-        // Draw rotation arc indicators if hovering in rotation mode
-        if (inRotationMode && isCornerHandle(hovered)) {
-            drawRotationArcIndicator(drawList, handlePositions.get(hovered), hovered, active == hovered);
+        // Draw rotation handle connecting line
+        float[] topCenter = handlePositions.get(TransformHandle.SCALE_NORTH);
+        float[] rotationHandle = handlePositions.get(TransformHandle.ROTATE);
+        if (topCenter != null && rotationHandle != null) {
+            int lineColor = (hovered == TransformHandle.ROTATE || active == TransformHandle.ROTATE)
+                    ? HANDLE_HOVER_OUTLINE : HANDLE_OUTLINE;
+            drawList.addLine(topCenter[0], topCenter[1], rotationHandle[0], rotationHandle[1], lineColor, 1.5f);
         }
 
         // Draw scale handles
@@ -71,6 +74,8 @@ final class TransformOverlayRenderer {
 
             if (handle == TransformHandle.PIVOT_CENTER) {
                 drawPivotPoint(drawList, position, handle == hovered, handle == active);
+            } else if (handle == TransformHandle.ROTATE) {
+                drawRotationHandle(drawList, position, handle == hovered, handle == active);
             } else {
                 drawScaleHandle(drawList, position, handle == hovered, handle == active);
             }
@@ -89,13 +94,7 @@ final class TransformOverlayRenderer {
         Map<TransformHandle, float[]> positions = computeHandlePositions(
                 corners, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
 
-        // First check for rotation mode (hovering outside corners)
-        TransformHandle rotationCorner = detectRotationZone(mouseX, mouseY, positions);
-        if (rotationCorner != TransformHandle.NONE) {
-            return rotationCorner; // Return the corner handle, controller will know it's in rotation mode
-        }
-
-        // Then check for handle hits
+        // Check for handle hits
         TransformHandle closest = TransformHandle.NONE;
         double closestDistance = Double.POSITIVE_INFINITY;
 
@@ -104,7 +103,14 @@ final class TransformOverlayRenderer {
             float[] point = entry.getValue();
 
             double distance = Math.hypot(mouseX - point[0], mouseY - point[1]);
-            double threshold = handle == TransformHandle.PIVOT_CENTER ? PIVOT_RADIUS * 1.5 : HANDLE_SIZE;
+            double threshold;
+            if (handle == TransformHandle.PIVOT_CENTER) {
+                threshold = PIVOT_RADIUS * 1.5;
+            } else if (handle == TransformHandle.ROTATE) {
+                threshold = HANDLE_SIZE * 0.6; // Match rotation handle radius
+            } else {
+                threshold = HANDLE_SIZE;
+            }
 
             if (distance <= threshold && distance < closestDistance) {
                 closest = handle;
@@ -113,33 +119,6 @@ final class TransformOverlayRenderer {
         }
 
         return closest;
-    }
-
-    /**
-     * Detect if mouse is in rotation zone (hovering outside corners).
-     * Returns the corner handle if in rotation zone, NONE otherwise.
-     */
-    private TransformHandle detectRotationZone(float mouseX, float mouseY, Map<TransformHandle, float[]> positions) {
-        TransformHandle[] corners = {
-            TransformHandle.SCALE_NORTH_WEST,
-            TransformHandle.SCALE_NORTH_EAST,
-            TransformHandle.SCALE_SOUTH_EAST,
-            TransformHandle.SCALE_SOUTH_WEST
-        };
-
-        for (TransformHandle corner : corners) {
-            float[] point = positions.get(corner);
-            if (point == null) continue;
-
-            double distance = Math.hypot(mouseX - point[0], mouseY - point[1]);
-
-            // Check if mouse is in the rotation zone (outside the handle but within range)
-            if (distance > HANDLE_SIZE && distance <= ROTATION_ZONE_DISTANCE) {
-                return corner;
-            }
-        }
-
-        return TransformHandle.NONE;
     }
 
     boolean isInside(float mouseX,
@@ -152,48 +131,6 @@ final class TransformOverlayRenderer {
 
         float[][] polygon = toScreen(computeCorners(bounds, transform), canvasState, canvasDisplayX, canvasDisplayY);
         return pointInPolygon(mouseX, mouseY, polygon);
-    }
-
-    /**
-     * Check if the handle is a corner (for rotation detection).
-     */
-    boolean isCornerHandle(TransformHandle handle) {
-        return handle == TransformHandle.SCALE_NORTH_WEST
-                || handle == TransformHandle.SCALE_NORTH_EAST
-                || handle == TransformHandle.SCALE_SOUTH_EAST
-                || handle == TransformHandle.SCALE_SOUTH_WEST;
-    }
-
-    /**
-     * Check if the mouse position is in rotation mode for the given handle.
-     * Returns true if hovering outside the corner (rotation zone).
-     */
-    boolean isInRotationMode(float mouseX,
-                             float mouseY,
-                             TransformHandle handle,
-                             Rectangle bounds,
-                             TransformationState transform,
-                             CanvasState canvasState,
-                             float canvasDisplayX,
-                             float canvasDisplayY) {
-
-        if (!isCornerHandle(handle)) {
-            return false;
-        }
-
-        double[][] corners = computeCorners(bounds, transform);
-        Map<TransformHandle, float[]> positions = computeHandlePositions(
-                corners, bounds, transform, canvasState, canvasDisplayX, canvasDisplayY);
-
-        float[] point = positions.get(handle);
-        if (point == null) {
-            return false;
-        }
-
-        double distance = Math.hypot(mouseX - point[0], mouseY - point[1]);
-
-        // If distance is greater than handle size but within rotation zone, we're rotating
-        return distance > HANDLE_SIZE && distance <= ROTATION_ZONE_DISTANCE;
     }
 
     private static double[][] computeCorners(Rectangle bounds, TransformationState transform) {
@@ -242,10 +179,16 @@ final class TransformOverlayRenderer {
         positions.put(TransformHandle.SCALE_SOUTH_WEST, bl);
 
         // Edge midpoint handles
-        positions.put(TransformHandle.SCALE_NORTH, midpoint(tl, tr));
+        float[] topCenter = midpoint(tl, tr);
+        positions.put(TransformHandle.SCALE_NORTH, topCenter);
         positions.put(TransformHandle.SCALE_EAST, midpoint(tr, br));
         positions.put(TransformHandle.SCALE_SOUTH, midpoint(br, bl));
         positions.put(TransformHandle.SCALE_WEST, midpoint(bl, tl));
+
+        // Rotation handle (above top center)
+        float rotationHandleOffset = 30.0f; // pixels above the selection
+        float[] rotationHandle = new float[]{topCenter[0], topCenter[1] - rotationHandleOffset};
+        positions.put(TransformHandle.ROTATE, rotationHandle);
 
         // Center pivot point
         double[] centerLocal = {bounds.width / 2.0, bounds.height / 2.0};
@@ -291,6 +234,27 @@ final class TransformOverlayRenderer {
 
         // Draw inner circle
         drawList.addCircleFilled(point[0], point[1], PIVOT_INNER_RADIUS, color, 12);
+    }
+
+    private static void drawRotationHandle(ImDrawList drawList, float[] point, boolean hovered, boolean active) {
+        float radius = (active ? ACTIVE_HANDLE_SIZE : HANDLE_SIZE) * 0.6f;
+
+        int fillColor = active ? HANDLE_ACTIVE_FILL : hovered ? HANDLE_HOVER_FILL : HANDLE_FILL;
+        int outlineColor = active ? HANDLE_ACTIVE_OUTLINE : hovered ? HANDLE_HOVER_OUTLINE : HANDLE_OUTLINE;
+
+        // Draw filled circle
+        drawList.addCircleFilled(point[0], point[1], radius, fillColor, 16);
+
+        // Draw outline
+        drawList.addCircle(point[0], point[1], radius, outlineColor, 16, 1.5f);
+
+        // Draw rotation arc inside the handle
+        float arcRadius = radius * 0.6f;
+        float arcThickness = 1.2f;
+        int arcColor = active ? HANDLE_ACTIVE_OUTLINE : hovered ? HANDLE_HOVER_OUTLINE : HANDLE_OUTLINE;
+
+        // Draw a circular arrow arc (270 degrees)
+        drawList.addCircle(point[0], point[1], arcRadius, arcColor, 12, arcThickness);
     }
 
     /**
