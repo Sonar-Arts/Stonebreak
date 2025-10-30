@@ -73,6 +73,30 @@ public class ToolbarPanel {
     }
 
     /**
+     * Set the GLFW window handle for mouse capture functionality.
+     * This enables infinite dragging in the move tool.
+     * @param windowHandle The GLFW window handle
+     */
+    public void setWindowHandle(long windowHandle) {
+        if (moveToolInstance != null) {
+            moveToolInstance.setWindowHandle(windowHandle);
+            logger.debug("Move tool configured with window handle for mouse capture");
+        }
+    }
+
+    /**
+     * Configures the move tool with preferences.
+     * This allows the move tool to access user settings like rotation speed.
+     * @param preferences The TextureCreatorPreferences to use
+     */
+    public void setPreferences(com.openmason.ui.components.textureCreator.TextureCreatorPreferences preferences) {
+        if (moveToolInstance != null) {
+            moveToolInstance.setPreferences(preferences);
+            logger.debug("Move tool configured with preferences");
+        }
+    }
+
+    /**
      * Render the toolbar panel.
      */
     public void render() {

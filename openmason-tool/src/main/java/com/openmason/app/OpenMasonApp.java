@@ -387,7 +387,8 @@ public class OpenMasonApp {
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
                 viewportInterface.setWindowHandle(window);
-                // logger.info("Window handle passed to viewport interface for mouse capture");
+                textureCreatorInterface.setWindowHandle(window);
+                // logger.info("Window handle passed to viewport and texture creator interfaces for mouse capture");
             } else {
                 logger.error("Cannot set window handle - window not created");
             }

@@ -95,10 +95,25 @@ public class TextureCreatorImGui {
         toolbarPanel.setSelectionManager(state.getSelectionManager());
         logger.debug("Selection manager wired to toolbar panel (move tool)");
 
+        // Wire up preferences to toolbar (for move tool rotation speed, etc.)
+        toolbarPanel.setPreferences(preferences);
+        logger.debug("Preferences wired to toolbar panel (move tool)");
+
         // Set default tool
         state.setCurrentTool(toolbarPanel.getCurrentTool());
 
         logger.info("Texture Creator UI initialized with preferences persistence, color history, and selection management");
+    }
+
+    /**
+     * Set the GLFW window handle for mouse capture functionality.
+     * This is required for infinite dragging in the move tool.
+     *
+     * @param windowHandle the GLFW window handle
+     */
+    public void setWindowHandle(long windowHandle) {
+        toolbarPanel.setWindowHandle(windowHandle);
+        logger.debug("Window handle set for texture creator (mouse capture enabled)");
     }
 
     /**

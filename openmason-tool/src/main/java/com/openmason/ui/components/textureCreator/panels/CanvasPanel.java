@@ -191,6 +191,11 @@ public class CanvasPanel {
             // Update hovered handle for cursor feedback
             ImVec2 mousePos = ImGui.getMousePos();
 
+            // Update mouse delta for rotation tracking (works with captured mouse)
+            // Use horizontal delta (X) for rotation
+            ImVec2 mouseDelta = ImGui.getIO().getMouseDelta();
+            moveTool.updateMouseDelta(mouseDelta.x);
+
             moveTool.updateHoveredHandle(mousePos.x, mousePos.y, currentSelection, canvasState,
                     canvasRegionMin.x, canvasRegionMin.y);
 
@@ -203,6 +208,15 @@ public class CanvasPanel {
         // which is wired up in TextureCreatorImGui.renderCanvasPanel()
         // No need to manually sync selection here - canvases get it from SelectionManager
         PixelCanvas targetCanvas = drawingCanvas != null ? drawingCanvas : displayCanvas;
+
+        // Handle escape key to release mouse capture (move tool)
+        if (currentTool instanceof MoveToolController) {
+            MoveToolController moveTool = (MoveToolController) currentTool;
+            if (moveTool.isMouseCaptured() && ImGui.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE)) {
+                logger.debug("ESC pressed - releasing mouse capture");
+                moveTool.forceReleaseMouse();
+            }
+        }
 
         // Handle mouse input for drawing and navigation on the drawing canvas (active layer)
         handleInput(targetCanvas, canvasState,

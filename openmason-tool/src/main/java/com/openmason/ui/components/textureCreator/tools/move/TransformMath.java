@@ -32,9 +32,9 @@ final class TransformMath {
         double scaledX = nx * transform.scaleX();
         double scaledY = ny * transform.scaleY();
 
-        double radians = Math.toRadians(transform.rotationDegrees());
-        double cos = Math.cos(radians);
-        double sin = Math.sin(radians);
+        double[] cosSin = getExactTrigValues(transform.rotationDegrees());
+        double cos = cosSin[0];
+        double sin = cosSin[1];
 
         double rotatedX = scaledX * cos - scaledY * sin;
         double rotatedY = scaledX * sin + scaledY * cos;
@@ -57,9 +57,9 @@ final class TransformMath {
         double dx = canvasX - (bounds.x + centreX) - transform.translateX();
         double dy = canvasY - (bounds.y + centreY) - transform.translateY();
 
-        double radians = Math.toRadians(transform.rotationDegrees());
-        double cos = Math.cos(radians);
-        double sin = Math.sin(radians);
+        double[] cosSin = getExactTrigValues(transform.rotationDegrees());
+        double cos = cosSin[0];
+        double sin = cosSin[1];
 
         double unrotX = dx * cos + dy * sin;
         double unrotY = -dx * sin + dy * cos;
@@ -147,9 +147,13 @@ final class TransformMath {
 
                 double[] local = mapCanvasToLocal(sampleX, sampleY, snapshot, transform);
 
+                // Add small epsilon for floating-point tolerance
+                double localXAdj = local[0] + 1e-9;
+                double localYAdj = local[1] + 1e-9;
+
                 // Use floor for nearest-neighbor sampling (pixel owns [n, n+1))
-                int localX = (int) Math.floor(local[0]);
-                int localY = (int) Math.floor(local[1]);
+                int localX = (int) Math.floor(localXAdj);
+                int localY = (int) Math.floor(localYAdj);
 
                 // Check bounds after flooring
                 if (localX < 0 || localX >= snapshot.width() ||
@@ -207,5 +211,42 @@ final class TransformMath {
 
     static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    /**
+     * Returns exact trigonometric values for common angles to avoid floating-point
+     * precision issues at 90° and 270° rotations. For other angles, falls back to
+     * standard trigonometric functions.
+     *
+     * @param degrees the rotation angle in degrees
+     * @return array with [cos, sin] values
+     */
+    private static double[] getExactTrigValues(double degrees) {
+        // Normalize to [0, 360) range for comparison
+        double normalized = degrees % 360.0;
+        if (normalized < 0) {
+            normalized += 360.0;
+        }
+
+        // Check for common angles with a small tolerance for floating-point comparison
+        final double tolerance = 1e-6;
+
+        if (Math.abs(normalized) < tolerance || Math.abs(normalized - 360.0) < tolerance) {
+            // 0° or 360°: cos=1, sin=0
+            return new double[]{1.0, 0.0};
+        } else if (Math.abs(normalized - 90.0) < tolerance) {
+            // 90°: cos=0, sin=1
+            return new double[]{0.0, 1.0};
+        } else if (Math.abs(normalized - 180.0) < tolerance) {
+            // 180°: cos=-1, sin=0
+            return new double[]{-1.0, 0.0};
+        } else if (Math.abs(normalized - 270.0) < tolerance) {
+            // 270°: cos=0, sin=-1
+            return new double[]{0.0, -1.0};
+        } else {
+            // For all other angles, use standard trigonometric functions
+            double radians = Math.toRadians(degrees);
+            return new double[]{Math.cos(radians), Math.sin(radians)};
+        }
     }
 }

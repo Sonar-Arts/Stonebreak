@@ -33,6 +33,11 @@ public class TextureCreatorPreferences {
     public static final float DEFAULT_GRID_OPACITY = 0.5f;
     public static final float DEFAULT_CUBE_NET_OVERLAY_OPACITY = 0.5f;
 
+    // Rotation speed limits (degrees per pixel)
+    public static final float MIN_ROTATION_SPEED = 0.1f;
+    public static final float MAX_ROTATION_SPEED = 2.0f;
+    public static final float DEFAULT_ROTATION_SPEED = 0.5f;
+
     private final PreferencesManager preferencesManager;
 
     /**
@@ -79,6 +84,27 @@ public class TextureCreatorPreferences {
         float clamped = clamp(opacity, MIN_OPACITY, MAX_OPACITY);
         preferencesManager.setTextureEditorCubeNetOverlayOpacity(clamped);
         logger.debug("Cube net overlay opacity set to: {} (saved to preferences)", clamped);
+    }
+
+    /**
+     * Get rotation speed (degrees per pixel of mouse movement).
+     * Higher values = faster rotation.
+     * @return rotation speed (0.1 to 2.0)
+     */
+    public float getRotationSpeed() {
+        return preferencesManager.getTextureEditorRotationSpeed();
+    }
+
+    /**
+     * Set rotation speed (degrees per pixel of mouse movement).
+     * Higher values = faster rotation.
+     * Auto-saves to preferences file.
+     * @param speed rotation speed (0.1 to 2.0)
+     */
+    public void setRotationSpeed(float speed) {
+        float clamped = clamp(speed, MIN_ROTATION_SPEED, MAX_ROTATION_SPEED);
+        preferencesManager.setTextureEditorRotationSpeed(clamped);
+        logger.debug("Rotation speed set to: {} (saved to preferences)", clamped);
     }
 
     /**
@@ -142,7 +168,7 @@ public class TextureCreatorPreferences {
 
     @Override
     public String toString() {
-        return String.format("TextureCreatorPreferences{gridOpacity=%.2f, cubeNetOverlayOpacity=%.2f, colorHistory=%d colors}",
-                           getGridOpacity(), getCubeNetOverlayOpacity(), getColorHistory().size());
+        return String.format("TextureCreatorPreferences{gridOpacity=%.2f, cubeNetOverlayOpacity=%.2f, rotationSpeed=%.2f, colorHistory=%d colors}",
+                           getGridOpacity(), getCubeNetOverlayOpacity(), getRotationSpeed(), getColorHistory().size());
     }
 }

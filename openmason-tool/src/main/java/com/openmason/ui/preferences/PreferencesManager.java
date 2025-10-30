@@ -29,6 +29,7 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_GRID_OPACITY_KEY = "texture.editor.grid.opacity";
     private static final String TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY = "texture.editor.cube.net.overlay.opacity";
     private static final String TEXTURE_EDITOR_COLOR_HISTORY_KEY = "texture.editor.color.history";
+    private static final String TEXTURE_EDITOR_ROTATION_SPEED_KEY = "texture.editor.rotation.speed";
 
     // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
@@ -38,6 +39,7 @@ public class PreferencesManager {
     private static final float DEFAULT_TEXTURE_GRID_OPACITY = 0.5f;
     private static final float DEFAULT_CUBE_NET_OVERLAY_OPACITY = 0.5f;
     private static final String DEFAULT_COLOR_HISTORY = ""; // Empty list
+    private static final float DEFAULT_ROTATION_SPEED = 0.5f; // 0.5 degrees per pixel
     
     private final Properties properties;
     private final Path preferencesPath;
@@ -99,6 +101,7 @@ public class PreferencesManager {
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(DEFAULT_CUBE_NET_OVERLAY_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
+        properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
     }
     
     // Camera Settings
@@ -232,12 +235,40 @@ public class PreferencesManager {
     }
 
     /**
+     * Get texture editor rotation speed setting.
+     * Controls how many degrees of rotation per pixel of mouse movement.
+     * Higher values = faster rotation.
+     */
+    public float getTextureEditorRotationSpeed() {
+        String value = properties.getProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid rotation speed value: {}, using default", value);
+            }
+        }
+        return DEFAULT_ROTATION_SPEED;
+    }
+
+    /**
+     * Set texture editor rotation speed setting.
+     * Controls how many degrees of rotation per pixel of mouse movement.
+     * Higher values = faster rotation.
+     */
+    public void setTextureEditorRotationSpeed(float speed) {
+        properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(speed));
+        savePreferences();
+    }
+
+    /**
      * Reset texture creator settings to defaults.
      */
     public void resetTextureCreatorToDefaults() {
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(DEFAULT_CUBE_NET_OVERLAY_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
+        properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
         savePreferences();
     }
 

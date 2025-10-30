@@ -25,6 +25,7 @@ public class PreferencesPanel {
     // ImGui state holders for sliders (required by ImGui API)
     private final ImFloat gridOpacitySlider = new ImFloat();
     private final ImFloat cubeNetOverlayOpacitySlider = new ImFloat();
+    private final ImFloat rotationSpeedSlider = new ImFloat();
 
     /**
      * Create preferences panel.
@@ -47,6 +48,7 @@ public class PreferencesPanel {
         // Sync ImGui state with preferences
         gridOpacitySlider.set(preferences.getGridOpacity());
         cubeNetOverlayOpacitySlider.set(preferences.getCubeNetOverlayOpacity());
+        rotationSpeedSlider.set(preferences.getRotationSpeed());
 
         // === Grid Rendering Section ===
         if (ImGui.collapsingHeader("Grid Rendering")) {
@@ -96,6 +98,34 @@ public class PreferencesPanel {
                                  TextureCreatorPreferences.MAX_OPACITY,
                                  "%.2f")) {
                 preferences.setCubeNetOverlayOpacity(cubeNetOverlayOpacitySlider.get());
+            }
+
+            ImGui.spacing();
+            ImGui.unindent();
+        }
+
+        ImGui.spacing();
+
+        // === Move Tool Settings Section ===
+        if (ImGui.collapsingHeader("Move Tool")) {
+            ImGui.spacing();
+            ImGui.indent();
+
+            // Rotation Speed Slider
+            ImGui.text("Rotation Speed");
+            ImGui.sameLine();
+            ImGui.textDisabled("(?)");
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Controls rotation speed when using the move tool's rotate handle.\n" +
+                                "Higher values = faster rotation.\n" +
+                                "Default: 0.5 degrees per pixel of mouse movement");
+            }
+
+            if (ImGui.sliderFloat("##rotationSpeed", rotationSpeedSlider.getData(),
+                                 TextureCreatorPreferences.MIN_ROTATION_SPEED,
+                                 TextureCreatorPreferences.MAX_ROTATION_SPEED,
+                                 "%.2f deg/px")) {
+                preferences.setRotationSpeed(rotationSpeedSlider.get());
             }
 
             ImGui.spacing();
