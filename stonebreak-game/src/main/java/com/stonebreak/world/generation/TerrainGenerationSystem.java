@@ -7,6 +7,7 @@ import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
+import com.stonebreak.world.generation.features.terrain.TerrainFeatureRegistry;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.chunk.Chunk;
@@ -47,7 +48,7 @@ public class TerrainGenerationSystem {
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
-    private final com.stonebreak.world.generation.heightmap.DensityFunction densityFunction;
+    private final TerrainFeatureRegistry terrainFeatureRegistry;
 
     // Progress reporting
     private final LoadingProgressReporter progressReporter;
@@ -104,7 +105,9 @@ public class TerrainGenerationSystem {
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
-        this.densityFunction = new com.stonebreak.world.generation.heightmap.DensityFunction(seed);
+
+        // Initialize terrain feature registry with default features (caves, arches, overhangs)
+        this.terrainFeatureRegistry = TerrainFeatureRegistry.withDefaults(seed);
     }
 
     /**
@@ -201,12 +204,19 @@ public class TerrainGenerationSystem {
 
                 // STEP 4: Generate blocks for this column
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    // Check 3D density to determine if block should be solid
-                    // Creates overhangs, caves, and arches in appropriate biomes
-                    boolean isSolid = densityFunction.isSolid(worldX, y, worldZ, height, biome);
+                    // Check if below height (default solid)
+                    boolean shouldBeSolid = y < height;
 
-                    if (!isSolid) {
-                        // 3D noise says this should be air (overhang/cave)
+                    // Check terrain features (caves, overhangs, arches) if solid
+                    if (shouldBeSolid) {
+                        boolean shouldRemove = terrainFeatureRegistry.shouldRemoveBlock(worldX, y, worldZ, height, biome);
+                        if (shouldRemove) {
+                            shouldBeSolid = false; // Feature removes this block
+                        }
+                    }
+
+                    if (!shouldBeSolid) {
+                        // Block should be air (either above surface or removed by feature)
                         chunk.setBlock(x, y, z, BlockType.AIR);
                         continue;
                     }

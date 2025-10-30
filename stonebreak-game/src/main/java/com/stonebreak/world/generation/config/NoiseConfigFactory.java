@@ -222,6 +222,60 @@ public class NoiseConfigFactory {
     }
 
     /**
+     * Surface overhang noise: Cliff faces with dramatic ledges.
+     * Medium frequency (45-block scale) for cliff-sized features.
+     *
+     * Characteristics:
+     * - 2-3 octaves for smooth, large features
+     * - 0.35 persistence for low detail (prevents excessive carving)
+     * - 2.0 lacunarity (standard)
+     *
+     * Used by SurfaceOverhangFeature for rare, visually striking cliffs.
+     * High threshold (0.6) combined with low octaves ensures rarity.
+     *
+     * @return Noise config for surface overhangs
+     */
+    public static NoiseConfig forOverhangs() {
+        return new NoiseConfig(3, 0.35, 2.0);
+    }
+
+    /**
+     * Natural arch noise: Rock formations with tunnels.
+     * Tighter frequency (35-block scale) for arch-sized holes.
+     *
+     * Characteristics:
+     * - 3 octaves for distinct arch shapes
+     * - 0.4 persistence for moderate detail
+     * - 2.0 lacunarity (standard)
+     *
+     * Used by NaturalArchFeature for creating natural stone bridges
+     * and tunnels through rock formations at surface level.
+     *
+     * @return Noise config for natural arches
+     */
+    public static NoiseConfig forArches() {
+        return new NoiseConfig(3, 0.4, 2.0);
+    }
+
+    /**
+     * Cave system noise: Moderate underground cave networks.
+     * Large frequency (70-block scale) for spacious caves.
+     *
+     * Characteristics:
+     * - 4 octaves for detailed cave shapes
+     * - 0.5 persistence for balanced cave variation
+     * - 2.0 lacunarity (standard)
+     *
+     * Used by CaveSystemFeature for creating interconnected
+     * cave networks with moderate density (15-20% hollowness).
+     *
+     * @return Noise config for cave systems
+     */
+    public static NoiseConfig forCaveSystems() {
+        return new NoiseConfig(4, 0.5, 2.0);
+    }
+
+    /**
      * Continentalness climate noise: Large-scale regional climate distribution.
      * Very low frequency (10,000-block scale) for massive continental patterns.
      *
