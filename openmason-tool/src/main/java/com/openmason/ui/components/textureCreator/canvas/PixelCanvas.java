@@ -120,9 +120,12 @@ public class PixelCanvas {
 
         // Selection constraint: if selection is active, only allow modifications within selection
         // (unless bypass is enabled for special operations like move tool)
-        if (!bypassSelectionConstraint && activeSelection != null && !activeSelection.isEmpty()) {
-            if (!activeSelection.contains(x, y)) {
-                return; // Pixel is outside selection - ignore modification
+        if (!bypassSelectionConstraint) {
+            SelectionRegion selection = getActiveSelection();
+            if (selection != null && !selection.isEmpty()) {
+                if (!selection.contains(x, y)) {
+                    return; // Pixel is outside selection - ignore modification
+                }
             }
         }
 

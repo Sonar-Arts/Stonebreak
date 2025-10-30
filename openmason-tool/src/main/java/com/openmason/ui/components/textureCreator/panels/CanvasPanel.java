@@ -118,14 +118,16 @@ public class CanvasPanel {
             cursorPos.y + centerOffsetY
         );
 
-        // Get selection preview bounds if using selection tool
+        // Get selection preview if using selection tool
         int[] selectionPreviewBounds = null;
+        SelectionRegion pixelBasedPreview = null;
         if (currentTool instanceof SelectionTool) {
             SelectionTool selectionTool = (SelectionTool) currentTool;
             SelectionPreview preview = selectionTool.getPreview();
 
-            // Extract bounds from preview (currently only RectanglePreview supported in renderer)
+            // Handle different preview types
             if (preview instanceof RectanglePreview) {
+                // Rectangle preview: pass as bounds array for efficient rectangle rendering
                 RectanglePreview rectPreview = (RectanglePreview) preview;
                 selectionPreviewBounds = new int[]{
                     rectPreview.getStartX(),
@@ -133,12 +135,21 @@ public class CanvasPanel {
                     rectPreview.getEndX(),
                     rectPreview.getEndY()
                 };
+            } else if (preview instanceof com.openmason.ui.components.textureCreator.tools.selection.PixelsPreview) {
+                // Pixels preview: convert to MaskSelectionRegion for freeform rendering
+                com.openmason.ui.components.textureCreator.tools.selection.PixelsPreview pixelsPreview =
+                    (com.openmason.ui.components.textureCreator.tools.selection.PixelsPreview) preview;
+                if (!pixelsPreview.isEmpty()) {
+                    pixelBasedPreview = com.openmason.ui.components.textureCreator.selection.MaskSelectionRegion
+                        .fromEncodedPixels(pixelsPreview.getEncodedPixels());
+                }
             }
         }
 
         // Check if move tool has an active transform layer for preview
         PixelCanvas canvasToRender = displayCanvas;
-        if (currentTool instanceof MoveToolController) {
+        boolean moveToolActive = currentTool instanceof MoveToolController;
+        if (moveToolActive) {
             MoveToolController moveTool = (MoveToolController) currentTool;
             if (moveTool.hasActiveLayer() && drawingCanvas != null) {
                 // Create preview canvas with transformed layer composited
@@ -154,9 +165,23 @@ public class CanvasPanel {
             }
         }
 
+        // Determine which selection to render:
+        // 1. Hide selection overlay when move tool is active (matches Photoshop/GIMP behavior)
+        //    The move tool's own transform overlay (handles, bounding box) will be rendered instead
+        // 2. Show pixel-based preview (selection brush) if actively painting
+        // 3. Otherwise show the current selection
+        SelectionRegion selectionToRender;
+        if (moveToolActive && currentSelection != null) {
+            selectionToRender = null; // Hide overlay during move operations
+        } else if (pixelBasedPreview != null) {
+            selectionToRender = pixelBasedPreview; // Show real-time brush preview
+        } else {
+            selectionToRender = currentSelection; // Show normal selection
+        }
+
         // Render the display canvas (composited view) with opacity settings
         renderer.render(canvasToRender, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
-                       currentSelection, selectionPreviewBounds);
+                       selectionToRender, selectionPreviewBounds);
 
         // Render move tool overlay if using move tool
         if (currentTool instanceof MoveToolController) {

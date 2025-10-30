@@ -5,6 +5,7 @@ import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.selection.MaskSelectionRegion;
 import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
+import com.openmason.ui.components.textureCreator.tools.selection.PixelsPreview;
 import com.openmason.ui.components.textureCreator.tools.selection.SelectionPreview;
 import com.openmason.ui.components.textureCreator.tools.selection.SelectionTool;
 
@@ -134,7 +135,11 @@ public final class SelectionBrushTool implements SelectionTool {
 
     @Override
     public SelectionPreview getPreview() {
-        return null; // Preview handled by standard selection overlay after commit
+        // Return real-time preview during painting so users can see which pixels are being selected
+        if (isPainting && !workingPixels.isEmpty()) {
+            return new PixelsPreview(new HashSet<>(workingPixels));
+        }
+        return null;
     }
 
     @Override
