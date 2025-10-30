@@ -1,4 +1,4 @@
-package com.stonebreak.world.generation.features.terrain;
+package com.stonebreak.world.generation.terrain;
 
 /**
  * Utility class for depth-weighted density calculations used in 3D terrain features.

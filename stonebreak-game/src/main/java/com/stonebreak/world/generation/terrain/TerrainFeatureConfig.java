@@ -1,4 +1,4 @@
-package com.stonebreak.world.generation.features.terrain;
+package com.stonebreak.world.generation.terrain;
 
 /**
  * Configuration parameters for a terrain feature.

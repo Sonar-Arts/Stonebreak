@@ -7,7 +7,7 @@ import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
-import com.stonebreak.world.generation.features.terrain.TerrainFeatureRegistry;
+import com.stonebreak.world.generation.terrain.TerrainFeatureRegistry;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.chunk.Chunk;

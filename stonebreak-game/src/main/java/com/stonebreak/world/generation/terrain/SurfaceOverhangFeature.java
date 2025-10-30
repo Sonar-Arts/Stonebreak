@@ -1,7 +1,6 @@
-package com.stonebreak.world.generation.features.terrain;
+package com.stonebreak.world.generation.terrain;
 
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.config.NoiseConfig;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainNoiseWeights;
 import com.stonebreak.world.generation.heightmap.Noise3D;

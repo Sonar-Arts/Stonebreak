@@ -46,6 +46,23 @@ public class TerrainGenerationConfig {
      */
     public final float biomeBlendMinWeightThreshold;
 
+    // ========== Voronoi Biome Configuration ==========
+
+    /**
+     * Whether to use voronoi-based discrete biome regions.
+     * When true, biomes form blob-like regions (like Minecraft 1.18+).
+     * When false, biomes are selected continuously at each position (original behavior).
+     */
+    public final boolean enableVoronoiBiomes;
+
+    /**
+     * Size of each voronoi cell in blocks.
+     * Determines the typical size of biome regions.
+     * Larger values create bigger biome blobs, smaller values create smaller regions.
+     * Typical range: 32-128 blocks.
+     */
+    public final int biomeVoronoiCellSize;
+
     // ========== Climate Configuration ==========
 
     /**
@@ -147,6 +164,8 @@ public class TerrainGenerationConfig {
         this.biomeBlendSampleSpacing = builder.biomeBlendSampleSpacing;
         this.biomeBlendDistance = builder.biomeBlendDistance;
         this.biomeBlendMinWeightThreshold = builder.biomeBlendMinWeightThreshold;
+        this.enableVoronoiBiomes = builder.enableVoronoiBiomes;
+        this.biomeVoronoiCellSize = builder.biomeVoronoiCellSize;
         this.altitudeChillFactor = builder.altitudeChillFactor;
         this.moistureNoiseScale = builder.moistureNoiseScale;
         this.temperatureNoiseScale = builder.temperatureNoiseScale;
@@ -182,6 +201,10 @@ public class TerrainGenerationConfig {
         private int biomeBlendSampleSpacing = 8;
         private float biomeBlendDistance = 32.0f;
         private float biomeBlendMinWeightThreshold = 0.01f;
+
+        // Voronoi Biome - Defaults
+        private boolean enableVoronoiBiomes = true;  // Enable voronoi by default for discrete regions
+        private int biomeVoronoiCellSize = 64;  // 64-block cells create nice-sized biome regions
 
         // Climate - Defaults
         private float altitudeChillFactor = 200.0f;
@@ -235,6 +258,21 @@ public class TerrainGenerationConfig {
                 throw new IllegalArgumentException("Min weight threshold must be in [0, 1], got: " + threshold);
             }
             this.biomeBlendMinWeightThreshold = threshold;
+            return this;
+        }
+
+        // Voronoi Biome Setters
+
+        public Builder enableVoronoiBiomes(boolean enable) {
+            this.enableVoronoiBiomes = enable;
+            return this;
+        }
+
+        public Builder biomeVoronoiCellSize(int cellSize) {
+            if (cellSize <= 0) {
+                throw new IllegalArgumentException("Voronoi cell size must be positive, got: " + cellSize);
+            }
+            this.biomeVoronoiCellSize = cellSize;
             return this;
         }
 
@@ -364,6 +402,8 @@ public class TerrainGenerationConfig {
                 ", biomeBlendSampleSpacing=" + biomeBlendSampleSpacing +
                 ", biomeBlendDistance=" + biomeBlendDistance +
                 ", biomeBlendMinWeightThreshold=" + biomeBlendMinWeightThreshold +
+                ", enableVoronoiBiomes=" + enableVoronoiBiomes +
+                ", biomeVoronoiCellSize=" + biomeVoronoiCellSize +
                 ", altitudeChillFactor=" + altitudeChillFactor +
                 ", moistureNoiseScale=" + moistureNoiseScale +
                 ", temperatureNoiseScale=" + temperatureNoiseScale +

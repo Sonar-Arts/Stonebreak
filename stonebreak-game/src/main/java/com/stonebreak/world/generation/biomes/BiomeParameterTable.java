@@ -98,7 +98,7 @@ public class BiomeParameterTable {
         // PLAINS: Flat, temperate, moderate moisture
         addBiome(
                 BiomeType.PLAINS,
-                new Range(-0.1f, 1.0f),   // Continentalness: coast to inland
+                new Range(-0.4f, 0.5f),   // Continentalness: coastal to mid-elevation
                 new Range(0.5f, 1.0f),    // Erosion: very flat
                 new Range(-0.4f, 0.4f),   // PV: gentle
                 new Range(-1.0f, 0.5f),   // Weirdness: normal
@@ -120,7 +120,7 @@ public class BiomeParameterTable {
         // STONY_PEAKS: Very mountainous, cold (altitude), any humidity
         addBiome(
                 BiomeType.STONY_PEAKS,
-                new Range(-0.2f, 1.0f),   // Continentalness: anywhere
+                new Range(0.4f, 1.0f),    // Continentalness: high elevation only
                 new Range(-1.0f, -0.4f),  // Erosion: very mountainous
                 new Range(0.2f, 1.0f),    // PV: high peaks
                 new Range(-1.0f, 1.0f),   // Weirdness: any
@@ -133,7 +133,7 @@ public class BiomeParameterTable {
         // SNOWY_PLAINS: Flat, cold, moderate moisture
         addBiome(
                 BiomeType.SNOWY_PLAINS,
-                new Range(-0.1f, 1.0f),   // Continentalness: coast to inland
+                new Range(-0.4f, 0.4f),   // Continentalness: coastal to mid-elevation
                 new Range(0.4f, 1.0f),    // Erosion: flat
                 new Range(-0.5f, 0.5f),   // PV: gentle
                 new Range(-1.0f, 0.6f),   // Weirdness: normal
@@ -144,7 +144,7 @@ public class BiomeParameterTable {
         // TAIGA: Hilly forests, cold, wet
         addBiome(
                 BiomeType.TAIGA,
-                new Range(0.0f, 1.0f),    // Continentalness: inland
+                new Range(0.0f, 0.6f),    // Continentalness: mid-elevation inland
                 new Range(0.0f, 0.7f),    // Erosion: hilly to moderate
                 new Range(-0.6f, 0.6f),   // PV: varied
                 new Range(-1.0f, 0.5f),   // Weirdness: normal
@@ -155,7 +155,7 @@ public class BiomeParameterTable {
         // TUNDRA: Barren, very cold, dry
         addBiome(
                 BiomeType.TUNDRA,
-                new Range(0.0f, 1.0f),    // Continentalness: inland
+                new Range(0.0f, 0.5f),    // Continentalness: mid-elevation inland
                 new Range(0.2f, 0.8f),    // Erosion: moderate
                 new Range(-0.5f, 0.5f),   // PV: moderate
                 new Range(-1.0f, 0.6f),   // Weirdness: normal
@@ -166,7 +166,7 @@ public class BiomeParameterTable {
         // ICE_FIELDS: Flat glaciers, extremely cold, any moisture
         addBiome(
                 BiomeType.ICE_FIELDS,
-                new Range(-0.1f, 1.0f),   // Continentalness: anywhere
+                new Range(-0.4f, 0.2f),   // Continentalness: low to mid elevation
                 new Range(0.5f, 1.0f),    // Erosion: very flat (glaciers)
                 new Range(-0.4f, 0.4f),   // PV: gentle
                 new Range(-1.0f, 0.7f),   // Weirdness: normal

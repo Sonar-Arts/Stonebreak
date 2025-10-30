@@ -37,6 +37,8 @@ public class BiomeManager implements IBiomeManager {
     private final NoiseRouter noiseRouter;
     private final BiomeParameterTable parameterTable;
     private final int seaLevel;
+    private final boolean useVoronoi;
+    private final BiomeVoronoiGrid voronoiGrid;
 
     /**
      * Creates a new biome manager with multi-noise parameter selection.
@@ -48,6 +50,19 @@ public class BiomeManager implements IBiomeManager {
         this.noiseRouter = new NoiseRouter(seed, config);
         this.parameterTable = new BiomeParameterTable();
         this.seaLevel = WorldConfiguration.SEA_LEVEL;
+        this.useVoronoi = config.enableVoronoiBiomes;
+
+        // Initialize voronoi grid if enabled
+        if (useVoronoi) {
+            this.voronoiGrid = new BiomeVoronoiGrid(
+                    noiseRouter,
+                    parameterTable,
+                    config.biomeVoronoiCellSize,
+                    seaLevel
+            );
+        } else {
+            this.voronoiGrid = null;
+        }
     }
 
     /**
@@ -67,7 +82,11 @@ public class BiomeManager implements IBiomeManager {
     /**
      * Determines the biome type at a world position.
      *
-     * Multi-Noise System:
+     * Supports two modes:
+     * - Voronoi mode: Returns biome from nearest voronoi grid point (discrete regions)
+     * - Continuous mode: Samples parameters and selects biome at this exact position
+     *
+     * Multi-Noise System (continuous mode):
      * 1. Sample all 6 parameters via NoiseRouter
      * 2. All parameters sampled from noise (temperature is purely 2D noise-based)
      * 3. Lookup biome in parameter table using 6D point
@@ -81,6 +100,12 @@ public class BiomeManager implements IBiomeManager {
      */
     @Override
     public BiomeType getBiomeAtHeight(int x, int z, int height) {
+        // Use voronoi grid if enabled (discrete biome regions)
+        if (useVoronoi) {
+            return voronoiGrid.getBiome(x, z);
+        }
+
+        // Otherwise use continuous multi-noise selection
         // Sample all 6 parameters from noise
         MultiNoiseParameters params = noiseRouter.sampleParameters(x, z, height);
 
