@@ -9,6 +9,7 @@ import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.components.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
+import com.openmason.ui.components.textureCreator.tools.grabber.GrabberTool;
 import com.openmason.ui.components.textureCreator.tools.selection.SelectionTool;
 import com.openmason.ui.components.textureCreator.tools.selection.SelectionPreview;
 import com.openmason.ui.components.textureCreator.tools.selection.RectanglePreview;
@@ -262,8 +263,11 @@ public class CanvasPanel {
             }
         }
 
-        // Handle panning with middle mouse button
-        if (middleMouseDown) {
+        // Handle panning with middle mouse button OR grabber tool with left mouse button
+        boolean grabberToolActive = (currentTool instanceof GrabberTool) && ((GrabberTool) currentTool).isActive();
+        boolean shouldPan = middleMouseDown || (leftMouseDown && grabberToolActive);
+
+        if (shouldPan) {
             if (!canvasState.isPanning()) {
                 canvasState.startPanning(mousePos.x, mousePos.y);
             } else {

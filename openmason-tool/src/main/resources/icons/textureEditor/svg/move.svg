@@ -1,48 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-  <!-- Move/Transform tool icon - shows selection with transform handles -->
+  <!-- Minimalist Move/Transform tool icon - Four-way arrows -->
 
-  <!-- Selection rectangle -->
-  <rect x="8" y="9" width="16" height="14"
-        fill="none"
-        stroke="#3399FF"
-        stroke-width="1.5"
-        stroke-dasharray="3,2"/>
+  <!-- Center circle -->
+  <circle cx="16" cy="16" r="3"
+          fill="#4A90E2" stroke="#2E5C8A" stroke-width="1.5"/>
 
-  <!-- Corner resize handles -->
-  <rect x="6" y="7" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="22" y="7" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="6" y="19" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="22" y="19" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <!-- Up arrow -->
+  <path d="M 16 5 L 19 9 L 17 9 L 17 13 L 15 13 L 15 9 L 13 9 Z"
+        fill="#4A90E2" stroke="#2E5C8A" stroke-width="1.5" stroke-linejoin="round"/>
 
-  <!-- Edge resize handles -->
-  <rect x="14" y="7" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="14" y="19" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="6" y="13" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <rect x="22" y="13" width="4" height="4" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
+  <!-- Down arrow -->
+  <path d="M 16 27 L 13 23 L 15 23 L 15 19 L 17 19 L 17 23 L 19 23 Z"
+        fill="#4A90E2" stroke="#2E5C8A" stroke-width="1.5" stroke-linejoin="round"/>
 
-  <!-- Rotation handle line (from top center to rotation handle) -->
-  <line x1="16" y1="7" x2="16" y2="4" stroke="#3399FF" stroke-width="1.5"/>
+  <!-- Left arrow -->
+  <path d="M 5 16 L 9 13 L 9 15 L 13 15 L 13 17 L 9 17 L 9 19 Z"
+        fill="#4A90E2" stroke="#2E5C8A" stroke-width="1.5" stroke-linejoin="round"/>
 
-  <!-- Rotation handle (circle at top) -->
-  <circle cx="16" cy="4" r="2.5" fill="#FFFFFF" stroke="#3399FF" stroke-width="1.5"/>
-  <!-- Crosshair in rotation handle -->
-  <line x1="14.5" y1="4" x2="17.5" y2="4" stroke="#3399FF" stroke-width="1"/>
-  <line x1="16" y1="2.5" x2="16" y2="5.5" stroke="#3399FF" stroke-width="1"/>
-
-  <!-- Move cursor in center (subtle four-way arrows) -->
-  <g opacity="0.6">
-    <!-- Vertical line -->
-    <line x1="16" y1="14" x2="16" y2="18" stroke="#4A90E2" stroke-width="1" stroke-linecap="round"/>
-    <!-- Horizontal line -->
-    <line x1="14" y1="16" x2="18" y2="16" stroke="#4A90E2" stroke-width="1" stroke-linecap="round"/>
-    <!-- Up arrow -->
-    <path d="M 16 14 L 15 15 M 16 14 L 17 15" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
-    <!-- Down arrow -->
-    <path d="M 16 18 L 15 17 M 16 18 L 17 17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
-    <!-- Left arrow -->
-    <path d="M 14 16 L 15 15 M 14 16 L 15 17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
-    <!-- Right arrow -->
-    <path d="M 18 16 L 17 15 M 18 16 L 17 17" stroke="#4A90E2" stroke-width="1" stroke-linecap="round" fill="none"/>
-  </g>
+  <!-- Right arrow -->
+  <path d="M 27 16 L 23 13 L 23 15 L 19 15 L 19 17 L 23 17 L 23 19 Z"
+        fill="#4A90E2" stroke="#2E5C8A" stroke-width="1.5" stroke-linejoin="round"/>
 </svg>

@@ -3,6 +3,7 @@ package com.openmason.ui.components.textureCreator.panels;
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.tools.*;
+import com.openmason.ui.components.textureCreator.tools.grabber.GrabberTool;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import imgui.ImGui;
 import org.slf4j.Logger;
@@ -36,7 +37,13 @@ public class ToolbarPanel {
         this.tools = new ArrayList<>();
         this.iconManager = TextureToolIconManager.getInstance();
 
-        // Initialize all tools
+        // Initialize all tools - Grabber is first (default tool), Move tool is second
+        tools.add(new GrabberTool());
+
+        // Store move tool reference for later configuration
+        moveToolInstance = new MoveToolController();
+        tools.add(moveToolInstance);
+
         tools.add(new PencilTool());
         tools.add(new EraserTool());
         tools.add(new FillTool());
@@ -46,12 +53,8 @@ public class ToolbarPanel {
         selectionBrushTool = new SelectionBrushTool();
         tools.add(selectionBrushTool);
 
-        // Store move tool reference for later configuration
-        moveToolInstance = new MoveToolController();
-        tools.add(moveToolInstance);
-
         // Set default tool
-        currentTool = tools.get(0); // Pencil
+        currentTool = tools.get(0); // Grabber
 
         logger.debug("Toolbar panel created with {} tools", tools.size());
     }

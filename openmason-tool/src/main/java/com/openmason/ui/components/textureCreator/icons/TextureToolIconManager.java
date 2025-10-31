@@ -57,6 +57,7 @@ public class TextureToolIconManager {
     private static final Map<String, String> TOOL_ICON_MAP = new HashMap<>();
 
     static {
+        TOOL_ICON_MAP.put("Grabber", "grabber.svg");
         TOOL_ICON_MAP.put("Pencil", "pencil.svg");
         TOOL_ICON_MAP.put("Eraser", "eraser.svg");
         TOOL_ICON_MAP.put("Fill", "fill.svg");
