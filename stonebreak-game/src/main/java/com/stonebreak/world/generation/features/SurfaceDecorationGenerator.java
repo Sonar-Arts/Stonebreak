@@ -67,7 +67,7 @@ public class SurfaceDecorationGenerator {
 
                     // Phase 4: New biome decorations
                     case TUNDRA:
-                        generateTundraFeatures(world, chunk, x, z, worldX, worldZ, surfaceHeight);
+                        generateTundraFeatures(world, chunk, x, z, worldX, worldZ, surfaceHeight, snowLayerManager);
                         break;
                     case TAIGA:
                         generateTaigaSnow(world, chunk, x, z, worldX, worldZ, surfaceHeight, snowLayerManager);
@@ -200,22 +200,26 @@ public class SurfaceDecorationGenerator {
     // ==================== Phase 4: New Biome Decoration Methods ====================
 
     /**
-     * Generates tundra features: sparse ice patches, gravel deposits, exposed stone.
+     * Generates tundra features: snow layers on snowy dirt surface, sparse ice patches.
      */
     private void generateTundraFeatures(World world, Chunk chunk, int x, int z,
-                                        int worldX, int worldZ, int surfaceHeight) {
+                                        int worldX, int worldZ, int surfaceHeight,
+                                        SnowLayerManager snowLayerManager) {
         if (surfaceHeight <= 64) return;
 
         BlockType surfaceBlock = chunk.getBlock(x, surfaceHeight - 1, z);
-        if ((surfaceBlock == BlockType.GRAVEL || surfaceBlock == BlockType.STONE) &&
+        if (surfaceBlock == BlockType.SNOWY_DIRT &&
             chunk.getBlock(x, surfaceHeight, z) == BlockType.AIR) {
 
             float featureChance = deterministicRandom.getFloat(worldX, worldZ, "tundra_feature");
 
             if (featureChance < 0.01f) { // 1% chance for ice patches
                 world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.ICE);
-            } else if (featureChance < 0.03f) { // 2% chance for gravel deposits
-                world.setBlockAt(worldX, surfaceHeight - 1, worldZ, BlockType.GRAVEL);
+            } else if (featureChance < 0.55f) { // 54% chance for snow layers (guaranteed coverage)
+                world.setBlockAt(worldX, surfaceHeight, worldZ, BlockType.SNOW);
+                // Variable snow layer heights (1-3 layers)
+                int layers = 1 + deterministicRandom.getInt(worldX, worldZ, "tundra_snow_layers", 3);
+                snowLayerManager.setSnowLayers(worldX, surfaceHeight, worldZ, layers);
             }
         }
     }

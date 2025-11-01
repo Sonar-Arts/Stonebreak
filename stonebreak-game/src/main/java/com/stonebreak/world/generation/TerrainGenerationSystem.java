@@ -2,6 +2,7 @@ package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.biomes.BiomeManager;
+import com.stonebreak.world.generation.biomes.BiomeTerrainModifierRegistry;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -23,18 +24,19 @@ import java.util.Random;
  * This class follows the Controller pattern - coordinating various generators
  * without containing detailed generation logic.
  *
- * Multi-Noise System:
+ * Multi-Noise System + Two-Pass Generation:
  * - Terrain generates independently from biomes (continentalness + erosion + PV + weirdness)
  * - Biomes selected using 6 parameters (adds temperature + humidity to terrain parameters)
  * - Same biome can appear on varied terrain (flat deserts AND hilly deserts)
  * - Rare biome variants via weirdness parameter
  *
- * Generation Order:
+ * Generation Order (Two-Pass System):
  * 1. Sample multi-noise parameters (6D point in parameter space)
- * 2. Generate terrain height from parameters (terrain-independent)
+ * 2. PASS 1: Generate terrain height with hints (mesa terracing, peak sharpening, etc.)
  * 3. Select biome from parameters (biome adapts to terrain)
- * 4. Apply surface materials based on biome
- * 5. Populate features (ores, vegetation, decorations)
+ * 4. PASS 2: Apply biome-specific modifiers (canyon carving, hoodoos, dunes, etc.)
+ * 5. Apply surface materials based on biome
+ * 6. Populate features (ores, vegetation, decorations)
  *
  * Refactored to follow SOLID principles with modular, single-responsibility components.
  */
@@ -45,6 +47,7 @@ public class TerrainGenerationSystem {
     // Subsystem generators
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
+    private final BiomeTerrainModifierRegistry modifierRegistry;  // Phase 2: Biome-specific modifiers
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -102,6 +105,7 @@ public class TerrainGenerationSystem {
         // Multi-Noise System: HeightMapGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
         this.heightMapGenerator = new HeightMapGenerator(seed, config);
         this.biomeManager = new BiomeManager(seed, config);
+        this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
@@ -156,11 +160,12 @@ public class TerrainGenerationSystem {
      * Uses chunk.setBlock() which internally uses CCO API for block operations.
      * Mesh generation happens automatically via CCO dirty tracking when chunk is rendered.
      *
-     * MULTI-NOISE SYSTEM:
+     * MULTI-NOISE SYSTEM + TWO-PASS GENERATION:
      * 1. Sample parameters (continentalness, erosion, PV, weirdness, temperature, humidity)
-     * 2. Generate height from parameters (terrain-independent, no biome influence)
+     * 2. PASS 1: Generate base height with terrain hints (mesa, peaks, hills, plains)
      * 3. Select biome from parameters (biome adapts to terrain)
-     * 4. Apply surface materials based on biome
+     * 4. PASS 2: Apply biome-specific modifiers (canyons, hoodoos, dunes, outcrops)
+     * 5. Apply surface materials based on biome
      *
      * @param chunkX Chunk X coordinate
      * @param chunkZ Chunk Z coordinate
@@ -185,24 +190,31 @@ public class TerrainGenerationSystem {
                 // STEP 1: Sample all 6 parameters at this position (sea level for initial sampling)
                 MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(worldX, worldZ, SEA_LEVEL);
 
-                // STEP 2: Generate terrain height from parameters (INDEPENDENT of biome)
+                // STEP 2: PASS 1 - Generate base terrain height with terrain hints
+                // Terrain hints detect parameter patterns (mesa, peaks, hills, plains)
+                // and apply appropriate terrain generation logic BEFORE biome selection
                 // Continentalness → base height
-                // Erosion → flat vs mountainous
-                // Peaks & Valleys → amplify extremes
-                // Weirdness → plateaus, mesas
-                int height = heightMapGenerator.generateHeight(worldX, worldZ, params);
+                // Terrain hint → mesa terracing, peak sharpening, hill flattening, etc.
+                int baseHeight = heightMapGenerator.generateHeight(worldX, worldZ, params);
 
                 // STEP 3: Select biome using parameters with altitude-adjusted temperature
                 // Re-sample with actual height for accurate temperature
-                MultiNoiseParameters adjustedParams = biomeManager.getNoiseRouter().sampleParameters(worldX, worldZ, height);
-                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, height);
+                MultiNoiseParameters adjustedParams = biomeManager.getNoiseRouter().sampleParameters(worldX, worldZ, baseHeight);
+                BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, baseHeight);
+
+                // STEP 4: PASS 2 - Apply biome-specific modifiers
+                // Modifiers add fine-tuned features AFTER biome selection:
+                // - Badlands: Canyon carving, hoodoo/spire generation
+                // - Stony Peaks: Vertical amplification, rocky outcrops
+                // - Desert: Rolling dune patterns
+                int height = modifierRegistry.applyModifier(biome, baseHeight, adjustedParams, worldX, worldZ);
 
                 // Update progress mid-chunk
                 if (x == 8 && z == 8) {
                     updateLoadingProgress("Applying Surface Materials");
                 }
 
-                // STEP 4: Generate blocks for this column
+                // STEP 5: Generate blocks for this column
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
@@ -295,7 +307,7 @@ public class TerrainGenerationSystem {
             case PLAINS, SNOWY_PLAINS -> BlockType.DIRT;
 
             // Phase 4: New biomes
-            case TUNDRA -> BlockType.STONE;  // Frozen permafrost bedrock
+            case TUNDRA -> BlockType.DIRT;  // Dirt beneath snowy surface
             case TAIGA -> BlockType.DIRT;  // Forest soil
             case STONY_PEAKS -> BlockType.STONE;  // Solid rock mountains
             case GRAVEL_BEACH -> BlockType.SAND;  // Sandy subsurface beneath gravel
@@ -322,7 +334,7 @@ public class TerrainGenerationSystem {
             case SNOWY_PLAINS -> BlockType.SNOWY_DIRT;
 
             // Phase 4: New biomes
-            case TUNDRA -> BlockType.GRAVEL;  // Permafrost-like gravel surface
+            case TUNDRA -> BlockType.SNOWY_DIRT;  // Snow-covered tundra surface
             case TAIGA -> BlockType.SNOWY_DIRT;  // Snow-covered forest floor
             case STONY_PEAKS -> BlockType.STONE;  // Exposed rocky peaks
             case GRAVEL_BEACH -> BlockType.GRAVEL;  // Gravel shoreline (mixed with sand in decorations)

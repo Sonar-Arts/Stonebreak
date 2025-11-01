@@ -13,6 +13,7 @@ import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCuboidGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsCrossGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsGeometryService;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
+import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsSnowLayerGenerator;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsAtlasTextureMapper;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsTexturing.MmsTextureMapper;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -36,6 +37,7 @@ public class MmsCcoAdapter {
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
     private MmsWaterGenerator waterGenerator; // Created when world is set
+    private MmsSnowLayerGenerator snowLayerGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
 
     /**
@@ -57,7 +59,8 @@ public class MmsCcoAdapter {
 
         if (world != null) {
             this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
-            System.out.println("[MmsCcoAdapter] Water generator initialized with provided world instance");
+            this.snowLayerGenerator = new MmsSnowLayerGenerator(world);
+            System.out.println("[MmsCcoAdapter] Water and snow layer generators initialized with provided world instance");
         }
     }
 
@@ -73,7 +76,8 @@ public class MmsCcoAdapter {
         }
         this.world = world;
         this.waterGenerator = new MmsWaterGenerator(world, textureMapper);
-        System.out.println("[MmsCcoAdapter] World instance set successfully (water generator initialized)");
+        this.snowLayerGenerator = new MmsSnowLayerGenerator(world);
+        System.out.println("[MmsCcoAdapter] World instance set successfully (water and snow layer generators initialized)");
     }
 
     /**
@@ -119,6 +123,12 @@ public class MmsCcoAdapter {
                         // Handle water blocks with special geometry
                         if (blockType == BlockType.WATER) {
                             addWaterBlockWithCulling(builder, lx, ly, lz, chunkX, chunkZ, chunkData);
+                            continue;
+                        }
+
+                        // Handle snow layer blocks with variable height geometry
+                        if (blockType == BlockType.SNOW) {
+                            addSnowLayerBlockWithCulling(builder, lx, ly, lz, chunkX, chunkZ, chunkData);
                             continue;
                         }
 
@@ -190,6 +200,55 @@ public class MmsCcoAdapter {
         // Add all 24 indices to the builder
         for (int index : crossIndices) {
             builder.addIndex(index);
+        }
+    }
+
+    /**
+     * Adds a snow layer block with face culling and variable height geometry.
+     */
+    private void addSnowLayerBlockWithCulling(MmsMeshBuilder builder,
+                                             int lx, int ly, int lz, int chunkX, int chunkZ,
+                                             CcoChunkData chunkData) {
+        if (snowLayerGenerator == null) {
+            // Fallback to standard cube if snow generator not initialized
+            addCubeBlockWithCulling(builder, BlockType.SNOW, lx, ly, lz, chunkX, chunkZ, chunkData);
+            return;
+        }
+
+        float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+        float worldY = ly;
+        float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+
+        // Check each face for culling (snow has special culling rules)
+        for (int face = 0; face < 6; face++) {
+            if (!shouldRenderSnowFace(lx, ly, lz, face, chunkData)) {
+                continue; // Face is culled
+            }
+
+            // Generate snow-specific geometry with variable heights
+            float[] vertices = snowLayerGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
+            float[] normals = snowLayerGenerator.generateFaceNormals(face);
+
+            // Generate texture coordinates (same as regular snow block)
+            float[] texCoords = textureMapper.generateFaceTextureCoordinates(BlockType.SNOW, face);
+
+            // Generate alpha flags (snow is opaque)
+            float[] alphaFlags = new float[]{0.0f, 0.0f, 0.0f, 0.0f};
+
+            // Add face to builder
+            builder.beginFace();
+            for (int i = 0; i < 4; i++) {
+                int vIdx = i * 3;
+                int tIdx = i * 2;
+
+                builder.addVertex(
+                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                    texCoords[tIdx], texCoords[tIdx + 1],
+                    normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
+                    0.0f, alphaFlags[i] // No special flags needed
+                );
+            }
+            builder.endFace();
         }
     }
 
@@ -291,6 +350,36 @@ public class MmsCcoAdapter {
                 );
             }
             builder.endFace();
+        }
+    }
+
+    /**
+     * Determines if a snow layer face should be rendered based on adjacent blocks.
+     * Snow layers have special culling rules:
+     * - Always render sides (to show snow thickness)
+     * - Cull top if covered by solid block
+     * - Cull bottom if on ground or another block
+     */
+    private boolean shouldRenderSnowFace(int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        // Get adjacent block coordinates
+        int adjX = lx + getFaceOffsetX(face);
+        int adjY = ly + getFaceOffsetY(face);
+        int adjZ = lz + getFaceOffsetZ(face);
+
+        // Get adjacent block (handles chunk boundaries via world)
+        BlockType adjacentBlock = getAdjacentBlock(adjX, adjY, adjZ, chunkData);
+
+        // Face-specific culling rules for snow layers
+        if (face == 0) {
+            // Top face: cull only if covered by solid/opaque block
+            return adjacentBlock == BlockType.AIR || adjacentBlock.isTransparent();
+        } else if (face == 1) {
+            // Bottom face: always cull (snow sits on blocks, no need to render bottom)
+            return false;
+        } else {
+            // Side faces (N/S/E/W): always render to show snow layer thickness
+            // Only cull against other snow blocks at same position (which shouldn't happen)
+            return adjacentBlock != BlockType.SNOW;
         }
     }
 
@@ -416,6 +505,8 @@ public class MmsCcoAdapter {
      * - Water: Semi-transparent liquid
      * - Leaves: Alpha-tested foliage (all tree types)
      * - Flowers: Cross-section blocks with alpha testing
+     * - Snow: Variable-height layers (not solid full blocks)
+     * - Ice: Transparent frozen water
      *
      * @param blockType Block type to check
      * @return true if block is transparent
@@ -426,7 +517,9 @@ public class MmsCcoAdapter {
                blockType == BlockType.PINE_LEAVES ||
                blockType == BlockType.ELM_LEAVES ||
                blockType == BlockType.ROSE ||
-               blockType == BlockType.DANDELION;
+               blockType == BlockType.DANDELION ||
+               blockType == BlockType.SNOW ||
+               blockType == BlockType.ICE;
     }
 
     /**

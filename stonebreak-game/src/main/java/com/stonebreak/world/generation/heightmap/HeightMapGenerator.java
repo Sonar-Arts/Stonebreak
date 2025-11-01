@@ -19,6 +19,14 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * - Peaks & Valleys: Amplifies height extremes
  * - Weirdness: Creates plateaus and mesas
  *
+ * Terrain Hint System (Phase 1 Enhancement):
+ * Parameter patterns are detected and terrain-specific generation applied:
+ * - MESA: Large terracing, plateau flattening
+ * - SHARP_PEAKS: Amplified spikes, jagged surfaces
+ * - GENTLE_HILLS: Reduced variation, smooth terrain
+ * - FLAT_PLAINS: Minimal variation
+ * - NORMAL: Standard terrain generation
+ *
  * Follows Single Responsibility Principle - only handles height calculations.
  * Follows Dependency Inversion Principle - configuration injected via constructor.
  *
@@ -29,6 +37,8 @@ public class HeightMapGenerator implements IHeightMapGenerator {
 
     private final long seed;
     private final NoiseGenerator continentalnessNoise;
+    private final NoiseGenerator plateauNoise;  // For mesa plateau variation
+    private final NoiseGenerator spireNoise;    // For peak jaggedness
     private final SplineInterpolator terrainSpline;
     private final float continentalnessNoiseScale;
     private final int seaLevel;
@@ -46,6 +56,8 @@ public class HeightMapGenerator implements IHeightMapGenerator {
     public HeightMapGenerator(long seed, TerrainGenerationConfig config) {
         this.seed = seed;
         this.continentalnessNoise = new NoiseGenerator(seed + 2, NoiseConfigFactory.continentalness());
+        this.plateauNoise = new NoiseGenerator(seed + 1000, NoiseConfigFactory.temperature()); // Reuse config for variety
+        this.spireNoise = new NoiseGenerator(seed + 2000, NoiseConfigFactory.moisture()); // Reuse config for jaggedness
         this.terrainSpline = new SplineInterpolator();
         this.continentalnessNoiseScale = config.continentalnessNoiseScale;
         this.seaLevel = WorldConfiguration.SEA_LEVEL;
@@ -83,13 +95,16 @@ public class HeightMapGenerator implements IHeightMapGenerator {
     }
 
     /**
-     * Generates terrain height using multi-noise parameters (NEW SYSTEM).
+     * Generates terrain height using multi-noise parameters with terrain hint system.
      *
-     * This is the core of terrain-independent generation. Height is determined by:
+     * This is the core of terrain-independent generation with Phase 1 enhancements.
+     * Height is determined by:
      * 1. Continentalness → Base height (ocean vs inland)
-     * 2. Erosion → Flatten or amplify (high erosion = flat plains, low erosion = mountains)
-     * 3. Peaks & Valleys → Amplify height extremes (make peaks higher, valleys deeper)
-     * 4. Weirdness → Create plateaus and mesas (terracing effect)
+     * 2. Terrain hint detection → Classify terrain type (mesa, peaks, hills, plains, normal)
+     * 3. Hint-specific generation → Apply appropriate terrain logic
+     *
+     * The terrain hint system creates natural alignment between terrain shape and biomes
+     * because both use the same underlying parameters (the "soft link" approach).
      *
      * Biomes NO LONGER affect terrain height - they only determine surface materials.
      *
@@ -102,19 +117,20 @@ public class HeightMapGenerator implements IHeightMapGenerator {
         // Step 1: Base height from continentalness (same as before)
         int baseHeight = (int) terrainSpline.interpolate(params.continentalness);
 
-        // Step 2: Apply erosion factor (flat vs mountainous)
-        baseHeight = applyErosionFactor(baseHeight, params.erosion);
+        // Step 2: Detect terrain hint from parameter pattern
+        TerrainHint hint = TerrainHintClassifier.classifyTerrain(params);
 
-        // Step 3: Apply peaks & valleys (amplify extremes)
-        baseHeight = applyPeaksValleys(baseHeight, params.peaksValleys);
-
-        // Step 4: Apply weirdness (plateaus, mesas, terracing)
-        if (Math.abs(params.weirdness) > 0.5f) {
-            baseHeight = applyWeirdnessTerrain(baseHeight, params.weirdness);
-        }
+        // Step 3: Apply hint-specific terrain generation
+        int height = switch (hint) {
+            case MESA -> applyMesaTerrain(baseHeight, params, x, z);
+            case SHARP_PEAKS -> applySharpPeaksTerrain(baseHeight, params, x, z);
+            case GENTLE_HILLS -> applyGentleHillsTerrain(baseHeight, params, x, z);
+            case FLAT_PLAINS -> applyFlatPlainsTerrain(baseHeight, params, x, z);
+            case NORMAL -> applyNormalTerrain(baseHeight, params, x, z);
+        };
 
         // Clamp to world bounds
-        return Math.max(1, Math.min(baseHeight, WORLD_HEIGHT - 1));
+        return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));
     }
 
     /**
@@ -204,6 +220,175 @@ public class HeightMapGenerator implements IHeightMapGenerator {
 
         return height;
     }
+
+    // ========== TERRAIN HINT-SPECIFIC GENERATION METHODS ==========
+
+    /**
+     * Applies mesa terrain generation (Badlands-style).
+     *
+     * Mesa characteristics:
+     * - Large terracing (16-24 block steps) for plateau effect
+     * - Flattened plateaus (reduced erosion effect)
+     * - Plateau height variation adds different mesa levels
+     *
+     * @param baseHeight Base height from continentalness
+     * @param params Multi-noise parameters
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Height with mesa terrain applied
+     */
+    private int applyMesaTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
+        int deltaFromSeaLevel = baseHeight - seaLevel;
+
+        // Apply erosion with mesa-specific scaling (less erosion effect for flatter mesas)
+        float erosionFactor = 1.0f - (params.erosion * 0.3f);  // Reduced from 0.45 → 0.3
+        int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
+
+        // Apply PV with reduced effect (mesas are flatter on top)
+        if (Math.abs(adjustedHeight - seaLevel) > 20) {
+            float heightFactor = (adjustedHeight - seaLevel) / 150.0f;
+            int pvDelta = Math.round(params.peaksValleys * heightFactor * 15);  // Half normal (30 → 15)
+            adjustedHeight += pvDelta;
+        }
+
+        // Strong terracing effect for mesas (16-24 block layers)
+        if (params.weirdness > 0.7f) {
+            // Layer height varies based on weirdness intensity
+            int layerHeight = 16 + Math.round((params.weirdness - 0.7f) * 27);  // 16-24 blocks
+            adjustedHeight = (adjustedHeight / layerHeight) * layerHeight;
+
+            // Add plateau variation (different mesa heights)
+            float plateauValue = (float) plateauNoise.noise(x / 80.0f, z / 80.0f);
+            if (plateauValue > 0.3f) {
+                adjustedHeight += layerHeight;  // Add one layer for variety
+            }
+        }
+
+        return adjustedHeight;
+    }
+
+    /**
+     * Applies sharp peaks terrain generation (Stony Peaks-style).
+     *
+     * Sharp peaks characteristics:
+     * - Amplified erosion effect (MORE mountainous)
+     * - Strong PV amplification (dramatic peaks and valleys)
+     * - High-frequency noise for jaggedness
+     *
+     * @param baseHeight Base height from continentalness
+     * @param params Multi-noise parameters
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Height with sharp peaks terrain applied
+     */
+    private int applySharpPeaksTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
+        int deltaFromSeaLevel = baseHeight - seaLevel;
+
+        // Amplified erosion for extreme mountains
+        float erosionFactor = 1.0f - (params.erosion * 0.65f);  // Increased from 0.45 → 0.65
+        int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
+
+        // Strong PV amplification for jagged peaks
+        if (Math.abs(adjustedHeight - seaLevel) > 20) {
+            float heightFactor = (adjustedHeight - seaLevel) / 100.0f;
+            int pvDelta = Math.round(params.peaksValleys * heightFactor * 50);  // Amplified (30 → 50)
+            adjustedHeight += pvDelta;
+        }
+
+        // Add high-frequency noise for jaggedness
+        if (adjustedHeight > seaLevel + 30) {  // Only affect mountains
+            float spireValue = (float) spireNoise.noise(x / 15.0f, z / 15.0f);  // Small scale for detail
+            adjustedHeight += Math.round(spireValue * 15);  // ±15 block variation
+        }
+
+        // NO weirdness terracing (we want spires, not plateaus)
+
+        return adjustedHeight;
+    }
+
+    /**
+     * Applies gentle hills terrain generation.
+     *
+     * Gentle hills characteristics:
+     * - Strong erosion effect (flattening)
+     * - Minimal PV effect
+     *
+     * @param baseHeight Base height from continentalness
+     * @param params Multi-noise parameters
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Height with gentle hills terrain applied
+     */
+    private int applyGentleHillsTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
+        int deltaFromSeaLevel = baseHeight - seaLevel;
+
+        // Strong erosion effect makes it very flat
+        float erosionFactor = 1.0f - (params.erosion * 0.6f);  // Strong flattening
+        int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
+
+        // Minimal PV effect for gentle terrain
+        if (Math.abs(adjustedHeight - seaLevel) > 20) {
+            float heightFactor = (adjustedHeight - seaLevel) / 100.0f;
+            int pvDelta = Math.round(params.peaksValleys * heightFactor * 20);  // Reduced (30 → 20)
+            adjustedHeight += pvDelta;
+        }
+
+        return adjustedHeight;
+    }
+
+    /**
+     * Applies flat plains terrain generation.
+     *
+     * Flat plains characteristics:
+     * - Maximum erosion effect (very flat)
+     * - No PV or weirdness effects
+     *
+     * @param baseHeight Base height from continentalness
+     * @param params Multi-noise parameters
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Height with flat plains terrain applied
+     */
+    private int applyFlatPlainsTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
+        int deltaFromSeaLevel = baseHeight - seaLevel;
+
+        // Maximum erosion effect for very flat terrain
+        float erosionFactor = 1.0f - (params.erosion * 0.7f);  // Maximum flattening
+        int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
+
+        // No PV or weirdness effects (keep it flat)
+
+        return adjustedHeight;
+    }
+
+    /**
+     * Applies normal terrain generation (standard erosion/PV/weirdness).
+     *
+     * This is the original terrain generation logic, used as the default
+     * for biomes that don't match specific terrain hints.
+     *
+     * @param baseHeight Base height from continentalness
+     * @param params Multi-noise parameters
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Height with normal terrain applied
+     */
+    private int applyNormalTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
+        // Apply standard erosion factor
+        int height = applyErosionFactor(baseHeight, params.erosion);
+
+        // Apply standard peaks & valleys
+        height = applyPeaksValleys(height, params.peaksValleys);
+
+        // Apply standard weirdness (if significant)
+        if (Math.abs(params.weirdness) > 0.5f) {
+            height = applyWeirdnessTerrain(height, params.weirdness);
+        }
+
+        return height;
+    }
+
+    // ========== HELPER METHODS (Standard terrain logic) ==========
 
     /**
      * Gets the continentalness value at the specified world position.

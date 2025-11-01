@@ -64,43 +64,43 @@ public class BiomeParameterTable {
         addBiome(
                 BiomeType.DESERT,
                 new Range(-0.2f, 1.0f),   // Continentalness: coast to inland
-                new Range(0.3f, 1.0f),    // Erosion: expanded to include rolling hills
+                new Range(0.35f, 1.0f),   // Erosion: flat to rolling (avoid mountains)
                 new Range(-0.6f, 0.6f),   // PV: expanded for more variety
-                new Range(-1.0f, 0.4f),   // Weirdness: normal (not badlands/red sand)
+                new Range(-1.0f, 0.5f),   // Weirdness: normal (expanded to avoid badlands)
                 new Range(0.65f, 1.0f),   // Temperature: hot
                 new Range(0.0f, 0.25f)    // Humidity: very dry
         );
 
-        // RED_SAND_DESERT: Hilly volcanic terrain, very hot, dry, weird
+        // RED_SAND_DESERT: Hilly volcanic terrain, very hot, dry, medium weirdness
         addBiome(
                 BiomeType.RED_SAND_DESERT,
                 new Range(0.2f, 1.0f),    // Continentalness: more inland (less common)
-                new Range(-0.3f, 0.5f),   // Erosion: hilly to moderate
+                new Range(-0.1f, 0.6f),   // Erosion: hilly to moderate (distinct from regular desert)
                 new Range(-0.7f, 0.7f),   // PV: varied
-                new Range(0.35f, 0.65f),  // Weirdness: narrowed (more rare/distinct)
-                new Range(0.75f, 1.0f),   // Temperature: very hot (hotter than regular desert)
+                new Range(0.45f, 0.68f),  // Weirdness: medium (between desert and badlands)
+                new Range(0.72f, 1.0f),   // Temperature: very hot (hotter than regular desert)
                 new Range(0.0f, 0.18f)    // Humidity: extremely dry
         );
 
-        // BADLANDS: Mountainous mesas, hot, dry, high weirdness
+        // BADLANDS: Mesa plateaus and canyons, hot, dry, VERY HIGH weirdness
         addBiome(
                 BiomeType.BADLANDS,
-                new Range(0.0f, 1.0f),    // Continentalness: inland
-                new Range(-0.6f, 0.2f),   // Erosion: mountainous to hilly
-                new Range(-0.8f, 0.8f),   // PV: varied (creates mesas)
-                new Range(0.6f, 1.0f),    // Weirdness: high (terracing/plateaus)
-                new Range(0.6f, 1.0f),    // Temperature: hot
-                new Range(0.0f, 0.3f)     // Humidity: dry
+                new Range(0.2f, 1.0f),    // Continentalness: inland focus (more distinct)
+                new Range(-0.4f, 0.3f),   // Erosion: moderate mountains to hills
+                new Range(-0.5f, 0.5f),   // PV: balanced (mesas are flatter)
+                new Range(0.7f, 1.0f),    // Weirdness: VERY HIGH (key differentiator for terracing)
+                new Range(0.65f, 1.0f),   // Temperature: hot
+                new Range(0.0f, 0.25f)    // Humidity: very dry
         );
 
         // ========== TEMPERATE BIOMES (Moderate Temperature) ==========
 
-        // PLAINS: Flat, temperate, moderate moisture
+        // PLAINS: Very flat, temperate, moderate moisture
         addBiome(
                 BiomeType.PLAINS,
                 new Range(-0.4f, 0.5f),   // Continentalness: coastal to mid-elevation
-                new Range(0.5f, 1.0f),    // Erosion: very flat
-                new Range(-0.4f, 0.4f),   // PV: gentle
+                new Range(0.6f, 1.0f),    // Erosion: VERY flat (increased for more distinction)
+                new Range(-0.3f, 0.3f),   // PV: very gentle (narrowed)
                 new Range(-1.0f, 0.5f),   // Weirdness: normal
                 new Range(0.35f, 0.7f),   // Temperature: temperate
                 new Range(0.25f, 0.7f)    // Humidity: moderate
@@ -117,14 +117,14 @@ public class BiomeParameterTable {
                 new Range(0.15f, 0.95f)   // Humidity: very wide range
         );
 
-        // STONY_PEAKS: Very mountainous, cold (altitude), any humidity
+        // STONY_PEAKS: Jagged peaks and spires, very mountainous, cold (altitude)
         addBiome(
                 BiomeType.STONY_PEAKS,
-                new Range(0.2f, 1.0f),    // Continentalness: expanded for more mountains
-                new Range(-1.0f, -0.35f), // Erosion: very mountainous (slightly expanded)
-                new Range(0.1f, 1.0f),    // PV: high peaks (expanded downward)
-                new Range(-1.0f, 1.0f),   // Weirdness: any
-                new Range(0.0f, 0.4f),    // Temperature: cold (expanded slightly)
+                new Range(0.3f, 1.0f),    // Continentalness: inland (more focused)
+                new Range(-1.0f, -0.6f),  // Erosion: EXTREME mountains only (key differentiator)
+                new Range(0.4f, 1.0f),    // PV: HIGH peaks required (key differentiator)
+                new Range(-0.3f, 0.3f),   // Weirdness: low (NO terracing, want spires not plateaus)
+                new Range(0.0f, 0.35f),   // Temperature: cold
                 new Range(0.0f, 1.0f)     // Humidity: any
         );
 
@@ -134,8 +134,8 @@ public class BiomeParameterTable {
         addBiome(
                 BiomeType.SNOWY_PLAINS,
                 new Range(-0.4f, 0.4f),   // Continentalness: coastal to mid-elevation
-                new Range(0.4f, 1.0f),    // Erosion: flat
-                new Range(-0.5f, 0.5f),   // PV: gentle
+                new Range(0.55f, 1.0f),   // Erosion: very flat (increased like plains)
+                new Range(-0.4f, 0.4f),   // PV: gentle (narrowed)
                 new Range(-1.0f, 0.6f),   // Weirdness: normal
                 new Range(0.0f, 0.3f),    // Temperature: very cold
                 new Range(0.3f, 0.8f)     // Humidity: moderate to wet
@@ -145,8 +145,8 @@ public class BiomeParameterTable {
         addBiome(
                 BiomeType.TAIGA,
                 new Range(0.0f, 0.6f),    // Continentalness: mid-elevation inland
-                new Range(0.0f, 0.7f),    // Erosion: hilly to moderate
-                new Range(-0.6f, 0.6f),   // PV: varied
+                new Range(0.1f, 0.7f),    // Erosion: hilly to moderate (tightened)
+                new Range(-0.5f, 0.5f),   // PV: varied (slightly tightened)
                 new Range(-1.0f, 0.5f),   // Weirdness: normal
                 new Range(0.05f, 0.4f),   // Temperature: cold
                 new Range(0.5f, 1.0f)     // Humidity: wet (forests need moisture)
@@ -156,10 +156,10 @@ public class BiomeParameterTable {
         addBiome(
                 BiomeType.TUNDRA,
                 new Range(0.1f, 0.6f),    // Continentalness: mid to high elevation
-                new Range(0.1f, 0.7f),    // Erosion: moderate (not too flat, not mountains)
-                new Range(-0.6f, 0.6f),   // PV: moderate to varied
+                new Range(0.15f, 0.65f),  // Erosion: moderate (tightened to avoid plains/mountains)
+                new Range(-0.5f, 0.5f),   // PV: moderate to varied (tightened)
                 new Range(-1.0f, 0.5f),   // Weirdness: normal
-                new Range(0.0f, 0.28f),   // Temperature: very cold (expanded slightly)
+                new Range(0.0f, 0.28f),   // Temperature: very cold
                 new Range(0.0f, 0.45f)    // Humidity: dry to moderate
         );
 
