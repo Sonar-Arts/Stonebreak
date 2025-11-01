@@ -208,12 +208,15 @@ public class MoveToolController implements DrawingTool {
             // CRITICAL: Check if left mouse button is actually being held down
             // If button was released, force cleanup (handles case where onMouseUp wasn't called)
             if (!imgui.ImGui.isMouseDown(0)) {
-                logger.debug("Button released during rotation - cleaning up");
+                logger.debug("Button released during rotation - cleaning up drag context");
                 releaseMouse();
                 accumulatedDeltaX = 0.0f;
                 dragContext = null;
-                session = null;
-                previewLayer = null;
+                // CRITICAL: DO NOT reset session or previewLayer here!
+                // Session must persist across drag operations to accumulate transformations.
+                // Only Enter (commit) or ESC (cancel) should destroy the session.
+                // Resetting here would lose all accumulated rotations/scales/translations.
+                // The onMouseUp method handles pending command creation.
                 return;
             }
 
@@ -432,6 +435,11 @@ public class MoveToolController implements DrawingTool {
     }
 
     private void ensureSession(PixelCanvas canvas, SelectionRegion selection) {
+        // CRITICAL: Reuse existing session if selection hasn't changed
+        // This preserves accumulated transformations across multiple drag operations:
+        // - Rotate 45° → release → rotate 30° more → both rotations accumulate
+        // - Scale 2.0x → release → scale 1.5x more → both scales accumulate
+        // Session is only reset when selection changes or when committed/cancelled
         if (session == null || lastSelection == null || !lastSelection.equals(selection)) {
             session = MoveToolSession.capture(canvas, selection);
             previewLayer = null;
@@ -446,9 +454,17 @@ public class MoveToolController implements DrawingTool {
 
         // Check if this is the dedicated rotation handle
         boolean isRotation = (handle == TransformHandle.ROTATE);
+
+        // CRITICAL: Pass session.transform() as the base transform
+        // This ensures ALL previous transformations (rotation, scale, translation) are preserved
+        // when starting a new drag operation. The session persists across drag operations until
+        // the transformation is committed (Enter) or cancelled (ESC).
+        // Example: Rotate 45° → release → rotate more → base starts at 45° (not 0°)
         dragContext = DragContext.forHandle(handle, session.snapshot(), session.transform(), startX, startY, isRotation);
 
-        // Reset accumulated delta and capture mouse for infinite dragging when rotating
+        // Reset accumulated delta for THIS drag operation and capture mouse for infinite dragging
+        // The delta is reset because it represents movement SINCE THE START OF THIS DRAG,
+        // not cumulative movement across all drags (that's stored in session.transform)
         if (isRotation) {
             accumulatedDeltaX = 0.0f;
             captureMouse();
@@ -490,7 +506,12 @@ public class MoveToolController implements DrawingTool {
         // Speed is in degrees per pixel of screen movement
         double rotationFromMovement = -accumulatedDeltaX * rotationSpeed;
 
-        // Calculate the final absolute angle
+        // Calculate the final absolute angle by ADDING to the base angle
+        // This properly accumulates rotation across multiple drag operations:
+        // - baseAngle contains all rotations from previous drag operations (stored in session.transform)
+        // - rotationFromMovement is the rotation delta for THIS current drag operation
+        // - finalAngle = previous rotations + current rotation delta
+        // Example: Rotate 45° → release → rotate 30° more → finalAngle = 45° + 30° = 75°
         double baseAngle = dragContext.baseTransform.rotationDegrees();
         double finalAngle = baseAngle + rotationFromMovement;
 
@@ -502,6 +523,8 @@ public class MoveToolController implements DrawingTool {
             finalAngle = snapToCardinalAngles(finalAngle, 5.0);
         }
 
+        // withRotation() sets the absolute rotation angle (replaces old rotation)
+        // This is correct because finalAngle already includes the base angle
         return dragContext.baseTransform.withRotation(finalAngle);
     }
 
