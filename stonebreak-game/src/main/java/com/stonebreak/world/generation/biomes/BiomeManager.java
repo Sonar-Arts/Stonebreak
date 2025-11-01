@@ -54,11 +54,22 @@ public class BiomeManager implements IBiomeManager {
 
         // Initialize voronoi grid if enabled
         if (useVoronoi) {
+            // Create distortion field if enabled (hides cellular pattern)
+            VoronoiDistortionField distortionField = null;
+            if (config.enableVoronoiDistortion) {
+                distortionField = new VoronoiDistortionField(
+                        seed,
+                        config.voronoiDistortionStrength,
+                        config.voronoiDistortionScale
+                );
+            }
+
             this.voronoiGrid = new BiomeVoronoiGrid(
                     noiseRouter,
                     parameterTable,
                     config.biomeVoronoiCellSize,
-                    seaLevel
+                    seaLevel,
+                    distortionField  // Pass distortion field for organic boundaries
             );
         } else {
             this.voronoiGrid = null;

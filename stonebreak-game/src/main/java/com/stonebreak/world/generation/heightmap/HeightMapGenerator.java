@@ -206,20 +206,6 @@ public class HeightMapGenerator implements IHeightMapGenerator {
     }
 
     /**
-     * DEPRECATED: Biome-specific height modification no longer used in multi-noise system.
-     * Height is now determined purely by noise parameters (continentalness, erosion, PV, weirdness).
-     * This method is kept for backward compatibility but should not be used.
-     *
-     * @deprecated Use generateHeight(x, z, MultiNoiseParameters) instead
-     */
-    @Deprecated
-    @Override
-    public int applyBiomeModifier(int baseHeight, BiomeType biome, int x, int z) {
-        // No-op in new system
-        return baseHeight;
-    }
-
-    /**
      * Gets the continentalness value at the specified world position.
      * Continentalness determines whether terrain is ocean, coast, or land.
      *

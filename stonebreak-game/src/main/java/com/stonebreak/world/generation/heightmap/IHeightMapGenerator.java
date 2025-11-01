@@ -38,14 +38,6 @@ public interface IHeightMapGenerator {
     int generateHeight(int x, int z);
 
     /**
-     * DEPRECATED: Biome-specific height modification no longer used in multi-noise system.
-     *
-     * @deprecated Biomes no longer affect terrain height
-     */
-    @Deprecated
-    int applyBiomeModifier(int baseHeight, BiomeType biome, int x, int z);
-
-    /**
      * Gets the continentalness value at the specified world position.
      * Continentalness determines whether terrain is ocean, coast, or land.
      *

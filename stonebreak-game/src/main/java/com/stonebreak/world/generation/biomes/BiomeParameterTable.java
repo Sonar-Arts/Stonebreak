@@ -60,26 +60,26 @@ public class BiomeParameterTable {
     private void initializeBiomes() {
         // ========== DESERT BIOMES (Hot, Dry) ==========
 
-        // DESERT: Flat, hot, dry
+        // DESERT: Flat to rolling, hot, dry - NOW APPEARS ON VARIED TERRAIN
         addBiome(
                 BiomeType.DESERT,
                 new Range(-0.2f, 1.0f),   // Continentalness: coast to inland
-                new Range(0.4f, 1.0f),    // Erosion: flat to moderately flat
-                new Range(-0.5f, 0.5f),   // PV: any moderate
-                new Range(-1.0f, 0.5f),   // Weirdness: normal (not badlands)
+                new Range(0.3f, 1.0f),    // Erosion: expanded to include rolling hills
+                new Range(-0.6f, 0.6f),   // PV: expanded for more variety
+                new Range(-1.0f, 0.4f),   // Weirdness: normal (not badlands/red sand)
                 new Range(0.65f, 1.0f),   // Temperature: hot
                 new Range(0.0f, 0.25f)    // Humidity: very dry
         );
 
-        // RED_SAND_DESERT: Hilly, hot, dry, slightly weird
+        // RED_SAND_DESERT: Hilly volcanic terrain, very hot, dry, weird
         addBiome(
                 BiomeType.RED_SAND_DESERT,
-                new Range(0.0f, 1.0f),    // Continentalness: inland
-                new Range(-0.2f, 0.6f),   // Erosion: hilly to moderate
+                new Range(0.2f, 1.0f),    // Continentalness: more inland (less common)
+                new Range(-0.3f, 0.5f),   // Erosion: hilly to moderate
                 new Range(-0.7f, 0.7f),   // PV: varied
-                new Range(0.3f, 0.7f),    // Weirdness: somewhat weird (volcanic)
-                new Range(0.7f, 1.0f),    // Temperature: very hot
-                new Range(0.0f, 0.2f)     // Humidity: extremely dry
+                new Range(0.35f, 0.65f),  // Weirdness: narrowed (more rare/distinct)
+                new Range(0.75f, 1.0f),   // Temperature: very hot (hotter than regular desert)
+                new Range(0.0f, 0.18f)    // Humidity: extremely dry
         );
 
         // BADLANDS: Mountainous mesas, hot, dry, high weirdness
@@ -106,25 +106,25 @@ public class BiomeParameterTable {
                 new Range(0.25f, 0.7f)    // Humidity: moderate
         );
 
-        // GRAVEL_BEACH: Coastal, any temperature, high erosion
+        // GRAVEL_BEACH: Coastal transition, any temperature, flat
         addBiome(
                 BiomeType.GRAVEL_BEACH,
-                new Range(-0.5f, 0.1f),   // Continentalness: coastal zone
-                new Range(0.4f, 1.0f),    // Erosion: flat (beaches are flat)
-                new Range(-0.5f, 0.5f),   // PV: gentle
+                new Range(-0.6f, 0.05f),  // Continentalness: expanded coastal zone
+                new Range(0.5f, 1.0f),    // Erosion: very flat (beaches are flat)
+                new Range(-0.4f, 0.4f),   // PV: gentle (narrowed)
                 new Range(-1.0f, 1.0f),   // Weirdness: any
-                new Range(0.2f, 0.9f),    // Temperature: wide range
-                new Range(0.2f, 0.9f)     // Humidity: wide range
+                new Range(0.15f, 0.95f),  // Temperature: very wide range
+                new Range(0.15f, 0.95f)   // Humidity: very wide range
         );
 
         // STONY_PEAKS: Very mountainous, cold (altitude), any humidity
         addBiome(
                 BiomeType.STONY_PEAKS,
-                new Range(0.4f, 1.0f),    // Continentalness: high elevation only
-                new Range(-1.0f, -0.4f),  // Erosion: very mountainous
-                new Range(0.2f, 1.0f),    // PV: high peaks
+                new Range(0.2f, 1.0f),    // Continentalness: expanded for more mountains
+                new Range(-1.0f, -0.35f), // Erosion: very mountainous (slightly expanded)
+                new Range(0.1f, 1.0f),    // PV: high peaks (expanded downward)
                 new Range(-1.0f, 1.0f),   // Weirdness: any
-                new Range(0.0f, 0.35f),   // Temperature: cold (altitude-adjusted)
+                new Range(0.0f, 0.4f),    // Temperature: cold (expanded slightly)
                 new Range(0.0f, 1.0f)     // Humidity: any
         );
 
@@ -152,25 +152,25 @@ public class BiomeParameterTable {
                 new Range(0.5f, 1.0f)     // Humidity: wet (forests need moisture)
         );
 
-        // TUNDRA: Barren, very cold, dry
+        // TUNDRA: Barren rocky wasteland, very cold, dry
         addBiome(
                 BiomeType.TUNDRA,
-                new Range(0.0f, 0.5f),    // Continentalness: mid-elevation inland
-                new Range(0.2f, 0.8f),    // Erosion: moderate
-                new Range(-0.5f, 0.5f),   // PV: moderate
-                new Range(-1.0f, 0.6f),   // Weirdness: normal
-                new Range(0.0f, 0.25f),   // Temperature: very cold
-                new Range(0.0f, 0.4f)     // Humidity: dry
+                new Range(0.1f, 0.6f),    // Continentalness: mid to high elevation
+                new Range(0.1f, 0.7f),    // Erosion: moderate (not too flat, not mountains)
+                new Range(-0.6f, 0.6f),   // PV: moderate to varied
+                new Range(-1.0f, 0.5f),   // Weirdness: normal
+                new Range(0.0f, 0.28f),   // Temperature: very cold (expanded slightly)
+                new Range(0.0f, 0.45f)    // Humidity: dry to moderate
         );
 
         // ICE_FIELDS: Flat glaciers, extremely cold, any moisture
         addBiome(
                 BiomeType.ICE_FIELDS,
-                new Range(-0.4f, 0.2f),   // Continentalness: low to mid elevation
-                new Range(0.5f, 1.0f),    // Erosion: very flat (glaciers)
-                new Range(-0.4f, 0.4f),   // PV: gentle
-                new Range(-1.0f, 0.7f),   // Weirdness: normal
-                new Range(0.0f, 0.2f),    // Temperature: extremely cold
+                new Range(-0.5f, 0.3f),   // Continentalness: expanded (glaciers can be large)
+                new Range(0.6f, 1.0f),    // Erosion: very flat (glaciers are smooth)
+                new Range(-0.3f, 0.3f),   // PV: very gentle (glaciers are smooth)
+                new Range(-1.0f, 0.6f),   // Weirdness: normal
+                new Range(0.0f, 0.18f),   // Temperature: extremely cold (narrowed for rarity)
                 new Range(0.0f, 1.0f)     // Humidity: any
         );
 

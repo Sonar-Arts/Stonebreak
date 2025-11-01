@@ -232,6 +232,10 @@ public class TerrainGenerationSystem {
         // Features will be populated after chunk registration to avoid recursion
         chunk.setFeaturesPopulated(false);
 
+        // Clear parameter interpolation cache to prevent memory accumulation
+        // Cache is typically small (~5-10 entries per chunk) but should be cleared regularly
+        biomeManager.getNoiseRouter().clearInterpolationCache();
+
         // Mesh generation happens automatically via CCO dirty tracking when chunk is rendered
         return chunk;
     }

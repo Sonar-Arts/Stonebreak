@@ -36,6 +36,12 @@ public class BiomeVoronoiGrid {
     private final int cellSize;
     private final int seaLevel;
 
+    /**
+     * Optional distortion field for organic biome boundaries.
+     * May be null if distortion is disabled.
+     */
+    private final VoronoiDistortionField distortionField;
+
     // Thread-safe cache of biome assignments at grid points
     // Key format: (gridX << 32) | (gridZ & 0xFFFFFFFFL)
     private final ConcurrentHashMap<Long, BiomeType> biomeCache;
@@ -49,6 +55,19 @@ public class BiomeVoronoiGrid {
      * @param seaLevel Sea level for parameter sampling
      */
     public BiomeVoronoiGrid(NoiseRouter noiseRouter, BiomeParameterTable parameterTable, int cellSize, int seaLevel) {
+        this(noiseRouter, parameterTable, cellSize, seaLevel, null);
+    }
+
+    /**
+     * Creates a new voronoi-based biome grid with optional distortion.
+     *
+     * @param noiseRouter The noise router for sampling parameters
+     * @param parameterTable The biome parameter table for biome selection
+     * @param cellSize Size of each voronoi cell in blocks (typically 64-128)
+     * @param seaLevel Sea level for parameter sampling
+     * @param distortionField Optional distortion field for organic boundaries (null for geometric boundaries)
+     */
+    public BiomeVoronoiGrid(NoiseRouter noiseRouter, BiomeParameterTable parameterTable, int cellSize, int seaLevel, VoronoiDistortionField distortionField) {
         if (cellSize <= 0) {
             throw new IllegalArgumentException("Cell size must be positive, got: " + cellSize);
         }
@@ -57,6 +76,7 @@ public class BiomeVoronoiGrid {
         this.parameterTable = parameterTable;
         this.cellSize = cellSize;
         this.seaLevel = seaLevel;
+        this.distortionField = distortionField;
         this.biomeCache = new ConcurrentHashMap<>();
     }
 
@@ -64,20 +84,31 @@ public class BiomeVoronoiGrid {
      * Gets the biome at a world position using voronoi nearest-neighbor lookup.
      *
      * Algorithm:
-     * 1. Convert world coordinates to grid coordinates
-     * 2. Find nearest grid point (center of voronoi cell)
-     * 3. Look up or generate biome at that grid point
-     * 4. Return cached biome
+     * 1. Apply distortion to coordinates (if enabled) for organic boundaries
+     * 2. Convert distorted coordinates to grid coordinates
+     * 3. Find nearest grid point (center of voronoi cell)
+     * 4. Look up or generate biome at that grid point
+     * 5. Return cached biome
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
      * @return The biome at the nearest grid point
      */
     public BiomeType getBiome(int worldX, int worldZ) {
-        // Convert world coordinates to grid coordinates
+        // Apply distortion if enabled (creates organic boundaries instead of straight lines)
+        int lookupX = worldX;
+        int lookupZ = worldZ;
+
+        if (distortionField != null) {
+            VoronoiDistortionField.DistortedPosition distorted = distortionField.getDistortedPosition(worldX, worldZ);
+            lookupX = distorted.distortedX;
+            lookupZ = distorted.distortedZ;
+        }
+
+        // Convert distorted coordinates to grid coordinates
         // Using Math.floorDiv for correct negative coordinate handling
-        int gridX = Math.floorDiv(worldX, cellSize);
-        int gridZ = Math.floorDiv(worldZ, cellSize);
+        int gridX = Math.floorDiv(lookupX, cellSize);
+        int gridZ = Math.floorDiv(lookupZ, cellSize);
 
         // Check cache first
         long key = packGridCoords(gridX, gridZ);
@@ -105,6 +136,7 @@ public class BiomeVoronoiGrid {
      * - Samples all 6 parameters (continentalness, erosion, PV, weirdness, temperature, humidity)
      * - Uses BiomeParameterTable to select matching biome
      * - Same biome selection logic as continuous system, just sampled at grid points
+     * - Uses parameter interpolation if enabled (98% fewer noise calls)
      *
      * @param x World X coordinate (typically center of voronoi cell)
      * @param z World Z coordinate (typically center of voronoi cell)
@@ -112,7 +144,8 @@ public class BiomeVoronoiGrid {
      */
     private BiomeType sampleBiomeAtGridPoint(int x, int z) {
         // Sample all 6 multi-noise parameters at this grid point
-        MultiNoiseParameters params = noiseRouter.sampleParameters(x, z, seaLevel);
+        // Uses interpolation if enabled for performance optimization
+        MultiNoiseParameters params = noiseRouter.sampleInterpolatedParameters(x, z, seaLevel);
 
         // Select biome using parameter table (same as continuous system)
         return parameterTable.selectBiome(params);

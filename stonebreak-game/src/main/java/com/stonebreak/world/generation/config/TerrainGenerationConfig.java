@@ -63,6 +63,46 @@ public class TerrainGenerationConfig {
      */
     public final int biomeVoronoiCellSize;
 
+    /**
+     * Strength of Voronoi distortion in blocks.
+     * Higher values create more wavy, organic boundaries.
+     * Should be < 50% of cell size to preserve recognizable regions.
+     * Recommended: 20-30 blocks for 64-block cells.
+     */
+    public final float voronoiDistortionStrength;
+
+    /**
+     * Frequency scale for Voronoi distortion.
+     * Lower values create smoother, broader waviness.
+     * Higher values create more varied, tighter curves.
+     * Recommended: 0.015 (smooth organic boundaries).
+     */
+    public final float voronoiDistortionScale;
+
+    /**
+     * Whether to enable Voronoi distortion.
+     * When true, biome boundaries become wavy and organic instead of straight lines.
+     * When false, boundaries are geometric Voronoi edges (cellular pattern visible).
+     */
+    public final boolean enableVoronoiDistortion;
+
+    // ========== Parameter Interpolation Configuration ==========
+
+    /**
+     * Grid size for parameter interpolation in blocks.
+     * Larger values = fewer noise samples (better performance, coarser transitions).
+     * Smaller values = more noise samples (worse performance, finer transitions).
+     * Recommended: 16 (provides 256x reduction in noise calls with smooth results).
+     */
+    public final int parameterInterpolationGridSize;
+
+    /**
+     * Whether to enable parameter interpolation.
+     * When true, samples parameters on a grid and interpolates (98% fewer noise calls).
+     * When false, samples parameters at every position (original behavior, slower).
+     */
+    public final boolean enableParameterInterpolation;
+
     // ========== Climate Configuration ==========
 
     /**
@@ -85,20 +125,6 @@ public class TerrainGenerationConfig {
      * Phase 1: Increased from 300.0 to 2000.0 for larger biomes (6.7x increase).
      */
     public final float temperatureNoiseScale;
-
-    /**
-     * Scale factor for continentalness climate noise sampling.
-     * Very large scale (10,000 blocks) for massive continental patterns.
-     * Phase 1: Used by ClimateRegionManager to determine oceanic vs coastal vs inland regions.
-     */
-    public final float continentalnessClimateNoiseScale;
-
-    /**
-     * Scale factor for region weirdness noise sampling.
-     * Large scale (8,000 blocks) for regional variety.
-     * Phase 1: Used by ClimateRegionManager to add variety to climate regions.
-     */
-    public final float regionWeirdnessNoiseScale;
 
     // ========== Height Map Configuration ==========
 
@@ -166,11 +192,14 @@ public class TerrainGenerationConfig {
         this.biomeBlendMinWeightThreshold = builder.biomeBlendMinWeightThreshold;
         this.enableVoronoiBiomes = builder.enableVoronoiBiomes;
         this.biomeVoronoiCellSize = builder.biomeVoronoiCellSize;
+        this.voronoiDistortionStrength = builder.voronoiDistortionStrength;
+        this.voronoiDistortionScale = builder.voronoiDistortionScale;
+        this.enableVoronoiDistortion = builder.enableVoronoiDistortion;
+        this.parameterInterpolationGridSize = builder.parameterInterpolationGridSize;
+        this.enableParameterInterpolation = builder.enableParameterInterpolation;
         this.altitudeChillFactor = builder.altitudeChillFactor;
         this.moistureNoiseScale = builder.moistureNoiseScale;
         this.temperatureNoiseScale = builder.temperatureNoiseScale;
-        this.continentalnessClimateNoiseScale = builder.continentalnessClimateNoiseScale;
-        this.regionWeirdnessNoiseScale = builder.regionWeirdnessNoiseScale;
         this.continentalnessNoiseScale = builder.continentalnessNoiseScale;
         this.erosionNoiseScale = builder.erosionNoiseScale;
         this.erosionStrengthFactor = builder.erosionStrengthFactor;
@@ -205,13 +234,18 @@ public class TerrainGenerationConfig {
         // Voronoi Biome - Defaults
         private boolean enableVoronoiBiomes = true;  // Enable voronoi by default for discrete regions
         private int biomeVoronoiCellSize = 64;  // 64-block cells create nice-sized biome regions
+        private float voronoiDistortionStrength = 25.0f;  // 25 blocks of distortion (wavy boundaries)
+        private float voronoiDistortionScale = 0.015f;  // Low frequency for smooth waviness
+        private boolean enableVoronoiDistortion = true;  // Enable distortion by default (hide cellular pattern)
+
+        // Parameter Interpolation - Defaults
+        private int parameterInterpolationGridSize = 16;  // 16-block grid = 256x fewer noise calls
+        private boolean enableParameterInterpolation = true;  // Enable by default for performance
 
         // Climate - Defaults
         private float altitudeChillFactor = 200.0f;
         private float moistureNoiseScale = 1500.0f;  // Phase 1: Increased from 200.0 (7.5x)
         private float temperatureNoiseScale = 2000.0f;  // Phase 1: Increased from 300.0 (6.7x)
-        private float continentalnessClimateNoiseScale = 10000.0f;  // Phase 1: New field
-        private float regionWeirdnessNoiseScale = 8000.0f;  // Phase 1: New field
 
         // Height Map - Defaults
         private float continentalnessNoiseScale = 800.0f;
@@ -276,6 +310,42 @@ public class TerrainGenerationConfig {
             return this;
         }
 
+        public Builder voronoiDistortionStrength(float strength) {
+            if (strength < 0) {
+                throw new IllegalArgumentException("Voronoi distortion strength must be non-negative, got: " + strength);
+            }
+            this.voronoiDistortionStrength = strength;
+            return this;
+        }
+
+        public Builder voronoiDistortionScale(float scale) {
+            if (scale <= 0) {
+                throw new IllegalArgumentException("Voronoi distortion scale must be positive, got: " + scale);
+            }
+            this.voronoiDistortionScale = scale;
+            return this;
+        }
+
+        public Builder enableVoronoiDistortion(boolean enable) {
+            this.enableVoronoiDistortion = enable;
+            return this;
+        }
+
+        // Parameter Interpolation Setters
+
+        public Builder parameterInterpolationGridSize(int gridSize) {
+            if (gridSize <= 0) {
+                throw new IllegalArgumentException("Parameter interpolation grid size must be positive, got: " + gridSize);
+            }
+            this.parameterInterpolationGridSize = gridSize;
+            return this;
+        }
+
+        public Builder enableParameterInterpolation(boolean enable) {
+            this.enableParameterInterpolation = enable;
+            return this;
+        }
+
         // Climate Setters
 
         public Builder altitudeChillFactor(float factor) {
@@ -299,22 +369,6 @@ public class TerrainGenerationConfig {
                 throw new IllegalArgumentException("Temperature noise scale must be positive, got: " + scale);
             }
             this.temperatureNoiseScale = scale;
-            return this;
-        }
-
-        public Builder continentalnessClimateNoiseScale(float scale) {
-            if (scale <= 0) {
-                throw new IllegalArgumentException("Continentalness climate noise scale must be positive, got: " + scale);
-            }
-            this.continentalnessClimateNoiseScale = scale;
-            return this;
-        }
-
-        public Builder regionWeirdnessNoiseScale(float scale) {
-            if (scale <= 0) {
-                throw new IllegalArgumentException("Region weirdness noise scale must be positive, got: " + scale);
-            }
-            this.regionWeirdnessNoiseScale = scale;
             return this;
         }
 
@@ -404,11 +458,14 @@ public class TerrainGenerationConfig {
                 ", biomeBlendMinWeightThreshold=" + biomeBlendMinWeightThreshold +
                 ", enableVoronoiBiomes=" + enableVoronoiBiomes +
                 ", biomeVoronoiCellSize=" + biomeVoronoiCellSize +
+                ", voronoiDistortionStrength=" + voronoiDistortionStrength +
+                ", voronoiDistortionScale=" + voronoiDistortionScale +
+                ", enableVoronoiDistortion=" + enableVoronoiDistortion +
+                ", parameterInterpolationGridSize=" + parameterInterpolationGridSize +
+                ", enableParameterInterpolation=" + enableParameterInterpolation +
                 ", altitudeChillFactor=" + altitudeChillFactor +
                 ", moistureNoiseScale=" + moistureNoiseScale +
                 ", temperatureNoiseScale=" + temperatureNoiseScale +
-                ", continentalnessClimateNoiseScale=" + continentalnessClimateNoiseScale +
-                ", regionWeirdnessNoiseScale=" + regionWeirdnessNoiseScale +
                 ", continentalnessNoiseScale=" + continentalnessNoiseScale +
                 ", erosionNoiseScale=" + erosionNoiseScale +
                 ", erosionStrengthFactor=" + erosionStrengthFactor +

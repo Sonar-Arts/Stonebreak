@@ -275,42 +275,6 @@ public class NoiseConfigFactory {
         return new NoiseConfig(4, 0.5, 2.0);
     }
 
-    /**
-     * Continentalness climate noise: Large-scale regional climate distribution.
-     * Very low frequency (10,000-block scale) for massive continental patterns.
-     *
-     * Phase 1 Enhancement: Used by ClimateRegionManager to determine
-     * oceanic vs coastal vs continental interior regions.
-     *
-     * Characteristics:
-     * - 6 octaves for smooth continental boundaries
-     * - 0.5 persistence for balanced detail across scales
-     * - 2.0 lacunarity (standard doubling of frequency)
-     *
-     * @return Noise config for continentalness climate generation
-     */
-    public static NoiseConfig createContinentalnessClimateNoise() {
-        return new NoiseConfig(6, 0.5, 2.0);
-    }
-
-    /**
-     * Region weirdness noise: Adds variety and exceptions to climate regions.
-     * Very low frequency (8,000-block scale) for regional variety.
-     *
-     * Phase 1 Enhancement: Used by ClimateRegionManager to add
-     * occasional "weird" biome placements for variety.
-     *
-     * Characteristics:
-     * - 5 octaves for moderate regional variation
-     * - 0.45 persistence for gentle variety
-     * - 2.2 lacunarity for slightly more texture
-     *
-     * @return Noise config for region weirdness generation
-     */
-    public static NoiseConfig createRegionWeirdnessNoise() {
-        return new NoiseConfig(5, 0.45, 2.2);
-    }
-
     // Prevent instantiation - this is a utility class
     private NoiseConfigFactory() {
         throw new AssertionError("NoiseConfigFactory should not be instantiated");
