@@ -68,7 +68,8 @@ final class MoveToolSession {
     }
 
     MoveSelectionCommand createCommand(PixelCanvas canvas,
-                                       SelectionManager selectionManager) {
+                                       SelectionManager selectionManager,
+                                       boolean skipTransparentPixels) {
         if (!hasPreview()) {
             return null;
         }
@@ -79,7 +80,8 @@ final class MoveToolSession {
                 snapshot,
                 transform,
                 transformedImage,
-                transformedSelection
+                transformedSelection,
+                skipTransparentPixels
         );
     }
 }

@@ -68,10 +68,24 @@ public class MoveToolController implements DrawingTool {
 
         if (hoveredHandle != TransformHandle.NONE) {
             startHandleDrag(hoveredHandle, canvasX, canvasY);
-        } else if (selection.contains(x, y)) {
-            startTranslation(canvasX, canvasY);
         } else {
-            resetInternalState();
+            // Use transformed selection for hit testing if preview exists
+            // This allows clicking on the transformed preview to continue dragging
+            SelectionRegion selectionForHitTest = selection;
+            if (session != null && session.transformedSelection().isPresent()) {
+                selectionForHitTest = session.transformedSelection().get();
+            }
+
+            if (selectionForHitTest.contains(x, y)) {
+                startTranslation(canvasX, canvasY);
+            } else {
+                // Clicking outside selection: stop the current drag but keep transformation preview.
+                // Session, preview layer, and pending command remain alive so user can continue
+                // adjusting the transformation. Only Enter commits, only ESC cancels.
+                dragContext = null;
+                hoveredHandle = TransformHandle.NONE;
+                // Note: session, previewLayer, and pendingCommand are NOT cleared here
+            }
         }
     }
 
@@ -117,11 +131,19 @@ public class MoveToolController implements DrawingTool {
         }
 
         if (session.hasPreview()) {
-            pendingCommand = session.createCommand(canvas, selectionManager);
+            // Get skip transparent pixels preference (default true if not set)
+            boolean skipTransparent = preferences != null ? preferences.isSkipTransparentPixelsOnPaste() : true;
+            pendingCommand = session.createCommand(canvas, selectionManager, skipTransparent);
         }
 
-        session = null;
-        previewLayer = null;
+        // IMPORTANT: Session and preview layer are NOT destroyed here.
+        // They persist across multiple drag operations so the user can adjust
+        // the transformation multiple times before committing with Enter or
+        // canceling with ESC. This ensures only ONE hole appears at the ORIGINAL
+        // selection position, not at intermediate positions.
+        // Session is only destroyed in reset() (called on commit/cancel).
+
+        // Only clear the drag context to allow starting a new drag
         dragContext = null;
         hoveredHandle = TransformHandle.NONE;
     }
@@ -140,8 +162,13 @@ public class MoveToolController implements DrawingTool {
     public void reset() {
         releaseMouse();
         accumulatedDeltaX = 0.0f;
+
+        // Destroy session and preview layer (called on commit/cancel/tool change)
+        // This is the ONLY place where session should be destroyed during normal operation.
+        // onMouseUp() does NOT destroy the session, allowing multiple drag adjustments.
         session = null;
         previewLayer = null;
+
         dragContext = null;
         hoveredHandle = TransformHandle.NONE;
         // Keep pendingCommand so CanvasPanel can still apply it if required
@@ -371,11 +398,11 @@ public class MoveToolController implements DrawingTool {
         pendingCommand = null;
     }
 
-    public boolean hasActiveLayer() {
+    public boolean hasPreviewLayer() {
         return previewLayer != null;
     }
 
-    public TransformPreviewLayer getActiveLayer() {
+    public TransformPreviewLayer getPreviewLayer() {
         return previewLayer;
     }
 
@@ -482,38 +509,45 @@ public class MoveToolController implements DrawingTool {
         SelectionSnapshot snapshot = dragContext.snapshot;
         TransformationState base = dragContext.baseTransform;
 
-        double[] local = TransformMath.mapCanvasToLocal(canvasX, canvasY, snapshot, base);
         double width = Math.max(snapshot.width(), 1);
         double height = Math.max(snapshot.height(), 1);
 
-        double targetWidthPixels = width * base.scaleX();
-        double targetHeightPixels = height * base.scaleY();
+        // Calculate target size in CANVAS space (not local space) to properly accumulate scales
+        // The anchor stays fixed in canvas coordinates, and we measure distance from anchor to mouse
+        double targetWidthCanvas = width * base.scaleX();
+        double targetHeightCanvas = height * base.scaleY();
 
+        // For handles that affect X axis, calculate canvas distance from anchor to mouse
         switch (dragContext.handle) {
             case SCALE_NORTH_EAST:
             case SCALE_EAST:
             case SCALE_SOUTH_EAST:
-                targetWidthPixels = snapSize(local[0]);
+                // Anchor is on the left/west side, measure distance to mouse
+                targetWidthCanvas = snapSize(Math.abs(canvasX - dragContext.anchorCanvas[0]));
                 break;
             case SCALE_NORTH_WEST:
             case SCALE_WEST:
             case SCALE_SOUTH_WEST:
-                targetWidthPixels = snapSize(width - local[0]);
+                // Anchor is on the right/east side, measure distance to mouse
+                targetWidthCanvas = snapSize(Math.abs(canvasX - dragContext.anchorCanvas[0]));
                 break;
             default:
                 break;
         }
 
+        // For handles that affect Y axis, calculate canvas distance from anchor to mouse
         switch (dragContext.handle) {
             case SCALE_NORTH_WEST:
             case SCALE_NORTH:
             case SCALE_NORTH_EAST:
-                targetHeightPixels = snapSize(height - local[1]);
+                // Anchor is on the bottom/south side, measure distance to mouse
+                targetHeightCanvas = snapSize(Math.abs(canvasY - dragContext.anchorCanvas[1]));
                 break;
             case SCALE_SOUTH_WEST:
             case SCALE_SOUTH:
             case SCALE_SOUTH_EAST:
-                targetHeightPixels = snapSize(local[1]);
+                // Anchor is on the top/north side, measure distance to mouse
+                targetHeightCanvas = snapSize(Math.abs(canvasY - dragContext.anchorCanvas[1]));
                 break;
             default:
                 break;
@@ -523,15 +557,16 @@ public class MoveToolController implements DrawingTool {
         boolean affectsY = affectsYAxis(dragContext.handle);
 
         if (shiftHeld && (affectsX || affectsY)) {
-            double lockedPixels = Math.max(targetWidthPixels, targetHeightPixels);
-            targetWidthPixels = lockedPixels;
-            targetHeightPixels = lockedPixels;
+            double lockedPixels = Math.max(targetWidthCanvas, targetHeightCanvas);
+            targetWidthCanvas = lockedPixels;
+            targetHeightCanvas = lockedPixels;
             affectsX = true;
             affectsY = true;
         }
 
-        double targetScaleX = affectsX ? ensureScale(targetWidthPixels / width, base.scaleX()) : base.scaleX();
-        double targetScaleY = affectsY ? ensureScale(targetHeightPixels / height, base.scaleY()) : base.scaleY();
+        // Convert canvas size to scale (canvas size / original snapshot size)
+        double targetScaleX = affectsX ? ensureScale(targetWidthCanvas / width, base.scaleX()) : base.scaleX();
+        double targetScaleY = affectsY ? ensureScale(targetHeightCanvas / height, base.scaleY()) : base.scaleY();
 
         TransformationState scaled = base.withScale(targetScaleX, targetScaleY);
 

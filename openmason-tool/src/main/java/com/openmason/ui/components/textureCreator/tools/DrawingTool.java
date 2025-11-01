@@ -65,4 +65,35 @@ public interface DrawingTool {
     default void reset() {
         // Default implementation does nothing
     }
+
+    /**
+     * Check if this tool supports variable brush size.
+     * Tools that support brush size should override this to return true.
+     *
+     * @return true if tool supports brush size, false otherwise
+     */
+    default boolean supportsBrushSize() {
+        return false; // Default: no brush size support
+    }
+
+    /**
+     * Get current brush size for this tool.
+     * Only meaningful if supportsBrushSize() returns true.
+     *
+     * @return brush size in pixels (diameter)
+     */
+    default int getBrushSize() {
+        return 1; // Default single pixel
+    }
+
+    /**
+     * Set brush size for this tool.
+     * Only meaningful if supportsBrushSize() returns true.
+     * Per-tool memory: each tool remembers its own brush size.
+     *
+     * @param size brush size in pixels (diameter)
+     */
+    default void setBrushSize(int size) {
+        // Default implementation does nothing
+    }
 }

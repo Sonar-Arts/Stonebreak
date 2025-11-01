@@ -152,19 +152,21 @@ public class CanvasPanel {
         boolean moveToolActive = currentTool instanceof MoveToolController;
         if (moveToolActive) {
             MoveToolController moveTool = (MoveToolController) currentTool;
-            if (moveTool.hasActiveLayer() && drawingCanvas != null) {
+            if (moveTool.hasPreviewLayer() && drawingCanvas != null) {
                 // Create preview canvas with transformed layer composited
                 if (backgroundCanvas != null) {
                     // Multi-layer preview: composite background + transformed active layer
                     // This shows the transformation in full context with all other layers
-                    canvasToRender = moveTool.getActiveLayer()
+                    canvasToRender = moveTool.getPreviewLayer()
                             .createMultiLayerPreviewCanvas(backgroundCanvas, drawingCanvas);
                 } else {
                     // Single-layer preview: just the transformed active layer
-                    canvasToRender = moveTool.getActiveLayer().createPreviewCanvas(drawingCanvas);
+                    canvasToRender = moveTool.getPreviewLayer().createPreviewCanvas(drawingCanvas);
                 }
             }
         }
+
+        // Note: Paste now uses move tool, so no separate paste tool preview needed
 
         // Determine which selection to render:
         // 1. Hide selection overlay when move tool is active (matches Photoshop/GIMP behavior)
@@ -205,19 +207,15 @@ public class CanvasPanel {
                     canvasRegionMin.x, canvasRegionMin.y);
         }
 
+        // Note: Paste now uses move tool, so move tool overlay handles paste rendering
+
         // Note: Selection is now automatically available to canvases through SelectionManager
         // which is wired up in TextureCreatorImGui.renderCanvasPanel()
         // No need to manually sync selection here - canvases get it from SelectionManager
         PixelCanvas targetCanvas = drawingCanvas != null ? drawingCanvas : displayCanvas;
 
-        // Handle escape key to release mouse capture (move tool)
-        if (currentTool instanceof MoveToolController) {
-            MoveToolController moveTool = (MoveToolController) currentTool;
-            if (moveTool.isMouseCaptured() && ImGui.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE)) {
-                logger.debug("ESC pressed - releasing mouse capture");
-                moveTool.forceReleaseMouse();
-            }
-        }
+        // Note: Enter/ESC keyboard handling for move tool is in TextureCreatorImGui
+        // (needs access to floating paste layer state)
 
         // Handle mouse input for drawing and navigation on the drawing canvas (active layer)
         handleInput(targetCanvas, canvasState,
@@ -346,28 +344,14 @@ public class CanvasPanel {
                     selectionTool.clearSelection();
                 }
             }
-            // Handle move tool
-            else if (currentTool instanceof MoveToolController) {
-                MoveToolController moveTool = (MoveToolController) currentTool;
-
-                // Check if there's a pending command to execute
-                MoveSelectionCommand pendingCommand = moveTool.getPendingCommand();
-                if (pendingCommand != null && pendingCommand.hasChanges() && commandHistory != null) {
-                    commandHistory.executeCommand(pendingCommand);
-                    logger.debug("Executed move command: {}", pendingCommand.getDescription());
-
-                    // Update selection to transformed selection
-                    SelectionRegion transformedSelection = pendingCommand.getTransformedSelection();
-                    if (onSelectionCreatedCallback != null) {
-                        onSelectionCreatedCallback.accept(transformedSelection);
-                        if (transformedSelection != null) {
-                            logger.debug("Selection transformed: {}", transformedSelection.getBounds());
-                        }
-                    }
-
-                    moveTool.clearPendingCommand();
-                }
-            } else {
+            // Move tool: Do NOT auto-execute on mouse up
+            // The pending command remains as a preview-only operation until the user
+            // explicitly commits with Enter key (handled in TextureCreatorImGui) or
+            // cancels with ESC key. This allows multiple drag adjustments before committing.
+            // Auto-executing on every mouse up would create multiple holes at intermediate
+            // positions, which is incorrect behavior.
+            // Note: Paste now uses move tool, so no separate paste command handling needed
+            else {
                 // Execute the command if it has changes (non-color-picker/selection tools)
                 if (currentDrawCommand != null && currentDrawCommand.hasChanges() && commandHistory != null) {
                     commandHistory.executeCommand(currentDrawCommand);

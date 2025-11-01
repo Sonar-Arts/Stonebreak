@@ -30,6 +30,7 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY = "texture.editor.cube.net.overlay.opacity";
     private static final String TEXTURE_EDITOR_COLOR_HISTORY_KEY = "texture.editor.color.history";
     private static final String TEXTURE_EDITOR_ROTATION_SPEED_KEY = "texture.editor.rotation.speed";
+    private static final String TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY = "texture.editor.skip.transparent.paste";
 
     // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
@@ -40,6 +41,7 @@ public class PreferencesManager {
     private static final float DEFAULT_CUBE_NET_OVERLAY_OPACITY = 0.5f;
     private static final String DEFAULT_COLOR_HISTORY = ""; // Empty list
     private static final float DEFAULT_ROTATION_SPEED = 0.5f; // 0.5 degrees per pixel
+    private static final boolean DEFAULT_SKIP_TRANSPARENT_PASTE = true; // Skip transparent pixels by default
     
     private final Properties properties;
     private final Path preferencesPath;
@@ -102,6 +104,7 @@ public class PreferencesManager {
         properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(DEFAULT_CUBE_NET_OVERLAY_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
         properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
+        properties.setProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, String.valueOf(DEFAULT_SKIP_TRANSPARENT_PASTE));
     }
     
     // Camera Settings
@@ -262,6 +265,29 @@ public class PreferencesManager {
     }
 
     /**
+     * Get texture editor skip transparent pixels on paste/move setting.
+     * When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels.
+     * When disabled, transparent pixels will clear the destination.
+     */
+    public boolean getTextureEditorSkipTransparentPixelsOnPaste() {
+        String value = properties.getProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY);
+        if (value != null) {
+            return Boolean.parseBoolean(value);
+        }
+        return DEFAULT_SKIP_TRANSPARENT_PASTE;
+    }
+
+    /**
+     * Set texture editor skip transparent pixels on paste/move setting.
+     * When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels.
+     * When disabled, transparent pixels will clear the destination.
+     */
+    public void setTextureEditorSkipTransparentPixelsOnPaste(boolean skip) {
+        properties.setProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, String.valueOf(skip));
+        savePreferences();
+    }
+
+    /**
      * Reset texture creator settings to defaults.
      */
     public void resetTextureCreatorToDefaults() {
@@ -269,6 +295,7 @@ public class PreferencesManager {
         properties.setProperty(TEXTURE_EDITOR_CUBE_NET_OVERLAY_OPACITY_KEY, String.valueOf(DEFAULT_CUBE_NET_OVERLAY_OPACITY));
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
         properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
+        properties.setProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, String.valueOf(DEFAULT_SKIP_TRANSPARENT_PASTE));
         savePreferences();
     }
 

@@ -26,6 +26,7 @@ public final class MoveSelectionCommand implements Command {
     private final TransformationState transform;
     private final TransformedImage transformedImage;
     private final TransformedSelectionRegion transformedSelection;
+    private final boolean skipTransparentPixels;
 
     private final int[] overwrittenPixels;
     private final boolean[] overwrittenMask;
@@ -37,6 +38,7 @@ public final class MoveSelectionCommand implements Command {
                                  TransformationState transform,
                                  TransformedImage transformedImage,
                                  TransformedSelectionRegion transformedSelection,
+                                 boolean skipTransparentPixels,
                                  int[] overwrittenPixels,
                                  boolean[] overwrittenMask) {
         this.canvas = canvas;
@@ -46,6 +48,7 @@ public final class MoveSelectionCommand implements Command {
         this.transform = transform;
         this.transformedImage = transformedImage;
         this.transformedSelection = transformedSelection;
+        this.skipTransparentPixels = skipTransparentPixels;
         this.overwrittenPixels = overwrittenPixels;
         this.overwrittenMask = overwrittenMask;
     }
@@ -56,7 +59,8 @@ public final class MoveSelectionCommand implements Command {
                                               SelectionSnapshot snapshot,
                                               TransformationState transform,
                                               TransformedImage transformedImage,
-                                              TransformedSelectionRegion transformedSelection) {
+                                              TransformedSelectionRegion transformedSelection,
+                                              boolean skipTransparentPixels) {
         Objects.requireNonNull(canvas, "canvas");
         Objects.requireNonNull(snapshot, "snapshot");
         Objects.requireNonNull(transform, "transform");
@@ -92,6 +96,7 @@ public final class MoveSelectionCommand implements Command {
                 transform,
                 transformedImage,
                 transformedSelection,
+                skipTransparentPixels,
                 overwrittenPixels,
                 overwrittenMask
         );
@@ -182,7 +187,13 @@ public final class MoveSelectionCommand implements Command {
                 if (!mask[index]) {
                     continue;
                 }
-                canvas.setPixel(bounds.x + dx, canvasY, pixels[index]);
+                int pixel = pixels[index];
+                // Check transparency based on preference
+                // If skipTransparentPixels is true, only apply non-transparent pixels
+                // If skipTransparentPixels is false, apply all pixels including transparent ones
+                if (!skipTransparentPixels || (pixel >>> 24) > 0) { // Check alpha channel
+                    canvas.setPixel(bounds.x + dx, canvasY, pixel);
+                }
             }
         }
     }

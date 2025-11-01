@@ -2,6 +2,7 @@ package com.openmason.ui.components.textureCreator.panels;
 
 import com.openmason.ui.components.textureCreator.TextureCreatorPreferences;
 import imgui.ImGui;
+import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +23,11 @@ public class PreferencesPanel {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesPanel.class);
 
-    // ImGui state holders for sliders (required by ImGui API)
+    // ImGui state holders for sliders and checkboxes (required by ImGui API)
     private final ImFloat gridOpacitySlider = new ImFloat();
     private final ImFloat cubeNetOverlayOpacitySlider = new ImFloat();
     private final ImFloat rotationSpeedSlider = new ImFloat();
+    private final ImBoolean skipTransparentPixelsCheckbox = new ImBoolean();
 
     /**
      * Create preferences panel.
@@ -49,6 +51,7 @@ public class PreferencesPanel {
         gridOpacitySlider.set(preferences.getGridOpacity());
         cubeNetOverlayOpacitySlider.set(preferences.getCubeNetOverlayOpacity());
         rotationSpeedSlider.set(preferences.getRotationSpeed());
+        skipTransparentPixelsCheckbox.set(preferences.isSkipTransparentPixelsOnPaste());
 
         // === Grid Rendering Section ===
         if (ImGui.collapsingHeader("Grid Rendering")) {
@@ -126,6 +129,30 @@ public class PreferencesPanel {
                                  TextureCreatorPreferences.MAX_ROTATION_SPEED,
                                  "%.2f deg/px")) {
                 preferences.setRotationSpeed(rotationSpeedSlider.get());
+            }
+
+            ImGui.spacing();
+            ImGui.unindent();
+        }
+
+        ImGui.spacing();
+
+        // === Copy/Paste Behavior Section ===
+        if (ImGui.collapsingHeader("Copy/Paste Behavior")) {
+            ImGui.spacing();
+            ImGui.indent();
+
+            // Skip Transparent Pixels Checkbox
+            if (ImGui.checkbox("Skip Transparent Pixels on Paste/Move", skipTransparentPixelsCheckbox)) {
+                preferences.setSkipTransparentPixelsOnPaste(skipTransparentPixelsCheckbox.get());
+            }
+
+            ImGui.sameLine();
+            ImGui.textDisabled("(?)");
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels\n" +
+                                "during paste or move operations. When disabled, transparent pixels will clear\n" +
+                                "the destination, allowing you to erase with transparent selections.");
             }
 
             ImGui.spacing();

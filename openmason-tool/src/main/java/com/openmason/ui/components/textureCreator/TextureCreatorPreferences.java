@@ -146,6 +146,28 @@ public class TextureCreatorPreferences {
     }
 
     /**
+     * Check if transparent pixels should be skipped on paste/move operations.
+     * When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels.
+     * When disabled, transparent pixels will clear the destination.
+     * @return true to skip transparent pixels, false to apply all pixels
+     */
+    public boolean isSkipTransparentPixelsOnPaste() {
+        return preferencesManager.getTextureEditorSkipTransparentPixelsOnPaste();
+    }
+
+    /**
+     * Set whether transparent pixels should be skipped on paste/move operations.
+     * When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels.
+     * When disabled, transparent pixels will clear the destination.
+     * Auto-saves to preferences file.
+     * @param skip true to skip transparent pixels, false to apply all pixels
+     */
+    public void setSkipTransparentPixelsOnPaste(boolean skip) {
+        preferencesManager.setTextureEditorSkipTransparentPixelsOnPaste(skip);
+        logger.debug("Skip transparent pixels on paste set to: {} (saved to preferences)", skip);
+    }
+
+    /**
      * Get color history.
      * @return list of colors (packed RGBA ints), empty list if none
      */

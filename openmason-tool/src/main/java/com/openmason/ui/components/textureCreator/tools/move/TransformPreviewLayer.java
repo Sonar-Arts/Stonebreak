@@ -1,119 +1,164 @@
 package com.openmason.ui.components.textureCreator.tools.move;
 
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.layers.FloatingPixelLayer;
 
 import java.awt.Rectangle;
+
 /**
- * Lightweight overlay generator used by {@link MoveToolController}. The layer
- * never mutates the live canvas; instead it composes a temporary canvas that
- * merges the untouched pixels with the transformed snapshot for preview
- * rendering.
+ * Non-destructive floating preview layer for move/transform operations.
+ *
+ * <p>Shows transformed selection content without modifying the source canvas.
+ * Extends {@link FloatingPixelLayer} to provide non-destructive preview generation.</p>
+ *
+ * <p><b>Preview Behavior:</b> During preview, this layer creates a hole at the original
+ * selection location and renders the transformed pixels on top. The hole is always rendered
+ * under the moving selection, providing accurate visual feedback. The source canvas is never
+ * actually modified - the hole only appears in the preview. The actual modification happens
+ * when the move command is committed via {@link com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand}.</p>
+ *
+ * <h3>Design Philosophy</h3>
+ * <ul>
+ *   <li><b>Non-destructive preview:</b> Source canvas is never modified during preview</li>
+ *   <li><b>Visual accuracy:</b> Hole is rendered in preview to show final result accurately</li>
+ *   <li><b>Transform overlay:</b> Transformed pixels are shown as a floating layer over the hole</li>
+ *   <li><b>Persistent hole:</b> Hole appears in preview and becomes permanent on commit</li>
+ * </ul>
+ *
+ * @author Open Mason Team
  */
-public final class TransformPreviewLayer {
+public final class TransformPreviewLayer extends FloatingPixelLayer {
 
     private final SelectionSnapshot snapshot;
     private final TransformedImage transformedImage;
 
+    /**
+     * Create transform preview layer.
+     *
+     * @param snapshot selection snapshot containing original pixel data
+     * @param transformedImage transformed result to preview
+     */
     TransformPreviewLayer(SelectionSnapshot snapshot, TransformedImage transformedImage) {
+        if (snapshot == null) {
+            throw new IllegalArgumentException("Snapshot cannot be null");
+        }
+        if (transformedImage == null) {
+            throw new IllegalArgumentException("Transformed image cannot be null");
+        }
+
         this.snapshot = snapshot;
         this.transformedImage = transformedImage;
     }
 
-    public PixelCanvas createPreviewCanvas(PixelCanvas activeLayer) {
-        PixelCanvas preview = cloneCanvas(activeLayer);
-        applySelectionMask(preview, snapshot);
-        applyTransformedPixels(preview, transformedImage);
-        return preview;
-    }
-
-    public PixelCanvas createMultiLayerPreviewCanvas(PixelCanvas background, PixelCanvas activeLayer) {
-        PixelCanvas preview = cloneCanvas(background);
-        compositeLayerOutsideSelection(preview, activeLayer, snapshot);
-        applyTransformedPixels(preview, transformedImage);
-        return preview;
-    }
-
-    private static PixelCanvas cloneCanvas(PixelCanvas source) {
-        PixelCanvas copy = new PixelCanvas(source.getWidth(), source.getHeight());
-        System.arraycopy(source.getPixels(), 0, copy.getPixels(), 0, source.getPixels().length);
-        return copy;
-    }
-
-    private static void applySelectionMask(PixelCanvas canvas, SelectionSnapshot snapshot) {
-        Rectangle bounds = snapshot.bounds();
-        boolean[] mask = snapshot.mask();
-
-        for (int dy = 0; dy < bounds.height; dy++) {
-            int canvasY = bounds.y + dy;
-            for (int dx = 0; dx < bounds.width; dx++) {
-                int canvasX = bounds.x + dx;
-                int index = dy * bounds.width + dx;
-                if (mask[index]) {
-                    canvas.setPixel(canvasX, canvasY, 0x00000000);
-                }
-            }
+    /**
+     * Get the floating pixel color at the specified canvas coordinate.
+     *
+     * <p>Returns transformed pixels at their new positions. The hole at the original
+     * selection location is created separately by {@link #compositeActiveLayer}.</p>
+     *
+     * @param canvasX canvas X coordinate
+     * @param canvasY canvas Y coordinate
+     * @return transformed pixel color, or null if position is outside transformed area
+     */
+    @Override
+    protected Integer getFloatingPixelAt(int canvasX, int canvasY) {
+        // Check if this position has a transformed pixel
+        Rectangle transformedBounds = transformedImage.bounds();
+        if (!transformedBounds.contains(canvasX, canvasY)) {
+            return null;  // Not in transformed area
         }
+
+        // Calculate local coordinate within transformed image
+        int localX = canvasX - transformedBounds.x;
+        int localY = canvasY - transformedBounds.y;
+        int index = localY * transformedBounds.width + localX;
+
+        // Check if this position has a transformed pixel
+        boolean[] transformedMask = transformedImage.mask();
+        if (!transformedMask[index]) {
+            return null;  // No pixel at this position (outside selection shape)
+        }
+
+        // Return transformed pixel color
+        int[] pixels = transformedImage.pixels();
+        int color = pixels[index];
+
+        // Return null for fully transparent pixels (optimization)
+        if (isTransparent(color)) {
+            return null;
+        }
+
+        return color;
     }
 
-    private static void compositeLayerOutsideSelection(PixelCanvas target,
-                                                       PixelCanvas activeLayer,
-                                                       SelectionSnapshot snapshot) {
-        Rectangle bounds = snapshot.bounds();
-        boolean[] mask = snapshot.mask();
-
+    /**
+     * Composite active layer with a hole at the original selection location.
+     *
+     * <p>During preview, the original selection area is cleared (hole created),
+     * and all other active layer pixels are composited normally. This ensures
+     * the hole is always rendered under the moving selection.</p>
+     *
+     * @param preview preview canvas being built
+     * @param activeLayer active layer to composite
+     */
+    @Override
+    protected void compositeActiveLayer(PixelCanvas preview, PixelCanvas activeLayer) {
         int width = activeLayer.getWidth();
         int height = activeLayer.getHeight();
 
-        int[] activePixels = activeLayer.getPixels();
-        int[] targetPixels = target.getPixels();
+        // Get original selection bounds and mask for hole creation
+        Rectangle originalBounds = snapshot.bounds();
+        boolean[] originalMask = snapshot.mask();
 
         for (int y = 0; y < height; y++) {
-            int rowOffset = y * width;
             for (int x = 0; x < width; x++) {
-                int pixel = activePixels[rowOffset + x];
-                if (pixel >>> 24 == 0) {
+                // Check if this pixel is within the original selection bounds
+                boolean inOriginalSelection = false;
+                if (x >= originalBounds.x && x < originalBounds.x + originalBounds.width &&
+                    y >= originalBounds.y && y < originalBounds.y + originalBounds.height) {
+
+                    // Calculate index in original mask
+                    int localX = x - originalBounds.x;
+                    int localY = y - originalBounds.y;
+                    int index = localY * originalBounds.width + localX;
+
+                    // Check if this pixel was part of the original selection
+                    inOriginalSelection = originalMask[index];
+                }
+
+                // Skip pixels that were part of the original selection (creates the hole)
+                if (inOriginalSelection) {
                     continue;
                 }
 
-                if (isWithinMask(bounds, mask, x, y)) {
+                // Composite all other pixels normally
+                int activeColor = activeLayer.getPixel(x, y);
+
+                // Skip fully transparent pixels
+                if ((activeColor >>> 24) == 0) {
                     continue;
                 }
 
-                int targetIndex = rowOffset + x;
-                targetPixels[targetIndex] = PixelCanvas.blendColors(pixel, targetPixels[targetIndex]);
+                int bgColor = preview.getPixel(x, y);
+                int blended = PixelCanvas.blendColors(activeColor, bgColor);
+                preview.setPixel(x, y, blended);
             }
         }
     }
 
-    private static boolean isWithinMask(Rectangle bounds, boolean[] mask, int canvasX, int canvasY) {
-        if (!bounds.contains(canvasX, canvasY)) {
-            return false;
-        }
-        int localX = canvasX - bounds.x;
-        int localY = canvasY - bounds.y;
-        int index = localY * bounds.width + localX;
-        return mask[index];
+    /**
+     * Get the selection snapshot.
+     * @return selection snapshot
+     */
+    public SelectionSnapshot getSnapshot() {
+        return snapshot;
     }
 
-    private static void applyTransformedPixels(PixelCanvas canvas, TransformedImage image) {
-        Rectangle bounds = image.bounds();
-        if (bounds.width == 0 || bounds.height == 0) {
-            return;
-        }
-
-        boolean[] mask = image.mask();
-        int[] colours = image.pixels();
-
-        for (int dy = 0; dy < bounds.height; dy++) {
-            int canvasY = bounds.y + dy;
-            for (int dx = 0; dx < bounds.width; dx++) {
-                int index = dy * bounds.width + dx;
-                if (!mask[index]) {
-                    continue;
-                }
-                int canvasX = bounds.x + dx;
-                canvas.setPixel(canvasX, canvasY, colours[index]);
-            }
-        }
+    /**
+     * Get the transformed image.
+     * @return transformed image
+     */
+    public TransformedImage getTransformedImage() {
+        return transformedImage;
     }
 }

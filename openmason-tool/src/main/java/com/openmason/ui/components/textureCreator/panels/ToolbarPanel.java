@@ -5,6 +5,7 @@ import com.openmason.ui.components.textureCreator.selection.SelectionManager;
 import com.openmason.ui.components.textureCreator.tools.*;
 import com.openmason.ui.components.textureCreator.tools.grabber.GrabberTool;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
+import com.openmason.ui.components.textureCreator.tools.paste.PasteTool;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,7 @@ public class ToolbarPanel {
     private final TextureToolIconManager iconManager;
     private MoveToolController moveToolInstance; // Reference to move tool for configuration
     private SelectionBrushTool selectionBrushTool; // Reference to brush tool for configuration
+    private PasteTool pasteToolInstance; // Reference to paste tool for programmatic activation
 
     /**
      * Create toolbar panel with all available tools.
@@ -52,6 +54,10 @@ public class ToolbarPanel {
         tools.add(new RectangleSelectionTool());
         selectionBrushTool = new SelectionBrushTool();
         tools.add(selectionBrushTool);
+
+        // Create paste tool instance for programmatic activation (Ctrl+V)
+        // Note: NOT added to tools list - it's activated automatically, not manually selected
+        pasteToolInstance = new PasteTool();
 
         // Set default tool
         currentTool = tools.get(0); // Grabber
@@ -200,5 +206,23 @@ public class ToolbarPanel {
             return null;
         }
         return tools.get(index);
+    }
+
+    /**
+     * Get the paste tool instance.
+     * Used for programmatic activation (Ctrl+V).
+     * @return paste tool instance
+     */
+    public PasteTool getPasteTool() {
+        return pasteToolInstance;
+    }
+
+    /**
+     * Get the move tool instance.
+     * Used for paste operations (reuses move tool for DRY principle).
+     * @return move tool instance
+     */
+    public MoveToolController getMoveToolInstance() {
+        return moveToolInstance;
     }
 }

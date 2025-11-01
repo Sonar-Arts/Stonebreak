@@ -84,6 +84,8 @@ public class ToolOptionsBar {
 
                 if (currentTool instanceof MoveToolController) {
                     renderMoveToolOptions((MoveToolController) currentTool);
+                } else if (currentTool.supportsBrushSize()) {
+                    renderBrushSizeOption(currentTool);
                 }
             }
             // If no options, toolbar shows empty space (no dummy needed, window size handles it)
@@ -115,6 +117,9 @@ public class ToolOptionsBar {
         if (tool instanceof MoveToolController) {
             return true;
         }
+        if (tool.supportsBrushSize()) {
+            return true;
+        }
         return false;
     }
 
@@ -125,15 +130,36 @@ public class ToolOptionsBar {
         ImGui.text(String.format("Scale %.3f × %.3f", transform.scaleX(), transform.scaleY()));
         ImGui.sameLine(0.0f, OPTION_SPACING);
         ImGui.text(String.format("Rotate %.1f°", transform.rotationDegrees()));
-        if (moveTool.hasActiveLayer()) {
+        if (moveTool.hasPreviewLayer()) {
             ImGui.sameLine(0.0f, OPTION_SPACING);
             ImGui.text("Preview active");
         }
     }
 
-    // Future tool option rendering methods can be added here
-    // Example:
-    // private void renderToolOptions(SpecificTool tool) { ... }
+    /**
+     * Render brush size option for tools that support it.
+     * Follows DRY principle - shared rendering for all brush-based tools.
+     *
+     * @param tool The tool with brush size support
+     */
+    private void renderBrushSizeOption(DrawingTool tool) {
+        ImGui.text("Brush Size:");
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+
+        // Create ImInt wrapper for the slider
+        ImInt brushSize = new ImInt(tool.getBrushSize());
+
+        // Set width for slider (reasonable size for 1-20 range)
+        ImGui.pushItemWidth(150.0f);
+
+        // Render slider with 1-20 range
+        if (ImGui.sliderInt("##BrushSize", brushSize.getData(), 1, 20, "%d px")) {
+            // Update tool's brush size when slider changes
+            tool.setBrushSize(brushSize.get());
+        }
+
+        ImGui.popItemWidth();
+    }
 
     /**
      * Render a subtle separator line at the bottom of the toolbar.

@@ -14,7 +14,8 @@ import java.util.Set;
 
 /**
  * Brush-style selection tool that supports painting arbitrary, non-contiguous
- * selections. Integrates with the {@link SelectionManager} so the move tool and
+ * selections with variable brush size.
+ * Integrates with the {@link SelectionManager} so the move tool and
  * other systems can work with the resulting mask-based selection region.
  *
  * Modifier keys (evaluated on stroke start):
@@ -44,6 +45,8 @@ public final class SelectionBrushTool implements SelectionTool {
 
     private SelectionRegion createdSelection;
     private boolean hasSelectionChange;
+
+    private int brushSize = 1; // Per-tool brush size memory
 
     public void setSelectionManager(SelectionManager selectionManager) {
         this.selectionManager = selectionManager;
@@ -115,7 +118,22 @@ public final class SelectionBrushTool implements SelectionTool {
 
     @Override
     public String getDescription() {
-        return "Paint free-form selections (ALT subtracts, CTRL replaces)";
+        return "Paint free-form selections with variable brush size (ALT subtracts, CTRL replaces)";
+    }
+
+    @Override
+    public boolean supportsBrushSize() {
+        return true;
+    }
+
+    @Override
+    public int getBrushSize() {
+        return brushSize;
+    }
+
+    @Override
+    public void setBrushSize(int size) {
+        this.brushSize = Math.max(1, Math.min(20, size)); // Clamp to 1-20
     }
 
     @Override
@@ -158,17 +176,52 @@ public final class SelectionBrushTool implements SelectionTool {
         return canvas.getActiveSelection();
     }
 
-    private void applyPoint(int x, int y) {
-        long encoded = MaskSelectionRegion.encode(x, y);
-        switch (activeStrokeMode) {
-            case SUBTRACT:
-                workingPixels.remove(encoded);
-                break;
-            case ADD:
-            case REPLACE:
-            default:
-                workingPixels.add(encoded);
-                break;
+    private void applyPoint(int centerX, int centerY) {
+        if (brushSize == 1) {
+            // Optimize single pixel case
+            long encoded = MaskSelectionRegion.encode(centerX, centerY);
+            switch (activeStrokeMode) {
+                case SUBTRACT:
+                    workingPixels.remove(encoded);
+                    break;
+                case ADD:
+                case REPLACE:
+                default:
+                    workingPixels.add(encoded);
+                    break;
+            }
+            return;
+        }
+
+        // Apply circular brush
+        float radius = (brushSize - 1) / 2.0f;
+        int minX = (int) Math.floor(centerX - radius);
+        int maxX = (int) Math.ceil(centerX + radius);
+        int minY = (int) Math.floor(centerY - radius);
+        int maxY = (int) Math.ceil(centerY + radius);
+        float radiusSquared = radius * radius;
+
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                // Check if point is within circle
+                float dx = x - centerX;
+                float dy = y - centerY;
+                float distanceSquared = dx * dx + dy * dy;
+
+                if (distanceSquared <= radiusSquared) {
+                    long encoded = MaskSelectionRegion.encode(x, y);
+                    switch (activeStrokeMode) {
+                        case SUBTRACT:
+                            workingPixels.remove(encoded);
+                            break;
+                        case ADD:
+                        case REPLACE:
+                        default:
+                            workingPixels.add(encoded);
+                            break;
+                    }
+                }
+            }
         }
     }
 

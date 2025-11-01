@@ -2,11 +2,14 @@ package com.openmason.ui.components.textureCreator;
 
 import com.openmason.ui.components.textureCreator.canvas.CanvasState;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.clipboard.ClipboardManager;
 import com.openmason.ui.components.textureCreator.commands.CommandHistory;
+import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.io.TextureExporter;
 import com.openmason.ui.components.textureCreator.io.TextureImporter;
 import com.openmason.ui.components.textureCreator.layers.Layer;
 import com.openmason.ui.components.textureCreator.layers.LayerManager;
+import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +32,7 @@ public class TextureCreatorController {
     private final CommandHistory commandHistory;
     private final TextureExporter exporter;
     private final TextureImporter importer;
+    private final ClipboardManager clipboard;
 
     /**
      * Create texture creator controller.
@@ -46,6 +50,7 @@ public class TextureCreatorController {
         this.commandHistory = new CommandHistory();
         this.exporter = new TextureExporter();
         this.importer = new TextureImporter();
+        this.clipboard = new ClipboardManager();
 
         logger.info("Texture creator controller initialized: {}", size.getDisplayName());
     }
@@ -298,11 +303,80 @@ public class TextureCreatorController {
     }
 
     /**
+     * Get the clipboard manager.
+     * @return clipboard manager
+     */
+    public ClipboardManager getClipboard() {
+        return clipboard;
+    }
+
+    /**
+     * Copy current selection to clipboard.
+     */
+    public void copySelection() {
+        SelectionRegion selection = state.getCurrentSelection();
+
+        if (selection == null || selection.isEmpty()) {
+            logger.debug("No active selection to copy");
+            return;
+        }
+
+        Layer activeLayer = layerManager.getActiveLayer();
+        if (activeLayer == null) {
+            logger.warn("No active layer to copy from");
+            return;
+        }
+
+        PixelCanvas canvas = activeLayer.getCanvas();
+        clipboard.copy(canvas, selection);
+    }
+
+    /**
+     * Cut current selection to clipboard (copy then clear).
+     */
+    public void cutSelection() {
+        SelectionRegion selection = state.getCurrentSelection();
+
+        if (selection == null || selection.isEmpty()) {
+            logger.debug("No active selection to cut");
+            return;
+        }
+
+        Layer activeLayer = layerManager.getActiveLayer();
+        if (activeLayer == null) {
+            logger.warn("No active layer to cut from");
+            return;
+        }
+
+        PixelCanvas canvas = activeLayer.getCanvas();
+
+        // Create command for the cut operation
+        DrawCommand cutCommand = new DrawCommand(canvas, "Cut Selection");
+
+        // Cut to clipboard (copy + clear)
+        clipboard.cut(canvas, selection, cutCommand);
+
+        // Execute command if changes were made
+        if (cutCommand.hasChanges()) {
+            commandHistory.executeCommand(cutCommand);
+            notifyLayerModified();
+        }
+    }
+
+    /**
+     * Check if clipboard has data that can be pasted.
+     * @return true if clipboard has data
+     */
+    public boolean canPaste() {
+        return clipboard.hasData();
+    }
+
+    /**
      * Delete the contents of the current selection.
      * Sets all pixels within the selection to transparent.
      */
     public void deleteSelection() {
-        com.openmason.ui.components.textureCreator.selection.SelectionRegion selection = state.getCurrentSelection();
+        SelectionRegion selection = state.getCurrentSelection();
 
         if (selection == null || selection.isEmpty()) {
             logger.debug("No active selection to delete");
