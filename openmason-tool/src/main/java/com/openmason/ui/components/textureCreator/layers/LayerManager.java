@@ -274,6 +274,22 @@ public class LayerManager {
     }
 
     /**
+     * Get canvas width.
+     * @return canvas width in pixels
+     */
+    public int getCanvasWidth() {
+        return canvasWidth;
+    }
+
+    /**
+     * Get canvas height.
+     * @return canvas height in pixels
+     */
+    public int getCanvasHeight() {
+        return canvasHeight;
+    }
+
+    /**
      * Composite all visible layers into a single canvas.
      * Layers are composited from bottom to top with alpha blending.
      * Results are cached and only recomputed when layers change.

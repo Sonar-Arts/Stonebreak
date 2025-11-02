@@ -5,6 +5,7 @@ import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.dialogs.ImportPNGDialog;
 import com.openmason.ui.components.textureCreator.dialogs.NewTextureDialog;
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
+import com.openmason.ui.components.textureCreator.io.DragDropHandler;
 import com.openmason.ui.components.textureCreator.panels.*;
 import com.openmason.ui.dialogs.ExportFormatDialog;
 import com.openmason.ui.dialogs.FileDialogService;
@@ -17,8 +18,11 @@ import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWDropCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 /**
  * Main UI interface for the Texture Creator tool.
@@ -64,6 +68,15 @@ public class TextureCreatorImGui {
     // Callback for returning to Home screen
     private Runnable backToHomeCallback;
 
+    // Drag-and-drop handler
+    private final DragDropHandler dragDropHandler;
+
+    // Window handle for GLFW callbacks
+    private long windowHandle = 0;
+
+    // Drop callback reference (to prevent garbage collection)
+    private GLFWDropCallback dropCallback;
+
     /**
      * Create texture creator UI.
      */
@@ -106,18 +119,90 @@ public class TextureCreatorImGui {
         // Set default tool
         state.setCurrentTool(toolbarPanel.getCurrentTool());
 
-        logger.info("Texture Creator UI initialized with preferences persistence, color history, and selection management");
+        // Initialize drag-and-drop handler
+        this.dragDropHandler = new DragDropHandler();
+
+        logger.info("Texture Creator UI initialized with preferences persistence, color history, selection management, and drag-drop support");
     }
 
     /**
-     * Set the GLFW window handle for mouse capture functionality.
-     * This is required for infinite dragging in the move tool.
+     * Set the GLFW window handle for mouse capture functionality and drag-drop support.
+     * This is required for infinite dragging in the move tool and for drag-and-drop file operations.
      *
      * @param windowHandle the GLFW window handle
      */
     public void setWindowHandle(long windowHandle) {
+        this.windowHandle = windowHandle;
         toolbarPanel.setWindowHandle(windowHandle);
-        logger.debug("Window handle set for texture creator (mouse capture enabled)");
+
+        // Register drag-and-drop callback
+        setupDragDropCallback();
+
+        logger.debug("Window handle set for texture creator (mouse capture and drag-drop enabled)");
+    }
+
+    /**
+     * Set up GLFW drag-and-drop callback for PNG and .OMT files.
+     */
+    private void setupDragDropCallback() {
+        if (windowHandle == 0) {
+            logger.warn("Cannot setup drag-drop callback - window handle is null");
+            return;
+        }
+
+        // Create and register drop callback
+        dropCallback = new GLFWDropCallback() {
+            @Override
+            public void invoke(long window, int count, long names) {
+                String[] filePaths = new String[count];
+
+                // Extract file paths from native memory
+                for (int i = 0; i < count; i++) {
+                    filePaths[i] = GLFWDropCallback.getName(names, i);
+                }
+
+                // Process dropped files
+                handleDroppedFiles(filePaths);
+            }
+        };
+
+        GLFW.glfwSetDropCallback(windowHandle, dropCallback);
+        logger.debug("Drag-drop callback registered for PNG and .OMT files");
+    }
+
+    /**
+     * Handle files dropped onto the window.
+     * Processes PNG and .OMT files, adding them as layers.
+     *
+     * @param filePaths Array of file paths that were dropped
+     */
+    private void handleDroppedFiles(String[] filePaths) {
+        if (filePaths == null || filePaths.length == 0) {
+            return;
+        }
+
+        logger.info("Processing {} dropped file(s)", filePaths.length);
+
+        // Process dropped files using DragDropHandler
+        List<String> errors = dragDropHandler.processDroppedFiles(filePaths, controller.getLayerManager());
+
+        // Log results
+        if (errors.isEmpty()) {
+            logger.info("Successfully imported {} file(s) as layer(s)", filePaths.length);
+
+            // Notify layer modified to trigger visual update
+            controller.notifyLayerModified();
+        } else {
+            logger.error("Failed to import {} file(s):", errors.size());
+            for (String error : errors) {
+                logger.error("  - {}", error);
+            }
+
+            // Still notify if some files succeeded
+            if (errors.size() < filePaths.length) {
+                controller.notifyLayerModified();
+            }
+        }
     }
 
     /**
@@ -821,11 +906,17 @@ public class TextureCreatorImGui {
         // Save color history before disposing
         preferences.setColorHistory(colorPanel.getColorHistory());
 
+        // Cleanup GLFW callbacks
+        if (dropCallback != null) {
+            dropCallback.free();
+            dropCallback = null;
+        }
+
         // Cleanup OpenGL resources
         canvasPanel.dispose();
         layerPanel.dispose();
         TextureToolIconManager.getInstance().dispose();
 
-        logger.info("Texture Creator UI disposed (color history saved, layer thumbnails cleaned up, icons cleaned up)");
+        logger.info("Texture Creator UI disposed (color history saved, layer thumbnails cleaned up, icons cleaned up, callbacks freed)");
     }
 }
