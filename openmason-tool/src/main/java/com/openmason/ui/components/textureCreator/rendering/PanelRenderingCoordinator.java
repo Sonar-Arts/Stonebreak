@@ -3,6 +3,7 @@ package com.openmason.ui.components.textureCreator.rendering;
 import com.openmason.ui.components.textureCreator.TextureCreatorController;
 import com.openmason.ui.components.textureCreator.TextureCreatorPreferences;
 import com.openmason.ui.components.textureCreator.TextureCreatorState;
+import com.openmason.ui.components.textureCreator.TextureCreatorWindowState;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.coordinators.ToolCoordinator;
 import com.openmason.ui.components.textureCreator.panels.*;
@@ -25,6 +26,7 @@ public class PanelRenderingCoordinator {
     private final TextureCreatorController controller;
     private final TextureCreatorPreferences preferences;
     private final ToolCoordinator toolCoordinator;
+    private final TextureCreatorWindowState windowState;
 
     private final ToolbarPanel toolbarPanel;
     private final ToolOptionsBar toolOptionsBar;
@@ -41,6 +43,7 @@ public class PanelRenderingCoordinator {
                                     TextureCreatorController controller,
                                     TextureCreatorPreferences preferences,
                                     ToolCoordinator toolCoordinator,
+                                    TextureCreatorWindowState windowState,
                                     ToolbarPanel toolbarPanel,
                                     ToolOptionsBar toolOptionsBar,
                                     CanvasPanel canvasPanel,
@@ -52,6 +55,7 @@ public class PanelRenderingCoordinator {
         this.controller = controller;
         this.preferences = preferences;
         this.toolCoordinator = toolCoordinator;
+        this.windowState = windowState;
         this.toolbarPanel = toolbarPanel;
         this.toolOptionsBar = toolOptionsBar;
         this.canvasPanel = canvasPanel;
@@ -166,50 +170,54 @@ public class PanelRenderingCoordinator {
 
     /**
      * Render layers panel.
+     * Panel is closeable - clicking (x) button will hide it.
      */
     private void renderLayersPanel() {
-        if (ImGui.begin("Layers")) {
-            layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
+        if (windowState.getShowLayersPanel().get()) {
+            if (ImGui.begin("Layers", windowState.getShowLayersPanel())) {
+                layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
+            }
+            ImGui.end();
         }
-        ImGui.end();
     }
 
     /**
      * Render color panel.
+     * Panel is closeable - clicking (x) button will hide it.
      */
     private void renderColorPanel() {
-        if (ImGui.begin("Color")) {
-            colorPanel.render();
-            state.setCurrentColor(colorPanel.getCurrentColor());
+        if (windowState.getShowColorPanel().get()) {
+            if (ImGui.begin("Color", windowState.getShowColorPanel())) {
+                colorPanel.render();
+                state.setCurrentColor(colorPanel.getCurrentColor());
+            }
+            ImGui.end();
         }
-        ImGui.end();
     }
 
     /**
      * Render preferences window.
+     * Window is closeable - clicking (x) button will hide it.
      */
-    public void renderPreferencesWindow(boolean isOpen) {
-        ImBoolean open = new ImBoolean(isOpen);
-        if (ImGui.begin("Preferences", open)) {
-            preferencesPanel.render(preferences);
+    public void renderPreferencesWindow() {
+        if (windowState.getShowPreferencesWindow().get()) {
+            if (ImGui.begin("Preferences", windowState.getShowPreferencesWindow())) {
+                preferencesPanel.render(preferences);
+            }
+            ImGui.end();
         }
-        ImGui.end();
     }
 
     /**
      * Render noise filter window.
+     * Window is closeable - clicking (x) button will hide it.
      */
     public void renderNoiseFilterWindow() {
-        if (ImGui.begin("Noise Filter")) {
-            noiseFilterPanel.render(state.getCurrentSelection());
+        if (windowState.getShowNoiseFilterWindow().get()) {
+            if (ImGui.begin("Noise Filter", windowState.getShowNoiseFilterWindow())) {
+                noiseFilterPanel.render(state.getCurrentSelection());
+            }
+            ImGui.end();
         }
-        ImGui.end();
-    }
-
-    /**
-     * Check if preferences window is still open.
-     */
-    public boolean isPreferencesWindowOpen(ImBoolean openFlag) {
-        return openFlag.get();
     }
 }

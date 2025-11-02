@@ -30,6 +30,10 @@ public class MenuBarRenderer {
     private Runnable backToHomeCallback;
     private Runnable onPreferencesToggle;
     private Runnable onNoiseFilterToggle;
+    private Runnable onLayersPanelToggle;
+    private Runnable onColorPanelToggle;
+    private ImBoolean showLayersPanel;
+    private ImBoolean showColorPanel;
 
     /**
      * Create menu bar renderer.
@@ -74,6 +78,22 @@ public class MenuBarRenderer {
      */
     public void setOnNoiseFilterToggle(Runnable callback) {
         this.onNoiseFilterToggle = callback;
+    }
+
+    /**
+     * Set callback for layers panel toggle.
+     */
+    public void setOnLayersPanelToggle(Runnable callback, ImBoolean showLayersPanel) {
+        this.onLayersPanelToggle = callback;
+        this.showLayersPanel = showLayersPanel;
+    }
+
+    /**
+     * Set callback for color panel toggle.
+     */
+    public void setOnColorPanelToggle(Runnable callback, ImBoolean showColorPanel) {
+        this.onColorPanelToggle = callback;
+        this.showColorPanel = showColorPanel;
     }
 
     /**
@@ -185,6 +205,23 @@ public class MenuBarRenderer {
      */
     private void renderViewMenu() {
         if (ImGui.beginMenu("View")) {
+            // Panels submenu
+            if (ImGui.beginMenu("Panels")) {
+                if (showLayersPanel != null && ImGui.menuItem("Layers", null, showLayersPanel.get())) {
+                    if (onLayersPanelToggle != null) {
+                        onLayersPanelToggle.run();
+                    }
+                }
+                if (showColorPanel != null && ImGui.menuItem("Color", null, showColorPanel.get())) {
+                    if (onColorPanelToggle != null) {
+                        onColorPanelToggle.run();
+                    }
+                }
+                ImGui.endMenu();
+            }
+
+            ImGui.separator();
+
             ImGui.menuItem("Grid", "G", state.getShowGrid());
 
             ImGui.separator();

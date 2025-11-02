@@ -73,6 +73,7 @@ public class TextureCreatorImGui {
     private final TextureCreatorState state;
     private final TextureCreatorController controller;
     private final TextureCreatorPreferences preferences;
+    private final TextureCreatorWindowState windowState;
 
     // Coordinators (Business Logic)
     private final PasteCoordinator pasteCoordinator;
@@ -95,9 +96,7 @@ public class TextureCreatorImGui {
     // Panels (passed to renderer)
     private final ColorPanel colorPanel;
 
-    // Window state
-    private boolean showPreferencesWindow = false;
-    private boolean showNoiseFilterWindow = false;
+    // Window handle
     private long windowHandle = 0;
 
     // Drag-and-drop
@@ -111,6 +110,7 @@ public class TextureCreatorImGui {
     public TextureCreatorImGui(TextureCreatorState state,
                               TextureCreatorController controller,
                               TextureCreatorPreferences preferences,
+                              TextureCreatorWindowState windowState,
                               ToolbarPanel toolbarPanel,
                               ToolOptionsBar toolOptionsBar,
                               CanvasPanel canvasPanel,
@@ -133,6 +133,7 @@ public class TextureCreatorImGui {
         this.state = state;
         this.controller = controller;
         this.preferences = preferences;
+        this.windowState = windowState;
         this.newTextureDialog = newTextureDialog;
         this.importPNGDialog = importPNGDialog;
         this.omtImportDialog = omtImportDialog;
@@ -164,9 +165,10 @@ public class TextureCreatorImGui {
         TextureCreatorState state = new TextureCreatorState();
         TextureCreatorController controller = new TextureCreatorController(state);
 
-        // Create preferences
+        // Create preferences and window state
         PreferencesManager preferencesManager = new PreferencesManager();
         TextureCreatorPreferences preferences = new TextureCreatorPreferences(preferencesManager);
+        TextureCreatorWindowState windowState = new TextureCreatorWindowState();
 
         // Create services
         StatusService statusService = new StatusService();
@@ -207,12 +209,12 @@ public class TextureCreatorImGui {
         MenuBarRenderer menuBarRenderer = new MenuBarRenderer(state, controller, fileOperations,
             newTextureDialog, importPNGDialog, exportFormatDialog);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
-            toolCoordinator, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, preferencesPanel);
+            toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, preferencesPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
             newTextureDialog, importPNGDialog, omtImportDialog);
 
         return new TextureCreatorImGui(
-            state, controller, preferences,
+            state, controller, preferences, windowState,
             toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, preferencesPanel,
             newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog,
             fileOperations, filterCoordinator, toolCoordinator, pasteCoordinator, shortcutManager,
@@ -228,8 +230,10 @@ public class TextureCreatorImGui {
         toolbarPanel.setSelectionManager(state.getSelectionManager());
         toolbarPanel.setPreferences(preferences);
         state.setCurrentTool(toolbarPanel.getCurrentTool());
-        menuBarRenderer.setOnPreferencesToggle(() -> showPreferencesWindow = !showPreferencesWindow);
-        menuBarRenderer.setOnNoiseFilterToggle(() -> showNoiseFilterWindow = !showNoiseFilterWindow);
+        menuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
+        menuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
+        menuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
+        menuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
     }
 
     /**
@@ -249,7 +253,7 @@ public class TextureCreatorImGui {
 
         // Window
         shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_COMMA),
-            () -> showPreferencesWindow = !showPreferencesWindow);
+            windowState::togglePreferencesWindow);
 
         // Edit
         shortcutManager.register(ShortcutKey.ctrl(GLFW.GLFW_KEY_Z), controller::undo);
@@ -374,13 +378,9 @@ public class TextureCreatorImGui {
         panelRenderer.renderAllPanels();
         renderDialogs();
 
-        if (showPreferencesWindow) {
-            panelRenderer.renderPreferencesWindow(showPreferencesWindow);
-        }
-
-        if (showNoiseFilterWindow) {
-            panelRenderer.renderNoiseFilterWindow();
-        }
+        // Render closeable windows (visibility managed by windowState)
+        panelRenderer.renderPreferencesWindow();
+        panelRenderer.renderNoiseFilterWindow();
 
         dialogProcessor.processAll();
     }
