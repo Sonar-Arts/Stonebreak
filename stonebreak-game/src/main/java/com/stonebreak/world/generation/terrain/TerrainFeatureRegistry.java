@@ -60,7 +60,11 @@ public class TerrainFeatureRegistry {
     }
 
     /**
-     * Creates a registry with default features (caves, arches, overhangs).
+     * Creates a registry with default features (arches, overhangs).
+     *
+     * Note: Cave generation is now handled by integrated CaveNoiseGenerator
+     * in TerrainGenerationSystem, not as a terrain feature. This provides
+     * better performance and follows Minecraft 1.18+ approach.
      *
      * @param seed World seed
      * @return New registry with default features
@@ -69,7 +73,7 @@ public class TerrainFeatureRegistry {
         TerrainFeatureRegistry registry = new TerrainFeatureRegistry(seed);
 
         // Register default features in any order (will be sorted by priority)
-        registry.registerFeature(CaveSystemFeature.withDefaults(seed));
+        // Note: CaveSystemFeature removed - caves now integrated into main generation
         registry.registerFeature(NaturalArchFeature.withDefaults(seed));
         registry.registerFeature(SurfaceOverhangFeature.withDefaults(seed));
 

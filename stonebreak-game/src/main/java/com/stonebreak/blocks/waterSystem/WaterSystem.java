@@ -186,13 +186,16 @@ public final class WaterSystem {
 
         // Remove pending updates for the unloaded chunk
         // Use iterator to avoid ConcurrentModificationException with PriorityQueue
-        Iterator<ScheduledUpdate> iterator = pendingUpdates.iterator();
-        while (iterator.hasNext()) {
-            ScheduledUpdate update = iterator.next();
-            BlockPos pos = update.pos();
-            if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-                Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
-                iterator.remove();
+        // Synchronize access to pendingUpdates - PriorityQueue is not thread-safe
+        synchronized (pendingUpdates) {
+            Iterator<ScheduledUpdate> iterator = pendingUpdates.iterator();
+            while (iterator.hasNext()) {
+                ScheduledUpdate update = iterator.next();
+                BlockPos pos = update.pos();
+                if (Math.floorDiv(pos.x(), WorldConfiguration.CHUNK_SIZE) == chunkX &&
+                    Math.floorDiv(pos.z(), WorldConfiguration.CHUNK_SIZE) == chunkZ) {
+                    iterator.remove();
+                }
             }
         }
 
@@ -254,21 +257,26 @@ public final class WaterSystem {
 
     private void processQueue(int budget) {
         int processed = 0;
-        while (processed < budget && !pendingUpdates.isEmpty()) {
-            ScheduledUpdate next = pendingUpdates.peek();
-            if (next.scheduledTick() > logicalTick) {
-                break;
-            }
+        // Synchronize access to pendingUpdates - PriorityQueue is not thread-safe
+        // Although processQueue is only called from tick() on main thread,
+        // concurrent chunk loading can still add to the queue
+        synchronized (pendingUpdates) {
+            while (processed < budget && !pendingUpdates.isEmpty()) {
+                ScheduledUpdate next = pendingUpdates.peek();
+                if (next.scheduledTick() > logicalTick) {
+                    break;
+                }
 
-            pendingUpdates.poll();
-            Long trackedTick = scheduledTicks.get(next.pos());
-            if (trackedTick == null || trackedTick != next.scheduledTick()) {
-                continue; // Stale entry
-            }
+                pendingUpdates.poll();
+                Long trackedTick = scheduledTicks.get(next.pos());
+                if (trackedTick == null || trackedTick != next.scheduledTick()) {
+                    continue; // Stale entry
+                }
 
-            scheduledTicks.remove(next.pos());
-            updateCell(next.pos());
-            processed++;
+                scheduledTicks.remove(next.pos());
+                updateCell(next.pos());
+                processed++;
+            }
         }
     }
 
@@ -569,7 +577,12 @@ public final class WaterSystem {
         }
 
         scheduledTicks.put(pos, scheduledTick);
-        pendingUpdates.add(new ScheduledUpdate(pos, scheduledTick));
+
+        // Synchronize access to pendingUpdates - PriorityQueue is not thread-safe
+        // Chunks load concurrently, so onChunkLoaded can be called from multiple threads
+        synchronized (pendingUpdates) {
+            pendingUpdates.add(new ScheduledUpdate(pos, scheduledTick));
+        }
     }
 
     private static long chunkKey(int chunkX, int chunkZ) {

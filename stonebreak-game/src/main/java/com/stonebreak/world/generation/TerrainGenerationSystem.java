@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeTerrainModifierRegistry;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.caves.AquiferGenerator;
+import com.stonebreak.world.generation.caves.CaveNoiseGenerator;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
@@ -48,6 +50,8 @@ public class TerrainGenerationSystem {
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
     private final BiomeTerrainModifierRegistry modifierRegistry;  // Phase 2: Biome-specific modifiers
+    private final CaveNoiseGenerator caveGenerator;  // Ridged noise-based cave system
+    private final AquiferGenerator aquiferGenerator;  // Underground water/lava pools
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -106,11 +110,14 @@ public class TerrainGenerationSystem {
         this.heightMapGenerator = new HeightMapGenerator(seed, config);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
+        this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
+        this.aquiferGenerator = new AquiferGenerator(seed);  // Underground water/lava pools
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
 
-        // Initialize terrain feature registry with default features (caves, arches, overhangs)
+        // Initialize terrain feature registry with default features (overhangs, arches)
+        // Note: CaveSystemFeature is now replaced by integrated cave density
         this.terrainFeatureRegistry = TerrainFeatureRegistry.withDefaults(seed);
     }
 
@@ -218,8 +225,20 @@ public class TerrainGenerationSystem {
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
+                    boolean isCave = false;  // Track if this is a cave for aquifer application
 
-                    // Check terrain features (caves, overhangs, arches) if solid
+                    // Check cave density if potentially underground
+                    // Caves are integrated into terrain generation (Minecraft 1.18+ approach)
+                    if (shouldBeSolid && caveGenerator.canGenerateCaves(y)) {
+                        float caveDensity = caveGenerator.sampleCaveDensity(worldX, y, worldZ, height);
+                        // High cave density carves out the block
+                        if (caveDensity > 0.0f) {
+                            shouldBeSolid = false; // Cave removes this block
+                            isCave = true;  // Mark as cave for aquifer
+                        }
+                    }
+
+                    // Check other terrain features (overhangs, arches) if still solid
                     if (shouldBeSolid) {
                         boolean shouldRemove = terrainFeatureRegistry.shouldRemoveBlock(worldX, y, worldZ, height, biome);
                         if (shouldRemove) {
@@ -228,8 +247,19 @@ public class TerrainGenerationSystem {
                     }
 
                     if (!shouldBeSolid) {
-                        // Block should be air (either above surface or removed by feature)
-                        chunk.setBlock(x, y, z, BlockType.AIR);
+                        // Block is air - determine if it should be filled with water/lava
+                        BlockType blockType = BlockType.AIR;
+
+                        // Apply aquifer to cave blocks (underground water/lava pools)
+                        if (isCave) {
+                            blockType = aquiferGenerator.applyAquifer(worldX, y, worldZ, true);
+                        }
+                        // Handle regular water level for non-cave air blocks
+                        else if (y < SEA_LEVEL) {
+                            blockType = BlockType.WATER;
+                        }
+
+                        chunk.setBlock(x, y, z, blockType);
                         continue;
                     }
 
