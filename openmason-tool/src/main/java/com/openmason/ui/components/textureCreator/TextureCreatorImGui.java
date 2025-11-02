@@ -4,6 +4,7 @@ import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
 import com.openmason.ui.components.textureCreator.dialogs.ImportPNGDialog;
 import com.openmason.ui.components.textureCreator.dialogs.NewTextureDialog;
+import com.openmason.ui.components.textureCreator.dialogs.OMTImportDialog;
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.io.DragDropHandler;
 import com.openmason.ui.components.textureCreator.panels.*;
@@ -22,6 +23,7 @@ import org.lwjgl.glfw.GLFWDropCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -54,6 +56,7 @@ public class TextureCreatorImGui {
     // Dialogs
     private final NewTextureDialog newTextureDialog;
     private final ImportPNGDialog importPNGDialog;
+    private final OMTImportDialog omtImportDialog;
     private final ExportFormatDialog exportFormatDialog;
 
     // Window visibility flags
@@ -95,6 +98,7 @@ public class TextureCreatorImGui {
         // Initialize dialogs
         this.newTextureDialog = new NewTextureDialog();
         this.importPNGDialog = new ImportPNGDialog();
+        this.omtImportDialog = new OMTImportDialog();
         this.exportFormatDialog = new ExportFormatDialog();
 
         // Initialize panels
@@ -172,7 +176,8 @@ public class TextureCreatorImGui {
 
     /**
      * Handle files dropped onto the window.
-     * Processes PNG and .OMT files, adding them as layers.
+     * PNG files are imported immediately as layers.
+     * .OMT files trigger a dialog for user to choose import mode.
      *
      * @param filePaths Array of file paths that were dropped
      */
@@ -183,26 +188,67 @@ public class TextureCreatorImGui {
 
         logger.info("Processing {} dropped file(s)", filePaths.length);
 
-        // Process dropped files using DragDropHandler
-        List<String> errors = dragDropHandler.processDroppedFiles(filePaths, controller.getLayerManager());
+        // Separate PNG and .OMT files
+        List<String> pngFiles = new ArrayList<>();
+        List<String> omtFiles = new ArrayList<>();
 
-        // Log results
-        if (errors.isEmpty()) {
-            logger.info("Successfully imported {} file(s) as layer(s)", filePaths.length);
-
-            // Notify layer modified to trigger visual update
-            controller.notifyLayerModified();
-        } else {
-            logger.error("Failed to import {} file(s):", errors.size());
-            for (String error : errors) {
-                logger.error("  - {}", error);
-            }
-
-            // Still notify if some files succeeded
-            if (errors.size() < filePaths.length) {
-                controller.notifyLayerModified();
+        for (String filePath : filePaths) {
+            String extension = getFileExtension(filePath).toLowerCase();
+            if (extension.equals("png")) {
+                pngFiles.add(filePath);
+            } else if (extension.equals("omt")) {
+                omtFiles.add(filePath);
+            } else {
+                logger.warn("Unsupported file type dropped: {}", filePath);
             }
         }
+
+        // Process PNG files immediately
+        if (!pngFiles.isEmpty()) {
+            List<String> errors = dragDropHandler.processDroppedPNGFiles(
+                pngFiles.toArray(new String[0]),
+                controller.getLayerManager()
+            );
+
+            if (errors.isEmpty()) {
+                logger.info("Successfully imported {} PNG file(s) as layer(s)", pngFiles.size());
+                controller.notifyLayerModified();
+            } else {
+                logger.error("Failed to import {} PNG file(s):", errors.size());
+                for (String error : errors) {
+                    logger.error("  - {}", error);
+                }
+                // Still notify if some files succeeded
+                if (errors.size() < pngFiles.size()) {
+                    controller.notifyLayerModified();
+                }
+            }
+        }
+
+        // Show dialog for .OMT files (one at a time)
+        if (!omtFiles.isEmpty()) {
+            if (omtFiles.size() == 1) {
+                // Single .OMT file - show dialog immediately
+                omtImportDialog.show(omtFiles.get(0));
+            } else {
+                // Multiple .OMT files - show dialog for first one
+                // (YAGNI: batch processing can be added later if needed)
+                omtImportDialog.show(omtFiles.get(0));
+                logger.warn("Multiple .OMT files dropped - only importing the first one: {}",
+                           new java.io.File(omtFiles.get(0)).getName());
+            }
+        }
+    }
+
+    /**
+     * Get file extension from path.
+     */
+    private String getFileExtension(String filePath) {
+        int lastDot = filePath.lastIndexOf('.');
+        if (lastDot == -1 || lastDot == filePath.length() - 1) {
+            return "";
+        }
+        return filePath.substring(lastDot + 1);
     }
 
     /**
@@ -236,6 +282,7 @@ public class TextureCreatorImGui {
         // Render dialogs
         newTextureDialog.render();
         importPNGDialog.render();
+        omtImportDialog.render();
         exportFormatDialog.render();
 
         // Check for confirmed new texture selection
@@ -254,6 +301,27 @@ public class TextureCreatorImGui {
                 logger.error("Failed to import PNG: {}", pendingImportPath);
             }
             pendingImportPath = null; // Clear pending path
+        }
+
+        // Check for confirmed .OMT import choice
+        OMTImportDialog.ImportMode omtChoice = omtImportDialog.getConfirmedChoice();
+        if (omtChoice != OMTImportDialog.ImportMode.NONE) {
+            String omtFilePath = omtImportDialog.getPendingFilePath();
+            if (omtFilePath != null) {
+                try {
+                    if (omtChoice == OMTImportDialog.ImportMode.FLATTEN) {
+                        dragDropHandler.importOMTFlattened(omtFilePath, controller.getLayerManager());
+                        logger.info("Successfully imported and flattened .OMT file: {}", omtFilePath);
+                    } else if (omtChoice == OMTImportDialog.ImportMode.IMPORT_ALL) {
+                        dragDropHandler.importOMTAllLayers(omtFilePath, controller.getLayerManager());
+                        logger.info("Successfully imported all layers from .OMT file: {}", omtFilePath);
+                    }
+                    // Notify layer modified to trigger visual update
+                    controller.notifyLayerModified();
+                } catch (Exception e) {
+                    logger.error("Failed to import .OMT file: {}", omtFilePath, e);
+                }
+            }
         }
     }
 

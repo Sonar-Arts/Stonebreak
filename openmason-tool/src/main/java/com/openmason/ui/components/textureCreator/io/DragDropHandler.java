@@ -33,13 +33,14 @@ public class DragDropHandler {
     }
 
     /**
-     * Processes dropped files and adds them as layers to the LayerManager.
+     * Processes dropped PNG files and adds them as layers to the LayerManager.
+     * Note: .OMT files are handled separately via dialog interaction in TextureCreatorImGui.
      *
-     * @param filePaths Array of file paths that were dropped
+     * @param filePaths Array of PNG file paths that were dropped
      * @param layerManager The LayerManager to add layers to
      * @return List of error messages (empty if all successful)
      */
-    public List<String> processDroppedFiles(String[] filePaths, LayerManager layerManager) {
+    public List<String> processDroppedPNGFiles(String[] filePaths, LayerManager layerManager) {
         List<String> errors = new ArrayList<>();
 
         if (filePaths == null || filePaths.length == 0) {
@@ -48,7 +49,15 @@ public class DragDropHandler {
 
         for (String filePath : filePaths) {
             try {
-                processFile(filePath, layerManager);
+                Path path = Paths.get(filePath);
+                String fileName = path.getFileName().toString();
+                String extension = getFileExtension(fileName).toLowerCase();
+
+                if (extension.equals("png")) {
+                    importPNGAsLayer(filePath, fileName, layerManager);
+                } else {
+                    logger.warn("Skipping non-PNG file in processDroppedPNGFiles: {}", fileName);
+                }
             } catch (Exception e) {
                 String errorMsg = "Failed to import " + new File(filePath).getName() + ": " + e.getMessage();
                 logger.error(errorMsg, e);
@@ -57,26 +66,6 @@ public class DragDropHandler {
         }
 
         return errors;
-    }
-
-    /**
-     * Processes a single dropped file.
-     */
-    private void processFile(String filePath, LayerManager layerManager) throws Exception {
-        Path path = Paths.get(filePath);
-        String fileName = path.getFileName().toString();
-        String extension = getFileExtension(fileName).toLowerCase();
-
-        switch (extension) {
-            case "png":
-                importPNGAsLayer(filePath, fileName, layerManager);
-                break;
-            case "omt":
-                importOMTAsLayer(filePath, fileName, layerManager);
-                break;
-            default:
-                throw new UnsupportedOperationException("Unsupported file type: " + extension);
-        }
     }
 
     /**
@@ -118,7 +107,8 @@ public class DragDropHandler {
     /**
      * Imports an .OMT file and flattens it to a single layer.
      */
-    private void importOMTAsLayer(String filePath, String fileName, LayerManager layerManager) throws Exception {
+    public void importOMTFlattened(String filePath, LayerManager layerManager) throws Exception {
+        String fileName = new File(filePath).getName();
         logger.info("Importing .OMT file as flattened layer: {}", fileName);
 
         // Load .OMT file using existing deserializer
@@ -155,6 +145,48 @@ public class DragDropHandler {
         layerManager.addLayerAt(layerManager.getLayerCount(), newLayer);
 
         logger.info("Successfully imported .OMT as flattened layer: {}", layerName);
+    }
+
+    /**
+     * Imports all layers from an .OMT file individually.
+     * Preserves layer names, visibility, and opacity settings.
+     */
+    public void importOMTAllLayers(String filePath, LayerManager layerManager) throws Exception {
+        String fileName = new File(filePath).getName();
+        logger.info("Importing all layers from .OMT file: {}", fileName);
+
+        // Load .OMT file using existing deserializer
+        LayerManager importedLayerManager = omtDeserializer.load(filePath);
+
+        if (importedLayerManager == null) {
+            throw new Exception("Failed to load .OMT file");
+        }
+
+        // Validate dimensions match canvas size
+        int canvasWidth = layerManager.getCanvasWidth();
+        int canvasHeight = layerManager.getCanvasHeight();
+
+        if (importedLayerManager.getCanvasWidth() != canvasWidth ||
+            importedLayerManager.getCanvasHeight() != canvasHeight) {
+            throw new Exception(String.format(
+                ".OMT dimensions (%dx%d) don't match canvas size (%dx%d)",
+                importedLayerManager.getCanvasWidth(),
+                importedLayerManager.getCanvasHeight(),
+                canvasWidth, canvasHeight
+            ));
+        }
+
+        // Import each layer individually
+        List<Layer> layers = importedLayerManager.getLayers();
+        int importedCount = 0;
+
+        for (Layer layer : layers) {
+            // Add each layer to the manager, preserving all properties
+            layerManager.addLayerAt(layerManager.getLayerCount(), layer);
+            importedCount++;
+        }
+
+        logger.info("Successfully imported {} layer(s) from .OMT file: {}", importedCount, fileName);
     }
 
     /**
