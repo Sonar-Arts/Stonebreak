@@ -11,18 +11,23 @@ import java.awt.Rectangle;
  * <p>Shows transformed selection content without modifying the source canvas.
  * Extends {@link FloatingPixelLayer} to provide non-destructive preview generation.</p>
  *
- * <p><b>Preview Behavior:</b> During preview, this layer creates a hole at the original
- * selection location and renders the transformed pixels on top. The hole is always rendered
- * under the moving selection, providing accurate visual feedback. The source canvas is never
- * actually modified - the hole only appears in the preview. The actual modification happens
- * when the move command is committed via {@link com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand}.</p>
+ * <p><b>Preview Behavior:</b> During preview, this layer conditionally creates a hole based on
+ * the operation type:
+ * <ul>
+ *   <li><b>Regular Move:</b> Always creates a hole at the original selection location (pixels were moved)</li>
+ *   <li><b>Paste:</b> Never creates a hole (pixels were added, not moved)</li>
+ * </ul>
+ * The source canvas is never actually modified - the hole only appears in the preview. The actual
+ * modification happens when the move command is committed via
+ * {@link com.openmason.ui.components.textureCreator.commands.move.MoveSelectionCommand}.</p>
  *
  * <h3>Design Philosophy</h3>
  * <ul>
  *   <li><b>Non-destructive preview:</b> Source canvas is never modified during preview</li>
- *   <li><b>Visual accuracy:</b> Hole is rendered in preview to show final result accurately</li>
- *   <li><b>Transform overlay:</b> Transformed pixels are shown as a floating layer over the hole</li>
- *   <li><b>Persistent hole:</b> Hole appears in preview and becomes permanent on commit</li>
+ *   <li><b>Operation-aware holes:</b> Move creates hole, paste does not</li>
+ *   <li><b>Paste-friendly:</b> Pasted content can be transformed without showing a hole</li>
+ *   <li><b>Transform overlay:</b> Transformed pixels are shown as a floating layer</li>
+ *   <li><b>Visual accuracy:</b> Preview accurately represents the final result after commit</li>
  * </ul>
  *
  * @author Open Mason Team
@@ -31,14 +36,16 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
 
     private final SelectionSnapshot snapshot;
     private final TransformedImage transformedImage;
+    private final boolean isPasteOperation;
 
     /**
      * Create transform preview layer.
      *
      * @param snapshot selection snapshot containing original pixel data
      * @param transformedImage transformed result to preview
+     * @param isPasteOperation true if this is a paste operation (no hole should be created)
      */
-    TransformPreviewLayer(SelectionSnapshot snapshot, TransformedImage transformedImage) {
+    TransformPreviewLayer(SelectionSnapshot snapshot, TransformedImage transformedImage, boolean isPasteOperation) {
         if (snapshot == null) {
             throw new IllegalArgumentException("Snapshot cannot be null");
         }
@@ -48,6 +55,7 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
 
         this.snapshot = snapshot;
         this.transformedImage = transformedImage;
+        this.isPasteOperation = isPasteOperation;
     }
 
     /**
@@ -92,11 +100,11 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
     }
 
     /**
-     * Composite active layer with a hole at the original selection location.
+     * Composite active layer with optional hole at the original selection location.
      *
-     * <p>During preview, the original selection area is cleared (hole created),
-     * and all other active layer pixels are composited normally. This ensures
-     * the hole is always rendered under the moving selection.</p>
+     * <p>During preview, a hole is only created for regular move operations (not paste).
+     * Paste operations never create a hole because the content was pasted (added) rather
+     * than moved from an existing location.</p>
      *
      * @param preview preview canvas being built
      * @param activeLayer active layer to composite
@@ -106,9 +114,13 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
         int width = activeLayer.getWidth();
         int height = activeLayer.getHeight();
 
-        // Get original selection bounds and mask for hole creation
+        // Get original bounds for hole detection
         Rectangle originalBounds = snapshot.bounds();
         boolean[] originalMask = snapshot.mask();
+
+        // NEVER create a hole for paste operations
+        // Only create a hole for regular move operations
+        boolean shouldCreateHole = !isPasteOperation;
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -126,8 +138,8 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
                     inOriginalSelection = originalMask[index];
                 }
 
-                // Skip pixels that were part of the original selection (creates the hole)
-                if (inOriginalSelection) {
+                // Skip pixels (create hole) only for regular move operations, never for paste
+                if (inOriginalSelection && shouldCreateHole) {
                     continue;
                 }
 

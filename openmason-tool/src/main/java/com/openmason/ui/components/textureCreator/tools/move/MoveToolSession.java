@@ -16,17 +16,23 @@ import java.util.Optional;
 final class MoveToolSession {
 
     private final SelectionSnapshot snapshot;
+    private final boolean isPasteOperation;
     private TransformationState transform;
     private TransformedImage transformedImage;
     private TransformedSelectionRegion transformedSelection;
 
-    private MoveToolSession(SelectionSnapshot snapshot) {
+    private MoveToolSession(SelectionSnapshot snapshot, boolean isPasteOperation) {
         this.snapshot = snapshot;
+        this.isPasteOperation = isPasteOperation;
         this.transform = TransformationState.identity();
     }
 
     static MoveToolSession capture(PixelCanvas canvas, SelectionRegion selection) {
-        return new MoveToolSession(SelectionSnapshot.capture(canvas, selection));
+        return new MoveToolSession(SelectionSnapshot.capture(canvas, selection), false);
+    }
+
+    static MoveToolSession captureForPaste(PixelCanvas canvas, SelectionRegion selection) {
+        return new MoveToolSession(SelectionSnapshot.capture(canvas, selection), true);
     }
 
     SelectionSnapshot snapshot() {
@@ -64,7 +70,7 @@ final class MoveToolSession {
         if (!hasPreview()) {
             return null;
         }
-        return new TransformPreviewLayer(snapshot, transformedImage);
+        return new TransformPreviewLayer(snapshot, transformedImage, isPasteOperation);
     }
 
     MoveSelectionCommand createCommand(PixelCanvas canvas,
@@ -81,7 +87,8 @@ final class MoveToolSession {
                 transform,
                 transformedImage,
                 transformedSelection,
-                skipTransparentPixels
+                skipTransparentPixels,
+                isPasteOperation
         );
     }
 }

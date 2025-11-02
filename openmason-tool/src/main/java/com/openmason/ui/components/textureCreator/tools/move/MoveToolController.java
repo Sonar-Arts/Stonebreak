@@ -447,6 +447,19 @@ public class MoveToolController implements DrawingTool {
         }
     }
 
+    /**
+     * Set up a paste session for transforming pasted content.
+     * This creates a session that never creates a hole (since content was pasted, not moved).
+     *
+     * @param canvas pixel canvas
+     * @param selection selection region for pasted content
+     */
+    public void setupPasteSession(PixelCanvas canvas, SelectionRegion selection) {
+        session = MoveToolSession.captureForPaste(canvas, selection);
+        previewLayer = null;
+        lastSelection = selection;
+    }
+
     private void startHandleDrag(TransformHandle handle, double startX, double startY) {
         if (session == null) {
             return;

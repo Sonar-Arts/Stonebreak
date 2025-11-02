@@ -58,10 +58,8 @@ public class TextureCreatorImGui {
     // Pending import state (stores file path while dialog is open)
     private String pendingImportPath = null;
 
-    // Floating paste layer tracking (for non-destructive paste preview)
-    private Integer floatingPasteLayerIndex = null; // Index of temporary paste layer, null if none
-    private int originalActiveLayerIndex = -1; // Original active layer before paste
-    private com.openmason.ui.components.textureCreator.tools.DrawingTool toolBeforePaste = null; // Tool to restore after paste
+    // Paste state tracking (tool to restore after paste operation)
+    private com.openmason.ui.components.textureCreator.tools.DrawingTool toolBeforePaste = null;
 
     // Callback for returning to Home screen
     private Runnable backToHomeCallback;
@@ -493,25 +491,10 @@ public class TextureCreatorImGui {
             state.getShowGrid().set(!state.getShowGrid().get());
         }
 
-        // Enter key: Commit move tool transformation or paste
+        // Enter key: Commit move tool transformation (includes paste)
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ENTER) || ImGui.isKeyPressed(GLFW.GLFW_KEY_KP_ENTER)) {
-            if (hasFloatingPasteLayer()) {
-                // Commit floating paste layer
-                var moveTool = toolbarPanel.getMoveToolInstance();
-                if (moveTool != null && moveTool.getPendingCommand() != null) {
-                    // Execute the move transformation command first
-                    var pendingCmd = moveTool.getPendingCommand();
-                    if (pendingCmd.hasChanges()) {
-                        controller.getCommandHistory().executeCommand(pendingCmd);
-                        moveTool.clearPendingCommand();
-                        // CRITICAL: Notify layer modified to trigger immediate visual update
-                        controller.notifyLayerModified();
-                    }
-                }
-                commitFloatingPasteLayer();
-                logger.info("Keyboard shortcut: Commit paste (Enter)");
-            } else if (toolbarPanel.getCurrentTool() instanceof com.openmason.ui.components.textureCreator.tools.move.MoveToolController) {
-                // Regular move tool commit
+            if (toolbarPanel.getCurrentTool() instanceof com.openmason.ui.components.textureCreator.tools.move.MoveToolController) {
+                // Move tool commit (works for both regular move and paste operations)
                 var moveTool = (com.openmason.ui.components.textureCreator.tools.move.MoveToolController) toolbarPanel.getCurrentTool();
                 if (moveTool.isActive() && moveTool.getPendingCommand() != null) {
                     var pendingCmd = moveTool.getPendingCommand();
@@ -527,35 +510,31 @@ public class TextureCreatorImGui {
                         // CRITICAL: Notify layer modified to trigger immediate visual update
                         controller.notifyLayerModified();
 
-                        // Switch to grabber tool after committing move
-                        for (var tool : toolbarPanel.getTools()) {
-                            if (tool instanceof com.openmason.ui.components.textureCreator.tools.grabber.GrabberTool) {
-                                toolbarPanel.setCurrentTool(tool);
-                                break;
+                        // Restore previous tool if this was a paste operation
+                        if (toolBeforePaste != null) {
+                            state.setCurrentTool(toolBeforePaste);
+                            toolbarPanel.setCurrentTool(toolBeforePaste);
+                            toolBeforePaste = null;
+                            logger.info("Keyboard shortcut: Commit paste (Enter) - restored previous tool");
+                        } else {
+                            // Switch to grabber tool after committing regular move
+                            for (var tool : toolbarPanel.getTools()) {
+                                if (tool instanceof com.openmason.ui.components.textureCreator.tools.grabber.GrabberTool) {
+                                    toolbarPanel.setCurrentTool(tool);
+                                    break;
+                                }
                             }
+                            logger.info("Keyboard shortcut: Commit move (Enter) - switched to Grabber tool");
                         }
-
-                        logger.info("Keyboard shortcut: Commit move (Enter) - switched to Grabber tool");
                     }
                 }
             }
         }
 
-        // ESC key: Cancel move tool transformation, paste, or clear selection
+        // ESC key: Cancel move tool transformation (includes paste), or clear selection
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            if (hasFloatingPasteLayer()) {
-                // Cancel floating paste layer
-                var moveTool = toolbarPanel.getMoveToolInstance();
-                if (moveTool != null) {
-                    if (moveTool.isMouseCaptured()) {
-                        moveTool.forceReleaseMouse();
-                    }
-                    moveTool.cancelAndReset(controller.getActiveLayerCanvas());
-                }
-                cancelFloatingPasteLayer();
-                logger.info("Keyboard shortcut: Cancel paste (ESC)");
-            } else if (toolbarPanel.getCurrentTool() instanceof com.openmason.ui.components.textureCreator.tools.move.MoveToolController) {
-                // Regular move tool cancel
+            if (toolbarPanel.getCurrentTool() instanceof com.openmason.ui.components.textureCreator.tools.move.MoveToolController) {
+                // Move tool cancel (works for both regular move and paste operations)
                 var moveTool = (com.openmason.ui.components.textureCreator.tools.move.MoveToolController) toolbarPanel.getCurrentTool();
                 if (moveTool.isMouseCaptured()) {
                     moveTool.forceReleaseMouse();
@@ -563,7 +542,17 @@ public class TextureCreatorImGui {
                 } else if (moveTool.isActive()) {
                     moveTool.cancelAndReset(controller.getActiveLayerCanvas());
                     state.clearSelection();
-                    logger.info("Keyboard shortcut: Cancel move (ESC)");
+
+                    // If this was a paste operation, undo the paste and restore previous tool
+                    if (toolBeforePaste != null) {
+                        controller.undo(); // Undo the paste command
+                        state.setCurrentTool(toolBeforePaste);
+                        toolbarPanel.setCurrentTool(toolBeforePaste);
+                        toolBeforePaste = null;
+                        logger.info("Keyboard shortcut: Cancel paste (ESC) - undid paste and restored previous tool");
+                    } else {
+                        logger.info("Keyboard shortcut: Cancel move (ESC)");
+                    }
                 }
             } else {
                 // Just clear selection
@@ -729,9 +718,9 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Activate paste tool with floating layer preview.
-     * Creates a temporary layer with pasted content that floats above the active layer.
-     * User can transform it with move tool, then commit (Enter) or cancel (ESC).
+     * Activate paste operation using move tool.
+     * Pastes clipboard content to active layer, creates selection, and activates move tool.
+     * User can transform the pasted content, then commit (Enter) or cancel/undo (ESC).
      */
     private void activatePasteTool() {
         if (!controller.canPaste()) {
@@ -755,48 +744,14 @@ public class TextureCreatorImGui {
             return;
         }
 
-        var layerManager = controller.getLayerManager();
-
-        // Save original active layer index
-        originalActiveLayerIndex = layerManager.getActiveLayerIndex();
-
-        // Create a new temporary "floating" layer for the paste preview
-        // This layer will contain the pasted content
-        var floatingLayer = new com.openmason.ui.components.textureCreator.layers.Layer(
-            "[Floating Paste]",
-            layerManager.getLayer(0).getCanvas().getWidth(),
-            layerManager.getLayer(0).getCanvas().getHeight()
-        );
-
-        // Apply clipboard content to the floating layer
-        var floatingCanvas = floatingLayer.getCanvas();
-        for (int y = 0; y < clipboardCanvas.getHeight(); y++) {
-            for (int x = 0; x < clipboardCanvas.getWidth(); x++) {
-                int targetX = clipboard.getSourceX() + x;
-                int targetY = clipboard.getSourceY() + y;
-
-                if (floatingCanvas.isValidCoordinate(targetX, targetY)) {
-                    int color = clipboardCanvas.getPixel(x, y);
-                    // Check transparency based on preference
-                    // If skipTransparentPixels is true, only paste non-transparent pixels
-                    // If skipTransparentPixels is false, paste all pixels including transparent ones
-                    boolean skipTransparent = preferences.isSkipTransparentPixelsOnPaste();
-                    int[] rgba = PixelCanvas.unpackRGBA(color);
-                    if (!skipTransparent || rgba[3] > 0) {
-                        floatingCanvas.setPixel(targetX, targetY, color);
-                    }
-                }
-            }
+        // Get active layer canvas
+        var activeCanvas = controller.getActiveLayerCanvas();
+        if (activeCanvas == null) {
+            logger.error("Cannot paste - no active layer");
+            return;
         }
 
-        // Add floating layer on top of all other layers
-        layerManager.addLayerAt(layerManager.getLayerCount(), floatingLayer);
-        floatingPasteLayerIndex = layerManager.getLayerCount() - 1;
-
-        // Make the floating layer active (so move tool works on it)
-        layerManager.setActiveLayer(floatingPasteLayerIndex);
-
-        // Create a rectangular selection for the pasted area
+        // Create paste selection region (rectangular region for pasted content)
         var pasteSelection = new com.openmason.ui.components.textureCreator.selection.RectangularSelection(
             clipboard.getSourceX(),
             clipboard.getSourceY(),
@@ -804,10 +759,23 @@ public class TextureCreatorImGui {
             clipboard.getSourceY() + clipboardCanvas.getHeight() - 1
         );
 
-        // Set this as the active selection
+        // Create and execute paste command (pastes to active layer with undo support)
+        var pasteCommand = new com.openmason.ui.components.textureCreator.commands.PasteCommand(
+            activeCanvas,
+            clipboardCanvas,
+            clipboard.getSourceX(),
+            clipboard.getSourceY(),
+            pasteSelection,
+            preferences.isSkipTransparentPixelsOnPaste()
+        );
+
+        controller.getCommandHistory().executeCommand(pasteCommand);
+        controller.notifyLayerModified();
+
+        // Set selection to pasted region
         state.setCurrentSelection(pasteSelection);
 
-        // Remember current tool so we can switch back after paste
+        // Remember current tool so we can restore it after paste commit/cancel
         toolBeforePaste = state.getCurrentTool();
 
         // Activate move tool with the pasted selection
@@ -815,118 +783,12 @@ public class TextureCreatorImGui {
         state.setCurrentTool(moveTool);
         toolbarPanel.setCurrentTool(moveTool);
 
+        // Set up paste session (prevents hole creation during transformation)
+        moveTool.setupPasteSession(activeCanvas, pasteSelection);
+
         logger.info("Paste activated using move tool at ({}, {})", clipboard.getSourceX(), clipboard.getSourceY());
     }
 
-    /**
-     * Commit the floating paste layer by merging it down to the original active layer.
-     * Called when user presses Enter after pasting.
-     */
-    public void commitFloatingPasteLayer() {
-        if (floatingPasteLayerIndex == null) {
-            return; // No floating layer to commit
-        }
-
-        var layerManager = controller.getLayerManager();
-
-        // Get the floating layer
-        var floatingLayer = layerManager.getLayer(floatingPasteLayerIndex);
-
-        // Restore original active layer
-        layerManager.setActiveLayer(originalActiveLayerIndex);
-
-        // Create a DrawCommand to record the merge operation for undo support
-        var originalLayer = layerManager.getActiveLayer();
-        var originalCanvas = originalLayer.getCanvas();
-        var floatingCanvas = floatingLayer.getCanvas();
-
-        DrawCommand mergeCommand = new DrawCommand(originalCanvas, "Paste");
-
-        // Merge floating layer down to original layer with undo tracking
-        for (int y = 0; y < floatingCanvas.getHeight(); y++) {
-            for (int x = 0; x < floatingCanvas.getWidth(); x++) {
-                int floatingPixel = floatingCanvas.getPixel(x, y);
-                int[] rgba = PixelCanvas.unpackRGBA(floatingPixel);
-
-                // Only merge non-transparent pixels
-                if (rgba[3] > 0 && originalCanvas.isValidCoordinate(x, y)) {
-                    int oldPixel = originalCanvas.getPixel(x, y);
-                    mergeCommand.recordPixelChange(x, y, oldPixel, floatingPixel);
-                    originalCanvas.setPixel(x, y, floatingPixel);
-                }
-            }
-        }
-
-        // Execute the merge command through undo system (if any changes were made)
-        if (mergeCommand.hasChanges()) {
-            controller.getCommandHistory().executeCommand(mergeCommand);
-        }
-
-        // Notify that the original layer was modified
-        controller.notifyLayerModified();
-
-        // Remove the floating layer (now that pixels are merged down)
-        layerManager.removeLayer(floatingPasteLayerIndex);
-
-        // Clear floating layer state
-        floatingPasteLayerIndex = null;
-        originalActiveLayerIndex = -1;
-
-        // Restore previous tool
-        restoreToolBeforePaste();
-
-        logger.info("Floating paste layer committed and merged");
-    }
-
-    /**
-     * Cancel the floating paste layer by removing it without merging.
-     * Called when user presses ESC during paste.
-     */
-    public void cancelFloatingPasteLayer() {
-        if (floatingPasteLayerIndex == null) {
-            return; // No floating layer to cancel
-        }
-
-        var layerManager = controller.getLayerManager();
-
-        // Restore original active layer
-        layerManager.setActiveLayer(originalActiveLayerIndex);
-
-        // Remove the floating layer (discards pasted content)
-        layerManager.removeLayer(floatingPasteLayerIndex);
-
-        // Clear floating layer state
-        floatingPasteLayerIndex = null;
-        originalActiveLayerIndex = -1;
-
-        // Clear selection
-        state.setCurrentSelection(null);
-
-        // Restore previous tool
-        restoreToolBeforePaste();
-
-        logger.info("Floating paste layer canceled and removed");
-    }
-
-    /**
-     * Check if there's an active floating paste layer.
-     * @return true if paste operation is in progress
-     */
-    public boolean hasFloatingPasteLayer() {
-        return floatingPasteLayerIndex != null;
-    }
-
-    /**
-     * Restore the tool that was active before paste was initiated.
-     */
-    private void restoreToolBeforePaste() {
-        if (toolBeforePaste != null) {
-            state.setCurrentTool(toolBeforePaste);
-            toolbarPanel.setCurrentTool(toolBeforePaste);
-            toolBeforePaste = null;
-            logger.debug("Restored previous tool after paste");
-        }
-    }
 
     /**
      * Get the texture creator state.

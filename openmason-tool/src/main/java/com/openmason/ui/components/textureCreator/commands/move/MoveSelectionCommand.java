@@ -27,6 +27,7 @@ public final class MoveSelectionCommand implements Command {
     private final TransformedImage transformedImage;
     private final TransformedSelectionRegion transformedSelection;
     private final boolean skipTransparentPixels;
+    private final boolean isPasteOperation;
 
     private final int[] overwrittenPixels;
     private final boolean[] overwrittenMask;
@@ -39,6 +40,7 @@ public final class MoveSelectionCommand implements Command {
                                  TransformedImage transformedImage,
                                  TransformedSelectionRegion transformedSelection,
                                  boolean skipTransparentPixels,
+                                 boolean isPasteOperation,
                                  int[] overwrittenPixels,
                                  boolean[] overwrittenMask) {
         this.canvas = canvas;
@@ -49,6 +51,7 @@ public final class MoveSelectionCommand implements Command {
         this.transformedImage = transformedImage;
         this.transformedSelection = transformedSelection;
         this.skipTransparentPixels = skipTransparentPixels;
+        this.isPasteOperation = isPasteOperation;
         this.overwrittenPixels = overwrittenPixels;
         this.overwrittenMask = overwrittenMask;
     }
@@ -60,7 +63,8 @@ public final class MoveSelectionCommand implements Command {
                                               TransformationState transform,
                                               TransformedImage transformedImage,
                                               TransformedSelectionRegion transformedSelection,
-                                              boolean skipTransparentPixels) {
+                                              boolean skipTransparentPixels,
+                                              boolean isPasteOperation) {
         Objects.requireNonNull(canvas, "canvas");
         Objects.requireNonNull(snapshot, "snapshot");
         Objects.requireNonNull(transform, "transform");
@@ -97,6 +101,7 @@ public final class MoveSelectionCommand implements Command {
                 transformedImage,
                 transformedSelection,
                 skipTransparentPixels,
+                isPasteOperation,
                 overwrittenPixels,
                 overwrittenMask
         );
@@ -106,7 +111,11 @@ public final class MoveSelectionCommand implements Command {
     public void execute() {
         canvas.setBypassSelectionConstraint(true);
         try {
-            clearSourceArea();
+            // Only clear source area for regular move operations, never for paste
+            // Paste operations ADD pixels, so there's no source to clear
+            if (!isPasteOperation) {
+                clearSourceArea();
+            }
             applyTransformedPixels();
         } finally {
             canvas.setBypassSelectionConstraint(false);
@@ -122,7 +131,11 @@ public final class MoveSelectionCommand implements Command {
         canvas.setBypassSelectionConstraint(true);
         try {
             restoreOverwrittenPixels();
-            restoreSourcePixels();
+            // Only restore source pixels for regular move operations, never for paste
+            // Paste operations don't have a "source" that was cleared
+            if (!isPasteOperation) {
+                restoreSourcePixels();
+            }
         } finally {
             canvas.setBypassSelectionConstraint(false);
         }
