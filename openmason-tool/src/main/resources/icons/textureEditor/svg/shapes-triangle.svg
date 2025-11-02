@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Triangle shape tool icon - Green -->
+
+  <!-- Main isosceles triangle -->
+  <polygon points="16,8 26,24 6,24"
+           fill="#27AE60" stroke="#229954" stroke-width="2" stroke-linejoin="round"/>
+</svg>

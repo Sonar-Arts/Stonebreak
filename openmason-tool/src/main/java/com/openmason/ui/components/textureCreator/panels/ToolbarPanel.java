@@ -31,6 +31,7 @@ public class ToolbarPanel {
     private MoveToolController moveToolInstance; // Reference to move tool for configuration
     private SelectionBrushTool selectionBrushTool; // Reference to brush tool for configuration
     private PasteTool pasteToolInstance; // Reference to paste tool for programmatic activation
+    private ShapeTool shapeToolInstance; // Reference to shape tool for configuration
 
     /**
      * Create toolbar panel with all available tools.
@@ -51,6 +52,8 @@ public class ToolbarPanel {
         tools.add(new FillTool());
         tools.add(new ColorPickerTool());
         tools.add(new LineTool());
+        shapeToolInstance = new ShapeTool();
+        tools.add(shapeToolInstance);
         tools.add(new RectangleSelectionTool());
         selectionBrushTool = new SelectionBrushTool();
         tools.add(selectionBrushTool);
@@ -94,14 +97,18 @@ public class ToolbarPanel {
     }
 
     /**
-     * Configures the move tool with preferences.
-     * This allows the move tool to access user settings like rotation speed.
+     * Configures tools with preferences.
+     * This allows tools to access user settings.
      * @param preferences The TextureCreatorPreferences to use
      */
     public void setPreferences(com.openmason.ui.components.textureCreator.TextureCreatorPreferences preferences) {
         if (moveToolInstance != null) {
             moveToolInstance.setPreferences(preferences);
             logger.debug("Move tool configured with preferences");
+        }
+        if (shapeToolInstance != null) {
+            shapeToolInstance.setPreferences(preferences);
+            logger.debug("Shape tool configured with preferences");
         }
     }
 
@@ -124,7 +131,16 @@ public class ToolbarPanel {
         for (int i = 0; i < tools.size(); i++) {
             DrawingTool tool = tools.get(i);
             boolean isSelected = (tool == currentTool);
-            int textureId = iconManager.getIconTexture(tool.getName());
+
+            // Get icon texture ID - for ShapeTool, use current shape variant
+            int textureId;
+            if (tool instanceof ShapeTool) {
+                ShapeTool shapeTool = (ShapeTool) tool;
+                String iconKey = "Shapes:" + shapeTool.getCurrentShape().getDisplayName();
+                textureId = iconManager.getIconTexture(iconKey);
+            } else {
+                textureId = iconManager.getIconTexture(tool.getName());
+            }
 
             // Highlight selected tool
             if (isSelected) {
@@ -152,13 +168,97 @@ public class ToolbarPanel {
                 setCurrentTool(tool);
             }
 
+            // Pop selected style BEFORE handling right-click popup to prevent style bleeding
             if (isSelected) {
                 ImGui.popStyleColor();
             }
 
+            // Handle right-click for ShapeTool - show variant menu
+            if (tool instanceof ShapeTool && ImGui.isItemClicked(1)) {
+                ImGui.openPopup("##ShapeVariantPopup");
+            }
+
+            if (tool instanceof ShapeTool && ImGui.beginPopup("##ShapeVariantPopup")) {
+                ShapeTool shapeTool = (ShapeTool) tool;
+                ShapeTool.ShapeType currentShapeType = shapeTool.getCurrentShape();
+
+                // Rectangle option
+                int rectIconId = iconManager.getIconTexture("Shapes:Rectangle");
+                if (rectIconId != -1) {
+                    boolean isRectSelected = (currentShapeType == ShapeTool.ShapeType.RECTANGLE);
+                    if (isRectSelected) {
+                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
+                    }
+
+                    if (ImGui.imageButton(rectIconId, iconDisplaySize, iconDisplaySize)) {
+                        shapeTool.setCurrentShape(ShapeTool.ShapeType.RECTANGLE);
+                        ImGui.closeCurrentPopup();
+                    }
+
+                    if (isRectSelected) {
+                        ImGui.popStyleColor();
+                    }
+
+                    if (ImGui.isItemHovered()) {
+                        ImGui.setTooltip("Rectangle");
+                    }
+                }
+
+                // Ellipse option
+                int ellipseIconId = iconManager.getIconTexture("Shapes:Ellipse");
+                if (ellipseIconId != -1) {
+                    boolean isEllipseSelected = (currentShapeType == ShapeTool.ShapeType.ELLIPSE);
+                    if (isEllipseSelected) {
+                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
+                    }
+
+                    if (ImGui.imageButton(ellipseIconId, iconDisplaySize, iconDisplaySize)) {
+                        shapeTool.setCurrentShape(ShapeTool.ShapeType.ELLIPSE);
+                        ImGui.closeCurrentPopup();
+                    }
+
+                    if (isEllipseSelected) {
+                        ImGui.popStyleColor();
+                    }
+
+                    if (ImGui.isItemHovered()) {
+                        ImGui.setTooltip("Ellipse");
+                    }
+                }
+
+                // Triangle option
+                int triangleIconId = iconManager.getIconTexture("Shapes:Triangle");
+                if (triangleIconId != -1) {
+                    boolean isTriangleSelected = (currentShapeType == ShapeTool.ShapeType.TRIANGLE);
+                    if (isTriangleSelected) {
+                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
+                    }
+
+                    if (ImGui.imageButton(triangleIconId, iconDisplaySize, iconDisplaySize)) {
+                        shapeTool.setCurrentShape(ShapeTool.ShapeType.TRIANGLE);
+                        ImGui.closeCurrentPopup();
+                    }
+
+                    if (isTriangleSelected) {
+                        ImGui.popStyleColor();
+                    }
+
+                    if (ImGui.isItemHovered()) {
+                        ImGui.setTooltip("Triangle");
+                    }
+                }
+
+                ImGui.endPopup();
+            }
+
             // Tooltip showing tool name
             if (ImGui.isItemHovered()) {
-                ImGui.setTooltip(tool.getName());
+                if (tool instanceof ShapeTool) {
+                    ShapeTool shapeTool = (ShapeTool) tool;
+                    ImGui.setTooltip(shapeTool.getCurrentShape().getDisplayName() + " (right-click for more shapes)");
+                } else {
+                    ImGui.setTooltip(tool.getName());
+                }
             }
 
             // Add small spacing between buttons

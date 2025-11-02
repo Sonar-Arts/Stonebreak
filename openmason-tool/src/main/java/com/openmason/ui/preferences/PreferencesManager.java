@@ -31,6 +31,7 @@ public class PreferencesManager {
     private static final String TEXTURE_EDITOR_COLOR_HISTORY_KEY = "texture.editor.color.history";
     private static final String TEXTURE_EDITOR_ROTATION_SPEED_KEY = "texture.editor.rotation.speed";
     private static final String TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY = "texture.editor.skip.transparent.paste";
+    private static final String TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY = "texture.editor.shape.fill.mode";
 
     // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
@@ -42,6 +43,7 @@ public class PreferencesManager {
     private static final String DEFAULT_COLOR_HISTORY = ""; // Empty list
     private static final float DEFAULT_ROTATION_SPEED = 0.5f; // 0.5 degrees per pixel
     private static final boolean DEFAULT_SKIP_TRANSPARENT_PASTE = true; // Skip transparent pixels by default
+    private static final boolean DEFAULT_SHAPE_FILL_MODE = true; // Filled shapes by default
     
     private final Properties properties;
     private final Path preferencesPath;
@@ -105,6 +107,7 @@ public class PreferencesManager {
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
         properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
         properties.setProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, String.valueOf(DEFAULT_SKIP_TRANSPARENT_PASTE));
+        properties.setProperty(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY, String.valueOf(DEFAULT_SHAPE_FILL_MODE));
     }
     
     // Camera Settings
@@ -296,6 +299,7 @@ public class PreferencesManager {
         properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, DEFAULT_COLOR_HISTORY);
         properties.setProperty(TEXTURE_EDITOR_ROTATION_SPEED_KEY, String.valueOf(DEFAULT_ROTATION_SPEED));
         properties.setProperty(TEXTURE_EDITOR_SKIP_TRANSPARENT_PASTE_KEY, String.valueOf(DEFAULT_SKIP_TRANSPARENT_PASTE));
+        properties.setProperty(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY, String.valueOf(DEFAULT_SHAPE_FILL_MODE));
         savePreferences();
     }
 
@@ -351,6 +355,27 @@ public class PreferencesManager {
             }
             properties.setProperty(TEXTURE_EDITOR_COLOR_HISTORY_KEY, sb.toString());
         }
+        savePreferences();
+    }
+
+    /**
+     * Get texture editor shape tool fill mode.
+     * When true, shapes are filled. When false, shapes are outline only.
+     */
+    public boolean getTextureEditorShapeToolFillMode() {
+        String value = properties.getProperty(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY);
+        if (value != null) {
+            return Boolean.parseBoolean(value);
+        }
+        return DEFAULT_SHAPE_FILL_MODE;
+    }
+
+    /**
+     * Set texture editor shape tool fill mode.
+     * When true, shapes are filled. When false, shapes are outline only.
+     */
+    public void setTextureEditorShapeToolFillMode(boolean fillMode) {
+        properties.setProperty(TEXTURE_EDITOR_SHAPE_FILL_MODE_KEY, String.valueOf(fillMode));
         savePreferences();
     }
 }

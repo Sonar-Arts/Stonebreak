@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rectangle shape tool icon - Green -->
+
+  <!-- Main rectangle -->
+  <rect x="7" y="10" width="18" height="12"
+        fill="#27AE60" stroke="#229954" stroke-width="2" rx="1"/>
+</svg>

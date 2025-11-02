@@ -176,7 +176,7 @@ public class TextureCreatorImGui {
 
         // Create panels
         ToolbarPanel toolbarPanel = new ToolbarPanel();
-        ToolOptionsBar toolOptionsBar = new ToolOptionsBar();
+        ToolOptionsBar toolOptionsBar = new ToolOptionsBar(preferences);
         CanvasPanel canvasPanel = new CanvasPanel();
         LayerPanelRenderer layerPanel = new LayerPanelRenderer();
         ColorPanel colorPanel = new ColorPanel();

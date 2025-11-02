@@ -63,6 +63,10 @@ public class TextureToolIconManager {
         TOOL_ICON_MAP.put("Fill", "fill.svg");
         TOOL_ICON_MAP.put("Color Picker", "eyedropper.svg");
         TOOL_ICON_MAP.put("Line", "line.svg");
+        TOOL_ICON_MAP.put("Shapes", "shapes-rectangle.svg");
+        TOOL_ICON_MAP.put("Shapes:Rectangle", "shapes-rectangle.svg");
+        TOOL_ICON_MAP.put("Shapes:Ellipse", "shapes-ellipse.svg");
+        TOOL_ICON_MAP.put("Shapes:Triangle", "shapes-triangle.svg");
         TOOL_ICON_MAP.put("Rectangle Selection", "selection.svg");
         TOOL_ICON_MAP.put("Selection Brush", "selection-brush.svg");
         TOOL_ICON_MAP.put("Move", "move.svg");

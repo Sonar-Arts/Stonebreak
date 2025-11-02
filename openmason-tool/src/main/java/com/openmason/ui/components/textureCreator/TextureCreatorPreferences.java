@@ -168,6 +168,28 @@ public class TextureCreatorPreferences {
     }
 
     /**
+     * Check if shape tool should draw filled shapes.
+     * When enabled, shapes are filled with the selected color.
+     * When disabled, only the outline is drawn.
+     * @return true for filled shapes, false for outline only
+     */
+    public boolean isShapeToolFillMode() {
+        return preferencesManager.getTextureEditorShapeToolFillMode();
+    }
+
+    /**
+     * Set whether shape tool should draw filled shapes.
+     * When enabled, shapes are filled with the selected color.
+     * When disabled, only the outline is drawn.
+     * Auto-saves to preferences file.
+     * @param fillMode true for filled shapes, false for outline only
+     */
+    public void setShapeToolFillMode(boolean fillMode) {
+        preferencesManager.setTextureEditorShapeToolFillMode(fillMode);
+        logger.debug("Shape tool fill mode set to: {} (saved to preferences)", fillMode);
+    }
+
+    /**
      * Get color history.
      * @return list of colors (packed RGBA ints), empty list if none
      */

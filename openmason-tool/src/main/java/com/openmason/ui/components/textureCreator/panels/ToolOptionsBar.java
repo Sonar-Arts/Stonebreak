@@ -1,6 +1,8 @@
 package com.openmason.ui.components.textureCreator.panels;
 
+import com.openmason.ui.components.textureCreator.TextureCreatorPreferences;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
+import com.openmason.ui.components.textureCreator.tools.ShapeTool;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
@@ -40,6 +42,12 @@ public class ToolOptionsBar {
     private static final float OPTION_SPACING = 15.0f; // Spacing between options
     private static final float LEFT_PADDING = 10.0f;   // Left padding from window edge
     private static final float VERTICAL_PADDING = 6.0f; // Top/bottom padding
+
+    private final TextureCreatorPreferences preferences;
+
+    public ToolOptionsBar(TextureCreatorPreferences preferences) {
+        this.preferences = preferences;
+    }
 
     /**
      * Render the tool options toolbar.
@@ -84,6 +92,8 @@ public class ToolOptionsBar {
 
                 if (currentTool instanceof MoveToolController) {
                     renderMoveToolOptions((MoveToolController) currentTool);
+                } else if (currentTool instanceof ShapeTool) {
+                    renderShapeToolOptions((ShapeTool) currentTool);
                 } else if (currentTool.supportsBrushSize()) {
                     renderBrushSizeOption(currentTool);
                 }
@@ -117,6 +127,9 @@ public class ToolOptionsBar {
         if (tool instanceof MoveToolController) {
             return true;
         }
+        if (tool instanceof ShapeTool) {
+            return true;
+        }
         if (tool.supportsBrushSize()) {
             return true;
         }
@@ -133,6 +146,18 @@ public class ToolOptionsBar {
         if (moveTool.hasPreviewLayer()) {
             ImGui.sameLine(0.0f, OPTION_SPACING);
             ImGui.text("Preview active");
+        }
+    }
+
+    private void renderShapeToolOptions(ShapeTool shapeTool) {
+        ImGui.text("Shape:");
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+        ImGui.text(shapeTool.getCurrentShape().getDisplayName());
+        ImGui.sameLine(0.0f, OPTION_SPACING);
+
+        ImBoolean fillMode = new ImBoolean(preferences.isShapeToolFillMode());
+        if (ImGui.checkbox("Fill", fillMode)) {
+            preferences.setShapeToolFillMode(fillMode.get());
         }
     }
 
