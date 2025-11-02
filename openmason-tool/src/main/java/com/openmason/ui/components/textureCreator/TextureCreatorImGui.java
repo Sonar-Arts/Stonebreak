@@ -13,6 +13,8 @@ import com.openmason.ui.components.textureCreator.io.DragDropHandler;
 import com.openmason.ui.components.textureCreator.keyboard.KeyboardShortcutManager;
 import com.openmason.ui.components.textureCreator.keyboard.ShortcutKey;
 import com.openmason.ui.components.textureCreator.panels.*;
+import com.openmason.ui.LogoManager;
+import com.openmason.ui.toolbars.TextureEditorToolbarRenderer;
 import com.openmason.ui.components.textureCreator.rendering.DialogProcessor;
 import com.openmason.ui.components.textureCreator.rendering.MenuBarRenderer;
 import com.openmason.ui.components.textureCreator.rendering.PanelRenderingCoordinator;
@@ -114,7 +116,7 @@ public class TextureCreatorImGui {
                               TextureCreatorController controller,
                               TextureCreatorPreferences preferences,
                               TextureCreatorWindowState windowState,
-                              ToolbarPanel toolbarPanel,
+                              TextureEditorToolbarRenderer toolbarPanel,
                               ToolOptionsBar toolOptionsBar,
                               CanvasPanel canvasPanel,
                               LayerPanelRenderer layerPanel,
@@ -180,7 +182,7 @@ public class TextureCreatorImGui {
         FileDialogService fileDialogService = new FileDialogService(statusService);
 
         // Create panels
-        ToolbarPanel toolbarPanel = new ToolbarPanel();
+        TextureEditorToolbarRenderer toolbarPanel = new TextureEditorToolbarRenderer();
         ToolOptionsBar toolOptionsBar = new ToolOptionsBar(preferences);
         CanvasPanel canvasPanel = new CanvasPanel();
         LayerPanelRenderer layerPanel = new LayerPanelRenderer();
@@ -213,7 +215,7 @@ public class TextureCreatorImGui {
 
         // Create about menu handler and about dialog
         AboutMenuHandler aboutMenuHandler = new AboutMenuHandler(windowState);
-        AboutDialog aboutDialog = new AboutDialog(windowState, null, "Texture Creator");
+        AboutDialog aboutDialog = new AboutDialog(windowState, LogoManager.getInstance(), "Texture Creator");
 
         // Create renderers
         MenuBarRenderer menuBarRenderer = new MenuBarRenderer(state, controller, fileOperations,
@@ -235,7 +237,7 @@ public class TextureCreatorImGui {
     /**
      * Wire up component dependencies.
      */
-    private void wireUpComponents(ToolbarPanel toolbarPanel) {
+    private void wireUpComponents(TextureEditorToolbarRenderer toolbarPanel) {
         colorPanel.setColorHistory(preferences.getColorHistory());
         toolbarPanel.setSelectionManager(state.getSelectionManager());
         toolbarPanel.setPreferences(preferences);
@@ -253,7 +255,7 @@ public class TextureCreatorImGui {
     /**
      * Inject SymmetryState into all tools that support symmetry.
      */
-    private void injectSymmetryStateIntoTools(ToolbarPanel toolbarPanel) {
+    private void injectSymmetryStateIntoTools(TextureEditorToolbarRenderer toolbarPanel) {
         // Get all tools from toolbar
         var tools = toolbarPanel.getTools();
 

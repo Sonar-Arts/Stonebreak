@@ -2,7 +2,7 @@ package com.openmason.ui.components.textureCreator.coordinators;
 
 import com.openmason.ui.components.textureCreator.TextureCreatorController;
 import com.openmason.ui.components.textureCreator.TextureCreatorState;
-import com.openmason.ui.components.textureCreator.panels.ToolbarPanel;
+import com.openmason.ui.toolbars.TextureEditorToolbarRenderer;
 import com.openmason.ui.components.textureCreator.tools.DrawingTool;
 import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
 import org.slf4j.Logger;
@@ -24,7 +24,7 @@ public class ToolCoordinator {
     private static final Logger logger = LoggerFactory.getLogger(ToolCoordinator.class);
 
     private final TextureCreatorState state;
-    private final ToolbarPanel toolbarPanel;
+    private final TextureEditorToolbarRenderer toolbarPanel;
     private TextureCreatorController controller;  // Set after construction to avoid circular dependency
     private PasteCoordinator pasteCoordinator;    // Set after construction to avoid circular dependency
 
@@ -34,7 +34,7 @@ public class ToolCoordinator {
      * @param state the texture creator state
      * @param toolbarPanel the toolbar panel managing tool UI
      */
-    public ToolCoordinator(TextureCreatorState state, ToolbarPanel toolbarPanel) {
+    public ToolCoordinator(TextureCreatorState state, TextureEditorToolbarRenderer toolbarPanel) {
         this.state = state;
         this.toolbarPanel = toolbarPanel;
     }

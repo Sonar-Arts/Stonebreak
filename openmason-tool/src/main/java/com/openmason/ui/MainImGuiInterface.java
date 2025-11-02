@@ -15,7 +15,7 @@ import com.openmason.ui.services.*;
 import com.openmason.ui.state.*;
 import com.openmason.ui.themes.utils.ImGuiHelpers;
 import com.openmason.ui.themes.core.ThemeManager;
-import com.openmason.ui.toolbar.ToolbarRenderer;
+import com.openmason.ui.toolbar.ModelViewerToolbarRenderer;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
@@ -79,7 +79,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private FileMenuHandler fileMenuHandler;
 
     // Toolbar
-    private final ToolbarRenderer toolbarRenderer;
+    private final ModelViewerToolbarRenderer toolbarRenderer;
 
     // Viewport
     private OpenMason3DViewport viewport3D;
@@ -146,8 +146,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
                 fileMenuHandler, editMenu, viewMenu, toolsMenu, aboutMenu);
 
         // Initialize toolbar
-        this.toolbarRenderer = new ToolbarRenderer(uiVisibilityState, modelState, modelOperations,
-                viewportOperations, performanceService, statusService, fileDialogService);
+        this.toolbarRenderer = new ModelViewerToolbarRenderer(uiVisibilityState, modelState, modelOperations,
+                viewportOperations, performanceService, statusService);
 
         // Initialize components
         initializeComponents();

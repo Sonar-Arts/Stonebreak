@@ -1,0 +1,134 @@
+package com.openmason.ui.toolbar;
+
+import com.openmason.ui.services.ModelOperationService;
+import com.openmason.ui.services.PerformanceService;
+import com.openmason.ui.services.StatusService;
+import com.openmason.ui.services.ViewportOperationService;
+import com.openmason.ui.state.ModelState;
+import com.openmason.ui.state.UIVisibilityState;
+import com.openmason.ui.toolbars.BaseToolbarRenderer;
+import com.openmason.ui.viewport.OpenMason3DViewport;
+import imgui.ImGui;
+
+/**
+ * Model viewer toolbar renderer.
+ * Extends BaseToolbarRenderer for consistent styling and DRY principles.
+ * Follows KISS, DRY, YAGNI, and SOLID principles.
+ *
+ * <p>Features:</p>
+ * <ul>
+ *   <li>File operations (Open, Save)</li>
+ *   <li>View controls (Reset, Fit, Zoom)</li>
+ *   <li>Status display (Model name, Progress bar)</li>
+ * </ul>
+ *
+ * @author Open Mason Team
+ */
+public class ModelViewerToolbarRenderer extends BaseToolbarRenderer {
+
+    private final UIVisibilityState uiState;
+    private final ModelState modelState;
+    private final ModelOperationService modelOperations;
+    private final ViewportOperationService viewportOperations;
+    private final PerformanceService performanceService;
+    private final StatusService statusService;
+
+    private OpenMason3DViewport viewport;
+
+    public ModelViewerToolbarRenderer(UIVisibilityState uiState, ModelState modelState,
+                           ModelOperationService modelOperations, ViewportOperationService viewportOperations,
+                           PerformanceService performanceService, StatusService statusService) {
+        this.uiState = uiState;
+        this.modelState = modelState;
+        this.modelOperations = modelOperations;
+        this.viewportOperations = viewportOperations;
+        this.performanceService = performanceService;
+        this.statusService = statusService;
+    }
+
+    /**
+     * Set viewport reference.
+     */
+    public void setViewport(OpenMason3DViewport viewport) {
+        this.viewport = viewport;
+    }
+
+    /**
+     * Render the toolbar inline (not as a separate window).
+     */
+    public void render() {
+        if (!uiState.getShowToolbar().get()) {
+            return;
+        }
+
+        // Apply toolbar styling (inherited from BaseToolbarRenderer)
+        pushItemSpacing(4.0f, 0.0f);
+
+        // Render toolbar content inline
+        renderFileOperations();
+        renderSeparator();
+
+        renderViewOperations();
+        renderSeparator();
+
+        renderStatusDisplay();
+
+        popItemSpacing();
+    }
+
+    /**
+     * Render file operation buttons.
+     */
+    private void renderFileOperations() {
+        if (renderButton("Open", "Open model file")) {
+            modelOperations.openModel();
+        }
+        ImGui.sameLine();
+
+        boolean canSave = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
+        if (renderButton("Save", canSave ? "Save current model" : "No changes to save") && canSave) {
+            modelOperations.saveModel();
+        }
+    }
+
+    /**
+     * Render view operation buttons.
+     */
+    private void renderViewOperations() {
+        if (renderButton("Reset", "Reset camera view")) {
+            viewportOperations.resetView(viewport);
+        }
+        ImGui.sameLine();
+
+        if (renderButton("Fit", "Fit model to view") && viewport != null) {
+            viewportOperations.fitToView();
+        }
+        ImGui.sameLine();
+
+        if (renderButton("+", "Zoom in") && viewport != null) {
+            viewport.getCamera().zoom(1.0f);
+        }
+        ImGui.sameLine();
+
+        if (renderButton("-", "Zoom out") && viewport != null) {
+            viewport.getCamera().zoom(-1.0f);
+        }
+    }
+
+    /**
+     * Render status display on right side of toolbar.
+     */
+    private void renderStatusDisplay() {
+        // Current model (only if loaded)
+        if (modelState.isModelLoaded()) {
+            renderSeparator();
+            ImGui.text(modelState.getCurrentModelPath());
+        }
+
+        // Progress bar (if active)
+        if (performanceService.getProgress().get() > 0.0f) {
+            renderSeparator();
+            ImGui.progressBar(performanceService.getProgress().get(), 100.0f, 0.0f);
+        }
+    }
+}

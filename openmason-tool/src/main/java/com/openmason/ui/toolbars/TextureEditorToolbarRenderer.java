@@ -1,4 +1,4 @@
-package com.openmason.ui.components.textureCreator.panels;
+package com.openmason.ui.toolbars;
 
 import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
 import com.openmason.ui.components.textureCreator.selection.SelectionManager;
@@ -14,16 +14,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Toolbar panel renderer - displays tool selection buttons with SVG icons.
- *
+ * Texture editor toolbar renderer - displays tool selection buttons with SVG icons.
+ * Extends BaseToolbarRenderer for consistent styling and DRY principles.
  * Follows SOLID principles - Single Responsibility: renders toolbar UI only.
- * Now supports SelectionManager injection for move tool integration.
  *
  * @author Open Mason Team
  */
-public class ToolbarPanel {
+public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
 
-    private static final Logger logger = LoggerFactory.getLogger(ToolbarPanel.class);
+    private static final Logger logger = LoggerFactory.getLogger(TextureEditorToolbarRenderer.class);
 
     private final List<DrawingTool> tools;
     private DrawingTool currentTool;
@@ -34,9 +33,9 @@ public class ToolbarPanel {
     private ShapeTool shapeToolInstance; // Reference to shape tool for configuration
 
     /**
-     * Create toolbar panel with all available tools.
+     * Create toolbar renderer with all available tools.
      */
-    public ToolbarPanel() {
+    public TextureEditorToolbarRenderer() {
         this.tools = new ArrayList<>();
         this.iconManager = TextureToolIconManager.getInstance();
 
@@ -65,7 +64,7 @@ public class ToolbarPanel {
         // Set default tool
         currentTool = tools.get(0); // Grabber
 
-        logger.debug("Toolbar panel created with {} tools", tools.size());
+        logger.debug("Toolbar renderer created with {} tools", tools.size());
     }
 
     /**
@@ -128,6 +127,9 @@ public class ToolbarPanel {
         // Add spacing between buttons
         ImGui.spacing();
 
+        // Apply button padding (inherited from BaseToolbarRenderer)
+        pushButtonPadding(buttonPadding, buttonPadding);
+
         for (int i = 0; i < tools.size(); i++) {
             DrawingTool tool = tools.get(i);
             boolean isSelected = (tool == currentTool);
@@ -142,35 +144,20 @@ public class ToolbarPanel {
                 textureId = iconManager.getIconTexture(tool.getName());
             }
 
-            // Highlight selected tool
-            if (isSelected) {
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
-            }
-
-            // Add padding to button for centered icon
-            ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FramePadding, buttonPadding, buttonPadding);
-
-            // Tool icon button
+            // Render icon button with highlighting (inherited from BaseToolbarRenderer)
             boolean clicked;
             if (textureId != -1) {
-                // Use icon button with smaller display size
-                clicked = ImGui.imageButton(textureId, iconDisplaySize, iconDisplaySize);
+                // Use base class icon button renderer with highlighting support
+                clicked = renderIconButton(textureId, iconDisplaySize, null, isSelected);
             } else {
                 // Fallback to text button if icon not loaded
-                ImGui.popStyleVar(); // Remove padding for text button
-                clicked = ImGui.button(tool.getName() + "##tool_" + i, iconDisplaySize + buttonPadding * 2, iconDisplaySize + buttonPadding * 2);
-                ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FramePadding, buttonPadding, buttonPadding); // Re-apply for consistency
+                popButtonPadding(); // Remove padding for text button
+                clicked = renderButton(tool.getName() + "##tool_" + i, null, isSelected);
+                pushButtonPadding(buttonPadding, buttonPadding); // Re-apply for consistency
             }
-
-            ImGui.popStyleVar(); // Pop frame padding
 
             if (clicked) {
                 setCurrentTool(tool);
-            }
-
-            // Pop selected style BEFORE handling right-click popup to prevent style bleeding
-            if (isSelected) {
-                ImGui.popStyleColor();
             }
 
             // Handle right-click for ShapeTool - show variant menu
@@ -179,93 +166,73 @@ public class ToolbarPanel {
             }
 
             if (tool instanceof ShapeTool && ImGui.beginPopup("##ShapeVariantPopup")) {
-                ShapeTool shapeTool = (ShapeTool) tool;
-                ShapeTool.ShapeType currentShapeType = shapeTool.getCurrentShape();
-
-                // Rectangle option
-                int rectIconId = iconManager.getIconTexture("Shapes:Rectangle");
-                if (rectIconId != -1) {
-                    boolean isRectSelected = (currentShapeType == ShapeTool.ShapeType.RECTANGLE);
-                    if (isRectSelected) {
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
-                    }
-
-                    if (ImGui.imageButton(rectIconId, iconDisplaySize, iconDisplaySize)) {
-                        shapeTool.setCurrentShape(ShapeTool.ShapeType.RECTANGLE);
-                        ImGui.closeCurrentPopup();
-                    }
-
-                    if (isRectSelected) {
-                        ImGui.popStyleColor();
-                    }
-
-                    if (ImGui.isItemHovered()) {
-                        ImGui.setTooltip("Rectangle");
-                    }
-                }
-
-                // Ellipse option
-                int ellipseIconId = iconManager.getIconTexture("Shapes:Ellipse");
-                if (ellipseIconId != -1) {
-                    boolean isEllipseSelected = (currentShapeType == ShapeTool.ShapeType.ELLIPSE);
-                    if (isEllipseSelected) {
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
-                    }
-
-                    if (ImGui.imageButton(ellipseIconId, iconDisplaySize, iconDisplaySize)) {
-                        shapeTool.setCurrentShape(ShapeTool.ShapeType.ELLIPSE);
-                        ImGui.closeCurrentPopup();
-                    }
-
-                    if (isEllipseSelected) {
-                        ImGui.popStyleColor();
-                    }
-
-                    if (ImGui.isItemHovered()) {
-                        ImGui.setTooltip("Ellipse");
-                    }
-                }
-
-                // Triangle option
-                int triangleIconId = iconManager.getIconTexture("Shapes:Triangle");
-                if (triangleIconId != -1) {
-                    boolean isTriangleSelected = (currentShapeType == ShapeTool.ShapeType.TRIANGLE);
-                    if (isTriangleSelected) {
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.3f, 0.5f, 0.7f, 1.0f);
-                    }
-
-                    if (ImGui.imageButton(triangleIconId, iconDisplaySize, iconDisplaySize)) {
-                        shapeTool.setCurrentShape(ShapeTool.ShapeType.TRIANGLE);
-                        ImGui.closeCurrentPopup();
-                    }
-
-                    if (isTriangleSelected) {
-                        ImGui.popStyleColor();
-                    }
-
-                    if (ImGui.isItemHovered()) {
-                        ImGui.setTooltip("Triangle");
-                    }
-                }
-
-                ImGui.endPopup();
+                renderShapeVariantPopup((ShapeTool) tool, iconDisplaySize);
             }
 
-            // Tooltip showing tool name
-            if (ImGui.isItemHovered()) {
-                if (tool instanceof ShapeTool) {
-                    ShapeTool shapeTool = (ShapeTool) tool;
-                    ImGui.setTooltip(shapeTool.getCurrentShape().getDisplayName() + " (right-click for more shapes)");
-                } else {
-                    ImGui.setTooltip(tool.getName());
-                }
+            // Tooltip showing tool name (inherited from BaseToolbarRenderer)
+            if (tool instanceof ShapeTool) {
+                ShapeTool shapeTool = (ShapeTool) tool;
+                renderTooltip(shapeTool.getCurrentShape().getDisplayName() + " (right-click for more shapes)");
+            } else {
+                renderTooltip(tool.getName());
             }
 
             // Add small spacing between buttons
             ImGui.spacing();
         }
 
+        popButtonPadding(); // Pop button padding
+
         ImGui.endChild();
+    }
+
+    /**
+     * Render shape variant selection popup.
+     * Uses inherited styling methods from BaseToolbarRenderer.
+     *
+     * @param shapeTool the shape tool instance
+     * @param iconDisplaySize the icon display size
+     */
+    private void renderShapeVariantPopup(ShapeTool shapeTool, float iconDisplaySize) {
+        ShapeTool.ShapeType currentShapeType = shapeTool.getCurrentShape();
+
+        // Rectangle option
+        int rectIconId = iconManager.getIconTexture("Shapes:Rectangle");
+        if (rectIconId != -1) {
+            boolean isRectSelected = (currentShapeType == ShapeTool.ShapeType.RECTANGLE);
+
+            // Use base class icon button renderer with highlighting support
+            if (renderIconButton(rectIconId, iconDisplaySize, "Rectangle", isRectSelected)) {
+                shapeTool.setCurrentShape(ShapeTool.ShapeType.RECTANGLE);
+                ImGui.closeCurrentPopup();
+            }
+        }
+
+        // Ellipse option
+        int ellipseIconId = iconManager.getIconTexture("Shapes:Ellipse");
+        if (ellipseIconId != -1) {
+            boolean isEllipseSelected = (currentShapeType == ShapeTool.ShapeType.ELLIPSE);
+
+            // Use base class icon button renderer with highlighting support
+            if (renderIconButton(ellipseIconId, iconDisplaySize, "Ellipse", isEllipseSelected)) {
+                shapeTool.setCurrentShape(ShapeTool.ShapeType.ELLIPSE);
+                ImGui.closeCurrentPopup();
+            }
+        }
+
+        // Triangle option
+        int triangleIconId = iconManager.getIconTexture("Shapes:Triangle");
+        if (triangleIconId != -1) {
+            boolean isTriangleSelected = (currentShapeType == ShapeTool.ShapeType.TRIANGLE);
+
+            // Use base class icon button renderer with highlighting support
+            if (renderIconButton(triangleIconId, iconDisplaySize, "Triangle", isTriangleSelected)) {
+                shapeTool.setCurrentShape(ShapeTool.ShapeType.TRIANGLE);
+                ImGui.closeCurrentPopup();
+            }
+        }
+
+        ImGui.endPopup();
     }
 
     /**

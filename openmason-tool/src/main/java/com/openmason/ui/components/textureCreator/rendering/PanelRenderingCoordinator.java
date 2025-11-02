@@ -7,6 +7,7 @@ import com.openmason.ui.components.textureCreator.TextureCreatorWindowState;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.coordinators.ToolCoordinator;
 import com.openmason.ui.components.textureCreator.panels.*;
+import com.openmason.ui.toolbars.TextureEditorToolbarRenderer;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -28,7 +29,7 @@ public class PanelRenderingCoordinator {
     private final ToolCoordinator toolCoordinator;
     private final TextureCreatorWindowState windowState;
 
-    private final ToolbarPanel toolbarPanel;
+    private final TextureEditorToolbarRenderer toolbarPanel;
     private final ToolOptionsBar toolOptionsBar;
     private final CanvasPanel canvasPanel;
     private final LayerPanelRenderer layerPanel;
@@ -45,7 +46,7 @@ public class PanelRenderingCoordinator {
                                     TextureCreatorPreferences preferences,
                                     ToolCoordinator toolCoordinator,
                                     TextureCreatorWindowState windowState,
-                                    ToolbarPanel toolbarPanel,
+                                    TextureEditorToolbarRenderer toolbarPanel,
                                     ToolOptionsBar toolOptionsBar,
                                     CanvasPanel canvasPanel,
                                     LayerPanelRenderer layerPanel,
