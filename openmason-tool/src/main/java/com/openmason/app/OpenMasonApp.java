@@ -378,7 +378,7 @@ public class OpenMasonApp {
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
             // Initialize texture creator interface
-            textureCreatorInterface = new TextureCreatorImGui();
+            textureCreatorInterface = TextureCreatorImGui.createDefault();
 
             // Wire up back to Home screen callbacks
             mainInterface.setBackToHomeCallback(this::transitionToHomeScreen);
@@ -448,7 +448,6 @@ public class OpenMasonApp {
             if (textureCreatorInterface != null) {
                 try {
                     textureCreatorInterface.render();
-                    textureCreatorInterface.update(deltaTime);
                 } catch (Exception e) {
                     logger.error("Error rendering texture creator interface", e);
                 }
