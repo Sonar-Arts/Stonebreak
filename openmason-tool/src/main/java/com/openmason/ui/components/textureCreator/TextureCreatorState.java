@@ -45,6 +45,7 @@ public class TextureCreatorState {
     private boolean unsavedChanges;
     private boolean isProjectFile; // true if opened/saved as .OMT, false for new/PNG
     private final SelectionManager selectionManager; // Centralized selection management
+    private final SymmetryState symmetryState; // Symmetry/mirror mode state
     private final ImBoolean showGrid;
     private final ImBoolean showLayersPanel;
     private final ImBoolean showColorPanel;
@@ -61,6 +62,7 @@ public class TextureCreatorState {
         this.unsavedChanges = false;
         this.isProjectFile = false;
         this.selectionManager = new SelectionManager(); // Initialize selection manager
+        this.symmetryState = new SymmetryState(); // Initialize symmetry state
         this.showGrid = new ImBoolean(true);
         this.showLayersPanel = new ImBoolean(true);
         this.showColorPanel = new ImBoolean(true);
@@ -169,6 +171,14 @@ public class TextureCreatorState {
      */
     public SelectionManager getSelectionManager() {
         return selectionManager;
+    }
+
+    /**
+     * Get the SymmetryState for this texture creator.
+     * @return The SymmetryState instance
+     */
+    public SymmetryState getSymmetryState() {
+        return symmetryState;
     }
 
     /**

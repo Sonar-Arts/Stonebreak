@@ -88,7 +88,8 @@ public class CanvasPanel {
                       CommandHistory commandHistory, Runnable onDrawCallback,
                       java.util.function.IntConsumer onColorPickedCallback,
                       java.util.function.IntConsumer onColorUsedCallback,
-                      java.util.function.Consumer<SelectionRegion> onSelectionCreatedCallback) {
+                      java.util.function.Consumer<SelectionRegion> onSelectionCreatedCallback,
+                      com.openmason.ui.components.textureCreator.SymmetryState symmetryState) {
 
         this.onDrawCallback = onDrawCallback;
         this.onColorPickedCallback = onColorPickedCallback;
@@ -184,7 +185,7 @@ public class CanvasPanel {
 
         // Render the display canvas (composited view) with opacity settings
         renderer.render(canvasToRender, canvasState, showGrid, gridOpacity, cubeNetOverlayOpacity,
-                       selectionToRender, selectionPreviewBounds);
+                       selectionToRender, selectionPreviewBounds, symmetryState);
 
         // Render move tool overlay if using move tool
         if (currentTool instanceof MoveToolController) {

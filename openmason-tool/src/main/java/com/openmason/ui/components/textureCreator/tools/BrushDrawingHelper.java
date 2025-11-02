@@ -1,8 +1,12 @@
 package com.openmason.ui.components.textureCreator.tools;
 
+import com.openmason.ui.components.textureCreator.SymmetryState;
 import com.openmason.ui.components.textureCreator.canvas.CubeNetValidator;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.commands.DrawCommand;
+import com.openmason.ui.components.textureCreator.utils.SymmetryHelper;
+
+import java.util.List;
 
 /**
  * Utility class for drawing brush strokes with variable size.
@@ -141,5 +145,98 @@ public class BrushDrawingHelper {
 
         // Set new color
         canvas.setPixel(x, y, color);
+    }
+
+    // ========================================
+    // SYMMETRY-AWARE DRAWING METHODS
+    // ========================================
+
+    /**
+     * Draw a brush stroke with symmetry support.
+     * Checks symmetry state and draws mirrored strokes if enabled.
+     *
+     * @param centerX canvas pixel X coordinate (brush center)
+     * @param centerY canvas pixel Y coordinate (brush center)
+     * @param color color to draw (RGBA packed)
+     * @param canvas canvas to draw on
+     * @param command command to record changes (for undo/redo)
+     * @param brushSize brush diameter in pixels
+     * @param symmetryState symmetry state (null to skip symmetry)
+     * @param toolClassName simple class name of the tool using this method
+     */
+    public static void drawBrushStrokeWithSymmetry(int centerX, int centerY, int color,
+                                                    PixelCanvas canvas, DrawCommand command,
+                                                    int brushSize, SymmetryState symmetryState,
+                                                    String toolClassName) {
+        // Draw original stroke
+        drawBrushStroke(centerX, centerY, color, canvas, command, brushSize);
+
+        // Apply symmetry if enabled
+        if (symmetryState != null && symmetryState.isActive() &&
+            symmetryState.isEnabledForTool(toolClassName)) {
+
+            List<SymmetryHelper.Point2i> mirrorPoints = SymmetryHelper.calculateMirrorPoints(
+                centerX, centerY,
+                symmetryState.getMode(),
+                canvas.getWidth(), canvas.getHeight(),
+                symmetryState.getAxisOffsetX(), symmetryState.getAxisOffsetY()
+            );
+
+            // Skip the first point (original), draw the rest (mirrored)
+            for (int i = 1; i < mirrorPoints.size(); i++) {
+                SymmetryHelper.Point2i point = mirrorPoints.get(i);
+                drawBrushStroke(point.x, point.y, color, canvas, command, brushSize);
+            }
+        }
+    }
+
+    /**
+     * Draw a line with brush strokes and symmetry support.
+     *
+     * @param x0 start X coordinate
+     * @param y0 start Y coordinate
+     * @param x1 end X coordinate
+     * @param y1 end Y coordinate
+     * @param color color to draw (RGBA packed)
+     * @param canvas canvas to draw on
+     * @param command command to record changes (for undo/redo)
+     * @param brushSize brush diameter in pixels
+     * @param symmetryState symmetry state (null to skip symmetry)
+     * @param toolClassName simple class name of the tool using this method
+     */
+    public static void drawBrushLineWithSymmetry(int x0, int y0, int x1, int y1, int color,
+                                                  PixelCanvas canvas, DrawCommand command,
+                                                  int brushSize, SymmetryState symmetryState,
+                                                  String toolClassName) {
+        // Draw original line
+        drawBrushLine(x0, y0, x1, y1, color, canvas, command, brushSize);
+
+        // Apply symmetry if enabled
+        if (symmetryState != null && symmetryState.isActive() &&
+            symmetryState.isEnabledForTool(toolClassName)) {
+
+            // Get mirrored start point
+            List<SymmetryHelper.Point2i> startMirrors = SymmetryHelper.calculateMirrorPoints(
+                x0, y0,
+                symmetryState.getMode(),
+                canvas.getWidth(), canvas.getHeight(),
+                symmetryState.getAxisOffsetX(), symmetryState.getAxisOffsetY()
+            );
+
+            // Get mirrored end point
+            List<SymmetryHelper.Point2i> endMirrors = SymmetryHelper.calculateMirrorPoints(
+                x1, y1,
+                symmetryState.getMode(),
+                canvas.getWidth(), canvas.getHeight(),
+                symmetryState.getAxisOffsetX(), symmetryState.getAxisOffsetY()
+            );
+
+            // Draw mirrored lines (skip index 0 which is the original)
+            for (int i = 1; i < startMirrors.size() && i < endMirrors.size(); i++) {
+                SymmetryHelper.Point2i start = startMirrors.get(i);
+                SymmetryHelper.Point2i end = endMirrors.get(i);
+                drawBrushLine(start.x, start.y, end.x, end.y, color, canvas, command, brushSize);
+            }
+        }
     }
 }

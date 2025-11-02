@@ -1,7 +1,9 @@
 package com.openmason.ui.components.textureCreator.canvas;
 
+import com.openmason.ui.components.textureCreator.SymmetryState;
 import com.openmason.ui.components.textureCreator.selection.SelectionRegion;
 import com.openmason.ui.components.textureCreator.selection.SelectionRenderer;
+import com.openmason.ui.components.textureCreator.utils.SymmetryHelper;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
@@ -150,10 +152,12 @@ public class CanvasRenderer {
      * @param cubeNetOverlayOpacity opacity for cube net overlay (0.0 to 1.0)
      * @param currentSelection current active selection region (nullable)
      * @param selectionPreviewBounds preview selection bounds during drag [startX, startY, endX, endY] (nullable)
+     * @param symmetryState symmetry/mirror mode state (nullable)
      */
     public void render(PixelCanvas canvas, CanvasState canvasState, boolean showGrid,
                       float gridOpacity, float cubeNetOverlayOpacity,
-                      SelectionRegion currentSelection, int[] selectionPreviewBounds) {
+                      SelectionRegion currentSelection, int[] selectionPreviewBounds,
+                      SymmetryState symmetryState) {
         if (canvas == null || canvasState == null) {
             ImGui.text("No canvas");
             return;
@@ -203,6 +207,11 @@ public class CanvasRenderer {
         // Render grid if enabled
         if (showGrid) {
             renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
+        }
+
+        // Render symmetry axes if enabled
+        if (symmetryState != null && symmetryState.isActive() && symmetryState.isShowAxisLines()) {
+            renderSymmetryAxes(canvas, canvasState, canvasX, canvasY, symmetryState);
         }
 
         // Render selection overlay
@@ -346,6 +355,67 @@ public class CanvasRenderer {
             int color = (y % 4 == 0) ? majorLineColor : minorLineColor;
 
             drawList.addLine(startX, lineY, endX, lineY, color, GRID_LINE_THICKNESS);
+        }
+    }
+
+    /**
+     * Render symmetry axis lines.
+     *
+     * @param canvas pixel canvas
+     * @param canvasState canvas view state
+     * @param canvasX canvas display X position
+     * @param canvasY canvas display Y position
+     * @param symmetryState symmetry state
+     */
+    private void renderSymmetryAxes(PixelCanvas canvas, CanvasState canvasState,
+                                     float canvasX, float canvasY, SymmetryState symmetryState) {
+        ImDrawList drawList = ImGui.getWindowDrawList();
+        float zoom = canvasState.getZoomLevel();
+
+        // Calculate axis positions at the VISUAL center of the canvas
+        // For rendering, we want the visual midpoint, not the pixel index midpoint
+        float visualCenterX = (canvas.getWidth() / 2.0f) + symmetryState.getAxisOffsetX();
+        float visualCenterY = (canvas.getHeight() / 2.0f) + symmetryState.getAxisOffsetY();
+
+        // Convert to screen space
+        float screenCenterX = canvasX + visualCenterX * zoom;
+        float screenCenterY = canvasY + visualCenterY * zoom;
+
+        // Calculate canvas bounds in screen space
+        float canvasEndX = canvasX + canvas.getWidth() * zoom;
+        float canvasEndY = canvasY + canvas.getHeight() * zoom;
+
+        // Define axis line colors (semi-transparent, bright colors for visibility)
+        int horizontalAxisColor = ImColor.rgba(255, 0, 0, 180); // Red for horizontal axis
+        int verticalAxisColor = ImColor.rgba(0, 100, 255, 180);   // Blue for vertical axis
+        float axisThickness = 2.0f;
+
+        // Render based on symmetry mode
+        switch (symmetryState.getMode()) {
+            case HORIZONTAL:
+                // Draw horizontal axis line (Y-axis)
+                drawList.addLine(canvasX, screenCenterY, canvasEndX, screenCenterY,
+                    horizontalAxisColor, axisThickness);
+                break;
+
+            case VERTICAL:
+                // Draw vertical axis line (X-axis)
+                drawList.addLine(screenCenterX, canvasY, screenCenterX, canvasEndY,
+                    verticalAxisColor, axisThickness);
+                break;
+
+            case QUADRANT:
+                // Draw both axes
+                drawList.addLine(canvasX, screenCenterY, canvasEndX, screenCenterY,
+                    horizontalAxisColor, axisThickness);
+                drawList.addLine(screenCenterX, canvasY, screenCenterX, canvasEndY,
+                    verticalAxisColor, axisThickness);
+                break;
+
+            case NONE:
+            default:
+                // No axes to render
+                break;
         }
     }
 

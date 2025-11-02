@@ -30,6 +30,7 @@ public class MenuBarRenderer {
     private Runnable backToHomeCallback;
     private Runnable onPreferencesToggle;
     private Runnable onNoiseFilterToggle;
+    private Runnable onSymmetryToggle;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
     private ImBoolean showLayersPanel;
@@ -78,6 +79,13 @@ public class MenuBarRenderer {
      */
     public void setOnNoiseFilterToggle(Runnable callback) {
         this.onNoiseFilterToggle = callback;
+    }
+
+    /**
+     * Set callback for symmetry toggle.
+     */
+    public void setOnSymmetryToggle(Runnable callback) {
+        this.onSymmetryToggle = callback;
     }
 
     /**
@@ -194,6 +202,14 @@ public class MenuBarRenderer {
 
             if (ImGui.menuItem("Delete Selection", "Del", false, hasSelection)) {
                 controller.deleteSelection();
+            }
+
+            ImGui.separator();
+
+            if (ImGui.menuItem("Symmetry...")) {
+                if (onSymmetryToggle != null) {
+                    onSymmetryToggle.run();
+                }
             }
 
             ImGui.endMenu();

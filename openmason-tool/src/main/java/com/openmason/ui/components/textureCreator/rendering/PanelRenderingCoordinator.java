@@ -35,6 +35,7 @@ public class PanelRenderingCoordinator {
     private final ColorPanel colorPanel;
     private final NoiseFilterPanel noiseFilterPanel;
     private final PreferencesPanel preferencesPanel;
+    private final SymmetryPanel symmetryPanel;
 
     /**
      * Create panel rendering coordinator.
@@ -50,7 +51,8 @@ public class PanelRenderingCoordinator {
                                     LayerPanelRenderer layerPanel,
                                     ColorPanel colorPanel,
                                     NoiseFilterPanel noiseFilterPanel,
-                                    PreferencesPanel preferencesPanel) {
+                                    PreferencesPanel preferencesPanel,
+                                    SymmetryPanel symmetryPanel) {
         this.state = state;
         this.controller = controller;
         this.preferences = preferences;
@@ -63,6 +65,7 @@ public class PanelRenderingCoordinator {
         this.colorPanel = colorPanel;
         this.noiseFilterPanel = noiseFilterPanel;
         this.preferencesPanel = preferencesPanel;
+        this.symmetryPanel = symmetryPanel;
     }
 
     /**
@@ -160,7 +163,7 @@ public class PanelRenderingCoordinator {
                     context.getGridOpacity(), context.getCubeNetOverlayOpacity(),
                     context.getCommandHistory(), context.getOnLayerModified(),
                     context.getOnColorPicked(), context.getOnColorUsed(),
-                    context.getOnSelectionCreated());
+                    context.getOnSelectionCreated(), state.getSymmetryState());
             } else {
                 ImGui.text("No layers");
             }
@@ -216,6 +219,21 @@ public class PanelRenderingCoordinator {
         if (windowState.getShowNoiseFilterWindow().get()) {
             if (ImGui.begin("Noise Filter", windowState.getShowNoiseFilterWindow())) {
                 noiseFilterPanel.render(state.getCurrentSelection());
+            }
+            ImGui.end();
+        }
+    }
+
+    /**
+     * Render symmetry window.
+     * Window is closeable - clicking (x) button will hide it.
+     */
+    public void renderSymmetryWindow() {
+        if (windowState.getShowSymmetryWindow().get()) {
+            if (ImGui.begin("Symmetry", windowState.getShowSymmetryWindow())) {
+                int canvasWidth = state.getCurrentCanvasSize().getWidth();
+                int canvasHeight = state.getCurrentCanvasSize().getHeight();
+                symmetryPanel.render(state.getSymmetryState(), canvasWidth, canvasHeight);
             }
             ImGui.end();
         }

@@ -55,6 +55,12 @@ public class TextureCreatorWindowState {
     private final ImBoolean showNoiseFilterWindow = new ImBoolean(false);
 
     /**
+     * Symmetry/mirror mode window visibility.
+     * Shows symmetry mode controls, axis offsets, and per-tool toggles.
+     */
+    private final ImBoolean showSymmetryWindow = new ImBoolean(false);
+
+    /**
      * Create window state manager with default visibility settings.
      */
     public TextureCreatorWindowState() {
@@ -101,6 +107,14 @@ public class TextureCreatorWindowState {
         return showNoiseFilterWindow;
     }
 
+    /**
+     * Get symmetry window visibility flag.
+     * @return ImBoolean reference for ImGui binding
+     */
+    public ImBoolean getShowSymmetryWindow() {
+        return showSymmetryWindow;
+    }
+
     // ========================================
     // TOGGLE METHODS
     // ========================================
@@ -137,6 +151,14 @@ public class TextureCreatorWindowState {
         logger.debug("Noise filter window visibility toggled to: {}", showNoiseFilterWindow.get());
     }
 
+    /**
+     * Toggle symmetry window visibility.
+     */
+    public void toggleSymmetryWindow() {
+        showSymmetryWindow.set(!showSymmetryWindow.get());
+        logger.debug("Symmetry window visibility toggled to: {}", showSymmetryWindow.get());
+    }
+
     // ========================================
     // SHOW METHODS (for explicit opening)
     // ========================================
@@ -158,6 +180,16 @@ public class TextureCreatorWindowState {
         if (!showNoiseFilterWindow.get()) {
             showNoiseFilterWindow.set(true);
             logger.debug("Noise filter window opened");
+        }
+    }
+
+    /**
+     * Show symmetry window (if currently hidden).
+     */
+    public void showSymmetryWindow() {
+        if (!showSymmetryWindow.get()) {
+            showSymmetryWindow.set(true);
+            logger.debug("Symmetry window opened");
         }
     }
 
@@ -189,13 +221,14 @@ public class TextureCreatorWindowState {
      * Reset all panels to default visibility.
      * Core panels (Tools, Canvas) are always visible.
      * Closeable panels (Layers, Color) are shown by default.
-     * Dialog windows (Preferences, Noise) are hidden by default.
+     * Dialog windows (Preferences, Noise, Symmetry) are hidden by default.
      */
     public void resetToDefault() {
         showLayersPanel.set(true);
         showColorPanel.set(true);
         showPreferencesWindow.set(false);
         showNoiseFilterWindow.set(false);
+        showSymmetryWindow.set(false);
         logger.info("Window visibility reset to defaults");
     }
 
