@@ -53,6 +53,19 @@ public class DrawCommand implements Command {
         newPixels.put(key, newColor);
     }
 
+    /**
+     * Update the new color for a pixel (used for filters that modify pixels in-place).
+     * The old color must have been previously recorded.
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @param newColor new color
+     */
+    public void updatePixelNewColor(int x, int y, int newColor) {
+        int key = y * canvas.getWidth() + x;
+        newPixels.put(key, newColor);
+    }
+
     @Override
     public void execute() {
         // Apply new pixel values

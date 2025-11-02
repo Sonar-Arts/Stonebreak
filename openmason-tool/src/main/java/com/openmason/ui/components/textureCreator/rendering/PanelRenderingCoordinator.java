@@ -31,6 +31,7 @@ public class PanelRenderingCoordinator {
     private final CanvasPanel canvasPanel;
     private final LayerPanelRenderer layerPanel;
     private final ColorPanel colorPanel;
+    private final NoiseFilterPanel noiseFilterPanel;
     private final PreferencesPanel preferencesPanel;
 
     /**
@@ -45,6 +46,7 @@ public class PanelRenderingCoordinator {
                                     CanvasPanel canvasPanel,
                                     LayerPanelRenderer layerPanel,
                                     ColorPanel colorPanel,
+                                    NoiseFilterPanel noiseFilterPanel,
                                     PreferencesPanel preferencesPanel) {
         this.state = state;
         this.controller = controller;
@@ -55,6 +57,7 @@ public class PanelRenderingCoordinator {
         this.canvasPanel = canvasPanel;
         this.layerPanel = layerPanel;
         this.colorPanel = colorPanel;
+        this.noiseFilterPanel = noiseFilterPanel;
         this.preferencesPanel = preferencesPanel;
     }
 
@@ -189,6 +192,16 @@ public class PanelRenderingCoordinator {
         ImBoolean open = new ImBoolean(isOpen);
         if (ImGui.begin("Preferences", open)) {
             preferencesPanel.render(preferences);
+        }
+        ImGui.end();
+    }
+
+    /**
+     * Render noise filter window.
+     */
+    public void renderNoiseFilterWindow() {
+        if (ImGui.begin("Noise Filter")) {
+            noiseFilterPanel.render(state.getCurrentSelection());
         }
         ImGui.end();
     }

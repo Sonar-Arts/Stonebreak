@@ -29,6 +29,7 @@ public class MenuBarRenderer {
     private long windowHandle;
     private Runnable backToHomeCallback;
     private Runnable onPreferencesToggle;
+    private Runnable onNoiseFilterToggle;
 
     /**
      * Create menu bar renderer.
@@ -69,6 +70,13 @@ public class MenuBarRenderer {
     }
 
     /**
+     * Set callback for noise filter toggle.
+     */
+    public void setOnNoiseFilterToggle(Runnable callback) {
+        this.onNoiseFilterToggle = callback;
+    }
+
+    /**
      * Render the complete menu bar.
      */
     public void render() {
@@ -76,6 +84,7 @@ public class MenuBarRenderer {
             renderFileMenu();
             renderEditMenu();
             renderViewMenu();
+            renderFiltersMenu();
             renderPreferencesButton();
             renderStatusInfo();
             ImGui.endMainMenuBar();
@@ -188,6 +197,21 @@ public class MenuBarRenderer {
             }
             if (ImGui.menuItem("Reset View", "0")) {
                 controller.getCanvasState().resetView();
+            }
+
+            ImGui.endMenu();
+        }
+    }
+
+    /**
+     * Render Filters menu.
+     */
+    private void renderFiltersMenu() {
+        if (ImGui.beginMenu("Filters")) {
+            if (ImGui.menuItem("Noise...")) {
+                if (onNoiseFilterToggle != null) {
+                    onNoiseFilterToggle.run();
+                }
             }
 
             ImGui.endMenu();

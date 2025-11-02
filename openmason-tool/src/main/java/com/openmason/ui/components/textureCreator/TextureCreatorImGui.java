@@ -1,6 +1,7 @@
 package com.openmason.ui.components.textureCreator;
 
 import com.openmason.ui.components.textureCreator.coordinators.FileOperationsCoordinator;
+import com.openmason.ui.components.textureCreator.coordinators.FilterCoordinator;
 import com.openmason.ui.components.textureCreator.coordinators.PasteCoordinator;
 import com.openmason.ui.components.textureCreator.coordinators.ToolCoordinator;
 import com.openmason.ui.components.textureCreator.dialogs.ImportPNGDialog;
@@ -77,6 +78,7 @@ public class TextureCreatorImGui {
     private final PasteCoordinator pasteCoordinator;
     private final KeyboardShortcutManager shortcutManager;
     private final FileOperationsCoordinator fileOperations;
+    private final FilterCoordinator filterCoordinator;
     private final ToolCoordinator toolCoordinator;
 
     // Renderers (UI)
@@ -95,6 +97,7 @@ public class TextureCreatorImGui {
 
     // Window state
     private boolean showPreferencesWindow = false;
+    private boolean showNoiseFilterWindow = false;
     private long windowHandle = 0;
 
     // Drag-and-drop
@@ -119,6 +122,7 @@ public class TextureCreatorImGui {
                               OMTImportDialog omtImportDialog,
                               ExportFormatDialog exportFormatDialog,
                               FileOperationsCoordinator fileOperations,
+                              FilterCoordinator filterCoordinator,
                               ToolCoordinator toolCoordinator,
                               PasteCoordinator pasteCoordinator,
                               KeyboardShortcutManager shortcutManager,
@@ -134,6 +138,7 @@ public class TextureCreatorImGui {
         this.omtImportDialog = omtImportDialog;
         this.exportFormatDialog = exportFormatDialog;
         this.fileOperations = fileOperations;
+        this.filterCoordinator = filterCoordinator;
         this.toolCoordinator = toolCoordinator;
         this.pasteCoordinator = pasteCoordinator;
         this.shortcutManager = shortcutManager;
@@ -173,6 +178,7 @@ public class TextureCreatorImGui {
         CanvasPanel canvasPanel = new CanvasPanel();
         LayerPanelRenderer layerPanel = new LayerPanelRenderer();
         ColorPanel colorPanel = new ColorPanel();
+        NoiseFilterPanel noiseFilterPanel = new NoiseFilterPanel();
         PreferencesPanel preferencesPanel = new PreferencesPanel();
 
         // Create dialogs
@@ -190,13 +196,18 @@ public class TextureCreatorImGui {
         PasteCoordinator pasteCoordinator = new PasteCoordinator(state, controller, toolCoordinator, preferences);
         FileOperationsCoordinator fileOperations = new FileOperationsCoordinator(
             fileDialogService, controller, state, importResolver);
+        FilterCoordinator filterCoordinator = new FilterCoordinator(
+            controller, state, controller.getLayerManager(), controller.getCommandHistory());
         KeyboardShortcutManager shortcutManager = new KeyboardShortcutManager();
+
+        // Wire up dependencies to noise filter panel
+        noiseFilterPanel.setDependencies(controller.getLayerManager(), controller.getCommandHistory());
 
         // Create renderers
         MenuBarRenderer menuBarRenderer = new MenuBarRenderer(state, controller, fileOperations,
             newTextureDialog, importPNGDialog, exportFormatDialog);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
-            toolCoordinator, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, preferencesPanel);
+            toolCoordinator, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, preferencesPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
             newTextureDialog, importPNGDialog, omtImportDialog);
 
@@ -204,7 +215,7 @@ public class TextureCreatorImGui {
             state, controller, preferences,
             toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, preferencesPanel,
             newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog,
-            fileOperations, toolCoordinator, pasteCoordinator, shortcutManager,
+            fileOperations, filterCoordinator, toolCoordinator, pasteCoordinator, shortcutManager,
             menuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler
         );
     }
@@ -218,6 +229,7 @@ public class TextureCreatorImGui {
         toolbarPanel.setPreferences(preferences);
         state.setCurrentTool(toolbarPanel.getCurrentTool());
         menuBarRenderer.setOnPreferencesToggle(() -> showPreferencesWindow = !showPreferencesWindow);
+        menuBarRenderer.setOnNoiseFilterToggle(() -> showNoiseFilterWindow = !showNoiseFilterWindow);
     }
 
     /**
@@ -364,6 +376,10 @@ public class TextureCreatorImGui {
 
         if (showPreferencesWindow) {
             panelRenderer.renderPreferencesWindow(showPreferencesWindow);
+        }
+
+        if (showNoiseFilterWindow) {
+            panelRenderer.renderNoiseFilterWindow();
         }
 
         dialogProcessor.processAll();
