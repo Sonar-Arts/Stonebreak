@@ -16,8 +16,10 @@ import com.openmason.ui.components.textureCreator.panels.*;
 import com.openmason.ui.components.textureCreator.rendering.DialogProcessor;
 import com.openmason.ui.components.textureCreator.rendering.MenuBarRenderer;
 import com.openmason.ui.components.textureCreator.rendering.PanelRenderingCoordinator;
+import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.ExportFormatDialog;
 import com.openmason.ui.dialogs.FileDialogService;
+import com.openmason.ui.menus.AboutMenuHandler;
 import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.services.StatusService;
 import imgui.type.ImBoolean;
@@ -92,6 +94,7 @@ public class TextureCreatorImGui {
     private final ImportPNGDialog importPNGDialog;
     private final OMTImportDialog omtImportDialog;
     private final ExportFormatDialog exportFormatDialog;
+    private final AboutDialog aboutDialog;
 
     // Panels (passed to renderer)
     private final ColorPanel colorPanel;
@@ -121,6 +124,7 @@ public class TextureCreatorImGui {
                               ImportPNGDialog importPNGDialog,
                               OMTImportDialog omtImportDialog,
                               ExportFormatDialog exportFormatDialog,
+                              AboutDialog aboutDialog,
                               FileOperationsCoordinator fileOperations,
                               FilterCoordinator filterCoordinator,
                               ToolCoordinator toolCoordinator,
@@ -138,6 +142,7 @@ public class TextureCreatorImGui {
         this.importPNGDialog = importPNGDialog;
         this.omtImportDialog = omtImportDialog;
         this.exportFormatDialog = exportFormatDialog;
+        this.aboutDialog = aboutDialog;
         this.fileOperations = fileOperations;
         this.filterCoordinator = filterCoordinator;
         this.toolCoordinator = toolCoordinator;
@@ -206,9 +211,13 @@ public class TextureCreatorImGui {
         // Wire up dependencies to noise filter panel
         noiseFilterPanel.setDependencies(controller.getLayerManager(), controller.getCommandHistory());
 
+        // Create about menu handler and about dialog
+        AboutMenuHandler aboutMenuHandler = new AboutMenuHandler(windowState);
+        AboutDialog aboutDialog = new AboutDialog(windowState, null, "Texture Creator");
+
         // Create renderers
         MenuBarRenderer menuBarRenderer = new MenuBarRenderer(state, controller, fileOperations,
-            newTextureDialog, importPNGDialog, exportFormatDialog);
+            newTextureDialog, importPNGDialog, exportFormatDialog, null, aboutMenuHandler);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
             toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, preferencesPanel, symmetryPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
@@ -217,7 +226,7 @@ public class TextureCreatorImGui {
         return new TextureCreatorImGui(
             state, controller, preferences, windowState,
             toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, preferencesPanel,
-            newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog,
+            newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog, aboutDialog,
             fileOperations, filterCoordinator, toolCoordinator, pasteCoordinator, shortcutManager,
             menuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler
         );
@@ -417,6 +426,7 @@ public class TextureCreatorImGui {
         importPNGDialog.render();
         omtImportDialog.render();
         exportFormatDialog.render();
+        aboutDialog.render();
     }
 
     public TextureCreatorState getState() {

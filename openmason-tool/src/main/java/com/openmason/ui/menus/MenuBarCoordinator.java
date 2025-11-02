@@ -6,10 +6,11 @@ import imgui.ImGui;
 
 /**
  * Menu bar coordinator - composes all menu handlers.
+ * Extends BaseMenuBarRenderer for consistent styling and DRY principles.
  * Follows Single Responsibility Principle - only coordinates menu rendering.
  * Follows Open/Closed Principle - easy to add new menus without modification.
  */
-public class MenuBarCoordinator {
+public class MenuBarCoordinator extends BaseMenuBarRenderer {
 
     private final UIVisibilityState uiState;
     private final LogoManager logoManager;
@@ -18,58 +19,36 @@ public class MenuBarCoordinator {
     private final EditMenuHandler editMenu;
     private final ViewMenuHandler viewMenu;
     private final ToolsMenuHandler toolsMenu;
-    private final ThemeMenuHandler themeMenu;
-    private final HelpMenuHandler helpMenu;
+    private final AboutMenuHandler aboutMenu;
 
     public MenuBarCoordinator(UIVisibilityState uiState, LogoManager logoManager,
                               FileMenuHandler fileMenu, EditMenuHandler editMenu,
                               ViewMenuHandler viewMenu, ToolsMenuHandler toolsMenu,
-                              ThemeMenuHandler themeMenu, HelpMenuHandler helpMenu) {
+                              AboutMenuHandler aboutMenu) {
         this.uiState = uiState;
         this.logoManager = logoManager;
         this.fileMenu = fileMenu;
         this.editMenu = editMenu;
         this.viewMenu = viewMenu;
         this.toolsMenu = toolsMenu;
-        this.themeMenu = themeMenu;
-        this.helpMenu = helpMenu;
+        this.aboutMenu = aboutMenu;
     }
 
     /**
-     * Render the main menu bar.
+     * Render menu bar content.
+     * Delegates to specialized menu handlers and provides toolbar restore functionality.
      */
-    public void render() {
-        // Remove padding from menu bar for tight layout
-        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.WindowPadding, 4.0f, 0.0f);
-        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.ItemSpacing, 4.0f, 0.0f);
-        ImGui.pushStyleVar(imgui.flag.ImGuiStyleVar.FramePadding, 4.0f, 2.0f);
-
-        if (!ImGui.beginMainMenuBar()) {
-            ImGui.popStyleVar(3);
-            return;
-        }
-
-        // Render logo at the beginning
-        if (logoManager != null) {
-            logoManager.renderMenuBarLogo();
-            ImGui.sameLine();
-            ImGui.separator();
-            ImGui.sameLine();
-        }
-
+    @Override
+    protected void renderMenuBarContent() {
         // Render all menus
         fileMenu.render();
         editMenu.render();
         viewMenu.render();
         toolsMenu.render();
-        themeMenu.render();
-        helpMenu.render();
+        aboutMenu.render();
 
         // Show toolbar restore button when toolbar is hidden
         renderToolbarRestoreButton();
-
-        ImGui.endMainMenuBar();
-        ImGui.popStyleVar(3); // Pop WindowPadding, ItemSpacing, and FramePadding
     }
 
     /**

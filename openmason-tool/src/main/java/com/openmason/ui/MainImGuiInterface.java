@@ -130,7 +130,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // Initialize dialogs
         this.preferencesDialog = new PreferencesDialog(uiVisibilityState, themeManager,
                 preferencesManager, statusService, cameraMouseSensitivity);
-        this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager);
+        this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Viewer");
 
         // Initialize menu handlers
         this.fileMenuHandler = new FileMenuHandler(modelState, modelOperations,
@@ -140,11 +140,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
                 viewportOperations, layoutService);
         ToolsMenuHandler toolsMenu = new ToolsMenuHandler(modelState, transformState,
                 modelOperations, viewportOperations);
-        ThemeMenuHandler themeMenu = new ThemeMenuHandler(uiVisibilityState, themeManager);
-        HelpMenuHandler helpMenu = new HelpMenuHandler(uiVisibilityState);
+        AboutMenuHandler aboutMenu = new AboutMenuHandler(uiVisibilityState);
 
         this.menuBarCoordinator = new MenuBarCoordinator(uiVisibilityState, logoManager,
-                fileMenuHandler, editMenu, viewMenu, toolsMenu, themeMenu, helpMenu);
+                fileMenuHandler, editMenu, viewMenu, toolsMenu, aboutMenu);
 
         // Initialize toolbar
         this.toolbarRenderer = new ToolbarRenderer(uiVisibilityState, modelState, modelOperations,

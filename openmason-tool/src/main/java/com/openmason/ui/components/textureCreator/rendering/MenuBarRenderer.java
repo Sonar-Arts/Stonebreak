@@ -1,22 +1,26 @@
 package com.openmason.ui.components.textureCreator.rendering;
 
+import com.openmason.ui.LogoManager;
 import com.openmason.ui.components.textureCreator.TextureCreatorController;
 import com.openmason.ui.components.textureCreator.TextureCreatorState;
 import com.openmason.ui.components.textureCreator.coordinators.FileOperationsCoordinator;
 import com.openmason.ui.components.textureCreator.dialogs.ImportPNGDialog;
 import com.openmason.ui.components.textureCreator.dialogs.NewTextureDialog;
 import com.openmason.ui.dialogs.ExportFormatDialog;
+import com.openmason.ui.menus.BaseMenuBarRenderer;
+import com.openmason.ui.menus.AboutMenuHandler;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import org.lwjgl.glfw.GLFW;
 
 /**
  * Renders the main menu bar for Texture Creator.
+ * Extends BaseMenuBarRenderer for consistent styling and DRY principles.
  * Follows Single Responsibility Principle - only handles menu rendering.
  *
  * @author Open Mason Team
  */
-public class MenuBarRenderer {
+public class MenuBarRenderer extends BaseMenuBarRenderer {
     private static final float ZOOM_FACTOR = 1.2f;
 
     private final TextureCreatorState state;
@@ -25,6 +29,8 @@ public class MenuBarRenderer {
     private final NewTextureDialog newTextureDialog;
     private final ImportPNGDialog importPNGDialog;
     private final ExportFormatDialog exportFormatDialog;
+    private final LogoManager logoManager;
+    private final AboutMenuHandler aboutMenu;
 
     private long windowHandle;
     private Runnable backToHomeCallback;
@@ -38,19 +44,32 @@ public class MenuBarRenderer {
 
     /**
      * Create menu bar renderer.
+     *
+     * @param state the texture creator state
+     * @param controller the texture creator controller
+     * @param fileOperations the file operations coordinator
+     * @param newTextureDialog the new texture dialog
+     * @param importPNGDialog the import PNG dialog
+     * @param exportFormatDialog the export format dialog
+     * @param logoManager optional logo manager (null to skip logo rendering)
+     * @param aboutMenu the about menu handler for About dialog
      */
     public MenuBarRenderer(TextureCreatorState state,
                           TextureCreatorController controller,
                           FileOperationsCoordinator fileOperations,
                           NewTextureDialog newTextureDialog,
                           ImportPNGDialog importPNGDialog,
-                          ExportFormatDialog exportFormatDialog) {
+                          ExportFormatDialog exportFormatDialog,
+                          LogoManager logoManager,
+                          AboutMenuHandler aboutMenu) {
         this.state = state;
         this.controller = controller;
         this.fileOperations = fileOperations;
         this.newTextureDialog = newTextureDialog;
         this.importPNGDialog = importPNGDialog;
         this.exportFormatDialog = exportFormatDialog;
+        this.logoManager = logoManager;
+        this.aboutMenu = aboutMenu;
     }
 
     /**
@@ -105,18 +124,26 @@ public class MenuBarRenderer {
     }
 
     /**
-     * Render the complete menu bar.
+     * Render menu bar content.
+     * Implements BaseMenuBarRenderer template method to provide texture editor menu structure.
      */
-    public void render() {
-        if (ImGui.beginMainMenuBar()) {
-            renderFileMenu();
-            renderEditMenu();
-            renderViewMenu();
-            renderFiltersMenu();
-            renderPreferencesButton();
-            renderStatusInfo();
-            ImGui.endMainMenuBar();
-        }
+    @Override
+    protected void renderMenuBarContent() {
+        // Render logo with separator (inherited from BaseMenuBarRenderer)
+        renderLogoWithSeparator(logoManager);
+
+        // Render all menus
+        renderFileMenu();
+        renderEditMenu();
+        renderViewMenu();
+        renderFiltersMenu();
+        aboutMenu.render();
+
+        // Render preferences button with separator
+        renderPreferencesButton();
+
+        // Render status info on right side
+        renderStatusInfo();
     }
 
     /**
@@ -272,16 +299,15 @@ public class MenuBarRenderer {
     }
 
     /**
-     * Render Preferences button.
+     * Render Preferences button with separator.
+     * Uses shared styling from BaseMenuBarRenderer for consistency.
      */
     private void renderPreferencesButton() {
-        ImGui.sameLine();
-        ImGui.separator();
-        ImGui.sameLine();
+        // Render separator before preferences button (inherited from BaseMenuBarRenderer)
+        renderMenuSeparator();
 
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.26f, 0.59f, 0.98f, 0.40f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.26f, 0.59f, 0.98f, 1.0f);
+        // Apply transparent button styling (inherited from BaseMenuBarRenderer)
+        pushTransparentButtonStyle();
 
         if (ImGui.button("Preferences")) {
             if (onPreferencesToggle != null) {
@@ -292,7 +318,8 @@ public class MenuBarRenderer {
             ImGui.setTooltip("Open preferences window (Ctrl+,)");
         }
 
-        ImGui.popStyleColor(3);
+        // Remove transparent button styling
+        popTransparentButtonStyle();
     }
 
     /**

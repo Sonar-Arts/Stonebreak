@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator;
 
+import com.openmason.ui.state.HelpWindowVisibilityState;
 import imgui.type.ImBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,9 +17,11 @@ import org.slf4j.LoggerFactory;
  * - Closeable panels (Layers, Color) - Can be closed and reopened via menu
  * - Dialog windows (Preferences, Noise Filter) - Floating windows that can be closed
  *
+ * Implements HelpWindowVisibilityState to support help menu functionality.
+ *
  * @author Open Mason Team
  */
-public class TextureCreatorWindowState {
+public class TextureCreatorWindowState implements HelpWindowVisibilityState {
 
     private static final Logger logger = LoggerFactory.getLogger(TextureCreatorWindowState.class);
 
@@ -59,6 +62,12 @@ public class TextureCreatorWindowState {
      * Shows symmetry mode controls, axis offsets, and per-tool toggles.
      */
     private final ImBoolean showSymmetryWindow = new ImBoolean(false);
+
+    /**
+     * About window visibility.
+     * Shows information about the Texture Creator tool.
+     */
+    private final ImBoolean showAboutWindow = new ImBoolean(false);
 
     /**
      * Create window state manager with default visibility settings.
@@ -113,6 +122,15 @@ public class TextureCreatorWindowState {
      */
     public ImBoolean getShowSymmetryWindow() {
         return showSymmetryWindow;
+    }
+
+    /**
+     * Get about window visibility flag.
+     * @return ImBoolean reference for ImGui binding
+     */
+    @Override
+    public ImBoolean getShowAboutWindow() {
+        return showAboutWindow;
     }
 
     // ========================================
@@ -213,6 +231,17 @@ public class TextureCreatorWindowState {
         }
     }
 
+    /**
+     * Show about window (if currently hidden).
+     */
+    @Override
+    public void showAbout() {
+        if (!showAboutWindow.get()) {
+            showAboutWindow.set(true);
+            logger.debug("About window opened");
+        }
+    }
+
     // ========================================
     // UTILITY METHODS
     // ========================================
@@ -221,7 +250,7 @@ public class TextureCreatorWindowState {
      * Reset all panels to default visibility.
      * Core panels (Tools, Canvas) are always visible.
      * Closeable panels (Layers, Color) are shown by default.
-     * Dialog windows (Preferences, Noise, Symmetry) are hidden by default.
+     * Dialog windows (Preferences, Noise, Symmetry, About) are hidden by default.
      */
     public void resetToDefault() {
         showLayersPanel.set(true);
@@ -229,6 +258,7 @@ public class TextureCreatorWindowState {
         showPreferencesWindow.set(false);
         showNoiseFilterWindow.set(false);
         showSymmetryWindow.set(false);
+        showAboutWindow.set(false);
         logger.info("Window visibility reset to defaults");
     }
 

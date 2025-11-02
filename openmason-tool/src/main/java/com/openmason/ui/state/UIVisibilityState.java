@@ -5,8 +5,9 @@ import imgui.type.ImBoolean;
 /**
  * Centralized UI visibility state management.
  * Follows Single Responsibility Principle - only manages panel visibility state.
+ * Implements HelpWindowVisibilityState to support help menu functionality.
  */
-public class UIVisibilityState {
+public class UIVisibilityState implements HelpWindowVisibilityState {
 
     private final ImBoolean showHomeScreen = new ImBoolean(true);
     private final ImBoolean showModelBrowser = new ImBoolean(true);
