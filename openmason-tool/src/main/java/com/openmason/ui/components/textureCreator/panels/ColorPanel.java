@@ -139,6 +139,11 @@ public class ColorPanel {
         }
 
         ImGui.spacing();
+        ImGui.spacing();
+        ImGui.spacing();
+        ImGui.separator();
+        ImGui.spacing();
+        ImGui.spacing();
 
         // Alpha slider (common to both modes)
         renderAlphaSlider();
@@ -235,7 +240,7 @@ public class ColorPanel {
         // Display alpha value below swatch
         int currentAlpha = PixelCanvas.unpackRGBA(getCurrentColor())[3];
         int currentPercent = (int) ((currentAlpha / 255.0f) * 100);
-        String currentAlphaText = String.format("\u03B1: %d%%", currentPercent); // α symbol
+        String currentAlphaText = String.format("A: %d%%", currentPercent);
         ImGui.textDisabled(currentAlphaText);
         ImGui.endGroup();
 
@@ -266,7 +271,7 @@ public class ColorPanel {
         // Display alpha value below swatch
         int prevAlpha = PixelCanvas.unpackRGBA(previousColor)[3];
         int prevPercent = (int) ((prevAlpha / 255.0f) * 100);
-        String prevAlphaText = String.format("\u03B1: %d%%", prevPercent); // α symbol
+        String prevAlphaText = String.format("A: %d%%", prevPercent);
         ImGui.textDisabled(prevAlphaText);
         ImGui.endGroup();
     }

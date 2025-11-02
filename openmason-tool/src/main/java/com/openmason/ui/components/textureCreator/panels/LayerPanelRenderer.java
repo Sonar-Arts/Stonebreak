@@ -231,10 +231,9 @@ public class LayerPanelRenderer {
             }
         }
 
-        // Visibility toggle with eye icon
+        // Visibility toggle
         ImBoolean visibleBool = new ImBoolean(layer.isVisible());
-        String visIcon = layer.isVisible() ? "\uD83D\uDC41" : "\uD83D\uDEAB"; // Eye emoji or no entry
-        if (ImGui.checkbox(visIcon + " Visible##" + index, visibleBool)) {
+        if (ImGui.checkbox("Visible##" + index, visibleBool)) {
             layerManager.setLayerVisibility(index, visibleBool.get());
         }
 
