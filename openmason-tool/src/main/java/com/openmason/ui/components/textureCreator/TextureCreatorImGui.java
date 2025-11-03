@@ -13,6 +13,7 @@ import com.openmason.ui.components.textureCreator.io.DragDropHandler;
 import com.openmason.ui.components.textureCreator.keyboard.KeyboardShortcutManager;
 import com.openmason.ui.components.textureCreator.keyboard.ShortcutKey;
 import com.openmason.ui.components.textureCreator.panels.*;
+import com.openmason.ui.components.textureCreator.selection.RectangularSelection;
 import com.openmason.ui.LogoManager;
 import com.openmason.ui.toolbars.TextureEditorToolbarRenderer;
 import com.openmason.ui.components.textureCreator.rendering.DialogProcessor;
@@ -30,6 +31,7 @@ import org.lwjgl.glfw.GLFWDropCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -338,6 +340,13 @@ public class TextureCreatorImGui {
     public void setWindowHandle(long windowHandle) {
         this.windowHandle = windowHandle;
         menuBarRenderer.setWindowHandle(windowHandle);
+
+        // Set window handle for move tool (enables mouse capture for rotation/dragging)
+        var moveTool = toolCoordinator.getMoveTool();
+        if (moveTool != null) {
+            moveTool.setWindowHandle(windowHandle);
+        }
+
         setupDragDropCallback();
     }
 
@@ -384,10 +393,34 @@ public class TextureCreatorImGui {
         }
 
         if (!pngFiles.isEmpty()) {
-            List<String> errors = dragDropHandler.processDroppedPNGFiles(
+            int successCount = dragDropHandler.processDroppedPNGFiles(
                 pngFiles.toArray(new String[0]), controller.getLayerManager());
-            if (errors.isEmpty() || errors.size() < pngFiles.size()) {
+            if (successCount > 0) {
                 controller.notifyLayerModified();
+
+                // Get the bounds of the imported image and create a selection
+                Rectangle importedBounds = dragDropHandler.getLastImportedBounds();
+                if (importedBounds != null) {
+                    // Create a rectangular selection matching the imported image bounds
+                    RectangularSelection selection = new RectangularSelection(
+                        importedBounds.x,
+                        importedBounds.y,
+                        importedBounds.x + importedBounds.width - 1,
+                        importedBounds.y + importedBounds.height - 1
+                    );
+                    controller.getState().setCurrentSelection(selection);
+
+                    // Automatically activate move tool to allow repositioning the imported image
+                    toolCoordinator.switchToMoveTool();
+
+                    // Setup move session (not paste) so transform handles work and hole is created
+                    // Use setupMoveSession() instead of setupPasteSession() because imported images
+                    // should leave a hole at the original location when moved (like regular move operations)
+                    var moveTool = toolCoordinator.getMoveTool();
+                    if (moveTool != null) {
+                        moveTool.setupMoveSession(controller.getActiveLayerCanvas(), selection);
+                    }
+                }
             }
         }
 

@@ -1,5 +1,6 @@
 package com.openmason.ui.components.textureCreator.tools.move;
 
+import com.openmason.ui.components.textureCreator.canvas.CubeNetValidator;
 import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.components.textureCreator.layers.FloatingPixelLayer;
 
@@ -70,6 +71,12 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
      */
     @Override
     protected Integer getFloatingPixelAt(int canvasX, int canvasY) {
+        // Skip cube-net transparency zones - transformed pixels should not appear there
+        if (!CubeNetValidator.isEditablePixel(canvasX, canvasY,
+                snapshot.canvasWidth(), snapshot.canvasHeight())) {
+            return null;  // Don't show transformed pixels in transparency zones
+        }
+
         // Check if this position has a transformed pixel
         Rectangle transformedBounds = transformedImage.bounds();
         if (!transformedBounds.contains(canvasX, canvasY)) {
@@ -124,6 +131,11 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
+                // Skip cube-net transparency zones (they should never show holes OR content)
+                if (!CubeNetValidator.isEditablePixel(x, y, width, height)) {
+                    continue;  // Don't composite anything in transparency zones
+                }
+
                 // Check if this pixel is within the original selection bounds
                 boolean inOriginalSelection = false;
                 if (x >= originalBounds.x && x < originalBounds.x + originalBounds.width &&

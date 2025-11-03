@@ -448,6 +448,20 @@ public class MoveToolController implements DrawingTool {
     }
 
     /**
+     * Set up a move session for transforming existing content.
+     * This creates a session that DOES create a hole at the original location (since content is being moved).
+     * Use this for imported images or regular move operations.
+     *
+     * @param canvas pixel canvas
+     * @param selection selection region for content to move
+     */
+    public void setupMoveSession(PixelCanvas canvas, SelectionRegion selection) {
+        session = MoveToolSession.capture(canvas, selection);
+        previewLayer = null;
+        lastSelection = selection;
+    }
+
+    /**
      * Set up a paste session for transforming pasted content.
      * This creates a session that never creates a hole (since content was pasted, not moved).
      *
