@@ -7,8 +7,7 @@ import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.ViewportImGuiInterface;
-import com.openmason.ui.HomeScreenOM;
-import com.openmason.ui.ToolCard;
+import com.openmason.ui.hub.ProjectHubScreen;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import org.lwjgl.glfw.*;
@@ -51,7 +50,7 @@ public class OpenMasonApp {
     
     // UI Interfaces
     private ThemeManager themeManager;
-    private HomeScreenOM homeScreen;
+    private ProjectHubScreen projectHubScreen;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
     private TextureCreatorImGui textureCreatorInterface;
@@ -366,9 +365,14 @@ public class OpenMasonApp {
             // Initialize theme system for ImGui
             themeManager.initializeForImGui();
 
-            // Initialize Home screen with theme manager
-            homeScreen = new HomeScreenOM(themeManager);
-            setupHomeScreenTools();
+            // Initialize Project Hub Screen with theme manager
+            projectHubScreen = new ProjectHubScreen(themeManager);
+
+            // Set transition callbacks for Project Hub
+            projectHubScreen.setTransitionCallbacks(
+                this::transitionToMainInterface,
+                this::transitionToMainInterface  // Both create and open go to main interface for Phase 1
+            );
 
             // Initialize main interface with theme manager
             mainInterface = new MainImGuiInterface(themeManager);
@@ -409,18 +413,19 @@ public class OpenMasonApp {
 
         // Render based on application state
         if (currentState.isHomeScreen()) {
-            // Render Home screen
-            if (homeScreen != null) {
+            // Render Project Hub Screen
+            if (projectHubScreen != null) {
                 try {
-                    homeScreen.render();
-                    homeScreen.update(deltaTime);
+                    projectHubScreen.render();
+                    projectHubScreen.update(deltaTime);
 
-                    // Check if Home screen should close (user clicked X)
-                    if (homeScreen.shouldClose()) {
-                        shouldClose = true;
+                    // Check if there's a pending transition
+                    if (projectHubScreen.shouldTransition()) {
+                        // Action service callback already set, just apply layout
+                        shouldApplyDefaultLayout = true;
                     }
                 } catch (Exception e) {
-                    logger.error("Error rendering Home screen", e);
+                    logger.error("Error rendering Project Hub Screen", e);
                 }
             }
         } else if (currentState.isMainInterface()) {
@@ -455,37 +460,7 @@ public class OpenMasonApp {
         }
     }
     
-    /**
-     * Setup tool cards for the Home screen.
-     */
-    private void setupHomeScreenTools() {
-        // 3D Model Viewer
-        ToolCard modelViewerTool = new ToolCard(
-            "3D Model Viewer",
-            "View and inspect 3D voxel models with professional viewport controls and real-time rendering.",
-            this::transitionToMainInterface
-        );
-        homeScreen.addToolCard(modelViewerTool);
-
-        // Future tools (placeholders)
-        homeScreen.addToolCard(ToolCard.comingSoon(
-            "Placeholder 1",
-            "Additional tool coming soon."
-        ));
-
-        // Texture Creator (Placeholder #2)
-        ToolCard textureCreatorTool = new ToolCard(
-            "Texture Creator",
-            "Create and edit 16x16 block/item textures and 64x48 block cross textures with layer support and PNG export.",
-            this::transitionToTextureCreator
-        );
-        homeScreen.addToolCard(textureCreatorTool);
-
-        homeScreen.addToolCard(ToolCard.comingSoon(
-            "Placeholder 3",
-            "Additional tool coming soon."
-        ));
-    }
+    // setupHomeScreenTools() removed - replaced by template system in ProjectHubScreen
 
     /**
      * Transition from Home screen to main interface.
