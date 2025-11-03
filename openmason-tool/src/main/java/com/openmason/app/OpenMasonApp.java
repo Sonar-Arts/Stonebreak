@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.IntBuffer;
 
-import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -63,6 +62,7 @@ public class OpenMasonApp {
     private boolean shouldApplyDefaultLayout = false;
     private boolean imguiInitialized = false;
     private boolean openglContextCreated = false;
+    private boolean cleanedUp = false;
     
     /**
      * Initialize and run the Dear ImGui application.This
@@ -96,7 +96,7 @@ public class OpenMasonApp {
             
         } catch (Exception e) {
             logger.error("Failed to start OpenMason application", e);
-            cleanup();
+            // Don't call cleanup() here - finally block will handle it
             System.exit(1);
         } finally {
             // Cleanup resources
@@ -517,8 +517,14 @@ public class OpenMasonApp {
      * Cleanup application resources.
      */
     private void cleanup() {
+        // Prevent double-cleanup (idempotent)
+        if (cleanedUp) {
+            return;
+        }
+        cleanedUp = true;
+
         // logger.info("Cleaning up OpenMason application...");
-        
+
         try {
             // Only attempt OpenGL cleanup if we have a valid context
             if (openglContextCreated && window != NULL) {
@@ -581,11 +587,13 @@ public class OpenMasonApp {
             }
             
             // Now cleanup GLFW (this destroys the OpenGL context)
+            // NOTE: Do NOT call glfwFreeCallbacks() here - ImGuiImplGlfw.dispose() already freed its callbacks
+            // and glfwDestroyWindow() will clean up any remaining callbacks automatically
             if (window != NULL) {
-                glfwFreeCallbacks(window);
                 glfwDestroyWindow(window);
+                window = NULL;  // Prevent accidental reuse
             }
-            
+
             glfwTerminate();
             GLFWErrorCallback callback = glfwSetErrorCallback(null);
             if (callback != null) {

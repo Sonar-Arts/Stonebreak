@@ -17,29 +17,27 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Renders thumbnails for blocks from texture atlas coordinates.
- *
- * <p>Extracts the block texture from the atlas and generates OpenGL textures
- * at specified sizes (64x64, 32x32, 16x16).</p>
+ * Generates thumbnail textures for blocks by extracting from the texture atlas.
+ * Supports multiple sizes (64x64, 32x32, 16x16) with proper alpha channel handling.
  *
  * <p>Features:</p>
  * <ul>
  *   <li>Checkerboard background for transparent areas</li>
- *   <li>Border rendering for visual separation</li>
- *   <li>Efficient texture generation with proper filtering</li>
+ *   <li>Special handling for AIR block (fully transparent)</li>
+ *   <li>Fail-fast validation for missing textures</li>
  * </ul>
+ *
+ * <p>This renderer requires a valid texture atlas and uses fail-fast validation.
+ * Throws {@link IllegalStateException} if the atlas is not available.</p>
  */
 public class BlockThumbnailRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(BlockThumbnailRenderer.class);
 
-    // Checkerboard pattern colors (light/dark gray)
+    // Checkerboard pattern colors for transparent backgrounds (light/dark gray)
     private static final int CHECKER_LIGHT = 0xFFCCCCCC;
     private static final int CHECKER_DARK = 0xFF999999;
     private static final int CHECKER_SIZE = 8; // 8x8 pixel checkers
-
-    // Border color
-    private static final int BORDER_COLOR = 0xFF666666;
 
     // Atlas paths
     private static final Path ATLAS_METADATA_PATH = Paths.get("stonebreak-game", "src", "main", "resources", "texture atlas", "atlas_metadata.json");
@@ -62,26 +60,29 @@ public class BlockThumbnailRenderer {
 
     /**
      * Loads the texture atlas image and metadata.
+     *
+     * @throws RuntimeException if atlas files are missing or cannot be loaded
      */
     private void loadAtlas() {
         try {
-            if (Files.exists(ATLAS_IMAGE_PATH) && Files.exists(ATLAS_METADATA_PATH)) {
-                // Load atlas image
-                atlasImage = ImageIO.read(ATLAS_IMAGE_PATH.toFile());
-
-                // Load metadata
-                ObjectMapper objectMapper = new ObjectMapper();
-                atlasMetadata = objectMapper.readValue(ATLAS_METADATA_PATH.toFile(), AtlasMetadata.class);
-                atlasMetadata.initializeLookupMaps();
-
-                atlasLoaded = true;
-                logger.info("Loaded texture atlas: {}x{} with {} textures",
-                    atlasImage.getWidth(), atlasImage.getHeight(), atlasMetadata.getTextures().size());
-            } else {
-                logger.warn("Atlas files not found, using fallback rendering");
+            if (!Files.exists(ATLAS_IMAGE_PATH) || !Files.exists(ATLAS_METADATA_PATH)) {
+                throw new IllegalStateException("Atlas files not found at: " + ATLAS_IMAGE_PATH + " or " + ATLAS_METADATA_PATH);
             }
+
+            // Load atlas image
+            atlasImage = ImageIO.read(ATLAS_IMAGE_PATH.toFile());
+
+            // Load metadata
+            ObjectMapper objectMapper = new ObjectMapper();
+            atlasMetadata = objectMapper.readValue(ATLAS_METADATA_PATH.toFile(), AtlasMetadata.class);
+            atlasMetadata.initializeLookupMaps();
+
+            atlasLoaded = true;
+            logger.info("Loaded texture atlas: {}x{} with {} textures",
+                atlasImage.getWidth(), atlasImage.getHeight(), atlasMetadata.getTextures().size());
         } catch (Exception e) {
             logger.error("Failed to load texture atlas", e);
+            throw new RuntimeException("Failed to load texture atlas - thumbnail rendering will not work", e);
         }
     }
 
@@ -103,29 +104,39 @@ public class BlockThumbnailRenderer {
      * @param blockType The block type
      * @param size The thumbnail size
      * @return OpenGL texture ID
+     * @throws IllegalStateException if texture atlas is not loaded
+     * @throws RuntimeException if thumbnail generation fails
      */
     private int generateThumbnail(BlockType blockType, int size) {
+        if (!atlasLoaded) {
+            throw new IllegalStateException("Texture atlas not loaded - cannot generate thumbnail for " + blockType);
+        }
+
+        // Special case: AIR has no texture - return empty/transparent texture
+        if (blockType == BlockType.AIR) {
+            return generateAirTexture(size);
+        }
+
         try {
-            if (atlasLoaded) {
-                return generateFromAtlas(blockType, size);
-            } else {
-                return generateFallback(blockType, size);
-            }
+            return generateFromAtlas(blockType, size);
         } catch (Exception e) {
             logger.error("Failed to generate thumbnail for block: " + blockType, e);
-            return generateFallback(blockType, size);
+            throw new RuntimeException("Failed to generate thumbnail for block: " + blockType, e);
         }
     }
 
     /**
      * Generates a thumbnail by extracting from the texture atlas.
+     *
+     * @throws IllegalArgumentException if block type has no texture mapping
+     * @throws IllegalStateException if texture is not found in atlas
      */
     private int generateFromAtlas(BlockType blockType, int size) throws Exception {
         // Get block texture base name
         String textureName = getBlockTextureName(blockType);
 
         if (textureName == null) {
-            return generateFallback(blockType, size);
+            throw new IllegalArgumentException("No texture mapping defined for block type: " + blockType);
         }
 
         AtlasMetadata.TextureEntry texture = null;
@@ -146,8 +157,7 @@ public class BlockThumbnailRenderer {
         }
 
         if (texture == null) {
-            logger.warn("Texture not found in atlas: {}", textureName);
-            return generateFallback(blockType, size);
+            throw new IllegalStateException("Texture not found in atlas: " + textureName + " for block type: " + blockType);
         }
 
         // Extract texture region from atlas
@@ -165,15 +175,32 @@ public class BlockThumbnailRenderer {
         g.drawImage(textureRegion, 0, 0, size, size, null);
         g.dispose();
 
-        // Convert to ByteBuffer
+        // Convert to ByteBuffer with checkerboard background for transparent areas
+        // This works for all texture types: cubes, directional cubes, cross/sprites (roses, dandelions), etc.
         ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * 4);
+
         for (int py = 0; py < size; py++) {
             for (int px = 0; px < size; px++) {
+                // Get texture pixel with alpha
                 int argb = scaled.getRGB(px, py);
-                pixels.put((byte) ((argb >> 16) & 0xFF)); // R
-                pixels.put((byte) ((argb >> 8) & 0xFF));  // G
-                pixels.put((byte) (argb & 0xFF));         // B
-                pixels.put((byte) 0xFF);                   // A - Always opaque
+                int texR = (argb >> 16) & 0xFF;
+                int texG = (argb >> 8) & 0xFF;
+                int texB = argb & 0xFF;
+                int texA = (argb >> 24) & 0xFF;
+
+                // Get checkerboard background color (DRY - using helper method)
+                int[] bgRGB = getCheckerboardRGB(px, py);
+
+                // Alpha blend texture over checkerboard
+                // Formula: result = (texture * alpha) + (background * (1 - alpha))
+                int finalR = (texR * texA + bgRGB[0] * (255 - texA)) / 255;
+                int finalG = (texG * texA + bgRGB[1] * (255 - texA)) / 255;
+                int finalB = (texB * texA + bgRGB[2] * (255 - texA)) / 255;
+
+                pixels.put((byte) finalR);
+                pixels.put((byte) finalG);
+                pixels.put((byte) finalB);
+                pixels.put((byte) 0xFF); // Final texture is opaque (checkerboard + blended texture)
             }
         }
         pixels.flip();
@@ -182,30 +209,13 @@ public class BlockThumbnailRenderer {
     }
 
     /**
-     * Generates a fallback thumbnail with colored squares.
+     * Generates a special texture for AIR block (fully transparent with checkerboard background).
      */
-    private int generateFallback(BlockType blockType, int size) {
-        try {
-            ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * 4);
-
-            int color = getBlockColor(blockType);
-
-            // Fill with checkerboard background
-            fillCheckerboard(pixels, size);
-
-            // Draw border
-            drawBorder(pixels, size, BORDER_COLOR);
-
-            // Overlay block color (semi-transparent to show checker)
-            overlayColor(pixels, size, color, 0.7f);
-
-            pixels.flip();
-
-            return createTexture(pixels, size);
-        } catch (Exception e) {
-            logger.error("Failed to generate fallback thumbnail", e);
-            return 0;
-        }
+    private int generateAirTexture(int size) {
+        ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * 4);
+        fillCheckerboardPattern(pixels, size);
+        pixels.flip();
+        return createTexture(pixels, size);
     }
 
     /**
@@ -267,118 +277,51 @@ public class BlockThumbnailRenderer {
         };
     }
 
+
     /**
-     * Gets a representative color for a block type (fallback).
+     * Gets the checkerboard color for a given pixel position.
+     *
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return Color value (0xRRGGBB format)
      */
-    private int getBlockColor(BlockType blockType) {
-        // Fallback colors based on block type for visual representation
-        return switch (blockType) {
-            case GRASS -> 0xFF7CB342; // Green
-            case DIRT -> 0xFF8D6E63;  // Brown
-            case STONE -> 0xFF9E9E9E; // Gray
-            case COAL_ORE -> 0xFF424242; // Dark gray
-            case IRON_ORE -> 0xFFBCAAA4; // Tan
-            case WATER -> 0xFF2196F3; // Blue
-            case SAND -> 0xFFFFF176; // Light yellow
-            case PINE -> 0xFF6D4C41; // Dark brown
-            case ROSE -> 0xFFE91E63; // Pink
-            case DANDELION -> 0xFFFFEB3B; // Yellow
-            case LEAVES -> 0xFF4CAF50; // Green
-            case PINE_LEAVES -> 0xFF2E7D32; // Dark green
-            case ELM_LEAVES -> 0xFF66BB6A; // Light green
-            case WOOD -> 0xFF8D6E63; // Brown
-            case WOOD_PLANKS -> 0xFFA1887F; // Light brown
-            case PINE_WOOD_PLANKS -> 0xFF6D4C41; // Dark brown
-            case ELM_WOOD_LOG -> 0xFF795548; // Medium brown
-            case ELM_WOOD_PLANKS -> 0xFF9C786C; // Elm brown
-            case COBBLESTONE -> 0xFF757575; // Gray
-            case GRAVEL -> 0xFF8C8C8C; // Light gray
-            case CLAY -> 0xFF90A4AE; // Blue-gray
-            case BEDROCK -> 0xFF424242; // Very dark gray
-            case SANDSTONE -> 0xFFDEB887; // Tan
-            case RED_SANDSTONE -> 0xFFCD853F; // Orange-tan
-            case RED_SAND -> 0xFFFF8A65; // Orange
-            case SNOWY_DIRT -> 0xFFECEFF1; // White-gray
-            case ICE -> 0xFF81D4FA; // Light blue
-            case SNOW -> 0xFFFFFFFF; // White
-            case MAGMA -> 0xFFFF5722; // Deep orange
-            case CRYSTAL -> 0xFFAB47BC; // Purple
-            case WORKBENCH -> 0xFF795548; // Brown
-            case RED_SAND_COBBLESTONE -> 0xFFBF360C; // Dark orange
-            case SAND_COBBLESTONE -> 0xFFD7CCC8; // Light tan
-            default -> 0xFFBDBDBD; // Light gray
+    private int getCheckerboardColor(int x, int y) {
+        boolean light = ((x / CHECKER_SIZE) + (y / CHECKER_SIZE)) % 2 == 0;
+        return light ? CHECKER_LIGHT : CHECKER_DARK;
+    }
+
+    /**
+     * Gets the RGB components of the checkerboard color for a given position.
+     *
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return Array with [R, G, B] components (0-255)
+     */
+    private int[] getCheckerboardRGB(int x, int y) {
+        int color = getCheckerboardColor(x, y);
+        return new int[] {
+            (color >> 16) & 0xFF,  // R
+            (color >> 8) & 0xFF,   // G
+            color & 0xFF           // B
         };
     }
 
     /**
-     * Fills buffer with checkerboard pattern.
+     * Fills a ByteBuffer with an opaque checkerboard pattern.
+     *
+     * @param pixels Buffer to fill
+     * @param size Texture size (width and height)
      */
-    private void fillCheckerboard(ByteBuffer pixels, int size) {
+    private void fillCheckerboardPattern(ByteBuffer pixels, int size) {
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
-                boolean light = ((x / CHECKER_SIZE) + (y / CHECKER_SIZE)) % 2 == 0;
-                int color = light ? CHECKER_LIGHT : CHECKER_DARK;
-                putPixel(pixels, color);
+                int color = getCheckerboardColor(x, y);
+                pixels.put((byte) ((color >> 16) & 0xFF)); // R
+                pixels.put((byte) ((color >> 8) & 0xFF));  // G
+                pixels.put((byte) (color & 0xFF));         // B
+                pixels.put((byte) 0xFF);                   // A - Opaque
             }
         }
-    }
-
-    /**
-     * Draws a border around the thumbnail.
-     */
-    private void drawBorder(ByteBuffer pixels, int size, int borderColor) {
-        pixels.position(0);
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                if (x == 0 || y == 0 || x == size - 1 || y == size - 1) {
-                    pixels.position((y * size + x) * 4);
-                    putPixel(pixels, borderColor);
-                }
-            }
-        }
-    }
-
-    /**
-     * Overlays a color with alpha blending.
-     */
-    private void overlayColor(ByteBuffer pixels, int size, int color, float alpha) {
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int b = color & 0xFF;
-        int a = (int) (alpha * 255);
-
-        pixels.position(0);
-        for (int y = 1; y < size - 1; y++) {
-            for (int x = 1; x < size - 1; x++) {
-                pixels.position((y * size + x) * 4);
-
-                // Simple alpha blend over existing pixel
-                int existingR = pixels.get() & 0xFF;
-                int existingG = pixels.get() & 0xFF;
-                int existingB = pixels.get() & 0xFF;
-                int existingA = pixels.get() & 0xFF;
-
-                int blendedR = (r * a + existingR * (255 - a)) / 255;
-                int blendedG = (g * a + existingG * (255 - a)) / 255;
-                int blendedB = (b * a + existingB * (255 - a)) / 255;
-
-                pixels.position((y * size + x) * 4);
-                pixels.put((byte) blendedR);
-                pixels.put((byte) blendedG);
-                pixels.put((byte) blendedB);
-                pixels.put((byte) 255);
-            }
-        }
-    }
-
-    /**
-     * Puts a pixel in RGBA format with full opacity.
-     */
-    private void putPixel(ByteBuffer pixels, int color) {
-        pixels.put((byte) ((color >> 16) & 0xFF)); // R
-        pixels.put((byte) ((color >> 8) & 0xFF));  // G
-        pixels.put((byte) (color & 0xFF));         // B
-        pixels.put((byte) 0xFF);                   // A - Always fully opaque
     }
 
     /**

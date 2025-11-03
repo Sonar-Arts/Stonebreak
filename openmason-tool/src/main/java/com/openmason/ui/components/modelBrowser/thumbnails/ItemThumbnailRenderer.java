@@ -16,15 +16,13 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Renders thumbnails for items from texture atlas coordinates.
- *
- * <p>Extracts item sprites from the texture atlas and generates OpenGL textures
- * at specified sizes (64x64, 32x32, 16x16).</p>
+ * Generates thumbnail textures for items by extracting from the texture atlas.
+ * Supports multiple sizes (64x64, 32x32, 16x16) with proper alpha channel handling.
  *
  * <p>Features:</p>
  * <ul>
- *   <li>Atlas-based sprite extraction</li>
- *   <li>Proper alpha transparency handling</li>
+ *   <li>Checkerboard background for transparent item sprites</li>
+ *   <li>Alpha compositing over checkerboard pattern</li>
  *   <li>Fallback colored rendering when textures unavailable</li>
  * </ul>
  */
@@ -146,15 +144,32 @@ public class ItemThumbnailRenderer {
         g.drawImage(textureRegion, 0, 0, size, size, null);
         g.dispose();
 
-        // Convert to ByteBuffer with proper alpha handling
+        // Convert to ByteBuffer with checkerboard background for transparent areas
+        // This works for item sprites with transparency
         ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * 4);
+
         for (int py = 0; py < size; py++) {
             for (int px = 0; px < size; px++) {
+                // Get texture pixel with alpha
                 int argb = scaled.getRGB(px, py);
-                pixels.put((byte) ((argb >> 16) & 0xFF)); // R
-                pixels.put((byte) ((argb >> 8) & 0xFF));  // G
-                pixels.put((byte) (argb & 0xFF));         // B
-                pixels.put((byte) ((argb >> 24) & 0xFF)); // A - Preserve alpha
+                int texR = (argb >> 16) & 0xFF;
+                int texG = (argb >> 8) & 0xFF;
+                int texB = argb & 0xFF;
+                int texA = (argb >> 24) & 0xFF;
+
+                // Get checkerboard background color (DRY - using helper method)
+                int[] bgRGB = getCheckerboardRGB(px, py);
+
+                // Alpha blend texture over checkerboard
+                // Formula: result = (texture * alpha) + (background * (1 - alpha))
+                int finalR = (texR * texA + bgRGB[0] * (255 - texA)) / 255;
+                int finalG = (texG * texA + bgRGB[1] * (255 - texA)) / 255;
+                int finalB = (texB * texA + bgRGB[2] * (255 - texA)) / 255;
+
+                pixels.put((byte) finalR);
+                pixels.put((byte) finalG);
+                pixels.put((byte) finalB);
+                pixels.put((byte) 0xFF); // Final texture is opaque (checkerboard + blended texture)
             }
         }
         pixels.flip();
@@ -222,13 +237,7 @@ public class ItemThumbnailRenderer {
     }
 
     private void fillCheckerboard(ByteBuffer pixels, int size) {
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                boolean light = ((x / CHECKER_SIZE) + (y / CHECKER_SIZE)) % 2 == 0;
-                int color = light ? CHECKER_LIGHT : CHECKER_DARK;
-                putPixel(pixels, color);
-            }
-        }
+        fillCheckerboardPattern(pixels, size);
     }
 
     private void drawBorder(ByteBuffer pixels, int size, int borderColor) {
@@ -277,6 +286,52 @@ public class ItemThumbnailRenderer {
         pixels.put((byte) ((color >> 8) & 0xFF));  // G
         pixels.put((byte) (color & 0xFF));         // B
         pixels.put((byte) 0xFF);                   // A - Always fully opaque
+    }
+
+    /**
+     * Gets the checkerboard color for a given pixel position.
+     *
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return Color value (0xRRGGBB format)
+     */
+    private int getCheckerboardColor(int x, int y) {
+        boolean light = ((x / CHECKER_SIZE) + (y / CHECKER_SIZE)) % 2 == 0;
+        return light ? CHECKER_LIGHT : CHECKER_DARK;
+    }
+
+    /**
+     * Gets the RGB components of the checkerboard color for a given position.
+     *
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return Array with [R, G, B] components (0-255)
+     */
+    private int[] getCheckerboardRGB(int x, int y) {
+        int color = getCheckerboardColor(x, y);
+        return new int[] {
+            (color >> 16) & 0xFF,  // R
+            (color >> 8) & 0xFF,   // G
+            color & 0xFF           // B
+        };
+    }
+
+    /**
+     * Fills a ByteBuffer with an opaque checkerboard pattern.
+     *
+     * @param pixels Buffer to fill
+     * @param size Texture size (width and height)
+     */
+    private void fillCheckerboardPattern(ByteBuffer pixels, int size) {
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                int color = getCheckerboardColor(x, y);
+                pixels.put((byte) ((color >> 16) & 0xFF)); // R
+                pixels.put((byte) ((color >> 8) & 0xFF));  // G
+                pixels.put((byte) (color & 0xFF));         // B
+                pixels.put((byte) 0xFF);                   // A - Opaque
+            }
+        }
     }
 
     private int createTexture(ByteBuffer pixels, int size) {
