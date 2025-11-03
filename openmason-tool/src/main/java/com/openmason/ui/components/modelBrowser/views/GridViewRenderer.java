@@ -321,10 +321,28 @@ public class GridViewRenderer implements ViewRenderer {
             ImGui.openPopup("##GridItemContextMenu_" + item.id);
         }
 
-        // Render label (truncated to fit)
-        ImGui.pushTextWrapPos(ImGui.getCursorPosX() + ITEM_WIDTH);
-        ImGui.textWrapped(truncateLabel(item.displayName));
-        ImGui.popTextWrapPos();
+        // Render label with fixed width to ensure consistent spacing
+        float labelStartX = ImGui.getCursorPosX();
+        String labelText = item.displayName;
+
+        // Calculate text size and truncate if needed to fit within thumbnail bounds
+        ImVec2 textSize = new ImVec2();
+        ImGui.calcTextSize(textSize, labelText);
+
+        if (textSize.x > THUMBNAIL_SIZE) {
+            // Truncate with ellipsis to fit within thumbnail width
+            while (labelText.length() > 0 && ImGui.calcTextSize(labelText + "...").x > THUMBNAIL_SIZE) {
+                labelText = labelText.substring(0, labelText.length() - 1);
+            }
+            labelText = labelText + "...";
+        }
+
+        // Render text left-aligned within thumbnail bounds
+        ImGui.text(labelText);
+
+        // Reserve the full ITEM_WIDTH space to ensure consistent grid spacing
+        ImGui.setCursorPosX(labelStartX);
+        ImGui.dummy(ITEM_WIDTH, 0);
 
         ImGui.endGroup();
 
@@ -430,17 +448,6 @@ public class GridViewRenderer implements ViewRenderer {
         };
     }
 
-    /**
-     * Truncates label to fit within item width.
-     * Following KISS: Simple truncation.
-     */
-    private String truncateLabel(String label) {
-        int maxLength = 15; // Approximate character limit
-        if (label.length() > maxLength) {
-            return label.substring(0, maxLength - 3) + "...";
-        }
-        return label;
-    }
 
     /**
      * Renders empty state when no items to show.
