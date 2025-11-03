@@ -5,6 +5,9 @@ import com.openmason.item.ItemManager;
 import com.openmason.ui.components.modelBrowser.categorizers.BlockCategorizer;
 import com.openmason.ui.components.modelBrowser.categorizers.ItemCategorizer;
 import com.openmason.ui.components.modelBrowser.events.*;
+import com.openmason.ui.components.modelBrowser.events.listeners.BlockSelectionListener;
+import com.openmason.ui.components.modelBrowser.events.listeners.ItemSelectionListener;
+import com.openmason.ui.components.modelBrowser.events.listeners.ModelSelectionListener;
 import com.openmason.ui.services.ModelOperationService;
 import com.openmason.ui.services.StatusService;
 import com.stonebreak.blocks.BlockType;
@@ -15,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Controller for the Model Browser component.
@@ -84,30 +88,68 @@ public class ModelBrowserController {
     }
 
     /**
+     * Template method for handling selection events.
+     * Reduces code duplication by encapsulating the common pattern of all selection handlers.
+     *
+     * <p>This method follows the Template Method design pattern and DRY principle by
+     * extracting the common logic: update state, update status, notify listeners, log, and handle errors.</p>
+     *
+     * @param item The selected item (block, item, or model name)
+     * @param itemType The type of item (e.g., "Block", "Item", "Model")
+     * @param displayName The display name for the item
+     * @param statusMessage The message to show in status (e.g., "Loaded block", "Loading model")
+     * @param additionalAction Optional additional action to perform (e.g., add to recent files)
+     * @param notifyListeners Consumer that notifies the appropriate listeners
+     * @param <T> The type of the selected item
+     */
+    private <T> void handleSelection(
+            T item,
+            String itemType,
+            String displayName,
+            String statusMessage,
+            Consumer<T> additionalAction,
+            Consumer<List<ModelBrowserListener>> notifyListeners) {
+        try {
+            // Update state
+            state.setSelectedModelInfo("Selected: " + displayName + " (" + itemType + ")");
+
+            // Execute any additional actions (e.g., add to recent files)
+            if (additionalAction != null) {
+                additionalAction.accept(item);
+            }
+
+            // Update status
+            statusService.updateStatus(statusMessage + ": " + displayName);
+
+            // Notify listeners
+            notifyListeners.accept(listeners);
+
+            logger.debug("{} selected: {}", itemType, item);
+        } catch (Exception e) {
+            logger.error("Failed to select " + itemType.toLowerCase() + ": " + item, e);
+            statusService.updateStatus("Error loading " + itemType.toLowerCase() + ": " + e.getMessage());
+        }
+    }
+
+    /**
      * Handles block selection by the user.
      *
      * @param blockType The selected block type
      */
     public void selectBlock(BlockType blockType) {
-        try {
-            // Update state
-            String displayName = BlockManager.getDisplayName(blockType);
-            state.setSelectedModelInfo("Selected: " + displayName + " (Block)");
-
-            // Update status
-            statusService.updateStatus("Loaded block: " + displayName);
-
-            // Notify listeners
-            BlockSelectedEvent event = new BlockSelectedEvent(blockType);
-            for (ModelBrowserListener listener : listeners) {
-                listener.onBlockSelected(event);
-            }
-
-            logger.debug("Block selected: {}", blockType);
-        } catch (Exception e) {
-            logger.error("Failed to select block: " + blockType, e);
-            statusService.updateStatus("Error loading block: " + e.getMessage());
-        }
+        handleSelection(
+                blockType,
+                "Block",
+                BlockManager.getDisplayName(blockType),
+                "Loaded block",
+                null, // No additional action needed
+                listenerList -> {
+                    BlockSelectedEvent event = new BlockSelectedEvent(blockType);
+                    for (BlockSelectionListener listener : listenerList) {
+                        listener.onBlockSelected(event);
+                    }
+                }
+        );
     }
 
     /**
@@ -116,25 +158,19 @@ public class ModelBrowserController {
      * @param itemType The selected item type
      */
     public void selectItem(ItemType itemType) {
-        try {
-            // Update state
-            String displayName = ItemManager.getDisplayName(itemType);
-            state.setSelectedModelInfo("Selected: " + displayName + " (Item)");
-
-            // Update status
-            statusService.updateStatus("Loaded item: " + displayName);
-
-            // Notify listeners
-            ItemSelectedEvent event = new ItemSelectedEvent(itemType);
-            for (ModelBrowserListener listener : listeners) {
-                listener.onItemSelected(event);
-            }
-
-            logger.debug("Item selected: {}", itemType);
-        } catch (Exception e) {
-            logger.error("Failed to select item: " + itemType, e);
-            statusService.updateStatus("Error loading item: " + e.getMessage());
-        }
+        handleSelection(
+                itemType,
+                "Item",
+                ItemManager.getDisplayName(itemType),
+                "Loaded item",
+                null, // No additional action needed
+                listenerList -> {
+                    ItemSelectedEvent event = new ItemSelectedEvent(itemType);
+                    for (ItemSelectionListener listener : listenerList) {
+                        listener.onItemSelected(event);
+                    }
+                }
+        );
     }
 
     /**
@@ -143,28 +179,23 @@ public class ModelBrowserController {
      * @param modelName The selected model name
      */
     public void selectModel(String modelName) {
-        try {
-            // Update state
-            state.setSelectedModelInfo("Selected: " + modelName + " (Model)");
-            state.addRecentFile(modelName);
-
-            // Update status
-            statusService.updateStatus("Loading model: " + modelName);
-
-            // Use model operation service for actual loading (with default variant)
-            modelOperationService.selectModel(modelName, "default");
-
-            // Notify listeners
-            ModelSelectedEvent event = new ModelSelectedEvent(modelName);
-            for (ModelBrowserListener listener : listeners) {
-                listener.onModelSelected(event);
-            }
-
-            logger.debug("Model selected: {}", modelName);
-        } catch (Exception e) {
-            logger.error("Failed to select model: " + modelName, e);
-            statusService.updateStatus("Error loading model: " + e.getMessage());
-        }
+        handleSelection(
+                modelName,
+                "Model",
+                modelName,
+                "Loading model",
+                name -> {
+                    // Additional actions for model selection
+                    state.addRecentFile(name);
+                    modelOperationService.selectModel(name, "default");
+                },
+                listenerList -> {
+                    ModelSelectedEvent event = new ModelSelectedEvent(modelName);
+                    for (ModelSelectionListener listener : listenerList) {
+                        listener.onModelSelected(event);
+                    }
+                }
+        );
     }
 
     /**

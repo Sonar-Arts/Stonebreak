@@ -1,5 +1,9 @@
 package com.openmason.ui.components.modelBrowser;
 
+import com.openmason.ui.components.modelBrowser.filters.FilterType;
+import com.openmason.ui.components.modelBrowser.sorting.SortBy;
+import com.openmason.ui.components.modelBrowser.sorting.SortOrder;
+import com.openmason.ui.components.modelBrowser.views.ViewMode;
 import imgui.type.ImInt;
 import imgui.type.ImString;
 
@@ -24,10 +28,28 @@ import java.util.List;
  */
 public class ModelBrowserState {
 
+    // Constants
+    private static final int MAX_SEARCH_TEXT_LENGTH = 256;
+    private static final int MAX_RECENT_FILES = 10;
+    private static final float DEFAULT_SIDEBAR_WIDTH = 200.0f;
+    private static final float MIN_SIDEBAR_WIDTH = 150.0f;
+    private static final float MAX_SIDEBAR_WIDTH = 400.0f;
+
     // Search and filter state
     private final ImString searchText;
-    private final String[] filters;
+    private final String[] filters; // Display names for ImGui combo
     private final ImInt currentFilterIndex;
+
+    // View and layout state (NEW for file explorer)
+    private ViewMode viewMode;
+    private SortBy sortBy;
+    private SortOrder sortOrder;
+    private float sidebarWidth;
+    private boolean sidebarCollapsed;
+
+    // Navigation state (NEW for file explorer)
+    private final List<String> navigationPath; // Breadcrumb trail: ["Home", "Blocks", "Terrain"]
+    private String selectedCategory; // Currently selected sidebar category
 
     // Selection state
     private String selectedModelInfo;
@@ -39,15 +61,26 @@ public class ModelBrowserState {
      * Creates a new Model Browser state with default values.
      */
     public ModelBrowserState() {
-        this.searchText = new ImString("", 256);
-        this.filters = new String[]{"All Models", "Cow Models", "Recent Files"};
+        // Search and filter
+        this.searchText = new ImString("", MAX_SEARCH_TEXT_LENGTH);
+        this.filters = FilterType.getDisplayNames();
         this.currentFilterIndex = new ImInt(0);
+
+        // View and layout defaults
+        this.viewMode = ViewMode.GRID;
+        this.sortBy = SortBy.NAME;
+        this.sortOrder = SortOrder.ASCENDING;
+        this.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+        this.sidebarCollapsed = false;
+
+        // Navigation defaults
+        this.navigationPath = new ArrayList<>();
+        this.navigationPath.add("Home");
+        this.selectedCategory = "All Models";
+
+        // Selection and recent files
         this.selectedModelInfo = "No model selected";
         this.recentFiles = new ArrayList<>();
-
-        // Initialize with default recent files
-        this.recentFiles.add("standard_cow.json");
-        this.recentFiles.add("example_model.json");
     }
 
     /**
@@ -129,6 +162,26 @@ public class ModelBrowserState {
     }
 
     /**
+     * Gets the current filter type.
+     *
+     * @return The currently selected FilterType enum value
+     */
+    public FilterType getCurrentFilter() {
+        return FilterType.values()[currentFilterIndex.get()];
+    }
+
+    /**
+     * Sets the current filter by type.
+     *
+     * @param filterType The filter type to set
+     */
+    public void setCurrentFilter(FilterType filterType) {
+        if (filterType != null) {
+            currentFilterIndex.set(filterType.ordinal());
+        }
+    }
+
+    /**
      * Gets the selected model information text.
      *
      * @return The selected model info text
@@ -182,8 +235,8 @@ public class ModelBrowserState {
         // Add to the beginning
         recentFiles.add(0, fileName);
 
-        // Limit to 10 most recent files
-        while (recentFiles.size() > 10) {
+        // Limit to maximum recent files
+        while (recentFiles.size() > MAX_RECENT_FILES) {
             recentFiles.remove(recentFiles.size() - 1);
         }
     }
@@ -203,8 +256,6 @@ public class ModelBrowserState {
         currentFilterIndex.set(0);
         selectedModelInfo = "No model selected";
         recentFiles.clear();
-        recentFiles.add("standard_cow.json");
-        recentFiles.add("example_model.json");
     }
 
     /**
@@ -230,5 +281,207 @@ public class ModelBrowserState {
 
         String searchTerm = searchText.get().toLowerCase();
         return text.toLowerCase().contains(searchTerm);
+    }
+
+    // ==================== View Mode and Layout ====================
+
+    /**
+     * Gets the current view mode.
+     *
+     * @return The active view mode (GRID, LIST, or COMPACT)
+     */
+    public ViewMode getViewMode() {
+        return viewMode;
+    }
+
+    /**
+     * Sets the view mode.
+     *
+     * @param viewMode The new view mode
+     */
+    public void setViewMode(ViewMode viewMode) {
+        if (viewMode != null) {
+            this.viewMode = viewMode;
+        }
+    }
+
+    /**
+     * Gets the current sort field.
+     *
+     * @return The field to sort by
+     */
+    public SortBy getSortBy() {
+        return sortBy;
+    }
+
+    /**
+     * Sets the sort field.
+     *
+     * @param sortBy The field to sort by
+     */
+    public void setSortBy(SortBy sortBy) {
+        if (sortBy != null) {
+            this.sortBy = sortBy;
+        }
+    }
+
+    /**
+     * Gets the current sort order.
+     *
+     * @return The sort order (ASCENDING or DESCENDING)
+     */
+    public SortOrder getSortOrder() {
+        return sortOrder;
+    }
+
+    /**
+     * Sets the sort order.
+     *
+     * @param sortOrder The new sort order
+     */
+    public void setSortOrder(SortOrder sortOrder) {
+        if (sortOrder != null) {
+            this.sortOrder = sortOrder;
+        }
+    }
+
+    /**
+     * Toggles the sort order between ascending and descending.
+     */
+    public void toggleSortOrder() {
+        this.sortOrder = this.sortOrder.toggle();
+    }
+
+    /**
+     * Gets the sidebar width in pixels.
+     *
+     * @return The sidebar width
+     */
+    public float getSidebarWidth() {
+        return sidebarWidth;
+    }
+
+    /**
+     * Sets the sidebar width with clamping to min/max bounds.
+     *
+     * @param width The desired sidebar width
+     */
+    public void setSidebarWidth(float width) {
+        this.sidebarWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, width));
+    }
+
+    /**
+     * Checks if the sidebar is collapsed.
+     *
+     * @return true if sidebar is collapsed
+     */
+    public boolean isSidebarCollapsed() {
+        return sidebarCollapsed;
+    }
+
+    /**
+     * Sets the sidebar collapsed state.
+     *
+     * @param collapsed true to collapse, false to expand
+     */
+    public void setSidebarCollapsed(boolean collapsed) {
+        this.sidebarCollapsed = collapsed;
+    }
+
+    /**
+     * Toggles the sidebar collapsed state.
+     */
+    public void toggleSidebarCollapsed() {
+        this.sidebarCollapsed = !this.sidebarCollapsed;
+    }
+
+    // ==================== Navigation ====================
+
+    /**
+     * Gets the navigation path (breadcrumb trail).
+     *
+     * @return Unmodifiable list of path segments
+     */
+    public List<String> getNavigationPath() {
+        return Collections.unmodifiableList(navigationPath);
+    }
+
+    /**
+     * Sets the navigation path.
+     *
+     * @param path The new navigation path
+     */
+    public void setNavigationPath(List<String> path) {
+        this.navigationPath.clear();
+        if (path != null && !path.isEmpty()) {
+            this.navigationPath.addAll(path);
+        } else {
+            this.navigationPath.add("Home");
+        }
+    }
+
+    /**
+     * Navigates to a specific path segment.
+     * Truncates the path at the specified segment.
+     *
+     * @param segment The path segment to navigate to
+     */
+    public void navigateTo(String segment) {
+        int index = navigationPath.indexOf(segment);
+        if (index >= 0) {
+            // Remove all segments after this one
+            while (navigationPath.size() > index + 1) {
+                navigationPath.remove(navigationPath.size() - 1);
+            }
+        }
+    }
+
+    /**
+     * Adds a segment to the navigation path.
+     *
+     * @param segment The segment to add
+     */
+    public void pushNavigationSegment(String segment) {
+        if (segment != null && !segment.trim().isEmpty()) {
+            navigationPath.add(segment);
+        }
+    }
+
+    /**
+     * Removes the last segment from the navigation path (go back).
+     */
+    public void popNavigationSegment() {
+        if (navigationPath.size() > 1) {
+            navigationPath.remove(navigationPath.size() - 1);
+        }
+    }
+
+    /**
+     * Gets the current path as a string.
+     *
+     * @return Path string like "Home > Blocks > Terrain"
+     */
+    public String getNavigationPathString() {
+        return String.join(" > ", navigationPath);
+    }
+
+    /**
+     * Gets the selected category in the sidebar.
+     *
+     * @return The selected category name
+     */
+    public String getSelectedCategory() {
+        return selectedCategory;
+    }
+
+    /**
+     * Sets the selected category.
+     *
+     * @param category The category to select
+     */
+    public void setSelectedCategory(String category) {
+        if (category != null) {
+            this.selectedCategory = category;
+        }
     }
 }
