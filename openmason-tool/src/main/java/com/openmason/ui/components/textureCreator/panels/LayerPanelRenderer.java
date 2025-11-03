@@ -219,7 +219,7 @@ public class LayerPanelRenderer {
 
             // Drag-drop source must be called immediately after the item
             if (ImGui.beginDragDropSource()) {
-                ImGui.setDragDropPayload(DRAG_DROP_PAYLOAD_TYPE, index);
+                ImGui.setDragDropPayload(DRAG_DROP_PAYLOAD_TYPE, index, imgui.flag.ImGuiCond.Once);
                 ImGui.text("Moving layer: " + layer.getName());
                 ImGui.endDragDropSource();
             }

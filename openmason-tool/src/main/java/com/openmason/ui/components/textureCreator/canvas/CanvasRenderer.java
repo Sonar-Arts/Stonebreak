@@ -193,21 +193,21 @@ public class CanvasRenderer {
         // Render transparency checkerboard background first
         renderCheckerboard(canvas, canvasState, canvasX, canvasY, displayWidth, displayHeight);
 
-        // Render cube net overlay (for 64x48 textures) between checkerboard and texture
+        // Render grid if enabled (after checkerboard, before cube net overlay and pixels)
+        if (showGrid) {
+            renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
+        }
+
+        // Render cube net overlay (for 64x48 textures) after grid but before pixels
         cubeNetOverlayRenderer.render(canvas.getWidth(), canvas.getHeight(),
                                       canvasX, canvasY, zoom, cubeNetOverlayOpacity);
 
-        // Render texture as image on top of checkerboard and overlay
+        // Render texture as image on top of everything rendered so far
         // Note: cursor is already at correct position from setCursorPos above
         ImGui.image(textureId, displayWidth, displayHeight,
                    0, 0, 1, 1, // UV coordinates (normal)
                    1, 1, 1, 1, // Tint color (white = no tint)
                    0, 0, 0, 0);// Border color (none)
-
-        // Render grid if enabled
-        if (showGrid) {
-            renderGrid(canvas, canvasState, canvasX, canvasY, gridOpacity);
-        }
 
         // Render symmetry axes if enabled
         if (symmetryState != null && symmetryState.isActive() && symmetryState.isShowAxisLines()) {

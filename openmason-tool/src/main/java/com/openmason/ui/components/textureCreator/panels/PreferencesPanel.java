@@ -53,17 +53,25 @@ public class PreferencesPanel {
         // Sync ImGui state with preferences
         syncStateFromPreferences(preferences);
 
-        // Section 1: Canvas & Overlays
-        renderSectionHeader("Canvas & Overlays");
+        // Section 1: Grid Overlay
+        renderSectionHeader("Grid Overlay");
         ImGui.indent();
         renderGridSettings(preferences);
+        ImGui.unindent();
+
+        ImGui.spacing();
+        ImGui.spacing();
+
+        // Section 2: Cube Net Reference (64x48)
+        renderSectionHeader("Cube Net Reference (64x48)");
+        ImGui.indent();
         renderCubeNetSettings(preferences);
         ImGui.unindent();
 
         ImGui.spacing();
         ImGui.spacing();
 
-        // Section 2: Tool Behavior
+        // Section 3: Tool Behavior
         renderSectionHeader("Tool Behavior");
         ImGui.indent();
         renderMoveToolSettings(preferences);
@@ -86,13 +94,9 @@ public class PreferencesPanel {
      * Render grid overlay settings.
      */
     private void renderGridSettings(TextureCreatorPreferences preferences) {
-        renderSubHeader("Grid Overlay");
-        renderSettingSeparator();
-        ImGui.indent();
-
         renderSliderSetting(
-            "Opacity",
-            "Controls the opacity of the grid overlay.\n" +
+            "Grid Opacity",
+            "Controls the opacity of the pixel grid overlay (toggleable with 'G' key).\n" +
             "Includes both minor grid lines (every pixel) and major lines (every 4th pixel).\n" +
             "Grid only visible when zoomed in 3x or more.",
             gridOpacitySlider,
@@ -102,7 +106,6 @@ public class PreferencesPanel {
             preferences::setGridOpacity
         );
 
-        ImGui.unindent();
         ImGui.spacing();
     }
 
@@ -110,15 +113,12 @@ public class PreferencesPanel {
      * Render cube net overlay settings.
      */
     private void renderCubeNetSettings(TextureCreatorPreferences preferences) {
-        renderSubHeader("Cube Net Overlay (64x48 textures)");
-        renderSettingSeparator();
-        ImGui.indent();
-
         renderSliderSetting(
-            "Opacity",
-            "Controls opacity of face labels and boundaries for 64x48 cube net textures.\n" +
-            "Shows TOP, LEFT, FRONT, RIGHT, BACK, BOTTOM face regions.\n" +
-            "Only visible when editing 64x48 canvases.",
+            "Reference Opacity",
+            "Controls opacity of the cube-net reference overlay (independent of grid).\n" +
+            "Shows face labels (TOP, LEFT, FRONT, RIGHT, BACK, BOTTOM) and boundaries.\n" +
+            "Always visible under pixels, renders over grid when enabled.\n" +
+            "Only appears when editing 64x48 canvases.",
             cubeNetOverlayOpacitySlider,
             TextureCreatorPreferences.MIN_OPACITY,
             TextureCreatorPreferences.MAX_OPACITY,
@@ -126,7 +126,6 @@ public class PreferencesPanel {
             preferences::setCubeNetOverlayOpacity
         );
 
-        ImGui.unindent();
         ImGui.spacing();
     }
 
