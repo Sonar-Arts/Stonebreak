@@ -10,6 +10,7 @@ import com.openmason.ui.ViewportImGuiInterface;
 import com.openmason.ui.hub.ProjectHubScreen;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.windows.TextureEditorWindow;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
@@ -54,9 +55,13 @@ public class OpenMasonApp {
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
     private TextureCreatorImGui textureCreatorInterface;
+    private TextureEditorWindow textureEditorWindow;
 
-    // Application state
-    private ApplicationState currentState = ApplicationState.HOME_SCREEN;
+    // Application state - simplified to visibility flags (KISS principle)
+    private boolean showHomeScreen = true;
+    private boolean showModelViewer = false;
+    private boolean showTextureEditor = false;
+
     private boolean shouldClose = false;
     private boolean shouldApplyDefaultLayout = false;
     private boolean imguiInitialized = false;
@@ -250,6 +255,7 @@ public class OpenMasonApp {
         // Configure ImGui IO
         ImGuiIO io = ImGui.getIO();
         setupImGuiLayout(io);
+        io.setConfigWindowsMoveFromTitleBarOnly(true);          // Restrict window dragging to title bar only
         io.addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);  // Enable keyboard navigation
         io.addConfigFlags(ImGuiConfigFlags.DockingEnable);      // Enable docking
         io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);    // Enable viewports
@@ -384,8 +390,17 @@ public class OpenMasonApp {
             // Initialize texture creator interface
             textureCreatorInterface = TextureCreatorImGui.createDefault();
 
-            // Wire up back to Home screen callbacks
+            // Wrap texture creator in window
+            textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+
+            // Wire up callbacks
             mainInterface.setBackToHomeCallback(this::transitionToHomeScreen);
+            mainInterface.setOpenTextureEditorCallback(() -> {
+                showTextureEditor = true;
+                if (textureEditorWindow != null) {
+                    textureEditorWindow.show();
+                }
+            });
             textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
 
             // CRITICAL: Set window handle for mouse capture functionality
@@ -406,29 +421,30 @@ public class OpenMasonApp {
     
     /**
      * Render the main application UI using Dear ImGui.
+     * Uses visibility flags to allow simultaneous rendering of multiple interfaces.
      */
     private void renderUI() {
         // Calculate delta time for animations
         float deltaTime = ImGui.getIO().getDeltaTime();
 
-        // Render based on application state
-        if (currentState.isHomeScreen()) {
-            // Render Project Hub Screen
-            if (projectHubScreen != null) {
-                try {
-                    projectHubScreen.render();
-                    projectHubScreen.update(deltaTime);
+        // Render Project Hub Screen if visible
+        if (showHomeScreen && projectHubScreen != null) {
+            try {
+                projectHubScreen.render();
+                projectHubScreen.update(deltaTime);
 
-                    // Check if there's a pending transition
-                    if (projectHubScreen.shouldTransition()) {
-                        // Action service callback already set, just apply layout
-                        shouldApplyDefaultLayout = true;
-                    }
-                } catch (Exception e) {
-                    logger.error("Error rendering Project Hub Screen", e);
+                // Check if there's a pending transition
+                if (projectHubScreen.shouldTransition()) {
+                    // Action service callback already set, just apply layout
+                    shouldApplyDefaultLayout = true;
                 }
+            } catch (Exception e) {
+                logger.error("Error rendering Project Hub Screen", e);
             }
-        } else if (currentState.isMainInterface()) {
+        }
+
+        // Render Model Viewer if visible
+        if (showModelViewer) {
             // Render main interface
             if (mainInterface != null) {
                 try {
@@ -448,14 +464,17 @@ public class OpenMasonApp {
                     logger.error("Error rendering viewport interface", e);
                 }
             }
-        } else if (currentState.isTextureCreator()) {
-            // Render texture creator interface
-            if (textureCreatorInterface != null) {
-                try {
-                    textureCreatorInterface.render();
-                } catch (Exception e) {
-                    logger.error("Error rendering texture creator interface", e);
-                }
+        }
+
+        // Render Texture Editor window if visible
+        if (showTextureEditor && textureEditorWindow != null) {
+            try {
+                textureEditorWindow.render();
+
+                // Sync visibility flag with window state
+                showTextureEditor = textureEditorWindow.isVisible();
+            } catch (Exception e) {
+                logger.error("Error rendering texture editor window", e);
             }
         }
     }
@@ -467,25 +486,25 @@ public class OpenMasonApp {
      */
     private void transitionToMainInterface() {
         logger.info("Transitioning to main interface");
-        currentState = ApplicationState.MAIN_INTERFACE;
+        showHomeScreen = false;
+        showModelViewer = true;
         shouldApplyDefaultLayout = true;
     }
 
     /**
-     * Transition from Home screen to texture creator.
-     */
-    private void transitionToTextureCreator() {
-        logger.info("Transitioning to texture creator");
-        currentState = ApplicationState.TEXTURE_CREATOR;
-        // Note: Texture creator uses its own layout, no need for default docking layout
-    }
-
-    /**
      * Transition back to Home screen from any tool.
+     * Hides all tools and shows the home screen.
      */
     private void transitionToHomeScreen() {
         logger.info("Transitioning back to Home screen");
-        currentState = ApplicationState.HOME_SCREEN;
+        showHomeScreen = true;
+        showModelViewer = false;
+        showTextureEditor = false;
+
+        // Hide texture editor window
+        if (textureEditorWindow != null) {
+            textureEditorWindow.hide();
+        }
     }
 
     /**
@@ -525,6 +544,8 @@ public class OpenMasonApp {
                 if (textureCreatorInterface != null) {
                     textureCreatorInterface.dispose();
                 }
+
+                // Note: textureEditorWindow doesn't need disposal - it just wraps textureCreatorInterface
 
                 // Cleanup theme manager
                 if (themeManager != null) {

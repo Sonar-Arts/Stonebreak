@@ -77,6 +77,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     // Menu System
     private final MenuBarCoordinator menuBarCoordinator;
     private FileMenuHandler fileMenuHandler;
+    private ToolsMenuHandler toolsMenuHandler;
 
     // Toolbar
     private final ModelViewerToolbarRenderer toolbarRenderer;
@@ -138,12 +139,11 @@ public class MainImGuiInterface implements ModelBrowserListener {
         EditMenuHandler editMenu = new EditMenuHandler(uiVisibilityState, statusService);
         ViewMenuHandler viewMenu = new ViewMenuHandler(uiVisibilityState, viewportState,
                 viewportOperations, layoutService);
-        ToolsMenuHandler toolsMenu = new ToolsMenuHandler(modelState, transformState,
-                modelOperations, viewportOperations);
+        this.toolsMenuHandler = new ToolsMenuHandler();
         AboutMenuHandler aboutMenu = new AboutMenuHandler(uiVisibilityState);
 
         this.menuBarCoordinator = new MenuBarCoordinator(uiVisibilityState, logoManager,
-                fileMenuHandler, editMenu, viewMenu, toolsMenu, aboutMenu);
+                fileMenuHandler, editMenu, viewMenu, toolsMenuHandler, aboutMenu);
 
         // Initialize toolbar
         this.toolbarRenderer = new ModelViewerToolbarRenderer(uiVisibilityState, modelState, modelOperations,
@@ -157,7 +157,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setLogoManager(logoManager);
         fileMenuHandler.setThemeManager(themeManager);
         viewMenu.setViewport(viewport3D);
-        toolsMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
         preferencesDialog.setViewport(viewport3D);
     }
@@ -474,6 +473,16 @@ public class MainImGuiInterface implements ModelBrowserListener {
     public void setBackToHomeCallback(Runnable callback) {
         if (fileMenuHandler != null) {
             fileMenuHandler.setBackToHomeCallback(callback);
+        }
+    }
+
+    /**
+     * Set callback for opening the texture editor.
+     * This callback will be invoked when the user selects "Texture Editor" from the Tools menu.
+     */
+    public void setOpenTextureEditorCallback(Runnable callback) {
+        if (toolsMenuHandler != null) {
+            toolsMenuHandler.setOpenTextureEditorCallback(callback);
         }
     }
 }

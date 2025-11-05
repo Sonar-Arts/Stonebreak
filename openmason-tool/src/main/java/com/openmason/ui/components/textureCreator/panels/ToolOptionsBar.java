@@ -107,6 +107,47 @@ public class ToolOptionsBar {
     }
 
     /**
+     * Render the tool options toolbar in windowed mode (inside a parent window).
+     * Uses relative positioning instead of absolute viewport positioning.
+     *
+     * @param currentTool The currently active tool (can be null)
+     */
+    public void renderWindowed(DrawingTool currentTool) {
+        // Create a fixed-height child window for the toolbar
+        int flags = ImGuiWindowFlags.NoScrollbar |
+                    ImGuiWindowFlags.NoScrollWithMouse |
+                    ImGuiWindowFlags.NoTitleBar;
+
+        boolean hasOptions = currentTool != null && hasOptions(currentTool);
+
+        if (ImGui.beginChild("##ToolOptionsBar", 0, TOOLBAR_HEIGHT, false, flags)) {
+            if (hasOptions) {
+                float framePaddingY = ImGui.getStyle().getFramePaddingY();
+                float textHeight = ImGui.getTextLineHeight();
+                float frameHeight = textHeight + framePaddingY * 2;
+                float verticalOffset = (TOOLBAR_HEIGHT - frameHeight) / 2.0f;
+
+                ImGui.setCursorPosX(LEFT_PADDING);
+                ImGui.setCursorPosY(verticalOffset);
+
+                ImGui.alignTextToFramePadding();
+
+                if (currentTool instanceof MoveToolController) {
+                    renderMoveToolOptions((MoveToolController) currentTool);
+                } else if (currentTool instanceof ShapeTool) {
+                    renderShapeToolOptions((ShapeTool) currentTool);
+                } else if (currentTool.supportsBrushSize()) {
+                    renderBrushSizeOption(currentTool);
+                }
+            }
+
+            // Draw separator line at bottom
+            renderBottomSeparatorWindowed();
+        }
+        ImGui.endChild();
+    }
+
+    /**
      * Get the height of the toolbar for layout calculations.
      * Always returns the fixed toolbar height.
      *
@@ -205,5 +246,13 @@ public class ToolOptionsBar {
             separatorColor,
             1.0f
         );
+    }
+
+    /**
+     * Render bottom separator for windowed mode.
+     * Uses child window positioning instead of main window.
+     */
+    private void renderBottomSeparatorWindowed() {
+        ImGui.separator();
     }
 }

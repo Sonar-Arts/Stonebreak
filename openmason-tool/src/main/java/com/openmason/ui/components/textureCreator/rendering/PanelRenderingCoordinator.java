@@ -38,6 +38,9 @@ public class PanelRenderingCoordinator {
     private final PreferencesPanel preferencesPanel;
     private final SymmetryPanel symmetryPanel;
 
+    // Windowed mode flag - when true, skip fullscreen dockspace creation
+    private boolean windowedMode = false;
+
     /**
      * Create panel rendering coordinator.
      */
@@ -81,8 +84,15 @@ public class PanelRenderingCoordinator {
 
     /**
      * Render dockspace container.
+     * Skips fullscreen dockspace creation when in windowed mode.
      */
     public void renderDockSpace() {
+        // Skip fullscreen dockspace creation when in windowed mode
+        // (the parent window will provide the dockspace)
+        if (windowedMode) {
+            return;
+        }
+
         ImGuiViewport viewport = ImGui.getMainViewport();
         float toolbarHeight = toolOptionsBar.getHeight(state.getCurrentTool());
 
@@ -107,10 +117,34 @@ public class PanelRenderingCoordinator {
     }
 
     /**
+     * Set windowed mode flag.
+     * When true, the coordinator will skip creating its own fullscreen dockspace.
+     *
+     * @param windowedMode true to enable windowed mode, false for fullscreen mode
+     */
+    public void setWindowedMode(boolean windowedMode) {
+        this.windowedMode = windowedMode;
+    }
+
+    /**
+     * Check if windowed mode is enabled.
+     *
+     * @return true if in windowed mode
+     */
+    public boolean isWindowedMode() {
+        return windowedMode;
+    }
+
+    /**
      * Render tool options toolbar.
+     * In windowed mode, uses simplified rendering without absolute positioning.
      */
     public void renderToolOptionsBar() {
-        toolOptionsBar.render(state.getCurrentTool());
+        if (windowedMode) {
+            toolOptionsBar.renderWindowed(state.getCurrentTool());
+        } else {
+            toolOptionsBar.render(state.getCurrentTool());
+        }
     }
 
     /**

@@ -18,6 +18,7 @@ import com.openmason.ui.LogoManager;
 import com.openmason.ui.toolbars.TextureEditorToolbarRenderer;
 import com.openmason.ui.components.textureCreator.rendering.DialogProcessor;
 import com.openmason.ui.components.textureCreator.rendering.MenuBarRenderer;
+import com.openmason.ui.components.textureCreator.rendering.WindowedMenuBarRenderer;
 import com.openmason.ui.components.textureCreator.rendering.PanelRenderingCoordinator;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.ExportFormatDialog;
@@ -90,6 +91,7 @@ public class TextureCreatorImGui {
 
     // Renderers (UI)
     private final MenuBarRenderer menuBarRenderer;
+    private final WindowedMenuBarRenderer windowedMenuBarRenderer;
     private final PanelRenderingCoordinator panelRenderer;
     private final DialogProcessor dialogProcessor;
 
@@ -135,6 +137,7 @@ public class TextureCreatorImGui {
                               PasteCoordinator pasteCoordinator,
                               KeyboardShortcutManager shortcutManager,
                               MenuBarRenderer menuBarRenderer,
+                              WindowedMenuBarRenderer windowedMenuBarRenderer,
                               PanelRenderingCoordinator panelRenderer,
                               DialogProcessor dialogProcessor,
                               DragDropHandler dragDropHandler) {
@@ -153,6 +156,7 @@ public class TextureCreatorImGui {
         this.pasteCoordinator = pasteCoordinator;
         this.shortcutManager = shortcutManager;
         this.menuBarRenderer = menuBarRenderer;
+        this.windowedMenuBarRenderer = windowedMenuBarRenderer;
         this.panelRenderer = panelRenderer;
         this.dialogProcessor = dialogProcessor;
         this.dragDropHandler = dragDropHandler;
@@ -222,6 +226,8 @@ public class TextureCreatorImGui {
         // Create renderers
         MenuBarRenderer menuBarRenderer = new MenuBarRenderer(state, controller, fileOperations,
             newTextureDialog, importPNGDialog, exportFormatDialog, null, aboutMenuHandler);
+        WindowedMenuBarRenderer windowedMenuBarRenderer = new WindowedMenuBarRenderer(state, controller, fileOperations,
+            newTextureDialog, importPNGDialog, exportFormatDialog, null, aboutMenuHandler);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
             toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, preferencesPanel, symmetryPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
@@ -232,7 +238,7 @@ public class TextureCreatorImGui {
             toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, preferencesPanel,
             newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog, aboutDialog,
             fileOperations, filterCoordinator, toolCoordinator, pasteCoordinator, shortcutManager,
-            menuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler
+            menuBarRenderer, windowedMenuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler
         );
     }
 
@@ -244,11 +250,19 @@ public class TextureCreatorImGui {
         toolbarPanel.setSelectionManager(state.getSelectionManager());
         toolbarPanel.setPreferences(preferences);
         state.setCurrentTool(toolbarPanel.getCurrentTool());
+
+        // Wire up callbacks for both menu bar renderers
         menuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
         menuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         menuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         menuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         menuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
+
+        windowedMenuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
+        windowedMenuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
+        windowedMenuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
+        windowedMenuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
+        windowedMenuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
 
         // Inject SymmetryState into tools that support it
         injectSymmetryStateIntoTools(toolbarPanel);
@@ -355,6 +369,7 @@ public class TextureCreatorImGui {
      */
     public void setBackToHomeCallback(Runnable callback) {
         menuBarRenderer.setBackToHomeCallback(callback);
+        windowedMenuBarRenderer.setBackToHomeCallback(callback);
     }
 
     /**
@@ -454,6 +469,47 @@ public class TextureCreatorImGui {
     }
 
     /**
+     * Render in windowed mode (for use inside TextureEditorWindow).
+     * Skips fullscreen dockspace and main menu bar, uses windowed equivalents.
+     */
+    public void renderWindowed() {
+        shortcutManager.handleInput();
+        renderWindowedMenuBar();
+        renderWindowedToolbar();
+        // Note: Parent window creates dockspace between toolbar and panels
+        renderWindowedPanels();
+    }
+
+    /**
+     * Render windowed menu bar (for use at top of TextureEditorWindow).
+     */
+    public void renderWindowedMenuBar() {
+        windowedMenuBarRenderer.render();
+    }
+
+    /**
+     * Render windowed toolbar (for use below menu bar in TextureEditorWindow).
+     */
+    public void renderWindowedToolbar() {
+        panelRenderer.renderToolOptionsBar();
+    }
+
+    /**
+     * Render windowed panels and dialogs (for use below dockspace in TextureEditorWindow).
+     */
+    public void renderWindowedPanels() {
+        panelRenderer.renderAllPanels();
+        renderDialogs();
+
+        // Render closeable windows
+        panelRenderer.renderPreferencesWindow();
+        panelRenderer.renderNoiseFilterWindow();
+        panelRenderer.renderSymmetryWindow();
+
+        dialogProcessor.processAll();
+    }
+
+    /**
      * Render dialogs.
      */
     private void renderDialogs() {
@@ -470,6 +526,18 @@ public class TextureCreatorImGui {
 
     public TextureCreatorController getController() {
         return controller;
+    }
+
+    /**
+     * Set windowed mode flag for panel renderer.
+     * When true, the panel renderer will skip creating its own fullscreen dockspace.
+     *
+     * @param windowedMode true to enable windowed mode, false for fullscreen mode
+     */
+    public void setWindowedMode(boolean windowedMode) {
+        if (panelRenderer != null) {
+            panelRenderer.setWindowedMode(windowedMode);
+        }
     }
 
     /**
