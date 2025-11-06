@@ -258,7 +258,8 @@ public class ViewportInputHandler {
             }
 
             // Handle mouse wheel for zooming (only when hovering over viewport or actively dragging)
-            if (mouseInBounds || isDragging) {
+            // Check viewportHovered to prevent scroll bleed-through from overlaying windows (e.g., texture editor)
+            if ((mouseInBounds && viewportHovered) || isDragging) {
                 processZooming();
             }
         }

@@ -124,9 +124,10 @@ public class RecentProjectsPanel {
 
         // Get theme colors
         ThemeDefinition theme = themeManager.getCurrentTheme();
+        // Three-state background: selected > hovered > normal
         ImVec4 bgColor = isSelected
                 ? theme.getColor(ImGuiCol.Header)
-                : theme.getColor(ImGuiCol.ChildBg);
+                : (isHovered ? theme.getColor(ImGuiCol.FrameBgHovered) : theme.getColor(ImGuiCol.ChildBg));
         if (bgColor == null) bgColor = new ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
 
         ImVec4 borderColor = isHovered || isSelected
@@ -169,7 +170,9 @@ public class RecentProjectsPanel {
         ImGui.setCursorScreenPos(nameX, descY);
         ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
         if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.8f);
+            // Increase opacity on hover for better legibility: 0.8 (normal) -> 0.95 (hovered)
+            float descOpacity = isHovered ? 0.95f : 0.8f;
+            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, descOpacity);
         }
         ImGui.text(project.getDescription());
         if (textDisabled != null) {
@@ -183,7 +186,9 @@ public class RecentProjectsPanel {
         float timeY = y1 + ITEM_PADDING;
         ImGui.setCursorScreenPos(timeX, timeY);
         if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.7f);
+            // Increase opacity on hover for better legibility: 0.7 (normal) -> 0.85 (hovered)
+            float timeOpacity = isHovered ? 0.85f : 0.7f;
+            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, timeOpacity);
         }
         ImGui.text(timeText);
         if (textDisabled != null) {

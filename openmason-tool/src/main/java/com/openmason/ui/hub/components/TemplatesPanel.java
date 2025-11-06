@@ -121,9 +121,10 @@ public class TemplatesPanel {
 
         // Get theme colors
         ThemeDefinition theme = themeManager.getCurrentTheme();
+        // Three-state background: selected > hovered > normal
         ImVec4 bgColor = isSelected
                 ? theme.getColor(ImGuiCol.Header)
-                : theme.getColor(ImGuiCol.ChildBg);
+                : (isHovered ? theme.getColor(ImGuiCol.FrameBgHovered) : theme.getColor(ImGuiCol.ChildBg));
         if (bgColor == null) bgColor = new ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
 
         ImVec4 borderColor = isHovered || isSelected
@@ -169,7 +170,9 @@ public class TemplatesPanel {
         ImGui.beginChild("##desc_" + index, CARD_WIDTH - 2 * CARD_PADDING, y2 - descY - CARD_PADDING, false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground);
         ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
         if (textDisabled != null) {
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, 0.8f);
+            // Increase opacity on hover for better legibility: 0.8 (normal) -> 0.95 (hovered)
+            float textOpacity = isHovered ? 0.95f : 0.8f;
+            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textOpacity);
         }
         ImGui.pushTextWrapPos(CARD_WIDTH - 2 * CARD_PADDING);
         ImGui.textWrapped(template.getDescription());

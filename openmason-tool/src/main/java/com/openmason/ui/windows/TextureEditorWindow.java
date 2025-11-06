@@ -6,6 +6,8 @@ import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWVidMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +39,11 @@ public class TextureEditorWindow {
 
     private boolean iniFileSet = false;
     private boolean isWindowed = true;  // Flag to indicate we're in windowed mode
+
+    // Window state management for custom title bar controls
+    private boolean isMaximized = false;
+    private float[] savedSize = new float[]{1200, 800};  // Store window size before maximize
+    private float[] savedPos = new float[]{100, 100};    // Store window position before maximize
 
     /**
      * Create a new TextureEditorWindow wrapping the given texture creator.
@@ -78,25 +85,33 @@ public class TextureEditorWindow {
             iniFileSet = true;
         }
 
-        // Configure window flags for a truly separate window
+        // Configure window flags for a truly separate window with custom title bar
         // NoDocking prevents this window from being docked into the main interface
-        // Note: No MenuBar flag - we render menu bar manually via child window
+        // NoTitleBar allows us to render custom title bar with minimize/maximize buttons
+        // NoCollapse prevents double-click collapse behavior (we have custom controls)
         int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus |
-                          ImGuiWindowFlags.NoDocking;
+                          ImGuiWindowFlags.NoDocking |
+                          ImGuiWindowFlags.NoTitleBar |
+                          ImGuiWindowFlags.NoCollapse;
 
         // Remove window padding to eliminate space above menu bar
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
 
-        // Begin standalone window (MenuBar flag allows menu bar inside window)
+        // Begin standalone window with custom title bar
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
             try {
+                // Render custom title bar with minimize/maximize/close buttons
+                renderCustomTitleBar();
+
                 // Render menu bar and toolbar at the top (BEFORE dockspace)
                 textureCreator.renderWindowedMenuBar();
                 textureCreator.renderWindowedToolbar();
 
                 // Create dockspace below menu/toolbar for panels
+                // NOTE: Removed PassthruCentralNode flag to prevent input bleeding through to main window
+                // Without this flag, ImGui will properly capture input within this window
                 int dockspaceId = ImGui.getID(DOCKSPACE_NAME);
-                ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
+                ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.None);
 
                 // Render panels, dialogs, etc.
                 textureCreator.renderWindowedPanels();
@@ -114,6 +129,152 @@ public class TextureEditorWindow {
 
         // If window was closed via X button, visible.get() will now be false
         // State is preserved in textureCreator for next time window opens
+    }
+
+    /**
+     * Render custom title bar with minimize, maximize, and close buttons.
+     * This replaces the default ImGui title bar with custom controls.
+     */
+    private void renderCustomTitleBar() {
+        final float titleBarHeight = 30.0f;
+        final float buttonSize = 25.0f;
+        final float buttonSpacing = 2.0f;  // Horizontal spacing between buttons
+        final float titlePadding = 10.0f;
+
+        // Get window dimensions
+        float windowWidth = ImGui.getWindowWidth();
+        float cursorStartY = ImGui.getCursorPosY();
+
+        // Title bar background (using a subtle background color)
+        ImGui.getWindowDrawList().addRectFilled(
+            ImGui.getWindowPosX(),
+            ImGui.getWindowPosY(),
+            ImGui.getWindowPosX() + windowWidth,
+            ImGui.getWindowPosY() + titleBarHeight,
+            ImGui.getColorU32(0.15f, 0.15f, 0.15f, 1.0f)
+        );
+
+        // Make title bar draggable for window movement
+        ImGui.setCursorPos(0, 0);
+        ImGui.invisibleButton("##TitleBarDrag", windowWidth - (buttonSize + buttonSpacing) * 3, titleBarHeight);
+        if (ImGui.isItemActive() && ImGui.isMouseDragging(0)) {
+            float deltaX = ImGui.getMouseDragDeltaX(0);
+            float deltaY = ImGui.getMouseDragDeltaY(0);
+            ImGui.setWindowPos(
+                WINDOW_TITLE,
+                ImGui.getWindowPosX() + deltaX,
+                ImGui.getWindowPosY() + deltaY
+            );
+            ImGui.resetMouseDragDelta(0);
+        }
+
+        // Render window title text
+        ImGui.setCursorPos(titlePadding, (titleBarHeight - ImGui.getFrameHeight()) * 0.5f);
+        ImGui.text(WINDOW_TITLE);
+
+        // Calculate button positions (right-aligned and vertically centered)
+        float buttonStartX = windowWidth - (buttonSize + buttonSpacing) * 3 - buttonSpacing;
+        float buttonStartY = (titleBarHeight - buttonSize) * 0.5f;  // Perfect vertical centering
+        ImGui.setCursorPos(buttonStartX, buttonStartY);
+
+        // Push button text alignment to ensure perfect centering of all button icons
+        ImGui.pushStyleVar(ImGuiStyleVar.ButtonTextAlign, 0.5f, 0.5f);
+
+        // Minimize button
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.3f, 0.3f, 0.3f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.4f, 0.4f, 0.4f, 1.0f);
+        if (ImGui.button("-##Minimize", buttonSize, buttonSize)) {
+            handleMinimize();
+        }
+        ImGui.popStyleColor(3);
+
+        // Maximize/Restore button
+        ImGui.sameLine(0, buttonSpacing);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.3f, 0.3f, 0.3f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.4f, 0.4f, 0.4f, 1.0f);
+        // Use consistent symbol with no spacing - centered properly
+        if (ImGui.button("[]##Maximize", buttonSize, buttonSize)) {
+            handleMaximize();
+        }
+        ImGui.popStyleColor(3);
+
+        // Close button (red hover) - Using × symbol for better centering
+        ImGui.sameLine(0, buttonSpacing);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.2f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.8f, 0.2f, 0.2f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 1.0f, 0.3f, 0.3f, 1.0f);
+        if (ImGui.button("×##Close", buttonSize, buttonSize)) {
+            visible.set(false);
+        }
+        ImGui.popStyleColor(3);
+
+        // Pop button text alignment style
+        ImGui.popStyleVar();
+
+        // Add separator line below title bar
+        ImGui.setCursorPosY(titleBarHeight);
+        ImGui.separator();
+
+        // Reset cursor for content below
+        ImGui.setCursorPosY(titleBarHeight + 2);
+    }
+
+    /**
+     * Handle minimize button click - hides the window completely.
+     * Window can be reopened from the Tools menu.
+     */
+    private void handleMinimize() {
+        visible.set(false);
+        logger.debug("Texture editor window minimized (hidden)");
+    }
+
+    /**
+     * Handle maximize/restore button click - toggles between maximized and normal size.
+     * When maximizing, fills the entire screen window (minus taskbar and system UI).
+     * When restoring, returns to the saved size and position.
+     */
+    private void handleMaximize() {
+        if (isMaximized) {
+            // Restore to saved size and position
+            ImGui.setWindowSize(WINDOW_TITLE, savedSize[0], savedSize[1]);
+            ImGui.setWindowPos(WINDOW_TITLE, savedPos[0], savedPos[1]);
+            isMaximized = false;
+            logger.debug("Texture editor window restored to {}x{} at ({}, {})",
+                savedSize[0], savedSize[1], savedPos[0], savedPos[1]);
+        } else {
+            // Save current size and position before maximizing
+            savedSize[0] = ImGui.getWindowWidth();
+            savedSize[1] = ImGui.getWindowHeight();
+            savedPos[0] = ImGui.getWindowPosX();
+            savedPos[1] = ImGui.getWindowPosY();
+
+            // Get primary monitor
+            long primaryMonitor = GLFW.glfwGetPrimaryMonitor();
+            if (primaryMonitor != 0) {
+                // Get monitor work area (screen minus taskbar and system UI)
+                int[] workAreaX = new int[1];
+                int[] workAreaY = new int[1];
+                int[] workAreaWidth = new int[1];
+                int[] workAreaHeight = new int[1];
+                GLFW.glfwGetMonitorWorkarea(primaryMonitor, workAreaX, workAreaY, workAreaWidth, workAreaHeight);
+
+                // Maximize to fill the work area (entire screen minus taskbar)
+                ImGui.setWindowSize(WINDOW_TITLE, workAreaWidth[0], workAreaHeight[0]);
+                ImGui.setWindowPos(WINDOW_TITLE, workAreaX[0], workAreaY[0]);
+                isMaximized = true;
+                logger.debug("Texture editor window maximized to {}x{} at ({}, {}) - work area",
+                    workAreaWidth[0], workAreaHeight[0], workAreaX[0], workAreaY[0]);
+            } else {
+                // Fallback to viewport if monitor detection fails
+                imgui.ImGuiViewport mainViewport = ImGui.getMainViewport();
+                ImGui.setWindowSize(WINDOW_TITLE, mainViewport.getSizeX(), mainViewport.getSizeY());
+                ImGui.setWindowPos(WINDOW_TITLE, mainViewport.getPosX(), mainViewport.getPosY());
+                isMaximized = true;
+                logger.warn("Failed to get primary monitor, using viewport fallback");
+            }
+        }
     }
 
     /**
