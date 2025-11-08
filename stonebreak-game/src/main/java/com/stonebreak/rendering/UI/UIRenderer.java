@@ -388,6 +388,38 @@ public class UIRenderer {
         return chatRenderer;
     }
 
+    // ===== Dirt Background Rendering Delegation =====
+
+    /**
+     * Draws a dirt texture background with an optional overlay.
+     * Delegates to MenuRenderer.
+     *
+     * @param windowWidth width of the area to fill
+     * @param windowHeight height of the area to fill
+     * @param overlayAlpha alpha value (0-255) for the dark overlay
+     */
+    public void drawDirtBackground(int windowWidth, int windowHeight, int overlayAlpha) {
+        if (menuRenderer != null) {
+            menuRenderer.drawDirtBackground(windowWidth, windowHeight, overlayAlpha);
+        }
+    }
+
+    /**
+     * Draws a dirt texture background in a specific rectangular area with an optional overlay.
+     * Delegates to MenuRenderer.
+     *
+     * @param x x-coordinate of the area
+     * @param y y-coordinate of the area
+     * @param width width of the area to fill
+     * @param height height of the area to fill
+     * @param overlayAlpha alpha value (0-255) for the dark overlay
+     */
+    public void drawDirtBackgroundAt(float x, float y, float width, float height, int overlayAlpha) {
+        if (menuRenderer != null) {
+            menuRenderer.drawDirtBackgroundAt(x, y, width, height, overlayAlpha);
+        }
+    }
+
     public void cleanup() {
         // Cleanup OpenGL quad renderer
         if (openGLQuadRenderer != null) {

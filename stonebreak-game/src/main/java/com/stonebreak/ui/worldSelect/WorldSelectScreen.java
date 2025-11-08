@@ -7,7 +7,6 @@ import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
 import com.stonebreak.ui.worldSelect.handlers.WorldMouseHandler;
 import com.stonebreak.ui.worldSelect.handlers.WorldActionHandler;
 import com.stonebreak.ui.worldSelect.renderers.WorldListRenderer;
-import com.stonebreak.ui.worldSelect.renderers.CreateDialogRenderer;
 
 import java.util.List;
 
@@ -25,7 +24,6 @@ public class WorldSelectScreen {
     private final WorldInputHandler inputHandler;
     private final WorldMouseHandler mouseHandler;
     private final WorldListRenderer listRenderer;
-    private final CreateDialogRenderer dialogRenderer;
 
     // ===== CONSTRUCTOR =====
 
@@ -47,7 +45,6 @@ public class WorldSelectScreen {
 
         // Initialize renderers
         this.listRenderer = new WorldListRenderer(uiRenderer, stateManager, discoveryManager);
-        this.dialogRenderer = new CreateDialogRenderer(uiRenderer, stateManager, inputHandler);
 
         // Set up component callbacks
         initializeCallbacks();
@@ -160,11 +157,6 @@ public class WorldSelectScreen {
     public void render(int width, int height) {
         // Render main world list
         listRenderer.renderWorldList(width, height);
-
-        // Render create dialog if open
-        if (stateManager.isShowCreateDialog()) {
-            dialogRenderer.renderCreateDialog(width, height);
-        }
     }
 
     // ===== PUBLIC API (COMPATIBILITY) =====

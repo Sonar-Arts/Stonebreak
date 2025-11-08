@@ -3,6 +3,7 @@ package com.stonebreak.core;
 public enum GameState {
     MAIN_MENU,
     WORLD_SELECT,    // State for world selection screen
+    TERRAIN_MAPPER,  // State for terrain mapper/world creation screen
     LOADING,         // State for world generation loading screen
     PLAYING,
     PAUSED,

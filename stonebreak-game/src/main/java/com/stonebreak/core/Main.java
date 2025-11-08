@@ -131,6 +131,10 @@ public class Main {
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleKeyInput(key, action, mods);
             }
+            // Handle terrain mapper screen key input
+            else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                game.getTerrainMapperScreen().handleKeyInput(key, action, mods);
+            }
             // Pass key events to InputHandler for chat handling
             else if (inputHandler != null) {
                 inputHandler.handleKeyInput(key, action, mods);
@@ -144,6 +148,10 @@ public class Main {
             // Handle world select screen character input
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleCharacterInput((char) codepoint);
+            }
+            // Handle terrain mapper screen character input
+            else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                game.getTerrainMapperScreen().handleCharacterInput(codepoint);
             }
             // Pass character input to InputHandler for chat handling
             else if (inputHandler != null) {
@@ -190,6 +198,16 @@ public class Main {
                         game.getWorldSelectScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
                     }
                 }
+            } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER) {
+                // Handle terrain mapper screen clicks
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    if (game.getTerrainMapperScreen() != null) {
+                        game.getTerrainMapperScreen().handleMouseClick(xpos.get(), ypos.get(), width, height, button, action);
+                    }
+                }
             } else if (game != null && game.getState() == GameState.SETTINGS) {
                 // Handle settings menu clicks
                 try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
@@ -228,6 +246,10 @@ public class Main {
             else if (game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleMouseMove(xpos, ypos, width, height);
             }
+            // Handle terrain mapper screen hover events
+            else if (game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                game.getTerrainMapperScreen().handleMouseMove(xpos, ypos, width, height);
+            }
             // Handle settings menu hover events
             else if (game.getState() == GameState.SETTINGS && game.getSettingsMenu() != null) {
                 game.getSettingsMenu().handleMouseMove(xpos, ypos, width, height);
@@ -239,6 +261,14 @@ public class Main {
             Game game = Game.getInstance();
             if (game != null && game.getState() == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
                 game.getWorldSelectScreen().handleMouseWheel(yoffset);
+            } else if (game != null && game.getState() == GameState.TERRAIN_MAPPER && game.getTerrainMapperScreen() != null) {
+                // Get mouse position for zoom
+                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                    java.nio.DoubleBuffer xpos = stack.mallocDouble(1);
+                    java.nio.DoubleBuffer ypos = stack.mallocDouble(1);
+                    glfwGetCursorPos(window, xpos, ypos);
+                    game.getTerrainMapperScreen().handleMouseScroll(xoffset, yoffset, xpos.get(), ypos.get(), width, height);
+                }
             } else if (inputHandler != null) {
                 // Forward scroll events to InputHandler for hotbar selection and other UI interactions
                 inputHandler.handleScroll(yoffset);
@@ -391,6 +421,13 @@ public class Main {
                         game.getWorldSelectScreen().handleInput(window);
                     }
                 }
+                case TERRAIN_MAPPER -> {
+                    // Handle terrain mapper screen input
+                    if (game.getTerrainMapperScreen() != null) {
+                        // Note: TerrainMapperScreen doesn't have handleInput(window),
+                        // it uses character and key callbacks directly
+                    }
+                }
                 case LOADING -> {
                     // Handle loading screen input (primarily for error recovery)
                     if (game.getLoadingScreen() != null) {
@@ -468,6 +505,7 @@ public class Main {
         switch (game.getState()) {
             case MAIN_MENU -> renderUIState(renderer, game.getMainMenu());
             case WORLD_SELECT -> renderUIState(renderer, game.getWorldSelectScreen());
+            case TERRAIN_MAPPER -> renderUIState(renderer, game.getTerrainMapperScreen());
             case LOADING -> renderUIState(renderer, game.getLoadingScreen());
             case SETTINGS -> renderUIState(renderer, game.getSettingsMenu());
             default -> render3DGameState(game, renderer);
@@ -484,6 +522,8 @@ public class Main {
             mainMenu.render(width, height);
         } else if (screen instanceof WorldSelectScreen worldSelectScreen) {
             worldSelectScreen.render(width, height);
+        } else if (screen instanceof com.stonebreak.ui.terrainmapper.TerrainMapperScreen terrainMapperScreen) {
+            terrainMapperScreen.render(width, height);
         } else if (screen instanceof com.stonebreak.ui.LoadingScreen loadingScreen) {
             loadingScreen.render(width, height);
         } else if (screen instanceof SettingsMenu settingsMenu) {

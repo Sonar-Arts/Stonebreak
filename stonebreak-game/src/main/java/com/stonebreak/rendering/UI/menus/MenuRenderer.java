@@ -14,57 +14,68 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 public class MenuRenderer extends BaseRenderer {
     private int dirtTextureImage = -1;
-    
+    private int dirtTextureWidth = 16;
+    private int dirtTextureHeight = 16;
+
     public MenuRenderer(long vg) {
         super(vg);
         loadFonts();
         createDirtTexture();
     }
     
+    /**
+     * Loads the dirt texture for UI backgrounds.
+     * Creates a repeating pattern from the dirt texture image.
+     */
     private void createDirtTexture() {
-        int textureSize = 64;
-        
-        try (MemoryStack stack = stackPush()) {
-            java.nio.ByteBuffer dirtData = stack.malloc(textureSize * textureSize * 4);
-            
-            for (int y = 0; y < textureSize; y++) {
-                for (int x = 0; x < textureSize; x++) {
-                    float dirtX = (float) Math.sin(x * 0.7 + y * 0.3) * 0.5f + 0.5f;
-                    float dirtY = (float) Math.cos(x * 0.4 + y * 0.8) * 0.5f + 0.5f;
-                    float dirtNoise = (dirtX + dirtY) * 0.5f;
-                    
-                    float noise2 = (float) (Math.sin(x * 0.2 + y * 0.15) * 0.3 + 0.5);
-                    float combinedNoise = (dirtNoise * 0.7f + noise2 * 0.3f);
-                    
-                    int r = (int) (120 + combinedNoise * 60);
-                    int g = (int) (80 + combinedNoise * 50);
-                    int b = (int) (50 + combinedNoise * 40);
-                    
-                    if ((x % 4 == 0 && y % 4 == 0) || ((x+1) % 6 == 0 && (y+2) % 5 == 0)) {
-                        r = Math.max(0, r - 50);
-                        g = Math.max(0, g - 40);
-                        b = Math.max(0, b - 30);
-                    }
-                    
-                    if ((x % 7 == 0 && y % 8 == 0) || ((x+3) % 9 == 0 && (y+1) % 7 == 0)) {
-                        r = Math.min(255, r + 40);
-                        g = Math.min(255, g + 30);
-                        b = Math.min(255, b + 20);
-                    }
-                    
-                    dirtData.put((byte) Math.min(255, Math.max(0, r)));
-                    dirtData.put((byte) Math.min(255, Math.max(0, g)));
-                    dirtData.put((byte) Math.min(255, Math.max(0, b)));
-                    dirtData.put((byte) 255);
-                }
+        try {
+            java.nio.ByteBuffer imageBuffer = loadResourceToByteBuffer("ui/mainMenu/Dirt.png", 64 * 1024);
+            dirtTextureImage = loadDirtTexture(imageBuffer);
+            org.lwjgl.system.MemoryUtil.memFree(imageBuffer);
+
+            if (dirtTextureImage != -1) {
+                System.out.println("Successfully loaded dirt texture");
             }
-            
-            dirtData.flip();
-            
-            dirtTextureImage = nvgCreateImageRGBA(vg, textureSize, textureSize, NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY, dirtData);
-            if (dirtTextureImage == -1) {
-                System.err.println("Warning: Could not create dirt texture");
+        } catch (java.io.IOException e) {
+            System.err.println("Warning: Could not load dirt texture: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Loads the dirt texture from the image buffer.
+     *
+     * @param imageBuffer PNG data buffer
+     * @return NanoVG texture ID, or -1 if loading failed
+     */
+    private int loadDirtTexture(java.nio.ByteBuffer imageBuffer) {
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            java.nio.IntBuffer w = stack.mallocInt(1);
+            java.nio.IntBuffer h = stack.mallocInt(1);
+            java.nio.IntBuffer comp = stack.mallocInt(1);
+
+            org.lwjgl.stb.STBImage.stbi_set_flip_vertically_on_load(false);
+            java.nio.ByteBuffer imageData = org.lwjgl.stb.STBImage.stbi_load_from_memory(imageBuffer, w, h, comp, 4);
+
+            if (imageData == null) {
+                return -1;
             }
+
+            int width = w.get(0);
+            int height = h.get(0);
+
+            // Update texture dimensions
+            dirtTextureWidth = width;
+            dirtTextureHeight = height;
+
+            // Create repeating texture
+            int textureId = nvgCreateImageRGBA(vg, width, height, NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY, imageData);
+
+            // Cleanup
+            org.lwjgl.stb.STBImage.stbi_image_free(imageData);
+
+            return textureId;
+        } catch (Exception e) {
+            return -1;
         }
     }
     
@@ -140,19 +151,62 @@ public class MenuRenderer extends BaseRenderer {
         drawSettingsTitle(centerX, titleY, "SETTINGS");
     }
     
-    private void drawDirtBackground(int windowWidth, int windowHeight, int overlayAlpha) {
+    /**
+     * Draws a dirt texture background with an optional overlay.
+     * Made public to allow other renderers to use the dirt texture.
+     *
+     * @param windowWidth width of the area to fill
+     * @param windowHeight height of the area to fill
+     * @param overlayAlpha alpha value (0-255) for the dark overlay
+     */
+    public void drawDirtBackground(int windowWidth, int windowHeight, int overlayAlpha) {
         if (dirtTextureImage != -1) {
             try (MemoryStack stack = stackPush()) {
                 NVGPaint dirtPattern = NVGPaint.malloc(stack);
-                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
-                
+                // Scale the texture pattern by 4x
+                float scaledWidth = dirtTextureWidth * 4.0f;
+                float scaledHeight = dirtTextureHeight * 4.0f;
+                nvgImagePattern(vg, 0, 0, scaledWidth, scaledHeight, 0, dirtTextureImage, 1.0f, dirtPattern);
+
                 nvgBeginPath(vg);
                 nvgRect(vg, 0, 0, windowWidth, windowHeight);
                 nvgFillPaint(vg, dirtPattern);
                 nvgFill(vg);
-                
+
                 nvgBeginPath(vg);
                 nvgRect(vg, 0, 0, windowWidth, windowHeight);
+                nvgFillColor(vg, nvgRGBA(0, 0, 0, overlayAlpha, NVGColor.malloc(stack)));
+                nvgFill(vg);
+            }
+        }
+    }
+
+    /**
+     * Draws a dirt texture background in a specific rectangular area with an optional overlay.
+     * Allows positioning the dirt texture at custom coordinates.
+     *
+     * @param x x-coordinate of the area
+     * @param y y-coordinate of the area
+     * @param width width of the area to fill
+     * @param height height of the area to fill
+     * @param overlayAlpha alpha value (0-255) for the dark overlay
+     */
+    public void drawDirtBackgroundAt(float x, float y, float width, float height, int overlayAlpha) {
+        if (dirtTextureImage != -1) {
+            try (MemoryStack stack = stackPush()) {
+                NVGPaint dirtPattern = NVGPaint.malloc(stack);
+                // Scale the texture pattern by 4x
+                float scaledWidth = dirtTextureWidth * 4.0f;
+                float scaledHeight = dirtTextureHeight * 4.0f;
+                nvgImagePattern(vg, x, y, scaledWidth, scaledHeight, 0, dirtTextureImage, 1.0f, dirtPattern);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
+                nvgFillPaint(vg, dirtPattern);
+                nvgFill(vg);
+
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, width, height);
                 nvgFillColor(vg, nvgRGBA(0, 0, 0, overlayAlpha, NVGColor.malloc(stack)));
                 nvgFill(vg);
             }
@@ -832,7 +886,10 @@ public class MenuRenderer extends BaseRenderer {
         if (dirtTextureImage != -1) {
             try (MemoryStack stack = stackPush()) {
                 NVGPaint dirtPattern = NVGPaint.malloc(stack);
-                nvgImagePattern(vg, 0, 0, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                // Scale the texture pattern by 4x
+                float scaledWidth = dirtTextureWidth * 4.0f;
+                float scaledHeight = dirtTextureHeight * 4.0f;
+                nvgImagePattern(vg, 0, 0, scaledWidth, scaledHeight, 0, dirtTextureImage, 1.0f, dirtPattern);
 
                 nvgBeginPath(vg);
                 nvgRect(vg, 0, 0, width, topHeight);
@@ -867,7 +924,10 @@ public class MenuRenderer extends BaseRenderer {
         if (dirtTextureImage != -1) {
             try (MemoryStack stack = stackPush()) {
                 NVGPaint dirtPattern = NVGPaint.malloc(stack);
-                nvgImagePattern(vg, 0, bottomY, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                // Scale the texture pattern by 4x
+                float scaledWidth = dirtTextureWidth * 4.0f;
+                float scaledHeight = dirtTextureHeight * 4.0f;
+                nvgImagePattern(vg, 0, bottomY, scaledWidth, scaledHeight, 0, dirtTextureImage, 1.0f, dirtPattern);
 
                 nvgBeginPath(vg);
                 nvgRect(vg, 0, bottomY, width, bottomHeight);
@@ -975,7 +1035,10 @@ public class MenuRenderer extends BaseRenderer {
             try (MemoryStack stack = stackPush()) {
                 // Draw dirt texture
                 NVGPaint dirtPattern = NVGPaint.malloc(stack);
-                nvgImagePattern(vg, x, y, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                // Scale the texture pattern by 4x
+                float scaledWidth = dirtTextureWidth * 4.0f;
+                float scaledHeight = dirtTextureHeight * 4.0f;
+                nvgImagePattern(vg, x, y, scaledWidth, scaledHeight, 0, dirtTextureImage, 1.0f, dirtPattern);
 
                 nvgBeginPath(vg);
                 nvgRect(vg, x, y, width, height);
@@ -1048,7 +1111,10 @@ public class MenuRenderer extends BaseRenderer {
             try (MemoryStack stack = stackPush()) {
                 // Draw dirt texture
                 NVGPaint dirtPattern = NVGPaint.malloc(stack);
-                nvgImagePattern(vg, x, y, 96, 96, 0, dirtTextureImage, 1.0f, dirtPattern);
+                // Scale the texture pattern by 4x
+                float scaledWidth = dirtTextureWidth * 4.0f;
+                float scaledHeight = dirtTextureHeight * 4.0f;
+                nvgImagePattern(vg, x, y, scaledWidth, scaledHeight, 0, dirtTextureImage, 1.0f, dirtPattern);
 
                 nvgBeginPath(vg);
                 nvgRect(vg, x, y, width, height);

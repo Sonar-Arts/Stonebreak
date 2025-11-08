@@ -60,6 +60,7 @@ public class Game {
     private DebugOverlay debugOverlay; // Debug overlay (F3)
     private LoadingScreen loadingScreen; // Loading screen for world generation
     private WorldSelectScreen worldSelectScreen; // World selection screen
+    private com.stonebreak.ui.terrainmapper.TerrainMapperScreen terrainMapperScreen; // Terrain mapper for world creation
     private SaveService saveService; // World save/load system
     private WorldData currentWorldData; // Current world metadata
     private String currentWorldName; // Current world name for save system initialization
@@ -148,6 +149,10 @@ public class Game {
         this.settingsMenu = new SettingsMenu(this.renderer.getUIRenderer());
         this.loadingScreen = new LoadingScreen(this.renderer.getUIRenderer());
         this.worldSelectScreen = new WorldSelectScreen(this.renderer.getUIRenderer());
+        this.terrainMapperScreen = new com.stonebreak.ui.terrainmapper.TerrainMapperScreen(
+            this.renderer.getUIRenderer(),
+            this.worldSelectScreen.getDiscoveryManager()
+        );
 
         // Initialize crosshair with settings
         initializeCrosshairSettings();
@@ -1575,6 +1580,13 @@ public class Game {
      */
     public WorldSelectScreen getWorldSelectScreen() {
         return worldSelectScreen;
+    }
+
+    /**
+     * Gets the terrain mapper screen.
+     */
+    public com.stonebreak.ui.terrainmapper.TerrainMapperScreen getTerrainMapperScreen() {
+        return terrainMapperScreen;
     }
 
     /**

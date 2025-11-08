@@ -97,10 +97,16 @@ public class WorldActionHandler {
     // ===== WORLD CREATION ACTIONS =====
 
     /**
-     * Opens the create world dialog.
+     * Opens the terrain mapper screen for world creation.
      */
     public void openCreateWorldDialog() {
-        stateManager.openCreateDialog();
+        // Transition to terrain mapper screen
+        Game.getInstance().setState(GameState.TERRAIN_MAPPER);
+
+        // Reset terrain mapper state for fresh world creation
+        if (Game.getInstance().getTerrainMapperScreen() != null) {
+            Game.getInstance().getTerrainMapperScreen().reset();
+        }
     }
 
     /**
