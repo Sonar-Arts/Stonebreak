@@ -63,7 +63,84 @@ public class TerrainSidebarRenderer {
             // Render text input fields
             stateManager.getWorldNameField().render(uiRenderer, stack);
             stateManager.getSeedField().render(uiRenderer, stack);
+
+            // Render visualization mode selector
+            int selectorY = fieldY + (TerrainMapperConfig.INPUT_FIELD_HEIGHT + TerrainMapperConfig.COMPONENT_SPACING) * 2 + 30;
+            renderVisualizationSelector(vg, selectorY, stack);
         }
+    }
+
+    /**
+     * Renders the visualization mode selector.
+     */
+    private void renderVisualizationSelector(long vg, int selectorY, MemoryStack stack) {
+        // Draw label
+        renderFieldLabel(vg, "Visualization Mode:", TerrainMapperConfig.PADDING, selectorY - 5, stack);
+
+        // Draw mode options
+        int modeY = selectorY + 5;
+        int modeHeight = 24;
+        int modeSpacing = 4;
+
+        for (TerrainStateManager.VisualizationMode mode : TerrainStateManager.VisualizationMode.values()) {
+            boolean isSelected = (mode == stateManager.getSelectedVisualizationMode());
+
+            // Draw background
+            nvgBeginPath(vg);
+            nvgRect(vg, TerrainMapperConfig.PADDING, modeY, TerrainMapperConfig.INPUT_FIELD_WIDTH, modeHeight);
+            if (isSelected) {
+                nvgFillColor(vg, uiRenderer.nvgRGBA(100, 120, 140, 200, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, uiRenderer.nvgRGBA(60, 60, 60, 180, NVGColor.malloc(stack)));
+            }
+            nvgFill(vg);
+
+            // Draw border
+            nvgBeginPath(vg);
+            nvgRect(vg, TerrainMapperConfig.PADDING, modeY, TerrainMapperConfig.INPUT_FIELD_WIDTH, modeHeight);
+            if (isSelected) {
+                nvgStrokeColor(vg, uiRenderer.nvgRGBA(150, 180, 200, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgStrokeColor(vg, uiRenderer.nvgRGBA(100, 100, 100, 180, NVGColor.malloc(stack)));
+            }
+            nvgStrokeWidth(vg, isSelected ? 2.0f : 1.0f);
+            nvgStroke(vg);
+
+            // Draw text
+            nvgFontSize(vg, 14);
+            nvgFontFace(vg, "minecraft");
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, uiRenderer.nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, TerrainMapperConfig.PADDING + 8, modeY + modeHeight / 2.0f, mode.getDisplayName());
+
+            modeY += modeHeight + modeSpacing;
+        }
+    }
+
+    /**
+     * Checks if a click is within a visualization mode option bounds.
+     *
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param selectorY Starting Y position of selector
+     * @return The clicked visualization mode, or null if no mode was clicked
+     */
+    public TerrainStateManager.VisualizationMode getClickedMode(double mouseX, double mouseY, int selectorY) {
+        int modeY = selectorY + 5;
+        int modeHeight = 24;
+        int modeSpacing = 4;
+
+        for (TerrainStateManager.VisualizationMode mode : TerrainStateManager.VisualizationMode.values()) {
+            if (mouseX >= TerrainMapperConfig.PADDING &&
+                    mouseX <= TerrainMapperConfig.PADDING + TerrainMapperConfig.INPUT_FIELD_WIDTH &&
+                    mouseY >= modeY &&
+                    mouseY <= modeY + modeHeight) {
+                return mode;
+            }
+            modeY += modeHeight + modeSpacing;
+        }
+
+        return null;
     }
 
     /**

@@ -4,7 +4,8 @@ import com.stonebreak.ui.TextInputField;
 
 /**
  * Manages the state for the Terrain Mapper screen.
- * Handles text input fields, map pan/zoom state, and mouse interaction state.
+ * Handles text input fields, map pan/zoom state, mouse interaction state,
+ * and visualization mode selection.
  */
 public class TerrainStateManager {
 
@@ -26,11 +27,37 @@ public class TerrainStateManager {
     // Button hover states
     private boolean backButtonHovered;
     private boolean createButtonHovered;
+    private boolean simulateSeedButtonHovered;
+
+    // Visualization state
+    private VisualizationMode selectedVisualizationMode;
+    private boolean visualizationActive;
 
     public enum ActiveField {
         WORLD_NAME,
         SEED,
         NONE
+    }
+
+    public enum VisualizationMode {
+        TERRAIN_HEIGHT("Terrain Height"),
+        CONTINENTALNESS("Continentalness"),
+        EROSION("Erosion"),
+        PEAKS_VALLEYS("Peaks & Valleys"),
+        WEIRDNESS("Weirdness"),
+        TEMPERATURE("Temperature"),
+        HUMIDITY("Humidity"),
+        BIOME_DISTRIBUTION("Biome Distribution");
+
+        private final String displayName;
+
+        VisualizationMode(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
     }
 
     public TerrainStateManager() {
@@ -53,6 +80,11 @@ public class TerrainStateManager {
         // Initialize button states
         this.backButtonHovered = false;
         this.createButtonHovered = false;
+        this.simulateSeedButtonHovered = false;
+
+        // Initialize visualization state
+        this.selectedVisualizationMode = VisualizationMode.TERRAIN_HEIGHT;
+        this.visualizationActive = false;
     }
 
     /**
@@ -72,6 +104,10 @@ public class TerrainStateManager {
         isDragging = false;
         backButtonHovered = false;
         createButtonHovered = false;
+        simulateSeedButtonHovered = false;
+
+        selectedVisualizationMode = VisualizationMode.TERRAIN_HEIGHT;
+        visualizationActive = false;
     }
 
     // Getters and setters for text input fields
@@ -173,5 +209,30 @@ public class TerrainStateManager {
 
     public void setCreateButtonHovered(boolean hovered) {
         this.createButtonHovered = hovered;
+    }
+
+    public boolean isSimulateSeedButtonHovered() {
+        return simulateSeedButtonHovered;
+    }
+
+    public void setSimulateSeedButtonHovered(boolean hovered) {
+        this.simulateSeedButtonHovered = hovered;
+    }
+
+    // Getters and setters for visualization state
+    public VisualizationMode getSelectedVisualizationMode() {
+        return selectedVisualizationMode;
+    }
+
+    public void setSelectedVisualizationMode(VisualizationMode mode) {
+        this.selectedVisualizationMode = mode;
+    }
+
+    public boolean isVisualizationActive() {
+        return visualizationActive;
+    }
+
+    public void setVisualizationActive(boolean active) {
+        this.visualizationActive = active;
     }
 }

@@ -3,6 +3,8 @@ package com.stonebreak.ui.terrainmapper.renderers;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.terrainmapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainmapper.managers.TerrainStateManager;
+import com.stonebreak.ui.terrainmapper.visualization.NoiseRenderer;
+import com.stonebreak.ui.terrainmapper.visualization.NoiseVisualizer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -11,22 +13,44 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * Renders the terrain preview map area.
- * Currently displays a static grid with placeholder text and supports pan/zoom.
+ * Shows either a static grid (when visualization is inactive) or
+ * noise visualizations (when visualization is active).
  */
 public class TerrainMapRenderer {
 
     private final UIRenderer uiRenderer;
     private final TerrainStateManager stateManager;
+    private NoiseRenderer noiseRenderer;
 
     public TerrainMapRenderer(UIRenderer uiRenderer, TerrainStateManager stateManager) {
         this.uiRenderer = uiRenderer;
         this.stateManager = stateManager;
+        this.noiseRenderer = new NoiseRenderer(uiRenderer);
+    }
+
+    /**
+     * Sets the noise renderer (used by TerrainMapperScreen after initialization).
+     */
+    public void setNoiseRenderer(NoiseRenderer noiseRenderer) {
+        this.noiseRenderer = noiseRenderer;
+    }
+
+    /**
+     * Gets the noise renderer.
+     */
+    public NoiseRenderer getNoiseRenderer() {
+        return noiseRenderer;
     }
 
     /**
      * Renders the terrain preview map.
+     *
+     * @param windowWidth Window width
+     * @param windowHeight Window height
+     * @param visualizer Current visualizer (null if visualization not active)
+     * @param seed World seed for visualization
      */
-    public void render(int windowWidth, int windowHeight) {
+    public void render(int windowWidth, int windowHeight, NoiseVisualizer visualizer, long seed) {
         try (MemoryStack stack = stackPush()) {
             long vg = uiRenderer.getVG();
 
@@ -39,29 +63,45 @@ public class TerrainMapRenderer {
             // Draw map background
             renderBackground(vg, mapX, mapY, mapWidth, mapHeight, stack);
 
-            // Save current transform state
-            nvgSave(vg);
+            // Determine if visualization is active
+            boolean visualizationActive = stateManager.isVisualizationActive() && visualizer != null;
 
-            // Set up scissor to clip rendering to map area
-            nvgScissor(vg, mapX, mapY, mapWidth, mapHeight);
+            if (visualizationActive) {
+                // Render noise visualization
+                renderVisualization(visualizer, seed, mapX, mapY, mapWidth, mapHeight);
+            } else {
+                // Render static grid (original behavior)
+                // Save current transform state
+                nvgSave(vg);
 
-            // Apply pan and zoom transformations
-            float centerX = mapX + mapWidth / 2.0f;
-            float centerY = mapY + mapHeight / 2.0f;
+                // Set up scissor to clip rendering to map area
+                nvgScissor(vg, mapX, mapY, mapWidth, mapHeight);
 
-            nvgTranslate(vg, centerX, centerY);
-            nvgScale(vg, stateManager.getZoom(), stateManager.getZoom());
-            nvgTranslate(vg, stateManager.getPanX(), stateManager.getPanY());
-            nvgTranslate(vg, -centerX, -centerY);
+                // Apply pan and zoom transformations
+                float centerX = mapX + mapWidth / 2.0f;
+                float centerY = mapY + mapHeight / 2.0f;
 
-            // Draw the grid
-            renderGrid(vg, mapX, mapY, mapWidth, mapHeight, stack);
+                nvgTranslate(vg, centerX, centerY);
+                nvgScale(vg, stateManager.getZoom(), stateManager.getZoom());
+                nvgTranslate(vg, stateManager.getPanX(), stateManager.getPanY());
+                nvgTranslate(vg, -centerX, -centerY);
 
-            // Restore transform state
-            nvgRestore(vg);
+                // Draw the grid
+                renderGrid(vg, mapX, mapY, mapWidth, mapHeight, stack);
 
-            // Draw overlay text (not affected by pan/zoom)
-            renderOverlayText(vg, centerX, centerY, stack);
+                // Restore transform state
+                nvgRestore(vg);
+
+                // Draw overlay text (not affected by pan/zoom)
+                renderOverlayText(vg, mapX + mapWidth / 2.0f, mapY + mapHeight / 2.0f, stack);
+            }
+
+            // Render hover overlay if visualization is active
+            if (visualizationActive && noiseRenderer.hasHoverData()) {
+                int mouseX = (int) stateManager.getLastMouseX();
+                int mouseY = (int) stateManager.getLastMouseY();
+                noiseRenderer.renderHoverOverlay(mouseX, mouseY);
+            }
         }
     }
 
@@ -151,6 +191,47 @@ public class TerrainMapRenderer {
                 (int)(0.7f * 255),  // More transparent
                 NVGColor.malloc(stack)
         ));
-        nvgText(vg, centerX, centerY + 20, "Drag to pan, scroll to zoom");
+        nvgText(vg, centerX, centerY + 20, "Click 'Simulate Seed' to visualize terrain");
+    }
+
+    /**
+     * Renders noise visualization to the map area.
+     */
+    private void renderVisualization(NoiseVisualizer visualizer, long seed,
+                                    float mapX, float mapY, float mapWidth, float mapHeight) {
+        // Calculate world bounds based on map dimensions
+        // For now, use a fixed scale: 1 pixel = 4 blocks
+        int blocksPerPixel = 4;
+        int worldWidth = (int) (mapWidth * blocksPerPixel);
+        int worldHeight = (int) (mapHeight * blocksPerPixel);
+
+        // Center the world view at origin
+        int worldMinX = -worldWidth / 2;
+        int worldMinZ = -worldHeight / 2;
+        int worldMaxX = worldWidth / 2;
+        int worldMaxZ = worldHeight / 2;
+
+        // Render the noise visualization
+        noiseRenderer.render(
+                visualizer,
+                seed,
+                mapX, mapY,
+                mapWidth, mapHeight,
+                worldMinX, worldMinZ,
+                worldMaxX, worldMaxZ
+        );
+
+        // Update hover state
+        int mouseX = (int) stateManager.getLastMouseX();
+        int mouseY = (int) stateManager.getLastMouseY();
+        noiseRenderer.updateHover(
+                visualizer,
+                seed,
+                mouseX, mouseY,
+                mapX, mapY,
+                mapWidth, mapHeight,
+                worldMinX, worldMinZ,
+                worldMaxX, worldMaxZ
+        );
     }
 }

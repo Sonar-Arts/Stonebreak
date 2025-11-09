@@ -37,10 +37,12 @@ public class TerrainFooterRenderer {
             // Calculate button positions
             float backButtonX = TerrainMapperConfig.SIDEBAR_WIDTH + TerrainMapperConfig.PADDING;
             float createButtonX = windowWidth - TerrainMapperConfig.BUTTON_WIDTH - TerrainMapperConfig.PADDING;
+            float simulateSeedButtonX = (backButtonX + TerrainMapperConfig.BUTTON_WIDTH + createButtonX) / 2.0f - TerrainMapperConfig.BUTTON_WIDTH / 2.0f;
             float buttonY = footerY + (TerrainMapperConfig.FOOTER_HEIGHT - TerrainMapperConfig.BUTTON_HEIGHT) / 2.0f;
 
             // Render buttons
             renderButton(vg, "Back", backButtonX, buttonY, stateManager.isBackButtonHovered(), stack);
+            renderButton(vg, "Simulate Seed", simulateSeedButtonX, buttonY, stateManager.isSimulateSeedButtonHovered(), stack);
             renderButton(vg, "Create World", createButtonX, buttonY, stateManager.isCreateButtonHovered(), stack);
         }
     }
@@ -132,6 +134,20 @@ public class TerrainFooterRenderer {
         float buttonY = footerY + (TerrainMapperConfig.FOOTER_HEIGHT - TerrainMapperConfig.BUTTON_HEIGHT) / 2.0f;
 
         return mouseX >= createButtonX && mouseX <= createButtonX + TerrainMapperConfig.BUTTON_WIDTH &&
+                mouseY >= buttonY && mouseY <= buttonY + TerrainMapperConfig.BUTTON_HEIGHT;
+    }
+
+    /**
+     * Checks if the Simulate Seed button is hovered at the given mouse position.
+     */
+    public boolean isSimulateSeedButtonHovered(int windowWidth, int windowHeight, double mouseX, double mouseY) {
+        float backButtonX = TerrainMapperConfig.SIDEBAR_WIDTH + TerrainMapperConfig.PADDING;
+        float createButtonX = windowWidth - TerrainMapperConfig.BUTTON_WIDTH - TerrainMapperConfig.PADDING;
+        float simulateSeedButtonX = (backButtonX + TerrainMapperConfig.BUTTON_WIDTH + createButtonX) / 2.0f - TerrainMapperConfig.BUTTON_WIDTH / 2.0f;
+        float footerY = windowHeight - TerrainMapperConfig.FOOTER_HEIGHT;
+        float buttonY = footerY + (TerrainMapperConfig.FOOTER_HEIGHT - TerrainMapperConfig.BUTTON_HEIGHT) / 2.0f;
+
+        return mouseX >= simulateSeedButtonX && mouseX <= simulateSeedButtonX + TerrainMapperConfig.BUTTON_WIDTH &&
                 mouseY >= buttonY && mouseY <= buttonY + TerrainMapperConfig.BUTTON_HEIGHT;
     }
 }
