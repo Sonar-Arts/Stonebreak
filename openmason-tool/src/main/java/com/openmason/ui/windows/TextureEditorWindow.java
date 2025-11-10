@@ -97,10 +97,12 @@ public class TextureEditorWindow {
         // NoDocking prevents this window from being docked into the main interface
         // NoTitleBar allows us to render custom title bar with minimize/maximize buttons
         // NoCollapse prevents double-click collapse behavior (we have custom controls)
+        // NoScrollbar prevents main window scrollbar (child panels handle their own scrolling)
         int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus |
                           ImGuiWindowFlags.NoDocking |
                           ImGuiWindowFlags.NoTitleBar |
-                          ImGuiWindowFlags.NoCollapse;
+                          ImGuiWindowFlags.NoCollapse |
+                          ImGuiWindowFlags.NoScrollbar;
 
         // Remove window padding to eliminate space above menu bar
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
