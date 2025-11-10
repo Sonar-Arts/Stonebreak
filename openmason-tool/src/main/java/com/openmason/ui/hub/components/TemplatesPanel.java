@@ -33,6 +33,9 @@ public class TemplatesPanel {
     private final HubState hubState;
     private final TemplateService templateService;
 
+    // Track which card is being actively clicked (mouse down but not released)
+    private int clickedCardIndex = -1;
+
     public TemplatesPanel(ThemeManager themeManager, HubState hubState, TemplateService templateService) {
         this.themeManager = themeManager;
         this.hubState = hubState;
@@ -121,27 +124,56 @@ public class TemplatesPanel {
 
         // Get theme colors
         ThemeDefinition theme = themeManager.getCurrentTheme();
-        // Three-state background: selected > hovered > normal
-        ImVec4 bgColor = isSelected
-                ? theme.getColor(ImGuiCol.Header)
-                : (isHovered ? theme.getColor(ImGuiCol.FrameBgHovered) : theme.getColor(ImGuiCol.ChildBg));
+        // Consistent background - never changes for text readability
+        ImVec4 bgColor = theme.getColor(ImGuiCol.ChildBg);
         if (bgColor == null) bgColor = new ImVec4(0.15f, 0.15f, 0.15f, 1.0f);
 
-        ImVec4 borderColor = isHovered || isSelected
-                ? theme.getColor(ImGuiCol.ButtonHovered)
-                : theme.getColor(ImGuiCol.Border);
-        if (borderColor == null) borderColor = new ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+        // Determine click state
+        boolean isClicked = (clickedCardIndex == index);
+
+        // Border-based visual feedback with 4 states
+        ImVec4 borderColor;
+        float borderThickness;
+        float shadowOffset;
+        float shadowAlpha;
+
+        if (isClicked) {
+            // Clicked state: Thick bright border with strong shadow
+            borderColor = theme.getColor(ImGuiCol.ButtonHovered);
+            if (borderColor == null) borderColor = new ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
+            borderThickness = 4.0f;
+            shadowOffset = 8.0f;
+            shadowAlpha = 0.4f;
+        } else if (isSelected) {
+            // Selected state: Thick colored border with moderate shadow
+            borderColor = theme.getColor(ImGuiCol.Header);
+            if (borderColor == null) borderColor = new ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
+            borderThickness = 3.5f;
+            shadowOffset = 6.0f;
+            shadowAlpha = 0.3f;
+        } else if (isHovered) {
+            // Hovered state: Medium accent border with moderate shadow
+            borderColor = theme.getColor(ImGuiCol.ButtonHovered);
+            if (borderColor == null) borderColor = new ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
+            borderThickness = 2.5f;
+            shadowOffset = 6.0f;
+            shadowAlpha = 0.3f;
+        } else {
+            // Normal state: Thin subtle border with light shadow
+            borderColor = theme.getColor(ImGuiCol.Border);
+            if (borderColor == null) borderColor = new ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+            borderThickness = 1.5f;
+            shadowOffset = 4.0f;
+            shadowAlpha = 0.2f;
+        }
 
         // Draw drop shadow
-        if (!isSelected) {
-            float shadowOffset = isHovered ? 6.0f : 4.0f;
-            int shadowColor = ImColor.rgba(0, 0, 0, isHovered ? 0.3f : 0.2f);
-            drawList.addRectFilled(
-                    x1 + shadowOffset, y1 + shadowOffset,
-                    x2 + shadowOffset, y2 + shadowOffset,
-                    shadowColor, CARD_ROUNDING
-            );
-        }
+        int shadowColor = ImColor.rgba(0, 0, 0, shadowAlpha);
+        drawList.addRectFilled(
+                x1 + shadowOffset, y1 + shadowOffset,
+                x2 + shadowOffset, y2 + shadowOffset,
+                shadowColor, CARD_ROUNDING
+        );
 
         // Draw card background
         int bg = ImColor.rgba(bgColor.x, bgColor.y, bgColor.z, bgColor.w);
@@ -149,7 +181,6 @@ public class TemplatesPanel {
 
         // Draw border
         int border = ImColor.rgba(borderColor.x, borderColor.y, borderColor.z, 1.0f);
-        float borderThickness = (isHovered || isSelected) ? 3.0f : 2.0f;
         drawList.addRect(x1, y1, x2, y2, border, CARD_ROUNDING, 0, borderThickness);
 
         // Render template name (no icon needed)
@@ -170,9 +201,8 @@ public class TemplatesPanel {
         ImGui.beginChild("##desc_" + index, CARD_WIDTH - 2 * CARD_PADDING, y2 - descY - CARD_PADDING, false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoBackground);
         ImVec4 textDisabled = theme.getColor(ImGuiCol.TextDisabled);
         if (textDisabled != null) {
-            // Increase opacity on hover for better legibility: 0.8 (normal) -> 0.95 (hovered)
-            float textOpacity = isHovered ? 0.95f : 0.8f;
-            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textOpacity);
+            // Consistent text color - always readable
+            ImGui.pushStyleColor(ImGuiCol.Text, textDisabled.x, textDisabled.y, textDisabled.z, textDisabled.w);
         }
         ImGui.pushTextWrapPos(CARD_WIDTH - 2 * CARD_PADDING);
         ImGui.textWrapped(template.getDescription());
@@ -182,15 +212,16 @@ public class TemplatesPanel {
         }
         ImGui.endChild();
 
-        // Invisible button for click detection
-        ImGui.setCursorScreenPos(x1, y1);
-        ImGui.pushStyleColor(ImGuiCol.Button, 0);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0);
-        if (ImGui.button("##card_" + index, CARD_WIDTH, CARD_HEIGHT)) {
-            hubState.setSelectedTemplate(template);
+        // Direct mouse click detection - no invisible button needed
+        if (isHovered && ImGui.isMouseClicked(0)) {
+            // Mouse button pressed down on this card
+            clickedCardIndex = index;
         }
-        ImGui.popStyleColor(3);
+        if (clickedCardIndex == index && !ImGui.isMouseDown(0)) {
+            // Mouse button released - complete the click
+            hubState.setSelectedTemplate(template);
+            clickedCardIndex = -1;
+        }
 
         // Restore cursor for next card
         ImGui.setCursorScreenPos(x1, y2 + CARD_SPACING);
