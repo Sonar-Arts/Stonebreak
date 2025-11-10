@@ -182,9 +182,6 @@ public class ProjectHubScreen {
             case LEARN:
                 renderLearnPanel();
                 break;
-            case SETTINGS:
-                renderSettingsPanel();
-                break;
         }
     }
 
@@ -221,30 +218,6 @@ public class ProjectHubScreen {
         if (textDisabled != null) {
             ImGui.popStyleColor();
         }
-    }
-
-    /**
-     * Render Settings panel (placeholder).
-     */
-    private void renderSettingsPanel() {
-        ImGui.spacing();
-        ImGui.spacing();
-
-        String title = "Hub Settings";
-        ImVec2 titleSize = ImGui.calcTextSize(title);
-        float windowWidth = ImGui.getWindowWidth();
-        float titleX = (windowWidth - titleSize.x) * 0.5f;
-        ImGui.setCursorPosX(titleX);
-        ImGui.text(title);
-
-        ImGui.spacing();
-        ImGui.separator();
-        ImGui.spacing();
-
-        // Visibility toggles
-        ImGui.checkbox("Show Sidebar", visibilityState.getShowSidebar());
-        ImGui.checkbox("Show Preview Panel", visibilityState.getShowPreviewPanel());
-        ImGui.checkbox("Show Top Toolbar", visibilityState.getShowTopToolbar());
     }
 
     /**

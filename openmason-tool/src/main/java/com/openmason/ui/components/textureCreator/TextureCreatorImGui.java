@@ -373,6 +373,23 @@ public class TextureCreatorImGui {
     }
 
     /**
+     * Set callback for opening external preferences window.
+     * <p>
+     * When set, this callback replaces the internal preferences panel toggle.
+     * This allows integration with the unified preferences system.
+     * </p>
+     *
+     * @param callback the callback to invoke when preferences is requested
+     */
+    public void setPreferencesCallback(Runnable callback) {
+        if (callback != null) {
+            menuBarRenderer.setOnPreferencesToggle(callback);
+            windowedMenuBarRenderer.setOnPreferencesToggle(callback);
+            logger.debug("External preferences callback set");
+        }
+    }
+
+    /**
      * Set up drag-and-drop.
      */
     private void setupDragDropCallback() {
@@ -526,6 +543,19 @@ public class TextureCreatorImGui {
 
     public TextureCreatorController getController() {
         return controller;
+    }
+
+    /**
+     * Gets the texture creator preferences instance.
+     * <p>
+     * This allows external systems (like UnifiedPreferencesWindow) to access
+     * the same preferences instance for real-time updates.
+     * </p>
+     *
+     * @return the texture creator preferences
+     */
+    public TextureCreatorPreferences getPreferences() {
+        return preferences;
     }
 
     /**

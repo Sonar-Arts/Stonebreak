@@ -19,7 +19,12 @@ import imgui.type.ImInt;
 /**
  * Preferences dialog window.
  * Follows Single Responsibility Principle - only handles preferences window.
+ *
+ * @deprecated Replaced by {@link com.openmason.ui.preferences.UnifiedPreferencesWindow}.
+ *             This class is kept for one release cycle for compatibility.
+ *             Use UnifiedPreferencesWindow for unified preferences across all Open Mason tools.
  */
+@Deprecated
 public class PreferencesDialog {
 
     private final UIVisibilityState uiState;

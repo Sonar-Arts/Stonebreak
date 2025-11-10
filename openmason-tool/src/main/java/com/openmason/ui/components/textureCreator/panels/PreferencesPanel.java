@@ -20,8 +20,14 @@ import org.slf4j.LoggerFactory;
  * - Single Responsibility: Only handles preferences UI rendering
  * - Delegates state management to TextureCreatorPreferences
  *
+ * @deprecated Replaced by {@link com.openmason.ui.preferences.TextureEditorPreferencesPage}
+ *             within the unified {@link com.openmason.ui.preferences.UnifiedPreferencesWindow}.
+ *             This class is kept for one release cycle for compatibility.
+ *             The texture editor now opens the unified preferences window instead of this internal panel.
+ *
  * @author Open Mason Team
  */
+@Deprecated
 public class PreferencesPanel {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesPanel.class);

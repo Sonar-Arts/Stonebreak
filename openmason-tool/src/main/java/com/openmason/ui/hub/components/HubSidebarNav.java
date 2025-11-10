@@ -162,14 +162,6 @@ public class HubSidebarNav {
                 () -> hubState.setCurrentView(NavigationItem.ViewType.LEARN)
         ));
 
-        items.add(new NavigationItem(
-                "settings",
-                "Settings",
-                "",
-                NavigationItem.ViewType.SETTINGS,
-                () -> hubState.setCurrentView(NavigationItem.ViewType.SETTINGS)
-        ));
-
         return items;
     }
 }

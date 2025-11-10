@@ -395,14 +395,17 @@ public class OpenMasonApp {
             // Initialize Project Hub Screen with theme manager
             projectHubScreen = new ProjectHubScreen(themeManager);
 
+            // Initialize main interface with theme manager
+            mainInterface = new MainImGuiInterface(themeManager);
+
             // Set transition callbacks for Project Hub
             projectHubScreen.setTransitionCallbacks(
                 this::transitionToMainInterface,
                 this::transitionToMainInterface  // Both create and open go to main interface for Phase 1
             );
 
-            // Initialize main interface with theme manager
-            mainInterface = new MainImGuiInterface(themeManager);
+            // Wire up preferences button in Project Hub to unified preferences window
+            projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
 
             // Initialize viewport interface and inject the shared viewport
             viewportInterface = new ViewportImGuiInterface();
@@ -423,6 +426,12 @@ public class OpenMasonApp {
                 }
             });
             textureCreatorInterface.setBackToHomeCallback(this::transitionToHomeScreen);
+
+            // Wire up unified preferences window for texture editor
+            textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
+
+            // Wire up texture creator interface to main interface for real-time preference updates
+            mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
             // CRITICAL: Set window handle for mouse capture functionality
             if (window != 0L) {
@@ -496,6 +505,15 @@ public class OpenMasonApp {
                 showTextureEditor = textureEditorWindow.isVisible();
             } catch (Exception e) {
                 logger.error("Error rendering texture editor window", e);
+            }
+        }
+
+        // Render unified preferences window at app level (accessible from both hub and main interface)
+        if (mainInterface != null && mainInterface.getUnifiedPreferencesWindow() != null) {
+            try {
+                mainInterface.getUnifiedPreferencesWindow().render();
+            } catch (Exception e) {
+                logger.error("Error rendering unified preferences window", e);
             }
         }
     }

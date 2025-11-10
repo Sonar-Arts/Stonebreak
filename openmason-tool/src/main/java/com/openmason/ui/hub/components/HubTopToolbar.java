@@ -53,11 +53,11 @@ public class HubTopToolbar {
         // Push to right side
         float windowWidth = ImGui.getWindowWidth();
         float cursorX = ImGui.getCursorPosX();
-        float itemWidth = 80.0f; // Approximate width for buttons
+        float itemWidth = 100.0f; // Approximate width for preferences button
         ImGui.setCursorPosX(windowWidth - itemWidth);
 
         // Preferences button
-        if (ImGui.button("Settings")) {
+        if (ImGui.button("Preferences")) {
             if (onPreferencesClicked != null) {
                 onPreferencesClicked.run();
             }
