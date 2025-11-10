@@ -3,6 +3,7 @@ package com.openmason.ui.windows;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import imgui.ImGui;
 import imgui.flag.ImGuiDockNodeFlags;
+import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -98,6 +99,7 @@ public class TextureEditorWindow {
         // NoTitleBar allows us to render custom title bar with minimize/maximize buttons
         // NoCollapse prevents double-click collapse behavior (we have custom controls)
         // NoScrollbar prevents main window scrollbar (child panels handle their own scrolling)
+        // Window is resizable by default - ImGui handles resize grips automatically
         int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus |
                           ImGuiWindowFlags.NoDocking |
                           ImGuiWindowFlags.NoTitleBar |
@@ -125,6 +127,9 @@ public class TextureEditorWindow {
 
                 // Render panels, dialogs, etc.
                 textureCreator.renderWindowedPanels();
+
+                // Render resize grip in bottom-right corner
+                renderResizeGrip();
 
             } catch (Exception e) {
                 logger.error("Error rendering texture creator", e);
@@ -173,6 +178,11 @@ public class TextureEditorWindow {
         // Make title bar draggable for window movement
         ImGui.setCursorPos(0, 0);
         ImGui.invisibleButton("##TitleBarDrag", windowWidth - (buttonSize + buttonSpacing) * 3, titleBarHeight);
+
+        // Show move cursor when hovering over draggable area to indicate it can be dragged
+        if (ImGui.isItemHovered()) {
+            ImGui.setMouseCursor(ImGuiMouseCursor.ResizeAll);
+        }
 
         // Track drag state and handle window movement
         boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
@@ -249,6 +259,35 @@ public class TextureEditorWindow {
 
         // Reset cursor for content below
         ImGui.setCursorPosY(titleBarHeight + 2);
+    }
+
+    /**
+     * Render a resize grip indicator in the bottom-right corner of the window.
+     * Shows a simple filled triangle pointing to the corner.
+     */
+    private void renderResizeGrip() {
+        final float triangleSize = 14.0f;
+
+        // Get window position and dimensions
+        float windowX = ImGui.getWindowPosX();
+        float windowY = ImGui.getWindowPosY();
+        float windowWidth = ImGui.getWindowWidth();
+        float windowHeight = ImGui.getWindowHeight();
+
+        // Calculate triangle position (bottom-right corner)
+        float cornerX = windowX + windowWidth;
+        float cornerY = windowY + windowHeight;
+
+        // Draw filled triangle pointing to bottom-right corner
+        int color = ImGui.getColorU32(0.6f, 0.6f, 0.6f, 0.8f);
+
+        // Use foreground draw list for proper render precedence
+        ImGui.getForegroundDrawList().addTriangleFilled(
+            cornerX, cornerY - triangleSize,           // Top point (right edge)
+            cornerX - triangleSize, cornerY,           // Left point (bottom edge)
+            cornerX, cornerY,                          // Corner point (bottom-right)
+            color
+        );
     }
 
     /**
