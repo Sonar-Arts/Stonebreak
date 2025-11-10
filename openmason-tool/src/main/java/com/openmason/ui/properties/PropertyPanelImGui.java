@@ -133,7 +133,11 @@ public class PropertyPanelImGui {
         // Apply theme-aware styling
         themeContext.applyPanelStyle();
 
-        if (ImGui.begin("Properties", ImGuiWindowFlags.AlwaysAutoResize)) {
+        // Set size constraints to prevent flickering during drag
+        // Min size ensures all controls remain visible, max allows reasonable expansion
+        ImGui.setNextWindowSizeConstraints(300, 200, 500, 800);
+
+        if (ImGui.begin("Properties")) {
             // Render sections based on mode (compact/full mode controlled via Preferences)
             if (compactMode.get()) {
                 renderCompactMode();

@@ -79,7 +79,7 @@ public class PreferencesDialog {
 
         ImGuiHelpers.configureWindowConstraints(windowConfig);
 
-        if (ImGui.begin("Preferences", uiState.getShowPreferencesWindow(), ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (ImGui.begin("Preferences", uiState.getShowPreferencesWindow())) {
             ImGuiHelpers.configureWindowSize(windowConfig);
             ImGuiHelpers.configureWindowPosition(windowConfig);
 

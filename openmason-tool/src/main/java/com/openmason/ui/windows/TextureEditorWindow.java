@@ -45,6 +45,10 @@ public class TextureEditorWindow {
     private float[] savedSize = new float[]{1200, 800};  // Store window size before maximize
     private float[] savedPos = new float[]{100, 100};    // Store window position before maximize
 
+    // Drag state management to prevent flickering during window movement
+    private boolean isDraggingWindow = false;
+    private float cachedWindowWidth = 0.0f;
+
     /**
      * Create a new TextureEditorWindow wrapping the given texture creator.
      *
@@ -84,6 +88,10 @@ public class TextureEditorWindow {
             // Each window will have unique IDs so they won't conflict
             iniFileSet = true;
         }
+
+        // Set size constraints to prevent unwanted size changes during dragging
+        // Minimum size ensures all UI elements remain visible and functional
+        ImGui.setNextWindowSizeConstraints(600, 400, Float.MAX_VALUE, Float.MAX_VALUE);
 
         // Configure window flags for a truly separate window with custom title bar
         // NoDocking prevents this window from being docked into the main interface
@@ -141,8 +149,14 @@ public class TextureEditorWindow {
         final float buttonSpacing = 2.0f;  // Horizontal spacing between buttons
         final float titlePadding = 10.0f;
 
-        // Get window dimensions
-        float windowWidth = ImGui.getWindowWidth();
+        // Get window dimensions - use cached value during drag to prevent flickering
+        float windowWidth;
+        if (!isDraggingWindow) {
+            windowWidth = ImGui.getWindowWidth();
+            cachedWindowWidth = windowWidth;  // Cache for use during dragging
+        } else {
+            windowWidth = cachedWindowWidth;  // Use cached value to maintain stability
+        }
         float cursorStartY = ImGui.getCursorPosY();
 
         // Title bar background (using a subtle background color)
@@ -157,7 +171,18 @@ public class TextureEditorWindow {
         // Make title bar draggable for window movement
         ImGui.setCursorPos(0, 0);
         ImGui.invisibleButton("##TitleBarDrag", windowWidth - (buttonSize + buttonSpacing) * 3, titleBarHeight);
-        if (ImGui.isItemActive() && ImGui.isMouseDragging(0)) {
+
+        // Track drag state and handle window movement
+        boolean currentlyDragging = ImGui.isItemActive() && ImGui.isMouseDragging(0);
+
+        if (currentlyDragging) {
+            // Set drag flag on first frame of drag
+            if (!isDraggingWindow) {
+                isDraggingWindow = true;
+                cachedWindowWidth = ImGui.getWindowWidth();  // Cache width at drag start
+            }
+
+            // Apply position delta
             float deltaX = ImGui.getMouseDragDeltaX(0);
             float deltaY = ImGui.getMouseDragDeltaY(0);
             ImGui.setWindowPos(
@@ -166,6 +191,9 @@ public class TextureEditorWindow {
                 ImGui.getWindowPosY() + deltaY
             );
             ImGui.resetMouseDragDelta(0);
+        } else if (isDraggingWindow) {
+            // Clear drag flag when drag ends
+            isDraggingWindow = false;
         }
 
         // Render window title text

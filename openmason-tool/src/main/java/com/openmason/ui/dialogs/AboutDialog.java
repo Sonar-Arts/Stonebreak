@@ -37,8 +37,11 @@ public class AboutDialog {
             return;
         }
 
+        // Set fixed size for about dialog to prevent flickering during drag
+        ImGui.setNextWindowSize(400, 300, imgui.flag.ImGuiCond.FirstUseEver);
+
         if (ImGui.begin("About " + toolName, visibilityState.getShowAboutWindow(),
-                ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse)) {
+                ImGuiWindowFlags.NoCollapse)) {
 
             // Render large logo at the top
             if (logoManager != null) {
