@@ -67,6 +67,14 @@ public class OpenMasonApp {
     private boolean imguiInitialized = false;
     private boolean openglContextCreated = false;
     private boolean cleanedUp = false;
+
+    // Window resize debouncing (prevent excessive config saves)
+    private long lastResizeTime = 0;
+    private int pendingWidth = 0;
+    private int pendingHeight = 0;
+    private boolean pendingMaximized = false;
+    private boolean hasPendingResize = false;
+    private static final long RESIZE_SAVE_DELAY_MS = 500; // Save 500ms after resize stops
     
     /**
      * Initialize and run the Dear ImGui application.This
@@ -207,12 +215,15 @@ public class OpenMasonApp {
             shouldClose = true;
         });
         
-        // Window size callback for saving window state
+        // Window size callback for saving window state (debounced)
         glfwSetWindowSizeCallback(window, (window, width, height) -> {
             if (appConfig != null) {
-                boolean maximized = glfwGetWindowAttrib(window, GLFW_MAXIMIZED) == GLFW_TRUE;
-                appConfig.setLastWindowSize(width, height, maximized);
-                appConfig.saveConfiguration();
+                // Store pending resize values
+                pendingWidth = width;
+                pendingHeight = height;
+                pendingMaximized = glfwGetWindowAttrib(window, GLFW_MAXIMIZED) == GLFW_TRUE;
+                lastResizeTime = System.currentTimeMillis();
+                hasPendingResize = true;
             }
         });
         
@@ -325,7 +336,17 @@ public class OpenMasonApp {
         while (!shouldClose && !glfwWindowShouldClose(window)) {
             // Poll for window events
             glfwPollEvents();
-            
+
+            // Handle debounced window resize save
+            if (hasPendingResize && appConfig != null) {
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastResizeTime >= RESIZE_SAVE_DELAY_MS) {
+                    appConfig.setLastWindowSize(pendingWidth, pendingHeight, pendingMaximized);
+                    appConfig.saveConfiguration();
+                    hasPendingResize = false;
+                }
+            }
+
             // Clear the framebuffer
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             
@@ -576,7 +597,14 @@ public class OpenMasonApp {
                     ImGui.destroyContext();
                 }
             }
-            
+
+            // Save any pending window resize before shutdown
+            if (hasPendingResize && appConfig != null) {
+                appConfig.setLastWindowSize(pendingWidth, pendingHeight, pendingMaximized);
+                appConfig.saveConfiguration();
+                hasPendingResize = false;
+            }
+
             // Shutdown application lifecycle
             if (appLifecycle != null) {
                 appLifecycle.onApplicationShutdown();

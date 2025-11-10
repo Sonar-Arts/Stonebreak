@@ -115,15 +115,16 @@ public class AppConfig {
     
     /**
      * Save current configuration to file.
+     * Note: This is called frequently during window resize, so logging is at TRACE level.
      */
     public void saveConfiguration() {
         try {
             if (configFilePath != null) {
                 Files.createDirectories(configFilePath.getParent());
-                
+
                 try (var output = Files.newOutputStream(configFilePath)) {
                     properties.store(output, "OpenMason Configuration");
-                    logger.debug("Configuration saved to: {}", configFilePath);
+                    logger.trace("Configuration saved to: {}", configFilePath);
                 }
             }
         } catch (Exception e) {

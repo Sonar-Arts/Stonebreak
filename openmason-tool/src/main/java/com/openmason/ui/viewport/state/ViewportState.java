@@ -62,10 +62,18 @@ public class ViewportState {
     public boolean isInitialized() { return initialized; }
 
     /**
-     * Check if dimensions have changed.
+     * Check if dimensions have changed significantly.
+     * Uses a threshold to prevent constant resizing from small pixel fluctuations.
      */
     public boolean dimensionsChanged(int newWidth, int newHeight) {
-        return newWidth != width || newHeight != height;
+        // Use a threshold of 5 pixels to prevent excessive resizing
+        // from small ImGui layout fluctuations
+        final int RESIZE_THRESHOLD = 5;
+
+        int widthDiff = Math.abs(newWidth - width);
+        int heightDiff = Math.abs(newHeight - height);
+
+        return widthDiff >= RESIZE_THRESHOLD || heightDiff >= RESIZE_THRESHOLD;
     }
 
     /**

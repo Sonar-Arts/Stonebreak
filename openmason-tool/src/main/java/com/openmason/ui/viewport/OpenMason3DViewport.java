@@ -224,7 +224,8 @@ public class OpenMason3DViewport {
         // Update camera aspect ratio
         camera.setAspectRatio(viewportState.getAspectRatio());
 
-        logger.debug("Viewport resized to {}x{}", width, height);
+        // Reduced logging verbosity (resize operations are frequent)
+        logger.trace("Viewport resized to {}x{}", width, height);
     }
 
     /**

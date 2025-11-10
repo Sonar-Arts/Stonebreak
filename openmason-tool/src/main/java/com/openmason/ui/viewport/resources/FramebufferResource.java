@@ -28,7 +28,7 @@ public class FramebufferResource implements AutoCloseable {
      */
     public void create(int width, int height) {
         if (initialized) {
-            logger.warn("Framebuffer already initialized, recreating...");
+            // Silently cleanup and recreate (resize operations trigger this frequently)
             cleanup();
         }
 
@@ -78,7 +78,7 @@ public class FramebufferResource implements AutoCloseable {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
             initialized = true;
-            logger.debug("Framebuffer created successfully: {}x{} (FBO: {}, Texture: {}, Depth: {})",
+            logger.trace("Framebuffer created successfully: {}x{} (FBO: {}, Texture: {}, Depth: {})",
                         width, height, framebufferId, colorTextureId, depthRenderbufferId);
 
         } catch (Exception e) {
@@ -96,7 +96,7 @@ public class FramebufferResource implements AutoCloseable {
             return; // No change needed
         }
 
-        logger.debug("Resizing framebuffer from {}x{} to {}x{}", width, height, newWidth, newHeight);
+        logger.trace("Resizing framebuffer from {}x{} to {}x{}", width, height, newWidth, newHeight);
         create(newWidth, newHeight);
     }
 

@@ -104,7 +104,7 @@ public class ModelBrowserImGui {
         ImGui.setNextWindowSize(900, 600, imgui.flag.ImGuiCond.FirstUseEver);
         ImGui.setNextWindowPos(100, 100, imgui.flag.ImGuiCond.FirstUseEver);
 
-        if (ImGui.begin("Model Browser", visible)) {
+        if (ImGui.begin("Model Browser", visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)) {
             // Toolbar area: Search, Filter, View controls
             renderToolbar();
 
@@ -284,8 +284,8 @@ public class ModelBrowserImGui {
 
         ImGui.sameLine();
 
-        // Right panel: Content area
-        if (ImGui.beginChild("##ContentArea", contentWidth, region.y, true)) {
+        // Right panel: Content area (no scrollbar - views handle their own scrolling)
+        if (ImGui.beginChild("##ContentArea", contentWidth, region.y, true, ImGuiWindowFlags.NoScrollbar)) {
             // Render the active view based on view mode
             renderActiveView(state.getViewMode());
         }
