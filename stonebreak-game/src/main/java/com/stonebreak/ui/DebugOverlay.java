@@ -93,14 +93,11 @@ public class DebugOverlay {
         float temperature = world.getTemperatureAt(x, z);
         float moisture = world.getMoistureAt(x, z);
 
-        // Get continentalness value at player position
+        // Get all terrain parameters at player position
         float continentalness = world.getContinentalnessAt(x, z);
-
-        // Get terrain generation debug values (Phase 1)
-        float erosionNoise = world.getErosionNoiseAt(x, z);
-        int baseHeight = world.getBaseHeight(x, z);  // Continentalness only
-        int heightBeforeErosion = world.getHeightBeforeErosion(x, z);  // With biome modifiers
-        int finalHeight = world.getFinalTerrainHeight(x, z);  // With erosion
+        float erosion = world.getErosionNoiseAt(x, z);
+        float peaksValleys = world.getPeaksValleysAt(x, z);
+        float weirdness = world.getWeirdnessAt(x, z);
 
         // Calculate facing direction from camera's front vector
         Vector3f front = player.getCamera().getFront();
@@ -108,23 +105,36 @@ public class DebugOverlay {
 
         // Build debug text
         StringBuilder debug = new StringBuilder();
-        debug.append("Stonebreak Debug (F3)\n");
-        debug.append("─────────────────────\n");
+        debug.append("═══════════════════════════════════════\n");
+        debug.append("              STONEBREAK\n");
+        debug.append("═══════════════════════════════════════\n");
+        debug.append("\n");
+
+        // Position section
+        debug.append("─── Position ───\n");
         debug.append(String.format("XYZ: %d / %d / %d\n", x, y, z));
-        debug.append(String.format("Chunk: %d %d in %d %d\n", x & 15, z & 15, chunkX, chunkZ));
+        debug.append(String.format("Chunk: %d, %d (local: %d, %d)\n", chunkX, chunkZ, x & 15, z & 15));
         debug.append(String.format("Facing: %s\n", facing));
         debug.append(String.format("Block Below: %s\n", blockBelowName));
+        debug.append("\n");
+
+        // Biome & Climate section
+        debug.append("─── Biome & Climate ───\n");
         debug.append(String.format("Biome: %s\n", biome.name()));
         debug.append(String.format("Temperature: %.3f\n", temperature));
         debug.append(String.format("Moisture: %.3f\n", moisture));
+        debug.append("\n");
+
+        // Terrain Parameters section (all 6 parameters)
+        debug.append("─── Terrain Parameters ───\n");
         debug.append(String.format("Continentalness: %.3f\n", continentalness));
+        debug.append(String.format("Erosion: %.3f\n", erosion));
+        debug.append(String.format("Peaks & Valleys: %.3f\n", peaksValleys));
+        debug.append(String.format("Weirdness: %.3f\n", weirdness));
         debug.append("\n");
-        debug.append("─── Terrain Noise (Phase 1) ───\n");
-        debug.append(String.format("Erosion Noise: %.3f\n", erosionNoise));
-        debug.append(String.format("Base Height: %d (continentalness)\n", baseHeight));
-        debug.append(String.format("Before Erosion: %d (Δ%+d biome)\n", heightBeforeErosion, heightBeforeErosion - baseHeight));
-        debug.append(String.format("Final Height: %d (Δ%+d erosion)\n", finalHeight, finalHeight - heightBeforeErosion));
-        debug.append("\n");
+
+        // Performance section
+        debug.append("─── Performance ───\n");
         debug.append(String.format("FPS: %.0f (avg)\n", averageFPS));
         debug.append(String.format("Memory: %d/%d MB\n", usedMemory, maxMemory));
         debug.append(String.format("Chunks: %d loaded\n", loadedChunks));

@@ -3,6 +3,7 @@ package com.stonebreak.ui.terrainmapper.renderers;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.terrainmapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainmapper.managers.TerrainStateManager;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
@@ -64,9 +65,13 @@ public class TerrainSidebarRenderer {
             stateManager.getWorldNameField().render(uiRenderer, stack);
             stateManager.getSeedField().render(uiRenderer, stack);
 
+            // Render generator type selector
+            int generatorSelectorY = fieldY + (TerrainMapperConfig.INPUT_FIELD_HEIGHT + TerrainMapperConfig.COMPONENT_SPACING) * 2 + 30;
+            renderGeneratorSelector(vg, generatorSelectorY, stack);
+
             // Render visualization mode selector
-            int selectorY = fieldY + (TerrainMapperConfig.INPUT_FIELD_HEIGHT + TerrainMapperConfig.COMPONENT_SPACING) * 2 + 30;
-            renderVisualizationSelector(vg, selectorY, stack);
+            int visualizationSelectorY = generatorSelectorY + (TerrainGeneratorType.values().length * 28) + 40;
+            renderVisualizationSelector(vg, visualizationSelectorY, stack);
         }
     }
 
@@ -138,6 +143,86 @@ public class TerrainSidebarRenderer {
                 return mode;
             }
             modeY += modeHeight + modeSpacing;
+        }
+
+        return null;
+    }
+
+    /**
+     * Renders the terrain generator type selector.
+     */
+    private void renderGeneratorSelector(long vg, int selectorY, MemoryStack stack) {
+        // Draw label
+        renderFieldLabel(vg, "Terrain Generator:", TerrainMapperConfig.PADDING, selectorY - 5, stack);
+
+        // Draw generator type options
+        int generatorY = selectorY + 5;
+        int generatorHeight = 24;
+        int generatorSpacing = 4;
+
+        for (TerrainGeneratorType type : TerrainGeneratorType.values()) {
+            boolean isSelected = (type == stateManager.getSelectedGeneratorType());
+
+            // Draw background
+            nvgBeginPath(vg);
+            nvgRect(vg, TerrainMapperConfig.PADDING, generatorY, TerrainMapperConfig.INPUT_FIELD_WIDTH, generatorHeight);
+            if (isSelected) {
+                nvgFillColor(vg, uiRenderer.nvgRGBA(100, 120, 140, 200, NVGColor.malloc(stack)));
+            } else {
+                nvgFillColor(vg, uiRenderer.nvgRGBA(60, 60, 60, 180, NVGColor.malloc(stack)));
+            }
+            nvgFill(vg);
+
+            // Draw border
+            nvgBeginPath(vg);
+            nvgRect(vg, TerrainMapperConfig.PADDING, generatorY, TerrainMapperConfig.INPUT_FIELD_WIDTH, generatorHeight);
+            if (isSelected) {
+                nvgStrokeColor(vg, uiRenderer.nvgRGBA(150, 180, 200, 255, NVGColor.malloc(stack)));
+            } else {
+                nvgStrokeColor(vg, uiRenderer.nvgRGBA(100, 100, 100, 180, NVGColor.malloc(stack)));
+            }
+            nvgStrokeWidth(vg, isSelected ? 2.0f : 1.0f);
+            nvgStroke(vg);
+
+            // Draw text with generator name
+            nvgFontSize(vg, 14);
+            nvgFontFace(vg, "minecraft");
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, uiRenderer.nvgRGBA(255, 255, 255, 255, NVGColor.malloc(stack)));
+            nvgText(vg, TerrainMapperConfig.PADDING + 8, generatorY + generatorHeight / 2.0f, type.getDisplayName());
+
+            // Draw description in smaller font below
+            nvgFontSize(vg, 11);
+            nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
+            String description = type == TerrainGeneratorType.LEGACY ? "(Stable)" : "(Experimental)";
+            nvgText(vg, TerrainMapperConfig.PADDING + TerrainMapperConfig.INPUT_FIELD_WIDTH - 85,
+                    generatorY + generatorHeight / 2.0f, description);
+
+            generatorY += generatorHeight + generatorSpacing;
+        }
+    }
+
+    /**
+     * Checks if a click is within a generator type option bounds.
+     *
+     * @param mouseX Mouse X position
+     * @param mouseY Mouse Y position
+     * @param selectorY Starting Y position of selector
+     * @return The clicked generator type, or null if no type was clicked
+     */
+    public TerrainGeneratorType getClickedGeneratorType(double mouseX, double mouseY, int selectorY) {
+        int generatorY = selectorY + 5;
+        int generatorHeight = 24;
+        int generatorSpacing = 4;
+
+        for (TerrainGeneratorType type : TerrainGeneratorType.values()) {
+            if (mouseX >= TerrainMapperConfig.PADDING &&
+                    mouseX <= TerrainMapperConfig.PADDING + TerrainMapperConfig.INPUT_FIELD_WIDTH &&
+                    mouseY >= generatorY &&
+                    mouseY <= generatorY + generatorHeight) {
+                return type;
+            }
+            generatorY += generatorHeight + generatorSpacing;
         }
 
         return null;

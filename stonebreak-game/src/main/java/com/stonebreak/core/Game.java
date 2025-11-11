@@ -1329,12 +1329,22 @@ public class Game {
 
     /**
      * Creates a fresh World instance with the specified seed for complete world isolation.
+     * Defaults to LEGACY generator for backwards compatibility.
      *
      * NOTE: MmsAPI should already be initialized in initCoreComponents().
      */
     private World createFreshWorldInstance(long seed) {
+        return createFreshWorldInstance(seed, "LEGACY");
+    }
+
+    /**
+     * Creates a fresh World instance with the specified seed and terrain generator type.
+     *
+     * NOTE: MmsAPI should already be initialized in initCoreComponents().
+     */
+    private World createFreshWorldInstance(long seed, String generatorType) {
         WorldConfiguration config = new WorldConfiguration();
-        return new World(config, seed);
+        return new World(config, seed, generatorType);
     }
 
     /**
@@ -1835,10 +1845,11 @@ public class Game {
                             if (result.isSuccess() && result.getWorldData() != null) {
                                 WorldData worldData = result.getWorldData();
 
-                                // Create fresh World instance with correct seed for complete isolation
-                                World newWorld = createFreshWorldInstance(worldData.getSeed());
+                                // Create fresh World instance with correct seed and generator type for complete isolation
+                                String generatorType = worldData.getGeneratorType();
+                                World newWorld = createFreshWorldInstance(worldData.getSeed(), generatorType);
                                 replaceWorldInstance(newWorld);
-                                System.out.println("[WORLD-ISOLATION] Created fresh World instance for loading with seed: " + worldData.getSeed());
+                                System.out.println("[WORLD-ISOLATION] Created fresh World instance for loading with seed: " + worldData.getSeed() + ", generator: " + generatorType);
 
                                 // Apply spawn position to the new world
                                 if (worldData.getSpawnPosition() != null) {

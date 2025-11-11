@@ -4,6 +4,7 @@ import com.stonebreak.ui.terrainmapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainmapper.managers.TerrainStateManager;
 import com.stonebreak.ui.terrainmapper.renderers.TerrainFooterRenderer;
 import com.stonebreak.ui.terrainmapper.renderers.TerrainSidebarRenderer;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import static org.lwjgl.glfw.GLFW.*;
 
@@ -106,10 +107,19 @@ public class TerrainMouseHandler {
             return;
         }
 
-        // Check if clicking on visualization mode selector
+        // Check if clicking on generator type selector
         int fieldY = TerrainMapperConfig.TITLE_HEIGHT + TerrainMapperConfig.PADDING;
-        int selectorY = fieldY + (TerrainMapperConfig.INPUT_FIELD_HEIGHT + TerrainMapperConfig.COMPONENT_SPACING) * 2 + 30;
-        TerrainStateManager.VisualizationMode clickedMode = sidebarRenderer.getClickedMode(mouseX, mouseY, selectorY);
+        int generatorSelectorY = fieldY + (TerrainMapperConfig.INPUT_FIELD_HEIGHT + TerrainMapperConfig.COMPONENT_SPACING) * 2 + 30;
+        TerrainGeneratorType clickedGeneratorType = sidebarRenderer.getClickedGeneratorType(mouseX, mouseY, generatorSelectorY);
+        if (clickedGeneratorType != null) {
+            stateManager.setSelectedGeneratorType(clickedGeneratorType);
+            System.out.println("Selected generator type: " + clickedGeneratorType.getDisplayName());
+            return;
+        }
+
+        // Check if clicking on visualization mode selector
+        int visualizationSelectorY = generatorSelectorY + (TerrainGeneratorType.values().length * 28) + 40;
+        TerrainStateManager.VisualizationMode clickedMode = sidebarRenderer.getClickedMode(mouseX, mouseY, visualizationSelectorY);
         if (clickedMode != null) {
             stateManager.setSelectedVisualizationMode(clickedMode);
             // If visualization is active, invalidate cache to trigger re-render with new mode

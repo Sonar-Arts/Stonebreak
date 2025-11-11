@@ -86,10 +86,11 @@ public class TerrainActionHandler {
         try {
             System.out.println("Creating new world: " + worldName + " with seed: " + seed);
 
-            // Create world data
+            // Create world data with selected generator type
             WorldData worldData = WorldData.builder()
                 .worldName(worldName)
                 .seed(seed)
+                .generatorType(stateManager.getSelectedGeneratorType().name())
                 .spawnPosition(new Vector3f(0, 100, 0))
                 .createdTime(LocalDateTime.now())
                 .lastPlayed(LocalDateTime.now())

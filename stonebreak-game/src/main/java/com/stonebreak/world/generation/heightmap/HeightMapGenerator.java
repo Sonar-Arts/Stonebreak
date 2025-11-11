@@ -5,6 +5,7 @@ import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
+import com.stonebreak.world.generation.debug.HeightCalculationDebugInfo;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -411,5 +412,98 @@ public class HeightMapGenerator implements IHeightMapGenerator {
     @Override
     public long getSeed() {
         return seed;
+    }
+
+    /**
+     * Gets comprehensive height calculation debug information for F3 visualization.
+     * Replicates the generation logic but captures all intermediate values.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @param params Multi-noise parameters at this position
+     * @return Debug information with all calculation steps
+     */
+    public HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z, MultiNoiseParameters params) {
+        // Step 1: Base height from continentalness
+        double baseHeight = terrainSpline.interpolate(params.continentalness);
+
+        // Step 2: Detect terrain hint
+        TerrainHint hint = TerrainHintClassifier.classifyTerrain(params);
+
+        // Step 3: Calculate intermediate values based on terrain hint
+        // For NORMAL terrain, we can capture exact erosion/PV/weirdness steps
+        // For other hints, we approximate the steps since they have custom logic
+        double heightAfterHint = baseHeight;  // After hint-specific initial processing
+        double erosionFactor = 1.0f - (params.erosion * 0.45f);  // Default erosion factor
+        double heightAfterErosion;
+        double pvAmplification;
+        double heightAfterPV;
+        double weirdnessTerracing;
+        double heightAfterWeirdness;
+        double finalHeight;
+
+        if (hint == TerrainHint.NORMAL) {
+            // For NORMAL terrain, we can trace exact steps
+            int baseHeightInt = (int) baseHeight;
+            heightAfterHint = baseHeightInt;
+
+            // Apply erosion
+            int heightAfterErosionInt = applyErosionFactor(baseHeightInt, params.erosion);
+            heightAfterErosion = heightAfterErosionInt;
+            erosionFactor = 1.0f - (params.erosion * 0.45f);
+
+            // Calculate PV amplification
+            int heightAfterPVInt = applyPeaksValleys(heightAfterErosionInt, params.peaksValleys);
+            heightAfterPV = heightAfterPVInt;
+            pvAmplification = heightAfterPV - heightAfterErosion;
+
+            // Apply weirdness
+            int heightAfterWeirdnessInt = (Math.abs(params.weirdness) > 0.5f) ?
+                applyWeirdnessTerrain(heightAfterPVInt, params.weirdness) : heightAfterPVInt;
+            heightAfterWeirdness = heightAfterWeirdnessInt;
+            weirdnessTerracing = heightAfterWeirdness - heightAfterPV;
+
+            finalHeight = Math.max(1, Math.min(heightAfterWeirdnessInt, WORLD_HEIGHT - 1));
+        } else {
+            // For other hints, approximate the steps (custom logic inside hint methods)
+            int heightInt = generateHeight(x, z, params);
+            finalHeight = heightInt;
+
+            // Approximate intermediate values for visualization
+            int deltaFromSeaLevel = (int)baseHeight - seaLevel;
+            heightAfterHint = baseHeight;
+
+            // Estimate erosion step based on hint type
+            if (hint == TerrainHint.MESA) {
+                erosionFactor = 1.0f - (params.erosion * 0.3f);
+            } else if (hint == TerrainHint.SHARP_PEAKS) {
+                erosionFactor = 1.0f - (params.erosion * 0.65f);
+            } else if (hint == TerrainHint.GENTLE_HILLS) {
+                erosionFactor = 1.0f - (params.erosion * 0.6f);
+            } else if (hint == TerrainHint.FLAT_PLAINS) {
+                erosionFactor = 1.0f - (params.erosion * 0.7f);
+            }
+
+            heightAfterErosion = seaLevel + (deltaFromSeaLevel * erosionFactor);
+
+            // Estimate PV and weirdness (these are approximations)
+            heightAfterPV = heightAfterErosion + ((finalHeight - heightAfterErosion) * 0.7);  // 70% from PV
+            pvAmplification = heightAfterPV - heightAfterErosion;
+            heightAfterWeirdness = finalHeight;  // Weirdness applied at end
+            weirdnessTerracing = heightAfterWeirdness - heightAfterPV;
+        }
+
+        return new HeightCalculationDebugInfo.LegacyDebugInfo(
+            baseHeight,
+            hint,
+            heightAfterHint,
+            erosionFactor,
+            heightAfterErosion,
+            pvAmplification,
+            heightAfterPV,
+            weirdnessTerracing,
+            heightAfterWeirdness,
+            finalHeight
+        );
     }
 }

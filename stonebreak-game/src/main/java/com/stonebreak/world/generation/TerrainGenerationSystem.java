@@ -47,7 +47,7 @@ public class TerrainGenerationSystem {
     public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
 
     // Subsystem generators
-    private final HeightMapGenerator heightMapGenerator;
+    private final TerrainGenerator terrainGenerator;
     private final BiomeManager biomeManager;
     private final BiomeTerrainModifierRegistry modifierRegistry;  // Phase 2: Biome-specific modifiers
     private final CaveNoiseGenerator caveGenerator;  // Ridged noise-based cave system
@@ -70,44 +70,47 @@ public class TerrainGenerationSystem {
      * Creates a new terrain generation system with the given seed.
      * Initializes all subsystem generators with default configuration.
      * Uses null progress reporter (no progress updates).
+     * Defaults to LEGACY generator for backwards compatibility.
      *
      * @param seed World seed for deterministic generation
      */
     public TerrainGenerationSystem(long seed) {
-        this(seed, TerrainGenerationConfig.defaultConfig(), LoadingProgressReporter.NULL);
+        this(seed, TerrainGenerationConfig.defaultConfig(), "LEGACY", LoadingProgressReporter.NULL);
     }
 
     /**
      * Creates a new terrain generation system with the given seed and configuration.
      * Initializes all subsystem generators with the provided configuration.
      * Uses null progress reporter (no progress updates).
+     * Defaults to LEGACY generator for backwards compatibility.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
      */
     public TerrainGenerationSystem(long seed, TerrainGenerationConfig config) {
-        this(seed, config, LoadingProgressReporter.NULL);
+        this(seed, config, "LEGACY", LoadingProgressReporter.NULL);
     }
 
     /**
-     * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
+     * Creates a new terrain generation system with the given seed, configuration, generator type, and progress reporter.
      * Initializes all subsystem generators with the provided configuration.
      *
      * Multi-Noise System: Terrain and biomes generate independently using shared parameters.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
+     * @param generatorType Terrain generator type (e.g., "LEGACY", "SPLINE")
      * @param progressReporter Progress reporter for loading screen updates
      */
-    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, LoadingProgressReporter progressReporter) {
+    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, String generatorType, LoadingProgressReporter progressReporter) {
         this.seed = seed;
         this.animalRandom = new Random(); // Use current time for truly random animal spawning
         this.deterministicRandom = new DeterministicRandom(seed);
         this.progressReporter = progressReporter;
 
         // Initialize specialized generators with injected configuration
-        // Multi-Noise System: HeightMapGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
-        this.heightMapGenerator = new HeightMapGenerator(seed, config);
+        // Multi-Noise System: TerrainGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
+        this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
@@ -122,6 +125,21 @@ public class TerrainGenerationSystem {
     }
 
     /**
+     * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
+     * Initializes all subsystem generators with the provided configuration.
+     * Defaults to LEGACY generator for backwards compatibility.
+     *
+     * Multi-Noise System: Terrain and biomes generate independently using shared parameters.
+     *
+     * @param seed World seed for deterministic generation
+     * @param config Terrain generation configuration
+     * @param progressReporter Progress reporter for loading screen updates
+     */
+    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, LoadingProgressReporter progressReporter) {
+        this(seed, config, "LEGACY", progressReporter);
+    }
+
+    /**
      * Gets the biome manager for biome queries.
      * Consumers can directly query biomes, temperature, and moisture.
      *
@@ -132,13 +150,29 @@ public class TerrainGenerationSystem {
     }
 
     /**
-     * Gets the height map generator for height queries.
+     * Gets the terrain generator for height queries.
      * Consumers can directly query terrain height.
      *
-     * @return The height map generator
+     * @return The terrain generator
      */
+    public TerrainGenerator getTerrainGenerator() {
+        return terrainGenerator;
+    }
+
+    /**
+     * Gets the height map generator for height queries (legacy compatibility).
+     * This method is deprecated and will only work if using the LEGACY generator.
+     *
+     * @return The height map generator (only available with LEGACY generator)
+     * @deprecated Use {@link #getTerrainGenerator()} instead
+     * @throws UnsupportedOperationException if not using LEGACY generator
+     */
+    @Deprecated
     public HeightMapGenerator getHeightMapGenerator() {
-        return heightMapGenerator;
+        if (terrainGenerator instanceof com.stonebreak.world.generation.legacy.LegacyTerrainGenerator legacy) {
+            return legacy.getHeightMapGenerator();
+        }
+        throw new UnsupportedOperationException("HeightMapGenerator is only available with LEGACY terrain generator");
     }
 
     /**
@@ -197,12 +231,11 @@ public class TerrainGenerationSystem {
                 // STEP 1: Sample all 6 parameters at this position (sea level for initial sampling)
                 MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(worldX, worldZ, SEA_LEVEL);
 
-                // STEP 2: PASS 1 - Generate base terrain height with terrain hints
-                // Terrain hints detect parameter patterns (mesa, peaks, hills, plains)
-                // and apply appropriate terrain generation logic BEFORE biome selection
-                // Continentalness → base height
-                // Terrain hint → mesa terracing, peak sharpening, hill flattening, etc.
-                int baseHeight = heightMapGenerator.generateHeight(worldX, worldZ, params);
+                // STEP 2: PASS 1 - Generate base terrain height
+                // LEGACY: Uses terrain hints (mesa, peaks, hills, plains)
+                // SPLINE: Uses unified multi-parameter spline interpolation
+                // Terrain generation happens BEFORE biome selection
+                int baseHeight = terrainGenerator.generateHeight(worldX, worldZ, params);
 
                 // STEP 3: Select biome using parameters with altitude-adjusted temperature
                 // Re-sample with actual height for accurate temperature
@@ -452,7 +485,8 @@ public class TerrainGenerationSystem {
      * @return Continentalness value in range [-1.0, 1.0]
      */
     public float getContinentalnessAt(int x, int z) {
-        return heightMapGenerator.getContinentalness(x, z);
+        // Get continentalness from NoiseRouter (works for all generator types)
+        return biomeManager.getNoiseRouter().getContinentalness(x, z);
     }
 
     /**
@@ -505,13 +539,18 @@ public class TerrainGenerationSystem {
     /**
      * Gets the base terrain height from continentalness only.
      * This is before erosion, PV, and weirdness are applied.
+     * Note: This method's behavior depends on the terrain generator type.
      *
      * @param x World X coordinate
      * @param z World Z coordinate
      * @return Base terrain height (clamped to world bounds)
      */
     public int getBaseHeightBeforeErosion(int x, int z) {
-        return heightMapGenerator.generateHeight(x, z);
+        // Sample parameters at sea level and generate height
+        // For LEGACY generator, this will use just continentalness (hint will be NORMAL)
+        // For SPLINE generator, this will use all parameters
+        MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(x, z, SEA_LEVEL);
+        return terrainGenerator.generateHeight(x, z, params);
     }
 
     /**
@@ -523,8 +562,57 @@ public class TerrainGenerationSystem {
      * @return Final terrain height used in generation
      */
     public int getFinalTerrainHeight(int x, int z) {
-        // Sample parameters and generate height using multi-noise system
+        // Sample parameters and generate height using terrain generator
         MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(x, z, SEA_LEVEL);
-        return heightMapGenerator.generateHeight(x, z, params);
+        return terrainGenerator.generateHeight(x, z, params);
+    }
+
+    /**
+     * Gets the peaks & valleys noise value at the specified world position.
+     * This parameter amplifies height extremes for dramatic terrain features.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Peaks & valleys value in range [-1.0, 1.0]
+     */
+    public float getPeaksValleysAt(int x, int z) {
+        return biomeManager.getNoiseRouter().getPeaksValleys(x, z);
+    }
+
+    /**
+     * Gets the weirdness noise value at the specified world position.
+     * This parameter creates plateaus and mesas with terracing effects.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Weirdness value in range [-1.0, 1.0]
+     */
+    public float getWeirdnessAt(int x, int z) {
+        return biomeManager.getNoiseRouter().getWeirdness(x, z);
+    }
+
+    /**
+     * Gets the terrain generator type used by this world.
+     *
+     * @return The terrain generator type
+     */
+    public TerrainGeneratorType getGeneratorType() {
+        return terrainGenerator.getType();
+    }
+
+    /**
+     * Gets comprehensive height calculation debug information at the specified position.
+     * Returns generator-specific debug data for F3 visualization.
+     *
+     * @param x World X coordinate
+     * @param z World Z coordinate
+     * @return Height calculation debug info (generator-specific)
+     */
+    public com.stonebreak.world.generation.debug.HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z) {
+        // Sample parameters at sea level
+        MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(x, z, SEA_LEVEL);
+
+        // Delegate to terrain generator to collect debug info
+        return terrainGenerator.getHeightCalculationDebugInfo(x, z, params);
     }
 }

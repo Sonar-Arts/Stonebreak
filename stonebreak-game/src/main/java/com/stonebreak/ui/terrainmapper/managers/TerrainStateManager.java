@@ -1,6 +1,7 @@
 package com.stonebreak.ui.terrainmapper.managers;
 
 import com.stonebreak.ui.TextInputField;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 /**
  * Manages the state for the Terrain Mapper screen.
@@ -32,6 +33,9 @@ public class TerrainStateManager {
     // Visualization state
     private VisualizationMode selectedVisualizationMode;
     private boolean visualizationActive;
+
+    // Terrain generator selection
+    private TerrainGeneratorType selectedGeneratorType;
 
     public enum ActiveField {
         WORLD_NAME,
@@ -85,6 +89,9 @@ public class TerrainStateManager {
         // Initialize visualization state
         this.selectedVisualizationMode = VisualizationMode.TERRAIN_HEIGHT;
         this.visualizationActive = false;
+
+        // Initialize generator type (default to LEGACY for safety)
+        this.selectedGeneratorType = TerrainGeneratorType.LEGACY;
     }
 
     /**
@@ -108,6 +115,8 @@ public class TerrainStateManager {
 
         selectedVisualizationMode = VisualizationMode.TERRAIN_HEIGHT;
         visualizationActive = false;
+
+        selectedGeneratorType = TerrainGeneratorType.LEGACY;
     }
 
     // Getters and setters for text input fields
@@ -234,5 +243,14 @@ public class TerrainStateManager {
 
     public void setVisualizationActive(boolean active) {
         this.visualizationActive = active;
+    }
+
+    // Getters and setters for terrain generator selection
+    public TerrainGeneratorType getSelectedGeneratorType() {
+        return selectedGeneratorType;
+    }
+
+    public void setSelectedGeneratorType(TerrainGeneratorType generatorType) {
+        this.selectedGeneratorType = generatorType;
     }
 }

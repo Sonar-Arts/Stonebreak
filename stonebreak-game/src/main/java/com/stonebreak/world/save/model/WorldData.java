@@ -20,6 +20,7 @@ public final class WorldData {
     private final long totalPlayTimeMillis;
     private final long worldTimeTicks;
     private final int formatVersion;
+    private final String generatorType;
 
     @JsonCreator
     private WorldData(
@@ -30,7 +31,8 @@ public final class WorldData {
             @JsonProperty("lastPlayed") LocalDateTime lastPlayed,
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
             @JsonProperty("worldTimeTicks") long worldTimeTicks,
-            @JsonProperty("formatVersion") int formatVersion) {
+            @JsonProperty("formatVersion") int formatVersion,
+            @JsonProperty("generatorType") String generatorType) {
         this.seed = seed;
         this.worldName = worldName;
         this.spawnPosition = new Vector3f(spawnPosition);
@@ -39,12 +41,14 @@ public final class WorldData {
         this.totalPlayTimeMillis = totalPlayTimeMillis;
         this.worldTimeTicks = worldTimeTicks;
         this.formatVersion = formatVersion;
+        // Default to LEGACY for backwards compatibility with existing worlds
+        this.generatorType = (generatorType != null && !generatorType.isEmpty()) ? generatorType : "LEGACY";
     }
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
              builder.createdTime, builder.lastPlayed, builder.totalPlayTimeMillis,
-             builder.worldTimeTicks, builder.formatVersion);
+             builder.worldTimeTicks, builder.formatVersion, builder.generatorType);
     }
 
     // Getters
@@ -56,6 +60,7 @@ public final class WorldData {
     public long getTotalPlayTimeMillis() { return totalPlayTimeMillis; }
     public long getWorldTimeTicks() { return worldTimeTicks; }
     public int getFormatVersion() { return formatVersion; }
+    public String getGeneratorType() { return generatorType; }
 
     /**
      * Creates a new WorldData with updated last played time.
@@ -98,6 +103,7 @@ public final class WorldData {
         private long totalPlayTimeMillis = 0;
         private long worldTimeTicks = 6000; // Default to NOON
         private int formatVersion = 1;
+        private String generatorType = "LEGACY"; // Default to LEGACY for backwards compatibility
 
         public Builder() {}
 
@@ -110,6 +116,7 @@ public final class WorldData {
             this.totalPlayTimeMillis = data.totalPlayTimeMillis;
             this.worldTimeTicks = data.worldTimeTicks;
             this.formatVersion = data.formatVersion;
+            this.generatorType = data.generatorType;
         }
 
         public Builder seed(long seed) {
@@ -149,6 +156,11 @@ public final class WorldData {
 
         public Builder formatVersion(int formatVersion) {
             this.formatVersion = formatVersion;
+            return this;
+        }
+
+        public Builder generatorType(String generatorType) {
+            this.generatorType = generatorType;
             return this;
         }
 

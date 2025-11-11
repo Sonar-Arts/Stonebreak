@@ -50,7 +50,18 @@ public class World {
     }
 
     public World(WorldConfiguration config, long seed) {
-        this(config, seed, false);
+        this(config, seed, "LEGACY", false);
+    }
+
+    /**
+     * Constructor with explicit terrain generator type.
+     *
+     * @param config World configuration
+     * @param seed World generation seed
+     * @param generatorType Terrain generator type (e.g., "LEGACY", "SPLINE")
+     */
+    public World(WorldConfiguration config, long seed, String generatorType) {
+        this(config, seed, generatorType, false);
     }
 
     /**
@@ -63,9 +74,22 @@ public class World {
      * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
+        this(config, seed, "LEGACY", testMode);
+    }
+
+    /**
+     * Protected constructor with explicit terrain generator type for testing.
+     * WARNING: Only use this for unit tests that don't require rendering!
+     *
+     * @param config World configuration
+     * @param seed World generation seed
+     * @param generatorType Terrain generator type (e.g., "LEGACY", "SPLINE")
+     * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
+     */
+    protected World(WorldConfiguration config, long seed, String generatorType, boolean testMode) {
         this.config = config;
 
-        this.terrainSystem = new TerrainGenerationSystem(seed);
+        this.terrainSystem = new TerrainGenerationSystem(seed, com.stonebreak.world.generation.config.TerrainGenerationConfig.defaultConfig(), generatorType, com.stonebreak.world.generation.LoadingProgressReporter.NULL);
         this.snowLayerManager = new SnowLayerManager();
 
         // Initialize modular components
@@ -362,6 +386,37 @@ public class World {
      */
     public int getFinalTerrainHeight(int x, int z) {
         return terrainSystem.getFinalTerrainHeight(x, z);
+    }
+
+    /**
+     * Gets the peaks & valleys noise value at the specified world position.
+     * This parameter amplifies height extremes for dramatic terrain features.
+     */
+    public float getPeaksValleysAt(int x, int z) {
+        return terrainSystem.getPeaksValleysAt(x, z);
+    }
+
+    /**
+     * Gets the weirdness noise value at the specified world position.
+     * This parameter creates plateaus and mesas with terracing effects.
+     */
+    public float getWeirdnessAt(int x, int z) {
+        return terrainSystem.getWeirdnessAt(x, z);
+    }
+
+    /**
+     * Gets the terrain generator type used by this world.
+     */
+    public com.stonebreak.world.generation.TerrainGeneratorType getGeneratorType() {
+        return terrainSystem.getGeneratorType();
+    }
+
+    /**
+     * Gets comprehensive height calculation debug information at the specified position.
+     * Returns generator-specific debug data for F3 visualization.
+     */
+    public com.stonebreak.world.generation.debug.HeightCalculationDebugInfo getHeightCalculationDebugInfo(int x, int z) {
+        return terrainSystem.getHeightCalculationDebugInfo(x, z);
     }
 
     /**
