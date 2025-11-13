@@ -1,4 +1,4 @@
-package com.openmason.model;
+package com.openmason.deprecated;
 
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;

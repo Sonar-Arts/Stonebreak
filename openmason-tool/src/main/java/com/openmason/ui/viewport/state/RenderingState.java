@@ -1,6 +1,6 @@
 package com.openmason.ui.viewport.state;
 
-import com.openmason.model.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;

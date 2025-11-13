@@ -1,26 +1,43 @@
-package com.openmason.coordinates;
+package com.openmason.deprecated;
 
+import com.openmason.coordinates.AtlasCoordinateSystem;
+import com.openmason.coordinates.ModelCoordinateSystem;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 import com.stonebreak.textures.mobs.CowTextureLoader;
 import com.stonebreak.model.ModelDefinition;
-import org.joml.Vector3f;
 
 /**
- * Coordinate System Integration - Phase 7 Open Mason Implementation
- * 
- * Provides seamless integration between the new coordinate systems and existing
- * Open Mason texture/model management systems. This class bridges the gap between
- * the mathematical coordinate systems and the practical rendering pipeline.
- * 
- * Integration Features:
- * - Atlas coordinate integration with StonebreakTextureAtlas
- * - Model coordinate integration with ModelDefinition
- * - Texture coordinate generation for model parts
- * - Validation of coordinate system compatibility
- * - Performance optimization through caching
- * - Error handling and fallback mechanisms
+ * Coordinate System Integration for Cow Models - Phase 7 Open Mason Implementation
+ *
+ * <p>Provides seamless integration between the coordinate systems and cow model/texture
+ * management systems. This class bridges the gap between the mathematical coordinate
+ * systems and the cow model rendering pipeline.</p>
+ *
+ * <p><b>Scope:</b> This class is specifically designed for cow models and uses
+ * {@link com.stonebreak.textures.mobs.CowTextureDefinition} and
+ * {@link com.stonebreak.textures.mobs.CowTextureLoader} exclusively. It includes
+ * hardcoded cow part mappings (head, body, legs, horns, udder, tail) and cannot
+ * be used for other mob types.</p>
+ *
+ * <p><b>Integration Features:</b></p>
+ * <ul>
+ *   <li>Atlas coordinate integration with cow texture atlas</li>
+ *   <li>Model coordinate integration with cow model definitions</li>
+ *   <li>Texture coordinate generation for cow model parts</li>
+ *   <li>Validation of coordinate system compatibility for cows</li>
+ *   <li>Performance optimization through caching</li>
+ *   <li>Error handling and fallback mechanisms</li>
+ * </ul>
+ *
+ * @deprecated This cow-specific coordinate integration is deprecated due to its narrow scope.
+ *             It only works with cow models and textures (CowTextureDefinition, CowTextureLoader)
+ *             and has hardcoded cow part mappings. A general-purpose coordinate integration system
+ *             that can handle multiple mob types should be implemented instead. Use the general
+ *             {@link AtlasCoordinateSystem} and {@link ModelCoordinateSystem} classes directly
+ *             until a replacement is available.
  */
-public class CoordinateSystemIntegration {
+@Deprecated
+public class LegacyCowCoordinateSystemIntegration {
     
     // Cache for texture coordinate lookups
     private static final java.util.Map<String, float[]> textureCoordinateCache =

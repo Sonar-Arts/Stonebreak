@@ -1,6 +1,6 @@
 package com.openmason.ui;
 
-import com.openmason.model.LegacyCowModelManager;
+import com.openmason.deprecated.LegacyCowModelManager;
 import com.openmason.ui.components.modelBrowser.ModelBrowserController;
 import com.openmason.ui.components.modelBrowser.ModelBrowserImGui;
 import com.openmason.ui.components.modelBrowser.events.*;

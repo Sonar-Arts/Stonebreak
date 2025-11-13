@@ -1,8 +1,8 @@
 package com.openmason.validation;
 
-import com.openmason.model.LegacyCowModelManager;
+import com.openmason.deprecated.LegacyCowModelManager;
 import com.openmason.rendering.ModelRenderer;
-import com.openmason.model.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;
 

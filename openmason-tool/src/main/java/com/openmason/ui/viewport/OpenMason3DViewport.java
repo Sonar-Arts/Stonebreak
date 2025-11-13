@@ -2,7 +2,7 @@ package com.openmason.ui.viewport;
 
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
-import com.openmason.model.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.model.AsyncModelLoader;

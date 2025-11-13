@@ -1,7 +1,8 @@
 package com.openmason.rendering;
 
-import com.openmason.model.LegacyCowModelManager;
-import com.openmason.model.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowCoordinateSystemIntegration;
+import com.openmason.deprecated.LegacyCowModelManager;
+import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 
@@ -184,8 +185,8 @@ public class ModelRenderer implements AutoCloseable {
         
         try {
             // Use coordinate system integration to get properly transformed vertices for Stonebreak compatibility
-            com.openmason.coordinates.CoordinateSystemIntegration.IntegratedPartData integratedData = 
-                com.openmason.coordinates.CoordinateSystemIntegration.generateIntegratedPartData(
+            LegacyCowCoordinateSystemIntegration.IntegratedPartData integratedData =
+                LegacyCowCoordinateSystemIntegration.generateIntegratedPartData(
                     bodyPart, variantName, true);
             
             float[] vertices;

@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport.model;
 
-import com.openmason.model.LegacyCowModelManager;
-import com.openmason.model.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowModelManager;
+import com.openmason.deprecated.LegacyCowStonebreakModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

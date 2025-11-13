@@ -1,6 +1,6 @@
 package com.openmason.ui.viewport.ui;
 
-import com.openmason.model.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.openmason.rendering.ModelRenderer;
 import imgui.ImGui;
 import org.slf4j.Logger;

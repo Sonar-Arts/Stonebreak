@@ -1,6 +1,6 @@
 package com.openmason.ui.services;
 
-import com.openmason.model.LegacyCowModelManager;
+import com.openmason.deprecated.LegacyCowModelManager;
 import com.openmason.ui.state.ModelState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
