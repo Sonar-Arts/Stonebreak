@@ -210,20 +210,20 @@ public class OpenMasonApp {
 
     /**
      * Load JetBrains Mono fonts (Regular, Bold, Medium).
+     * Fails fast if fonts are not found - no fallback to defaults.
      */
     private void loadFonts(ImGuiIO io) {
-        try {
-            String[] fontVariants = {"JetBrainsMono-Regular.ttf", "JetBrainsMono-Bold.ttf", "JetBrainsMono-Medium.ttf"};
-            for (String fontFile : fontVariants) {
-                File font = new File(FONT_PATH + fontFile);
-                if (font.exists()) {
-                    io.getFonts().addFontFromFileTTF(font.getPath(), FONT_SIZE);
-                }
+        String[] fontVariants = {"JetBrainsMono-Regular.ttf", "JetBrainsMono-Bold.ttf", "JetBrainsMono-Medium.ttf"};
+
+        for (String fontFile : fontVariants) {
+            File font = new File(FONT_PATH + fontFile);
+            if (!font.exists()) {
+                throw new IllegalStateException("Required font not found: " + font.getAbsolutePath());
             }
-            io.getFonts().build();
-        } catch (Exception e) {
-            logger.warn("Failed to load custom fonts, using ImGui defaults", e);
+            io.getFonts().addFontFromFileTTF(font.getPath(), FONT_SIZE);
         }
+
+        io.getFonts().build();
     }
     
     /**
