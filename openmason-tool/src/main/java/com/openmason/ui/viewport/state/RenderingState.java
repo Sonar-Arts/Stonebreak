@@ -1,6 +1,6 @@
 package com.openmason.ui.viewport.state;
 
-import com.openmason.model.StonebreakModel;
+import com.openmason.model.LegacyCowStonebreakModel;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -20,7 +20,7 @@ public class RenderingState {
     // Model state
     private String currentModelName = null;
     private String currentTextureVariant = "default";
-    private StonebreakModel currentModel = null;
+    private LegacyCowStonebreakModel currentModel = null;
 
     // Block state
     private BlockType selectedBlock = null;
@@ -38,7 +38,7 @@ public class RenderingState {
     /**
      * Switch to model rendering mode.
      */
-    public void setModelMode(String modelName, StonebreakModel model) {
+    public void setModelMode(String modelName, LegacyCowStonebreakModel model) {
         this.mode = RenderingMode.MODEL;
         this.currentModelName = modelName;
         this.currentModel = model;
@@ -92,7 +92,7 @@ public class RenderingState {
     /**
      * Set current model (without switching mode).
      */
-    public void setCurrentModel(StonebreakModel model) {
+    public void setCurrentModel(LegacyCowStonebreakModel model) {
         this.currentModel = model;
         logger.trace("Current model updated: {}", model != null ? "loaded" : "null");
     }
@@ -122,7 +122,7 @@ public class RenderingState {
     public boolean isModelRenderingEnabled() { return modelRenderingEnabled; }
     public String getCurrentModelName() { return currentModelName; }
     public String getCurrentTextureVariant() { return currentTextureVariant; }
-    public StonebreakModel getCurrentModel() { return currentModel; }
+    public LegacyCowStonebreakModel getCurrentModel() { return currentModel; }
     public BlockType getSelectedBlock() { return selectedBlock; }
     public ItemType getSelectedItem() { return selectedItem; }
 

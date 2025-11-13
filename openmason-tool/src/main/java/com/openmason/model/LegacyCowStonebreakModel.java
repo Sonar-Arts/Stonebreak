@@ -4,7 +4,6 @@ import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 import com.stonebreak.textures.mobs.CowTextureLoader;
-import com.openmason.model.ModelManager;
 
 import java.util.List;
 import java.util.Map;
@@ -15,18 +14,30 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
- * Integration bridge between Stonebreak game data and Open Mason UI.
- * Combines model definition and texture data into a unified interface
- * for the voxel game engine and development toolset.
+ * Integration bridge between Stonebreak cow model data and Open Mason UI.
+ *
+ * <p>This class specifically handles cow mob models, combining {@link ModelDefinition.CowModelDefinition}
+ * and {@link com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant} into a unified interface
+ * for the Open Mason development toolset.</p>
+ *
+ * <p><b>Scope:</b> This class only works with cow models (standard_cow, standard_cow_baked, etc.)
+ * and cannot be used for other mob types without significant refactoring.</p>
+ *
+ * @deprecated This cow-specific model wrapper is deprecated due to its overly narrow scope.
+ *             It only handles cow models and their textures. A general-purpose model wrapper
+ *             that can handle multiple mob types should be implemented instead. Direct use of
+ *             {@link com.stonebreak.model.ModelLoader} and texture loaders is recommended until
+ *             a replacement is available.
  */
-public class StonebreakModel {
+@Deprecated
+public class LegacyCowStonebreakModel {
     private final ModelDefinition.CowModelDefinition modelDefinition;
     private final CowTextureDefinition.CowVariant textureDefinition;
     private final String variantName;
 
-    public StonebreakModel(ModelDefinition.CowModelDefinition modelDefinition, 
-                          CowTextureDefinition.CowVariant textureDefinition,
-                          String variantName) {
+    public LegacyCowStonebreakModel(ModelDefinition.CowModelDefinition modelDefinition,
+                                    CowTextureDefinition.CowVariant textureDefinition,
+                                    String variantName) {
         this.modelDefinition = modelDefinition;
         this.textureDefinition = textureDefinition;
         this.variantName = variantName;
@@ -35,7 +46,7 @@ public class StonebreakModel {
     /**
      * Constructor for ModelManager integration (with default texture).
      */
-    public StonebreakModel(ModelManager.ModelInfo modelInfo, ModelDefinition.ModelPart[] parts) {
+    public LegacyCowStonebreakModel(LegacyCowModelManager.ModelInfo modelInfo, ModelDefinition.ModelPart[] parts) {
         this.modelDefinition = modelInfo.getModelDefinition();
         this.textureDefinition = getDefaultTextureVariant();
         this.variantName = "default";
@@ -74,7 +85,7 @@ public class StonebreakModel {
      * Factory method to create a StonebreakModel from resource files.
      * Automatically maps model names to their baked variants for proper positioning.
      */
-    public static StonebreakModel loadFromResources(String modelPath, String texturePath, String variantName) {
+    public static LegacyCowStonebreakModel loadFromResources(String modelPath, String texturePath, String variantName) {
         try {
             // Map to baked model variant if needed for proper positioning
             String actualModelName = mapModelName(modelPath);
@@ -86,7 +97,7 @@ public class StonebreakModel {
             ModelDefinition.CowModelDefinition model = ModelLoader.getCowModel(actualModelName);
             CowTextureDefinition.CowVariant texture = CowTextureLoader.getCowVariant(variantName);
             
-            return new StonebreakModel(model, texture, variantName);
+            return new LegacyCowStonebreakModel(model, texture, variantName);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load Stonebreak model: " + variantName, e);
         }
@@ -523,15 +534,10 @@ public class StonebreakModel {
             this.minZ = pos.getZ() - depth / 2.0f;
         }
         
-        public float getMinX() { return minX; }
-        public float getMinY() { return minY; }
-        public float getMinZ() { return minZ; }
+
         public float getWidth() { return width; }
         public float getHeight() { return height; }
         public float getDepth() { return depth; }
-        
-        public float getMaxX() { return minX + width; }
-        public float getMaxY() { return minY + height; }
-        public float getMaxZ() { return minZ + depth; }
+
     }
 }

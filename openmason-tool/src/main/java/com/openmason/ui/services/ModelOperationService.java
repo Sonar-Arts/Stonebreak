@@ -1,6 +1,6 @@
 package com.openmason.ui.services;
 
-import com.openmason.model.ModelManager;
+import com.openmason.model.LegacyCowModelManager;
 import com.openmason.ui.state.ModelState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,12 +16,12 @@ public class ModelOperationService {
 
     private final ModelState modelState;
     private final StatusService statusService;
-    private final ModelManager modelManager;
+    private final LegacyCowModelManager legacyCowModelManager;
 
-    public ModelOperationService(ModelState modelState, StatusService statusService, ModelManager modelManager) {
+    public ModelOperationService(ModelState modelState, StatusService statusService, LegacyCowModelManager legacyCowModelManager) {
         this.modelState = modelState;
         this.statusService = statusService;
-        this.modelManager = modelManager;
+        this.legacyCowModelManager = legacyCowModelManager;
     }
 
     /**
@@ -41,10 +41,10 @@ public class ModelOperationService {
         statusService.updateStatus("Opening model...");
 
         try {
-            if (modelManager != null) {
+            if (legacyCowModelManager != null) {
                 String modelPath = "standard_cow";
 
-                modelManager.loadModelInfoAsync(modelPath, ModelManager.LoadingPriority.NORMAL, null)
+                legacyCowModelManager.loadModelInfoAsync(modelPath, LegacyCowModelManager.LoadingPriority.NORMAL, null)
                     .thenAccept(modelInfo -> {
                         if (modelInfo != null) {
                             modelState.setModelLoaded(true);

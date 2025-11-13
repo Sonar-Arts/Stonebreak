@@ -1,6 +1,6 @@
 package com.openmason.ui.viewport.ui;
 
-import com.openmason.model.StonebreakModel;
+import com.openmason.model.LegacyCowStonebreakModel;
 import com.openmason.rendering.ModelRenderer;
 import imgui.ImGui;
 import org.slf4j.Logger;
@@ -20,7 +20,7 @@ public class ModelControlsUI {
 
     private String currentModelName;
     private String currentTextureVariant = "default";
-    private StonebreakModel currentModel;
+    private LegacyCowStonebreakModel currentModel;
     private CompletableFuture<Void> currentModelLoadingFuture;
     private ModelRenderer modelRenderer;
 
@@ -28,8 +28,8 @@ public class ModelControlsUI {
      * Update UI state references.
      */
     public void updateState(String currentModelName, String currentTextureVariant,
-                           StonebreakModel currentModel, CompletableFuture<Void> loadingFuture,
-                           ModelRenderer modelRenderer) {
+                            LegacyCowStonebreakModel currentModel, CompletableFuture<Void> loadingFuture,
+                            ModelRenderer modelRenderer) {
         this.currentModelName = currentModelName;
         this.currentTextureVariant = currentTextureVariant;
         this.currentModel = currentModel;

@@ -2,7 +2,7 @@ package com.openmason.model;
 
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;
-import java.util.Arrays;
+
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
@@ -12,19 +12,37 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.ArrayList;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Asynchronous high-level model management system for Open Mason Phase 2.
- * Provides both synchronous (legacy) and asynchronous APIs with progress reporting,
- * background loading queues, and comprehensive thread safety for UI responsiveness.
- * Wraps the Stonebreak model system with caching and validation.
+ * Asynchronous cow model management system for Open Mason.
+ *
+ * <p>This manager specifically handles cow mob models (standard_cow, standard_cow_baked, etc.)
+ * from the Stonebreak model system. It provides both synchronous (legacy) and asynchronous APIs
+ * with progress reporting, background loading queues, and comprehensive thread safety for UI
+ * responsiveness.</p>
+ *
+ * <p><b>Scope:</b> This class only manages cow models ({@link ModelDefinition.CowModelDefinition}).
+ * For other mob types or model types, a separate manager would be needed.</p>
+ *
+ * <p><b>Key Features:</b></p>
+ * <ul>
+ *   <li>Async cow model loading with priority-based queue</li>
+ *   <li>Coordinate space management for Stonebreak compatibility</li>
+ *   <li>Model caching and validation</li>
+ *   <li>Thread-safe operations with cancellation support</li>
+ * </ul>
+ *
+ * @deprecated This cow-specific model manager is deprecated due to its overly narrow scope.
+ *             It only handles cow models and cannot be extended to other mob types without significant
+ *             refactoring. Direct use of {@link com.stonebreak.model.ModelLoader} is recommended until
+ *             a replacement general-purpose model management system is implemented.
  */
-public class ModelManager {
+@Deprecated
+public class LegacyCowModelManager {
     
     private static final Map<String, ModelInfo> modelInfoCache = new ConcurrentHashMap<>();
     private static boolean initialized = false;
@@ -179,7 +197,10 @@ public class ModelManager {
     }
     
     /**
-     * Information about a loaded model.
+     * Information about a loaded cow model.
+     *
+     * <p>Contains metadata and the actual {@link ModelDefinition.CowModelDefinition} for
+     * a specific cow model variant (e.g., standard_cow, standard_cow_baked).</p>
      */
     public static class ModelInfo {
         private final String modelName;
@@ -208,10 +229,13 @@ public class ModelManager {
     }
     
     /**
-     * ASYNC: Initialize the ModelManager system asynchronously with progress reporting.
-     * 
-     * @param progressCallback Optional progress callback
-     * @return CompletableFuture that completes when initialization is done
+     * ASYNC: Initialize the cow model manager asynchronously with progress reporting.
+     *
+     * <p>Loads all available cow models from the Stonebreak model system in parallel.
+     * This should be called during application startup to pre-cache cow model data.</p>
+     *
+     * @param progressCallback Optional progress callback for tracking load progress
+     * @return CompletableFuture that completes when all cow models are initialized
      */
     public static CompletableFuture<Void> initializeAsync(ProgressCallback progressCallback) {
         if (initialized) {
@@ -313,8 +337,12 @@ public class ModelManager {
     }
     
     /**
-     * LEGACY: Initialize the ModelManager system synchronously.
-     * Preserved for backward compatibility but now uses async system internally.
+     * LEGACY: Initialize the cow model manager synchronously.
+     *
+     * <p>Preserved for backward compatibility but now uses async system internally.
+     * Blocks until all cow models are loaded.</p>
+     *
+     * @deprecated Use {@link #initializeAsync(ProgressCallback)} for better UI responsiveness
      */
     public static synchronized void initialize() {
         try {
@@ -326,15 +354,18 @@ public class ModelManager {
     }
     
     /**
-     * ASYNC: Load model information asynchronously with priority support.
-     * 
-     * @param modelName The model to load info for
-     * @param priority Loading priority
-     * @param progressCallback Optional progress callback
-     * @return CompletableFuture that resolves to ModelInfo
+     * ASYNC: Load cow model information asynchronously with priority support.
+     *
+     * <p>Loads a specific cow model variant (e.g., "standard_cow", "standard_cow_baked")
+     * from the Stonebreak model system with priority-based queue management.</p>
+     *
+     * @param modelName The cow model variant to load (e.g., "standard_cow")
+     * @param priority Loading priority in the background queue
+     * @param progressCallback Optional progress callback for tracking load progress
+     * @return CompletableFuture that resolves to cow model information
      */
-    public static CompletableFuture<ModelInfo> loadModelInfoAsync(String modelName, 
-                                                                  LoadingPriority priority, 
+    public static CompletableFuture<ModelInfo> loadModelInfoAsync(String modelName,
+                                                                  LoadingPriority priority,
                                                                   ProgressCallback progressCallback) {
         debugLog("loadModelInfoAsync", "Async load request for '" + modelName + "' with priority " + priority);
         
@@ -538,8 +569,14 @@ public class ModelManager {
     }
     
     /**
-     * LEGACY: Get information about a specific model.
-     * Now uses async system with blocking for backward compatibility.
+     * LEGACY: Get information about a specific cow model synchronously.
+     *
+     * <p>Now uses async system with blocking for backward compatibility.
+     * Prefer {@link #loadModelInfoAsync} for better performance.</p>
+     *
+     * @param modelName The cow model variant name (e.g., "standard_cow")
+     * @return ModelInfo for the cow model, or null if loading fails
+     * @deprecated Use {@link #loadModelInfoAsync(String, LoadingPriority, ProgressCallback)} instead
      */
     public static ModelInfo getModelInfo(String modelName) {
         try {
@@ -576,26 +613,36 @@ public class ModelManager {
     }
     
     /**
-     * Centralized coordinate space management for Open Mason.
-     * Ensures identical rendering behavior with Stonebreak's EntityRenderer.
+     * Centralized coordinate space management for cow models in Open Mason.
+     *
+     * <p>Ensures identical rendering behavior with Stonebreak's EntityRenderer by mapping
+     * cow model names to their coordinate-compatible variants. For example, "standard_cow"
+     * is mapped to "standard_cow_baked" which has pre-applied Y+0.2 positioning offsets.</p>
+     *
+     * <p><b>Purpose:</b> Prevents coordinate mismatches where Open Mason would render cows
+     * at different positions than Stonebreak's in-game renderer.</p>
      */
     public static class CoordinateSpaceManager {
-        
+
         /**
-         * Model variants that Stonebreak EntityRenderer uses for actual rendering.
-         * These models have pre-applied positioning offsets to match EntityRenderer behavior.
+         * Cow model variants that Stonebreak EntityRenderer uses for actual rendering.
+         * These cow models have pre-applied positioning offsets to match EntityRenderer behavior.
+         *
+         * <p>Example: standard_cow → standard_cow_baked (includes Y+0.2 offset)</p>
          */
         private static final Map<String, String> STONEBREAK_COMPATIBLE_VARIANTS = Map.of(
             "standard_cow", "standard_cow_baked"  // Uses Y+0.2 offset like EntityRenderer
-            // Add more model mappings here as needed
+            // Add more cow model variant mappings here as needed
         );
         
         /**
-         * Maps a model name to the variant that Stonebreak EntityRenderer actually uses.
-         * This ensures Open Mason renders at identical coordinates as Stonebreak.
-         * 
-         * @param requestedModel The model name requested by the user
-         * @return The actual model variant that should be loaded for coordinate compatibility
+         * Maps a cow model name to the variant that Stonebreak EntityRenderer actually uses.
+         *
+         * <p>This ensures Open Mason renders cows at identical coordinates as Stonebreak.
+         * For example, "standard_cow" maps to "standard_cow_baked".</p>
+         *
+         * @param requestedModel The cow model name requested (e.g., "standard_cow")
+         * @return The actual cow model variant that should be loaded for coordinate compatibility
          */
         public static String getStonebreakCompatibleVariant(String requestedModel) {
             String mappedVariant = STONEBREAK_COMPATIBLE_VARIANTS.get(requestedModel);
@@ -608,20 +655,20 @@ public class ModelManager {
         }
         
         /**
-         * Checks if a model has a coordinate-compatible variant.
-         * 
-         * @param modelName The model to check
-         * @return True if this model has a coordinate-compatible variant
+         * Checks if a cow model has a coordinate-compatible variant.
+         *
+         * @param modelName The cow model to check (e.g., "standard_cow")
+         * @return True if this cow model has a coordinate-compatible variant
          */
         public static boolean hasCompatibleVariant(String modelName) {
             return STONEBREAK_COMPATIBLE_VARIANTS.containsKey(modelName);
         }
         
         /**
-         * Gets the coordinate space type for a model variant.
-         * 
-         * @param modelVariant The actual model variant being used
-         * @return The coordinate space type
+         * Gets the coordinate space type for a cow model variant.
+         *
+         * @param modelVariant The actual cow model variant being used (e.g., "standard_cow_baked")
+         * @return The coordinate space type (RAW_MODEL_SPACE or STONEBREAK_COMPATIBLE)
          */
         public static CoordinateSpace getCoordinateSpace(String modelVariant) {
             // Check if this is a baked variant (has positioning offsets pre-applied)
@@ -636,11 +683,11 @@ public class ModelManager {
         }
         
         /**
-         * Validates that Open Mason and Stonebreak would render a model at identical coordinates.
-         * 
-         * @param requestedModel The model name being requested
-         * @param actualVariant The actual variant being loaded
-         * @return ValidationResult with details about coordinate compatibility
+         * Validates that Open Mason and Stonebreak would render a cow at identical coordinates.
+         *
+         * @param requestedModel The cow model name being requested (e.g., "standard_cow")
+         * @param actualVariant The actual cow variant being loaded (e.g., "standard_cow_baked")
+         * @return ValidationResult with details about cow coordinate compatibility
          */
         public static CoordinateValidationResult validateCoordinateCompatibility(
                 String requestedModel, String actualVariant) {
@@ -680,7 +727,10 @@ public class ModelManager {
     }
     
     /**
-     * Result of coordinate compatibility validation.
+     * Result of cow model coordinate compatibility validation.
+     *
+     * <p>Reports whether a requested cow model variant matches the expected Stonebreak-compatible
+     * variant, ensuring identical rendering coordinates between Open Mason and Stonebreak.</p>
      */
     public static class CoordinateValidationResult {
         private final String requestedModel;
@@ -717,7 +767,13 @@ public class ModelManager {
         }
     }
     /**
-     * Get static model parts (no animation applied).
+     * Get static cow model parts (no animation applied).
+     *
+     * <p>Retrieves all parts for a cow model in their default (non-animated) positions.
+     * Automatically uses the coordinate-compatible cow model variant for Stonebreak alignment.</p>
+     *
+     * @param modelName The cow model variant name (e.g., "standard_cow")
+     * @return Array of static cow model parts, or empty array on error
      */
     public static ModelDefinition.ModelPart[] getStaticModelParts(String modelName) {
         debugLog("getStaticModelParts", "Requesting static model parts for '" + modelName + "'");
@@ -760,9 +816,9 @@ public class ModelManager {
     }
     
     /**
-     * Check if ModelManager is currently initializing.
-     * 
-     * @return true if initialization is in progress
+     * Check if the cow model manager is currently initializing.
+     *
+     * @return true if cow model initialization is in progress
      */
     public static boolean isInitializing() {
         return initializationInProgress.get();

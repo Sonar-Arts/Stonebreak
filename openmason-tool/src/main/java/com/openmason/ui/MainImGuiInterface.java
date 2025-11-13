@@ -1,12 +1,11 @@
 package com.openmason.ui;
 
-import com.openmason.model.ModelManager;
+import com.openmason.model.LegacyCowModelManager;
 import com.openmason.ui.components.modelBrowser.ModelBrowserController;
 import com.openmason.ui.components.modelBrowser.ModelBrowserImGui;
 import com.openmason.ui.components.modelBrowser.events.*;
 import com.openmason.ui.config.WindowConfig;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
-import com.openmason.ui.components.textureCreator.TextureCreatorPreferences;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.dialogs.PreferencesDialog;
@@ -20,8 +19,6 @@ import com.openmason.ui.themes.utils.ImGuiHelpers;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.toolbar.ModelViewerToolbarRenderer;
 import com.openmason.ui.viewport.OpenMason3DViewport;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemType;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -88,7 +85,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     // Viewport
     private OpenMason3DViewport viewport3D;
-    private ModelManager modelManager;
+    private LegacyCowModelManager legacyCowModelManager;
 
     // Window Configurations
     private final WindowConfig viewportConfig = WindowConfig.forViewport();
@@ -120,14 +117,14 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // Initialize managers
         this.preferencesManager = new PreferencesManager();
         this.logoManager = LogoManager.getInstance();
-        this.modelManager = new ModelManager();
+        this.legacyCowModelManager = new LegacyCowModelManager();
 
         // Initialize camera sensitivity from preferences
         float savedSensitivity = preferencesManager.getCameraMouseSensitivity();
         cameraMouseSensitivity.set(savedSensitivity);
 
         // Initialize operation services
-        this.modelOperations = new ModelOperationService(modelState, statusService, modelManager);
+        this.modelOperations = new ModelOperationService(modelState, statusService, legacyCowModelManager);
         this.viewportOperations = new ViewportOperationService(viewportState, statusService);
         this.layoutService = new LayoutService(uiVisibilityState, viewportState, statusService);
         this.fileDialogService = new FileDialogService(statusService);

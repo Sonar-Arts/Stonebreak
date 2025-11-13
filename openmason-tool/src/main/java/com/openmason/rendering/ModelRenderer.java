@@ -1,7 +1,7 @@
 package com.openmason.rendering;
 
-import com.openmason.model.StonebreakModel;
-import com.openmason.model.ModelManager;
+import com.openmason.model.LegacyCowModelManager;
+import com.openmason.model.LegacyCowStonebreakModel;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 
@@ -46,7 +46,7 @@ public class ModelRenderer implements AutoCloseable {
     private final Map<String, Matrix4f> lastRenderedTransforms = new ConcurrentHashMap<>();
     
     // Coordinate space tracking for diagnostics
-    private final Map<String, ModelManager.CoordinateSpace> modelCoordinateSpaces = new ConcurrentHashMap<>();
+    private final Map<String, LegacyCowModelManager.CoordinateSpace> modelCoordinateSpaces = new ConcurrentHashMap<>();
     private final Map<String, String> modelVariantMappings = new ConcurrentHashMap<>();
     
     /**
@@ -77,14 +77,14 @@ public class ModelRenderer implements AutoCloseable {
      * @param model The StonebreakModel to prepare
      * @return True if preparation was successful, false otherwise
      */
-    public boolean prepareModel(StonebreakModel model) {
+    public boolean prepareModel(LegacyCowStonebreakModel model) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
         
         // Track coordinate space for this model
         String modelVariant = model.getVariantName();
-        ModelManager.CoordinateSpace coordinateSpace = ModelManager.CoordinateSpaceManager.getCoordinateSpace(modelVariant);
+        LegacyCowModelManager.CoordinateSpace coordinateSpace = LegacyCowModelManager.CoordinateSpaceManager.getCoordinateSpace(modelVariant);
         modelCoordinateSpaces.put(modelVariant, coordinateSpace);
         
         // System.out.println("Preparing model '" + modelVariant + "' in coordinate space: " + 
@@ -118,7 +118,7 @@ public class ModelRenderer implements AutoCloseable {
             // System.out.println("Preparing model '" + model.getVariantName() + "' with " + 
             //                   model.getBodyParts().size() + " parts...");
             
-            for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+            for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
                 totalParts++;
                 String partName = bodyPart.getName();
                 int preVAOCount = modelPartVAOs.size();
@@ -275,12 +275,12 @@ public class ModelRenderer implements AutoCloseable {
      * @param useTextureUniformLocation The useTexture boolean uniform location
      * @param colorUniformLocation The color uniform location
      */
-    public void renderModel(StonebreakModel model, String textureVariant, 
-                           int shaderProgram, int mvpUniformLocation, 
-                           int modelMatrixLocation, float[] viewProjectionMatrix,
-                           com.openmason.rendering.TextureAtlas textureAtlas,
-                           int textureUniformLocation, int useTextureUniformLocation,
-                           int colorUniformLocation) {
+    public void renderModel(LegacyCowStonebreakModel model, String textureVariant,
+                            int shaderProgram, int mvpUniformLocation,
+                            int modelMatrixLocation, float[] viewProjectionMatrix,
+                            com.openmason.rendering.TextureAtlas textureAtlas,
+                            int textureUniformLocation, int useTextureUniformLocation,
+                            int colorUniformLocation) {
         renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, 
                            modelMatrixLocation, viewProjectionMatrix, textureAtlas,
                            textureUniformLocation, useTextureUniformLocation, colorUniformLocation);
@@ -297,9 +297,9 @@ public class ModelRenderer implements AutoCloseable {
      * @param modelMatrixLocation The uniform location for individual model matrices
      * @param viewProjectionMatrix The view-projection matrix
      */
-    public void renderModel(StonebreakModel model, String textureVariant, 
-                           int shaderProgram, int mvpUniformLocation, 
-                           int modelMatrixLocation, float[] viewProjectionMatrix) {
+    public void renderModel(LegacyCowStonebreakModel model, String textureVariant,
+                            int shaderProgram, int mvpUniformLocation,
+                            int modelMatrixLocation, float[] viewProjectionMatrix) {
         renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, 
                            modelMatrixLocation, viewProjectionMatrix, null, -1, -1, -1);
     }
@@ -319,13 +319,13 @@ public class ModelRenderer implements AutoCloseable {
      * @param useTextureUniformLocation The useTexture boolean uniform location
      * @param colorUniformLocation The color uniform location
      */
-    public void renderModel(StonebreakModel model, String textureVariant, 
-                           int shaderProgram, int mvpUniformLocation, 
-                           int modelMatrixLocation, float[] viewProjectionMatrix,
-                           Matrix4f userTransform,
-                           com.openmason.rendering.TextureAtlas textureAtlas,
-                           int textureUniformLocation, int useTextureUniformLocation,
-                           int colorUniformLocation) {
+    public void renderModel(LegacyCowStonebreakModel model, String textureVariant,
+                            int shaderProgram, int mvpUniformLocation,
+                            int modelMatrixLocation, float[] viewProjectionMatrix,
+                            Matrix4f userTransform,
+                            com.openmason.rendering.TextureAtlas textureAtlas,
+                            int textureUniformLocation, int useTextureUniformLocation,
+                            int colorUniformLocation) {
         renderModelInternalWithUserTransform(model, textureVariant, shaderProgram, mvpUniformLocation, 
                                            modelMatrixLocation, viewProjectionMatrix, userTransform, textureAtlas,
                                            textureUniformLocation, useTextureUniformLocation, colorUniformLocation);
@@ -334,11 +334,11 @@ public class ModelRenderer implements AutoCloseable {
     /**
      * Internal rendering method with user transform support.
      */
-    private void renderModelInternalWithUserTransform(StonebreakModel model, String textureVariant, int shaderProgram, 
-                                                    int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
-                                                    Matrix4f userTransform,
-                                                    com.openmason.rendering.TextureAtlas textureAtlas,
-                                                    int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
+    private void renderModelInternalWithUserTransform(LegacyCowStonebreakModel model, String textureVariant, int shaderProgram,
+                                                      int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
+                                                      Matrix4f userTransform,
+                                                      com.openmason.rendering.TextureAtlas textureAtlas,
+                                                      int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
@@ -402,7 +402,7 @@ public class ModelRenderer implements AutoCloseable {
         }
         
         // Render each model part with matrix transformations and user transform
-        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+        for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             renderModelPartWithUserTransform(bodyPart.getName(), bodyPart, modelMatrixLocation, 
                                            viewProjectionMatrix, userTransform);
         }
@@ -414,10 +414,10 @@ public class ModelRenderer implements AutoCloseable {
     /**
      * Internal rendering method using matrix transformations.
      */
-    private void renderModelInternal(StonebreakModel model, String textureVariant, int shaderProgram, 
-                                   int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
-                                   com.openmason.rendering.TextureAtlas textureAtlas,
-                                   int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
+    private void renderModelInternal(LegacyCowStonebreakModel model, String textureVariant, int shaderProgram,
+                                     int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
+                                     com.openmason.rendering.TextureAtlas textureAtlas,
+                                     int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
         }
@@ -481,7 +481,7 @@ public class ModelRenderer implements AutoCloseable {
         }
         
         // Render each model part with matrix transformations
-        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+        for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             renderModelPart(bodyPart.getName(), bodyPart, modelMatrixLocation, viewProjectionMatrix);
         }
         
@@ -490,12 +490,12 @@ public class ModelRenderer implements AutoCloseable {
     }
     
     /**
-     * @deprecated Use {@link #renderModel(StonebreakModel, String, int, int, int, float[])} instead.
+     * @deprecated Use {@link #renderModel(LegacyCowStonebreakModel, String, int, int, int, float[])} instead.
      * This compatibility method exists for legacy code but will not produce proper rendering
      * without shader context.
      */
     @Deprecated
-    public void renderModel(StonebreakModel model, String textureVariant) {
+    public void renderModel(LegacyCowStonebreakModel model, String textureVariant) {
         // System.err.println("WARNING: renderModel() called without shader context. Models will not render properly.");
         // System.err.println("Please update your code to use renderModel(model, variant, shaderProgram, mvpUniformLocation, modelMatrixLocation, viewProjectionMatrix)");
         // Don't actually render anything to avoid OpenGL errors
@@ -510,7 +510,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param viewProjectionMatrix The view-projection matrix
      * @param userTransform The user transform matrix to apply
      */
-    private void renderModelPartWithUserTransform(String partName, StonebreakModel.BodyPart bodyPart, 
+    private void renderModelPartWithUserTransform(String partName, LegacyCowStonebreakModel.BodyPart bodyPart,
                                                 int modelMatrixLocation, float[] viewProjectionMatrix,
                                                 Matrix4f userTransform) {
         // Validate OpenGL context before rendering individual parts
@@ -605,7 +605,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param modelMatrixLocation Uniform location for model transformation matrix
      * @param viewProjectionMatrix The view-projection matrix
      */
-    public void renderModelPart(String partName, StonebreakModel.BodyPart bodyPart, 
+    public void renderModelPart(String partName, LegacyCowStonebreakModel.BodyPart bodyPart,
                               int modelMatrixLocation, float[] viewProjectionMatrix) {
         // Validate OpenGL context before rendering individual parts
         if (contextValidationEnabled) {
@@ -686,7 +686,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param partName The name of the part to render
      * @param bodyPart The body part definition containing transformation data (optional)
      */
-    public void renderModelPart(String partName, StonebreakModel.BodyPart bodyPart) {
+    public void renderModelPart(String partName, LegacyCowStonebreakModel.BodyPart bodyPart) {
         // Validate OpenGL context before rendering individual parts
         if (contextValidationEnabled) {
             List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
@@ -726,7 +726,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param model The model being rendered
      * @param textureVariant The new texture variant
      */
-    private void updateTextureVariants(StonebreakModel model, String textureVariant) {
+    private void updateTextureVariants(LegacyCowStonebreakModel model, String textureVariant) {
         // Load the current texture variant definition dynamically
         com.stonebreak.textures.mobs.CowTextureDefinition.CowVariant variantDefinition = 
             com.stonebreak.textures.mobs.CowTextureLoader.getCowVariant(textureVariant);
@@ -738,7 +738,7 @@ public class ModelRenderer implements AutoCloseable {
         
         // Only log when there are actual updates
         boolean hasUpdates = false;
-        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+        for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             String partName = bodyPart.getName();
             String currentVariant = currentTextureVariants.get(partName);
             if (!textureVariant.equals(currentVariant)) {
@@ -751,7 +751,7 @@ public class ModelRenderer implements AutoCloseable {
             System.out.println("[ModelRenderer] Updating texture coordinates for variant: " + textureVariant + " (" + variantDefinition.getDisplayName() + ")");
         }
         
-        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+        for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             String partName = bodyPart.getName();
             String currentVariant = currentTextureVariants.get(partName);
             String textureField = bodyPart.getModelPart().getTexture();
@@ -776,8 +776,8 @@ public class ModelRenderer implements AutoCloseable {
      * @param model The model to check
      * @return True if all model parts are prepared, false otherwise
      */
-    public boolean isModelPrepared(StonebreakModel model) {
-        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+    public boolean isModelPrepared(LegacyCowStonebreakModel model) {
+        for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             if (!modelPartVAOs.containsKey(bodyPart.getName())) {
                 return false;
             }
@@ -792,10 +792,10 @@ public class ModelRenderer implements AutoCloseable {
      * @param model The model to check
      * @return Detailed status report
      */
-    public ModelPreparationStatus getModelPreparationStatus(StonebreakModel model) {
+    public ModelPreparationStatus getModelPreparationStatus(LegacyCowStonebreakModel model) {
         ModelPreparationStatus status = new ModelPreparationStatus(model.getVariantName());
         
-        for (StonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
+        for (LegacyCowStonebreakModel.BodyPart bodyPart : model.getBodyParts()) {
             String partName = bodyPart.getName();
             VertexArray vao = modelPartVAOs.get(partName);
             
@@ -840,10 +840,10 @@ public class ModelRenderer implements AutoCloseable {
         
         if (!modelCoordinateSpaces.isEmpty()) {
             // System.out.println("\nModel Coordinate Spaces:");
-            for (Map.Entry<String, ModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
+            for (Map.Entry<String, LegacyCowModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
                 String modelVariant = entry.getKey();
-                ModelManager.CoordinateSpace space = entry.getValue();
-                String status = (space == ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) ? "✓ COMPATIBLE" : "⚠ INCOMPATIBLE";
+                LegacyCowModelManager.CoordinateSpace space = entry.getValue();
+                String status = (space == LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) ? "✓ COMPATIBLE" : "⚠ INCOMPATIBLE";
                 // System.out.println("  - " + modelVariant + ": " + space.getDisplayName() + " " + status);
             }
         }
@@ -990,7 +990,7 @@ public class ModelRenderer implements AutoCloseable {
     public long getLastRenderTime() { return lastRenderTime; }
     public boolean isContextValidationEnabled() { return contextValidationEnabled; }
     public long getLastContextValidationTime() { return lastContextValidationTime; }
-    public Map<String, ModelManager.CoordinateSpace> getModelCoordinateSpaces() { 
+    public Map<String, LegacyCowModelManager.CoordinateSpace> getModelCoordinateSpaces() {
         return new HashMap<>(modelCoordinateSpaces); 
     }
     
@@ -1220,10 +1220,10 @@ public class ModelRenderer implements AutoCloseable {
      * @param actualModel The StonebreakModel being rendered
      * @return Coordinate validation result
      */
-    public ModelManager.CoordinateValidationResult validateCoordinateSpace(
-            String requestedModel, StonebreakModel actualModel) {
+    public LegacyCowModelManager.CoordinateValidationResult validateCoordinateSpace(
+            String requestedModel, LegacyCowStonebreakModel actualModel) {
         String actualVariant = actualModel.getVariantName();
-        return ModelManager.CoordinateSpaceManager.validateCoordinateCompatibility(
+        return LegacyCowModelManager.CoordinateSpaceManager.validateCoordinateCompatibility(
             requestedModel, actualVariant);
     }
     
@@ -1233,7 +1233,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param modelVariant The model variant to check
      * @return The coordinate space, or null if model not tracked
      */
-    public ModelManager.CoordinateSpace getModelCoordinateSpace(String modelVariant) {
+    public LegacyCowModelManager.CoordinateSpace getModelCoordinateSpace(String modelVariant) {
         return modelCoordinateSpaces.get(modelVariant);
     }
     
@@ -1246,11 +1246,11 @@ public class ModelRenderer implements AutoCloseable {
     public CoordinateSpaceValidationReport validateAllCoordinateSpaces() {
         CoordinateSpaceValidationReport report = new CoordinateSpaceValidationReport();
         
-        for (Map.Entry<String, ModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
+        for (Map.Entry<String, LegacyCowModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
             String modelVariant = entry.getKey();
-            ModelManager.CoordinateSpace space = entry.getValue();
+            LegacyCowModelManager.CoordinateSpace space = entry.getValue();
             
-            if (space != ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
+            if (space != LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
                 report.addMismatch(modelVariant, space, 
                     "Model is not using Stonebreak-compatible coordinate space");
             } else {
@@ -1276,9 +1276,9 @@ public class ModelRenderer implements AutoCloseable {
         
         // Get the model variant for this part to determine coordinate space
         String modelVariant = findModelVariantForPart(partName);
-        ModelManager.CoordinateSpace space = modelCoordinateSpaces.get(modelVariant);
+        LegacyCowModelManager.CoordinateSpace space = modelCoordinateSpaces.get(modelVariant);
         
-        boolean coordinatesMatch = (space == ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
+        boolean coordinatesMatch = (space == LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
         
         return new CoordinateComparisonResult(
             partName, modelVariant, space, renderData.position, 
@@ -1409,14 +1409,14 @@ public class ModelRenderer implements AutoCloseable {
         private final List<String> validModels = new java.util.ArrayList<>();
         private final List<String> mismatchedModels = new java.util.ArrayList<>();
         private final Map<String, String> mismatchReasons = new HashMap<>();
-        private final Map<String, ModelManager.CoordinateSpace> modelSpaces = new HashMap<>();
+        private final Map<String, LegacyCowModelManager.CoordinateSpace> modelSpaces = new HashMap<>();
         
-        public void addValidModel(String modelVariant, ModelManager.CoordinateSpace space) {
+        public void addValidModel(String modelVariant, LegacyCowModelManager.CoordinateSpace space) {
             validModels.add(modelVariant);
             modelSpaces.put(modelVariant, space);
         }
         
-        public void addMismatch(String modelVariant, ModelManager.CoordinateSpace space, String reason) {
+        public void addMismatch(String modelVariant, LegacyCowModelManager.CoordinateSpace space, String reason) {
             mismatchedModels.add(modelVariant);
             mismatchReasons.put(modelVariant, reason);
             modelSpaces.put(modelVariant, space);
@@ -1450,7 +1450,7 @@ public class ModelRenderer implements AutoCloseable {
             if (!validModels.isEmpty()) {
                 sb.append("\nValid Models (Stonebreak Compatible):\n");
                 for (String model : validModels) {
-                    ModelManager.CoordinateSpace space = modelSpaces.get(model);
+                    LegacyCowModelManager.CoordinateSpace space = modelSpaces.get(model);
                     sb.append("  ✓ ").append(model).append(" (").append(space.getDisplayName()).append(")\n");
                 }
             }
@@ -1458,7 +1458,7 @@ public class ModelRenderer implements AutoCloseable {
             if (!mismatchedModels.isEmpty()) {
                 sb.append("\nMismatched Models (Coordinate Issues):\n");
                 for (String model : mismatchedModels) {
-                    ModelManager.CoordinateSpace space = modelSpaces.get(model);
+                    LegacyCowModelManager.CoordinateSpace space = modelSpaces.get(model);
                     String reason = mismatchReasons.get(model);
                     sb.append("  ✗ ").append(model).append(" (").append(space.getDisplayName()).append(") - ").append(reason).append("\n");
                 }
@@ -1475,14 +1475,14 @@ public class ModelRenderer implements AutoCloseable {
     public static class CoordinateComparisonResult {
         private final String partName;
         private final String modelVariant;
-        private final ModelManager.CoordinateSpace coordinateSpace;
+        private final LegacyCowModelManager.CoordinateSpace coordinateSpace;
         private final Vector3f renderedPosition;
         private final Vector3f renderedRotation;
         private final Vector3f renderedScale;
         private final boolean matchesStonebreak;
         
         public CoordinateComparisonResult(String partName, String modelVariant, 
-                                        ModelManager.CoordinateSpace coordinateSpace,
+                                        LegacyCowModelManager.CoordinateSpace coordinateSpace,
                                         Vector3f renderedPosition, Vector3f renderedRotation, 
                                         Vector3f renderedScale, boolean matchesStonebreak) {
             this.partName = partName;
@@ -1497,7 +1497,7 @@ public class ModelRenderer implements AutoCloseable {
         public boolean matchesStonebreak() { return matchesStonebreak; }
         public String getPartName() { return partName; }
         public String getModelVariant() { return modelVariant; }
-        public ModelManager.CoordinateSpace getCoordinateSpace() { return coordinateSpace; }
+        public LegacyCowModelManager.CoordinateSpace getCoordinateSpace() { return coordinateSpace; }
         public Vector3f getRenderedPosition() { return new Vector3f(renderedPosition); }
         public Vector3f getRenderedRotation() { return new Vector3f(renderedRotation); }
         public Vector3f getRenderedScale() { return new Vector3f(renderedScale); }

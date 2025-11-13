@@ -2,7 +2,7 @@ package com.openmason.ui.viewport;
 
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
-import com.openmason.model.StonebreakModel;
+import com.openmason.model.LegacyCowStonebreakModel;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.model.AsyncModelLoader;
@@ -516,8 +516,8 @@ public class OpenMason3DViewport {
         loadModel(modelName);
     }
 
-    public StonebreakModel getCurrentModel() { return renderingState.getCurrentModel(); }
-    public void setCurrentModel(StonebreakModel model) {
+    public LegacyCowStonebreakModel getCurrentModel() { return renderingState.getCurrentModel(); }
+    public void setCurrentModel(LegacyCowStonebreakModel model) {
         renderingState.setCurrentModel(model);
     }
 

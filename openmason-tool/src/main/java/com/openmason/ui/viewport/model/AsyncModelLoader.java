@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport.model;
 
-import com.openmason.model.ModelManager;
-import com.openmason.model.StonebreakModel;
+import com.openmason.model.LegacyCowModelManager;
+import com.openmason.model.LegacyCowStonebreakModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +22,7 @@ public class AsyncModelLoader {
      * Load model asynchronously with progress feedback.
      * Returns future that completes when model is loaded.
      */
-    public CompletableFuture<Void> loadModelAsync(String modelName, Consumer<StonebreakModel> onSuccess,
+    public CompletableFuture<Void> loadModelAsync(String modelName, Consumer<LegacyCowStonebreakModel> onSuccess,
                                                    Consumer<Throwable> onError) {
         if (currentLoadingFuture != null && !currentLoadingFuture.isDone()) {
             logger.warn("Model loading already in progress, ignoring request for: {}", modelName);
@@ -32,7 +32,7 @@ public class AsyncModelLoader {
         logger.debug("Starting async model load: {}", modelName);
 
         // Create progress callback
-        ModelManager.ProgressCallback progressCallback = new ModelManager.ProgressCallback() {
+        LegacyCowModelManager.ProgressCallback progressCallback = new LegacyCowModelManager.ProgressCallback() {
             @Override
             public void onProgress(String operation, int current, int total, String details) {
                 logger.trace("Model loading progress: {}% - {}", (current * 100 / total), details);
@@ -50,8 +50,8 @@ public class AsyncModelLoader {
         };
 
         // Load model info asynchronously
-        currentLoadingFuture = ModelManager.loadModelInfoAsync(modelName,
-                ModelManager.LoadingPriority.HIGH, progressCallback)
+        currentLoadingFuture = LegacyCowModelManager.loadModelInfoAsync(modelName,
+                LegacyCowModelManager.LoadingPriority.HIGH, progressCallback)
             .thenCompose(modelInfo -> {
                 if (modelInfo == null) {
                     throw new RuntimeException("Failed to load model info for: " + modelName);
@@ -60,8 +60,8 @@ public class AsyncModelLoader {
                 logger.debug("Model info loaded successfully: {}", modelInfo);
 
                 // Create StonebreakModel from ModelInfo
-                StonebreakModel model = new StonebreakModel(modelInfo,
-                    ModelManager.getStaticModelParts(modelName));
+                LegacyCowStonebreakModel model = new LegacyCowStonebreakModel(modelInfo,
+                    LegacyCowModelManager.getStaticModelParts(modelName));
 
                 logger.debug("StonebreakModel created successfully");
                 return CompletableFuture.completedFuture(model);

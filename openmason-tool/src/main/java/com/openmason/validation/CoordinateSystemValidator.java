@@ -1,16 +1,13 @@
 package com.openmason.validation;
 
-import com.openmason.model.ModelManager;
+import com.openmason.model.LegacyCowModelManager;
 import com.openmason.rendering.ModelRenderer;
-import com.openmason.model.StonebreakModel;
+import com.openmason.model.LegacyCowStonebreakModel;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.model.ModelLoader;
 
-import org.joml.Vector3f;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Comprehensive coordinate system validator for Open Mason.
@@ -58,19 +55,19 @@ public class CoordinateSystemValidator {
     private static TestResult testCoordinateSpaceManagement() {
         try {
             // Test standard cow mapping
-            String mapped = ModelManager.CoordinateSpaceManager.getStonebreakCompatibleVariant("standard_cow");
+            String mapped = LegacyCowModelManager.CoordinateSpaceManager.getStonebreakCompatibleVariant("standard_cow");
             if (!"standard_cow_baked".equals(mapped)) {
                 return new TestResult(false, "Expected 'standard_cow_baked', got '" + mapped + "'");
             }
             
             // Test coordinate space detection
-            ModelManager.CoordinateSpace space = ModelManager.CoordinateSpaceManager.getCoordinateSpace("standard_cow_baked");
-            if (space != ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
+            LegacyCowModelManager.CoordinateSpace space = LegacyCowModelManager.CoordinateSpaceManager.getCoordinateSpace("standard_cow_baked");
+            if (space != LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
                 return new TestResult(false, "Expected STONEBREAK_COMPATIBLE, got " + space);
             }
             
             // Test has compatible variant
-            boolean hasVariant = ModelManager.CoordinateSpaceManager.hasCompatibleVariant("standard_cow");
+            boolean hasVariant = LegacyCowModelManager.CoordinateSpaceManager.hasCompatibleVariant("standard_cow");
             if (!hasVariant) {
                 return new TestResult(false, "Standard cow should have a compatible variant");
             }
@@ -88,16 +85,16 @@ public class CoordinateSystemValidator {
     private static TestResult testModelVariantMapping() {
         try {
             // Test coordinate validation
-            ModelManager.CoordinateValidationResult validation = 
-                ModelManager.CoordinateSpaceManager.validateCoordinateCompatibility("standard_cow", "standard_cow_baked");
+            LegacyCowModelManager.CoordinateValidationResult validation =
+                LegacyCowModelManager.CoordinateSpaceManager.validateCoordinateCompatibility("standard_cow", "standard_cow_baked");
             
             if (!validation.isCompatible()) {
                 return new TestResult(false, "Standard cow should be compatible with standard_cow_baked: " + validation.toString());
             }
             
             // Test invalid mapping
-            ModelManager.CoordinateValidationResult invalidValidation = 
-                ModelManager.CoordinateSpaceManager.validateCoordinateCompatibility("standard_cow", "standard_cow");
+            LegacyCowModelManager.CoordinateValidationResult invalidValidation =
+                LegacyCowModelManager.CoordinateSpaceManager.validateCoordinateCompatibility("standard_cow", "standard_cow");
             
             if (invalidValidation.isCompatible()) {
                 return new TestResult(false, "Standard cow should NOT be compatible with itself (raw coordinates)");
@@ -116,7 +113,7 @@ public class CoordinateSystemValidator {
     private static TestResult testStonebreakCompatibility() {
         try {
             // Verify that we're using the same model variant as Stonebreak EntityRenderer
-            String openMasonVariant = ModelManager.CoordinateSpaceManager.getStonebreakCompatibleVariant("standard_cow");
+            String openMasonVariant = LegacyCowModelManager.CoordinateSpaceManager.getStonebreakCompatibleVariant("standard_cow");
             String stonebreakVariant = "standard_cow_baked"; // This is what EntityRenderer uses
             
             if (!stonebreakVariant.equals(openMasonVariant)) {
@@ -159,7 +156,7 @@ public class CoordinateSystemValidator {
             String expectedVariant = "standard_cow_baked";
             
             // Test ModelManager model info loading
-            ModelManager.ModelInfo info = ModelManager.getModelInfo(requestedModel);
+            LegacyCowModelManager.ModelInfo info = LegacyCowModelManager.getModelInfo(requestedModel);
             if (info == null) {
                 return new TestResult(false, "ModelManager failed to load model info for '" + requestedModel + "'");
             }
@@ -171,7 +168,7 @@ public class CoordinateSystemValidator {
             }
             
             // Test static model parts loading
-            ModelDefinition.ModelPart[] parts = ModelManager.getStaticModelParts(requestedModel);
+            ModelDefinition.ModelPart[] parts = LegacyCowModelManager.getStaticModelParts(requestedModel);
             if (parts == null || parts.length == 0) {
                 return new TestResult(false, "Failed to load static model parts for '" + requestedModel + "'");
             }
@@ -194,10 +191,10 @@ public class CoordinateSystemValidator {
             
             // Test coordinate space validation without requiring OpenGL
             try {
-                StonebreakModel model = StonebreakModel.loadFromResources("standard_cow", "default", "default");
+                LegacyCowStonebreakModel model = LegacyCowStonebreakModel.loadFromResources("standard_cow", "default", "default");
                 
                 // Validate coordinate space
-                ModelManager.CoordinateValidationResult validation = 
+                LegacyCowModelManager.CoordinateValidationResult validation =
                     renderer.validateCoordinateSpace("standard_cow", model);
                 
                 if (!validation.isCompatible()) {
@@ -231,12 +228,12 @@ public class CoordinateSystemValidator {
     public static boolean quickValidation() {
         try {
             // Check the critical path
-            String mapped = ModelManager.CoordinateSpaceManager.getStonebreakCompatibleVariant("standard_cow");
+            String mapped = LegacyCowModelManager.CoordinateSpaceManager.getStonebreakCompatibleVariant("standard_cow");
             boolean correctMapping = "standard_cow_baked".equals(mapped);
             
             // Check coordinate space
-            ModelManager.CoordinateSpace space = ModelManager.CoordinateSpaceManager.getCoordinateSpace(mapped);
-            boolean correctSpace = (space == ModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
+            LegacyCowModelManager.CoordinateSpace space = LegacyCowModelManager.CoordinateSpaceManager.getCoordinateSpace(mapped);
+            boolean correctSpace = (space == LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
             
             // Check model availability
             boolean modelExists = ModelLoader.isValidModel(mapped);
