@@ -11,6 +11,11 @@ public enum RenderingMode {
     MODEL,
 
     /**
+     * Render editable block models (.OMO files).
+     */
+    BLOCK_MODEL,
+
+    /**
      * Render blocks using CBR API.
      */
     BLOCK,

@@ -64,6 +64,18 @@ public class RenderingState {
     }
 
     /**
+     * Switch to block model rendering mode (.OMO editable models).
+     */
+    public void setBlockModelMode(String modelName) {
+        this.mode = RenderingMode.BLOCK_MODEL;
+        this.currentModelName = modelName;
+        this.currentModel = null;
+        this.selectedBlock = null;
+        this.selectedItem = null;
+        logger.debug("Switched to BLOCK_MODEL rendering mode: {}", modelName);
+    }
+
+    /**
      * Switch to item rendering mode.
      */
     public void setItemMode(ItemType itemType) {
@@ -153,6 +165,7 @@ public class RenderingState {
     public String getStateDescription() {
         return switch (mode) {
             case MODEL -> currentModelName != null ? "Model: " + currentModelName : "No model";
+            case BLOCK_MODEL -> currentModelName != null ? "BlockModel: " + currentModelName : "No block model";
             case BLOCK -> selectedBlock != null ? "Block: " + selectedBlock.name() : "No block";
             case ITEM -> selectedItem != null ? "Item: " + selectedItem.name() : "No item";
         };

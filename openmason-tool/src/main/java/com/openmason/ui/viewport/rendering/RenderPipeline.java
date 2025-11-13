@@ -32,13 +32,15 @@ public class RenderPipeline {
 
     // Specialized renderers
     private final GridRenderer gridRenderer;
-    private final TestCubeRenderer testCubeRenderer;
 
     // External renderers (models, blocks, items)
     private final LegacyCowModelRenderer legacyCowModelRenderer;
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
     private final LegacyCowTextureAtlas legacyCowTextureAtlas;
+
+    // BlockModel renderer (.OMO editable models)
+    private final com.openmason.rendering.blockmodel.BlockModelRenderer blockModelRenderer;
 
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
@@ -52,16 +54,17 @@ public class RenderPipeline {
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                           LegacyCowModelRenderer legacyCowModelRenderer, BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          LegacyCowTextureAtlas legacyCowTextureAtlas, GizmoRenderer gizmoRenderer) {
+                          LegacyCowTextureAtlas legacyCowTextureAtlas, com.openmason.rendering.blockmodel.BlockModelRenderer blockModelRenderer,
+                          GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
         this.gridRenderer = new GridRenderer();
-        this.testCubeRenderer = new TestCubeRenderer();
         this.legacyCowModelRenderer = legacyCowModelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
         this.legacyCowTextureAtlas = legacyCowTextureAtlas;
+        this.blockModelRenderer = blockModelRenderer;
         this.gizmoRenderer = gizmoRenderer;
     }
 
@@ -133,7 +136,7 @@ public class RenderPipeline {
     }
 
     /**
-     * Render content pass (model, block, item, or test cube).
+     * Render content pass (model, block, item, or block model).
      */
     private void renderContent(RenderingState renderingState, TransformState transformState, boolean wireframeMode) {
         // Diagnostic logging (throttled)
@@ -144,7 +147,10 @@ public class RenderPipeline {
         }
 
         // Render based on mode
-        if (renderingState.isBlockReady()) {
+        if (renderingState.getMode() == com.openmason.ui.viewport.state.RenderingMode.BLOCK_MODEL) {
+            // Render editable block model (.OMO)
+            renderBlockModel(transformState);
+        } else if (renderingState.isBlockReady()) {
             renderBlock(renderingState, transformState);
         } else if (renderingState.isItemReady()) {
             renderItem(renderingState, transformState);
@@ -152,12 +158,12 @@ public class RenderPipeline {
             if (prepareModelIfNeeded(renderingState)) {
                 renderModel(renderingState, transformState, wireframeMode);
             } else {
-                // Model not ready, use fallback
-                renderTestCube(transformState);
+                // Model not ready, skip rendering
+                logger.trace("Model not prepared, skipping render");
             }
         } else {
-            // No content to render, show test cube
-            renderTestCube(transformState);
+            // No content to render (default blank model should load on startup)
+            logger.trace("No content ready for rendering");
         }
     }
 
@@ -212,7 +218,6 @@ public class RenderPipeline {
 
         } catch (Exception e) {
             logger.error("Error rendering model", e);
-            renderTestCube(transformState); // Fallback
         }
     }
 
@@ -239,7 +244,6 @@ public class RenderPipeline {
 
         } catch (Exception e) {
             logger.error("Error rendering block", e);
-            renderTestCube(transformState); // Fallback
         }
     }
 
@@ -266,20 +270,50 @@ public class RenderPipeline {
 
         } catch (Exception e) {
             logger.error("Error rendering item", e);
-            renderTestCube(transformState); // Fallback
         }
     }
 
     /**
-     * Render test cube (fallback).
+     * Render editable block model (.OMO file).
+     * Uses simple textured cube rendering with transformation.
      */
-    private void renderTestCube(TransformState transformState) {
+    private void renderBlockModel(TransformState transformState) {
         try {
-            ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
-            testCubeRenderer.render(resources.getTestCube(), basicShader, context, transformState);
-            logger.trace("Test cube rendered (fallback)");
+            if (!blockModelRenderer.isInitialized()) {
+                logger.warn("BlockModelRenderer not initialized");
+                return;
+            }
+
+            // Get shader and bind it
+            ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
+            matrixShader.use();
+
+            // Compute view-projection matrix
+            org.joml.Matrix4f viewProjectionMatrix = new org.joml.Matrix4f(context.getCamera().getProjectionMatrix());
+            viewProjectionMatrix.mul(context.getCamera().getViewMatrix());
+
+            // Set up MVP matrix (view-projection combined)
+            matrixShader.setMat4("uMVPMatrix", viewProjectionMatrix);
+
+            // Apply gizmo transform if enabled
+            org.joml.Matrix4f modelMatrix = new org.joml.Matrix4f();
+            if (transformState.isGizmoEnabled() && transformState.getGizmoPosition() != null) {
+                org.joml.Vector3f gizmoPos = transformState.getGizmoPosition();
+                modelMatrix.translate(gizmoPos);
+            }
+
+            matrixShader.setMat4("uModelMatrix", modelMatrix);
+
+            // Enable texturing and set texture sampler
+            matrixShader.setInt("uTexture", 0); // Texture unit 0
+            matrixShader.setBool("uUseTexture", true); // Enable texture rendering
+
+            // Render the cube
+            blockModelRenderer.render();
+
+            logger.trace("BlockModel rendered");
         } catch (Exception e) {
-            logger.error("Error rendering test cube", e);
+            logger.error("Error rendering BlockModel", e);
         }
     }
 

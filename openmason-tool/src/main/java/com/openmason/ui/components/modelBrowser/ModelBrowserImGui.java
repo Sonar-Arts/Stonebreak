@@ -71,15 +71,20 @@ public class ModelBrowserImGui {
     private final ViewRenderer listViewRenderer;
     private final ViewRenderer compactListRenderer;
 
+    // Callback for "New Model" button action
+    private final Runnable newModelCallback;
+
     /**
      * Creates a new Model Browser UI component.
      *
      * @param controller The controller managing business logic
      * @param visible The visibility state (shared with UIVisibilityState)
+     * @param newModelCallback Callback to invoke when "New Model" button is clicked
      */
-    public ModelBrowserImGui(ModelBrowserController controller, ImBoolean visible) {
+    public ModelBrowserImGui(ModelBrowserController controller, ImBoolean visible, Runnable newModelCallback) {
         this.controller = controller;
         this.visible = visible;
+        this.newModelCallback = newModelCallback;
 
         // Initialize new components
         this.sidebarRenderer = new SidebarRenderer(controller);
@@ -136,6 +141,20 @@ public class ModelBrowserImGui {
      * Following KISS: Simple inline controls, no over-engineering.
      */
     private void renderToolbar() {
+        // "New Model" button
+        if (ImGui.button("New Model")) {
+            if (newModelCallback != null) {
+                newModelCallback.run();
+            }
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Create a new blank cube model");
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
         renderSearchBar();
         ImGui.sameLine();
         ImGui.spacing();

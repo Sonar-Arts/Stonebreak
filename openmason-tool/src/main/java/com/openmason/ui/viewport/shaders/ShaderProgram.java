@@ -1,5 +1,10 @@
 package com.openmason.ui.viewport.shaders;
 
+import org.joml.Matrix4f;
+import org.lwjgl.system.MemoryStack;
+
+import java.nio.FloatBuffer;
+
 import static org.lwjgl.opengl.GL20.*;
 
 /**
@@ -78,6 +83,53 @@ public class ShaderProgram {
      */
     public boolean isValid() {
         return programId != -1;
+    }
+
+    /**
+     * Bind this shader program for use.
+     */
+    public void use() {
+        glUseProgram(programId);
+    }
+
+    /**
+     * Set a mat4 uniform in the shader.
+     * @param name The uniform name
+     * @param matrix The matrix to set
+     */
+    public void setMat4(String name, Matrix4f matrix) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer buffer = stack.mallocFloat(16);
+            matrix.get(buffer);
+            int location = glGetUniformLocation(programId, name);
+            if (location != -1) {
+                glUniformMatrix4fv(location, false, buffer);
+            }
+        }
+    }
+
+    /**
+     * Set an int uniform in the shader.
+     * @param name The uniform name
+     * @param value The integer value
+     */
+    public void setInt(String name, int value) {
+        int location = glGetUniformLocation(programId, name);
+        if (location != -1) {
+            glUniform1i(location, value);
+        }
+    }
+
+    /**
+     * Set a boolean uniform in the shader.
+     * @param name The uniform name
+     * @param value The boolean value
+     */
+    public void setBool(String name, boolean value) {
+        int location = glGetUniformLocation(programId, name);
+        if (location != -1) {
+            glUniform1i(location, value ? 1 : 0);
+        }
     }
 
     @Override

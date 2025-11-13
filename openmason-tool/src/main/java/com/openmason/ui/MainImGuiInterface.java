@@ -123,11 +123,13 @@ public class MainImGuiInterface implements ModelBrowserListener {
         float savedSensitivity = preferencesManager.getCameraMouseSensitivity();
         cameraMouseSensitivity.set(savedSensitivity);
 
+        // Initialize file dialog service first (needed by model operations)
+        this.fileDialogService = new FileDialogService(statusService);
+
         // Initialize operation services
-        this.modelOperations = new ModelOperationService(modelState, statusService, legacyCowModelManager);
+        this.modelOperations = new ModelOperationService(modelState, statusService, legacyCowModelManager, fileDialogService);
         this.viewportOperations = new ViewportOperationService(viewportState, statusService);
         this.layoutService = new LayoutService(uiVisibilityState, viewportState, statusService);
-        this.fileDialogService = new FileDialogService(statusService);
 
         // Initialize dialogs
         this.preferencesDialog = new PreferencesDialog(uiVisibilityState, themeManager,
@@ -163,6 +165,23 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setThemeManager(themeManager);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
+
+        // Create default blank model on startup
+        createDefaultModel();
+    }
+
+    /**
+     * Create a default blank model when Open Mason starts.
+     * This provides an immediate working surface instead of showing a test cube.
+     */
+    private void createDefaultModel() {
+        try {
+            logger.info("Creating default blank model on startup");
+            modelOperations.newModel();
+        } catch (Exception e) {
+            logger.error("Failed to create default blank model", e);
+            statusService.updateStatus("Failed to create default model: " + e.getMessage());
+        }
     }
 
     /**
@@ -202,6 +221,11 @@ public class MainImGuiInterface implements ModelBrowserListener {
             if (viewport3D.getCamera() != null) {
                 viewport3D.getCamera().setMouseSensitivity(cameraMouseSensitivity.get());
             }
+
+            // Connect viewport to model operations for .OMO model support
+            modelOperations.setViewport(viewport3D);
+            logger.debug("Viewport connected to ModelOperationService");
+
         } catch (Exception e) {
             logger.error("Failed to setup 3D viewport", e);
         }
@@ -230,8 +254,12 @@ public class MainImGuiInterface implements ModelBrowserListener {
             // Create controller with required dependencies
             ModelBrowserController controller = new ModelBrowserController(modelOperations, statusService);
 
-            // Create UI component with controller and visibility state
-            modelBrowserImGui = new ModelBrowserImGui(controller, uiVisibilityState.getShowModelBrowser());
+            // Create UI component with controller, visibility state, and new model callback
+            modelBrowserImGui = new ModelBrowserImGui(
+                controller,
+                uiVisibilityState.getShowModelBrowser(),
+                this::createNewModel  // Callback for "New Model" button
+            );
 
             // Register this as a listener to receive model browser events
             controller.addListener(this);

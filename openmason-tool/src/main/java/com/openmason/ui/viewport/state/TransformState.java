@@ -208,6 +208,17 @@ public class TransformState {
     public boolean isGizmoEnabled() { return gizmoEnabled; }
     public boolean isDirty() { return dirty; }
 
+    /**
+     * Get gizmo position as a Vector3f.
+     * @return Vector3f containing current position, or null if gizmo is disabled
+     */
+    public org.joml.Vector3f getGizmoPosition() {
+        if (!gizmoEnabled) {
+            return null;
+        }
+        return new org.joml.Vector3f(positionX, positionY, positionZ);
+    }
+
     // Constraint getters
     public static float getMinScale() { return MIN_SCALE; }
     public static float getMaxScale() { return MAX_SCALE; }

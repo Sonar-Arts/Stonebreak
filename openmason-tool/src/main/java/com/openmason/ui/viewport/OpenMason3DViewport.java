@@ -70,6 +70,12 @@ public class OpenMason3DViewport {
     private final ItemRenderer itemRenderer;
     private final LegacyCowTextureAtlas legacyCowTextureAtlas;
 
+    // BlockModel rendering (.OMO editable models)
+    private final com.openmason.rendering.blockmodel.BlockModelRenderer blockModelRenderer;
+    private final com.openmason.rendering.blockmodel.OMTTextureLoader omtTextureLoader;
+    private com.openmason.model.editable.BlockModel currentBlockModel;
+    private int currentBlockModelTextureId = 0;
+
     // Model loading
     private final AsyncModelLoader modelLoader;
 
@@ -112,6 +118,11 @@ public class OpenMason3DViewport {
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
         this.legacyCowTextureAtlas = new LegacyCowTextureAtlas("Viewport_CowAtlas");
+
+        // Initialize BlockModel renderers (.OMO support)
+        this.blockModelRenderer = new com.openmason.rendering.blockmodel.BlockModelRenderer();
+        this.omtTextureLoader = new com.openmason.rendering.blockmodel.OMTTextureLoader();
+        this.currentBlockModel = null;
 
         // Initialize model loader
         this.modelLoader = new AsyncModelLoader();
@@ -167,6 +178,9 @@ public class OpenMason3DViewport {
             }
             itemRenderer.initialize();
 
+            // Initialize BlockModel renderer (for .OMO editable models)
+            blockModelRenderer.initialize();
+
             // Initialize texture atlas
             legacyCowTextureAtlas.initialize();
 
@@ -184,7 +198,7 @@ public class OpenMason3DViewport {
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
                     legacyCowModelRenderer, blockRenderer, itemRenderer,
-                    legacyCowTextureAtlas, gizmoRenderer
+                    legacyCowTextureAtlas, blockModelRenderer, gizmoRenderer
             );
 
             // Update state
@@ -359,6 +373,73 @@ public class OpenMason3DViewport {
             model -> renderingState.setCurrentModel(model),
             error -> logger.error("Failed to load model: {}", error.getMessage())
         );
+    }
+
+    /**
+     * Load a BlockModel (.OMO editable model) for display.
+     *
+     * <p>This method:
+     * <ul>
+     *   <li>Loads the texture from the embedded .OMT file</li>
+     *   <li>Sets up rendering for the block model</li>
+     *   <li>Resets camera position</li>
+     * </ul>
+     *
+     * @param blockModel the BlockModel to display
+     */
+    public void loadBlockModel(com.openmason.model.editable.BlockModel blockModel) {
+        if (blockModel == null) {
+            logger.error("Cannot load null BlockModel");
+            return;
+        }
+
+        logger.info("Loading BlockModel: {}", blockModel.getName());
+
+        // Unload any existing block model
+        unloadBlockModel();
+
+        // Store reference
+        currentBlockModel = blockModel;
+
+        // Load texture from .OMT file
+        java.nio.file.Path texturePath = blockModel.getTexturePath();
+        if (texturePath != null && java.nio.file.Files.exists(texturePath)) {
+            currentBlockModelTextureId = omtTextureLoader.loadTexture(texturePath);
+
+            if (currentBlockModelTextureId > 0) {
+                blockModelRenderer.setTexture(currentBlockModelTextureId);
+                logger.info("Loaded BlockModel texture from: {}", texturePath);
+            } else {
+                logger.error("Failed to load texture from: {}", texturePath);
+            }
+        } else {
+            logger.warn("BlockModel has no valid texture path: {}", texturePath);
+        }
+
+        // Switch to block model rendering mode
+        renderingState.setBlockModelMode(blockModel.getName());
+
+        // Reset position when loading new models
+        transformState.resetPosition();
+
+        logger.info("BlockModel loaded successfully: {}", blockModel.getName());
+    }
+
+    /**
+     * Unload the current BlockModel and free resources.
+     */
+    private void unloadBlockModel() {
+        if (currentBlockModel != null) {
+            logger.info("Unloading BlockModel: {}", currentBlockModel.getName());
+
+            // Delete texture
+            if (currentBlockModelTextureId > 0) {
+                omtTextureLoader.deleteTexture(currentBlockModelTextureId);
+                currentBlockModelTextureId = 0;
+            }
+
+            currentBlockModel = null;
+        }
     }
 
     /**
