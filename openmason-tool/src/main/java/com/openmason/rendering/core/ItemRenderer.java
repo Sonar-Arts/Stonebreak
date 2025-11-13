@@ -1,4 +1,4 @@
-package com.openmason.rendering;
+package com.openmason.rendering.core;
 
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.player.items.voxelization.ColorPalette;
@@ -12,7 +12,6 @@ import org.lwjgl.BufferUtils;
 import java.nio.FloatBuffer;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
 
 /**

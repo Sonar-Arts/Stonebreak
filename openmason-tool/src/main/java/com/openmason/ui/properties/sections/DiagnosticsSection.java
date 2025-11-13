@@ -1,10 +1,9 @@
 package com.openmason.ui.properties.sections;
 
-import com.openmason.rendering.ModelRenderer;
+import com.openmason.deprecated.LegacyCowModelRenderer;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import com.openmason.ui.properties.interfaces.IViewportConnector;
 import imgui.ImGui;
-import imgui.flag.ImGuiTreeNodeFlags;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -78,12 +77,12 @@ public class DiagnosticsSection implements IPanelSection {
         }
 
         Object rendererObj = viewportConnector.getModelRenderer();
-        if (!(rendererObj instanceof ModelRenderer)) {
+        if (!(rendererObj instanceof LegacyCowModelRenderer)) {
             ImGui.textColored(1.0f, 0.6f, 0.6f, 1.0f, "Model renderer not available");
             return;
         }
 
-        ModelRenderer renderer = (ModelRenderer) rendererObj;
+        LegacyCowModelRenderer renderer = (LegacyCowModelRenderer) rendererObj;
 
         ImGui.text("Actual Rendered Coordinates:");
         ImGui.text("(Retrieved from GPU transformation matrices)");
@@ -106,9 +105,9 @@ public class DiagnosticsSection implements IPanelSection {
     /**
      * Render diagnostics for each model part.
      */
-    private void renderPartDiagnostics(ModelRenderer renderer, Map<String, Matrix4f> transforms) {
+    private void renderPartDiagnostics(LegacyCowModelRenderer renderer, Map<String, Matrix4f> transforms) {
         for (String partName : transforms.keySet()) {
-            ModelRenderer.DiagnosticData data = renderer.getPartDiagnostics(partName);
+            LegacyCowModelRenderer.DiagnosticData data = renderer.getPartDiagnostics(partName);
             if (data != null) {
                 if (ImGui.treeNode(partName)) {
                     renderPartData(data);
@@ -124,7 +123,7 @@ public class DiagnosticsSection implements IPanelSection {
     /**
      * Render diagnostic data for a single part.
      */
-    private void renderPartData(ModelRenderer.DiagnosticData data) {
+    private void renderPartData(LegacyCowModelRenderer.DiagnosticData data) {
         // Position
         ImGui.text(String.format("Position: (%.3f, %.3f, %.3f)",
             data.position.x, data.position.y, data.position.z));

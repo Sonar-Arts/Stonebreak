@@ -1,8 +1,7 @@
-package com.openmason.rendering;
+package com.openmason.deprecated;
 
-import com.openmason.deprecated.LegacyCowCoordinateSystemIntegration;
-import com.openmason.deprecated.LegacyCowModelManager;
-import com.openmason.deprecated.LegacyCowStonebreakModel;
+import com.openmason.rendering.OpenGLValidator;
+import com.openmason.rendering.VertexArray;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 
@@ -21,11 +20,34 @@ import java.nio.FloatBuffer;
  * High-level model renderer that integrates the buffer management system
  * with the existing StonebreakModel architecture. Provides a clean interface
  * for rendering models with real-time texture variant switching.
- * 
+ *
  * This class maintains 1:1 rendering parity with Stonebreak's EntityRenderer
  * while providing the advanced buffer management needed for Open Mason.
+ *
+ * @deprecated This class is exclusively used for legacy cow model rendering in Open Mason's viewport.
+ *             It is completely hardcoded to work only with cow-specific types and cannot render any
+ *             other model types. All dependencies and methods are cow-specific:
+ *             <p>
+ *             <b>Cow-specific dependencies:</b>
+ *             - {@link com.openmason.deprecated.LegacyCowStonebreakModel} (only model type accepted)
+ *             - {@link com.openmason.deprecated.LegacyCowModelManager} for coordinate space management
+ *             - {@link com.openmason.deprecated.LegacyCowCoordinateSystemIntegration} for mesh generation
+ *             - {@link com.openmason.deprecated.LegacyCowTextureAtlas} for texture management
+ *             - {@link TextureCoordinateBuffer} (deprecated) for cow-specific UV mapping
+ *             - {@link TextureAtlas} (deprecated) for cow texture generation
+ *             <p>
+ *             <b>Used by:</b>
+ *             - {@link com.openmason.ui.viewport.OpenMason3DViewport} for cow model visualization
+ *             - {@link com.openmason.ui.viewport.rendering.RenderPipeline} for cow model rendering
+ *             <p>
+ *             Block and item rendering use completely different systems (BlockRenderer, ItemRenderer)
+ *             that integrate with the CBR API from stonebreak-game. This class should not be extended
+ *             or used for any non-cow rendering. Consider migrating cow rendering to use stonebreak's
+ *             generic model rendering systems (ModelLoader, EntityRenderer) instead of this hardcoded
+ *             cow-specific implementation.
  */
-public class ModelRenderer implements AutoCloseable {
+@Deprecated
+public class LegacyCowModelRenderer implements AutoCloseable {
     private final Map<String, VertexArray> modelPartVAOs = new ConcurrentHashMap<>();
     private final Map<String, String> currentTextureVariants = new ConcurrentHashMap<>();
     private boolean initialized = false;
@@ -55,7 +77,7 @@ public class ModelRenderer implements AutoCloseable {
      * 
      * @param debugPrefix Prefix for debug names to identify this renderer's resources
      */
-    public ModelRenderer(String debugPrefix) {
+    public LegacyCowModelRenderer(String debugPrefix) {
         this.debugPrefix = debugPrefix != null ? debugPrefix : "ModelRenderer";
     }
     
@@ -85,7 +107,7 @@ public class ModelRenderer implements AutoCloseable {
         
         // Track coordinate space for this model
         String modelVariant = model.getVariantName();
-        LegacyCowModelManager.CoordinateSpace coordinateSpace = LegacyCowModelManager.CoordinateSpaceManager.getCoordinateSpace(modelVariant);
+        LegacyCowModelManager.CoordinateSpace coordinateSpace = com.openmason.deprecated.LegacyCowModelManager.CoordinateSpaceManager.getCoordinateSpace(modelVariant);
         modelCoordinateSpaces.put(modelVariant, coordinateSpace);
         
         // System.out.println("Preparing model '" + modelVariant + "' in coordinate space: " + 
@@ -271,7 +293,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param mvpUniformLocation The uniform location for MVP matrix
      * @param modelMatrixLocation The uniform location for individual model matrices
      * @param viewProjectionMatrix The view-projection matrix
-     * @param textureAtlas The texture atlas to bind (null for solid color rendering)
+     * @param legacyCowTextureAtlas The texture atlas to bind (null for solid color rendering)
      * @param textureUniformLocation The texture sampler uniform location
      * @param useTextureUniformLocation The useTexture boolean uniform location
      * @param colorUniformLocation The color uniform location
@@ -279,11 +301,11 @@ public class ModelRenderer implements AutoCloseable {
     public void renderModel(LegacyCowStonebreakModel model, String textureVariant,
                             int shaderProgram, int mvpUniformLocation,
                             int modelMatrixLocation, float[] viewProjectionMatrix,
-                            com.openmason.rendering.TextureAtlas textureAtlas,
+                            LegacyCowTextureAtlas legacyCowTextureAtlas,
                             int textureUniformLocation, int useTextureUniformLocation,
                             int colorUniformLocation) {
         renderModelInternal(model, textureVariant, shaderProgram, mvpUniformLocation, 
-                           modelMatrixLocation, viewProjectionMatrix, textureAtlas,
+                           modelMatrixLocation, viewProjectionMatrix, legacyCowTextureAtlas,
                            textureUniformLocation, useTextureUniformLocation, colorUniformLocation);
     }
     
@@ -315,7 +337,7 @@ public class ModelRenderer implements AutoCloseable {
      * @param modelMatrixLocation The uniform location for individual model matrices
      * @param viewProjectionMatrix The view-projection matrix
      * @param userTransform The user transform matrix to apply to the entire model
-     * @param textureAtlas The texture atlas to bind (null for solid color rendering)
+     * @param legacyCowTextureAtlas The texture atlas to bind (null for solid color rendering)
      * @param textureUniformLocation The texture sampler uniform location
      * @param useTextureUniformLocation The useTexture boolean uniform location
      * @param colorUniformLocation The color uniform location
@@ -324,11 +346,11 @@ public class ModelRenderer implements AutoCloseable {
                             int shaderProgram, int mvpUniformLocation,
                             int modelMatrixLocation, float[] viewProjectionMatrix,
                             Matrix4f userTransform,
-                            com.openmason.rendering.TextureAtlas textureAtlas,
+                            LegacyCowTextureAtlas legacyCowTextureAtlas,
                             int textureUniformLocation, int useTextureUniformLocation,
                             int colorUniformLocation) {
         renderModelInternalWithUserTransform(model, textureVariant, shaderProgram, mvpUniformLocation, 
-                                           modelMatrixLocation, viewProjectionMatrix, userTransform, textureAtlas,
+                                           modelMatrixLocation, viewProjectionMatrix, userTransform, legacyCowTextureAtlas,
                                            textureUniformLocation, useTextureUniformLocation, colorUniformLocation);
     }
     
@@ -338,7 +360,7 @@ public class ModelRenderer implements AutoCloseable {
     private void renderModelInternalWithUserTransform(LegacyCowStonebreakModel model, String textureVariant, int shaderProgram,
                                                       int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
                                                       Matrix4f userTransform,
-                                                      com.openmason.rendering.TextureAtlas textureAtlas,
+                                                      LegacyCowTextureAtlas legacyCowTextureAtlas,
                                                       int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
@@ -374,11 +396,11 @@ public class ModelRenderer implements AutoCloseable {
         glUniformMatrix4fv(mvpUniformLocation, false, viewProjectionMatrix);
         
         // Setup texture rendering
-        boolean useTextures = (textureAtlas != null && textureAtlas.isReady());
+        boolean useTextures = (legacyCowTextureAtlas != null && legacyCowTextureAtlas.isReady());
         if (useTextures) {
             // Bind texture atlas
-            textureAtlas.bind(0); // Use texture unit 0
-            textureAtlas.setTextureUniform(shaderProgram, "uTexture", 0);
+            legacyCowTextureAtlas.bind(0); // Use texture unit 0
+            legacyCowTextureAtlas.setTextureUniform(shaderProgram, "uTexture", 0);
             
             // Enable texture rendering
             if (useTextureUniformLocation != -1) {
@@ -417,7 +439,7 @@ public class ModelRenderer implements AutoCloseable {
      */
     private void renderModelInternal(LegacyCowStonebreakModel model, String textureVariant, int shaderProgram,
                                      int mvpUniformLocation, int modelMatrixLocation, float[] viewProjectionMatrix,
-                                     com.openmason.rendering.TextureAtlas textureAtlas,
+                                     LegacyCowTextureAtlas legacyCowTextureAtlas,
                                      int textureUniformLocation, int useTextureUniformLocation, int colorUniformLocation) {
         if (!initialized) {
             throw new IllegalStateException("ModelRenderer not initialized");
@@ -453,11 +475,11 @@ public class ModelRenderer implements AutoCloseable {
         glUniformMatrix4fv(mvpUniformLocation, false, viewProjectionMatrix);
         
         // Setup texture rendering
-        boolean useTextures = (textureAtlas != null && textureAtlas.isReady());
+        boolean useTextures = (legacyCowTextureAtlas != null && legacyCowTextureAtlas.isReady());
         if (useTextures) {
             // Bind texture atlas
-            textureAtlas.bind(0); // Use texture unit 0
-            textureAtlas.setTextureUniform(shaderProgram, "uTexture", 0);
+            legacyCowTextureAtlas.bind(0); // Use texture unit 0
+            legacyCowTextureAtlas.setTextureUniform(shaderProgram, "uTexture", 0);
             
             // Enable texture rendering
             if (useTextureUniformLocation != -1) {
@@ -844,7 +866,7 @@ public class ModelRenderer implements AutoCloseable {
             for (Map.Entry<String, LegacyCowModelManager.CoordinateSpace> entry : modelCoordinateSpaces.entrySet()) {
                 String modelVariant = entry.getKey();
                 LegacyCowModelManager.CoordinateSpace space = entry.getValue();
-                String status = (space == LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) ? "✓ COMPATIBLE" : "⚠ INCOMPATIBLE";
+                String status = (space == com.openmason.deprecated.LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) ? "✓ COMPATIBLE" : "⚠ INCOMPATIBLE";
                 // System.out.println("  - " + modelVariant + ": " + space.getDisplayName() + " " + status);
             }
         }
@@ -1224,7 +1246,7 @@ public class ModelRenderer implements AutoCloseable {
     public LegacyCowModelManager.CoordinateValidationResult validateCoordinateSpace(
             String requestedModel, LegacyCowStonebreakModel actualModel) {
         String actualVariant = actualModel.getVariantName();
-        return LegacyCowModelManager.CoordinateSpaceManager.validateCoordinateCompatibility(
+        return com.openmason.deprecated.LegacyCowModelManager.CoordinateSpaceManager.validateCoordinateCompatibility(
             requestedModel, actualVariant);
     }
     
@@ -1251,7 +1273,7 @@ public class ModelRenderer implements AutoCloseable {
             String modelVariant = entry.getKey();
             LegacyCowModelManager.CoordinateSpace space = entry.getValue();
             
-            if (space != LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
+            if (space != com.openmason.deprecated.LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE) {
                 report.addMismatch(modelVariant, space, 
                     "Model is not using Stonebreak-compatible coordinate space");
             } else {
@@ -1279,7 +1301,7 @@ public class ModelRenderer implements AutoCloseable {
         String modelVariant = findModelVariantForPart(partName);
         LegacyCowModelManager.CoordinateSpace space = modelCoordinateSpaces.get(modelVariant);
         
-        boolean coordinatesMatch = (space == LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
+        boolean coordinatesMatch = (space == com.openmason.deprecated.LegacyCowModelManager.CoordinateSpace.STONEBREAK_COMPATIBLE);
         
         return new CoordinateComparisonResult(
             partName, modelVariant, space, renderData.position, 

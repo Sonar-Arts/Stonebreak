@@ -1,15 +1,14 @@
 package com.openmason.ui.viewport.rendering;
 
-import com.openmason.rendering.BlockRenderer;
-import com.openmason.rendering.ItemRenderer;
-import com.openmason.rendering.ModelRenderer;
-import com.openmason.rendering.TextureAtlas;
+import com.openmason.deprecated.LegacyCowTextureAtlas;
+import com.openmason.rendering.core.BlockRenderer;
+import com.openmason.rendering.core.ItemRenderer;
+import com.openmason.deprecated.LegacyCowModelRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
 import com.openmason.ui.viewport.shaders.ShaderManager;
 import com.openmason.ui.viewport.shaders.ShaderProgram;
 import com.openmason.ui.viewport.shaders.ShaderType;
-import com.openmason.ui.viewport.state.RenderingMode;
 import com.openmason.ui.viewport.state.RenderingState;
 import com.openmason.ui.viewport.state.TransformState;
 import com.openmason.ui.viewport.state.ViewportState;
@@ -36,10 +35,10 @@ public class RenderPipeline {
     private final TestCubeRenderer testCubeRenderer;
 
     // External renderers (models, blocks, items)
-    private final ModelRenderer modelRenderer;
+    private final LegacyCowModelRenderer legacyCowModelRenderer;
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final TextureAtlas textureAtlas;
+    private final LegacyCowTextureAtlas legacyCowTextureAtlas;
 
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
@@ -52,17 +51,17 @@ public class RenderPipeline {
      * Create render pipeline with all required dependencies.
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
-                         ModelRenderer modelRenderer, BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                         TextureAtlas textureAtlas, GizmoRenderer gizmoRenderer) {
+                          LegacyCowModelRenderer legacyCowModelRenderer, BlockRenderer blockRenderer, ItemRenderer itemRenderer,
+                          LegacyCowTextureAtlas legacyCowTextureAtlas, GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
         this.gridRenderer = new GridRenderer();
         this.testCubeRenderer = new TestCubeRenderer();
-        this.modelRenderer = modelRenderer;
+        this.legacyCowModelRenderer = legacyCowModelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
-        this.textureAtlas = textureAtlas;
+        this.legacyCowTextureAtlas = legacyCowTextureAtlas;
         this.gizmoRenderer = gizmoRenderer;
     }
 
@@ -166,16 +165,16 @@ public class RenderPipeline {
      * Prepare model for rendering if not already prepared.
      */
     private boolean prepareModelIfNeeded(RenderingState renderingState) {
-        if (modelRenderer.isModelPrepared(renderingState.getCurrentModel())) {
+        if (legacyCowModelRenderer.isModelPrepared(renderingState.getCurrentModel())) {
             return true;
         }
 
         try {
             logger.debug("Preparing model for rendering: {}", renderingState.getCurrentModelName());
-            boolean prepared = modelRenderer.prepareModel(renderingState.getCurrentModel());
+            boolean prepared = legacyCowModelRenderer.prepareModel(renderingState.getCurrentModel());
             if (!prepared) {
                 logger.error("Failed to prepare model: {}", renderingState.getCurrentModelName());
-                modelRenderer.logDiagnosticInfo();
+                legacyCowModelRenderer.logDiagnosticInfo();
             }
             return prepared;
         } catch (Exception e) {
@@ -193,9 +192,9 @@ public class RenderPipeline {
             float[] vpArray = context.getViewProjectionArray();
 
             // In wireframe mode, pass null textureAtlas to disable textures
-            TextureAtlas atlas = wireframeMode ? null : textureAtlas;
+            LegacyCowTextureAtlas atlas = wireframeMode ? null : legacyCowTextureAtlas;
 
-            modelRenderer.renderModel(
+            legacyCowModelRenderer.renderModel(
                 renderingState.getCurrentModel(),
                 renderingState.getCurrentTextureVariant(),
                 matrixShader.getProgramId(),

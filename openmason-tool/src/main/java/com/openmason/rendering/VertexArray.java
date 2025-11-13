@@ -1,5 +1,6 @@
 package com.openmason.rendering;
 
+import com.openmason.deprecated.LegacyCowTextureCoordinateBuffer;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
@@ -20,7 +21,7 @@ public class VertexArray implements AutoCloseable {
     
     // Associated buffers for lifecycle management
     private VertexBuffer vertexBuffer;
-    private TextureCoordinateBuffer textureCoordBuffer;
+    private LegacyCowTextureCoordinateBuffer textureCoordBuffer;
     private IndexBuffer indexBuffer;
     private final List<OpenGLBuffer> additionalBuffers;
     
@@ -120,7 +121,7 @@ public class VertexArray implements AutoCloseable {
      * 
      * @param textureCoordBuffer The texture coordinate buffer containing UV data
      */
-    public void setTextureCoordinateBuffer(TextureCoordinateBuffer textureCoordBuffer) {
+    public void setTextureCoordinateBuffer(LegacyCowTextureCoordinateBuffer textureCoordBuffer) {
         validateVAO();
         bind();
         
@@ -229,7 +230,7 @@ public class VertexArray implements AutoCloseable {
         VertexArray vao = null;
         VertexBuffer vertexBuf = null;
         IndexBuffer indexBuf = null;
-        TextureCoordinateBuffer texCoordBuf = null;
+        LegacyCowTextureCoordinateBuffer texCoordBuf = null;
         
         try {
             // Create VAO first
@@ -244,7 +245,7 @@ public class VertexArray implements AutoCloseable {
             vao.setIndexBuffer(indexBuf);
             
             // Create texture coordinate buffer (will be populated when variant is set)
-            texCoordBuf = TextureCoordinateBuffer.createPlaceholder(
+            texCoordBuf = LegacyCowTextureCoordinateBuffer.createPlaceholder(
                 vertices.length / 3, debugName + "_texcoords");
             vao.setTextureCoordinateBuffer(texCoordBuf);
             
@@ -494,7 +495,7 @@ public class VertexArray implements AutoCloseable {
     public long getLastAccessTime() { return lastAccessTime; }
     public int getRenderCount() { return renderCount; }
     public VertexBuffer getVertexBuffer() { return vertexBuffer; }
-    public TextureCoordinateBuffer getTextureCoordinateBuffer() { return textureCoordBuffer; }
+    public LegacyCowTextureCoordinateBuffer getTextureCoordinateBuffer() { return textureCoordBuffer; }
     public IndexBuffer getIndexBuffer() { return indexBuffer; }
     
     @Override

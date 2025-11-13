@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport.ui;
 
 import com.openmason.deprecated.LegacyCowStonebreakModel;
-import com.openmason.rendering.ModelRenderer;
+import com.openmason.deprecated.LegacyCowModelRenderer;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,19 +22,19 @@ public class ModelControlsUI {
     private String currentTextureVariant = "default";
     private LegacyCowStonebreakModel currentModel;
     private CompletableFuture<Void> currentModelLoadingFuture;
-    private ModelRenderer modelRenderer;
+    private LegacyCowModelRenderer legacyCowModelRenderer;
 
     /**
      * Update UI state references.
      */
     public void updateState(String currentModelName, String currentTextureVariant,
                             LegacyCowStonebreakModel currentModel, CompletableFuture<Void> loadingFuture,
-                            ModelRenderer modelRenderer) {
+                            LegacyCowModelRenderer legacyCowModelRenderer) {
         this.currentModelName = currentModelName;
         this.currentTextureVariant = currentTextureVariant;
         this.currentModel = currentModel;
         this.currentModelLoadingFuture = loadingFuture;
-        this.modelRenderer = modelRenderer;
+        this.legacyCowModelRenderer = legacyCowModelRenderer;
     }
 
     /**
@@ -57,7 +57,7 @@ public class ModelControlsUI {
         }
 
         // Model renderer status
-        if (modelRenderer != null) {
+        if (legacyCowModelRenderer != null) {
             renderRendererStatus();
         }
 
@@ -118,7 +118,7 @@ public class ModelControlsUI {
     private void renderRendererStatus() {
         ImGui.separator();
         ImGui.text("Renderer Status:");
-        ModelRenderer.RenderingStatistics stats = modelRenderer.getStatistics();
+        LegacyCowModelRenderer.RenderingStatistics stats = legacyCowModelRenderer.getStatistics();
         ImGui.text("Initialized: " + stats.initialized);
         ImGui.text("Model Parts: " + stats.modelPartCount);
         ImGui.text("Render Calls: " + stats.totalRenderCalls);

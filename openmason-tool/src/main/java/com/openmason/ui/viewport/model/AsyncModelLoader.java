@@ -51,7 +51,7 @@ public class AsyncModelLoader {
 
         // Load model info asynchronously
         currentLoadingFuture = LegacyCowModelManager.loadModelInfoAsync(modelName,
-                LegacyCowModelManager.LoadingPriority.HIGH, progressCallback)
+                com.openmason.deprecated.LegacyCowModelManager.LoadingPriority.HIGH, progressCallback)
             .thenCompose(modelInfo -> {
                 if (modelInfo == null) {
                     throw new RuntimeException("Failed to load model info for: " + modelName);
@@ -61,7 +61,7 @@ public class AsyncModelLoader {
 
                 // Create StonebreakModel from ModelInfo
                 LegacyCowStonebreakModel model = new LegacyCowStonebreakModel(modelInfo,
-                    LegacyCowModelManager.getStaticModelParts(modelName));
+                    com.openmason.deprecated.LegacyCowModelManager.getStaticModelParts(modelName));
 
                 logger.debug("StonebreakModel created successfully");
                 return CompletableFuture.completedFuture(model);

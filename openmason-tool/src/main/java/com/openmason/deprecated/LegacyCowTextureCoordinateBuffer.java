@@ -1,7 +1,8 @@
-package com.openmason.rendering;
+package com.openmason.deprecated;
 
+import com.openmason.rendering.OpenGLBuffer;
+import com.openmason.rendering.VertexArray;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
-import com.stonebreak.textures.mobs.CowTextureLoader;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
@@ -14,8 +15,22 @@ import java.util.Map;
  * Texture Coordinate Buffer for managing UV mapping data.
  * Integrates with the Stonebreak texture atlas system to provide proper
  * texture coordinate generation for different model parts and texture variants.
+ *
+ * @deprecated This class is exclusively used for legacy cow model rendering in Open Mason's viewport.
+ *             It contains hardcoded cow-specific texture mappings (HEAD, BODY, LEG, HORNS, UDDER, TAIL)
+ *             and only works with {@link com.stonebreak.textures.mobs.CowTextureDefinition} and
+ *             {@link com.stonebreak.textures.mobs.CowTextureLoader}. It is used by:
+ *             - {@link LegacyCowModelRenderer} for rendering {@link com.openmason.deprecated.LegacyCowStonebreakModel}
+ *             - {@link VertexArray#fromModelPart} for cow model part initialization
+ *             - {@link com.openmason.ui.viewport.OpenMason3DViewport} for cow model visualization
+ *             <p>
+ *             Block rendering uses the CBR API from stonebreak-game which has its own texture coordinate
+ *             management. This class should not be used for new features or non-cow models. Consider
+ *             migrating cow rendering to use stonebreak's texture systems directly or creating a generic
+ *             texture coordinate buffer that isn't hardcoded to cow anatomy.
  */
-public class TextureCoordinateBuffer extends OpenGLBuffer {
+@Deprecated
+public class LegacyCowTextureCoordinateBuffer extends OpenGLBuffer {
     private final int attributeIndex;
     private int vertexCount;
     private String currentTextureVariant;
@@ -26,7 +41,7 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * @param attributeIndex The vertex attribute index (typically 1 for texture coordinates)
      * @param debugName Debug name for tracking
      */
-    public TextureCoordinateBuffer(int attributeIndex, String debugName) {
+    public LegacyCowTextureCoordinateBuffer(int attributeIndex, String debugName) {
         super(GL15.GL_ARRAY_BUFFER, debugName);
         this.attributeIndex = attributeIndex;
         this.vertexCount = 0;
@@ -38,7 +53,7 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * 
      * @param debugName Debug name for tracking
      */
-    public TextureCoordinateBuffer(String debugName) {
+    public LegacyCowTextureCoordinateBuffer(String debugName) {
         this(1, debugName);
     }
     
@@ -402,8 +417,8 @@ public class TextureCoordinateBuffer extends OpenGLBuffer {
      * @param debugName Debug name for the buffer
      * @return Configured texture coordinate buffer with placeholder data
      */
-    public static TextureCoordinateBuffer createPlaceholder(int vertexCount, String debugName) {
-        TextureCoordinateBuffer buffer = new TextureCoordinateBuffer(debugName);
+    public static LegacyCowTextureCoordinateBuffer createPlaceholder(int vertexCount, String debugName) {
+        LegacyCowTextureCoordinateBuffer buffer = new LegacyCowTextureCoordinateBuffer(debugName);
         
         // Generate placeholder coordinates (all point to first atlas tile)
         float[] placeholderCoords = new float[vertexCount * 2];

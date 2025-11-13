@@ -3,13 +3,13 @@ package com.openmason.ui.viewport;
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
 import com.openmason.deprecated.LegacyCowStonebreakModel;
+import com.openmason.deprecated.LegacyCowModelRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.model.AsyncModelLoader;
-import com.openmason.rendering.BlockRenderer;
-import com.openmason.rendering.ItemRenderer;
-import com.openmason.rendering.ModelRenderer;
-import com.openmason.rendering.TextureAtlas;
+import com.openmason.rendering.core.BlockRenderer;
+import com.openmason.rendering.core.ItemRenderer;
+import com.openmason.deprecated.LegacyCowTextureAtlas;
 import com.openmason.ui.viewport.rendering.RenderContext;
 import com.openmason.ui.viewport.rendering.RenderPipeline;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
@@ -65,10 +65,10 @@ public class OpenMason3DViewport {
     private final ViewportInputHandler inputHandler;
 
     // External renderers
-    private final ModelRenderer modelRenderer;
+    private final LegacyCowModelRenderer legacyCowModelRenderer;
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final TextureAtlas textureAtlas;
+    private final LegacyCowTextureAtlas legacyCowTextureAtlas;
 
     // Model loading
     private final AsyncModelLoader modelLoader;
@@ -108,10 +108,10 @@ public class OpenMason3DViewport {
         this.inputHandler = new ViewportInputHandler(camera);
 
         // Initialize external renderers
-        this.modelRenderer = new ModelRenderer("Viewport");
+        this.legacyCowModelRenderer = new LegacyCowModelRenderer("Viewport");
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
-        this.textureAtlas = new TextureAtlas("Viewport_CowAtlas");
+        this.legacyCowTextureAtlas = new LegacyCowTextureAtlas("Viewport_CowAtlas");
 
         // Initialize model loader
         this.modelLoader = new AsyncModelLoader();
@@ -152,8 +152,8 @@ public class OpenMason3DViewport {
             resourceManager.initialize(viewportState.getWidth(), viewportState.getHeight());
 
             // Initialize model renderer
-            modelRenderer.initialize();
-            modelRenderer.setMatrixTransformationMode(true);
+            legacyCowModelRenderer.initialize();
+            legacyCowModelRenderer.setMatrixTransformationMode(true);
 
             // Initialize block renderer and BlockManager
             if (!BlockManager.isInitialized()) {
@@ -168,7 +168,7 @@ public class OpenMason3DViewport {
             itemRenderer.initialize();
 
             // Initialize texture atlas
-            textureAtlas.initialize();
+            legacyCowTextureAtlas.initialize();
 
             // Initialize gizmo renderer
             gizmoRenderer.initialize();
@@ -183,8 +183,8 @@ public class OpenMason3DViewport {
             // Create render pipeline (after all dependencies initialized)
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
-                modelRenderer, blockRenderer, itemRenderer,
-                textureAtlas, gizmoRenderer
+                    legacyCowModelRenderer, blockRenderer, itemRenderer,
+                    legacyCowTextureAtlas, gizmoRenderer
             );
 
             // Update state
@@ -316,7 +316,7 @@ public class OpenMason3DViewport {
             renderingState.getCurrentTextureVariant(),
             renderingState.getCurrentModel(),
             modelLoader.getCurrentLoadingFuture(),
-            modelRenderer
+                legacyCowModelRenderer
         );
 
         ModelControlsUI.ModelControlsResult result = modelControlsUI.render();
@@ -455,16 +455,16 @@ public class OpenMason3DViewport {
             inputHandler.cleanup();
         }
 
-        if (modelRenderer != null) {
+        if (legacyCowModelRenderer != null) {
             try {
-                modelRenderer.close();
+                legacyCowModelRenderer.close();
             } catch (Exception e) {
                 logger.error("Error cleaning up model renderer", e);
             }
         }
 
-        if (textureAtlas != null) {
-            textureAtlas.close();
+        if (legacyCowTextureAtlas != null) {
+            legacyCowTextureAtlas.close();
         }
 
         if (gizmoRenderer != null) {
@@ -486,7 +486,7 @@ public class OpenMason3DViewport {
     // ========== Public API (Backward Compatibility) ==========
 
     public Camera getCamera() { return camera; }
-    public ModelRenderer getModelRenderer() { return modelRenderer; }
+    public LegacyCowModelRenderer getModelRenderer() { return legacyCowModelRenderer; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
 
     public boolean isShowGrid() { return viewportState.isShowGrid(); }

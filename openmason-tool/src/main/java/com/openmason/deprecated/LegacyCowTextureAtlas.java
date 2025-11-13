@@ -1,4 +1,4 @@
-package com.openmason.rendering;
+package com.openmason.deprecated;
 
 import com.stonebreak.textures.mobs.CowTextureGenerator;
 import org.lwjgl.opengl.GL11;
@@ -11,11 +11,27 @@ import java.nio.ByteBuffer;
 /**
  * OpenGL texture atlas management for cow texture variants.
  * Handles texture atlas generation, loading, and binding for 3D model rendering.
- * 
+ *
  * This class bridges the gap between Stonebreak's texture generation system
  * and OpenMason's OpenGL rendering pipeline.
+ *
+ * @deprecated This class is exclusively used for legacy cow model rendering in Open Mason's viewport.
+ *             It is hardcoded to use {@link com.stonebreak.textures.mobs.CowTextureGenerator} for
+ *             texture generation (line 56) and only works with cow texture variants. It is used by:
+ *             - {@link com.openmason.ui.viewport.OpenMason3DViewport} (created as "Viewport_CowAtlas")
+ *             - {@link LegacyCowModelRenderer} for rendering cow models with textures
+ *             - {@link com.openmason.ui.viewport.rendering.RenderPipeline} for cow model rendering
+ *             <p>
+ *             Block rendering uses a completely different class:
+ *             {@link com.stonebreak.rendering.textures.TextureAtlas} from the stonebreak-game module,
+ *             which is managed by {@link com.openmason.block.BlockManager}. This OpenMason-specific
+ *             TextureAtlas should not be used for blocks, items, or any non-cow entities.
+ *             <p>
+ *             Consider migrating cow rendering to use stonebreak's texture atlas system directly or
+ *             creating a generic texture atlas wrapper that isn't hardcoded to cow textures.
  */
-public class TextureAtlas implements AutoCloseable {
+@Deprecated
+public class LegacyCowTextureAtlas implements AutoCloseable {
     
     private int textureId = -1;
     private boolean initialized = false;
@@ -34,7 +50,7 @@ public class TextureAtlas implements AutoCloseable {
      * 
      * @param debugName Debug name for tracking
      */
-    public TextureAtlas(String debugName) {
+    public LegacyCowTextureAtlas(String debugName) {
         this.debugName = debugName != null ? debugName : "TextureAtlas";
     }
     

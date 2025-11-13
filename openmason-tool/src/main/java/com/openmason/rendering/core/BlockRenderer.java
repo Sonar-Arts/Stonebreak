@@ -1,4 +1,4 @@
-package com.openmason.rendering;
+package com.openmason.rendering.core;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
