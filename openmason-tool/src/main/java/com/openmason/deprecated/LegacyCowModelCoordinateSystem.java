@@ -1,14 +1,14 @@
-package com.openmason.coordinates;
+package com.openmason.deprecated;
 
 import org.joml.Vector3f;
 
 /**
  * Model Coordinate System - Phase 7 Open Mason Implementation
- * 
- * Provides exact mathematical replication of Stonebreak's 3D model coordinate system 
+ *
+ * Provides exact mathematical replication of Stonebreak's 3D model coordinate system
  * for 1:1 rendering parity. This system handles the conversion between position/size
  * definitions and vertex generation with perfect mathematical precision.
- * 
+ *
  * Key Features:
  * - Right-handed Y-up coordinate system (matches Stonebreak exactly)
  * - Position = center point, Size = full dimensions
@@ -16,14 +16,23 @@ import org.joml.Vector3f;
  * - Generates exactly 24 vertices per part (4 vertices × 6 faces)
  * - Output: 72 float values per part (24 vertices × 3 components each)
  * - OpenGL-compatible vertex and index generation
- * 
+ *
  * Mathematical Precision:
  * - Center-based positioning with exact half-size calculations
  * - Face normal consistency for proper lighting
  * - Vertex ordering for correct triangle winding
  * - Index generation for efficient rendering
+ *
+ * @deprecated This coordinate system is only used by {@link com.openmason.deprecated.LegacyCowCoordinateSystemIntegration}
+ *             for legacy cow model rendering. Block rendering uses the CBR API from stonebreak-game
+ *             ({@link com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager})
+ *             which has its own built-in mesh generation and coordinate management. This class was
+ *             created for "Phase 7 Open Mason Implementation" but the integration never happened for
+ *             blocks. Consider migrating cow rendering to use stonebreak's model systems directly
+ *             ({@link com.stonebreak.model.ModelLoader}).
  */
-public class ModelCoordinateSystem {
+@Deprecated
+public class LegacyCowModelCoordinateSystem {
     
     // Coordinate system constants
     public static final int VERTICES_PER_FACE = 4;
@@ -35,27 +44,7 @@ public class ModelCoordinateSystem {
     // Triangle indices per face (2 triangles × 3 vertices = 6 indices per face)
     public static final int INDICES_PER_FACE = 6;
     public static final int INDICES_PER_PART = INDICES_PER_FACE * FACES_PER_PART; // 36
-    
-    // Face enumeration for clarity and consistency
-    public enum Face {
-        FRONT(0),   // +Z direction
-        BACK(1),    // -Z direction  
-        LEFT(2),    // -X direction
-        RIGHT(3),   // +X direction
-        TOP(4),     // +Y direction
-        BOTTOM(5);  // -Y direction
-        
-        private final int index;
-        
-        Face(int index) {
-            this.index = index;
-        }
-        
-        public int getIndex() {
-            return index;
-        }
-    }
-    
+
     /**
      * 3D position structure for model parts.
      */
@@ -145,31 +134,7 @@ public class ModelCoordinateSystem {
                    Float.floatToIntBits(z);
         }
     }
-    
-    /**
-     * Model part structure combining position and size.
-     */
-    public static class ModelPart {
-        private final String name;
-        private final Position position;
-        private final Size size;
-        
-        public ModelPart(String name, Position position, Size size) {
-            this.name = name;
-            this.position = position;
-            this.size = size;
-        }
-        
-        public String getName() { return name; }
-        public Position getPosition() { return position; }
-        public Size getSize() { return size; }
-        
-        @Override
-        public String toString() {
-            return String.format("ModelPart{%s, %s, %s}", name, position, size);
-        }
-    }
-    
+
     /**
      * Generate vertices for a cuboid model part.
      * 

@@ -1,7 +1,5 @@
 package com.openmason.deprecated;
 
-import com.openmason.coordinates.AtlasCoordinateSystem;
-import com.openmason.coordinates.ModelCoordinateSystem;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 import com.stonebreak.textures.mobs.CowTextureLoader;
 import com.stonebreak.model.ModelDefinition;
@@ -33,7 +31,7 @@ import com.stonebreak.model.ModelDefinition;
  *             It only works with cow models and textures (CowTextureDefinition, CowTextureLoader)
  *             and has hardcoded cow part mappings. A general-purpose coordinate integration system
  *             that can handle multiple mob types should be implemented instead. Use the general
- *             {@link AtlasCoordinateSystem} and {@link ModelCoordinateSystem} classes directly
+ *             {@link LegacyCowAtlasCoordinateSystem} and {@link LegacyCowModelCoordinateSystem} classes directly
  *             until a replacement is available.
  */
 @Deprecated
@@ -74,10 +72,10 @@ public class LegacyCowCoordinateSystemIntegration {
         
         // Validation
         public boolean isValid() {
-            return vertices != null && vertices.length == ModelCoordinateSystem.FLOATS_PER_PART &&
+            return vertices != null && vertices.length == LegacyCowModelCoordinateSystem.FLOATS_PER_PART &&
                    textureCoordinates != null && textureCoordinates.length == 48 && // 24 vertices × 2 UV
-                   normals != null && normals.length == ModelCoordinateSystem.FLOATS_PER_PART &&
-                   indices != null && indices.length == ModelCoordinateSystem.INDICES_PER_PART &&
+                   normals != null && normals.length == LegacyCowModelCoordinateSystem.FLOATS_PER_PART &&
+                   indices != null && indices.length == LegacyCowModelCoordinateSystem.INDICES_PER_PART &&
                    boundingBox != null && boundingBox.length == 6;
         }
         
@@ -110,33 +108,33 @@ public class LegacyCowCoordinateSystemIntegration {
         
         try {
             // Convert model part to coordinate system structures
-            ModelCoordinateSystem.Position position = new ModelCoordinateSystem.Position(
+            LegacyCowModelCoordinateSystem.Position position = new LegacyCowModelCoordinateSystem.Position(
                 modelPart.getPosition().getX(),
                 modelPart.getPosition().getY(),
                 modelPart.getPosition().getZ()
             );
             
-            ModelCoordinateSystem.Size size = new ModelCoordinateSystem.Size(
+            LegacyCowModelCoordinateSystem.Size size = new LegacyCowModelCoordinateSystem.Size(
                 modelPart.getSize().getX(),
                 modelPart.getSize().getY(),
                 modelPart.getSize().getZ()
             );
             
             // Generate vertices using model coordinate system
-            float[] vertices = ModelCoordinateSystem.generateVertices(position, size);
+            float[] vertices = LegacyCowModelCoordinateSystem.generateVertices(position, size);
             if (vertices == null) {
                 System.err.println("[CoordinateSystemIntegration] Failed to generate vertices for part: " + modelPart.getName());
                 return null;
             }
             
             // Generate indices
-            int[] indices = ModelCoordinateSystem.generateIndices();
+            int[] indices = LegacyCowModelCoordinateSystem.generateIndices();
             
             // Generate normals
-            float[] normals = ModelCoordinateSystem.generateVertexNormals();
+            float[] normals = LegacyCowModelCoordinateSystem.generateVertexNormals();
             
             // Calculate bounding box
-            float[] boundingBox = ModelCoordinateSystem.calculateBoundingBox(position, size);
+            float[] boundingBox = LegacyCowModelCoordinateSystem.calculateBoundingBox(position, size);
             
             // Generate texture coordinates using atlas coordinate system integration
             float[] textureCoordinates = generateTextureCoordinatesForPart(
@@ -223,12 +221,12 @@ public class LegacyCowCoordinateSystemIntegration {
                 
                 if (atlasCoord != null) {
                     // Convert to UV coordinates using atlas coordinate system
-                    AtlasCoordinateSystem.UVCoordinate uv = AtlasCoordinateSystem.gridToUV(
+                    LegacyCowAtlasCoordinateSystem.UVCoordinate uv = LegacyCowAtlasCoordinateSystem.gridToUV(
                         atlasCoord.getAtlasX(), atlasCoord.getAtlasY());
                     
                     if (uv != null) {
                         // Generate quad UV coordinates
-                        float[] quadUV = AtlasCoordinateSystem.generateQuadUVCoordinates(
+                        float[] quadUV = LegacyCowAtlasCoordinateSystem.generateQuadUVCoordinates(
                             atlasCoord.getAtlasX(), atlasCoord.getAtlasY());
                         
                         if (quadUV != null && quadUV.length == 8) {
@@ -242,7 +240,7 @@ public class LegacyCowCoordinateSystemIntegration {
                 }
                 
                 // Fallback coordinates for missing mappings
-                float[] fallbackUV = AtlasCoordinateSystem.generateQuadUVCoordinates(0, 0);
+                float[] fallbackUV = LegacyCowAtlasCoordinateSystem.generateQuadUVCoordinates(0, 0);
                 if (fallbackUV != null) {
                     System.arraycopy(fallbackUV, 0, result, index, 8);
                 } else {

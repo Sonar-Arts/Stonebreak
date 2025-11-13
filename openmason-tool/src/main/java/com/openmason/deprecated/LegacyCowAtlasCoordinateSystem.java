@@ -1,26 +1,34 @@
-package com.openmason.coordinates;
+package com.openmason.deprecated;
 
 /**
  * Atlas Coordinate System - Phase 7 Open Mason Implementation
- * 
+ *
  * Provides exact mathematical replication of Stonebreak's texture atlas coordinate system
  * for 1:1 rendering parity. This system handles the conversion between grid coordinates
  * and UV coordinates with perfect mathematical precision.
- * 
+ *
  * Key Features:
  * - Exact 16×16 grid system (GRID_SIZE = 16)
  * - 256×256 pixel atlas (ATLAS_WIDTH/HEIGHT = 256)
  * - Precise UV conversion: u = atlasX / 16.0f, v = atlasY / 16.0f
  * - OpenGL quad UV coordinate generation (8 values per face)
  * - Comprehensive bounds checking and validation
- * 
+ *
  * Mathematical Precision:
  * - Grid-to-UV: Exact division by 16.0f for floating point precision
  * - UV-to-Grid: Floor operation with bounds clamping
  * - Quad coordinates: Bottom-left, bottom-right, top-right, top-left order
  * - Validation: Ensures coordinates stay within [0-15] grid bounds
+ *
+ * @deprecated This coordinate system is only used by {@link com.openmason.deprecated.LegacyCowCoordinateSystemIntegration}
+ *             for legacy cow model rendering. Block rendering uses the CBR API from stonebreak-game
+ *             ({@link com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager})
+ *             which has its own built-in coordinate and mesh management. This class was created for
+ *             "Phase 7 Open Mason Implementation" but the integration never happened for blocks.
+ *             Consider migrating cow rendering to use CBR API or stonebreak's texture systems directly.
  */
-public class AtlasCoordinateSystem {
+@Deprecated
+public class LegacyCowAtlasCoordinateSystem {
     
     // Fixed texture atlas parameters for exact Stonebreak compatibility
     public static final int GRID_SIZE = 16;
@@ -31,40 +39,6 @@ public class AtlasCoordinateSystem {
     // Mathematical constants for precision
     public static final float TILE_SIZE_UV = 1.0f / GRID_SIZE; // 0.0625f
     public static final float UV_EPSILON = 0.0001f; // For floating point comparisons
-    
-    /**
-     * Atlas coordinate structure representing a position in the 16×16 grid.
-     */
-    public static class AtlasCoordinate {
-        private final int atlasX;
-        private final int atlasY;
-        
-        public AtlasCoordinate(int atlasX, int atlasY) {
-            this.atlasX = atlasX;
-            this.atlasY = atlasY;
-        }
-        
-        public int getAtlasX() { return atlasX; }
-        public int getAtlasY() { return atlasY; }
-        
-        @Override
-        public String toString() {
-            return "AtlasCoordinate{" + atlasX + "," + atlasY + "}";
-        }
-        
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (obj == null || getClass() != obj.getClass()) return false;
-            AtlasCoordinate that = (AtlasCoordinate) obj;
-            return atlasX == that.atlasX && atlasY == that.atlasY;
-        }
-        
-        @Override
-        public int hashCode() {
-            return atlasX * 31 + atlasY;
-        }
-    }
     
     /**
      * UV coordinate structure representing normalized texture coordinates.
@@ -103,7 +77,7 @@ public class AtlasCoordinateSystem {
     /**
      * Validates coordinate bounds for Stonebreak compatibility.
      * Ensures coordinates are within the 16×16 grid system.
-     * 
+     *
      * @param atlasX X coordinate in grid (must be 0-15)
      * @param atlasY Y coordinate in grid (must be 0-15)
      * @return true if coordinates are valid, false otherwise
@@ -111,19 +85,7 @@ public class AtlasCoordinateSystem {
     public static boolean validateCoordinateBounds(int atlasX, int atlasY) {
         return atlasX >= 0 && atlasX < GRID_SIZE && atlasY >= 0 && atlasY < GRID_SIZE;
     }
-    
-    /**
-     * Validates normalized UV coordinates.
-     * Ensures coordinates are within the valid [0.0, 1.0] range.
-     * 
-     * @param u U coordinate (must be 0.0-1.0)
-     * @param v V coordinate (must be 0.0-1.0)
-     * @return true if coordinates are valid, false otherwise
-     */
-    public static boolean validateUVBounds(float u, float v) {
-        return u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f;
-    }
-    
+
     /**
      * Convert grid coordinates to normalized UV coordinates.
      * Exact mathematical formula: u = atlasX / 16.0f, v = atlasY / 16.0f
@@ -166,30 +128,7 @@ public class AtlasCoordinateSystem {
         
         return new float[]{u1, v1, u2, v2};
     }
-    
-    /**
-     * Convert normalized UV coordinates back to grid coordinates.
-     * Inverse of gridToUV for validation and conversion purposes.
-     * 
-     * @param u Normalized U coordinate (0.0-1.0)
-     * @param v Normalized V coordinate (0.0-1.0)
-     * @return AtlasCoordinate with grid coordinates, or null if invalid input
-     */
-    public static AtlasCoordinate uvToGrid(float u, float v) {
-        if (!validateUVBounds(u, v)) {
-            return null;
-        }
-        
-        int atlasX = (int) Math.floor(u * GRID_SIZE);
-        int atlasY = (int) Math.floor(v * GRID_SIZE);
-        
-        // Clamp to valid bounds to handle edge cases
-        atlasX = Math.max(0, Math.min(GRID_SIZE - 1, atlasX));
-        atlasY = Math.max(0, Math.min(GRID_SIZE - 1, atlasY));
-        
-        return new AtlasCoordinate(atlasX, atlasY);
-    }
-    
+
     /**
      * Generate quad UV coordinates for OpenGL rendering.
      * Returns 8 UV coordinates for a quad (4 vertices × 2 coordinates).
