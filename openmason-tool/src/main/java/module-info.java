@@ -38,7 +38,6 @@ module com.openmason {
     requires stonebreak.game;
     
     // Open packages for Jackson JSON processing
-    opens com.openmason.texture to com.fasterxml.jackson.databind;
     opens com.openmason.ui.themes.core to com.fasterxml.jackson.databind;
     opens com.openmason.ui.themes.registry to com.fasterxml.jackson.databind;
     opens com.openmason.ui.themes.persistence to com.fasterxml.jackson.databind;
@@ -54,6 +53,5 @@ module com.openmason {
     exports com.openmason.ui.themes.preview;
     exports com.openmason.ui.themes.utils;
     exports com.openmason.deprecated;
-    exports com.openmason.texture;
     opens com.openmason.deprecated to com.fasterxml.jackson.databind;
 }

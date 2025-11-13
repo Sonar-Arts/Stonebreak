@@ -1,6 +1,6 @@
 package com.openmason.ui.properties;
 
-import com.openmason.texture.TextureVariantManager;
+import com.openmason.deprecated.LegacyCowTextureVariantManager;
 import com.openmason.ui.properties.adapters.ViewportAdapter;
 import com.openmason.ui.properties.interfaces.IThemeContext;
 import com.openmason.ui.properties.interfaces.ITransformState;
@@ -11,13 +11,11 @@ import com.openmason.ui.properties.theming.PanelThemeContext;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Property Panel coordinator following SOLID, DRY, YAGNI, and KISS principles.
@@ -40,7 +38,7 @@ public class PropertyPanelImGui {
     private static final Logger logger = LoggerFactory.getLogger(PropertyPanelImGui.class);
 
     // Dependencies (injected)
-    private final TextureVariantManager textureManager;
+    private final LegacyCowTextureVariantManager textureManager;
     private final ThemeManager themeManager; // Store for getThemeManager() compatibility
     private final IThemeContext themeContext;
     private final ITransformState transformState;
@@ -68,7 +66,7 @@ public class PropertyPanelImGui {
      */
     public PropertyPanelImGui(ThemeManager themeManager) {
         // Initialize dependencies
-        this.textureManager = TextureVariantManager.getInstance();
+        this.textureManager = LegacyCowTextureVariantManager.getInstance();
         this.themeManager = themeManager; // Store for getThemeManager() compatibility
         this.themeContext = new PanelThemeContext(themeManager);
         this.transformState = new TransformState();

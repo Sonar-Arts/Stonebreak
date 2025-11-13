@@ -1,4 +1,4 @@
-package com.openmason.texture;
+package com.openmason.deprecated;
 
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 import com.stonebreak.textures.mobs.CowTextureLoader;
@@ -11,8 +11,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * Simplified texture management system for Open Mason.
  * Provides basic texture variant access and caching functionality.
  * Wraps the Stonebreak texture system with caching and validation.
+ *
+ * @deprecated This class is cow-specific despite its generic name. It only wraps
+ *             {@link com.stonebreak.textures.mobs.CowTextureLoader} and
+ *             {@link com.stonebreak.textures.mobs.CowTextureDefinition}.
+ *             Consider renaming to CowTextureManager or refactoring to support
+ *             general texture management if needed for blocks/items in the future.
  */
-public class TextureManager {
+@Deprecated
+public class LegacyCowTextureManager {
     
     private static final Map<String, TextureVariantInfo> variantInfoCache = new ConcurrentHashMap<>();
     private static boolean initialized = false;

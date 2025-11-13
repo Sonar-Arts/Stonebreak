@@ -1,4 +1,4 @@
-package com.openmason.texture;
+package com.openmason.deprecated;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -6,13 +6,19 @@ import java.util.*;
 
 /**
  * Simplified UI-focused texture variant management system for OpenMason.
- * 
+ *
  * Provides a UI-friendly bridge to the TextureManager for property panel integration
  * and basic variant switching functionality.
+ *
+ * @deprecated This class is cow-specific despite its generic name. It only manages
+ *             cow texture variants via {@link LegacyCowTextureManager}. Consider renaming to
+ *             CowTextureVariantManager or refactoring to support general texture
+ *             variant management if needed for blocks/items in the future.
  */
-public class TextureVariantManager {
+@Deprecated
+public class LegacyCowTextureVariantManager {
     
-    private static final Logger logger = LoggerFactory.getLogger(TextureVariantManager.class);
+    private static final Logger logger = LoggerFactory.getLogger(LegacyCowTextureVariantManager.class);
     
     // UI integration properties
     private String currentVariant = "default";
@@ -24,16 +30,16 @@ public class TextureVariantManager {
     private long lastSwitchTime = 0;
     
     // Singleton instance for UI integration
-    private static final TextureVariantManager INSTANCE = new TextureVariantManager();
+    private static final LegacyCowTextureVariantManager INSTANCE = new LegacyCowTextureVariantManager();
     
-    private TextureVariantManager() {
+    private LegacyCowTextureVariantManager() {
         // Private constructor for singleton
     }
     
     /**
      * Get singleton instance.
      */
-    public static TextureVariantManager getInstance() {
+    public static LegacyCowTextureVariantManager getInstance() {
         return INSTANCE;
     }
     
@@ -42,7 +48,7 @@ public class TextureVariantManager {
      */
     public void initialize() {
         // logger.info("Initializing TextureVariantManager...");
-        TextureManager.initialize();
+        LegacyCowTextureManager.initialize();
         // logger.info("TextureVariantManager initialization complete");
     }
     
@@ -64,14 +70,14 @@ public class TextureVariantManager {
         
         try {
             // Validate the variant exists
-            if (!TextureManager.validateVariant(variantName)) {
+            if (!LegacyCowTextureManager.validateVariant(variantName)) {
                 logger.warn("Invalid variant: {}", variantName);
                 loadingStatus = "Invalid variant: " + variantName;
                 return false;
             }
             
             // Load variant info to ensure it's cached
-            TextureManager.TextureVariantInfo info = TextureManager.getVariantInfo(variantName);
+            LegacyCowTextureManager.TextureVariantInfo info = LegacyCowTextureManager.getVariantInfo(variantName);
             if (info == null) {
                 logger.error("Failed to load variant info for: {}", variantName);
                 loadingStatus = "Failed to load variant: " + variantName;
@@ -122,21 +128,21 @@ public class TextureVariantManager {
      * Get list of available variants.
      */
     public List<String> getAvailableVariants() {
-        return TextureManager.getAvailableVariants();
+        return LegacyCowTextureManager.getAvailableVariants();
     }
     
     /**
      * Validate a variant name.
      */
     public boolean isValidVariant(String variantName) {
-        return TextureManager.validateVariant(variantName);
+        return LegacyCowTextureManager.validateVariant(variantName);
     }
     
     /**
      * Get variant information.
      */
-    public TextureManager.TextureVariantInfo getVariantInfo(String variantName) {
-        return TextureManager.getVariantInfo(variantName);
+    public LegacyCowTextureManager.TextureVariantInfo getVariantInfo(String variantName) {
+        return LegacyCowTextureManager.getVariantInfo(variantName);
     }
     
     /**
@@ -167,7 +173,7 @@ public class TextureVariantManager {
      * Clear caches and reset state.
      */
     public void clearCache() {
-        TextureManager.clearCache();
+        LegacyCowTextureManager.clearCache();
         currentVariant = "default";
         switchCount = 0;
         lastSwitchTime = 0;
