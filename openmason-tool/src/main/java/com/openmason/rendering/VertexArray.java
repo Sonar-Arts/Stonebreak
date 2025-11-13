@@ -21,11 +21,21 @@ public class VertexArray implements AutoCloseable {
     
     // Associated buffers for lifecycle management
     private VertexBuffer vertexBuffer;
+
+    /**
+     * @deprecated Cow-specific texture coordinate buffer. Only used for legacy cow model rendering.
+     */
+    @Deprecated
     private LegacyCowTextureCoordinateBuffer textureCoordBuffer;
+
     private IndexBuffer indexBuffer;
     private final List<OpenGLBuffer> additionalBuffers;
     
-    // Texture mapping information
+    /**
+     * Texture mapping information for cow model parts (HEAD, BODY, LEG, etc.).
+     * @deprecated Cow-specific field. Only used for legacy cow texture coordinate generation.
+     */
+    @Deprecated
     private String textureField;
     
     // Rendering statistics
@@ -118,9 +128,14 @@ public class VertexArray implements AutoCloseable {
     
     /**
      * Sets the texture coordinate buffer for this VAO and configures the texture attribute.
-     * 
+     *
      * @param textureCoordBuffer The texture coordinate buffer containing UV data
+     * @deprecated This method is cow-specific and only works with {@link LegacyCowTextureCoordinateBuffer}.
+     *             It's used exclusively for legacy cow model rendering in Open Mason's viewport.
+     *             For general texture coordinate handling, create a generic TextureCoordinateBuffer
+     *             that isn't hardcoded to cow anatomy.
      */
+    @Deprecated
     public void setTextureCoordinateBuffer(LegacyCowTextureCoordinateBuffer textureCoordBuffer) {
         validateVAO();
         bind();
@@ -194,11 +209,15 @@ public class VertexArray implements AutoCloseable {
     /**
      * Updates the texture coordinates for a new texture variant.
      * This enables real-time texture variant switching without recreating the VAO.
-     * 
+     *
      * @param textureDefinition The texture definition containing face mappings
      * @param partName The model part name
      * @param textureVariant The new texture variant name
+     * @deprecated This method is cow-specific and only works with {@link CowTextureDefinition}.
+     *             It's used exclusively for cow texture variant switching in Open Mason's viewport.
+     *             For general models, implement a generic texture variant system.
      */
+    @Deprecated
     public void updateTextureVariant(CowTextureDefinition.CowVariant textureDefinition,
                                    String partName, String textureVariant) {
         if (textureCoordBuffer != null) {
@@ -212,10 +231,10 @@ public class VertexArray implements AutoCloseable {
     /**
      * Creates a complete VAO from model part data.
      * This is the primary factory method for creating VAOs from the existing model system.
-     * 
+     *
      * Exception-safe creation with guaranteed cleanup of partial resources on failure.
      * Utilizes existing BufferManager tracking and AutoCloseable pattern.
-     * 
+     *
      * @param vertices Vertex data from ModelPart.getVertices()
      * @param indices Index data from ModelPart.getIndices()
      * @param textureDefinition Texture definition for UV mapping
@@ -223,7 +242,12 @@ public class VertexArray implements AutoCloseable {
      * @param debugName Debug name for the VAO
      * @return Fully configured VAO ready for rendering
      * @throws RuntimeException if VAO or buffer creation fails, with guaranteed cleanup
+     * @deprecated This factory method is cow-specific and only works with {@link CowTextureDefinition}.
+     *             It creates {@link LegacyCowTextureCoordinateBuffer} which is hardcoded for cow anatomy.
+     *             For general model rendering, create a generic factory method that doesn't require
+     *             cow-specific texture definitions.
      */
+    @Deprecated
     public static VertexArray fromModelPart(float[] vertices, int[] indices,
                                           CowTextureDefinition.CowVariant textureDefinition,
                                           String textureField, String partName, String debugName) {
@@ -495,7 +519,17 @@ public class VertexArray implements AutoCloseable {
     public long getLastAccessTime() { return lastAccessTime; }
     public int getRenderCount() { return renderCount; }
     public VertexBuffer getVertexBuffer() { return vertexBuffer; }
+
+    /**
+     * Gets the texture coordinate buffer associated with this VAO.
+     *
+     * @return The texture coordinate buffer
+     * @deprecated This getter returns {@link LegacyCowTextureCoordinateBuffer} which is cow-specific.
+     *             For general texture coordinate access, implement a generic interface.
+     */
+    @Deprecated
     public LegacyCowTextureCoordinateBuffer getTextureCoordinateBuffer() { return textureCoordBuffer; }
+
     public IndexBuffer getIndexBuffer() { return indexBuffer; }
     
     @Override
