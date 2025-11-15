@@ -29,10 +29,8 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *
  * Follows Single Responsibility Principle - only handles biome selection logic.
  * Follows Dependency Inversion Principle - configuration and router injected.
- *
- * Implements IBiomeManager for interface compatibility.
  */
-public class BiomeManager implements IBiomeManager {
+public class BiomeManager {
 
     private final NoiseRouter noiseRouter;
     private final BiomeParameterTable parameterTable;
@@ -85,7 +83,6 @@ public class BiomeManager implements IBiomeManager {
      * @param z World Z coordinate
      * @return The biome type at the given position
      */
-    @Override
     public BiomeType getBiome(int x, int z) {
         return getBiomeAtHeight(x, z, seaLevel);
     }
@@ -109,7 +106,6 @@ public class BiomeManager implements IBiomeManager {
      * @param height Terrain height (unused, kept for API compatibility)
      * @return The biome type at the given position
      */
-    @Override
     public BiomeType getBiomeAtHeight(int x, int z, int height) {
         // Use voronoi grid if enabled (discrete biome regions)
         if (useVoronoi) {
@@ -143,7 +139,6 @@ public class BiomeManager implements IBiomeManager {
      * @param z World Z coordinate
      * @return Humidity value in range [0.0, 1.0]
      */
-    @Override
     public float getMoisture(int x, int z) {
         return noiseRouter.getHumidity(x, z);
     }
@@ -157,7 +152,6 @@ public class BiomeManager implements IBiomeManager {
      * @param z World Z coordinate
      * @return Temperature value in range [0.0, 1.0] based on noise
      */
-    @Override
     public float getTemperature(int x, int z) {
         return noiseRouter.getTemperature(x, z);
     }
@@ -174,7 +168,6 @@ public class BiomeManager implements IBiomeManager {
      * @param height Terrain height (unused, kept for API compatibility)
      * @return Temperature value in range [0.0, 1.0] based on noise
      */
-    @Override
     public float getTemperatureAtHeight(int x, int z, int height) {
         MultiNoiseParameters params = noiseRouter.sampleParameters(x, z, height);
         return params.temperature;

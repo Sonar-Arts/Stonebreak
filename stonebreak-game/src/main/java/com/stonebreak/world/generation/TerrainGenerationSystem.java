@@ -448,8 +448,11 @@ public class TerrainGenerationSystem {
         vegetationGenerator.generateVegetation(world, chunk, chunkBiome, chunkX, chunkZ);
         decorationGenerator.generateDecorations(world, chunk, chunkBiome, chunkX, chunkZ, snowLayerManager);
 
-        // Process mob spawning for this chunk
-        MobGenerator.processChunkMobSpawning(world, chunk, chunkBiome, animalRandom, animalRandomLock);
+        // TODO: Implement mob spawning system (animals, hostile mobs, neutral mobs)
+        // - Create MobSpawner class to handle chunk-based mob generation
+        // - Implement biome-specific animal spawning (cows, sheep, pigs, etc.)
+        // - Add hostile mob spawning based on light levels and biome
+        // - Consider mob spawn rates and density limits
 
         // Mesh regeneration happens automatically via CCO dirty tracking when chunk is rendered
         chunk.setFeaturesPopulated(true);

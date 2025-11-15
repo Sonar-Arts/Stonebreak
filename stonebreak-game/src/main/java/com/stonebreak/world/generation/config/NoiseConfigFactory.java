@@ -266,7 +266,7 @@ public class NoiseConfigFactory {
      * - 0.5 persistence for balanced cave variation
      * - 2.0 lacunarity (standard)
      *
-     * Used by CaveSystemFeature for creating interconnected
+     * Used by CaveNoiseGenerator for creating interconnected
      * cave networks with moderate density (15-20% hollowness).
      *
      * @return Noise config for cave systems

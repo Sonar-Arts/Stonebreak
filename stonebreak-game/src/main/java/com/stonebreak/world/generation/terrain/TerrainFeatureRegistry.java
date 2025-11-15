@@ -35,12 +35,14 @@ import java.util.List;
  * Example Usage:
  * <pre>
  * TerrainFeatureRegistry registry = new TerrainFeatureRegistry(seed);
- * registry.registerFeature(new CaveSystemFeature(seed));
  * registry.registerFeature(new NaturalArchFeature(seed));
  * registry.registerFeature(new SurfaceOverhangFeature(seed));
  *
  * boolean shouldRemove = registry.shouldRemoveBlock(x, y, z, surfaceHeight, biome);
  * </pre>
+ *
+ * Note: Cave generation is handled by CaveNoiseGenerator in TerrainGenerationSystem,
+ * not as a terrain feature. This provides better performance and integration.
  */
 public class TerrainFeatureRegistry {
 

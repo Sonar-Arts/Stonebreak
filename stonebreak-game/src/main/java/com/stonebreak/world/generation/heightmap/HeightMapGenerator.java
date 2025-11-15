@@ -30,10 +30,8 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *
  * Follows Single Responsibility Principle - only handles height calculations.
  * Follows Dependency Inversion Principle - configuration injected via constructor.
- *
- * Implements IHeightMapGenerator for dependency inversion and testability.
  */
-public class HeightMapGenerator implements IHeightMapGenerator {
+public class HeightMapGenerator {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
 
     private final long seed;
@@ -88,7 +86,6 @@ public class HeightMapGenerator implements IHeightMapGenerator {
      * @param z World Z coordinate
      * @return Base terrain height at the given position (clamped to world bounds)
      */
-    @Override
     public int generateHeight(int x, int z) {
         float continentalness = getContinentalness(x, z);
         int height = (int) terrainSpline.interpolate(continentalness);
@@ -399,7 +396,6 @@ public class HeightMapGenerator implements IHeightMapGenerator {
      * @param z World Z coordinate
      * @return Continentalness value in range [-1.0, 1.0]
      */
-    @Override
     public float getContinentalness(int x, int z) {
         return continentalnessNoise.noise(x / continentalnessNoiseScale, z / continentalnessNoiseScale);
     }
@@ -409,7 +405,6 @@ public class HeightMapGenerator implements IHeightMapGenerator {
      *
      * @return World seed
      */
-    @Override
     public long getSeed() {
         return seed;
     }
