@@ -2,6 +2,7 @@ package com.openmason.ui.components.modelBrowser;
 
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
+import com.openmason.model.io.omo.OMOFileManager;
 import com.openmason.ui.components.modelBrowser.categorizers.BlockCategorizer;
 import com.openmason.ui.components.modelBrowser.categorizers.ItemCategorizer;
 import com.openmason.ui.components.modelBrowser.events.*;
@@ -44,6 +45,7 @@ public class ModelBrowserController {
     private final List<ModelBrowserListener> listeners;
     private final ModelOperationService modelOperationService;
     private final StatusService statusService;
+    private final OMOFileManager omoFileManager;
 
     /**
      * Creates a new Model Browser controller.
@@ -56,6 +58,7 @@ public class ModelBrowserController {
         this.listeners = new ArrayList<>();
         this.modelOperationService = modelOperationService;
         this.statusService = statusService;
+        this.omoFileManager = new OMOFileManager();
     }
 
     /**
@@ -273,6 +276,72 @@ public class ModelBrowserController {
             logger.error("Failed to load recent file: " + fileName, e);
             statusService.updateStatus("Error loading recent file: " + e.getMessage());
         }
+    }
+
+    /**
+     * Gets all available .OMO model files.
+     *
+     * @return List of OMO file entries
+     */
+    public List<OMOFileManager.OMOFileEntry> getOMOFiles() {
+        return omoFileManager.scanForOMOFiles();
+    }
+
+    /**
+     * Filters .OMO files based on current search text.
+     *
+     * @param omoFiles The list of OMO files to filter
+     * @return Filtered list of OMO files matching search criteria
+     */
+    public List<OMOFileManager.OMOFileEntry> filterOMOFiles(List<OMOFileManager.OMOFileEntry> omoFiles) {
+        if (!state.isSearchActive()) {
+            return omoFiles;
+        }
+
+        List<OMOFileManager.OMOFileEntry> filtered = new ArrayList<>();
+        for (OMOFileManager.OMOFileEntry entry : omoFiles) {
+            if (state.matchesSearch(entry.getName())) {
+                filtered.add(entry);
+            }
+        }
+        return filtered;
+    }
+
+    /**
+     * Handles .OMO file selection by the user.
+     * Loads the .OMO file into the viewport.
+     *
+     * @param entry The selected OMO file entry
+     */
+    public void selectOMOFile(OMOFileManager.OMOFileEntry entry) {
+        if (entry == null) {
+            logger.warn("Attempted to select null OMO file");
+            return;
+        }
+
+        try {
+            // Update state
+            state.setSelectedModelInfo("Selected: " + entry.getName() + " (.OMO Model)");
+            state.addRecentFile(entry.getName());
+
+            // Load the .OMO file using ModelOperationService
+            statusService.updateStatus("Loading .OMO model: " + entry.getName());
+            modelOperationService.loadOMOModel(entry.getFilePathString());
+
+            logger.debug(".OMO file selected: {}", entry.getName());
+        } catch (Exception e) {
+            logger.error("Failed to load .OMO file: " + entry.getName(), e);
+            statusService.updateStatus("Error loading .OMO model: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Gets the OMO file manager for direct access.
+     *
+     * @return The OMO file manager instance
+     */
+    public OMOFileManager getOMOFileManager() {
+        return omoFileManager;
     }
 
     /**

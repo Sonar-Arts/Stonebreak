@@ -89,6 +89,7 @@ public class ModelOperationService {
             // Update state
             modelState.reset();
             modelState.setUnsavedChanges(true); // New models are unsaved
+            modelState.setModelSource(ModelState.ModelSource.NEW); // Mark as new model
 
             // Update statistics (single cube: 1 part, 24 vertices, 12 triangles)
             modelState.updateStatistics(1, 24, 12);
@@ -247,6 +248,7 @@ public class ModelOperationService {
 
         modelState.setModelLoaded(true);
         modelState.setCurrentModelPath(modelName);
+        modelState.setModelSource(ModelState.ModelSource.BROWSER); // Mark as browser model (read-only)
         modelState.updateStatistics(6, 1248, 624);
 
         statusService.updateStatus("Model loaded: " + modelName + " (" + variant + " variant)");
@@ -270,6 +272,15 @@ public class ModelOperationService {
     }
 
     /**
+     * Load a .OMO model from a file path (public API for model browser).
+     *
+     * @param filePath the path to the .OMO file
+     */
+    public void loadOMOModel(String filePath) {
+        loadOMOModelFromFile(filePath);
+    }
+
+    /**
      * Load a .OMO model from a specific file path.
      *
      * @param filePath the path to load from
@@ -287,6 +298,7 @@ public class ModelOperationService {
                 modelState.setModelLoaded(true);
                 modelState.setCurrentModelPath(loadedModel.getName());
                 modelState.setUnsavedChanges(false);
+                modelState.setModelSource(ModelState.ModelSource.OMO_FILE); // Mark as .OMO file
 
                 // Update statistics (single cube for now)
                 modelState.updateStatistics(1, 24, 12);

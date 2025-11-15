@@ -6,9 +6,20 @@ package com.openmason.ui.state;
  */
 public class ModelState {
 
+    /**
+     * Represents the source of the currently loaded model.
+     */
+    public enum ModelSource {
+        NONE,           // No model loaded
+        NEW,            // Created via "New Model"
+        OMO_FILE,       // Loaded from .OMO file
+        BROWSER         // Loaded from Model Browser (read-only)
+    }
+
     private boolean modelLoaded = false;
     private String currentModelPath = "";
     private boolean unsavedChanges = false;
+    private ModelSource modelSource = ModelSource.NONE;
 
     // Model Statistics
     private int partCount = 0;
@@ -94,6 +105,23 @@ public class ModelState {
         this.partCoordinates = partCoordinates;
     }
 
+    public ModelSource getModelSource() {
+        return modelSource;
+    }
+
+    public void setModelSource(ModelSource modelSource) {
+        this.modelSource = modelSource;
+    }
+
+    /**
+     * Check if the current model can be saved to .OMO format.
+     * Only NEW and OMO_FILE models can be saved.
+     * BROWSER models are read-only references.
+     */
+    public boolean canSaveModel() {
+        return modelSource == ModelSource.NEW || modelSource == ModelSource.OMO_FILE;
+    }
+
     /**
      * Reset model state to initial values.
      */
@@ -101,6 +129,7 @@ public class ModelState {
         modelLoaded = false;
         currentModelPath = "";
         unsavedChanges = false;
+        modelSource = ModelSource.NONE;
         partCount = 0;
         vertexCount = 0;
         triangleCount = 0;

@@ -289,6 +289,11 @@ public class MainImGuiInterface implements ModelBrowserListener {
         // to be accessible from both the Project Hub and the main interface
 
         aboutDialog.render();
+
+        // Render save warning dialog if open
+        if (fileMenuHandler != null && fileMenuHandler.getSaveWarningDialog() != null) {
+            fileMenuHandler.getSaveWarningDialog().render();
+        }
     }
 
     /**
@@ -402,7 +407,10 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     private void renderPropertyPanel() {
         if (propertyPanelImGui != null) {
-            if (modelState.isModelLoaded() && !modelState.getCurrentModelPath().isEmpty()) {
+            // Only load texture variants for browser models, not .OMO files (which have embedded textures)
+            if (modelState.isModelLoaded() &&
+                !modelState.getCurrentModelPath().isEmpty() &&
+                modelState.getModelSource() == ModelState.ModelSource.BROWSER) {
                 String modelName = modelState.getCurrentModelPath().replace(".json", "");
                 propertyPanelImGui.loadTextureVariants(modelName);
             }

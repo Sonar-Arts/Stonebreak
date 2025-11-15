@@ -1,6 +1,7 @@
 package com.openmason.ui.menus;
 
 import com.openmason.ui.dialogs.FileDialogService;
+import com.openmason.ui.dialogs.SaveWarningDialog;
 import com.openmason.ui.services.ModelOperationService;
 import com.openmason.ui.services.StatusService;
 import com.openmason.ui.state.ModelState;
@@ -23,6 +24,7 @@ public class FileMenuHandler {
     private final ModelOperationService modelOperations;
     private final FileDialogService fileDialogService;
     private final StatusService statusService;
+    private final SaveWarningDialog saveWarningDialog;
 
     private final String[] recentFiles = {"standard_cow.json", "example_model.json"};
 
@@ -37,6 +39,7 @@ public class FileMenuHandler {
         this.modelOperations = modelOperations;
         this.fileDialogService = fileDialogService;
         this.statusService = statusService;
+        this.saveWarningDialog = new SaveWarningDialog();
     }
 
     /**
@@ -68,6 +71,14 @@ public class FileMenuHandler {
     }
 
     /**
+     * Get the save warning dialog for rendering in main UI.
+     * @return the save warning dialog instance
+     */
+    public SaveWarningDialog getSaveWarningDialog() {
+        return saveWarningDialog;
+    }
+
+    /**
      * Render the file menu.
      */
     public void render() {
@@ -80,7 +91,7 @@ public class FileMenuHandler {
         }
 
         if (ImGui.menuItem("Open Model", "Ctrl+O")) {
-            modelOperations.openModel();
+            modelOperations.openOMOModel();
         }
 
         if (ImGui.menuItem("Open Project", "Ctrl+Shift+O")) {
@@ -89,12 +100,24 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
-        if (ImGui.menuItem("Save Model", "Ctrl+S", false, modelState.isModelLoaded() && modelState.hasUnsavedChanges())) {
-            modelOperations.saveModel();
+        // Enable save only if model can be saved (NEW or OMO_FILE sources)
+        boolean canSave = modelState.canSaveModel() && modelState.hasUnsavedChanges();
+        if (ImGui.menuItem("Save Model", "Ctrl+S", false, canSave)) {
+            if (modelState.canSaveModel()) {
+                modelOperations.saveModel();
+            } else {
+                saveWarningDialog.show();
+            }
         }
 
-        if (ImGui.menuItem("Save Model As", "Ctrl+Shift+S", false, modelState.isModelLoaded())) {
-            saveModelAs();
+        // Enable save as only if model can be saved
+        boolean canSaveAs = modelState.canSaveModel();
+        if (ImGui.menuItem("Save Model As", "Ctrl+Shift+S", false, canSaveAs)) {
+            if (modelState.canSaveModel()) {
+                modelOperations.saveModelAs();
+            } else {
+                saveWarningDialog.show();
+            }
         }
 
         if (ImGui.menuItem("Export Model", "Ctrl+E", false, modelState.isModelLoaded())) {
@@ -134,22 +157,6 @@ public class FileMenuHandler {
      */
     private void openProject() {
         statusService.updateStatus("Opening Stonebreak project...");
-    }
-
-    /**
-     * Save model with file dialog.
-     */
-    private void saveModelAs() {
-        fileDialogService.showSaveDialog(file -> {
-            try {
-                modelState.setCurrentModelPath(file.getName());
-                modelState.setUnsavedChanges(false);
-                statusService.updateStatus("Model saved successfully: " + file.getName());
-            } catch (Exception e) {
-                logger.error("Failed to save model to file: {}", file.getAbsolutePath(), e);
-                statusService.updateStatus("Failed to save model: " + e.getMessage());
-            }
-        });
     }
 
     /**

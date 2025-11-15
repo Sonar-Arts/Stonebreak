@@ -2,6 +2,7 @@ package com.openmason.ui.components.modelBrowser.views;
 
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
+import com.openmason.model.io.omo.OMOFileManager;
 import com.openmason.ui.components.modelBrowser.ModelBrowserController;
 import com.openmason.ui.components.modelBrowser.ModelBrowserState;
 import com.openmason.ui.components.modelBrowser.categorizers.BlockCategorizer;
@@ -108,10 +109,15 @@ public class GridViewRenderer implements ViewRenderer {
             addAllBlocks(items);
             addAllItems(items);
             addRecentModels(items);
+            addOMOModels(items);
 
         } else if (category.equals("Entity Models")) {
             // Only entity models
             addRecentModels(items);
+
+        } else if (category.equals(".OMO Models")) {
+            // Only .OMO custom models
+            addOMOModels(items);
 
         } else if (category.equals("Recent Files")) {
             // Only recent files
@@ -218,6 +224,21 @@ public class GridViewRenderer implements ViewRenderer {
                     fileName,
                     fileName,
                     fileName
+            ));
+        }
+    }
+
+    /**
+     * Adds .OMO model files to the grid.
+     */
+    private void addOMOModels(List<GridItem> items) {
+        List<OMOFileManager.OMOFileEntry> omoFiles = controller.getOMOFiles();
+        for (OMOFileManager.OMOFileEntry entry : omoFiles) {
+            items.add(new GridItem(
+                    GridItemType.OMO_MODEL,
+                    entry.getName(),
+                    entry.getName(),
+                    entry
             ));
         }
     }
@@ -361,6 +382,7 @@ public class GridViewRenderer implements ViewRenderer {
             case BLOCK -> blockRenderer.getThumbnail((BlockType) item.data, THUMBNAIL_SIZE);
             case ITEM -> itemRenderer.getThumbnail((ItemType) item.data, THUMBNAIL_SIZE);
             case MODEL -> modelRenderer.getThumbnail((String) item.data, THUMBNAIL_SIZE);
+            case OMO_MODEL -> modelRenderer.getThumbnail(((OMOFileManager.OMOFileEntry) item.data).getName(), THUMBNAIL_SIZE);
         };
     }
 
@@ -373,6 +395,7 @@ public class GridViewRenderer implements ViewRenderer {
             case BLOCK -> controller.selectBlock((BlockType) item.data);
             case ITEM -> controller.selectItem((ItemType) item.data);
             case MODEL -> controller.selectModel((String) item.data);
+            case OMO_MODEL -> controller.selectOMOFile((OMOFileManager.OMOFileEntry) item.data);
         }
     }
 
@@ -445,6 +468,7 @@ public class GridViewRenderer implements ViewRenderer {
             case BLOCK -> ModelBrowserThumbnailCache.blockKey(item.id, THUMBNAIL_SIZE);
             case ITEM -> ModelBrowserThumbnailCache.itemKey(item.id, THUMBNAIL_SIZE);
             case MODEL -> ModelBrowserThumbnailCache.modelKey(item.id, THUMBNAIL_SIZE);
+            case OMO_MODEL -> ModelBrowserThumbnailCache.modelKey(item.id, THUMBNAIL_SIZE);
         };
     }
 
@@ -513,6 +537,7 @@ public class GridViewRenderer implements ViewRenderer {
     private enum GridItemType {
         BLOCK,
         ITEM,
-        MODEL
+        MODEL,
+        OMO_MODEL
     }
 }

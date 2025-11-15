@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Blocks - Categorized by terrain, ore, wood, plants, other</li>
  *   <li>Items - Categorized by tools, materials, other</li>
  *   <li>Entity Models - 3D models like cows</li>
+ *   <li>.OMO Models - Custom models from .OMO files</li>
  *   <li>Recent Files - Recently opened models</li>
  * </ul>
  *
@@ -80,6 +81,12 @@ public class SidebarRenderer {
         if (renderCategoryItem("Entity Models", selectedCategory)) {
             state.setSelectedCategory("Entity Models");
             state.setNavigationPath(java.util.Arrays.asList("Home", "Entity Models"));
+        }
+
+        // .OMO Models section (custom models)
+        if (renderCategoryItem(".OMO Models", selectedCategory)) {
+            state.setSelectedCategory(".OMO Models");
+            state.setNavigationPath(java.util.Arrays.asList("Home", ".OMO Models"));
         }
 
         ImGui.spacing();
