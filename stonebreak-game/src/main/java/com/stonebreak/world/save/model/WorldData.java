@@ -21,6 +21,7 @@ public final class WorldData {
     private final long worldTimeTicks;
     private final int formatVersion;
     private final String generatorType;
+    private final boolean use3DDensity;
 
     @JsonCreator
     private WorldData(
@@ -32,7 +33,8 @@ public final class WorldData {
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
             @JsonProperty("worldTimeTicks") long worldTimeTicks,
             @JsonProperty("formatVersion") int formatVersion,
-            @JsonProperty("generatorType") String generatorType) {
+            @JsonProperty("generatorType") String generatorType,
+            @JsonProperty("use3DDensity") Boolean use3DDensity) {
         this.seed = seed;
         this.worldName = worldName;
         this.spawnPosition = new Vector3f(spawnPosition);
@@ -43,12 +45,14 @@ public final class WorldData {
         this.formatVersion = formatVersion;
         // Default to LEGACY for backwards compatibility with existing worlds
         this.generatorType = (generatorType != null && !generatorType.isEmpty()) ? generatorType : "LEGACY";
+        // Default to false for backwards compatibility (2D terrain only)
+        this.use3DDensity = (use3DDensity != null) ? use3DDensity : false;
     }
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
              builder.createdTime, builder.lastPlayed, builder.totalPlayTimeMillis,
-             builder.worldTimeTicks, builder.formatVersion, builder.generatorType);
+             builder.worldTimeTicks, builder.formatVersion, builder.generatorType, builder.use3DDensity);
     }
 
     // Getters
@@ -61,6 +65,7 @@ public final class WorldData {
     public long getWorldTimeTicks() { return worldTimeTicks; }
     public int getFormatVersion() { return formatVersion; }
     public String getGeneratorType() { return generatorType; }
+    public boolean isUse3DDensity() { return use3DDensity; }
 
     /**
      * Creates a new WorldData with updated last played time.
@@ -104,6 +109,7 @@ public final class WorldData {
         private long worldTimeTicks = 6000; // Default to NOON
         private int formatVersion = 1;
         private String generatorType = "LEGACY"; // Default to LEGACY for backwards compatibility
+        private boolean use3DDensity = false; // Default to false (2D terrain only)
 
         public Builder() {}
 
@@ -117,6 +123,7 @@ public final class WorldData {
             this.worldTimeTicks = data.worldTimeTicks;
             this.formatVersion = data.formatVersion;
             this.generatorType = data.generatorType;
+            this.use3DDensity = data.use3DDensity;
         }
 
         public Builder seed(long seed) {
@@ -161,6 +168,11 @@ public final class WorldData {
 
         public Builder generatorType(String generatorType) {
             this.generatorType = generatorType;
+            return this;
+        }
+
+        public Builder use3DDensity(boolean use3DDensity) {
+            this.use3DDensity = use3DDensity;
             return this;
         }
 

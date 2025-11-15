@@ -4,51 +4,104 @@ import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.debug.HeightCalculationDebugInfo;
+import com.stonebreak.world.generation.density.TerrainDensityFunction;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 
 import java.util.ArrayList;
 
 /**
- * Spline-based multi-parameter terrain generator.
- * <p>
- * This generator uses unified multi-dimensional spline interpolation inspired by
- * Minecraft 1.18+ density functions. Instead of sequential parameter application,
- * it evaluates a single unified spline: height = f(continentalness, erosion, PV, weirdness).
+ * Spline-based terrain generator using cubic Hermite interpolation
+ * and three-spline system (offset, jaggedness, factor)
+ *
+ * Based on Minecraft 1.18+ terrain generation with density functions.
  * <p>
  * <strong>Key Features:</strong>
  * <ul>
- *   <li>Unified 4D spline interpolation (continentalness, erosion, PV, weirdness)</li>
- *   <li>Smooth transitions between terrain types (oceans, plains, mountains, plateaus)</li>
- *   <li>No terrain hints - all variety encoded in spline points</li>
- *   <li>Weirdness terracing for mesa/plateau formations</li>
- *   <li>PV amplification for dramatic peaks and valleys</li>
+ *   <li>Cubic Hermite spline interpolation for smooth C¹ curves</li>
+ *   <li>Three separate splines: offset (base height), jaggedness (peaks), factor (3D noise)</li>
+ *   <li>Optional 3D density functions for caves and overhangs</li>
+ *   <li>Derivative control for plateaus and terrain variety</li>
  * </ul>
  *
- * @see TerrainSplineRouter
- * @see MultiDimensionalSpline
- * @see com.stonebreak.world.generation.legacy.LegacyTerrainGenerator
+ * @see OffsetSplineRouter
+ * @see JaggednessSplineRouter
+ * @see FactorSplineRouter
+ * @see TerrainDensityFunction
  */
 public class SplineTerrainGenerator implements TerrainGenerator {
 
     private final long seed;
     private final TerrainGenerationConfig config;
-    private final TerrainSplineRouter splineRouter;
+    private final OffsetSplineRouter offsetRouter;
+    private final JaggednessSplineRouter jaggednessRouter;
+    private final FactorSplineRouter factorRouter;
+    private final TerrainDensityFunction densityFunction;
+    private final boolean use3DDensity;
 
     /**
      * Create a new spline terrain generator.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
+     * @param use3DDensity Whether to use 3D density functions (caves/overhangs)
      */
-    public SplineTerrainGenerator(long seed, TerrainGenerationConfig config) {
+    public SplineTerrainGenerator(long seed, TerrainGenerationConfig config, boolean use3DDensity) {
         this.seed = seed;
         this.config = config;
-        this.splineRouter = new TerrainSplineRouter(seed, config);
+        this.use3DDensity = use3DDensity;
+
+        // Initialize the three spline routers (cached for performance)
+        this.offsetRouter = new OffsetSplineRouter(seed);
+        this.jaggednessRouter = new JaggednessSplineRouter(seed);
+        this.factorRouter = new FactorSplineRouter(seed);
+        this.densityFunction = new TerrainDensityFunction(seed);
     }
 
     @Override
     public int generateHeight(int x, int z, MultiNoiseParameters params) {
-        return splineRouter.getHeight(params);
+        if (use3DDensity) {
+            // Full 3D density function (caves, overhangs) - slower but more features
+            return densityFunction.densityToHeight(x, z, params);
+        } else {
+            // Simplified 2D heightmap (faster, no overhangs)
+            return generateHeight2D(x, z, params);
+        }
+    }
+
+    /**
+     * Simplified 2D height generation (no 3D density)
+     * Much faster than full 3D sampling
+     *
+     * Uses multiplicative composition inspired by Minecraft 1.18+:
+     * 1. Base offset from spline + multi-scale noise
+     * 2. Erosion factor modifies height variation (low erosion = mountains, high = flat)
+     * 3. Peaks & Valleys amplifies extremes
+     * 4. Jaggedness adds fine detail to mountainous areas
+     */
+    private int generateHeight2D(int x, int z, MultiNoiseParameters params) {
+        // Get base terrain offset with multi-scale noise variation
+        float baseOffset = offsetRouter.getOffset(params, x, z);
+
+        // Calculate erosion factor (controls flat vs mountainous terrain)
+        // Low erosion (-1.0) = 1.5x variation (sharp mountains)
+        // High erosion (1.0) = 0.6x variation (flat plains)
+        float erosionFactor = 1.0f - (params.erosion * 0.4f);
+
+        // Calculate PV amplification (amplifies height extremes)
+        // Peaks (PV=1.0) get higher, valleys (PV=-1.0) get lower
+        float pvAmplification = params.peaksValleys * 8.0f;
+
+        // Apply erosion to height variation from sea level (64)
+        float seaLevel = 64.0f;
+        float heightFromSeaLevel = baseOffset - seaLevel;
+        float modifiedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
+
+        // Add jaggedness for fine detail (only in mountainous/uneroded areas)
+        // Erosion reduces jaggedness (eroded terrain is smooth)
+        float jaggednessStrength = Math.max(0.0f, -params.erosion); // 0.0 to 1.0
+        float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
+
+        return Math.round(modifiedHeight + jaggedness);
     }
 
     @Override

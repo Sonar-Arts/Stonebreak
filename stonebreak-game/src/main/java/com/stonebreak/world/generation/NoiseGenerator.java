@@ -62,6 +62,26 @@ public class NoiseGenerator implements INoiseGenerator {
     public float noise(float x, float y) {
         return (float) getFractalNoise(x, y);
     }
+
+    /**
+     * Sample 3D noise by layering 2D noise in different planes
+     * This is a simplified 3D noise implementation using 2D simplex noise
+     *
+     * @param x X coordinate
+     * @param y Y coordinate (height)
+     * @param z Z coordinate
+     * @return Noise value in range [-1, 1]
+     */
+    public float noise3D(float x, float y, float z) {
+        // Layer three 2D noise samples from different planes
+        // This creates pseudo-3D noise that's cheaper than true 3D simplex
+        float xy = noise(x, y);
+        float xz = noise(x, z);
+        float yz = noise(y, z);
+
+        // Blend the three planes together
+        return (xy + xz + yz) / 3.0f;
+    }
     
     /**
      * Combines multiple octaves of simplex noise for more natural terrain.
