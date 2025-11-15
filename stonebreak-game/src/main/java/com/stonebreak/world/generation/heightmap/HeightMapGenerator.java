@@ -151,10 +151,11 @@ public class HeightMapGenerator {
     private int applyErosionFactor(int baseHeight, float erosion) {
         int deltaFromSeaLevel = baseHeight - seaLevel;
 
-        // Map erosion [-1, 1] to amplification factor [1.5, 0.6]
-        // Low erosion (-1) = 1.5x amplification (mountainous)
-        // High erosion (1) = 0.6x amplification (flat)
-        float erosionFactor = 1.0f - (erosion * 0.45f);
+        // Map erosion [-1, 1] to amplification factor [1.60, 0.25]
+        // Low erosion (-1) = 1.60x amplification (60% stronger mountains)
+        // Medium erosion (0) = 0.70x amplification (30% reduction)
+        // High erosion (1) = 0.25x amplification (75% reduction, very flat)
+        float erosionFactor = 0.70f - (0.675f * erosion) + (0.225f * erosion * erosion);
 
         // Scale the height difference from sea level
         int adjustedDelta = Math.round(deltaFromSeaLevel * erosionFactor);
@@ -238,8 +239,8 @@ public class HeightMapGenerator {
     private int applyMesaTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
         int deltaFromSeaLevel = baseHeight - seaLevel;
 
-        // Apply erosion with mesa-specific scaling (less erosion effect for flatter mesas)
-        float erosionFactor = 1.0f - (params.erosion * 0.3f);  // Reduced from 0.45 → 0.3
+        // Apply erosion with new quadratic curve (same as all terrain types)
+        float erosionFactor = 0.70f - (0.675f * params.erosion) + (0.225f * params.erosion * params.erosion);
         int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
 
         // Apply PV with reduced effect (mesas are flatter on top)
@@ -282,8 +283,8 @@ public class HeightMapGenerator {
     private int applySharpPeaksTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
         int deltaFromSeaLevel = baseHeight - seaLevel;
 
-        // Amplified erosion for extreme mountains
-        float erosionFactor = 1.0f - (params.erosion * 0.65f);  // Increased from 0.45 → 0.65
+        // Apply erosion with new quadratic curve (same as all terrain types)
+        float erosionFactor = 0.70f - (0.675f * params.erosion) + (0.225f * params.erosion * params.erosion);
         int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
 
         // Strong PV amplification for jagged peaks
@@ -320,8 +321,8 @@ public class HeightMapGenerator {
     private int applyGentleHillsTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
         int deltaFromSeaLevel = baseHeight - seaLevel;
 
-        // Strong erosion effect makes it very flat
-        float erosionFactor = 1.0f - (params.erosion * 0.6f);  // Strong flattening
+        // Apply erosion with new quadratic curve (same as all terrain types)
+        float erosionFactor = 0.70f - (0.675f * params.erosion) + (0.225f * params.erosion * params.erosion);
         int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
 
         // Minimal PV effect for gentle terrain
@@ -350,8 +351,8 @@ public class HeightMapGenerator {
     private int applyFlatPlainsTerrain(int baseHeight, MultiNoiseParameters params, int x, int z) {
         int deltaFromSeaLevel = baseHeight - seaLevel;
 
-        // Maximum erosion effect for very flat terrain
-        float erosionFactor = 1.0f - (params.erosion * 0.7f);  // Maximum flattening
+        // Apply erosion with new quadratic curve (same as all terrain types)
+        float erosionFactor = 0.70f - (0.675f * params.erosion) + (0.225f * params.erosion * params.erosion);
         int adjustedHeight = seaLevel + Math.round(deltaFromSeaLevel * erosionFactor);
 
         // No PV or weirdness effects (keep it flat)
@@ -429,7 +430,7 @@ public class HeightMapGenerator {
         // For NORMAL terrain, we can capture exact erosion/PV/weirdness steps
         // For other hints, we approximate the steps since they have custom logic
         double heightAfterHint = baseHeight;  // After hint-specific initial processing
-        double erosionFactor = 1.0f - (params.erosion * 0.45f);  // Default erosion factor
+        double erosionFactor = 0.70f - (0.675f * params.erosion) + (0.225f * params.erosion * params.erosion);  // New quadratic erosion factor
         double heightAfterErosion;
         double pvAmplification;
         double heightAfterPV;
@@ -445,7 +446,7 @@ public class HeightMapGenerator {
             // Apply erosion
             int heightAfterErosionInt = applyErosionFactor(baseHeightInt, params.erosion);
             heightAfterErosion = heightAfterErosionInt;
-            erosionFactor = 1.0f - (params.erosion * 0.45f);
+            erosionFactor = 0.70f - (0.675f * params.erosion) + (0.225f * params.erosion * params.erosion);
 
             // Calculate PV amplification
             int heightAfterPVInt = applyPeaksValleys(heightAfterErosionInt, params.peaksValleys);
@@ -468,17 +469,7 @@ public class HeightMapGenerator {
             int deltaFromSeaLevel = (int)baseHeight - seaLevel;
             heightAfterHint = baseHeight;
 
-            // Estimate erosion step based on hint type
-            if (hint == TerrainHint.MESA) {
-                erosionFactor = 1.0f - (params.erosion * 0.3f);
-            } else if (hint == TerrainHint.SHARP_PEAKS) {
-                erosionFactor = 1.0f - (params.erosion * 0.65f);
-            } else if (hint == TerrainHint.GENTLE_HILLS) {
-                erosionFactor = 1.0f - (params.erosion * 0.6f);
-            } else if (hint == TerrainHint.FLAT_PLAINS) {
-                erosionFactor = 1.0f - (params.erosion * 0.7f);
-            }
-
+            // All terrain hints now use the same erosion formula (already set above)
             heightAfterErosion = seaLevel + (deltaFromSeaLevel * erosionFactor);
 
             // Estimate PV and weirdness (these are approximations)

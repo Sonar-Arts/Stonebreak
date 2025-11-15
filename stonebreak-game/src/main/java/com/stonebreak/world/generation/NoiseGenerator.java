@@ -64,8 +64,13 @@ public class NoiseGenerator implements INoiseGenerator {
     }
 
     /**
-     * Sample 3D noise by layering 2D noise in different planes
-     * This is a simplified 3D noise implementation using 2D simplex noise
+     * Enhanced pseudo-3D noise implementation using weighted blend with rotation
+     *
+     * PHASE 2.4: Improved from simple 3-plane average to 6-plane weighted blend
+     *
+     * This creates higher-quality pseudo-3D noise that's still cheaper than true 3D simplex.
+     * The additional rotated samples (x+y, y+z, z+x) break up repetitive patterns and
+     * create more natural-looking cave systems with better vertical variation.
      *
      * @param x X coordinate
      * @param y Y coordinate (height)
@@ -73,14 +78,20 @@ public class NoiseGenerator implements INoiseGenerator {
      * @return Noise value in range [-1, 1]
      */
     public float noise3D(float x, float y, float z) {
-        // Layer three 2D noise samples from different planes
-        // This creates pseudo-3D noise that's cheaper than true 3D simplex
+        // Original three 2D noise samples from orthogonal planes
         float xy = noise(x, y);
         float xz = noise(x, z);
         float yz = noise(y, z);
 
-        // Blend the three planes together
-        return (xy + xz + yz) / 3.0f;
+        // PHASE 2.4: Additional rotated samples for better 3D variation
+        // These break up repetitive patterns along coordinate axes
+        float xyz1 = noise(x + y, z);      // Diagonal plane 1
+        float xyz2 = noise(y + z, x);      // Diagonal plane 2
+        float xyz3 = noise(z + x, y);      // Diagonal plane 3
+
+        // Blend all six planes together
+        // This creates more natural variation than simple 3-plane average
+        return (xy + xz + yz + xyz1 + xyz2 + xyz3) / 6.0f;
     }
     
     /**

@@ -110,8 +110,9 @@ public class TerrainGenerationSystem {
 
         // Initialize specialized generators with injected configuration
         // Multi-Noise System: TerrainGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
-        // Default to 2D mode (use3DDensity=false) for backwards compatibility and performance
-        this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config, false);
+        // PHASE 2: Enable 3D density for SPLINE generator (caves, overhangs, arches, floating islands)
+        // LEGACY generator remains 2D for backwards compatibility
+        this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config, true);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)

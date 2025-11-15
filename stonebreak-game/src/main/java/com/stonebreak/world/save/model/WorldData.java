@@ -43,10 +43,10 @@ public final class WorldData {
         this.totalPlayTimeMillis = totalPlayTimeMillis;
         this.worldTimeTicks = worldTimeTicks;
         this.formatVersion = formatVersion;
-        // Default to LEGACY for backwards compatibility with existing worlds
-        this.generatorType = (generatorType != null && !generatorType.isEmpty()) ? generatorType : "LEGACY";
-        // Default to false for backwards compatibility (2D terrain only)
-        this.use3DDensity = (use3DDensity != null) ? use3DDensity : false;
+        // PHASE 2: Default to SPLINE for new worlds (existing worlds keep their saved generatorType)
+        this.generatorType = (generatorType != null && !generatorType.isEmpty()) ? generatorType : "SPLINE";
+        // PHASE 2: Default to true for new worlds (existing worlds keep their saved use3DDensity)
+        this.use3DDensity = (use3DDensity != null) ? use3DDensity : true;
     }
 
     private WorldData(Builder builder) {
@@ -108,8 +108,8 @@ public final class WorldData {
         private long totalPlayTimeMillis = 0;
         private long worldTimeTicks = 6000; // Default to NOON
         private int formatVersion = 1;
-        private String generatorType = "LEGACY"; // Default to LEGACY for backwards compatibility
-        private boolean use3DDensity = false; // Default to false (2D terrain only)
+        private String generatorType = "SPLINE"; // PHASE 2: Default to SPLINE for dramatic terrain
+        private boolean use3DDensity = true; // PHASE 2: Enable 3D density by default
 
         public Builder() {}
 
