@@ -12,7 +12,7 @@ import imgui.ImGui;
 public class StatusSection implements IPanelSection {
 
     private final IThemeContext themeContext;
-    private String statusMessage = "Ready";
+    private String statusMessage = "";
     private boolean loadingInProgress = false;
     private boolean validationInProgress = false;
     private boolean visible = true;
@@ -56,7 +56,7 @@ public class StatusSection implements IPanelSection {
      * @param message The status message to display
      */
     public void setStatusMessage(String message) {
-        this.statusMessage = message != null ? message : "Ready";
+        this.statusMessage = message != null ? message : "";
     }
 
     /**

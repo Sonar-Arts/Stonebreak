@@ -55,7 +55,6 @@ public class PropertyPanelImGui {
     private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
     private final TransformSection transformSection;
     private final DiagnosticsSection diagnosticsSection;
-    private final StatusSection statusSection;
 
     // State
     private String currentModelName = null;
@@ -89,7 +88,6 @@ public class PropertyPanelImGui {
         this.textureChooserSection = new TextureChooserSection(fileDialogService, modelState);  // For editable models
         this.transformSection = new TransformSection(transformState);
         this.diagnosticsSection = new DiagnosticsSection();
-        this.statusSection = new StatusSection(themeContext);
 
         // Configure section callbacks
         setupSectionCallbacks();
@@ -115,11 +113,9 @@ public class PropertyPanelImGui {
             }
 
             initialized = true;
-            statusSection.setStatusMessage("Ready");
 
         } catch (Exception e) {
             logger.error("Failed to initialize PropertyPanelImGui", e);
-            statusSection.setStatusMessage("Initialization failed: " + e.getMessage());
         }
     }
 
@@ -188,8 +184,6 @@ public class PropertyPanelImGui {
         }
         ImGui.separator();
         transformSection.render();
-        ImGui.separator();
-        statusSection.render();
     }
 
     /**
@@ -211,8 +205,6 @@ public class PropertyPanelImGui {
         transformSection.render();
         ImGui.separator();
         diagnosticsSection.render();
-        ImGui.separator();
-        statusSection.render();
     }
 
     // Public API Methods
@@ -260,9 +252,7 @@ public class PropertyPanelImGui {
         }
 
         // Prevent repeated loading
-        if (statusSection.isLoading()) {
-            return;
-        }
+        // (removed status section check)
 
         // Check if already loaded
         if (modelName.equals(this.currentModelName)) {
@@ -276,9 +266,6 @@ public class PropertyPanelImGui {
 
         this.currentModelName = modelName;
         lastViewportModelCheck = null;
-
-        statusSection.setLoading(true);
-        statusSection.setStatusMessage("Loading texture variants for " + modelName + "...");
 
         try {
             // Load variants based on model type
@@ -295,17 +282,8 @@ public class PropertyPanelImGui {
                 viewportConnector.loadModel(modelFileName);
             }
 
-            statusSection.setLoading(false);
-            if (modelName.toLowerCase().contains("cow")) {
-                statusSection.setStatusMessage("Loaded " + variantsToLoad.size() + " texture variants");
-            } else {
-                statusSection.setStatusMessage("Model type not supported for texture variants");
-            }
-
         } catch (Exception e) {
             logger.error("Error loading texture variants for model: {}", modelName, e);
-            statusSection.setLoading(false);
-            statusSection.setStatusMessage("Failed to load texture variants: " + e.getMessage());
         }
     }
 
@@ -322,9 +300,6 @@ public class PropertyPanelImGui {
 
         long startTime = System.currentTimeMillis();
 
-        statusSection.setLoading(true);
-        statusSection.setStatusMessage("Switching to " + variantName + " variant...");
-
         try {
             String variantLower = variantName.toLowerCase();
 
@@ -339,22 +314,16 @@ public class PropertyPanelImGui {
                 }
 
                 long switchTime = System.currentTimeMillis() - startTime;
-                statusSection.setLoading(false);
-                statusSection.setStatusMessage(String.format("Switched to %s variant (%dms)", variantName, switchTime));
 
                 if (switchTime > 200) {
                     logger.warn("Texture variant switch took {}ms (target: <200ms)", switchTime);
                 }
             } else {
-                statusSection.setLoading(false);
-                statusSection.setStatusMessage("Failed to switch to variant: " + variantName);
                 logger.error("TextureVariantManager failed to switch to variant: {}", variantName);
             }
 
         } catch (Exception e) {
             logger.error("Error switching to texture variant: {}", variantName, e);
-            statusSection.setLoading(false);
-            statusSection.setStatusMessage("Error switching variant: " + e.getMessage());
         }
     }
 
@@ -375,23 +344,6 @@ public class PropertyPanelImGui {
         logger.debug("UI mode changed to: {}", compact ? "Compact" : "Full");
     }
 
-    /**
-     * Get the status message.
-     *
-     * @return Current status message
-     */
-    public String getStatusMessage() {
-        return statusSection.getStatusMessage();
-    }
-
-    /**
-     * Check if loading is in progress.
-     *
-     * @return true if loading
-     */
-    public boolean isLoadingInProgress() {
-        return statusSection.isLoading();
-    }
 
     /**
      * Get the selected variant.
