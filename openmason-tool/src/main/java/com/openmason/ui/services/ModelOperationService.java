@@ -45,8 +45,9 @@ public class ModelOperationService {
     private final OMODeserializer omoDeserializer;
     private BlockModel currentEditableModel;
 
-    // Viewport reference (for loading models into viewport)
+    // UI component references
     private com.openmason.ui.viewport.OpenMason3DViewport viewport;
+    private com.openmason.ui.properties.PropertyPanelImGui propertiesPanel;
 
     public ModelOperationService(ModelState modelState, StatusService statusService,
                                  LegacyCowModelManager legacyCowModelManager,
@@ -76,6 +77,17 @@ public class ModelOperationService {
     }
 
     /**
+     * Sets the properties panel reference for editable models.
+     * Called by MainImGuiInterface after properties panel is created.
+     *
+     * @param propertiesPanel the properties panel instance
+     */
+    public void setPropertiesPanel(com.openmason.ui.properties.PropertyPanelImGui propertiesPanel) {
+        this.propertiesPanel = propertiesPanel;
+        logger.debug("Properties panel reference set in ModelOperationService");
+    }
+
+    /**
      * Create new blank cube model.
      * Creates a BlockModel with gray 64x48 cube net texture and displays it in viewport.
      */
@@ -102,6 +114,11 @@ public class ModelOperationService {
                 statusService.updateStatus("Blank model created: " + currentEditableModel.getName() +
                                           " (viewport not available)");
                 logger.warn("Viewport not set - model created but not displayed");
+            }
+
+            // Update properties panel with new model
+            if (propertiesPanel != null) {
+                propertiesPanel.setEditableModel(currentEditableModel);
             }
 
             logger.info("Created new blank cube model: {}", currentEditableModel.getName());
@@ -311,6 +328,11 @@ public class ModelOperationService {
                     statusService.updateStatus("Loaded .OMO model: " + loadedModel.getName() +
                                               " (viewport not available)");
                     logger.warn("Viewport not set - model loaded but not displayed");
+                }
+
+                // Update properties panel with loaded model
+                if (propertiesPanel != null) {
+                    propertiesPanel.setEditableModel(currentEditableModel);
                 }
 
                 logger.info("Loaded .OMO model from: {}", filePath);

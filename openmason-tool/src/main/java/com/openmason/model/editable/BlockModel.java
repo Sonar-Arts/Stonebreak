@@ -9,7 +9,7 @@ import java.util.Objects;
  * <p>This class represents a basic block model with:
  * <ul>
  *   <li>A single cuboid geometry (16x16x16 by default)</li>
- *   <li>An associated texture in .OMT format (64x48 cube net)</li>
+ *   <li>An associated texture in .OMT format (auto-detected as 64x48 cube net or 16x16 flat)</li>
  *   <li>Metadata (name, file path)</li>
  *   <li>Dirty state tracking for save operations</li>
  * </ul>
@@ -18,6 +18,12 @@ import java.util.Objects;
  * <ul>
  *   <li>manifest.json - Model metadata and geometry</li>
  *   <li>texture.omt - Embedded texture file</li>
+ * </ul>
+ *
+ * <p>Texture format is automatically detected from the .OMT file dimensions:
+ * <ul>
+ *   <li>64x48 textures → Cube net UV mapping</li>
+ *   <li>16x16 textures → Flat UV mapping (same texture on all sides)</li>
  * </ul>
  *
  * <p>Thread Safety: This class is NOT thread-safe. External synchronization

@@ -50,10 +50,17 @@ public class CubeNetMeshGenerator {
     private static final int TEXTURE_HEIGHT = 48;
     private static final int FACE_SIZE = 16;
 
-    // UV inset to prevent texture bleeding (half pixel in each direction)
-    // This pulls UV coordinates slightly inward from pixel boundaries
-    private static final float UV_INSET_U = 0.5f / TEXTURE_WIDTH;   // 0.0078125
-    private static final float UV_INSET_V = 0.5f / TEXTURE_HEIGHT;  // 0.0104167
+    // No UV inset needed with GL_NEAREST filtering (no interpolation = no bleeding)
+    // This gives full 16x16 pixel coverage per face with no edge cutoff
+    private static final float UV_INSET_U = 0.0f;  // No inset - full pixel coverage
+    private static final float UV_INSET_V = 0.0f;  // No inset - full pixel coverage
+
+    // Precise V-coordinate calculations for 64x48 cube net
+    // Row 0: Y = 0 to 16 (top face)
+    // Row 1: Y = 16 to 32 (left, front, right, back faces)
+    // Row 2: Y = 32 to 48 (bottom face)
+    private static final float V_ROW_1 = 16.0f / (float)TEXTURE_HEIGHT;  // 0.333333... (row 1 starts)
+    private static final float V_ROW_2 = 32.0f / (float)TEXTURE_HEIGHT;  // 0.666666... (row 2 starts)
 
     // Mesh properties
     private static final int VERTICES_PER_FACE = 4;
@@ -65,40 +72,40 @@ public class CubeNetMeshGenerator {
 
     // UV coordinates for each face in 64x48 cube net with inset applied
     // Format: {u1, v1, u2, v2} (top-left to bottom-right in texture space)
-    // Inset prevents texture bleeding by avoiding exact pixel boundaries
+    // Now using precise V calculations instead of 0.333f and 0.667f
     private static final float[] TOP_UV = {
         0.25f + UV_INSET_U,
         0.0f + UV_INSET_V,
         0.5f - UV_INSET_U,
-        0.333f - UV_INSET_V
+        V_ROW_1 - UV_INSET_V    // Precise: 16/48 instead of 0.333f
     };
     private static final float[] LEFT_UV = {
         0.0f + UV_INSET_U,
-        0.333f + UV_INSET_V,
+        V_ROW_1 + UV_INSET_V,   // Precise: 16/48 instead of 0.333f
         0.25f - UV_INSET_U,
-        0.667f - UV_INSET_V
+        V_ROW_2 - UV_INSET_V    // Precise: 32/48 instead of 0.667f
     };
     private static final float[] FRONT_UV = {
         0.25f + UV_INSET_U,
-        0.333f + UV_INSET_V,
+        V_ROW_1 + UV_INSET_V,   // Precise: 16/48 instead of 0.333f
         0.5f - UV_INSET_U,
-        0.667f - UV_INSET_V
+        V_ROW_2 - UV_INSET_V    // Precise: 32/48 instead of 0.667f
     };
     private static final float[] RIGHT_UV = {
         0.5f + UV_INSET_U,
-        0.333f + UV_INSET_V,
+        V_ROW_1 + UV_INSET_V,   // Precise: 16/48 instead of 0.333f
         0.75f - UV_INSET_U,
-        0.667f - UV_INSET_V
+        V_ROW_2 - UV_INSET_V    // Precise: 32/48 instead of 0.667f
     };
     private static final float[] BACK_UV = {
         0.75f + UV_INSET_U,
-        0.333f + UV_INSET_V,
+        V_ROW_1 + UV_INSET_V,   // Precise: 16/48 instead of 0.333f
         1.0f - UV_INSET_U,
-        0.667f - UV_INSET_V
+        V_ROW_2 - UV_INSET_V    // Precise: 32/48 instead of 0.667f
     };
     private static final float[] BOTTOM_UV = {
         0.25f + UV_INSET_U,
-        0.667f + UV_INSET_V,
+        V_ROW_2 + UV_INSET_V,   // Precise: 32/48 instead of 0.667f
         0.5f - UV_INSET_U,
         1.0f - UV_INSET_V
     };
@@ -138,10 +145,11 @@ public class CubeNetMeshGenerator {
 
             // BOTTOM face (facing -Y) - 4 vertices
             // Uses BOTTOM texture from cube net (16,32) to (32,48)
-            -0.5f, -0.5f, -0.5f,  BOTTOM_UV[0], BOTTOM_UV[3], // back-left
-             0.5f, -0.5f, -0.5f,  BOTTOM_UV[2], BOTTOM_UV[3], // back-right
-             0.5f, -0.5f,  0.5f,  BOTTOM_UV[2], BOTTOM_UV[1], // front-right
-            -0.5f, -0.5f,  0.5f,  BOTTOM_UV[0], BOTTOM_UV[1], // front-left
+            // Fixed: UV v1/v2 swapped to match game orientation (top of texture at -Z back)
+            -0.5f, -0.5f, -0.5f,  BOTTOM_UV[0], BOTTOM_UV[1], // back-left (top-left)
+             0.5f, -0.5f, -0.5f,  BOTTOM_UV[2], BOTTOM_UV[1], // back-right (top-right)
+             0.5f, -0.5f,  0.5f,  BOTTOM_UV[2], BOTTOM_UV[3], // front-right (bottom-right)
+            -0.5f, -0.5f,  0.5f,  BOTTOM_UV[0], BOTTOM_UV[3], // front-left (bottom-left)
 
             // RIGHT face (facing +X) - 4 vertices
             // Uses RIGHT texture from cube net (32,16) to (48,32)

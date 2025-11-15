@@ -61,6 +61,14 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
+    public void reloadBlockModel(com.openmason.model.editable.BlockModel blockModel) {
+        if (viewport != null && blockModel != null) {
+            viewport.loadBlockModel(blockModel);
+            logger.debug("Reloaded BlockModel in viewport: {}", blockModel.getName());
+        }
+    }
+
+    @Override
     public float getMinScale() {
         return viewport != null ? viewport.getMinScale() : 0.1f;
     }

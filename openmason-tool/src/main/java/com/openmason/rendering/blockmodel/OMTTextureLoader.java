@@ -1,5 +1,8 @@
 package com.openmason.rendering.blockmodel;
 
+import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.components.textureCreator.io.OMTDeserializer;
+import com.openmason.ui.components.textureCreator.layers.LayerManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
@@ -55,18 +58,81 @@ public class OMTTextureLoader {
     }
 
     /**
-     * Loads a texture from a .OMT file and creates an OpenGL texture.
+     * Loads a texture from a .OMT file with full layer compositing.
+     * Composites all visible layers with proper alpha blending and returns metadata.
+     *
+     * @param omtFilePath path to the .OMT file
+     * @return TextureLoadResult with texture ID and dimensions, or failed result
+     */
+    public TextureLoadResult loadTextureComposite(Path omtFilePath) {
+        if (omtFilePath == null || !Files.exists(omtFilePath)) {
+            logger.error("OMT file does not exist: {}", omtFilePath);
+            return TextureLoadResult.failed();
+        }
+
+        logger.info("Loading multi-layer texture from .OMT file: {}", omtFilePath);
+
+        try {
+            // Load OMT file using deserializer (gets all layers)
+            OMTDeserializer deserializer = new OMTDeserializer();
+            LayerManager layerManager = deserializer.load(omtFilePath.toString());
+
+            if (layerManager == null) {
+                logger.error("Failed to load LayerManager from .OMT file");
+                return TextureLoadResult.failed();
+            }
+
+            // Composite all visible layers with alpha blending
+            PixelCanvas compositedCanvas = layerManager.compositeLayersToCanvas();
+
+            if (compositedCanvas == null) {
+                logger.error("Layer compositing returned null");
+                return TextureLoadResult.failed();
+            }
+
+            int width = compositedCanvas.getWidth();
+            int height = compositedCanvas.getHeight();
+            logger.info("Composited {} layers into {}x{} texture",
+                layerManager.getLayerCount(), width, height);
+
+            // Detect transparency before uploading
+            boolean hasTransparency = hasTransparency(compositedCanvas);
+            logger.debug("Transparency detection result: {}", hasTransparency);
+
+            // Upload composited canvas to GPU
+            int textureId = uploadPixelCanvasToGPU(compositedCanvas);
+
+            if (textureId > 0) {
+                logger.info("Successfully loaded multi-layer .OMT texture (ID: {}, {}x{}, transparency: {})",
+                    textureId, width, height, hasTransparency);
+                return new TextureLoadResult(textureId, width, height, hasTransparency);
+            } else {
+                logger.error("Failed to upload composited texture to GPU");
+                return TextureLoadResult.failed();
+            }
+
+        } catch (Exception e) {
+            logger.error("Error loading multi-layer .OMT texture", e);
+            return TextureLoadResult.failed();
+        }
+    }
+
+    /**
+     * Loads a texture from a .OMT file (legacy single-layer method).
+     * Only loads the first layer for backward compatibility.
      *
      * @param omtFilePath path to the .OMT file
      * @return OpenGL texture ID, or 0 if loading failed
+     * @deprecated Use {@link #loadTextureComposite(Path)} for full multi-layer support
      */
+    @Deprecated
     public int loadTexture(Path omtFilePath) {
         if (omtFilePath == null || !Files.exists(omtFilePath)) {
             logger.error("OMT file does not exist: {}", omtFilePath);
             return 0;
         }
 
-        logger.info("Loading texture from .OMT file: {}", omtFilePath);
+        logger.info("Loading texture from .OMT file (single layer): {}", omtFilePath);
 
         try {
             // Extract first layer PNG from ZIP
@@ -149,8 +215,9 @@ public class OMTTextureLoader {
             IntBuffer heightBuffer = stack.mallocInt(1);
             IntBuffer channelsBuffer = stack.mallocInt(1);
 
-            // Flip vertically for OpenGL (bottom-left origin)
-            STBImage.stbi_set_flip_vertically_on_load(true);
+            // Load texture in standard orientation (matches game's approach)
+            // UV coordinates in CubeNetMeshGenerator are designed for this
+            STBImage.stbi_set_flip_vertically_on_load(false);
 
             ByteBuffer imageData = STBImage.stbi_load_from_memory(
                 imageBuffer, widthBuffer, heightBuffer, channelsBuffer, 4 // Force RGBA
@@ -179,7 +246,7 @@ public class OMTTextureLoader {
             // Set texture parameters
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // Pixel-perfect, no interpolation (matches game)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Pixelated look for block textures
 
             // Free STB image data
@@ -194,6 +261,122 @@ public class OMTTextureLoader {
             logger.error("Error loading PNG as texture", e);
             return 0;
         }
+    }
+
+    /**
+     * Uploads a PixelCanvas to GPU as an OpenGL texture.
+     * Converts pixel data to RGBA ByteBuffer and creates mipmap texture.
+     *
+     * @param canvas the pixel canvas to upload
+     * @return OpenGL texture ID, or 0 if upload failed
+     */
+    private int uploadPixelCanvasToGPU(PixelCanvas canvas) {
+        try {
+            int width = canvas.getWidth();
+            int height = canvas.getHeight();
+
+            // Get RGBA byte data from pixel canvas
+            byte[] rgbaBytes = canvas.getPixelsAsRGBABytes();
+
+            if (rgbaBytes == null || rgbaBytes.length == 0) {
+                logger.error("PixelCanvas returned empty RGBA byte array");
+                return 0;
+            }
+
+            // Convert to ByteBuffer for OpenGL
+            ByteBuffer imageData = BufferUtils.createByteBuffer(rgbaBytes.length);
+            imageData.put(rgbaBytes);
+            imageData.flip();
+
+            // Create OpenGL texture
+            int textureId = glGenTextures();
+            glBindTexture(GL_TEXTURE_2D, textureId);
+
+            // Upload texture data (no vertical flip - PixelCanvas is already in correct orientation)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
+                        GL_RGBA, GL_UNSIGNED_BYTE, imageData);
+
+            // Generate mipmaps
+            glGenerateMipmap(GL_TEXTURE_2D);
+
+            // Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // Pixel-perfect, no interpolation (matches game)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Pixelated look for block textures
+
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            logger.debug("Uploaded PixelCanvas to GPU: ID={}, size={}x{}", textureId, width, height);
+            return textureId;
+
+        } catch (Exception e) {
+            logger.error("Error uploading PixelCanvas to GPU", e);
+            return 0;
+        }
+    }
+
+    /**
+     * Detects if a PixelCanvas requires transparent rendering (depth writes disabled).
+     * For multi-layer composites, determines if the texture is "mostly opaque" vs "truly transparent".
+     *
+     * <p>Strategy:
+     * <ul>
+     *   <li>Counts pixels that are nearly or fully opaque (alpha >= 250)</li>
+     *   <li>If >= 90% of pixels are opaque, treat entire texture as OPAQUE</li>
+     *   <li>Otherwise, treat as TRANSPARENT (requires depth write disabled)</li>
+     *   <li>This handles multi-layer composites where background layers may leave transparent areas</li>
+     * </ul>
+     *
+     * <p>Rationale:
+     * <ul>
+     *   <li>PixelCanvas starts with transparent pixels (alpha=0)</li>
+     *   <li>Layer compositing preserves transparency in uncovered areas</li>
+     *   <li>A texture with opaque base layer should render as opaque even if edges/corners are transparent</li>
+     *   <li>Only genuinely transparent textures (glass, etc.) should disable depth writes</li>
+     * </ul>
+     *
+     * @param canvas the pixel canvas to check
+     * @return true if texture requires transparent rendering (depth writes disabled)
+     */
+    private boolean hasTransparency(PixelCanvas canvas) {
+        byte[] rgbaBytes = canvas.getPixelsAsRGBABytes();
+
+        if (rgbaBytes == null || rgbaBytes.length == 0) {
+            return false;
+        }
+
+        // Threshold for considering a pixel "opaque" (handles anti-aliasing and compositing artifacts)
+        final int OPAQUE_THRESHOLD = 250;
+        // Percentage of opaque pixels required to treat texture as opaque
+        final double OPAQUE_PERCENTAGE_THRESHOLD = 90.0;
+
+        // Count opaque pixels
+        int totalPixels = rgbaBytes.length / 4;
+        int opaquePixels = 0;
+
+        // Scan every 4th byte (alpha channel in RGBA format)
+        for (int i = 3; i < rgbaBytes.length; i += 4) {
+            // Check if pixel is nearly or fully opaque
+            // Using unsigned byte comparison (& 0xFF converts to unsigned)
+            int alpha = rgbaBytes[i] & 0xFF;
+            if (alpha >= OPAQUE_THRESHOLD) {
+                opaquePixels++;
+            }
+        }
+
+        // Calculate percentage of opaque pixels
+        double opaquePercentage = (double) opaquePixels / totalPixels * 100.0;
+
+        // Texture is "mostly opaque" if >= 90% of pixels are opaque
+        // These textures should use depth writes (return false = no transparency mode)
+        boolean isMostlyOpaque = opaquePercentage >= OPAQUE_PERCENTAGE_THRESHOLD;
+
+        logger.debug("Opacity analysis: {}/{} pixels opaque ({:.2f}%) - threshold: {} - mostly opaque: {} - requires transparent rendering: {}",
+            opaquePixels, totalPixels, opaquePercentage, OPAQUE_PERCENTAGE_THRESHOLD, isMostlyOpaque, !isMostlyOpaque);
+
+        // Return true if texture requires transparent rendering (NOT mostly opaque)
+        return !isMostlyOpaque;
     }
 
     /**

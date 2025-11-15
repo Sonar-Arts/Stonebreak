@@ -165,6 +165,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         fileMenuHandler.setThemeManager(themeManager);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
+        modelOperations.setPropertiesPanel(propertyPanelImGui);
 
         // Create default blank model on startup
         createDefaultModel();
@@ -236,7 +237,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     private void setupPropertiesPanel() {
         try {
-            propertyPanelImGui = new PropertyPanelImGui(themeManager);
+            propertyPanelImGui = new PropertyPanelImGui(themeManager, fileDialogService, modelState);
 
             // Initialize compact mode from preferences
             boolean compactMode = preferencesManager.getPropertiesCompactMode();

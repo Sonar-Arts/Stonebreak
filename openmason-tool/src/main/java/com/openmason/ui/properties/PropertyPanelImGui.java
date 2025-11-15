@@ -1,6 +1,8 @@
 package com.openmason.ui.properties;
 
 import com.openmason.deprecated.LegacyCowTextureVariantManager;
+import com.openmason.model.editable.BlockModel;
+import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.properties.adapters.ViewportAdapter;
 import com.openmason.ui.properties.interfaces.IThemeContext;
 import com.openmason.ui.properties.interfaces.ITransformState;
@@ -8,6 +10,7 @@ import com.openmason.ui.properties.interfaces.IViewportConnector;
 import com.openmason.ui.properties.sections.*;
 import com.openmason.ui.properties.state.TransformState;
 import com.openmason.ui.properties.theming.PanelThemeContext;
+import com.openmason.ui.state.ModelState;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import imgui.ImGui;
@@ -39,6 +42,8 @@ public class PropertyPanelImGui {
 
     // Dependencies (injected)
     private final LegacyCowTextureVariantManager textureManager;
+    private final FileDialogService fileDialogService;
+    private final ModelState modelState;
     private final ThemeManager themeManager; // Store for getThemeManager() compatibility
     private final IThemeContext themeContext;
     private final ITransformState transformState;
@@ -46,7 +51,8 @@ public class PropertyPanelImGui {
 
     // Section components (composition)
     private final ModelInfoSection modelInfoSection;
-    private final TextureVariantSection textureVariantSection;
+    private final TextureVariantSection textureVariantSection;  // For BROWSER models
+    private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
     private final TransformSection transformSection;
     private final DiagnosticsSection diagnosticsSection;
     private final StatusSection statusSection;
@@ -55,6 +61,7 @@ public class PropertyPanelImGui {
     private String currentModelName = null;
     private boolean initialized = false;
     private String lastViewportModelCheck = null;
+    private BlockModel currentEditableModel = null;  // Current editable model for texture reloading
 
     // Compact/Advanced mode
     private final ImBoolean compactMode = new ImBoolean(true); // Default to compact mode
@@ -63,10 +70,14 @@ public class PropertyPanelImGui {
      * Create PropertyPanelImGui with dependency injection.
      *
      * @param themeManager ThemeManager instance (can be null for basic functionality)
+     * @param fileDialogService File dialog service for texture selection
+     * @param modelState Model state for checking model source
      */
-    public PropertyPanelImGui(ThemeManager themeManager) {
+    public PropertyPanelImGui(ThemeManager themeManager, FileDialogService fileDialogService, ModelState modelState) {
         // Initialize dependencies
         this.textureManager = LegacyCowTextureVariantManager.getInstance();
+        this.fileDialogService = fileDialogService;
+        this.modelState = modelState;
         this.themeManager = themeManager; // Store for getThemeManager() compatibility
         this.themeContext = new PanelThemeContext(themeManager);
         this.transformState = new TransformState();
@@ -74,7 +85,8 @@ public class PropertyPanelImGui {
 
         // Initialize sections (composition)
         this.modelInfoSection = new ModelInfoSection();
-        this.textureVariantSection = new TextureVariantSection();
+        this.textureVariantSection = new TextureVariantSection();  // For BROWSER models
+        this.textureChooserSection = new TextureChooserSection(fileDialogService, modelState);  // For editable models
         this.transformSection = new TransformSection(transformState);
         this.diagnosticsSection = new DiagnosticsSection();
         this.statusSection = new StatusSection(themeContext);
@@ -115,8 +127,22 @@ public class PropertyPanelImGui {
      * Setup callbacks for section components.
      */
     private void setupSectionCallbacks() {
-        // Texture variant section callback
-        textureVariantSection.setOnVariantChanged(this::switchTextureVariant);
+        // Texture variant section callback (for BROWSER models)
+        textureVariantSection.setOnVariantChanged(variantName -> {
+            switchTextureVariant(variantName);
+        });
+
+        // Texture chooser section callback (for NEW and OMO_FILE models)
+        textureChooserSection.setOnTextureChanged(texturePath -> {
+            logger.debug("Texture changed: {}", texturePath);
+            // Texture change is handled by BlockModel.setTexturePath() (marks model dirty)
+            // Reload the BlockModel in the viewport to apply the new texture
+            if (currentEditableModel != null && viewportConnector != null && viewportConnector.isConnected()) {
+                viewportConnector.reloadBlockModel(currentEditableModel);
+                viewportConnector.requestRender();
+                logger.info("Reloaded BlockModel with new texture: {}", texturePath);
+            }
+        });
 
         // Transform section callback
         transformSection.setOnTransformChanged(unused -> {
@@ -153,7 +179,13 @@ public class PropertyPanelImGui {
      * Render compact mode (essential controls only).
      */
     private void renderCompactMode() {
-        textureVariantSection.render();
+        // Render appropriate texture section based on model source
+        ModelState.ModelSource source = modelState.getModelSource();
+        if (source == ModelState.ModelSource.BROWSER) {
+            textureVariantSection.render();
+        } else {
+            textureChooserSection.render();
+        }
         ImGui.separator();
         transformSection.render();
         ImGui.separator();
@@ -166,8 +198,16 @@ public class PropertyPanelImGui {
     private void renderFullMode() {
         modelInfoSection.render();
         ImGui.separator();
-        textureVariantSection.render();
+
+        // Render appropriate texture section based on model source
+        ModelState.ModelSource source = modelState.getModelSource();
+        if (source == ModelState.ModelSource.BROWSER) {
+            textureVariantSection.render();
+        } else {
+            textureChooserSection.render();
+        }
         ImGui.separator();
+
         transformSection.render();
         ImGui.separator();
         diagnosticsSection.render();
@@ -188,6 +228,24 @@ public class PropertyPanelImGui {
         // Update sections with viewport connector
         transformSection.setViewportConnector(viewportConnector);
         diagnosticsSection.setViewportConnector(viewportConnector);
+    }
+
+    /**
+     * Set the current editable model (for NEW and OMO_FILE models).
+     * Updates the texture chooser section with the model reference.
+     *
+     * @param model The editable block model
+     */
+    public void setEditableModel(BlockModel model) {
+        this.currentEditableModel = model;  // Store reference for texture reloading
+        textureChooserSection.setModel(model);
+
+        if (model != null) {
+            modelInfoSection.setModelName(model.getName());
+            logger.debug("Updated properties panel with editable model: {}", model.getName());
+        } else {
+            logger.debug("Cleared editable model from properties panel");
+        }
     }
 
     /**

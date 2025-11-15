@@ -59,6 +59,18 @@ public class BlockModelRenderer {
     // Current state
     private boolean initialized = false;
     private int textureId = 0;
+    private boolean hasTransparency = false;
+    private UVMode currentUVMode = UVMode.CUBE_NET;  // Default to cube net
+
+    /**
+     * UV mapping mode for texture coordinates.
+     */
+    public enum UVMode {
+        /** 64x48 cube net texture with mapped UVs for each face */
+        CUBE_NET,
+        /** 16x16 flat texture with simple 0-1 UVs on each face */
+        FLAT
+    }
 
     /**
      * Creates a new BlockModel renderer.
@@ -121,7 +133,82 @@ public class BlockModelRenderer {
      */
     public void setTexture(int textureId) {
         this.textureId = textureId;
+        this.hasTransparency = false; // Default to opaque for legacy calls
         logger.debug("Texture set: {}", textureId);
+    }
+
+    /**
+     * Sets the texture to use for rendering along with transparency info.
+     *
+     * @param textureLoadResult the texture load result containing ID and transparency info
+     */
+    public void setTexture(TextureLoadResult textureLoadResult) {
+        if (textureLoadResult == null || !textureLoadResult.isSuccess()) {
+            logger.warn("Invalid texture load result, clearing texture");
+            this.textureId = 0;
+            this.hasTransparency = false;
+            return;
+        }
+
+        this.textureId = textureLoadResult.getTextureId();
+        this.hasTransparency = textureLoadResult.hasTransparency();
+        logger.debug("Texture set: {} (transparency: {})", textureId, hasTransparency);
+    }
+
+    /**
+     * Gets whether the current texture has transparency.
+     *
+     * @return true if texture contains transparent/translucent pixels
+     */
+    public boolean hasTransparency() {
+        return hasTransparency;
+    }
+
+    /**
+     * Sets the UV mapping mode and regenerates vertex buffer if needed.
+     *
+     * @param uvMode the UV mode to use (CUBE_NET or FLAT)
+     */
+    public void setUVMode(UVMode uvMode) {
+        if (uvMode == null) {
+            logger.warn("Null UV mode, ignoring");
+            return;
+        }
+
+        if (this.currentUVMode == uvMode) {
+            logger.debug("UV mode already set to {}", uvMode);
+            return;
+        }
+
+        logger.info("Changing UV mode from {} to {}", this.currentUVMode, uvMode);
+        this.currentUVMode = uvMode;
+
+        // Regenerate vertex buffer if initialized
+        if (initialized) {
+            regenerateVertexBuffer();
+        }
+    }
+
+    /**
+     * Regenerates the vertex buffer with the current UV mode.
+     */
+    private void regenerateVertexBuffer() {
+        logger.debug("Regenerating vertex buffer with UV mode: {}", currentUVMode);
+
+        // Generate vertices based on UV mode
+        float[] vertices;
+        if (currentUVMode == UVMode.CUBE_NET) {
+            vertices = CubeNetMeshGenerator.generateVertices();
+        } else {
+            vertices = FlatTextureMeshGenerator.generateVertices();
+        }
+
+        // Update vertex buffer
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        logger.debug("Vertex buffer regenerated successfully");
     }
 
     /**

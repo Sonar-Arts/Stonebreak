@@ -401,14 +401,31 @@ public class OpenMason3DViewport {
         // Store reference
         currentBlockModel = blockModel;
 
-        // Load texture from .OMT file
+        // Load texture with full layer compositing and auto-detect UV mode
         java.nio.file.Path texturePath = blockModel.getTexturePath();
         if (texturePath != null && java.nio.file.Files.exists(texturePath)) {
-            currentBlockModelTextureId = omtTextureLoader.loadTexture(texturePath);
+            com.openmason.rendering.blockmodel.TextureLoadResult result =
+                omtTextureLoader.loadTextureComposite(texturePath);
 
-            if (currentBlockModelTextureId > 0) {
-                blockModelRenderer.setTexture(currentBlockModelTextureId);
-                logger.info("Loaded BlockModel texture from: {}", texturePath);
+            if (result.isSuccess()) {
+                // Auto-detect UV mode based on texture dimensions
+                if (result.isCubeNet()) {
+                    blockModelRenderer.setUVMode(com.openmason.rendering.blockmodel.BlockModelRenderer.UVMode.CUBE_NET);
+                    logger.debug("Auto-detected CUBE_NET UV mode (64x48 texture)");
+                } else if (result.isFlat16x16()) {
+                    blockModelRenderer.setUVMode(com.openmason.rendering.blockmodel.BlockModelRenderer.UVMode.FLAT);
+                    logger.debug("Auto-detected FLAT UV mode (16x16 texture)");
+                } else {
+                    // Default to FLAT for non-standard sizes
+                    blockModelRenderer.setUVMode(com.openmason.rendering.blockmodel.BlockModelRenderer.UVMode.FLAT);
+                    logger.warn("Non-standard texture size ({}x{}), defaulting to FLAT UV mode",
+                        result.getWidth(), result.getHeight());
+                }
+
+                // Set texture on renderer (with transparency info)
+                currentBlockModelTextureId = result.getTextureId();
+                blockModelRenderer.setTexture(result);
+                logger.info("Loaded multi-layer BlockModel texture: {}", result);
             } else {
                 logger.error("Failed to load texture from: {}", texturePath);
             }

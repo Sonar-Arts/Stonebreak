@@ -90,6 +90,9 @@ public final class OMOFormat {
      *
      * <p>Represents the entire contents of an .OMO file including
      * manifest data and texture reference.
+     *
+     * <p>Note: Texture format (cube net vs flat) is auto-detected
+     * from the embedded .OMT file dimensions at load time.
      */
     public static class Document {
         private final String version;

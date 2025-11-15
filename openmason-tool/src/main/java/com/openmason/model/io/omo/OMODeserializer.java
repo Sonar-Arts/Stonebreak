@@ -185,6 +185,7 @@ public class OMODeserializer {
             width, height, depth, position
         );
 
+        // Note: Texture format is auto-detected from .OMT dimensions at runtime
         return new OMOFormat.Document(version, objectName, modelType,
                                      geometryData, textureFile);
     }
@@ -252,11 +253,14 @@ public class OMODeserializer {
         );
 
         // Create model
-        return new BlockModel(
+        // Note: Texture format (cube net vs flat) is auto-detected from .OMT dimensions at load time
+        BlockModel model = new BlockModel(
             document.getObjectName(),
             geometry,
             data.texturePath
         );
+
+        return model;
     }
 
     /**

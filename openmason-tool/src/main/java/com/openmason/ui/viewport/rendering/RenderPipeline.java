@@ -87,8 +87,13 @@ public class RenderPipeline {
             glClearColor(0.2f, 0.2f, 0.3f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            // Enable depth testing
+            // Configure pipeline-level OpenGL state (set once per frame)
             glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LESS);
+            glDepthMask(true);
+            glDisable(GL_CULL_FACE);  // Show all cube faces
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
             // Apply wireframe mode
             if (viewportState.isWireframeMode()) {
@@ -275,7 +280,8 @@ public class RenderPipeline {
 
     /**
      * Render editable block model (.OMO file).
-     * Uses simple textured cube rendering with transformation.
+     * Minimal implementation - pipeline state is configured once per frame.
+     * Shader handles transparency via discard statement.
      */
     private void renderBlockModel(TransformState transformState) {
         try {
@@ -292,7 +298,7 @@ public class RenderPipeline {
             org.joml.Matrix4f viewProjectionMatrix = new org.joml.Matrix4f(context.getCamera().getProjectionMatrix());
             viewProjectionMatrix.mul(context.getCamera().getViewMatrix());
 
-            // Set up MVP matrix (view-projection combined)
+            // Set up MVP matrix
             matrixShader.setMat4("uMVPMatrix", viewProjectionMatrix);
 
             // Apply gizmo transform if enabled
@@ -304,14 +310,13 @@ public class RenderPipeline {
 
             matrixShader.setMat4("uModelMatrix", modelMatrix);
 
-            // Enable texturing and set texture sampler
-            matrixShader.setInt("uTexture", 0); // Texture unit 0
-            matrixShader.setBool("uUseTexture", true); // Enable texture rendering
+            // Enable texturing
+            matrixShader.setInt("uTexture", 0);
+            matrixShader.setBool("uUseTexture", true);
 
-            // Render the cube
+            // Render (no state management needed - pipeline handles it)
             blockModelRenderer.render();
 
-            logger.trace("BlockModel rendered");
         } catch (Exception e) {
             logger.error("Error rendering BlockModel", e);
         }

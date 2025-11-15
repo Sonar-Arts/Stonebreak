@@ -48,6 +48,13 @@ public interface IViewportConnector {
     void requestRender();
 
     /**
+     * Reload a BlockModel in the viewport (for texture updates).
+     *
+     * @param blockModel The BlockModel to reload
+     */
+    void reloadBlockModel(com.openmason.model.editable.BlockModel blockModel);
+
+    /**
      * Get the minimum allowed scale value.
      *
      * @return Minimum scale

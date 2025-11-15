@@ -303,6 +303,62 @@ public class FileDialogService {
     }
 
     /**
+     * Show open texture dialog supporting both .OMT and .PNG files.
+     * Used for selecting textures for editable models.
+     *
+     * @param callback callback to receive selected file path
+     */
+    public void showOpenTextureDialog(OpenCallback callback) {
+        statusService.updateStatus("Opening texture file...");
+
+        try {
+            // Initialize NFD
+            int initResult = NFD_Init();
+            if (initResult != NFD_OKAY) {
+                logger.error("Failed to initialize NFD: {}", NFD_GetError());
+                statusService.updateStatus("Error: Failed to initialize file dialog");
+                return;
+            }
+
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                // Create filters for BOTH OMT and PNG files
+                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(2, stack);
+                filters.get(0)
+                        .name(stack.UTF8("Open Mason Texture"))
+                        .spec(stack.UTF8("omt"));
+                filters.get(1)
+                        .name(stack.UTF8("PNG Image"))
+                        .spec(stack.UTF8("png"));
+
+                PointerBuffer outPath = stack.mallocPointer(1);
+
+                // Show open dialog
+                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+                    logger.info("Selected texture file: {}", selectedPath);
+                    callback.onOpen(selectedPath);
+                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled texture open dialog");
+                    statusService.updateStatus("Open cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening file dialog");
+                }
+            }
+
+            NFD_Quit();
+
+        } catch (Exception e) {
+            logger.error("Error showing open texture dialog", e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
      * Show save OMT (Open Mason Texture) dialog using native file dialog.
      * @param callback callback to receive selected file path
      */

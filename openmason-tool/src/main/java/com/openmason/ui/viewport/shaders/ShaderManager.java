@@ -138,8 +138,17 @@ public class ShaderManager {
 
             void main() {
                 if (uUseTexture) {
-                    // Use texture color directly for proper cow texture display
-                    FragColor = texture(uTexture, TexCoord);
+                    // Sample texture color
+                    vec4 texColor = texture(uTexture, TexCoord);
+
+                    // Discard fully transparent pixels to prevent rendering artifacts
+                    // This is critical for multi-layer composited textures where some areas
+                    // may be transparent (alpha=0) from the PixelCanvas initialization
+                    if (texColor.a < 0.01) {
+                        discard;
+                    }
+
+                    FragColor = texColor;
                 } else {
                     // Use solid color only
                     FragColor = vec4(vertexColor, 1.0);

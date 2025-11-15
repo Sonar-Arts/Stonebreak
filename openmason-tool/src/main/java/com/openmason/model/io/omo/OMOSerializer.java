@@ -225,6 +225,8 @@ public class OMOSerializer {
     /**
      * Data Transfer Object for JSON serialization of manifest.
      * Jackson serializes public fields automatically.
+     *
+     * <p>Note: Texture format auto-detected from .OMT dimensions at load time.
      */
     private static class ManifestDTO {
         public String version;
