@@ -3,6 +3,7 @@ package com.openmason.ui.windows;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import imgui.ImGui;
 import imgui.flag.ImGuiDockNodeFlags;
+import imgui.flag.ImGuiFocusedFlags;
 import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
  * - Preserves state when hidden/shown
  * - Uses separate ini file for layout persistence
  * - Allows simultaneous viewing with Model Viewer
+ * - Focus-based keyboard shortcut handling (shortcuts only work when window is focused)
  */
 public class TextureEditorWindow {
 
@@ -112,6 +114,15 @@ public class TextureEditorWindow {
         // Begin standalone window with custom title bar
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
             try {
+                // Handle keyboard shortcuts FIRST, before any widgets consume input
+                // Only block shortcuts if actively typing in a text input field
+                // The window focus check was removed because ImGui.isWindowFocused() returns false
+                // when child panels/dockspace have focus, even though the window is active
+                boolean activelyTyping = ImGui.isAnyItemActive() && ImGui.getIO().getWantTextInput();
+                if (!activelyTyping) {
+                    textureCreator.handleKeyboardShortcuts();
+                }
+
                 // Render custom title bar with minimize/maximize/close buttons
                 renderCustomTitleBar();
 

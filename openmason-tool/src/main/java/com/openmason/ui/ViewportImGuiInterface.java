@@ -65,9 +65,8 @@ public class ViewportImGuiInterface {
      */
     public void render() {
         try {
-            // Handle keyboard shortcuts
-            handleKeyboardShortcuts();
-
+            // Keyboard shortcuts are now handled inside renderViewportWindow()
+            // after ImGui.begin() so we can properly check window focus
             renderViewportWindow();
 
             if (showCameraControls.get()) {
@@ -89,7 +88,8 @@ public class ViewportImGuiInterface {
     }
 
     /**
-     * Handle global keyboard shortcuts.
+     * Handle viewport-specific keyboard shortcuts.
+     * Should only be called when the viewport window is focused and ImGui doesn't want keyboard capture.
      */
     private void handleKeyboardShortcuts() {
         if (viewport3D == null) {
@@ -144,6 +144,13 @@ public class ViewportImGuiInterface {
      */
     private void renderViewportWindow() {
         if (ImGui.begin("3D Viewport")) {
+            // Handle keyboard shortcuts FIRST, before any widgets consume input
+            // Only block shortcuts if actively typing in a text input field
+            // Window focus check removed for consistency with TextureEditorWindow
+            boolean activelyTyping = ImGui.isAnyItemActive() && ImGui.getIO().getWantTextInput();
+            if (!activelyTyping) {
+                handleKeyboardShortcuts();
+            }
 
             // Viewport toolbar
             renderViewportToolbar();

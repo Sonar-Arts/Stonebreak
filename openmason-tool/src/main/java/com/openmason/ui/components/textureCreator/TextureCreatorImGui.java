@@ -571,6 +571,15 @@ public class TextureCreatorImGui {
     }
 
     /**
+     * Handle keyboard shortcuts only (no rendering).
+     * Should be called by parent windows to process shortcuts when the window has focus.
+     * This allows proper focus-based shortcut handling in windowed mode.
+     */
+    public void handleKeyboardShortcuts() {
+        shortcutManager.handleInput();
+    }
+
+    /**
      * Cleanup.
      */
     public void dispose() {
