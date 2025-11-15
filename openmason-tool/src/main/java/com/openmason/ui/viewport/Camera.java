@@ -37,7 +37,7 @@ public class Camera {
     private float fov = 45.0f;
     private float aspectRatio = 1.0f;
     private final float nearPlane = 0.1f;
-    private final float farPlane = 100.0f;
+    private final float farPlane = 1000.0f;  // Increased from 100.0f to support infinite grid rendering
 
     // Matrices
     private final Matrix4f viewMatrix = new Matrix4f();

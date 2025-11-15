@@ -1,6 +1,7 @@
 package com.openmason.ui.viewport.shaders;
 
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
@@ -129,6 +130,44 @@ public class ShaderProgram {
         int location = glGetUniformLocation(programId, name);
         if (location != -1) {
             glUniform1i(location, value ? 1 : 0);
+        }
+    }
+
+    /**
+     * Set a float uniform in the shader.
+     * @param name The uniform name
+     * @param value The float value
+     */
+    public void setFloat(String name, float value) {
+        int location = glGetUniformLocation(programId, name);
+        if (location != -1) {
+            glUniform1f(location, value);
+        }
+    }
+
+    /**
+     * Set a vec3 uniform in the shader.
+     * @param name The uniform name
+     * @param vector The vector value
+     */
+    public void setVec3(String name, Vector3f vector) {
+        int location = glGetUniformLocation(programId, name);
+        if (location != -1) {
+            glUniform3f(location, vector.x, vector.y, vector.z);
+        }
+    }
+
+    /**
+     * Set a vec3 uniform in the shader with individual components.
+     * @param name The uniform name
+     * @param x The x component
+     * @param y The y component
+     * @param z The z component
+     */
+    public void setVec3(String name, float x, float y, float z) {
+        int location = glGetUniformLocation(programId, name);
+        if (location != -1) {
+            glUniform3f(location, x, y, z);
         }
     }
 

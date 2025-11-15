@@ -22,5 +22,13 @@ public enum ShaderType {
      * Dedicated shader for transform gizmo rendering (isolated from model pipeline).
      * Uniforms: uMVPMatrix, uColor
      */
-    GIZMO
+    GIZMO,
+
+    /**
+     * Infinite grid shader for procedurally generated grid with distance-based fading and atmospheric fog.
+     * Uniforms: uViewMatrix, uProjectionMatrix, uCameraPosition, uGridScale,
+     *           uGridLineWidth, uFadeDistance, uMaxDistance, uPrimaryColor,
+     *           uSecondaryColor, uAxisXColor, uAxisZColor, uFogColor
+     */
+    INFINITE_GRID
 }

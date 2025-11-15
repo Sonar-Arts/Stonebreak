@@ -31,7 +31,7 @@ public class RenderPipeline {
     private final ShaderManager shaderManager;
 
     // Specialized renderers
-    private final GridRenderer gridRenderer;
+    private final InfiniteGridRenderer infiniteGridRenderer;
 
     // External renderers (models, blocks, items)
     private final LegacyCowModelRenderer legacyCowModelRenderer;
@@ -59,7 +59,7 @@ public class RenderPipeline {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
-        this.gridRenderer = new GridRenderer();
+        this.infiniteGridRenderer = new InfiniteGridRenderer();
         this.legacyCowModelRenderer = legacyCowModelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
@@ -133,10 +133,16 @@ public class RenderPipeline {
      */
     private void renderGrid() {
         try {
-            ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
-            gridRenderer.render(resources.getGrid(), basicShader, context);
+            // Initialize infinite grid renderer if needed
+            if (!infiniteGridRenderer.isInitialized()) {
+                infiniteGridRenderer.initialize();
+            }
+
+            // Use infinite grid shader
+            ShaderProgram infiniteGridShader = shaderManager.getShaderProgram(ShaderType.INFINITE_GRID);
+            infiniteGridRenderer.render(infiniteGridShader, context);
         } catch (Exception e) {
-            logger.error("Error rendering grid", e);
+            logger.error("Error rendering infinite grid", e);
         }
     }
 
