@@ -1,5 +1,6 @@
 package com.openmason.ui.viewport.gizmo.interaction;
 
+import com.openmason.ui.viewport.coordinates.CoordinateSystem;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -13,6 +14,12 @@ import org.joml.Vector4f;
  * - Single Responsibility: Only handles geometric intersection calculations
  * - KISS: Uses straightforward mathematical formulas
  * - SAFE: Validates all inputs and handles edge cases
+ *
+ * <p><b>Coordinate System:</b>
+ * This class uses the unified {@link CoordinateSystem} for all coordinate conversions.
+ * All rays are in world space. All intersection results are distances along rays in world units.
+ *
+ * @see CoordinateSystem
  */
 public final class RaycastUtil {
 
@@ -23,7 +30,9 @@ public final class RaycastUtil {
 
     /**
      * Represents a 3D ray with origin and direction.
+     * @deprecated Use {@link CoordinateSystem.Ray} instead.
      */
+    @Deprecated
     public static class Ray {
         public final Vector3f origin;
         public final Vector3f direction; // Normalized
@@ -40,6 +49,8 @@ public final class RaycastUtil {
     /**
      * Creates a ray from screen coordinates using camera matrices.
      *
+     * <p><b>Coordinate System:</b> Uses unified {@link CoordinateSystem} for conversion.
+     *
      * @param screenX Screen X coordinate (pixels)
      * @param screenY Screen Y coordinate (pixels)
      * @param viewportWidth Viewport width in pixels
@@ -51,43 +62,13 @@ public final class RaycastUtil {
     public static Ray createRayFromScreen(float screenX, float screenY,
                                          int viewportWidth, int viewportHeight,
                                          Matrix4f viewMatrix, Matrix4f projectionMatrix) {
-        if (viewMatrix == null || projectionMatrix == null) {
-            throw new IllegalArgumentException("Matrices cannot be null");
-        }
-        if (viewportWidth <= 0 || viewportHeight <= 0) {
-            throw new IllegalArgumentException("Viewport dimensions must be positive");
-        }
+        // Delegate to unified coordinate system
+        CoordinateSystem.Ray unifiedRay = CoordinateSystem.createWorldRayFromScreen(
+            screenX, screenY, viewportWidth, viewportHeight, viewMatrix, projectionMatrix
+        );
 
-        // Convert screen coordinates to normalized device coordinates (NDC)
-        // Screen: (0,0) top-left, (width,height) bottom-right
-        // NDC: (-1,-1) bottom-left, (1,1) top-right
-        float ndcX = (2.0f * screenX) / viewportWidth - 1.0f;
-        float ndcY = 1.0f - (2.0f * screenY) / viewportHeight; // Flip Y
-
-        // Create ray in clip space (at near and far planes)
-        Vector4f rayClipNear = new Vector4f(ndcX, ndcY, -1.0f, 1.0f); // Near plane
-        Vector4f rayClipFar = new Vector4f(ndcX, ndcY, 1.0f, 1.0f);   // Far plane
-
-        // Transform to view space
-        Matrix4f invProjection = new Matrix4f(projectionMatrix).invert();
-        Vector4f rayViewNear = invProjection.transform(rayClipNear);
-        Vector4f rayViewFar = invProjection.transform(rayClipFar);
-
-        // Perspective divide
-        rayViewNear.div(rayViewNear.w);
-        rayViewFar.div(rayViewFar.w);
-
-        // Transform to world space
-        Matrix4f invView = new Matrix4f(viewMatrix).invert();
-        Vector4f rayWorldNear = invView.transform(rayViewNear);
-        Vector4f rayWorldFar = invView.transform(rayViewFar);
-
-        // Create ray
-        Vector3f origin = new Vector3f(rayWorldNear.x, rayWorldNear.y, rayWorldNear.z);
-        Vector3f target = new Vector3f(rayWorldFar.x, rayWorldFar.y, rayWorldFar.z);
-        Vector3f direction = new Vector3f(target).sub(origin).normalize();
-
-        return new Ray(origin, direction);
+        // Convert to legacy Ray type for backward compatibility
+        return new Ray(unifiedRay.origin, unifiedRay.direction);
     }
 
     /**
@@ -307,10 +288,8 @@ public final class RaycastUtil {
     /**
      * Projects a screen-space delta (mouse movement) onto a world-space axis.
      *
-     * <p>This method handles coordinate system conversion internally:
-     * - Input: Mouse delta in ImGui screen space (Y=0 at top, Y increases downward)
-     * - Output: Projected movement along the world-space axis in world units
-     * - The world-space axis is projected to clip space and compared with screen delta
+     * <p><b>Coordinate System:</b> Uses unified {@link CoordinateSystem} for conversion.
+     * All coordinate system handling is delegated to the centralized system.
      *
      * @param screenDelta Mouse movement in screen space (pixels, ImGui coordinates)
      * @param axis World-space axis to project onto (must be normalized)
@@ -323,72 +302,15 @@ public final class RaycastUtil {
     public static float projectScreenDeltaOntoAxis(Vector2f screenDelta, Vector3f axis,
                                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                                    int viewportWidth, int viewportHeight) {
-        if (screenDelta == null || axis == null || viewMatrix == null || projectionMatrix == null) {
-            throw new IllegalArgumentException("Parameters cannot be null");
+        if (screenDelta == null || axis == null) {
+            throw new IllegalArgumentException("Screen delta and axis cannot be null");
         }
 
-        // Project axis to screen space
-        Vector3f axisScreenDir = projectWorldDirectionToScreen(axis, viewMatrix, projectionMatrix);
-
-        // Calculate dot product (projection of mouse movement onto axis screen direction)
-        float screenLength = screenDelta.length();
-        if (screenLength < 0.001f) {
-            return 0.0f; // No movement
-        }
-
-        Vector2f screenDeltaNorm = new Vector2f(screenDelta).normalize();
-        Vector2f axisScreen2D = new Vector2f(axisScreenDir.x, axisScreenDir.y);
-
-        if (axisScreen2D.lengthSquared() < 0.001f) {
-            return 0.0f; // Axis perpendicular to screen
-        }
-
-        axisScreen2D.normalize();
-
-        // Dot product gives us the projection
-        float projection = screenDeltaNorm.dot(axisScreen2D);
-
-        // Correct sign based on view-space depth: if axis points toward camera (positive Z in view space),
-        // the visual direction is reversed, so we need to flip the sign
-        // Transform axis to view space to check its Z component
-        Vector3f axisViewSpace = new Vector3f(axis).normalize();
-        viewMatrix.transformDirection(axisViewSpace);
-
-        // In view space, camera looks down -Z, so:
-        // - If axis.z > 0: axis points toward camera (opposite of camera view direction) → flip sign
-        // - If axis.z < 0: axis points away from camera (same as camera view direction) → normal
-        float signCorrection = (axisViewSpace.z > 0) ? 1.0f : -1.0f;
-
-        // Scale by screen movement length and viewport size
-        float worldScale = 0.01f; // Sensitivity factor
-        return signCorrection * projection * screenLength * worldScale;
-    }
-
-    /**
-     * Projects a world-space direction vector to screen space.
-     *
-     * @param worldDirection World-space direction (will be normalized)
-     * @param viewMatrix View matrix
-     * @param projectionMatrix Projection matrix
-     * @return Screen-space direction (XY = screen, Z = depth)
-     */
-    private static Vector3f projectWorldDirectionToScreen(Vector3f worldDirection,
-                                                           Matrix4f viewMatrix,
-                                                           Matrix4f projectionMatrix) {
-        // Transform direction to view space
-        Vector3f viewDir = new Vector3f(worldDirection).normalize();
-        viewMatrix.transformDirection(viewDir);
-
-        // Transform to clip space
-        Vector4f clipDir = new Vector4f(viewDir, 0.0f);
-        projectionMatrix.transform(clipDir);
-
-        // Return clip-space direction (Y-up convention)
-        // The coordinate system conversion happens implicitly during dot product calculation
-        if (Math.abs(clipDir.w) > 0.0001f) {
-            return new Vector3f(clipDir.x / clipDir.w, clipDir.y / clipDir.w, clipDir.z / clipDir.w);
-        }
-
-        return new Vector3f(clipDir.x, clipDir.y, clipDir.z);
+        // Delegate to unified coordinate system with default sensitivity
+        return CoordinateSystem.projectScreenDeltaOntoWorldAxis(
+            screenDelta.x, screenDelta.y, axis,
+            viewMatrix, projectionMatrix,
+            viewportWidth, viewportHeight
+        );
     }
 }

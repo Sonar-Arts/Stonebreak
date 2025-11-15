@@ -2,6 +2,7 @@ package com.openmason.ui.viewport.gizmo.interaction;
 
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.state.TransformState;
+import com.openmason.ui.viewport.state.ViewportState;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -21,6 +22,7 @@ public class GizmoInteractionHandler {
 
     private final GizmoState gizmoState;
     private final TransformState transformState;
+    private ViewportState viewportState;
 
     // Cached camera matrices
     private Matrix4f viewMatrix = new Matrix4f();
@@ -33,9 +35,10 @@ public class GizmoInteractionHandler {
      *
      * @param gizmoState The gizmo state to manage (must not be null)
      * @param transformState The transform state to modify (must not be null)
-     * @throws IllegalArgumentException if any parameter is null
+     * @param viewportState The viewport state for snapping settings (can be null)
+     * @throws IllegalArgumentException if gizmoState or transformState is null
      */
-    public GizmoInteractionHandler(GizmoState gizmoState, TransformState transformState) {
+    public GizmoInteractionHandler(GizmoState gizmoState, TransformState transformState, ViewportState viewportState) {
         if (gizmoState == null) {
             throw new IllegalArgumentException("GizmoState cannot be null");
         }
@@ -45,6 +48,17 @@ public class GizmoInteractionHandler {
 
         this.gizmoState = gizmoState;
         this.transformState = transformState;
+        this.viewportState = viewportState;
+    }
+
+    /**
+     * Update viewport state for snapping settings.
+     * Should be called whenever viewport state changes.
+     *
+     * @param viewportState The new viewport state
+     */
+    public void updateViewportState(ViewportState viewportState) {
+        this.viewportState = viewportState;
     }
 
     /**
@@ -264,6 +278,9 @@ public class GizmoInteractionHandler {
     /**
      * Handles translation drag operation.
      *
+     * <p><b>Coordinate System:</b> Mouse delta is in ImGui screen space (Y+ down).
+     * RaycastUtil handles the conversion to world space via the unified CoordinateSystem.
+     *
      * @param mouseDelta Mouse movement since drag start (in ImGui screen space)
      * @param constraint Active axis/plane constraint
      */
@@ -271,16 +288,12 @@ public class GizmoInteractionHandler {
         Vector3f startPos = gizmoState.getDragStartObjectPos();
         Vector3f newPos = new Vector3f(startPos);
 
-        // Coordinate system correction for screen-space to world-space projection:
-        // - X: Negate to match clip-space projection direction
-        // - Y: Keep as-is (ImGui Y-down works correctly with clip-space Y-up)
-        Vector2f correctedDelta = new Vector2f(-mouseDelta.x, mouseDelta.y);
-
+        // No coordinate system correction needed - RaycastUtil handles it via CoordinateSystem
         if (constraint.isSingleAxis()) {
             // Single axis translation
             Vector3f axis = getAxisVector(constraint);
             float movement = RaycastUtil.projectScreenDeltaOntoAxis(
-                correctedDelta,
+                mouseDelta,
                 axis,
                 viewMatrix,
                 projectionMatrix,
@@ -301,10 +314,10 @@ public class GizmoInteractionHandler {
             Vector3f axis2 = getPlaneAxis2(constraint);
 
             float move1 = RaycastUtil.projectScreenDeltaOntoAxis(
-                correctedDelta, axis1, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
+                mouseDelta, axis1, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
             );
             float move2 = RaycastUtil.projectScreenDeltaOntoAxis(
-                correctedDelta, axis2, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
+                mouseDelta, axis2, viewMatrix, projectionMatrix, viewportWidth, viewportHeight
             );
 
             if (gizmoState.isSnapEnabled()) {
@@ -317,7 +330,13 @@ public class GizmoInteractionHandler {
             newPos.add(axis2.x * move2, axis2.y * move2, axis2.z * move2);
         }
 
-        transformState.setPosition(newPos.x, newPos.y, newPos.z);
+        // Apply grid snapping from viewport state if available
+        if (viewportState != null && viewportState.isGridSnappingEnabled()) {
+            transformState.setPosition(newPos.x, newPos.y, newPos.z,
+                                     true, viewportState.getGridSnappingIncrement());
+        } else {
+            transformState.setPosition(newPos.x, newPos.y, newPos.z);
+        }
     }
 
     /**
@@ -402,16 +421,14 @@ public class GizmoInteractionHandler {
      * Handles scale drag operation.
      * Supports both uniform and per-axis scaling based on gizmo state.
      *
+     * <p><b>Coordinate System:</b> Mouse delta is in ImGui screen space (Y+ down).
+     * RaycastUtil handles the conversion to world space via the unified CoordinateSystem.
+     *
      * @param mouseDelta Mouse movement since drag start (in ImGui screen space)
      * @param constraint Active axis constraint
      */
     private void handleScaleDrag(Vector2f mouseDelta, AxisConstraint constraint) {
         Vector3f startScale = gizmoState.getDragStartObjectScale();
-
-        // Coordinate system correction for screen-space to world-space projection:
-        // - X: Negate to match clip-space projection direction
-        // - Y: Keep as-is (ImGui Y-down works correctly with clip-space Y-up)
-        Vector2f correctedDelta = new Vector2f(-mouseDelta.x, mouseDelta.y);
 
         // Check if uniform scaling is enabled or if center box is dragged
         boolean shouldScaleUniformly = gizmoState.isUniformScaling() || constraint == AxisConstraint.NONE;
@@ -420,9 +437,10 @@ public class GizmoInteractionHandler {
             // Uniform scaling: apply proportional scale factor to all axes
             // This preserves the model's shape while scaling uniformly
             // Use vertical mouse movement (more intuitive)
-            // Negate to match expected direction: drag up = increase scale
+            // Note: mouseDelta.y is in screen space where Y+ is down,
+            // but we want drag-down to decrease scale, so negate
             // Lower multiplier (0.05f) for slower, more controlled scaling
-            float scaleFactor = 1.0f - (correctedDelta.y * 0.05f);
+            float scaleFactor = 1.0f + (mouseDelta.y * 0.05f);
 
             // Apply snap if enabled
             if (gizmoState.isSnapEnabled()) {
@@ -438,7 +456,7 @@ public class GizmoInteractionHandler {
             // Per-axis scaling: project mouse movement onto the specific axis direction
             Vector3f axis = getAxisVector(constraint);
             float movement = RaycastUtil.projectScreenDeltaOntoAxis(
-                correctedDelta,
+                mouseDelta,
                 axis,
                 viewMatrix,
                 projectionMatrix,

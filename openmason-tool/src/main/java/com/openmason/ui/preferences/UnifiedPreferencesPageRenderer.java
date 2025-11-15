@@ -7,6 +7,7 @@ import com.openmason.ui.themes.application.DensityManager;
 import com.openmason.ui.themes.core.ThemeDefinition;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.viewport.util.SnappingUtil;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -36,9 +37,28 @@ public class UnifiedPreferencesPageRenderer {
     private static final float MIN_CAMERA_SENSITIVITY = 0.1f;
     private static final float MAX_CAMERA_SENSITIVITY = 10.0f;
 
+    // Grid snapping increment options (based on STANDARD_BLOCK_SIZE = 1.0)
+    // Ordered from coarse to fine, with recommended default (1/2 Block) providing
+    // good visual alignment with the 1.0 unit grid (2 snaps per grid square)
+    private static final String[] GRID_SNAPPING_INCREMENT_NAMES = {
+        "1 Block (1.0)",        // Coarsest - 1 snap per grid square
+        "1/2 Block (0.5)",      // Recommended default - 2 snaps per grid square
+        "1/4 Block (0.25)",     // Fine - 4 snaps per grid square
+        "1/8 Block (0.125)",    // Very fine - 8 snaps per grid square
+        "1/16 Block (0.0625)"   // Ultra fine - 16 snaps per grid square
+    };
+    private static final float[] GRID_SNAPPING_INCREMENT_VALUES = {
+        SnappingUtil.SNAP_FULL_BLOCK,      // 1.0
+        SnappingUtil.SNAP_HALF_BLOCK,      // 0.5 (default)
+        SnappingUtil.SNAP_QUARTER_BLOCK,   // 0.25
+        0.125f,                             // 1/8 block
+        0.0625f                             // 1/16 block
+    };
+
     // Model Viewer ImGui state holders
     private final ImFloat cameraMouseSensitivity = new ImFloat();
     private final ImBoolean compactPropertiesMode = new ImBoolean();
+    private final ImInt gridSnappingIncrementIndex = new ImInt();
 
     // Texture Editor ImGui state holders
     private final ImFloat gridOpacitySlider = new ImFloat();
@@ -117,6 +137,12 @@ public class UnifiedPreferencesPageRenderer {
 
         PreferencesPageRenderer.addSectionSeparator();
 
+        // Grid Settings Section
+        PreferencesPageRenderer.renderSectionHeader("Grid Settings");
+        renderGridSettings();
+
+        PreferencesPageRenderer.addSectionSeparator();
+
         // UI Settings Section
         PreferencesPageRenderer.renderSectionHeader("UI Settings");
         renderUISettings();
@@ -146,6 +172,20 @@ public class UnifiedPreferencesPageRenderer {
                 MAX_CAMERA_SENSITIVITY,
                 "%.1f",
                 this::onCameraSensitivityChanged
+        );
+    }
+
+    private void renderGridSettings() {
+        PreferencesPageRenderer.renderComboBoxSetting(
+                "Grid Snapping Increment",
+                "Controls the snapping precision when grid snapping is enabled.\n" +
+                        "Smaller increments allow for finer positioning control.\n" +
+                        "Enable grid snapping in the Viewport Controls window.\n" +
+                        "Default: 1/16 Block",
+                GRID_SNAPPING_INCREMENT_NAMES,
+                gridSnappingIncrementIndex,
+                200.0f,
+                this::onGridSnappingIncrementChanged
         );
     }
 
@@ -190,12 +230,39 @@ public class UnifiedPreferencesPageRenderer {
         }
     }
 
+    private void onGridSnappingIncrementChanged(Integer newIndex) {
+        // Validate index
+        if (newIndex < 0 || newIndex >= GRID_SNAPPING_INCREMENT_VALUES.length) {
+            logger.warn("Invalid grid snapping increment index: {}", newIndex);
+            return;
+        }
+
+        // Get the selected increment value
+        float newIncrement = GRID_SNAPPING_INCREMENT_VALUES[newIndex];
+
+        // Save to preferences (persists to disk)
+        preferencesManager.setGridSnappingIncrement(newIncrement);
+
+        // Apply immediately to viewport (real-time update)
+        if (viewport != null) {
+            viewport.setGridSnappingIncrement(newIncrement);
+            logger.debug("Grid snapping increment applied to viewport: {} ({})",
+                        GRID_SNAPPING_INCREMENT_NAMES[newIndex], newIncrement);
+        } else {
+            logger.debug("Grid snapping increment saved to preferences: {} ({}) - will apply on next viewport creation",
+                        GRID_SNAPPING_INCREMENT_NAMES[newIndex], newIncrement);
+        }
+    }
+
     private void resetModelViewerToDefaults() {
         // Reset camera sensitivity
         preferencesManager.setCameraMouseSensitivity(3.0f);
         if (viewport != null && viewport.getCamera() != null) {
             viewport.getCamera().setMouseSensitivity(3.0f);
         }
+
+        // Reset grid snapping increment (default: 1/16 block = 0.0625)
+        preferencesManager.setGridSnappingIncrement(0.0625f);
 
         // Reset compact mode
         preferencesManager.setPropertiesCompactMode(true);
@@ -209,6 +276,31 @@ public class UnifiedPreferencesPageRenderer {
     private void syncModelViewerState() {
         cameraMouseSensitivity.set(preferencesManager.getCameraMouseSensitivity());
         compactPropertiesMode.set(preferencesManager.getPropertiesCompactMode());
+
+        // Sync grid snapping increment
+        float currentIncrement = preferencesManager.getGridSnappingIncrement();
+        int index = findGridSnappingIncrementIndex(currentIncrement);
+        gridSnappingIncrementIndex.set(index);
+    }
+
+    /**
+     * Find the index of a grid snapping increment value.
+     * Returns the closest match if exact value not found.
+     */
+    private int findGridSnappingIncrementIndex(float value) {
+        // Find exact match or closest match
+        int closestIndex = 0;
+        float closestDiff = Math.abs(GRID_SNAPPING_INCREMENT_VALUES[0] - value);
+
+        for (int i = 1; i < GRID_SNAPPING_INCREMENT_VALUES.length; i++) {
+            float diff = Math.abs(GRID_SNAPPING_INCREMENT_VALUES[i] - value);
+            if (diff < closestDiff) {
+                closestDiff = diff;
+                closestIndex = i;
+            }
+        }
+
+        return closestIndex;
     }
 
     // ========================================

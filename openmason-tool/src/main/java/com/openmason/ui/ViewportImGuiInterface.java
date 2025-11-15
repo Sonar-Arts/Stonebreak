@@ -20,6 +20,7 @@ public class ViewportImGuiInterface {
     // Viewport State - Using only ImGui types (no duplicate state)
     private final ImBoolean gridVisible = new ImBoolean(true);
     private final ImBoolean axesVisible = new ImBoolean(true);
+    private final ImBoolean gridSnappingEnabled = new ImBoolean(false);
     private final ImBoolean wireframeMode = new ImBoolean(false);
     private boolean viewportInitialized = false;
 
@@ -210,6 +211,12 @@ public class ViewportImGuiInterface {
 
         if (ImGui.checkbox("Axes##viewport", axesVisible)) {
             toggleAxes();
+        }
+
+        ImGui.sameLine();
+
+        if (ImGui.checkbox("Grid Snapping##viewport", gridSnappingEnabled)) {
+            toggleGridSnapping();
         }
 
         // Additional controls toggle
@@ -536,6 +543,18 @@ public class ViewportImGuiInterface {
         logger.info("Axes visibility: {}", axesVisible.get());
         if (viewport3D != null) {
             viewport3D.setAxesVisible(axesVisible.get());
+        }
+    }
+
+    private void toggleGridSnapping() {
+        logger.info("Grid snapping: {}", gridSnappingEnabled.get());
+        if (viewport3D != null) {
+            viewport3D.setGridSnappingEnabled(gridSnappingEnabled.get());
+
+            // Save to preferences
+            com.openmason.ui.preferences.PreferencesManager prefs =
+                new com.openmason.ui.preferences.PreferencesManager();
+            prefs.setGridSnappingEnabled(gridSnappingEnabled.get());
         }
     }
 

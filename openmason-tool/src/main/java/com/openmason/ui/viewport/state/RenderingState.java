@@ -15,7 +15,6 @@ public class RenderingState {
     private static final Logger logger = LoggerFactory.getLogger(RenderingState.class);
 
     private RenderingMode mode = RenderingMode.MODEL;
-    private boolean modelRenderingEnabled = true;
 
     // Model state
     private String currentModelName = null;
@@ -121,17 +120,8 @@ public class RenderingState {
         logger.debug("Texture variant changed: {} → {}", previousVariant, variant);
     }
 
-    /**
-     * Set model rendering enabled.
-     */
-    public void setModelRenderingEnabled(boolean enabled) {
-        this.modelRenderingEnabled = enabled;
-        logger.trace("Model rendering enabled: {}", enabled);
-    }
-
     // Getters
     public RenderingMode getMode() { return mode; }
-    public boolean isModelRenderingEnabled() { return modelRenderingEnabled; }
     public String getCurrentModelName() { return currentModelName; }
     public String getCurrentTextureVariant() { return currentTextureVariant; }
     public LegacyCowStonebreakModel getCurrentModel() { return currentModel; }
@@ -142,7 +132,7 @@ public class RenderingState {
      * Check if model is ready for rendering.
      */
     public boolean isModelReady() {
-        return mode == RenderingMode.MODEL && currentModel != null && modelRenderingEnabled;
+        return mode == RenderingMode.MODEL && currentModel != null;
     }
 
     /**

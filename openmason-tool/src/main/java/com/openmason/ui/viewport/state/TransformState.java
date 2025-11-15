@@ -1,5 +1,6 @@
 package com.openmason.ui.viewport.state;
 
+import com.openmason.ui.viewport.util.SnappingUtil;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,10 @@ public class TransformState {
     }
 
     /**
-     * Reset all transforms to default.
+     * Reset all transform values to defaults while preserving gizmo state.
+     * This resets position to origin, rotation to zero, and scale to 1.0,
+     * but keeps the gizmo enabled/disabled state unchanged to maintain
+     * consistency with GizmoState.
      */
     public void reset() {
         positionX = 0.0f;
@@ -56,9 +60,10 @@ public class TransformState {
         scaleX = 1.0f;
         scaleY = 1.0f;
         scaleZ = 1.0f;
-        gizmoEnabled = false;
+        // NOTE: gizmoEnabled is NOT reset to preserve sync with GizmoState
+        // The gizmo visual remains in the same enabled/disabled state
         dirty = true;
-        logger.trace("Transform state reset to defaults");
+        logger.trace("Transform state reset to defaults (position=origin, rotation=0, scale=1, gizmoEnabled={})", gizmoEnabled);
     }
 
     /**
@@ -80,6 +85,37 @@ public class TransformState {
         this.positionY = Math.max(-GRID_SIZE, Math.min(GRID_SIZE, y));
         this.positionZ = Math.max(-GRID_SIZE, Math.min(GRID_SIZE, z));
         this.dirty = true;
+    }
+
+    /**
+     * Set position with optional grid snapping and grid constraints.
+     * If snapping is enabled, the position will be snapped to the nearest grid increment
+     * before applying grid size constraints.
+     *
+     * @param x              the x position
+     * @param y              the y position
+     * @param z              the z position
+     * @param snapEnabled    whether grid snapping is enabled
+     * @param snapIncrement  the grid snapping increment (only used if snapEnabled is true)
+     */
+    public void setPosition(float x, float y, float z, boolean snapEnabled, float snapIncrement) {
+        // Apply snapping if enabled
+        if (snapEnabled && snapIncrement > 0) {
+            x = SnappingUtil.snapToGrid(x, snapIncrement);
+            y = SnappingUtil.snapToGrid(y, snapIncrement);
+            z = SnappingUtil.snapToGrid(z, snapIncrement);
+            logger.trace("Grid snapping applied: ({}, {}, {}) with increment {}",
+                        String.format("%.2f", x), String.format("%.2f", y), String.format("%.2f", z), snapIncrement);
+        }
+
+        // Apply grid constraints
+        this.positionX = Math.max(-GRID_SIZE, Math.min(GRID_SIZE, x));
+        this.positionY = Math.max(-GRID_SIZE, Math.min(GRID_SIZE, y));
+        this.positionZ = Math.max(-GRID_SIZE, Math.min(GRID_SIZE, z));
+        this.dirty = true;
+
+        logger.trace("Position set to: ({}, {}, {}), dirty=true",
+                    String.format("%.2f", positionX), String.format("%.2f", positionY), String.format("%.2f", positionZ));
     }
 
     /**
@@ -149,15 +185,14 @@ public class TransformState {
 
     /**
      * Update the cached transform matrix.
-     * Position is only applied when gizmo is enabled.
+     * Always includes position, rotation, and scale transforms.
      */
     private void updateTransformMatrix() {
         transformMatrix.identity();
 
-        // Only apply position transforms when gizmo is enabled
-        if (gizmoEnabled) {
-            transformMatrix.translate(positionX, positionY, positionZ);
-        }
+        // Always apply position transforms (gizmo enabled or not)
+        // The model's position should always be included in the transform
+        transformMatrix.translate(positionX, positionY, positionZ);
 
         transformMatrix
             .rotateXYZ(
@@ -169,18 +204,11 @@ public class TransformState {
 
         dirty = false;
 
-        if (gizmoEnabled) {
-            logger.trace("Updated transform matrix (gizmo enabled): pos=({},{},{}), rot=({},{},{}), scale=({},{},{}), determinant={}",
-                        String.format("%.1f", positionX), String.format("%.1f", positionY), String.format("%.1f", positionZ),
-                        String.format("%.1f", rotationX), String.format("%.1f", rotationY), String.format("%.1f", rotationZ),
-                        String.format("%.2f", scaleX), String.format("%.2f", scaleY), String.format("%.2f", scaleZ),
-                        String.format("%.3f", transformMatrix.determinant()));
-        } else {
-            logger.trace("Updated transform matrix (gizmo disabled): rot=({},{},{}), scale=({},{},{}), determinant={}",
-                        String.format("%.1f", rotationX), String.format("%.1f", rotationY), String.format("%.1f", rotationZ),
-                        String.format("%.2f", scaleX), String.format("%.2f", scaleY), String.format("%.2f", scaleZ),
-                        String.format("%.3f", transformMatrix.determinant()));
-        }
+        logger.trace("Updated transform matrix: pos=({},{},{}), rot=({},{},{}), scale=({},{},{}), determinant={}",
+                    String.format("%.1f", positionX), String.format("%.1f", positionY), String.format("%.1f", positionZ),
+                    String.format("%.1f", rotationX), String.format("%.1f", rotationY), String.format("%.1f", rotationZ),
+                    String.format("%.2f", scaleX), String.format("%.2f", scaleY), String.format("%.2f", scaleZ),
+                    String.format("%.3f", transformMatrix.determinant()));
     }
 
     /**

@@ -18,7 +18,6 @@ import com.openmason.ui.viewport.state.RenderingState;
 import com.openmason.ui.viewport.state.TransformState;
 import com.openmason.ui.viewport.state.ViewportState;
 import com.openmason.ui.viewport.ui.ModelControlsUI;
-import com.openmason.ui.viewport.ui.ViewportControlsUI;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import imgui.ImGui;
@@ -37,9 +36,10 @@ import org.slf4j.LoggerFactory;
  * - Resource management → ViewportResourceManager
  * - Rendering → RenderPipeline
  * - State → ViewportState, RenderingState, TransformState
- * - UI → ViewportControlsUI, ModelControlsUI
+ * - UI → ModelControlsUI
  * - Model loading → AsyncModelLoader
  *
+ * Note: Main viewport controls (grid, snapping, rendering) are now in ViewportImGuiInterface.
  * Follows SOLID principles for maintainability and extensibility.
  */
 public class OpenMason3DViewport {
@@ -80,7 +80,6 @@ public class OpenMason3DViewport {
     private final AsyncModelLoader modelLoader;
 
     // UI
-    private final ViewportControlsUI viewportControlsUI;
     private final ModelControlsUI modelControlsUI;
 
     // Gizmo
@@ -98,9 +97,9 @@ public class OpenMason3DViewport {
         this.renderingState = new RenderingState();
         this.transformState = new TransformState();
 
-        // Initialize gizmo
+        // Initialize gizmo (pass viewportState for grid snapping)
         this.gizmoState = new GizmoState();
-        this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState);
+        this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
 
         // Initialize managers
         this.shaderManager = new ShaderManager();
@@ -128,7 +127,6 @@ public class OpenMason3DViewport {
         this.modelLoader = new AsyncModelLoader();
 
         // Initialize UI
-        this.viewportControlsUI = new ViewportControlsUI();
         this.modelControlsUI = new ModelControlsUI();
 
         logger.info("OpenMason3DViewport created successfully with modular architecture");
@@ -189,6 +187,9 @@ public class OpenMason3DViewport {
 
             // Set gizmo renderer in input handler for interaction
             inputHandler.setGizmoRenderer(gizmoRenderer);
+
+            // Update gizmo renderer with initial viewport state for snapping
+            gizmoRenderer.updateViewportState(viewportState);
 
             // Enable gizmo by default
             gizmoState.setEnabled(true);
@@ -297,29 +298,10 @@ public class OpenMason3DViewport {
         ImGui.end();
 
         // Show control windows
-        showControls();
+        // Note: Viewport controls migrated to ViewportImGuiInterface
         showModelControls();
     }
 
-    /**
-     * Show viewport controls window.
-     */
-    private void showControls() {
-        viewportControlsUI.updateState(viewportState, camera, inputHandler,
-                                       renderingState.isModelRenderingEnabled());
-        ViewportControlsUI.ShowGridResult result = viewportControlsUI.render();
-
-        // Apply changes
-        if (result.showGridChanged) {
-            this.viewportState = viewportState.toBuilder()
-                .showGrid(result.newShowGridValue)
-                .build();
-        }
-
-        if (result.modelRenderingEnabled != renderingState.isModelRenderingEnabled()) {
-            renderingState.setModelRenderingEnabled(result.modelRenderingEnabled);
-        }
-    }
 
     /**
      * Show model controls window.
@@ -603,6 +585,25 @@ public class OpenMason3DViewport {
     public boolean isAxesVisible() { return viewportState.isShowAxes(); }
     public void setAxesVisible(boolean visible) {
         this.viewportState = viewportState.toBuilder().showAxes(visible).build();
+    }
+
+    public boolean isGridSnappingEnabled() { return viewportState.isGridSnappingEnabled(); }
+    public void setGridSnappingEnabled(boolean enabled) {
+        this.viewportState = viewportState.toBuilder().gridSnappingEnabled(enabled).build();
+        // Update gizmo renderer with new viewport state for snapping
+        if (gizmoRenderer != null) {
+            gizmoRenderer.updateViewportState(this.viewportState);
+        }
+    }
+
+    public float getGridSnappingIncrement() { return viewportState.getGridSnappingIncrement(); }
+    public void setGridSnappingIncrement(float increment) {
+        this.viewportState = viewportState.toBuilder().gridSnappingIncrement(increment).build();
+        // Update gizmo renderer with new viewport state for snapping
+        if (gizmoRenderer != null) {
+            gizmoRenderer.updateViewportState(this.viewportState);
+        }
+        logger.debug("Grid snapping increment updated to: {}", increment);
     }
 
     public int getColorTexture() { return resourceManager.getFramebuffer().getColorTextureId(); }

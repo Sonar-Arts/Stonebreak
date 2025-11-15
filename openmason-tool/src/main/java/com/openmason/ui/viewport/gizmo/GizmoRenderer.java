@@ -7,6 +7,7 @@ import com.openmason.ui.viewport.gizmo.modes.RotateMode;
 import com.openmason.ui.viewport.gizmo.modes.ScaleMode;
 import com.openmason.ui.viewport.gizmo.modes.TranslateMode;
 import com.openmason.ui.viewport.state.TransformState;
+import com.openmason.ui.viewport.state.ViewportState;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL30;
@@ -34,6 +35,7 @@ public class GizmoRenderer {
     private final GizmoState gizmoState;
     private final TransformState transformState;
     private final GizmoInteractionHandler interactionHandler;
+    private ViewportState viewportState;
 
     // Gizmo modes
     private final Map<GizmoState.Mode, IGizmoMode> modes = new HashMap<>();
@@ -48,9 +50,10 @@ public class GizmoRenderer {
      *
      * @param gizmoState The gizmo state to manage (must not be null)
      * @param transformState The transform state to modify (must not be null)
-     * @throws IllegalArgumentException if any parameter is null
+     * @param viewportState The viewport state for grid snapping (may be null initially)
+     * @throws IllegalArgumentException if gizmoState or transformState is null
      */
-    public GizmoRenderer(GizmoState gizmoState, TransformState transformState) {
+    public GizmoRenderer(GizmoState gizmoState, TransformState transformState, ViewportState viewportState) {
         if (gizmoState == null) {
             throw new IllegalArgumentException("GizmoState cannot be null");
         }
@@ -60,7 +63,8 @@ public class GizmoRenderer {
 
         this.gizmoState = gizmoState;
         this.transformState = transformState;
-        this.interactionHandler = new GizmoInteractionHandler(gizmoState, transformState);
+        this.viewportState = viewportState;
+        this.interactionHandler = new GizmoInteractionHandler(gizmoState, transformState, viewportState);
 
         // Create mode instances
         modes.put(GizmoState.Mode.TRANSLATE, new TranslateMode());
@@ -263,6 +267,32 @@ public class GizmoRenderer {
      */
     public boolean isDragging() {
         return gizmoState.isDragging();
+    }
+
+    /**
+     * Updates the viewport state for grid snapping configuration.
+     * Should be called whenever viewport state changes (e.g., grid snapping enabled/disabled,
+     * snap increment changed).
+     *
+     * <p>This method:
+     * <ul>
+     *   <li>Stores the new viewport state</li>
+     *   <li>Forwards it to the interaction handler for use during gizmo dragging</li>
+     * </ul>
+     *
+     * @param viewportState The new viewport state (must not be null)
+     * @throws IllegalArgumentException if viewportState is null
+     */
+    public void updateViewportState(com.openmason.ui.viewport.state.ViewportState viewportState) {
+        if (viewportState == null) {
+            throw new IllegalArgumentException("ViewportState cannot be null");
+        }
+
+        this.viewportState = viewportState;
+
+        if (interactionHandler != null) {
+            interactionHandler.updateViewportState(viewportState);
+        }
     }
 
     /**

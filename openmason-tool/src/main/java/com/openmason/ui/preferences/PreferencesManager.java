@@ -1,5 +1,6 @@
 package com.openmason.ui.preferences;
 
+import com.openmason.ui.viewport.util.SnappingUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +25,8 @@ public class PreferencesManager {
     // 3D Model Viewer preferences
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
     private static final String PROPERTIES_COMPACT_MODE_KEY = "ui.properties.compact.mode";
+    private static final String GRID_SNAPPING_ENABLED_KEY = "viewport.grid.snapping.enabled";
+    private static final String GRID_SNAPPING_INCREMENT_KEY = "viewport.grid.snapping.increment";
 
     // Texture Creator preferences
     private static final String TEXTURE_EDITOR_GRID_OPACITY_KEY = "texture.editor.grid.opacity";
@@ -36,6 +39,10 @@ public class PreferencesManager {
     // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
     private static final boolean DEFAULT_PROPERTIES_COMPACT_MODE = true;
+    private static final boolean DEFAULT_GRID_SNAPPING_ENABLED = false;
+    // Default grid snapping: Half block (0.5 units) = 2 snap positions per visual grid square
+    // This provides good balance between precision and visual alignment with the 1.0 unit grid
+    private static final float DEFAULT_GRID_SNAPPING_INCREMENT = SnappingUtil.SNAP_HALF_BLOCK;
 
     // Default values - Texture Creator
     private static final float DEFAULT_TEXTURE_GRID_OPACITY = 0.5f;
@@ -100,6 +107,8 @@ public class PreferencesManager {
         // 3D Model Viewer defaults
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
         properties.setProperty(PROPERTIES_COMPACT_MODE_KEY, String.valueOf(DEFAULT_PROPERTIES_COMPACT_MODE));
+        properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
+        properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
 
         // Texture Creator defaults
         properties.setProperty(TEXTURE_EDITOR_GRID_OPACITY_KEY, String.valueOf(DEFAULT_TEXTURE_GRID_OPACITY));
@@ -150,6 +159,52 @@ public class PreferencesManager {
      */
     public void resetCameraToDefaults() {
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
+        properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
+        properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
+        savePreferences();
+    }
+
+    // Grid Snapping Settings
+
+    /**
+     * Get grid snapping enabled setting.
+     */
+    public boolean isGridSnappingEnabled() {
+        String value = properties.getProperty(GRID_SNAPPING_ENABLED_KEY);
+        if (value != null) {
+            return Boolean.parseBoolean(value);
+        }
+        return DEFAULT_GRID_SNAPPING_ENABLED;
+    }
+
+    /**
+     * Set grid snapping enabled setting.
+     */
+    public void setGridSnappingEnabled(boolean enabled) {
+        properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(enabled));
+        savePreferences();
+    }
+
+    /**
+     * Get grid snapping increment setting.
+     */
+    public float getGridSnappingIncrement() {
+        String value = properties.getProperty(GRID_SNAPPING_INCREMENT_KEY);
+        if (value != null) {
+            try {
+                return Float.parseFloat(value);
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid grid snapping increment value: {}, using default", value);
+            }
+        }
+        return DEFAULT_GRID_SNAPPING_INCREMENT;
+    }
+
+    /**
+     * Set grid snapping increment setting.
+     */
+    public void setGridSnappingIncrement(float increment) {
+        properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(increment));
         savePreferences();
     }
 
