@@ -1,8 +1,8 @@
 package com.openmason.ui.properties.sections;
 
+import com.openmason.ui.preferences.PreferencesPageRenderer;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import imgui.ImGui;
-import imgui.flag.ImGuiTreeNodeFlags;
 
 /**
  * Model information section component.
@@ -24,20 +24,17 @@ public class ModelInfoSection implements IPanelSection {
             return;
         }
 
-        if (ImGui.collapsingHeader("Model Information", ImGuiTreeNodeFlags.DefaultOpen)) {
-            ImGui.indent();
+        // Use compact blue header box with JetBrains Mono Bold
+        PreferencesPageRenderer.renderCompactSectionHeader("Model Information");
 
-            if (currentModelName != null) {
-                ImGui.text("Model: " + currentModelName);
-                ImGui.text("Parts: " + partCount);
-                ImGui.text("Vertices: " + vertexCount);
-                ImGui.text("Triangles: " + triangleCount);
-                ImGui.text("Variants: " + variantCount);
-            } else {
-                ImGui.textDisabled("No model loaded");
-            }
-
-            ImGui.unindent();
+        if (currentModelName != null) {
+            ImGui.text("Model: " + currentModelName);
+            ImGui.text("Parts: " + partCount);
+            ImGui.text("Vertices: " + vertexCount);
+            ImGui.text("Triangles: " + triangleCount);
+            ImGui.text("Variants: " + variantCount);
+        } else {
+            ImGui.textDisabled("No model loaded");
         }
     }
 

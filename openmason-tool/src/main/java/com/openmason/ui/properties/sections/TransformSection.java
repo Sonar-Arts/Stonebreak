@@ -1,12 +1,12 @@
 package com.openmason.ui.properties.sections;
 
+import com.openmason.ui.preferences.PreferencesPageRenderer;
 import com.openmason.ui.properties.components.Vec3SliderGroup;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import com.openmason.ui.properties.interfaces.ITransformState;
 import com.openmason.ui.properties.interfaces.IViewportConnector;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiTreeNodeFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,30 +48,27 @@ public class TransformSection implements IPanelSection {
             return;
         }
 
-        if (ImGui.collapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen)) {
-            ImGui.indent();
+        // Use compact blue header box with JetBrains Mono Bold
+        PreferencesPageRenderer.renderCompactSectionHeader("Transform");
 
-            // Sync from viewport if connected and not interacting
-            syncFromViewportIfNeeded();
+        // Sync from viewport if connected and not interacting
+        syncFromViewportIfNeeded();
 
-            // Position controls
-            positionSliders.render();
-            ImGui.separator();
+        // Position controls
+        positionSliders.render();
+        ImGui.spacing();
 
-            // Rotation controls
-            rotationSliders.render();
-            ImGui.separator();
+        // Rotation controls
+        rotationSliders.render();
+        ImGui.spacing();
 
-            // Scale controls
-            renderScaleControls();
-            ImGui.separator();
+        // Scale controls
+        renderScaleControls();
+        ImGui.spacing();
 
-            // Reset button
-            if (ImGui.button("Reset Transform")) {
-                resetTransform();
-            }
-
-            ImGui.unindent();
+        // Reset button
+        if (ImGui.button("Reset Transform")) {
+            resetTransform();
         }
     }
 
@@ -189,10 +186,11 @@ public class TransformSection implements IPanelSection {
      * Render scale controls with uniform scaling support.
      */
     private void renderScaleControls() {
-        ImGui.text("Scale:");
+        // Use compact blue header box for scale section
+        PreferencesPageRenderer.renderCompactSectionHeader("Scale");
 
-        // Uniform mode checkbox
-        if (ImGui.checkbox("Uniform Scaling", transformState.getUniformScaleMode())) {
+        // Uniform mode checkbox with renamed label
+        if (ImGui.checkbox("Uniform Scale Toggle", transformState.getUniformScaleMode())) {
             transformState.setUniformScaleMode(transformState.getUniformScaleMode().get());
 
             // Sync to viewport if connected
@@ -205,7 +203,7 @@ public class TransformSection implements IPanelSection {
             ImGui.setTooltip("Toggle between uniform (all axes) and non-uniform (per-axis) scaling");
         }
 
-        ImGui.separator();
+        ImGui.spacing();
 
         // Get scale constraints
         float minScale = viewportConnector != null ? viewportConnector.getMinScale() : 0.1f;

@@ -1,8 +1,8 @@
 package com.openmason.ui.properties.sections;
 
+import com.openmason.ui.preferences.PreferencesPageRenderer;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import imgui.ImGui;
-import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,27 +30,29 @@ public class TextureVariantSection implements IPanelSection {
             return;
         }
 
-        if (ImGui.collapsingHeader("Texture Variants", ImGuiTreeNodeFlags.DefaultOpen)) {
-            ImGui.indent();
+        // Use compact blue header box with JetBrains Mono Bold
+        PreferencesPageRenderer.renderCompactSectionHeader("Texture Variants");
 
-            if (availableVariants.length > 0) {
-                ImGui.text("Current Variant:");
-                if (ImGui.combo("##variant", selectedVariantIndex, availableVariants)) {
-                    if (selectedVariantIndex.get() >= 0 && selectedVariantIndex.get() < availableVariants.length) {
-                        String newVariant = availableVariants[selectedVariantIndex.get()];
-                        if (!newVariant.equals(selectedVariant)) {
-                            handleVariantChange(newVariant);
-                        }
+        if (availableVariants.length > 0) {
+            ImGui.text("Current Variant:");
+
+            // Set fixed combo width to prevent infinite stretching (matches ColorPanel sliders)
+            ImGui.pushItemWidth(200f);
+            if (ImGui.combo("##variant", selectedVariantIndex, availableVariants)) {
+                if (selectedVariantIndex.get() >= 0 && selectedVariantIndex.get() < availableVariants.length) {
+                    String newVariant = availableVariants[selectedVariantIndex.get()];
+                    if (!newVariant.equals(selectedVariant)) {
+                        handleVariantChange(newVariant);
                     }
                 }
-
-                ImGui.text("Available: " + availableVariants.length + " variants");
-
-            } else {
-                ImGui.textDisabled("No variants available");
             }
+            // Restore default width
+            ImGui.popItemWidth();
 
-            ImGui.unindent();
+            ImGui.text("Available: " + availableVariants.length + " variants");
+
+        } else {
+            ImGui.textDisabled("No variants available");
         }
     }
 

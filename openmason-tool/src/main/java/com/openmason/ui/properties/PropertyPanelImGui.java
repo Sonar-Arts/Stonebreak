@@ -14,6 +14,7 @@ import com.openmason.ui.state.ModelState;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.OpenMason3DViewport;
 import imgui.ImGui;
+import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -157,13 +158,25 @@ public class PropertyPanelImGui {
         // Min size ensures all controls remain visible, max allows reasonable expansion
         ImGui.setNextWindowSizeConstraints(300, 200, 500, 800);
 
-        if (ImGui.begin("Properties")) {
+        // Configure window flags to prevent main window scrollbar
+        // NoScrollbar prevents the window itself from having scrollbars
+        // The child region will handle scrolling instead (like TextureEditorWindow)
+        int windowFlags = ImGuiWindowFlags.NoScrollbar;
+
+        if (ImGui.begin("Properties", windowFlags)) {
+            // Create bounded child region to prevent infinite scrolling headers
+            // Matches the pattern used in ColorPanel (texture editor)
+            ImGui.beginChild("##properties_content", 0, 0, false);
+
             // Render sections based on mode (compact/full mode controlled via Preferences)
             if (compactMode.get()) {
                 renderCompactMode();
             } else {
                 renderFullMode();
             }
+
+            // End bounded child region
+            ImGui.endChild();
         }
         ImGui.end();
 

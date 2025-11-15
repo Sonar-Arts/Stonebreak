@@ -2,10 +2,10 @@ package com.openmason.ui.properties.sections;
 
 import com.openmason.model.editable.BlockModel;
 import com.openmason.ui.dialogs.FileDialogService;
+import com.openmason.ui.preferences.PreferencesPageRenderer;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import com.openmason.ui.state.ModelState;
 import imgui.ImGui;
-import imgui.flag.ImGuiTreeNodeFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,36 +61,33 @@ public class TextureChooserSection implements IPanelSection {
             return;
         }
 
-        if (ImGui.collapsingHeader("Texture", ImGuiTreeNodeFlags.DefaultOpen)) {
-            ImGui.indent();
+        // Use compact blue header box with JetBrains Mono Bold
+        PreferencesPageRenderer.renderCompactSectionHeader("Texture");
 
-            // Display current texture
-            Path texturePath = currentModel.getTexturePath();
-            if (texturePath != null) {
-                ImGui.text("Current Texture:");
-                ImGui.sameLine();
-                ImGui.textDisabled(texturePath.getFileName().toString());
+        // Display current texture
+        Path texturePath = currentModel.getTexturePath();
+        if (texturePath != null) {
+            ImGui.text("Current Texture:");
+            ImGui.sameLine();
+            ImGui.textDisabled(texturePath.getFileName().toString());
 
-                ImGui.sameLine();
-                if (ImGui.smallButton("Clear##ClearTexture")) {
-                    handleTextureClear();
-                }
-            } else {
-                ImGui.textDisabled("No texture selected");
+            ImGui.sameLine();
+            if (ImGui.smallButton("Clear##ClearTexture")) {
+                handleTextureClear();
             }
+        } else {
+            ImGui.textDisabled("No texture selected");
+        }
 
-            ImGui.spacing();
+        ImGui.spacing();
 
-            // Choose texture button
-            if (ImGui.button("Choose Texture...")) {
-                handleTextureChoose();
-            }
+        // Choose texture button
+        if (ImGui.button("Choose Texture...")) {
+            handleTextureChoose();
+        }
 
-            if (ImGui.isItemHovered()) {
-                ImGui.setTooltip("Select .OMT or .PNG texture file");
-            }
-
-            ImGui.unindent();
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Select .OMT or .PNG texture file");
         }
     }
 

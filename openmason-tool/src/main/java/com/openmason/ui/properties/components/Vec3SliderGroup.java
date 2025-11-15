@@ -24,9 +24,10 @@ public class Vec3SliderGroup {
     private final float max;
     private final String format;
     private final Consumer<Integer> onChanged;
+    private final float sliderWidth;
 
     /**
-     * Create a Vec3 slider group.
+     * Create a Vec3 slider group with default 200f slider width.
      *
      * @param label The label for this group (e.g., "Position", "Rotation", "Scale")
      * @param x The X value
@@ -40,6 +41,25 @@ public class Vec3SliderGroup {
     public Vec3SliderGroup(String label, ImFloat x, ImFloat y, ImFloat z,
                           float min, float max, String format,
                           Consumer<Integer> onChanged) {
+        this(label, x, y, z, min, max, format, onChanged, 200f);
+    }
+
+    /**
+     * Create a Vec3 slider group with custom slider width.
+     *
+     * @param label The label for this group (e.g., "Position", "Rotation", "Scale")
+     * @param x The X value
+     * @param y The Y value
+     * @param z The Z value
+     * @param min Minimum slider value
+     * @param max Maximum slider value
+     * @param format Printf-style format string (e.g., "%.2f", "%.1f°")
+     * @param onChanged Callback invoked when any slider changes (receives axis index 0=X, 1=Y, 2=Z)
+     * @param sliderWidth Width of each slider in pixels (default 200f to match ColorPanel)
+     */
+    public Vec3SliderGroup(String label, ImFloat x, ImFloat y, ImFloat z,
+                          float min, float max, String format,
+                          Consumer<Integer> onChanged, float sliderWidth) {
         this.label = label;
         this.x = x;
         this.y = y;
@@ -48,6 +68,7 @@ public class Vec3SliderGroup {
         this.max = max;
         this.format = format;
         this.onChanged = onChanged;
+        this.sliderWidth = sliderWidth;
     }
 
     /**
@@ -59,6 +80,9 @@ public class Vec3SliderGroup {
         boolean changed = false;
 
         ImGui.text(label + ":");
+
+        // Set fixed slider width to prevent infinite stretching
+        ImGui.pushItemWidth(sliderWidth);
 
         if (ImGui.sliderFloat("X##" + label + "X", x.getData(), min, max, format)) {
             if (onChanged != null) {
@@ -81,6 +105,9 @@ public class Vec3SliderGroup {
             changed = true;
         }
 
+        // Restore default width
+        ImGui.popItemWidth();
+
         return changed;
     }
 
@@ -97,6 +124,9 @@ public class Vec3SliderGroup {
         boolean changed = false;
 
         ImGui.text(label + ":");
+
+        // Set fixed slider width to prevent infinite stretching
+        ImGui.pushItemWidth(sliderWidth);
 
         // X slider
         if (ImGui.sliderFloat("X##" + label + "X", x.getData(), min, max, format)) {
@@ -127,6 +157,9 @@ public class Vec3SliderGroup {
             }
             changed = true;
         }
+
+        // Restore default width
+        ImGui.popItemWidth();
 
         return changed;
     }

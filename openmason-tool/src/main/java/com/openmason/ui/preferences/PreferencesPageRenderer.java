@@ -89,6 +89,76 @@ public class PreferencesPageRenderer {
     }
 
     /**
+     * Renders a compact property panel header with bold-style text.
+     * <p>
+     * Creates a sleek, professional header with:
+     * - Smaller height (compact design)
+     * - Longer blue background bar (extends to available width with max limit)
+     * - Bold-style text (rendered with double-pass technique)
+     * - Thin blue left accent (2px width)
+     * - Minimal padding for space efficiency
+     * - Maximum width constraint (250px) to prevent excessive stretching
+     * </p>
+     *
+     * @param title the section title text
+     */
+    public static void renderCompactSectionHeader(String title) {
+        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
+        float availableWidth = ImGui.getContentRegionAvailX();
+
+        imgui.ImVec2 textSize = ImGui.calcTextSize(title);
+
+        // Visible blue accent color
+        int borderColor = ImGui.colorConvertFloat4ToU32(0.26f, 0.59f, 0.98f, 1.0f); // Bright blue
+
+        // Compact dimensions with size limit
+        float borderWidth = 2.0f; // Thinner accent bar
+        float padding = 4.0f; // Smaller padding
+        float height = textSize.y + padding * 2; // Smaller height
+        float maxWidth = 250.0f; // Maximum width constraint
+        float boxWidth = Math.min(availableWidth, maxWidth); // Extends to available width but capped at maxWidth
+
+        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
+
+        // Left accent bar (bright blue, thinner)
+        drawList.addRectFilled(
+                cursorPos.x,
+                cursorPos.y,
+                cursorPos.x + borderWidth,
+                cursorPos.y + height,
+                borderColor,
+                1.0f // Less rounding
+        );
+
+        // Long background box (darker gray-blue, extends to available width with max limit)
+        int bgColor = ImGui.colorConvertFloat4ToU32(0.25f, 0.28f, 0.35f, 1.0f);
+        drawList.addRectFilled(
+                cursorPos.x + borderWidth,
+                cursorPos.y,
+                cursorPos.x + borderWidth + boxWidth,
+                cursorPos.y + height,
+                bgColor,
+                1.0f // Less rounding
+        );
+
+        // Render text with bold effect (double-pass rendering with slight offset)
+        float textX = cursorPos.x + borderWidth + padding;
+        float textY = cursorPos.y + padding;
+
+        // First pass: normal position
+        ImGui.setCursorScreenPos(textX, textY);
+        ImGui.text(title);
+
+        // Second pass: slight offset for bold effect
+        ImGui.setCursorScreenPos(textX + 0.5f, textY);
+        ImGui.text(title);
+
+        // Reset cursor for next element
+        ImGui.setCursorScreenPos(cursorPos.x, cursorPos.y + height);
+        ImGui.spacing();
+    }
+
+    /**
      * Renders a sub-header with emphasized bold-style text.
      * <p>
      * Creates visual hierarchy within sections by rendering emphasized text
