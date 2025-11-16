@@ -82,10 +82,21 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         // Get base terrain offset with multi-scale noise variation
         float baseOffset = offsetRouter.getOffset(params, x, z);
 
-        // Calculate erosion factor (controls flat vs mountainous terrain)
-        // Low erosion (-1.0) = 1.5x variation (sharp mountains)
-        // High erosion (1.0) = 0.6x variation (flat plains)
-        float erosionFactor = 1.0f - (params.erosion * 0.4f);
+        // TERRA v.09: Aggressive erosion factor curve (Terralith-inspired)
+        // Split behavior: linear amplification for mountains, quadratic dampening for plains
+        float erosionFactor;
+        if (params.erosion < 0.0f) {
+            // Mountains: Linear amplification (unchanged from previous versions)
+            // erosion=-1.0 → 1.4x, erosion=-0.5 → 1.2x, erosion=0.0 → 1.0x
+            erosionFactor = 1.0f - (params.erosion * 0.4f);
+        } else {
+            // Plains: Quadratic dampening for LEGACY-level flatness
+            // erosion=0.3 → 0.928x (7% flatter)
+            // erosion=0.5 → 0.8x (20% flatter)
+            // erosion=0.7 → 0.608x (39% flatter)
+            // erosion=1.0 → 0.2x (80% flatter) ← LEGACY-level flat plains
+            erosionFactor = 1.0f - (params.erosion * params.erosion * 0.8f);
+        }
 
         // Calculate PV amplification (amplifies height extremes)
         // Peaks (PV=1.0) get higher, valleys (PV=-1.0) get lower
@@ -96,9 +107,17 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         float heightFromSeaLevel = baseOffset - seaLevel;
         float modifiedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
 
-        // Add jaggedness for fine detail (only in mountainous/uneroded areas)
-        // Erosion reduces jaggedness (eroded terrain is smooth)
-        float jaggednessStrength = Math.max(0.0f, -params.erosion); // 0.0 to 1.0
+        // TERRA v.09: Minecraft-style jaggedness gating (Terralith-inspired)
+        // Jaggedness only applies in specific conditions like Minecraft:
+        // - High continentalness (mountainous inland areas)
+        // - Low erosion (uneroded, sharp terrain)
+        // - Not deep valleys (PV > -0.3)
+        // This ensures jaggedness is truly ZERO in plains, oceans, and valleys
+        float jaggednessStrength = 0.0f;
+        if (params.continentalness > 0.4f && params.erosion < 0.0f && params.peaksValleys > -0.3f) {
+            // Scale by erosion: more negative = more jagged
+            jaggednessStrength = Math.max(0.0f, -params.erosion); // 0.0 to 1.0
+        }
         float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
 
         return Math.round(modifiedHeight + jaggedness);

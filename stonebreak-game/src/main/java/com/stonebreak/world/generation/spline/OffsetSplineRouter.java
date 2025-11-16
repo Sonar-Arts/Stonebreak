@@ -79,36 +79,29 @@ public class OffsetSplineRouter {
         float fineNoise = fineTerrainNoise.noise(x / 16.0f, z / 16.0f);
         float microNoise = microVariationNoise.noise(x / 4.0f, z / 4.0f);
 
-        // Calculate variation strength based on continentalness
-        // Ocean areas have less variation, inland has more
-        float variationStrength = Math.max(0.0f, params.continentalness * 15.0f + 10.0f);
+        // TERRA v.09: Erosion-based variation strength (Terralith-inspired)
+        // Base strength from continentalness (ocean vs inland)
+        float baseStrength = Math.max(0.0f, params.continentalness * 15.0f + 10.0f);
 
-        // TERRA v.08: Progressive erosion-based noise dampening for natural flat landscapes
-        // Apply dampening ONLY to positive erosion values (flat/gentle terrain)
-        // Negative erosion (mountains) remains untouched for dramatic peaks
-        float erosionDampening = 1.0f;
+        // Reduce variation strength at high erosion (flat plains)
+        // Synergizes with erosion factor in SplineTerrainGenerator
+        float erosionMultiplier = 1.0f;
         if (params.erosion > 0.0f) {
-            // Gentle dampening curve: erosion 0.0→1.0 reduces noise 0%→85%
-            // Target: ±5-8 blocks at erosion=1.0 (gentle natural variation)
-            erosionDampening = 1.0f - (params.erosion * 0.85f);
+            // Quadratic dampening: erosion 0.0→1.0 reduces strength 0%→75%
+            // erosion=0.5 → 75% strength, erosion=1.0 → 25% strength
+            erosionMultiplier = 1.0f - (params.erosion * params.erosion * 0.75f);
         }
 
-        // Apply different dampening rates to each frequency layer
-        // Higher frequencies dampen more aggressively for smooth surfaces
-        float broadDampening = Math.max(0.3f, erosionDampening);    // Min 30% - keeps continental features
-        float mediumDampening = Math.max(0.15f, erosionDampening);  // Min 15% - removes hills
-        float fineDampening = erosionDampening;                      // Full dampening - removes bumps
-        float microDampening = erosionDampening;                     // Full dampening - smooth surface
+        float variationStrength = baseStrength * erosionMultiplier;
 
-        // Combine all noise layers with erosion-based dampening
+        // Combine all noise layers with consistent amplitudes
         // Broad (±15 blocks) > Medium (±6 blocks) > Fine (±2 blocks) > Micro (±0.5 block)
-        // At erosion=1.0: ±4.5 + ±0.9 + ±0.3 + ±0.075 = ±5.775 blocks (gentle flat)
-        // At erosion=0.0: ±15 + ±6 + ±2 + ±0.5 = ±23.5 blocks (full variation)
-        // At erosion=-1.0: ±15 + ±6 + ±2 + ±0.5 = ±23.5 blocks (mountains unchanged)
-        float totalNoise = (broadNoise * 15.0f * broadDampening) +
-                           (mediumNoise * 6.0f * mediumDampening) +
-                           (fineNoise * 2.0f * fineDampening) +
-                           (microNoise * 0.5f * microDampening);
+        // Total: ±23.5 blocks (full variation at erosion=0.0)
+        // Note: variationStrength already includes erosion dampening via erosionMultiplier
+        float totalNoise = (broadNoise * 15.0f) +
+                           (mediumNoise * 6.0f) +
+                           (fineNoise * 2.0f) +
+                           (microNoise * 0.5f);
 
         // Scale noise by variation strength
         return splineHeight + (totalNoise * variationStrength / 20.0f);
@@ -256,12 +249,14 @@ public class OffsetSplineRouter {
         erosionSpline.addPoint(0.80f, buildPVWeirdnessSpline(baseHeight + heightRange * 0.15f, baseHeight + heightRange * 0.16f), 0.0f);
 
         // Near-Flat (erosion = 0.90)
-        // Multiplier 0.55x, derivative 0.2 for slight variation
-        erosionSpline.addPoint(0.90f, buildPVWeirdnessSpline(baseHeight + heightRange * 0.08f, baseHeight + heightRange * 0.09f), 0.2f);
+        // TERRA v.09: derivative 0.0 for true plateau (was 0.2)
+        // Multiplier 0.55x, derivative 0.0 for flat plateau
+        erosionSpline.addPoint(0.90f, buildPVWeirdnessSpline(baseHeight + heightRange * 0.08f, baseHeight + heightRange * 0.09f), 0.0f);
 
         // Completely Flat (erosion = 1.00)
-        // Multiplier 0.5x, derivative 0.5 for minimal variation
-        erosionSpline.addPoint(1.00f, buildPVWeirdnessSpline(baseHeight, baseHeight + 1.0f), 0.5f);
+        // TERRA v.09: derivative 0.0 for perfect flat plains (was 0.5)
+        // Multiplier 0.5x, derivative 0.0 for completely flat
+        erosionSpline.addPoint(1.00f, buildPVWeirdnessSpline(baseHeight, baseHeight + 1.0f), 0.0f);
 
         return erosionSpline;
     }
