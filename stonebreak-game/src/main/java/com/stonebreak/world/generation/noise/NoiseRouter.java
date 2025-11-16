@@ -3,6 +3,7 @@ package com.stonebreak.world.generation.noise;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
+import com.stonebreak.world.generation.heightmap.ErosionNoiseGenerator;
 import com.stonebreak.world.generation.heightmap.SurfaceDetailGenerator;
 import com.stonebreak.world.generation.heightmap.PeaksValleysNoiseGenerator;
 import com.stonebreak.world.generation.heightmap.WeirdnessNoiseGenerator;
@@ -36,6 +37,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
 public class NoiseRouter {
 
     private final NoiseGenerator continentalnessNoise;
+    private final ErosionNoiseGenerator erosionNoise;
     private final SurfaceDetailGenerator surfaceDetailGenerator;
     private final PeaksValleysNoiseGenerator peaksValleysNoise;
     private final WeirdnessNoiseGenerator weirdnessNoise;
@@ -72,6 +74,7 @@ public class NoiseRouter {
 
         // Initialize noise generators with different seed offsets for independence
         this.continentalnessNoise = new NoiseGenerator(seed + 2, NoiseConfigFactory.continentalness());
+        this.erosionNoise = new ErosionNoiseGenerator(seed + 3, NoiseConfigFactory.erosion());
         this.surfaceDetailGenerator = new SurfaceDetailGenerator(seed + 10, config);
         this.peaksValleysNoise = new PeaksValleysNoiseGenerator(seed + 11, NoiseConfigFactory.terrainPeaksValleys());
         this.weirdnessNoise = new WeirdnessNoiseGenerator(seed + 12, NoiseConfigFactory.terrainWeirdness());
@@ -118,8 +121,8 @@ public class NoiseRouter {
                 worldZ / config.continentalnessNoiseScale
         );
 
-        // Sample surface detail (already handles scaling internally)
-        float erosion = surfaceDetailGenerator.getSurfaceDetailNoise(worldX, worldZ);
+        // Sample erosion (scale 300 blocks per unit for large flat plains)
+        float erosion = erosionNoise.noise(worldX / 300.0f, worldZ / 300.0f);
 
         // Sample peaks & valleys (scale 150 blocks per unit)
         float peaksValleys = peaksValleysNoise.noise(worldX / 150.0f, worldZ / 150.0f);
@@ -193,7 +196,7 @@ public class NoiseRouter {
      * @return Erosion in range [-1.0, 1.0]
      */
     public float getErosion(int worldX, int worldZ) {
-        return surfaceDetailGenerator.getSurfaceDetailNoise(worldX, worldZ);
+        return erosionNoise.noise(worldX / 300.0f, worldZ / 300.0f);
     }
 
     /**
