@@ -285,9 +285,9 @@ public class TerrainGenerationSystem {
                         // Block is air - determine if it should be filled with water/lava
                         BlockType blockType = BlockType.AIR;
 
-                        // Apply aquifer to cave blocks (underground water/lava pools)
+                        // Aquifers disabled - caves remain dry (no underground water/lava pools)
                         if (isCave) {
-                            blockType = aquiferGenerator.applyAquifer(worldX, y, worldZ, true);
+                            blockType = BlockType.AIR; // DISABLED: aquiferGenerator.applyAquifer(worldX, y, worldZ, true);
                         }
                         // Handle regular water level for non-cave air blocks
                         else if (y < SEA_LEVEL) {

@@ -83,12 +83,32 @@ public class OffsetSplineRouter {
         // Ocean areas have less variation, inland has more
         float variationStrength = Math.max(0.0f, params.continentalness * 15.0f + 10.0f);
 
-        // Combine all noise layers with decreasing amplitudes
+        // TERRA v.08: Progressive erosion-based noise dampening for natural flat landscapes
+        // Apply dampening ONLY to positive erosion values (flat/gentle terrain)
+        // Negative erosion (mountains) remains untouched for dramatic peaks
+        float erosionDampening = 1.0f;
+        if (params.erosion > 0.0f) {
+            // Gentle dampening curve: erosion 0.0→1.0 reduces noise 0%→85%
+            // Target: ±5-8 blocks at erosion=1.0 (gentle natural variation)
+            erosionDampening = 1.0f - (params.erosion * 0.85f);
+        }
+
+        // Apply different dampening rates to each frequency layer
+        // Higher frequencies dampen more aggressively for smooth surfaces
+        float broadDampening = Math.max(0.3f, erosionDampening);    // Min 30% - keeps continental features
+        float mediumDampening = Math.max(0.15f, erosionDampening);  // Min 15% - removes hills
+        float fineDampening = erosionDampening;                      // Full dampening - removes bumps
+        float microDampening = erosionDampening;                     // Full dampening - smooth surface
+
+        // Combine all noise layers with erosion-based dampening
         // Broad (±15 blocks) > Medium (±6 blocks) > Fine (±2 blocks) > Micro (±0.5 block)
-        float totalNoise = (broadNoise * 15.0f) +
-                           (mediumNoise * 6.0f) +
-                           (fineNoise * 2.0f) +
-                           (microNoise * 0.5f);
+        // At erosion=1.0: ±4.5 + ±0.9 + ±0.3 + ±0.075 = ±5.775 blocks (gentle flat)
+        // At erosion=0.0: ±15 + ±6 + ±2 + ±0.5 = ±23.5 blocks (full variation)
+        // At erosion=-1.0: ±15 + ±6 + ±2 + ±0.5 = ±23.5 blocks (mountains unchanged)
+        float totalNoise = (broadNoise * 15.0f * broadDampening) +
+                           (mediumNoise * 6.0f * mediumDampening) +
+                           (fineNoise * 2.0f * fineDampening) +
+                           (microNoise * 0.5f * microDampening);
 
         // Scale noise by variation strength
         return splineHeight + (totalNoise * variationStrength / 20.0f);
