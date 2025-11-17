@@ -12,8 +12,14 @@ import com.openmason.ui.viewport.shaders.ShaderType;
 import com.openmason.ui.viewport.state.RenderingState;
 import com.openmason.ui.viewport.state.TransformState;
 import com.openmason.ui.viewport.state.ViewportState;
+import com.stonebreak.model.ModelDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
@@ -359,7 +365,6 @@ public class RenderPipeline {
         try {
             // Initialize vertex renderer if needed
             if (!vertexRenderer.isInitialized()) {
-                logger.info("Initializing VertexRenderer...");
                 vertexRenderer.initialize();
             }
 
@@ -368,22 +373,25 @@ public class RenderPipeline {
                 case MODEL:
                     // Standard cow model rendering
                     if (renderingState.isModelReady()) {
-                        vertexRenderer.updateVertexData(
-                            renderingState.getCurrentModel(),
-                            transformState.getTransformMatrix()
+                        // Extract all parts from cow model
+                        Collection<ModelDefinition.ModelPart> parts = extractModelParts(
+                            renderingState.getCurrentModel().getModelDefinition()
                         );
 
+                        vertexRenderer.updateVertexData(parts, transformState.getTransformMatrix());
+
                         ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
-                        vertexRenderer.render(basicShader, context, transformState.getTransformMatrix());
+                        vertexRenderer.render(basicShader, context);
                     }
                     break;
 
                 case BLOCK_MODEL:
                     // Editable .OMO block model rendering (simple cube)
-                    vertexRenderer.updateVertexDataForBlockModel(transformState.getTransformMatrix());
+                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                    vertexRenderer.updateVertexData(cubeParts, transformState.getTransformMatrix());
 
                     ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    vertexRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    vertexRenderer.render(basicShaderBlockModel, context);
                     break;
 
                 case BLOCK:
@@ -402,6 +410,56 @@ public class RenderPipeline {
         } catch (Exception e) {
             logger.error("Error rendering vertices", e);
         }
+    }
+
+    /**
+     * Extract all model parts from a cow model definition.
+     * Generic approach - caller handles model structure.
+     */
+    private Collection<ModelDefinition.ModelPart> extractModelParts(ModelDefinition.CowModelDefinition cowModel) {
+        List<ModelDefinition.ModelPart> parts = new ArrayList<>();
+
+        if (cowModel == null || cowModel.getParts() == null) {
+            return parts;
+        }
+
+        ModelDefinition.ModelParts modelParts = cowModel.getParts();
+
+        // Add all parts to collection
+        if (modelParts.getBody() != null) parts.add(modelParts.getBody());
+        if (modelParts.getHead() != null) parts.add(modelParts.getHead());
+        if (modelParts.getUdder() != null) parts.add(modelParts.getUdder());
+        if (modelParts.getTail() != null) parts.add(modelParts.getTail());
+
+        if (modelParts.getLegs() != null) {
+            parts.addAll(modelParts.getLegs());
+        }
+
+        if (modelParts.getHorns() != null) {
+            parts.addAll(modelParts.getHorns());
+        }
+
+        return parts;
+    }
+
+    /**
+     * Create a simple 1x1x1 cube model part.
+     * Returns as collection for generic API.
+     */
+    private Collection<ModelDefinition.ModelPart> createCubeParts() {
+        ModelDefinition.Position position = new ModelDefinition.Position(0.0f, 0.0f, 0.0f);
+        ModelDefinition.Size size = new ModelDefinition.Size(1.0f, 1.0f, 1.0f);
+
+        ModelDefinition.ModelPart cube = new ModelDefinition.ModelPart(
+            "cube",
+            position,
+            size,
+            null  // No texture needed for vertex display
+        );
+
+        cube.postLoadInitialization();
+
+        return Collections.singletonList(cube);
     }
 
     /**

@@ -633,13 +633,11 @@ public class OpenMason3DViewport {
         if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
             renderPipeline.getVertexRenderer().setEnabled(showVertices);
         }
-        logger.debug("Show vertices: {}", showVertices);
     }
 
     public void setVertexPointSize(float size) {
         if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
             renderPipeline.getVertexRenderer().setPointSize(size);
-            logger.debug("Vertex point size updated to: {}", size);
         }
     }
 

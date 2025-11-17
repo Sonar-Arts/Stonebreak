@@ -566,7 +566,6 @@ public class ViewportImGuiInterface {
     }
 
     private void toggleShowVertices() {
-        logger.info("Show vertices: {}", showVertices.get());
         if (viewport3D != null) {
             viewport3D.setShowVertices(showVertices.get());
         }

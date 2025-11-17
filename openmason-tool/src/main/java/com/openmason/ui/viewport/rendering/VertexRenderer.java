@@ -1,17 +1,14 @@
 package com.openmason.ui.viewport.rendering;
 
-import com.openmason.deprecated.LegacyCowStonebreakModel;
+import com.openmason.ui.viewport.rendering.vertex.VertexExtractor;
 import com.openmason.ui.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.FloatBuffer;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -22,7 +19,10 @@ import static org.lwjgl.opengl.GL30.*;
  * Renders model vertices as colored points, similar to Blender's vertex display mode.
  * Follows KISS, SOLID, DRY, and YAGNI principles.
  *
- * Single Responsibility: Extract and render model vertices as points.
+ * Single Responsibility: Render model vertices as points (extraction delegated to VertexExtractor).
+ * Open/Closed: Works with any Collection of ModelParts without modification.
+ * DRY: Single code path for all model types.
+ * YAGNI: No unnecessary features, no model-type-specific code.
  */
 public class VertexRenderer {
 
@@ -39,23 +39,18 @@ public class VertexRenderer {
     private float pointSize = 5.0f;
     private final Vector3f vertexColor = new Vector3f(1.0f, 0.6f, 0.0f); // Blender's orange
 
-    // Dirty flag to track when vertex data needs updating
-    private boolean vertexDataDirty = true;
-    private LegacyCowStonebreakModel lastModel = null;
-    private Matrix4f lastTransform = null;
+    // Vertex extraction (Single Responsibility)
+    private final VertexExtractor vertexExtractor = new VertexExtractor();
 
     /**
      * Initialize the vertex renderer.
      */
     public void initialize() {
         if (initialized) {
-            logger.debug("VertexRenderer already initialized");
             return;
         }
 
         try {
-            logger.info("Initializing VertexRenderer...");
-
             // Generate VAO and VBO
             vao = glGenVertexArrays();
             vbo = glGenBuffers();
@@ -77,7 +72,6 @@ public class VertexRenderer {
             glBindVertexArray(0);
 
             initialized = true;
-            logger.info("VertexRenderer initialized successfully");
 
         } catch (Exception e) {
             logger.error("Failed to initialize VertexRenderer", e);
@@ -87,133 +81,36 @@ public class VertexRenderer {
     }
 
     /**
-     * Update vertex data for BlockModel (.OMO files) with transformation.
-     * BlockModels are simple cubes with 24 vertices (4 per face × 6 faces).
+     * Update vertex data from a collection of model parts with transformation.
+     * Generic method that works with ANY model type - cow, cube, sheep, future models.
+     *
+     * KISS: Single, simple method for all use cases.
+     * DRY: No duplicate code paths.
+     * Open/Closed: Add new model types without changing this class.
+     *
+     * @param parts Collection of model parts to render vertices from
+     * @param transformMatrix Transformation matrix to apply
      */
-    public void updateVertexDataForBlockModel(Matrix4f transformMatrix) {
+    public void updateVertexData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
             logger.warn("VertexRenderer not initialized, cannot update vertex data");
             return;
         }
 
-        // Check if update is needed
-        boolean transformChanged = (lastTransform == null || !lastTransform.equals(transformMatrix));
-
-        if (!transformChanged && !vertexDataDirty) {
-            return; // No update needed
-        }
-
-        try {
-            // Extract vertices from cube mesh (1x1x1 cube centered at origin)
-            // CubeNetMeshGenerator provides vertices in format: x, y, z, u, v (5 floats per vertex)
-            float[] cubeVertices = com.openmason.rendering.blockmodel.CubeNetMeshGenerator.generateVertices();
-
-            List<Float> vertices = new ArrayList<>();
-
-            // Extract position data (skip UV coordinates)
-            Vector4f vertex = new Vector4f();
-            for (int i = 0; i < cubeVertices.length; i += 5) {
-                // Get position (x, y, z) and skip UVs (u, v)
-                vertex.set(cubeVertices[i], cubeVertices[i + 1], cubeVertices[i + 2], 1.0f);
-                transformMatrix.transform(vertex);
-
-                vertices.add(vertex.x);
-                vertices.add(vertex.y);
-                vertices.add(vertex.z);
-            }
-
-            // Convert to float array
-            float[] vertexArray = new float[vertices.size()];
-            for (int i = 0; i < vertices.size(); i++) {
-                vertexArray[i] = vertices.get(i);
-            }
-
-            vertexCount = vertexArray.length / 3;
-
-            // Upload to GPU
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertexArray, GL_DYNAMIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            // Update state
-            lastModel = null; // BlockModel doesn't use model object
-            lastTransform = new Matrix4f(transformMatrix);
-            vertexDataDirty = false;
-
-        } catch (Exception e) {
-            logger.error("Error updating BlockModel vertex data", e);
-        }
-    }
-
-    /**
-     * Update vertex data from model with transformation.
-     * Only updates GPU buffer when model or transform changes (dirty flag pattern).
-     */
-    public void updateVertexData(LegacyCowStonebreakModel model, Matrix4f transformMatrix) {
-        if (!initialized) {
-            logger.warn("VertexRenderer not initialized, cannot update vertex data");
-            return;
-        }
-
-        if (model == null) {
-            logger.warn("Model is null, clearing vertex data");
+        if (parts == null || parts.isEmpty()) {
             vertexCount = 0;
-            vertexDataDirty = false;
             return;
         }
 
-        // Check if update is needed
-        boolean modelChanged = (lastModel != model);
-        boolean transformChanged = (lastTransform == null || !lastTransform.equals(transformMatrix));
-
-        if (!modelChanged && !transformChanged && !vertexDataDirty) {
-            return; // No update needed
-        }
-
         try {
-            // Extract vertices from all model parts
-            List<Float> vertices = new ArrayList<>();
-            ModelDefinition.CowModelDefinition cowModel = model.getModelDefinition();
-
-            if (cowModel != null && cowModel.getParts() != null) {
-                ModelDefinition.ModelParts parts = cowModel.getParts();
-
-                // Extract vertices from each part
-                extractPartVertices(parts.getBody(), transformMatrix, vertices);
-                extractPartVertices(parts.getHead(), transformMatrix, vertices);
-                extractPartVertices(parts.getUdder(), transformMatrix, vertices);
-                extractPartVertices(parts.getTail(), transformMatrix, vertices);
-
-                if (parts.getLegs() != null) {
-                    for (ModelDefinition.ModelPart leg : parts.getLegs()) {
-                        extractPartVertices(leg, transformMatrix, vertices);
-                    }
-                }
-
-                if (parts.getHorns() != null) {
-                    for (ModelDefinition.ModelPart horn : parts.getHorns()) {
-                        extractPartVertices(horn, transformMatrix, vertices);
-                    }
-                }
-            }
-
-            // Convert to float array
-            float[] vertexArray = new float[vertices.size()];
-            for (int i = 0; i < vertices.size(); i++) {
-                vertexArray[i] = vertices.get(i);
-            }
-
-            vertexCount = vertexArray.length / 3;
+            // Extract vertices using VertexExtractor (Single Responsibility)
+            float[] vertices = vertexExtractor.extractVertices(parts, transformMatrix);
 
             // Upload to GPU
+            vertexCount = vertices.length / 3;
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertexArray, GL_DYNAMIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, vertices, GL_DYNAMIC_DRAW);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            // Update state
-            lastModel = model;
-            lastTransform = new Matrix4f(transformMatrix);
-            vertexDataDirty = false;
 
         } catch (Exception e) {
             logger.error("Error updating vertex data", e);
@@ -221,55 +118,20 @@ public class VertexRenderer {
     }
 
     /**
-     * Extract vertices from a model part and apply transformations.
-     */
-    private void extractPartVertices(ModelDefinition.ModelPart part, Matrix4f globalTransform, List<Float> outVertices) {
-        if (part == null) {
-            return;
-        }
-
-        try {
-            // Get vertices at origin
-            float[] partVertices = part.getVerticesAtOrigin();
-
-            // Get part's local transformation matrix
-            Matrix4f partTransform = part.getTransformationMatrix();
-
-            // Combine global and local transforms
-            Matrix4f finalTransform = new Matrix4f(globalTransform).mul(partTransform);
-
-            // Transform each vertex
-            Vector4f vertex = new Vector4f();
-            for (int i = 0; i < partVertices.length; i += 3) {
-                vertex.set(partVertices[i], partVertices[i + 1], partVertices[i + 2], 1.0f);
-                finalTransform.transform(vertex);
-
-                outVertices.add(vertex.x);
-                outVertices.add(vertex.y);
-                outVertices.add(vertex.z);
-            }
-
-        } catch (Exception e) {
-            logger.error("Error extracting vertices from part: {}", part.getName(), e);
-        }
-    }
-
-    /**
      * Render vertices as points.
+     * KISS: Simple, focused rendering logic.
      */
-    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
+    public void render(ShaderProgram shader, RenderContext context) {
         if (!initialized) {
             logger.warn("VertexRenderer not initialized");
             return;
         }
 
         if (!enabled) {
-            logger.debug("VertexRenderer disabled");
             return;
         }
 
         if (vertexCount == 0) {
-            logger.debug("No vertices to render");
             return;
         }
 
@@ -278,6 +140,7 @@ public class VertexRenderer {
             shader.use();
 
             // Calculate MVP matrix (model is identity since vertices are already transformed)
+            // This matches Blender's approach: vertices stored locally, rendered in world space
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
             Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix);
@@ -309,13 +172,6 @@ public class VertexRenderer {
     }
 
     /**
-     * Mark vertex data as dirty (needs update).
-     */
-    public void markDirty() {
-        this.vertexDataDirty = true;
-    }
-
-    /**
      * Clean up OpenGL resources.
      */
     public void cleanup() {
@@ -329,9 +185,6 @@ public class VertexRenderer {
         }
         vertexCount = 0;
         initialized = false;
-        lastModel = null;
-        lastTransform = null;
-        logger.debug("VertexRenderer cleanup complete");
     }
 
     // Getters and setters
@@ -342,7 +195,6 @@ public class VertexRenderer {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-        logger.debug("Vertex rendering {}", enabled ? "enabled" : "disabled");
     }
 
     public float getPointSize() {
