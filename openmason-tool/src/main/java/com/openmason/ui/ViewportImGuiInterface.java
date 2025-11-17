@@ -22,6 +22,7 @@ public class ViewportImGuiInterface {
     private final ImBoolean axesVisible = new ImBoolean(true);
     private final ImBoolean gridSnappingEnabled = new ImBoolean(false);
     private final ImBoolean wireframeMode = new ImBoolean(false);
+    private final ImBoolean showVertices = new ImBoolean(false);
     private boolean viewportInitialized = false;
 
     // Control Window Visibility
@@ -217,6 +218,12 @@ public class ViewportImGuiInterface {
 
         if (ImGui.checkbox("Grid Snapping##viewport", gridSnappingEnabled)) {
             toggleGridSnapping();
+        }
+
+        ImGui.sameLine();
+
+        if (ImGui.checkbox("Vertices##viewport", showVertices)) {
+            toggleShowVertices();
         }
 
         // Additional controls toggle
@@ -555,6 +562,13 @@ public class ViewportImGuiInterface {
             com.openmason.ui.preferences.PreferencesManager prefs =
                 new com.openmason.ui.preferences.PreferencesManager();
             prefs.setGridSnappingEnabled(gridSnappingEnabled.get());
+        }
+    }
+
+    private void toggleShowVertices() {
+        logger.info("Show vertices: {}", showVertices.get());
+        if (viewport3D != null) {
+            viewport3D.setShowVertices(showVertices.get());
         }
     }
 

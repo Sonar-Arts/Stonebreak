@@ -30,6 +30,7 @@ public class AppConfig {
     private static final boolean DEFAULT_AUTO_SAVE_ENABLED = true;
     private static final int DEFAULT_AUTO_SAVE_INTERVAL = 300; // 5 minutes
     private static final boolean DEFAULT_DARK_THEME_ENABLED = true;
+    private static final float DEFAULT_VERTEX_POINT_SIZE = 5.0f;
     
     private Properties properties;
     private Path configFilePath;
@@ -104,6 +105,9 @@ public class AppConfig {
         properties.setProperty("ui.last.window.width", "1600");
         properties.setProperty("ui.last.window.height", "1000");
         properties.setProperty("ui.last.window.maximized", "false");
+
+        // Viewport settings
+        properties.setProperty("viewport.vertex.point.size", String.valueOf(DEFAULT_VERTEX_POINT_SIZE));
         
         // Performance settings
         properties.setProperty("performance.max.texture.cache", "512"); // MB
@@ -181,7 +185,11 @@ public class AppConfig {
     public boolean isVSyncEnabled() {
         return Boolean.parseBoolean(properties.getProperty("performance.vsync.enabled", "true"));
     }
-    
+
+    public float getVertexPointSize() {
+        return Float.parseFloat(properties.getProperty("viewport.vertex.point.size", String.valueOf(DEFAULT_VERTEX_POINT_SIZE)));
+    }
+
     // Setter methods for configuration values
     
     public void setStonebreakProjectPath(String path) {
@@ -217,7 +225,11 @@ public class AppConfig {
     public void setVSyncEnabled(boolean enabled) {
         properties.setProperty("performance.vsync.enabled", String.valueOf(enabled));
     }
-    
+
+    public void setVertexPointSize(float size) {
+        properties.setProperty("viewport.vertex.point.size", String.valueOf(size));
+    }
+
     /**
      * Get the full path to Stonebreak models directory.
      */

@@ -14,6 +14,7 @@ public class ViewportState {
     private final boolean showGrid;
     private final boolean showAxes;
     private final boolean wireframeMode;
+    private final boolean showVertices;
     private final boolean initialized;
     private final boolean gridSnappingEnabled;
     private final float gridSnappingIncrement;
@@ -22,13 +23,14 @@ public class ViewportState {
      * Private constructor for builder pattern.
      */
     private ViewportState(int width, int height, boolean showGrid, boolean showAxes,
-                         boolean wireframeMode, boolean initialized,
+                         boolean wireframeMode, boolean showVertices, boolean initialized,
                          boolean gridSnappingEnabled, float gridSnappingIncrement) {
         this.width = width;
         this.height = height;
         this.showGrid = showGrid;
         this.showAxes = showAxes;
         this.wireframeMode = wireframeMode;
+        this.showVertices = showVertices;
         this.initialized = initialized;
         this.gridSnappingEnabled = gridSnappingEnabled;
         this.gridSnappingIncrement = gridSnappingIncrement;
@@ -46,6 +48,7 @@ public class ViewportState {
             .showGrid(true)
             .showAxes(false)
             .wireframeMode(false)
+            .showVertices(false)
             .initialized(false)
             .gridSnappingEnabled(prefs.isGridSnappingEnabled())
             .gridSnappingIncrement(prefs.getGridSnappingIncrement())
@@ -62,6 +65,7 @@ public class ViewportState {
             .showGrid(showGrid)
             .showAxes(showAxes)
             .wireframeMode(wireframeMode)
+            .showVertices(showVertices)
             .initialized(initialized)
             .gridSnappingEnabled(gridSnappingEnabled)
             .gridSnappingIncrement(gridSnappingIncrement);
@@ -73,6 +77,7 @@ public class ViewportState {
     public boolean isShowGrid() { return showGrid; }
     public boolean isShowAxes() { return showAxes; }
     public boolean isWireframeMode() { return wireframeMode; }
+    public boolean isShowVertices() { return showVertices; }
     public boolean isInitialized() { return initialized; }
     public boolean isGridSnappingEnabled() { return gridSnappingEnabled; }
     public float getGridSnappingIncrement() { return gridSnappingIncrement; }
@@ -108,8 +113,8 @@ public class ViewportState {
 
     @Override
     public String toString() {
-        return String.format("ViewportState{%dx%d, grid=%s, axes=%s, wireframe=%s, initialized=%s, snapping=%s (%.4f)}",
-                           width, height, showGrid, showAxes, wireframeMode, initialized,
+        return String.format("ViewportState{%dx%d, grid=%s, axes=%s, wireframe=%s, vertices=%s, initialized=%s, snapping=%s (%.4f)}",
+                           width, height, showGrid, showAxes, wireframeMode, showVertices, initialized,
                            gridSnappingEnabled, gridSnappingIncrement);
     }
 
@@ -122,6 +127,7 @@ public class ViewportState {
         private boolean showGrid = true;
         private boolean showAxes = false;
         private boolean wireframeMode = false;
+        private boolean showVertices = false;
         private boolean initialized = false;
         private boolean gridSnappingEnabled = false;
         // Default: Half block (0.5 units) = 2 snap positions per visual grid square
@@ -159,6 +165,11 @@ public class ViewportState {
             return this;
         }
 
+        public Builder showVertices(boolean showVertices) {
+            this.showVertices = showVertices;
+            return this;
+        }
+
         public Builder initialized(boolean initialized) {
             this.initialized = initialized;
             return this;
@@ -175,7 +186,7 @@ public class ViewportState {
         }
 
         public ViewportState build() {
-            return new ViewportState(width, height, showGrid, showAxes, wireframeMode, initialized,
+            return new ViewportState(width, height, showGrid, showAxes, wireframeMode, showVertices, initialized,
                                    gridSnappingEnabled, gridSnappingIncrement);
         }
     }

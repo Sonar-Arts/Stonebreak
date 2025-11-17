@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Orchestrates the main rendering pipeline for the viewport.
@@ -32,6 +33,7 @@ public class RenderPipeline {
 
     // Specialized renderers
     private final InfiniteGridRenderer infiniteGridRenderer;
+    private final VertexRenderer vertexRenderer;
 
     // External renderers (models, blocks, items)
     private final LegacyCowModelRenderer legacyCowModelRenderer;
@@ -60,6 +62,7 @@ public class RenderPipeline {
         this.resources = resources;
         this.shaderManager = shaderManager;
         this.infiniteGridRenderer = new InfiniteGridRenderer();
+        this.vertexRenderer = new VertexRenderer();
         this.legacyCowModelRenderer = legacyCowModelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
@@ -115,7 +118,12 @@ public class RenderPipeline {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // PASS 3: Render gizmo (after content, always in fill mode)
+            // PASS 3: Render vertices (debug overlay, Blender-style)
+            if (viewportState.isShowVertices()) {
+                renderVertices(renderingState, transformState);
+            }
+
+            // PASS 4: Render gizmo (after content, always in fill mode)
             if (gizmoRenderer != null && gizmoRenderer.isInitialized()) {
                 renderGizmo(viewportState);
             }
@@ -345,6 +353,58 @@ public class RenderPipeline {
     }
 
     /**
+     * Render vertices pass (Blender-style vertex visualization).
+     */
+    private void renderVertices(RenderingState renderingState, TransformState transformState) {
+        try {
+            // Initialize vertex renderer if needed
+            if (!vertexRenderer.isInitialized()) {
+                logger.info("Initializing VertexRenderer...");
+                vertexRenderer.initialize();
+            }
+
+            // Render vertices based on current rendering mode
+            switch (renderingState.getMode()) {
+                case MODEL:
+                    // Standard cow model rendering
+                    if (renderingState.isModelReady()) {
+                        vertexRenderer.updateVertexData(
+                            renderingState.getCurrentModel(),
+                            transformState.getTransformMatrix()
+                        );
+
+                        ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+                        vertexRenderer.render(basicShader, context, transformState.getTransformMatrix());
+                    }
+                    break;
+
+                case BLOCK_MODEL:
+                    // Editable .OMO block model rendering (simple cube)
+                    vertexRenderer.updateVertexDataForBlockModel(transformState.getTransformMatrix());
+
+                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    vertexRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    break;
+
+                case BLOCK:
+                    // Single block rendering
+                    // TODO: Implement vertex extraction for Block rendering
+                    logger.trace("BLOCK mode - vertices not yet supported");
+                    break;
+
+                case ITEM:
+                    // Item rendering
+                    // TODO: Implement vertex extraction for Item rendering
+                    logger.trace("ITEM mode - vertices not yet supported");
+                    break;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error rendering vertices", e);
+        }
+    }
+
+    /**
      * Check if diagnostic logging should occur (throttled).
      */
     private boolean shouldLogDiagnostics() {
@@ -363,5 +423,27 @@ public class RenderPipeline {
      */
     public GizmoRenderer getGizmoRenderer() {
         return gizmoRenderer;
+    }
+
+    /**
+     * Gets the vertex renderer for external access (preferences, etc.).
+     *
+     * @return The vertex renderer
+     */
+    public VertexRenderer getVertexRenderer() {
+        return vertexRenderer;
+    }
+
+    /**
+     * Clean up all render pipeline resources.
+     */
+    public void cleanup() {
+        if (infiniteGridRenderer != null && infiniteGridRenderer.isInitialized()) {
+            infiniteGridRenderer.cleanup();
+        }
+        if (vertexRenderer != null && vertexRenderer.isInitialized()) {
+            vertexRenderer.cleanup();
+        }
+        logger.debug("RenderPipeline cleanup complete");
     }
 }

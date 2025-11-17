@@ -36,6 +36,8 @@ public class UnifiedPreferencesPageRenderer {
     // Model Viewer constants
     private static final float MIN_CAMERA_SENSITIVITY = 0.1f;
     private static final float MAX_CAMERA_SENSITIVITY = 10.0f;
+    private static final float MIN_VERTEX_POINT_SIZE = 1.0f;
+    private static final float MAX_VERTEX_POINT_SIZE = 15.0f;
 
     // Grid snapping increment options (based on STANDARD_BLOCK_SIZE = 1.0)
     // Ordered from coarse to fine, with recommended default (1/2 Block) providing
@@ -59,6 +61,7 @@ public class UnifiedPreferencesPageRenderer {
     private final ImFloat cameraMouseSensitivity = new ImFloat();
     private final ImBoolean compactPropertiesMode = new ImBoolean();
     private final ImInt gridSnappingIncrementIndex = new ImInt();
+    private final ImFloat vertexPointSize = new ImFloat();
 
     // Texture Editor ImGui state holders
     private final ImFloat gridOpacitySlider = new ImFloat();
@@ -187,6 +190,19 @@ public class UnifiedPreferencesPageRenderer {
                 200.0f,
                 this::onGridSnappingIncrementChanged
         );
+
+        PreferencesPageRenderer.renderSliderSetting(
+                "Vertex Point Size",
+                "Controls the size of vertex points when 'Show Vertices' is enabled.\n" +
+                        "Larger values make vertices more visible.\n" +
+                        "Enable vertex display with the 'Vertices' checkbox in the viewport toolbar.\n" +
+                        "Default: 5.0",
+                vertexPointSize,
+                MIN_VERTEX_POINT_SIZE,
+                MAX_VERTEX_POINT_SIZE,
+                "%.1f",
+                this::onVertexPointSizeChanged
+        );
     }
 
     private void renderUISettings() {
@@ -254,6 +270,29 @@ public class UnifiedPreferencesPageRenderer {
         }
     }
 
+    private void onVertexPointSizeChanged(Float newValue) {
+        // Clamp value to valid range
+        float clampedValue = Math.max(MIN_VERTEX_POINT_SIZE,
+                Math.min(MAX_VERTEX_POINT_SIZE, newValue));
+
+        // Save to AppConfig (persists to disk)
+        try {
+            com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+            appConfig.setVertexPointSize(clampedValue);
+            appConfig.saveConfiguration();
+        } catch (Exception e) {
+            logger.error("Failed to save vertex point size to AppConfig", e);
+        }
+
+        // Apply to viewport in real-time
+        if (viewport != null) {
+            viewport.setVertexPointSize(clampedValue);
+            logger.debug("Vertex point size updated in real-time: {}", clampedValue);
+        } else {
+            logger.debug("Vertex point size saved (viewport will apply on next load): {}", clampedValue);
+        }
+    }
+
     private void resetModelViewerToDefaults() {
         // Reset camera sensitivity
         preferencesManager.setCameraMouseSensitivity(3.0f);
@@ -270,6 +309,18 @@ public class UnifiedPreferencesPageRenderer {
             propertyPanel.setCompactMode(true);
         }
 
+        // Reset vertex point size (default: 5.0)
+        try {
+            com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+            appConfig.setVertexPointSize(5.0f);
+            appConfig.saveConfiguration();
+            if (viewport != null) {
+                viewport.setVertexPointSize(5.0f);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to reset vertex point size", e);
+        }
+
         logger.info("Model Viewer preferences reset to defaults");
     }
 
@@ -281,6 +332,16 @@ public class UnifiedPreferencesPageRenderer {
         float currentIncrement = preferencesManager.getGridSnappingIncrement();
         int index = findGridSnappingIncrementIndex(currentIncrement);
         gridSnappingIncrementIndex.set(index);
+
+        // Sync vertex point size from AppConfig
+        // Note: Using AppConfig directly since PreferencesManager doesn't handle vertex point size yet
+        try {
+            com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+            vertexPointSize.set(appConfig.getVertexPointSize());
+        } catch (Exception e) {
+            logger.warn("Failed to sync vertex point size, using default: 5.0", e);
+            vertexPointSize.set(5.0f);
+        }
     }
 
     /**

@@ -202,6 +202,18 @@ public class OpenMason3DViewport {
                     legacyCowTextureAtlas, blockModelRenderer, gizmoRenderer
             );
 
+            // Load vertex point size from config and apply to renderer
+            try {
+                com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+                float vertexPointSize = appConfig.getVertexPointSize();
+                if (renderPipeline.getVertexRenderer() != null) {
+                    renderPipeline.getVertexRenderer().setPointSize(vertexPointSize);
+                    logger.debug("Loaded vertex point size from config: {}", vertexPointSize);
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to load vertex point size from config, using default", e);
+            }
+
             // Update state
             this.viewportState = viewportState.toBuilder().initialized(true).build();
 
@@ -555,6 +567,14 @@ public class OpenMason3DViewport {
             }
         }
 
+        if (renderPipeline != null) {
+            try {
+                renderPipeline.cleanup();
+            } catch (Exception e) {
+                logger.error("Error cleaning up render pipeline", e);
+            }
+        }
+
         resourceManager.close();
         shaderManager.cleanup();
 
@@ -604,6 +624,23 @@ public class OpenMason3DViewport {
             gizmoRenderer.updateViewportState(this.viewportState);
         }
         logger.debug("Grid snapping increment updated to: {}", increment);
+    }
+
+    public boolean isShowVertices() { return viewportState.isShowVertices(); }
+    public void setShowVertices(boolean showVertices) {
+        this.viewportState = viewportState.toBuilder().showVertices(showVertices).build();
+        // Enable/disable vertex renderer
+        if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
+            renderPipeline.getVertexRenderer().setEnabled(showVertices);
+        }
+        logger.debug("Show vertices: {}", showVertices);
+    }
+
+    public void setVertexPointSize(float size) {
+        if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
+            renderPipeline.getVertexRenderer().setPointSize(size);
+            logger.debug("Vertex point size updated to: {}", size);
+        }
     }
 
     public int getColorTexture() { return resourceManager.getFramebuffer().getColorTextureId(); }
