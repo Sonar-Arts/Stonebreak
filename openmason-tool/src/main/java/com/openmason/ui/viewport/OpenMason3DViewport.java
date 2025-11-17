@@ -214,6 +214,12 @@ public class OpenMason3DViewport {
                 logger.warn("Failed to load vertex point size from config, using default", e);
             }
 
+            // Set vertex renderer in input handler for hover detection
+            if (renderPipeline.getVertexRenderer() != null) {
+                inputHandler.setVertexRenderer(renderPipeline.getVertexRenderer());
+                logger.debug("Vertex renderer set in input handler for hover detection");
+            }
+
             // Update state
             this.viewportState = viewportState.toBuilder().initialized(true).build();
 

@@ -1,6 +1,8 @@
 package com.openmason.ui.viewport;
 
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
+import com.openmason.ui.viewport.rendering.VertexHoverDetector;
+import com.openmason.ui.viewport.rendering.VertexRenderer;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.lwjgl.BufferUtils;
@@ -31,6 +33,9 @@ public class ViewportInputHandler {
 
     // Gizmo renderer for transform interaction
     private GizmoRenderer gizmoRenderer = null;
+
+    // Vertex renderer for vertex hover detection
+    private VertexRenderer vertexRenderer = null;
 
     // Mouse interaction state
     private boolean isDragging = false;
@@ -67,6 +72,15 @@ public class ViewportInputHandler {
     public void setGizmoRenderer(GizmoRenderer gizmoRenderer) {
         this.gizmoRenderer = gizmoRenderer;
         logger.debug("Gizmo renderer set in ViewportInputHandler");
+    }
+
+    /**
+     * Set the vertex renderer for vertex hover detection.
+     * This should be called after viewport initialization.
+     */
+    public void setVertexRenderer(VertexRenderer vertexRenderer) {
+        this.vertexRenderer = vertexRenderer;
+        logger.debug("Vertex renderer set in ViewportInputHandler");
     }
     
     /**
@@ -228,6 +242,20 @@ public class ViewportInputHandler {
                 gizmoIsActive = true;
                 gizmoHandledInput = true; // Treat hover as "handled" to block camera input
             }
+        }
+
+        // ========== Vertex Hover Detection ==========
+        // Handle vertex hover using the same pattern as gizmo
+        if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled()) {
+            // Update vertex hover with camera matrices for raycasting
+            vertexRenderer.handleMouseMove(
+                viewportMouseX,
+                viewportMouseY,
+                camera.getViewMatrix(),
+                camera.getProjectionMatrix(),
+                (int) imageWidth,
+                (int) imageHeight
+            );
         }
 
         // ========== Camera Input Handling (Fallthrough) ==========

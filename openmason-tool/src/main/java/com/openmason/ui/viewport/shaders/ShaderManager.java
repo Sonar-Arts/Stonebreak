@@ -60,7 +60,8 @@ public class ShaderManager {
     }
 
     /**
-     * Create basic shader for simple geometry (grid, test cube).
+     * Create basic shader for simple geometry (vertices, grid, test cube).
+     * Uses intensity multiplier for hover highlighting (same pattern as gizmo shader).
      */
     private ShaderProgram createBasicShader() {
         logger.debug("Creating BASIC shader program");
@@ -68,15 +69,16 @@ public class ShaderManager {
         String vertexShaderSource = """
             #version 330 core
             layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aColor;
 
             uniform mat4 uMVPMatrix;
-            uniform vec3 uColor;
+            uniform float uIntensity;
 
             out vec3 vertexColor;
 
             void main() {
                 gl_Position = uMVPMatrix * vec4(aPos, 1.0);
-                vertexColor = uColor;
+                vertexColor = aColor * uIntensity;
             }
             """;
 
@@ -95,9 +97,9 @@ public class ShaderManager {
         int program = linkProgram(vertexShader, fragmentShader);
 
         int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
-        int colorLocation = glGetUniformLocation(program, "uColor");
+        int colorLocation = -1; // Not used for intensity-based highlighting
 
-        logger.debug("BASIC shader created - program: {}, mvp: {}, color: {}", program, mvpLocation, colorLocation);
+        logger.debug("BASIC shader created - program: {}, mvp: {}", program, mvpLocation);
         return new ShaderProgram(ShaderType.BASIC, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
     }
 

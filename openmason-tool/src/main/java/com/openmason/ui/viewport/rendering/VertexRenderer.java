@@ -37,7 +37,12 @@ public class VertexRenderer {
     // Rendering state
     private boolean enabled = false;
     private float pointSize = 5.0f;
-    private final Vector3f vertexColor = new Vector3f(1.0f, 0.6f, 0.0f); // Blender's orange
+    private final Vector3f defaultVertexColor = new Vector3f(1.0f, 0.6f, 0.0f); // Blender's orange
+    private final Vector3f hoverVertexColor = new Vector3f(1.0f, 1.0f, 0.0f); // Yellow for hover
+
+    // Hover state
+    private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
+    private float[] vertexPositions = null; // Store positions for hit testing
 
     // Vertex extraction (Single Responsibility)
     private final VertexExtractor vertexExtractor = new VertexExtractor();
@@ -62,10 +67,17 @@ public class VertexRenderer {
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
 
-            // Configure vertex attributes
+            // Configure vertex attributes (interleaved: position + color)
+            // Stride = 6 floats (3 for position, 3 for color)
+            int stride = 6 * Float.BYTES;
+
             // Position attribute (location = 0)
-            glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
             glEnableVertexAttribArray(0);
+
+            // Color attribute (location = 1)
+            glVertexAttribPointer(1, 3, GL_FLOAT, false, stride, 3 * Float.BYTES);
+            glEnableVertexAttribArray(1);
 
             // Unbind
             glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -99,21 +111,86 @@ public class VertexRenderer {
 
         if (parts == null || parts.isEmpty()) {
             vertexCount = 0;
+            vertexPositions = null;
             return;
         }
 
         try {
             // Extract vertices using VertexExtractor (Single Responsibility)
-            float[] vertices = vertexExtractor.extractVertices(parts, transformMatrix);
+            float[] positions = vertexExtractor.extractVertices(parts, transformMatrix);
+
+            // Store positions for hit testing
+            vertexPositions = positions;
+            vertexCount = positions.length / 3;
+
+            // Create interleaved vertex data (position + color)
+            // KISS: All vertices always orange - intensity uniform handles hover highlighting
+            float[] vertexData = new float[vertexCount * 6]; // 3 for position, 3 for color
+
+            for (int i = 0; i < vertexCount; i++) {
+                int posIndex = i * 3;
+                int dataIndex = i * 6;
+
+                // Copy position
+                vertexData[dataIndex + 0] = positions[posIndex + 0];
+                vertexData[dataIndex + 1] = positions[posIndex + 1];
+                vertexData[dataIndex + 2] = positions[posIndex + 2];
+
+                // All vertices use default orange color (same pattern as gizmo)
+                vertexData[dataIndex + 3] = defaultVertexColor.x;
+                vertexData[dataIndex + 4] = defaultVertexColor.y;
+                vertexData[dataIndex + 5] = defaultVertexColor.z;
+            }
 
             // Upload to GPU
-            vertexCount = vertices.length / 3;
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertices, GL_DYNAMIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, vertexData, GL_DYNAMIC_DRAW);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         } catch (Exception e) {
             logger.error("Error updating vertex data", e);
+        }
+    }
+
+    /**
+     * Handle mouse movement for vertex hover detection.
+     * Follows the same pattern as GizmoRenderer.handleMouseMove().
+     *
+     * @param mouseX Mouse X coordinate in viewport space
+     * @param mouseY Mouse Y coordinate in viewport space
+     * @param viewMatrix Camera view matrix
+     * @param projectionMatrix Camera projection matrix
+     * @param viewportWidth Viewport width in pixels
+     * @param viewportHeight Viewport height in pixels
+     */
+    public void handleMouseMove(float mouseX, float mouseY,
+                               Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                               int viewportWidth, int viewportHeight) {
+        if (!initialized || !enabled) {
+            return;
+        }
+
+        if (vertexPositions == null || vertexCount == 0) {
+            return;
+        }
+
+        // Detect hovered vertex using screen-space point size detection
+        int newHoveredVertex = VertexHoverDetector.detectHoveredVertex(
+            mouseX, mouseY,
+            viewportWidth, viewportHeight,
+            viewMatrix, projectionMatrix,
+            vertexPositions,
+            vertexCount,
+            pointSize  // Use actual vertex point size for accurate detection
+        );
+
+        // Update hover state if changed (same pattern as gizmo)
+        if (newHoveredVertex != hoveredVertexIndex) {
+            int previousHover = hoveredVertexIndex;
+            hoveredVertexIndex = newHoveredVertex;
+
+            logger.debug("Vertex hover changed: {} -> {} (total vertices: {})",
+                        previousHover, hoveredVertexIndex, vertexCount);
         }
     }
 
@@ -140,25 +217,52 @@ public class VertexRenderer {
             shader.use();
 
             // Calculate MVP matrix (model is identity since vertices are already transformed)
-            // This matches Blender's approach: vertices stored locally, rendered in world space
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
             Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix);
 
-            // Upload uniforms
+            // Upload MVP matrix
             shader.setMat4("uMVPMatrix", mvpMatrix);
-            shader.setVec3("uColor", vertexColor);
 
             // Set point size (fixed function)
             glPointSize(pointSize);
 
             // Save and modify depth function to ensure points are visible on surfaces
             int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
-            glDepthFunc(GL_LEQUAL); // Use LEQUAL to allow points on surfaces
+            glDepthFunc(GL_LEQUAL);
 
-            // Render vertices
+            // Bind VAO
             glBindVertexArray(vao);
-            glDrawArrays(GL_POINTS, 0, vertexCount);
+
+            // KISS: Render each vertex with appropriate intensity (same pattern as gizmo)
+            // Hovered vertex gets high intensity (brightens to yellow), others get normal intensity
+            float normalIntensity = 1.0f;
+            float hoverIntensity = 2.5f; // Orange * 2.5 ≈ Yellow
+
+            // Get intensity uniform location
+            int intensityLoc = glGetUniformLocation(shader.getProgramId(), "uIntensity");
+
+            // Render all vertices at once with appropriate intensity
+            if (hoveredVertexIndex >= 0) {
+                // Render non-hovered vertices with normal intensity
+                shader.setFloat("uIntensity", normalIntensity);
+
+                // Draw all except hovered
+                for (int i = 0; i < vertexCount; i++) {
+                    if (i != hoveredVertexIndex) {
+                        glDrawArrays(GL_POINTS, i, 1);
+                    }
+                }
+
+                // Render hovered vertex with high intensity (yellow)
+                shader.setFloat("uIntensity", hoverIntensity);
+                glDrawArrays(GL_POINTS, hoveredVertexIndex, 1);
+            } else {
+                // No hover - render all vertices with normal intensity
+                shader.setFloat("uIntensity", normalIntensity);
+                glDrawArrays(GL_POINTS, 0, vertexCount);
+            }
+
             glBindVertexArray(0);
 
             // Restore previous depth function
@@ -187,6 +291,41 @@ public class VertexRenderer {
         initialized = false;
     }
 
+    /**
+     * Set the hovered vertex index.
+     * @param vertexIndex Index of the hovered vertex, or -1 for no hover
+     */
+    public void setHoveredVertex(int vertexIndex) {
+        if (this.hoveredVertexIndex != vertexIndex) {
+            this.hoveredVertexIndex = vertexIndex;
+            logger.trace("Hovered vertex changed to: {}", vertexIndex);
+        }
+    }
+
+    /**
+     * Get the hovered vertex index.
+     * @return Index of the hovered vertex, or -1 if no vertex is hovered
+     */
+    public int getHoveredVertexIndex() {
+        return hoveredVertexIndex;
+    }
+
+    /**
+     * Get vertex positions for hit testing.
+     * @return Array of vertex positions [x, y, z, x, y, z, ...] or null if no data
+     */
+    public float[] getVertexPositions() {
+        return vertexPositions;
+    }
+
+    /**
+     * Get the number of vertices.
+     * @return Number of vertices
+     */
+    public int getVertexCount() {
+        return vertexCount;
+    }
+
     // Getters and setters
 
     public boolean isEnabled() {
@@ -211,10 +350,18 @@ public class VertexRenderer {
     }
 
     public Vector3f getVertexColor() {
-        return new Vector3f(vertexColor);
+        return new Vector3f(defaultVertexColor);
     }
 
     public void setVertexColor(float r, float g, float b) {
-        this.vertexColor.set(r, g, b);
+        this.defaultVertexColor.set(r, g, b);
+    }
+
+    public Vector3f getHoverVertexColor() {
+        return new Vector3f(hoverVertexColor);
+    }
+
+    public void setHoverVertexColor(float r, float g, float b) {
+        this.hoverVertexColor.set(r, g, b);
     }
 }
