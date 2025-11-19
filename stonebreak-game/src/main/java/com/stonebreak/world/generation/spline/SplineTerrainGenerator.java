@@ -107,6 +107,18 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         float heightFromSeaLevel = baseOffset - seaLevel;
         float modifiedHeight = seaLevel + (heightFromSeaLevel * erosionFactor) + pvAmplification;
 
+        // TERRA v.10: Erosion-gated weirdness (floating islands only in mountains)
+        // This prevents floating plains and keeps floating features in mountainous areas only
+        // Works in conjunction with increased weirdness thresholds in OffsetSplineRouter (0.8 instead of 0.6)
+        float weirdnessEffect = 0.0f;
+        if (params.erosion < -0.3f && params.weirdness > 0.7f) {
+            // Only apply weirdness boost in mountainous areas (erosion < -0.3)
+            float weirdStrength = Math.max(0.0f, -params.erosion);  // 0.0 to 1.0
+            // Scale from 0 at weirdness=0.7 to full effect at weirdness=1.0
+            weirdnessEffect = (params.weirdness - 0.7f) / 0.3f * 12.0f * weirdStrength;
+        }
+        modifiedHeight += weirdnessEffect;
+
         // TERRA v.09: Minecraft-style jaggedness gating (Terralith-inspired)
         // Jaggedness only applies in specific conditions like Minecraft:
         // - High continentalness (mountainous inland areas)

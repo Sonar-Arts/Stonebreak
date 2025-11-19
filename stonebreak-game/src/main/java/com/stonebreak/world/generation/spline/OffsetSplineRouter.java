@@ -324,13 +324,13 @@ public class OffsetSplineRouter {
         // Zero modifier, derivative 0.0
         weirdnessSpline.addPoint(0.00f, baseHeight, 0.0f);
 
-        // Floating Chunks (weirdness = 0.60)
-        // +15 blocks modifier, derivative 2.0 for dramatic rise
-        weirdnessSpline.addPoint(0.60f, baseHeight + 15.0f, 2.0f);
+        // Floating Chunks (TERRA v.10: weirdness = 0.80, threshold increased to make rarer)
+        // +12 blocks modifier, derivative 2.0 for dramatic rise
+        weirdnessSpline.addPoint(0.80f, baseHeight + 12.0f, 2.0f);
 
-        // Extreme Floating Islands (weirdness = 1.00)
-        // +30 blocks modifier, derivative 1.5 for floating island peaks
-        weirdnessSpline.addPoint(1.00f, baseHeight + 30.0f, 1.5f);
+        // Extreme Floating Islands (TERRA v.10: weirdness = 1.00, reduced height modifier)
+        // +25 blocks modifier, derivative 1.5 for floating island peaks
+        weirdnessSpline.addPoint(1.00f, baseHeight + 25.0f, 1.5f);
 
         return weirdnessSpline;
     }

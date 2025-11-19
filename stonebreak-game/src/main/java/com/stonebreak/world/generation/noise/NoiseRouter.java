@@ -121,14 +121,14 @@ public class NoiseRouter {
                 worldZ / config.continentalnessNoiseScale
         );
 
-        // Sample erosion (scale 300 blocks per unit for large flat plains)
-        float erosion = erosionNoise.noise(worldX / 300.0f, worldZ / 300.0f);
+        // Sample erosion (TERRA v.10: scale 900 blocks for continental-scale flat plains and mountain ranges)
+        float erosion = erosionNoise.noise(worldX / 900.0f, worldZ / 900.0f);
 
-        // Sample peaks & valleys (scale 150 blocks per unit)
-        float peaksValleys = peaksValleysNoise.noise(worldX / 150.0f, worldZ / 150.0f);
+        // Sample peaks & valleys (TERRA v.10: scale 350 blocks for smoother height transitions)
+        float peaksValleys = peaksValleysNoise.noise(worldX / 350.0f, worldZ / 350.0f);
 
-        // Sample weirdness (scale 200 blocks per unit)
-        float weirdness = weirdnessNoise.noise(worldX / 200.0f, worldZ / 200.0f);
+        // Sample weirdness (TERRA v.10: scale 500 blocks for expansive plateau/mesa formations)
+        float weirdness = weirdnessNoise.noise(worldX / 500.0f, worldZ / 500.0f);
 
         // Sample temperature (height parameter unused but passed for consistency)
         float temperature = sampleTemperature(worldX, worldZ, height);
@@ -196,7 +196,7 @@ public class NoiseRouter {
      * @return Erosion in range [-1.0, 1.0]
      */
     public float getErosion(int worldX, int worldZ) {
-        return erosionNoise.noise(worldX / 300.0f, worldZ / 300.0f);
+        return erosionNoise.noise(worldX / 900.0f, worldZ / 900.0f);
     }
 
     /**
@@ -235,7 +235,7 @@ public class NoiseRouter {
      * @return Peaks & valleys in range [-1.0, 1.0]
      */
     public float getPeaksValleys(int worldX, int worldZ) {
-        return peaksValleysNoise.noise(worldX / 150.0f, worldZ / 150.0f);
+        return peaksValleysNoise.noise(worldX / 350.0f, worldZ / 350.0f);
     }
 
     /**
@@ -247,7 +247,7 @@ public class NoiseRouter {
      * @return Weirdness in range [-1.0, 1.0]
      */
     public float getWeirdness(int worldX, int worldZ) {
-        return weirdnessNoise.noise(worldX / 200.0f, worldZ / 200.0f);
+        return weirdnessNoise.noise(worldX / 500.0f, worldZ / 500.0f);
     }
 
     /**
