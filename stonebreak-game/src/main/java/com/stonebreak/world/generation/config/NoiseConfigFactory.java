@@ -275,6 +275,25 @@ public class NoiseConfigFactory {
         return new NoiseConfig(4, 0.5, 2.0);
     }
 
+    /**
+     * Regional flatness noise: Very large-scale terrain flattening masks.
+     * Very low frequency (1750-block scale) for regional terrain characteristics.
+     *
+     * Characteristics:
+     * - 5 octaves for smooth regional boundaries
+     * - 0.5 persistence for balanced variation
+     * - 2.0 lacunarity (standard)
+     *
+     * Used by SplineTerrainGenerator for TERRA v.11 regional flatness masking,
+     * creating expansive flat plains while preserving dramatic mountains.
+     * Regions with high flatness values (>0.3) have reduced height variation.
+     *
+     * @return Noise config for regional flatness masking
+     */
+    public static NoiseConfig regionalFlatness() {
+        return new NoiseConfig(5, 0.5, 2.0);
+    }
+
     // Prevent instantiation - this is a utility class
     private NoiseConfigFactory() {
         throw new AssertionError("NoiseConfigFactory should not be instantiated");

@@ -43,6 +43,7 @@ public class NoiseRouter {
     private final WeirdnessNoiseGenerator weirdnessNoise;
     private final NoiseGenerator temperatureNoise;
     private final NoiseGenerator humidityNoise;
+    private final NoiseGenerator regionalFlatnessNoise;
 
     private final TerrainGenerationConfig config;
     private final int seaLevel;
@@ -80,6 +81,7 @@ public class NoiseRouter {
         this.weirdnessNoise = new WeirdnessNoiseGenerator(seed + 12, NoiseConfigFactory.terrainWeirdness());
         this.temperatureNoise = new NoiseGenerator(seed + 1, NoiseConfigFactory.temperature());
         this.humidityNoise = new NoiseGenerator(seed, NoiseConfigFactory.moisture());
+        this.regionalFlatnessNoise = new NoiseGenerator(seed + 13, NoiseConfigFactory.regionalFlatness());
 
         // Initialize parameter interpolator if enabled
         if (config.enableParameterInterpolation) {
@@ -248,6 +250,22 @@ public class NoiseRouter {
      */
     public float getWeirdness(int worldX, int worldZ) {
         return weirdnessNoise.noise(worldX / 500.0f, worldZ / 500.0f);
+    }
+
+    /**
+     * Gets the regional flatness value at a position.
+     * Convenience method for TERRA v.11 regional flatness masking.
+     *
+     * Regional flatness operates at a very large scale (1750 blocks) to create
+     * regional variation in terrain flatness. High values (>0.3) indicate plains
+     * regions that should be flattened, while low values preserve full terrain variation.
+     *
+     * @param worldX World X coordinate
+     * @param worldZ World Z coordinate
+     * @return Regional flatness in range [-1.0, 1.0] (high values = flatter terrain)
+     */
+    public float getRegionalFlatness(int worldX, int worldZ) {
+        return regionalFlatnessNoise.noise(worldX / 1750.0f, worldZ / 1750.0f);
     }
 
     /**

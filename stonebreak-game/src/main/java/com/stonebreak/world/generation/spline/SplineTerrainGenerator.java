@@ -6,6 +6,7 @@ import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.debug.HeightCalculationDebugInfo;
 import com.stonebreak.world.generation.density.TerrainDensityFunction;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
+import com.stonebreak.world.generation.noise.NoiseRouter;
 
 import java.util.ArrayList;
 
@@ -37,6 +38,7 @@ public class SplineTerrainGenerator implements TerrainGenerator {
     private final FactorSplineRouter factorRouter;
     private final TerrainDensityFunction densityFunction;
     private final boolean use3DDensity;
+    private final NoiseRouter noiseRouter;
 
     /**
      * Create a new spline terrain generator.
@@ -55,6 +57,9 @@ public class SplineTerrainGenerator implements TerrainGenerator {
         this.jaggednessRouter = new JaggednessSplineRouter(seed);
         this.factorRouter = new FactorSplineRouter(seed);
         this.densityFunction = new TerrainDensityFunction(seed);
+
+        // Initialize noise router for TERRA v.11 regional flatness masking
+        this.noiseRouter = new NoiseRouter(seed, config);
     }
 
     @Override
@@ -131,6 +136,27 @@ public class SplineTerrainGenerator implements TerrainGenerator {
             jaggednessStrength = Math.max(0.0f, -params.erosion); // 0.0 to 1.0
         }
         float jaggedness = jaggednessRouter.getJaggedness(params, x, z) * jaggednessStrength;
+
+        // TERRA v.11: Regional flatness masking (post-processing)
+        // Sample regional flatness noise to determine if this is a plains region
+        float regionalFlatness = noiseRouter.getRegionalFlatness(x, z);
+
+        if (regionalFlatness > 0.3f) {
+            // This is a "plains region" - apply aggressive height flattening
+            // Calculate flattening strength: 0% at flatness=0.3, 100% at flatness=1.0
+            float flatteningStrength = Math.min(1.0f, (regionalFlatness - 0.3f) / 0.7f);
+
+            // Calculate deviation from sea level (Y=64)
+            float heightDeviation = modifiedHeight - 64.0f;
+
+            // Apply aggressive flattening: 0.3x to 0.15x of deviation
+            // flatteningStrength=0 → 0.3x, flatteningStrength=1 → 0.15x
+            float flatteningFactor = 0.3f - (flatteningStrength * 0.15f);
+
+            // Apply flattening to deviation only (preserve sea level baseline)
+            modifiedHeight = 64.0f + (heightDeviation * flatteningFactor);
+        }
+        // Else: mountain region (flatness <= 0.3) - no changes, preserve full Terra v.10 height
 
         return Math.round(modifiedHeight + jaggedness);
     }
