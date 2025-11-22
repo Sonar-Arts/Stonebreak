@@ -53,7 +53,8 @@ public class WorldConfiguration {
     }
 
     private static int calculateOptimalThreadCount() {
-        return Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+        // Use all available cores for maximum mesh generation throughput
+        return Math.max(4, Runtime.getRuntime().availableProcessors());
     }
 
     public static class Builder {

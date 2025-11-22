@@ -272,9 +272,9 @@ public class WorldChunkStore {
     }
 
     // Dynamic feature population limit state
-    private int currentFeaturePopulationLimit = 15; // Start at 15 (was 10)
-    private static final int MIN_FEATURE_POPULATION_LIMIT = 5;
-    private static final int MAX_FEATURE_POPULATION_LIMIT = 40;
+    private int currentFeaturePopulationLimit = 40; // Aggressive default for maximum loading speed
+    private static final int MIN_FEATURE_POPULATION_LIMIT = 10;
+    private static final int MAX_FEATURE_POPULATION_LIMIT = 80;
     private static final float FEATURE_TARGET_FRAME_TIME_MS = 16.0f;
 
     /**

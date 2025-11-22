@@ -39,7 +39,7 @@ public class ChunkManager {
     // Use configurable thread pool size (4-6 threads typical)
     // Dynamically calculated based on CPU cores, min 2, max 8
     private final ExecutorService chunkExecutor;
-    private static final float UPDATE_INTERVAL = 1.0f; // Update every second
+    private static final float UPDATE_INTERVAL = 0.1f; // Update every 100ms (10x faster chunk discovery)
     private static volatile boolean optimizationsEnabled = true;
     private static long lastMemoryCheck = 0;
     private static boolean highMemoryPressure = false;
@@ -77,8 +77,8 @@ public class ChunkManager {
      */
     private static int calculateOptimalChunkLoadThreads() {
         int cores = Runtime.getRuntime().availableProcessors();
-        // Min 2, max 8, typically cores/2 + 1
-        return Math.max(2, Math.min(8, cores / 2 + 1));
+        // Min 4, max 16, use all cores for maximum parallelism
+        return Math.max(4, Math.min(16, cores));
     }
 
     public void update(Player player) {
@@ -338,9 +338,9 @@ public class ChunkManager {
     }
 
     // Adaptive GL batch sizing state
-    private static int currentGLBatchSize = 16; // Start at safe default
-    private static final int MIN_GL_BATCH_SIZE = 2;
-    private static final int MAX_GL_BATCH_SIZE = 64;
+    private static int currentGLBatchSize = 32; // Aggressive default for maximum loading speed
+    private static final int MIN_GL_BATCH_SIZE = 4;
+    private static final int MAX_GL_BATCH_SIZE = 128;
     private static final float GL_TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
     private static final float GL_HIGH_FRAME_TIME_MS = 18.0f; // Reduce uploads if above
     private static final float GL_LOW_FRAME_TIME_MS = 14.0f; // Increase uploads if below

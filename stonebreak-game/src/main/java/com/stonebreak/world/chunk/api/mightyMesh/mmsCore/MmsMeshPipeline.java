@@ -60,9 +60,9 @@ public final class MmsMeshPipeline {
     private volatile boolean shutdown = false;
 
     // Frame budget tracking for adaptive mesh generation
-    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 10;
-    private static final int MIN_MESH_BUILDS_PER_FRAME = 3;
-    private static final int MAX_MESH_BUILDS_PER_FRAME = 20;
+    private static final int DEFAULT_MAX_MESH_BUILDS_PER_FRAME = 24;
+    private static final int MIN_MESH_BUILDS_PER_FRAME = 6;
+    private static final int MAX_MESH_BUILDS_PER_FRAME = 48;
     private static final float TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
     private static final float HIGH_FRAME_TIME_MS = 20.0f; // Reduce if above this
     private static final float LOW_FRAME_TIME_MS = 12.0f; // Increase if below this
