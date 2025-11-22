@@ -222,7 +222,7 @@ public class ViewportImGuiInterface {
 
         ImGui.sameLine();
 
-        if (ImGui.checkbox("Vertices##viewport", showVertices)) {
+        if (ImGui.checkbox("Mesh##viewport", showVertices)) {
             toggleShowVertices();
         }
 

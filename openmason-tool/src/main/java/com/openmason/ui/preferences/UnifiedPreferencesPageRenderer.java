@@ -193,9 +193,9 @@ public class UnifiedPreferencesPageRenderer {
 
         PreferencesPageRenderer.renderSliderSetting(
                 "Vertex Point Size",
-                "Controls the size of vertex points when 'Show Vertices' is enabled.\n" +
+                "Controls the size of vertex points when 'Show Mesh' is enabled.\n" +
                         "Larger values make vertices more visible.\n" +
-                        "Enable vertex display with the 'Vertices' checkbox in the viewport toolbar.\n" +
+                        "Enable mesh display (vertices + edges) with the 'Mesh' checkbox in the viewport toolbar.\n" +
                         "Default: 5.0",
                 vertexPointSize,
                 MIN_VERTEX_POINT_SIZE,

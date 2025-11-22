@@ -220,6 +220,12 @@ public class OpenMason3DViewport {
                 logger.debug("Vertex renderer set in input handler for hover detection");
             }
 
+            // Set edge renderer in input handler for hover detection
+            if (renderPipeline.getEdgeRenderer() != null) {
+                inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
+                logger.debug("Edge renderer set in input handler for hover detection");
+            }
+
             // Update state
             this.viewportState = viewportState.toBuilder().initialized(true).build();
 
@@ -638,6 +644,10 @@ public class OpenMason3DViewport {
         // Enable/disable vertex renderer
         if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
             renderPipeline.getVertexRenderer().setEnabled(showVertices);
+        }
+        // Enable/disable edge renderer (mesh visualization includes edges)
+        if (renderPipeline != null && renderPipeline.getEdgeRenderer() != null) {
+            renderPipeline.getEdgeRenderer().setEnabled(showVertices);
         }
     }
 

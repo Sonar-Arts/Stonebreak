@@ -40,6 +40,7 @@ public class RenderPipeline {
     // Specialized renderers
     private final InfiniteGridRenderer infiniteGridRenderer;
     private final VertexRenderer vertexRenderer;
+    private final EdgeRenderer edgeRenderer;
 
     // External renderers (models, blocks, items)
     private final LegacyCowModelRenderer legacyCowModelRenderer;
@@ -69,6 +70,7 @@ public class RenderPipeline {
         this.shaderManager = shaderManager;
         this.infiniteGridRenderer = new InfiniteGridRenderer();
         this.vertexRenderer = new VertexRenderer();
+        this.edgeRenderer = new EdgeRenderer();
         this.legacyCowModelRenderer = legacyCowModelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
@@ -124,9 +126,10 @@ public class RenderPipeline {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // PASS 3: Render vertices (debug overlay, Blender-style)
+            // PASS 3: Render mesh (vertices + edges, debug overlay, Blender-style)
             if (viewportState.isShowVertices()) {
                 renderVertices(renderingState, transformState);
+                renderEdges(renderingState, transformState);
             }
 
             // PASS 4: Render gizmo (after content, always in fill mode)
@@ -360,6 +363,7 @@ public class RenderPipeline {
 
     /**
      * Render vertices pass (Blender-style vertex visualization).
+     * Note: Edge rendering is handled separately in renderEdges().
      */
     private void renderVertices(RenderingState renderingState, TransformState transformState) {
         try {
@@ -409,6 +413,60 @@ public class RenderPipeline {
 
         } catch (Exception e) {
             logger.error("Error rendering vertices", e);
+        }
+    }
+
+    /**
+     * Render edges pass (complements vertex rendering for mesh visualization).
+     */
+    private void renderEdges(RenderingState renderingState, TransformState transformState) {
+        try {
+            // Initialize edge renderer if needed
+            if (!edgeRenderer.isInitialized()) {
+                edgeRenderer.initialize();
+            }
+
+            // Render edges based on current rendering mode (mirrors vertex rendering)
+            switch (renderingState.getMode()) {
+                case MODEL:
+                    // Standard cow model rendering
+                    if (renderingState.isModelReady()) {
+                        // Extract all parts from cow model
+                        Collection<ModelDefinition.ModelPart> parts = extractModelParts(
+                            renderingState.getCurrentModel().getModelDefinition()
+                        );
+
+                        edgeRenderer.updateEdgeData(parts, transformState.getTransformMatrix());
+
+                        ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
+                        edgeRenderer.render(basicShader, context);
+                    }
+                    break;
+
+                case BLOCK_MODEL:
+                    // Editable .OMO block model rendering (simple cube)
+                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+                    edgeRenderer.updateEdgeData(cubeParts, transformState.getTransformMatrix());
+
+                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    edgeRenderer.render(basicShaderBlockModel, context);
+                    break;
+
+                case BLOCK:
+                    // Single block rendering
+                    // TODO: Implement edge extraction for Block rendering
+                    logger.trace("BLOCK mode - edges not yet supported");
+                    break;
+
+                case ITEM:
+                    // Item rendering
+                    // TODO: Implement edge extraction for Item rendering
+                    logger.trace("ITEM mode - edges not yet supported");
+                    break;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error rendering edges", e);
         }
     }
 
@@ -493,6 +551,15 @@ public class RenderPipeline {
     }
 
     /**
+     * Gets the edge renderer for external access (preferences, etc.).
+     *
+     * @return The edge renderer
+     */
+    public EdgeRenderer getEdgeRenderer() {
+        return edgeRenderer;
+    }
+
+    /**
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
@@ -501,6 +568,9 @@ public class RenderPipeline {
         }
         if (vertexRenderer != null && vertexRenderer.isInitialized()) {
             vertexRenderer.cleanup();
+        }
+        if (edgeRenderer != null && edgeRenderer.isInitialized()) {
+            edgeRenderer.cleanup();
         }
         logger.debug("RenderPipeline cleanup complete");
     }

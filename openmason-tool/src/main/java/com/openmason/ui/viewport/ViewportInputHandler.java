@@ -37,6 +37,9 @@ public class ViewportInputHandler {
     // Vertex renderer for vertex hover detection
     private VertexRenderer vertexRenderer = null;
 
+    // Edge renderer for edge hover detection
+    private com.openmason.ui.viewport.rendering.EdgeRenderer edgeRenderer = null;
+
     // Mouse interaction state
     private boolean isDragging = false;
     
@@ -81,6 +84,15 @@ public class ViewportInputHandler {
     public void setVertexRenderer(VertexRenderer vertexRenderer) {
         this.vertexRenderer = vertexRenderer;
         logger.debug("Vertex renderer set in ViewportInputHandler");
+    }
+
+    /**
+     * Set the edge renderer for edge hover detection.
+     * This should be called after viewport initialization.
+     */
+    public void setEdgeRenderer(com.openmason.ui.viewport.rendering.EdgeRenderer edgeRenderer) {
+        this.edgeRenderer = edgeRenderer;
+        logger.debug("Edge renderer set in ViewportInputHandler");
     }
     
     /**
@@ -249,6 +261,20 @@ public class ViewportInputHandler {
         if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled()) {
             // Update vertex hover with camera matrices for raycasting
             vertexRenderer.handleMouseMove(
+                viewportMouseX,
+                viewportMouseY,
+                camera.getViewMatrix(),
+                camera.getProjectionMatrix(),
+                (int) imageWidth,
+                (int) imageHeight
+            );
+        }
+
+        // ========== Edge Hover Detection ==========
+        // Handle edge hover using the same pattern as vertex hover
+        if (edgeRenderer != null && edgeRenderer.isInitialized() && edgeRenderer.isEnabled()) {
+            // Update edge hover with camera matrices for raycasting
+            edgeRenderer.handleMouseMove(
                 viewportMouseX,
                 viewportMouseY,
                 camera.getViewMatrix(),
