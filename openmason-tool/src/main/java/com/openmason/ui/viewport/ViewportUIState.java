@@ -8,7 +8,7 @@ import imgui.type.ImInt;
  * Holds all viewport UI state in a centralized, immutable-friendly manner.
  * Follows Single Responsibility Principle - only manages state.
  */
-public class ViewportState {
+public class ViewportUIState {
 
     // Viewport visibility state
     private final ImBoolean gridVisible = new ImBoolean(true);

@@ -21,7 +21,7 @@ public class ViewportImGuiInterface {
     private static final Logger logger = LoggerFactory.getLogger(ViewportImGuiInterface.class);
 
     // MVC Components
-    private final ViewportState state;
+    private final ViewportUIState state;
     private ViewportActions actions;
     private ViewportKeyboardShortcuts keyboardShortcuts;
 
@@ -43,7 +43,7 @@ public class ViewportImGuiInterface {
      */
     public ViewportImGuiInterface(PreferencesManager preferencesManager) {
         // Initialize state
-        this.state = new ViewportState();
+        this.state = new ViewportUIState();
         this.preferencesManager = preferencesManager;
 
         // Actions will be initialized after viewport is set
@@ -60,7 +60,7 @@ public class ViewportImGuiInterface {
     /**
      * Internal constructor used after viewport is injected.
      */
-    private ViewportImGuiInterface(ViewportState state, ViewportController viewport, PreferencesManager preferencesManager) {
+    private ViewportImGuiInterface(ViewportUIState state, ViewportController viewport, PreferencesManager preferencesManager) {
         this.state = state;
         this.viewport3D = viewport;
         this.preferencesManager = preferencesManager;
@@ -73,13 +73,13 @@ public class ViewportImGuiInterface {
      * Factory method to create fully initialized controller.
      */
     public static ViewportImGuiInterface create(ViewportController viewport, PreferencesManager preferencesManager) {
-        ViewportState state = new ViewportState();
+        ViewportUIState state = new ViewportUIState();
         return new ViewportImGuiInterface(state, viewport, preferencesManager);
     }
 
     public ViewportImGuiInterface() {
         // Backward compatibility constructor
-        this.state = new ViewportState();
+        this.state = new ViewportUIState();
         this.preferencesManager = new PreferencesManager(); // Create default
         this.actions = null;
         this.keyboardShortcuts = null;
@@ -229,7 +229,7 @@ public class ViewportImGuiInterface {
         return state.isViewportInitialized();
     }
 
-    public ViewportState getState() {
+    public ViewportUIState getState() {
         return state;
     }
 

@@ -2,7 +2,7 @@ package com.openmason.ui.viewport.views;
 
 import com.openmason.ui.ViewportController;
 import com.openmason.ui.viewport.ViewportActions;
-import com.openmason.ui.viewport.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.slf4j.Logger;
@@ -16,14 +16,14 @@ public class ViewportMainView {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportMainView.class);
 
-    private final ViewportState state;
+    private final ViewportUIState state;
     private final ViewportActions actions;
     private final ViewportController viewport;
 
     private final ImVec2 viewportSize = new ImVec2();
     private final ImVec2 viewportPos = new ImVec2();
 
-    public ViewportMainView(ViewportState state, ViewportActions actions, ViewportController viewport) {
+    public ViewportMainView(ViewportUIState state, ViewportActions actions, ViewportController viewport) {
         this.state = state;
         this.actions = actions;
         this.viewport = viewport;

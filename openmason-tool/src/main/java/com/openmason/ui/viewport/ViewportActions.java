@@ -16,7 +16,7 @@ public class ViewportActions {
     private static final Logger logger = LoggerFactory.getLogger(ViewportActions.class);
 
     private final ViewportController viewport;
-    private final ViewportState state;
+    private final ViewportUIState state;
     private final PreferencesManager preferencesManager;
 
     /**
@@ -25,7 +25,7 @@ public class ViewportActions {
      * @param state The viewport state
      * @param preferencesManager The preferences manager for persistence
      */
-    public ViewportActions(ViewportController viewport, ViewportState state, PreferencesManager preferencesManager) {
+    public ViewportActions(ViewportController viewport, ViewportUIState state, PreferencesManager preferencesManager) {
         this.viewport = viewport;
         this.state = state;
         this.preferencesManager = preferencesManager;
@@ -35,28 +35,28 @@ public class ViewportActions {
 
     public void updateViewMode() {
         String viewMode = state.getCurrentViewMode();
-        Camera camera = viewport.getCamera();
+        ViewportCamera viewportCamera = viewport.getCamera();
 
         switch (viewMode.toLowerCase()) {
             case "front" -> {
-                camera.setYaw(0.0f);
-                camera.setPitch(0.0f);
+                viewportCamera.setYaw(0.0f);
+                viewportCamera.setPitch(0.0f);
             }
             case "side" -> {
-                camera.setYaw(90.0f);
-                camera.setPitch(0.0f);
+                viewportCamera.setYaw(90.0f);
+                viewportCamera.setPitch(0.0f);
             }
             case "top" -> {
-                camera.setYaw(0.0f);
-                camera.setPitch(-90.0f);
+                viewportCamera.setYaw(0.0f);
+                viewportCamera.setPitch(-90.0f);
             }
             case "bottom" -> {
-                camera.setYaw(0.0f);
-                camera.setPitch(90.0f);
+                viewportCamera.setYaw(0.0f);
+                viewportCamera.setPitch(90.0f);
             }
             case "isometric" -> {
-                camera.setYaw(45.0f);
-                camera.setPitch(-30.0f);
+                viewportCamera.setYaw(45.0f);
+                viewportCamera.setPitch(-30.0f);
             }
             default -> logger.warn("Unknown view mode: {}", viewMode);
         }
@@ -172,12 +172,12 @@ public class ViewportActions {
 
     public void updateCameraStateFromViewport() {
         // Sync UI state with actual camera state
-        Camera camera = viewport.getCamera();
+        ViewportCamera viewportCamera = viewport.getCamera();
         state.updateCameraState(
-            camera.getDistance(),
-            camera.getPitch(),
-            camera.getYaw(),
-            camera.getFov()
+            viewportCamera.getDistance(),
+            viewportCamera.getPitch(),
+            viewportCamera.getYaw(),
+            viewportCamera.getFov()
         );
     }
 

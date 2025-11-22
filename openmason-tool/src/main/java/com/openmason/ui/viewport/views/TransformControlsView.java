@@ -2,7 +2,7 @@ package com.openmason.ui.viewport.views;
 
 import com.openmason.ui.ViewportController;
 import com.openmason.ui.viewport.ViewportActions;
-import com.openmason.ui.viewport.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
@@ -17,11 +17,11 @@ public class TransformControlsView {
 
     private static final Logger logger = LoggerFactory.getLogger(TransformControlsView.class);
 
-    private final ViewportState state;
+    private final ViewportUIState state;
     private final ViewportActions actions;
     private final ViewportController viewport;
 
-    public TransformControlsView(ViewportState state, ViewportActions actions, ViewportController viewport) {
+    public TransformControlsView(ViewportUIState state, ViewportActions actions, ViewportController viewport) {
         this.state = state;
         this.actions = actions;
         this.viewport = viewport;

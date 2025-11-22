@@ -114,7 +114,7 @@ public class ShaderManager {
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec2 aTexCoord;
 
-            uniform mat4 uMVPMatrix;     // View-Projection matrix (camera)
+            uniform mat4 uMVPMatrix;     // View-Projection matrix (viewportCamera)
             uniform mat4 uModelMatrix;   // Model transformation matrix (per-part positioning)
             uniform vec3 uColor;
             uniform bool uUseTexture;    // Whether to use texture or solid color

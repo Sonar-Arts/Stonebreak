@@ -1,7 +1,6 @@
 package com.openmason.ui.viewport;
 
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
-import com.openmason.ui.viewport.rendering.VertexHoverDetector;
 import com.openmason.ui.viewport.rendering.VertexRenderer;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -29,7 +28,7 @@ public class ViewportInputHandler {
     private static final Logger logger = LoggerFactory.getLogger(ViewportInputHandler.class);
 
     // Camera reference for input handling
-    private final Camera camera;
+    private final ViewportCamera viewportCamera;
 
     // Gizmo renderer for transform interaction
     private GizmoRenderer gizmoRenderer = null;
@@ -50,8 +49,8 @@ public class ViewportInputHandler {
     private long windowHandle = 0L; // GLFW window handle
     private boolean rawMouseMotionSupported = false;
     
-    public ViewportInputHandler(Camera camera) {
-        this.camera = camera;
+    public ViewportInputHandler(ViewportCamera viewportCamera) {
+        this.viewportCamera = viewportCamera;
         // logger.info("ViewportInputHandler initialized");
     }
 
@@ -166,7 +165,7 @@ public class ViewportInputHandler {
      * @param viewportHovered Whether the viewport window is being hovered (not overlaying windows)
      */
     public void handleInput(ImVec2 imagePos, float imageWidth, float imageHeight, boolean viewportHovered) {
-        if (camera == null) {
+        if (viewportCamera == null) {
             logger.warn("Camera is null - cannot handle input");
             return;
         }
@@ -209,8 +208,8 @@ public class ViewportInputHandler {
             gizmoRenderer.handleMouseMove(
                 viewportMouseX,
                 viewportMouseY,
-                camera.getViewMatrix(),
-                camera.getProjectionMatrix(),
+                viewportCamera.getViewMatrix(),
+                viewportCamera.getProjectionMatrix(),
                 (int) imageWidth,
                 (int) imageHeight
             );
@@ -263,8 +262,8 @@ public class ViewportInputHandler {
             vertexRenderer.handleMouseMove(
                 viewportMouseX,
                 viewportMouseY,
-                camera.getViewMatrix(),
-                camera.getProjectionMatrix(),
+                viewportCamera.getViewMatrix(),
+                viewportCamera.getProjectionMatrix(),
                 (int) imageWidth,
                 (int) imageHeight
             );
@@ -277,8 +276,8 @@ public class ViewportInputHandler {
             edgeRenderer.handleMouseMove(
                 viewportMouseX,
                 viewportMouseY,
-                camera.getViewMatrix(),
-                camera.getProjectionMatrix(),
+                viewportCamera.getViewMatrix(),
+                viewportCamera.getProjectionMatrix(),
                 (int) imageWidth,
                 (int) imageHeight
             );
@@ -340,7 +339,7 @@ public class ViewportInputHandler {
             
             // Apply rotation with appropriate sensitivity for captured mouse
             float rotationSpeed = isMouseCaptured ? 0.003f : 0.1f; // Lower sensitivity for captured mouse
-            camera.rotate(-mouseDelta.x * rotationSpeed, -mouseDelta.y * rotationSpeed);
+            viewportCamera.rotate(-mouseDelta.x * rotationSpeed, -mouseDelta.y * rotationSpeed);
             logger.trace("Camera rotated by delta: ({}, {}) with speed: {}", 
                 -mouseDelta.x * rotationSpeed, -mouseDelta.y * rotationSpeed, rotationSpeed);
         }
@@ -361,7 +360,7 @@ public class ViewportInputHandler {
     private void processZooming() {
         float wheel = ImGui.getIO().getMouseWheel();
         if (wheel != 0) {
-            camera.zoom(wheel * 0.5f);
+            viewportCamera.zoom(wheel * 0.5f);
             // logger.debug("Camera zoomed by: {}", wheel * 0.5f);
         }
     }
@@ -382,7 +381,7 @@ public class ViewportInputHandler {
      * This can be extended for first-person camera movement.
      */
     public void handleKeyboardInput(float deltaTime) {
-        if (camera == null || camera.getCameraMode() != Camera.CameraMode.FIRST_PERSON) {
+        if (viewportCamera == null || viewportCamera.getCameraMode() != ViewportCamera.CameraMode.FIRST_PERSON) {
             return;
         }
         
@@ -390,27 +389,27 @@ public class ViewportInputHandler {
         boolean moved = false;
         
         if (ImGui.isKeyDown(GLFW.GLFW_KEY_W)) {
-            camera.moveForward(deltaTime);
+            viewportCamera.moveForward(deltaTime);
             moved = true;
         }
         if (ImGui.isKeyDown(GLFW.GLFW_KEY_S)) {
-            camera.moveForward(-deltaTime);
+            viewportCamera.moveForward(-deltaTime);
             moved = true;
         }
         if (ImGui.isKeyDown(GLFW.GLFW_KEY_A)) {
-            camera.moveRight(-deltaTime);
+            viewportCamera.moveRight(-deltaTime);
             moved = true;
         }
         if (ImGui.isKeyDown(GLFW.GLFW_KEY_D)) {
-            camera.moveRight(deltaTime);
+            viewportCamera.moveRight(deltaTime);
             moved = true;
         }
         if (ImGui.isKeyDown(GLFW.GLFW_KEY_SPACE)) {
-            camera.moveUp(deltaTime);
+            viewportCamera.moveUp(deltaTime);
             moved = true;
         }
         if (ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT)) {
-            camera.moveUp(-deltaTime);
+            viewportCamera.moveUp(-deltaTime);
             moved = true;
         }
         

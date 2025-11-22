@@ -1,7 +1,7 @@
 package com.openmason.ui.viewport.views;
 
 import com.openmason.ui.viewport.ViewportActions;
-import com.openmason.ui.viewport.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,10 +14,10 @@ public class CameraControlsView {
 
     private static final Logger logger = LoggerFactory.getLogger(CameraControlsView.class);
 
-    private final ViewportState state;
+    private final ViewportUIState state;
     private final ViewportActions actions;
 
-    public CameraControlsView(ViewportState state, ViewportActions actions) {
+    public CameraControlsView(ViewportUIState state, ViewportActions actions) {
         this.state = state;
         this.actions = actions;
     }

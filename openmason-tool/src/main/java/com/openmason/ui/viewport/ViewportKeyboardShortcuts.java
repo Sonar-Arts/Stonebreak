@@ -16,14 +16,14 @@ public class ViewportKeyboardShortcuts {
     private static final Logger logger = LoggerFactory.getLogger(ViewportKeyboardShortcuts.class);
 
     private final ViewportActions actions;
-    private final ViewportState state;
+    private final ViewportUIState state;
 
     /**
      * Constructor with dependency injection.
      * @param actions The viewport actions to execute
      * @param state The viewport state to access
      */
-    public ViewportKeyboardShortcuts(ViewportActions actions, ViewportState state) {
+    public ViewportKeyboardShortcuts(ViewportActions actions, ViewportUIState state) {
         this.actions = actions;
         this.state = state;
     }

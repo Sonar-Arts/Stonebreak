@@ -1,6 +1,6 @@
 package com.openmason.ui.viewport.rendering;
 
-import com.openmason.ui.viewport.Camera;
+import com.openmason.ui.viewport.ViewportCamera;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 
@@ -12,7 +12,7 @@ import java.nio.FloatBuffer;
  */
 public class RenderContext {
 
-    private final Camera camera;
+    private final ViewportCamera viewportCamera;
     private final Matrix4f viewProjectionMatrix = new Matrix4f();
     private final FloatBuffer matrixBuffer = BufferUtils.createFloatBuffer(16);
 
@@ -23,8 +23,8 @@ public class RenderContext {
     /**
      * Create render context with camera.
      */
-    public RenderContext(Camera camera) {
-        this.camera = camera;
+    public RenderContext(ViewportCamera viewportCamera) {
+        this.viewportCamera = viewportCamera;
     }
 
     /**
@@ -37,7 +37,7 @@ public class RenderContext {
         this.wireframeMode = wireframeMode;
 
         // Update view-projection matrix
-        camera.getProjectionMatrix().mul(camera.getViewMatrix(), viewProjectionMatrix);
+        viewportCamera.getProjectionMatrix().mul(viewportCamera.getViewMatrix(), viewProjectionMatrix);
     }
 
     /**
@@ -84,7 +84,7 @@ public class RenderContext {
     }
 
     // Getters
-    public Camera getCamera() { return camera; }
+    public ViewportCamera getCamera() { return viewportCamera; }
     public int getViewportWidth() { return viewportWidth; }
     public int getViewportHeight() { return viewportHeight; }
     public boolean isWireframeMode() { return wireframeMode; }

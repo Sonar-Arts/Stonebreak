@@ -4,7 +4,7 @@ import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
 import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.openmason.deprecated.LegacyCowModelRenderer;
-import com.openmason.ui.viewport.Camera;
+import com.openmason.ui.viewport.ViewportCamera;
 import com.openmason.ui.viewport.ViewportInputHandler;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
@@ -59,7 +59,7 @@ public class ViewportController {
     private final TransformState transformState;
 
     // Rendering
-    private final Camera camera;
+    private final ViewportCamera viewportCamera;
     private final RenderContext renderContext;
     private RenderPipeline renderPipeline;
 
@@ -108,11 +108,11 @@ public class ViewportController {
         this.resourceManager = new ViewportResourceManager();
 
         // Initialize camera and rendering
-        this.camera = new Camera();
-        this.renderContext = new RenderContext(camera);
+        this.viewportCamera = new ViewportCamera();
+        this.renderContext = new RenderContext(viewportCamera);
 
         // Initialize input handling
-        this.inputHandler = new ViewportInputHandler(camera);
+        this.inputHandler = new ViewportInputHandler(viewportCamera);
 
         // Initialize external renderers
         this.legacyCowModelRenderer = new LegacyCowModelRenderer("Viewport");
@@ -263,7 +263,7 @@ public class ViewportController {
         }
 
         // Update camera aspect ratio
-        camera.setAspectRatio(viewportState.getAspectRatio());
+        viewportCamera.setAspectRatio(viewportState.getAspectRatio());
 
         // Reduced logging verbosity (resize operations are frequent)
         logger.trace("Viewport resized to {}x{}", width, height);
@@ -599,7 +599,7 @@ public class ViewportController {
 
     // ========== Public API (Backward Compatibility) ==========
 
-    public Camera getCamera() { return camera; }
+    public ViewportCamera getCamera() { return viewportCamera; }
     public LegacyCowModelRenderer getModelRenderer() { return legacyCowModelRenderer; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
 
@@ -701,14 +701,14 @@ public class ViewportController {
     }
 
     public void resetCamera() {
-        if (camera != null) {
-            camera.reset();
+        if (viewportCamera != null) {
+            viewportCamera.reset();
         }
     }
 
     public void update(float deltaTime) {
-        if (camera != null) {
-            camera.update(deltaTime);
+        if (viewportCamera != null) {
+            viewportCamera.update(deltaTime);
         }
         if (inputHandler != null) {
             inputHandler.handleKeyboardInput(deltaTime);

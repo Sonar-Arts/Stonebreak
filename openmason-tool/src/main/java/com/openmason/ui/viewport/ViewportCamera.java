@@ -15,9 +15,9 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Uses the Strategy pattern to delegate camera behavior to specialized controllers.
  */
-public class Camera {
+public class ViewportCamera {
 
-    private static final Logger logger = LoggerFactory.getLogger(Camera.class);
+    private static final Logger logger = LoggerFactory.getLogger(ViewportCamera.class);
 
     /**
      * Camera mode enumeration.
@@ -48,7 +48,7 @@ public class Camera {
     /**
      * Creates a camera with default arc-ball mode.
      */
-    public Camera() {
+    public ViewportCamera() {
         this.arcballController = new ArcballCameraController();
         this.firstPersonController = new FirstPersonCameraController();
         this.activeController = arcballController;
