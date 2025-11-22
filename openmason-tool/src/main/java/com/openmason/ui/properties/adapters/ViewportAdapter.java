@@ -1,7 +1,7 @@
 package com.openmason.ui.properties.adapters;
 
 import com.openmason.ui.properties.interfaces.IViewportConnector;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,14 +13,14 @@ public class ViewportAdapter implements IViewportConnector {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportAdapter.class);
 
-    private final OpenMason3DViewport viewport;
+    private final ViewportController viewport;
 
     /**
      * Create a viewport adapter.
      *
      * @param viewport The viewport to wrap (can be null)
      */
-    public ViewportAdapter(OpenMason3DViewport viewport) {
+    public ViewportAdapter(ViewportController viewport) {
         this.viewport = viewport;
     }
 

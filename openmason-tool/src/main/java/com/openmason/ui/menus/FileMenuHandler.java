@@ -5,7 +5,7 @@ import com.openmason.ui.dialogs.SaveWarningDialog;
 import com.openmason.ui.services.ModelOperationService;
 import com.openmason.ui.services.StatusService;
 import com.openmason.ui.state.ModelState;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import com.openmason.ui.LogoManager;
 import com.openmason.ui.themes.core.ThemeManager;
 import imgui.ImGui;
@@ -28,7 +28,7 @@ public class FileMenuHandler {
 
     private final String[] recentFiles = {"standard_cow.json", "example_model.json"};
 
-    private OpenMason3DViewport viewport;
+    private ViewportController viewport;
     private LogoManager logoManager;
     private ThemeManager themeManager;
     private Runnable backToHomeCallback;
@@ -45,7 +45,7 @@ public class FileMenuHandler {
     /**
      * Set viewport reference for cleanup on exit.
      */
-    public void setViewport(OpenMason3DViewport viewport) {
+    public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
     }
 

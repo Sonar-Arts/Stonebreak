@@ -4,7 +4,7 @@ import com.openmason.ui.services.LayoutService;
 import com.openmason.ui.services.ViewportOperationService;
 import com.openmason.ui.state.UIVisibilityState;
 import com.openmason.ui.state.ViewportState;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import imgui.ImGui;
 
 /**
@@ -18,7 +18,7 @@ public class ViewMenuHandler {
     private final ViewportOperationService viewportOperations;
     private final LayoutService layoutService;
 
-    private OpenMason3DViewport viewport;
+    private ViewportController viewport;
 
     public ViewMenuHandler(UIVisibilityState uiState, ViewportState viewportState,
                            ViewportOperationService viewportOperations, LayoutService layoutService) {
@@ -31,7 +31,7 @@ public class ViewMenuHandler {
     /**
      * Set viewport reference.
      */
-    public void setViewport(OpenMason3DViewport viewport) {
+    public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
     }
 

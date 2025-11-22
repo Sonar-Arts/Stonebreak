@@ -18,7 +18,6 @@ import com.openmason.ui.state.*;
 import com.openmason.ui.themes.utils.ImGuiHelpers;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.toolbar.ModelViewerToolbarRenderer;
-import com.openmason.ui.viewport.OpenMason3DViewport;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -84,7 +83,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private final ModelViewerToolbarRenderer toolbarRenderer;
 
     // Viewport
-    private OpenMason3DViewport viewport3D;
+    private ViewportController viewport3D;
     private LegacyCowModelManager legacyCowModelManager;
 
     // Window Configurations
@@ -217,7 +216,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     private void setupViewport() {
         try {
-            viewport3D = new OpenMason3DViewport();
+            viewport3D = new ViewportController();
 
             if (viewport3D.getCamera() != null) {
                 viewport3D.getCamera().setMouseSensitivity(cameraMouseSensitivity.get());
@@ -455,7 +454,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         return propertyPanelImGui;
     }
 
-    public OpenMason3DViewport getViewport3D() {
+    public ViewportController getViewport3D() {
         return viewport3D;
     }
 

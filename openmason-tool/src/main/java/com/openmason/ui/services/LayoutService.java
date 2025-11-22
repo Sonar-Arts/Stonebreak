@@ -2,7 +2,7 @@ package com.openmason.ui.services;
 
 import com.openmason.ui.state.UIVisibilityState;
 import com.openmason.ui.state.ViewportState;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +61,7 @@ public class LayoutService {
     /**
      * Apply modeling layout preset.
      */
-    public void applyModelingLayout(OpenMason3DViewport viewport) {
+    public void applyModelingLayout(ViewportController viewport) {
         statusService.updateStatus("Applying modeling layout...");
 
         uiState.getShowModelBrowser().set(true);
@@ -84,7 +84,7 @@ public class LayoutService {
     /**
      * Apply texturing layout preset.
      */
-    public void applyTexturingLayout(OpenMason3DViewport viewport) {
+    public void applyTexturingLayout(ViewportController viewport) {
         statusService.updateStatus("Applying texturing layout...");
 
         uiState.getShowModelBrowser().set(true);

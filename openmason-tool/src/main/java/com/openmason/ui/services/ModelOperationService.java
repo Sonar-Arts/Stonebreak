@@ -7,6 +7,7 @@ import com.openmason.model.io.omo.OMODeserializer;
 import com.openmason.model.io.omo.OMOSerializer;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.state.ModelState;
+import com.openmason.ui.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,7 +47,7 @@ public class ModelOperationService {
     private BlockModel currentEditableModel;
 
     // UI component references
-    private com.openmason.ui.viewport.OpenMason3DViewport viewport;
+    private ViewportController viewport;
     private com.openmason.ui.properties.PropertyPanelImGui propertiesPanel;
 
     public ModelOperationService(ModelState modelState, StatusService statusService,
@@ -71,7 +72,7 @@ public class ModelOperationService {
      *
      * @param viewport the 3D viewport instance
      */
-    public void setViewport(com.openmason.ui.viewport.OpenMason3DViewport viewport) {
+    public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
         logger.debug("Viewport reference set in ModelOperationService");
     }

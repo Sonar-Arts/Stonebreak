@@ -1,5 +1,6 @@
 package com.openmason.deprecated;
 
+import com.openmason.ui.ViewportController;
 import com.stonebreak.textures.mobs.CowTextureGenerator;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -18,7 +19,7 @@ import java.nio.ByteBuffer;
  * @deprecated This class is exclusively used for legacy cow model rendering in Open Mason's viewport.
  *             It is hardcoded to use {@link com.stonebreak.textures.mobs.CowTextureGenerator} for
  *             texture generation (line 56) and only works with cow texture variants. It is used by:
- *             - {@link com.openmason.ui.viewport.OpenMason3DViewport} (created as "Viewport_CowAtlas")
+ *             - {@link ViewportController} (created as "Viewport_CowAtlas")
  *             - {@link LegacyCowModelRenderer} for rendering cow models with textures
  *             - {@link com.openmason.ui.viewport.rendering.RenderPipeline} for cow model rendering
  *             <p>

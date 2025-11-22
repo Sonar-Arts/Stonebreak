@@ -2,7 +2,7 @@ package com.openmason.ui.services;
 
 import com.openmason.ui.state.ViewportState;
 import com.openmason.ui.state.TransformState;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +26,7 @@ public class ViewportOperationService {
     /**
      * Reset viewport camera to default position.
      */
-    public void resetView(OpenMason3DViewport viewport) {
+    public void resetView(ViewportController viewport) {
         if (viewport != null) {
             viewport.resetCamera();
         }
@@ -43,7 +43,7 @@ public class ViewportOperationService {
     /**
      * Toggle grid visibility.
      */
-    public void toggleGrid(OpenMason3DViewport viewport) {
+    public void toggleGrid(ViewportController viewport) {
         viewportState.toggleGrid();
         if (viewport != null) {
             viewport.setGridVisible(viewportState.isShowGrid());
@@ -53,7 +53,7 @@ public class ViewportOperationService {
     /**
      * Toggle axes visibility.
      */
-    public void toggleAxes(OpenMason3DViewport viewport) {
+    public void toggleAxes(ViewportController viewport) {
         viewportState.toggleAxes();
         if (viewport != null) {
             viewport.setAxesVisible(viewportState.isShowAxes());
@@ -63,7 +63,7 @@ public class ViewportOperationService {
     /**
      * Toggle wireframe mode.
      */
-    public void toggleWireframe(OpenMason3DViewport viewport) {
+    public void toggleWireframe(ViewportController viewport) {
         viewportState.toggleWireframe();
         if (viewport != null) {
             viewport.setWireframeMode(viewportState.isWireframeMode());
@@ -74,7 +74,7 @@ public class ViewportOperationService {
     /**
      * Toggle transform gizmo visibility.
      */
-    public void toggleGizmo(OpenMason3DViewport viewport) {
+    public void toggleGizmo(ViewportController viewport) {
         viewportState.toggleGizmo();
         if (viewport != null && viewport.getGizmoRenderer() != null) {
             viewport.getGizmoRenderer().getGizmoState().setEnabled(viewportState.isShowGizmo());
@@ -85,7 +85,7 @@ public class ViewportOperationService {
     /**
      * Switch texture variant.
      */
-    public void switchTextureVariant(OpenMason3DViewport viewport, TransformState transformState, String variantName) {
+    public void switchTextureVariant(ViewportController viewport, TransformState transformState, String variantName) {
         int index = transformState.getVariantIndexByName(variantName);
         transformState.setCurrentTextureVariantIndex(index);
 
@@ -99,7 +99,7 @@ public class ViewportOperationService {
     /**
      * Change render mode (wireframe/solid/textured).
      */
-    public void changeRenderMode(OpenMason3DViewport viewport, ViewportState state) {
+    public void changeRenderMode(ViewportController viewport, ViewportState state) {
         String renderMode = state.getCurrentRenderMode();
 
         if (viewport != null) {

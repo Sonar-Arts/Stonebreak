@@ -2,6 +2,7 @@ package com.openmason.deprecated;
 
 import com.openmason.rendering.OpenGLBuffer;
 import com.openmason.rendering.VertexArray;
+import com.openmason.ui.ViewportController;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
@@ -22,7 +23,7 @@ import java.util.Map;
  *             {@link com.stonebreak.textures.mobs.CowTextureLoader}. It is used by:
  *             - {@link LegacyCowModelRenderer} for rendering {@link com.openmason.deprecated.LegacyCowStonebreakModel}
  *             - {@link VertexArray#fromModelPart} for cow model part initialization
- *             - {@link com.openmason.ui.viewport.OpenMason3DViewport} for cow model visualization
+ *             - {@link ViewportController} for cow model visualization
  *             <p>
  *             Block rendering uses the CBR API from stonebreak-game which has its own texture coordinate
  *             management. This class should not be used for new features or non-cow models. Consider

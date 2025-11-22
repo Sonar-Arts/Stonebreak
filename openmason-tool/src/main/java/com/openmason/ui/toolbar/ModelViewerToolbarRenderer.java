@@ -7,7 +7,7 @@ import com.openmason.ui.services.ViewportOperationService;
 import com.openmason.ui.state.ModelState;
 import com.openmason.ui.state.UIVisibilityState;
 import com.openmason.ui.toolbars.BaseToolbarRenderer;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import imgui.ImGui;
 
 /**
@@ -33,7 +33,7 @@ public class ModelViewerToolbarRenderer extends BaseToolbarRenderer {
     private final PerformanceService performanceService;
     private final StatusService statusService;
 
-    private OpenMason3DViewport viewport;
+    private ViewportController viewport;
 
     public ModelViewerToolbarRenderer(UIVisibilityState uiState, ModelState modelState,
                            ModelOperationService modelOperations, ViewportOperationService viewportOperations,
@@ -49,7 +49,7 @@ public class ModelViewerToolbarRenderer extends BaseToolbarRenderer {
     /**
      * Set viewport reference.
      */
-    public void setViewport(OpenMason3DViewport viewport) {
+    public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
     }
 

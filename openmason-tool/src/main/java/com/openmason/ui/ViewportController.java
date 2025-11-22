@@ -1,9 +1,11 @@
-package com.openmason.ui.viewport;
+package com.openmason.ui;
 
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
 import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.openmason.deprecated.LegacyCowModelRenderer;
+import com.openmason.ui.viewport.Camera;
+import com.openmason.ui.viewport.ViewportInputHandler;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.model.AsyncModelLoader;
@@ -42,9 +44,9 @@ import org.slf4j.LoggerFactory;
  * Note: Main viewport controls (grid, snapping, rendering) are now in ViewportImGuiInterface.
  * Follows SOLID principles for maintainability and extensibility.
  */
-public class OpenMason3DViewport {
+public class ViewportController {
 
-    private static final Logger logger = LoggerFactory.getLogger(OpenMason3DViewport.class);
+    private static final Logger logger = LoggerFactory.getLogger(ViewportController.class);
 
     // ========== Module Dependencies ==========
     // Managers
@@ -89,7 +91,7 @@ public class OpenMason3DViewport {
     /**
      * Create new viewport with default configuration.
      */
-    public OpenMason3DViewport() {
+    public ViewportController() {
         logger.info("Creating OpenMason3DViewport with modular architecture");
 
         // Initialize state

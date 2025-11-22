@@ -3,7 +3,7 @@ package com.openmason.ui.preferences;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.themes.core.ThemeManager;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiMouseCursor;
@@ -67,7 +67,7 @@ public class UnifiedPreferencesWindow {
                                     PreferencesManager preferencesManager,
                                     ThemeManager themeManager,
                                     TextureCreatorImGui textureCreatorImGui,
-                                    OpenMason3DViewport viewport,
+                                    ViewportController viewport,
                                     PropertyPanelImGui propertyPanel) {
         if (visible == null) {
             throw new IllegalArgumentException("Visibility state cannot be null");

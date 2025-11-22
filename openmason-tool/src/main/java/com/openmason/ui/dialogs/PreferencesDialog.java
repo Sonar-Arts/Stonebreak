@@ -9,9 +9,8 @@ import com.openmason.ui.themes.application.DensityManager;
 import com.openmason.ui.themes.utils.ImGuiHelpers;
 import com.openmason.ui.themes.core.ThemeDefinition;
 import com.openmason.ui.themes.core.ThemeManager;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;
@@ -46,7 +45,7 @@ public class PreferencesDialog {
     private boolean hasUnsavedUIChanges = false;
 
     // References
-    private OpenMason3DViewport viewport;
+    private ViewportController viewport;
     private PropertyPanelImGui propertyPanel;
 
     public PreferencesDialog(UIVisibilityState uiState, ThemeManager themeManager,
@@ -63,7 +62,7 @@ public class PreferencesDialog {
     /**
      * Set viewport reference for camera settings.
      */
-    public void setViewport(OpenMason3DViewport viewport) {
+    public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
     }
 

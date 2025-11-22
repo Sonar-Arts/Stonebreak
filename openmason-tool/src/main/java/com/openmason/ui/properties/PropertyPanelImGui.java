@@ -12,7 +12,7 @@ import com.openmason.ui.properties.state.TransformState;
 import com.openmason.ui.properties.theming.PanelThemeContext;
 import com.openmason.ui.state.ModelState;
 import com.openmason.ui.themes.core.ThemeManager;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -227,7 +227,7 @@ public class PropertyPanelImGui {
      *
      * @param viewport The viewport instance
      */
-    public void setViewport3D(OpenMason3DViewport viewport) {
+    public void setViewport3D(ViewportController viewport) {
         this.viewportConnector = new ViewportAdapter(viewport);
 
         // Update sections with viewport connector

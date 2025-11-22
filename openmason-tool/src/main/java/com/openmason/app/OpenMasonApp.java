@@ -6,7 +6,7 @@ import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import com.openmason.ui.MainImGuiInterface;
-import com.openmason.ui.ViewportImGuiInterface;
+import com.openmason.ui.viewport.ViewportImGuiInterface;
 import com.openmason.ui.hub.ProjectHubScreen;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;

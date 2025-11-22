@@ -6,7 +6,7 @@ import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.themes.application.DensityManager;
 import com.openmason.ui.themes.core.ThemeDefinition;
 import com.openmason.ui.themes.core.ThemeManager;
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import com.openmason.ui.viewport.util.SnappingUtil;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
@@ -79,7 +79,7 @@ public class UnifiedPreferencesPageRenderer {
     private TextureCreatorImGui textureCreatorImGui; // Mutable - can be set after construction
 
     // Component references for real-time updates
-    private final OpenMason3DViewport viewport;
+    private final ViewportController viewport;
     private final PropertyPanelImGui propertyPanel;
 
     /**
@@ -94,7 +94,7 @@ public class UnifiedPreferencesPageRenderer {
     public UnifiedPreferencesPageRenderer(PreferencesManager preferencesManager,
                                           ThemeManager themeManager,
                                           TextureCreatorImGui textureCreatorImGui,
-                                          OpenMason3DViewport viewport,
+                                          ViewportController viewport,
                                           PropertyPanelImGui propertyPanel) {
         this.preferencesManager = preferencesManager;
         this.themeManager = themeManager;

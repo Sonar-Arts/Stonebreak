@@ -2,6 +2,7 @@ package com.openmason.deprecated;
 
 import com.openmason.rendering.OpenGLValidator;
 import com.openmason.rendering.VertexArray;
+import com.openmason.ui.ViewportController;
 import com.stonebreak.model.ModelDefinition;
 import com.stonebreak.textures.mobs.CowTextureDefinition;
 
@@ -37,7 +38,7 @@ import java.nio.FloatBuffer;
  *             - {@link TextureAtlas} (deprecated) for cow texture generation
  *             <p>
  *             <b>Used by:</b>
- *             - {@link com.openmason.ui.viewport.OpenMason3DViewport} for cow model visualization
+ *             - {@link ViewportController} for cow model visualization
  *             - {@link com.openmason.ui.viewport.rendering.RenderPipeline} for cow model rendering
  *             <p>
  *             Block and item rendering use completely different systems (BlockRenderer, ItemRenderer)

@@ -1,6 +1,6 @@
 package com.openmason.ui.services;
 
-import com.openmason.ui.viewport.OpenMason3DViewport;
+import com.openmason.ui.ViewportController;
 import imgui.type.ImFloat;
 
 /**
@@ -27,7 +27,7 @@ public class PerformanceService {
     /**
      * Update frame rate metric from viewport.
      */
-    public void updateFrameRate(OpenMason3DViewport viewport) {
+    public void updateFrameRate(ViewportController viewport) {
         if (viewport != null) {
             frameRate = (float) viewport.getCurrentFPS();
         }
@@ -36,7 +36,7 @@ public class PerformanceService {
     /**
      * Update all performance metrics.
      */
-    public void updateAll(OpenMason3DViewport viewport) {
+    public void updateAll(ViewportController viewport) {
         updateMemoryUsage();
         updateFrameRate(viewport);
     }
