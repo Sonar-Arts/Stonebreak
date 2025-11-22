@@ -248,7 +248,7 @@ public class TerrainGenerationConfig {
         private float temperatureNoiseScale = 2000.0f;  // Phase 1: Increased from 300.0 (6.7x)
 
         // Height Map - Defaults
-        private float continentalnessNoiseScale = 800.0f;
+        private float continentalnessNoiseScale = 1400.0f;  // Increased for larger ocean/land regions (~2800 block wavelength)
 
         // Erosion - Defaults
         private float erosionNoiseScale = 40.0f;

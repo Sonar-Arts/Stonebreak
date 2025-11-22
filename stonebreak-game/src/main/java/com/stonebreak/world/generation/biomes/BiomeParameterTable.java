@@ -109,7 +109,7 @@ public class BiomeParameterTable {
         // GRAVEL_BEACH: Coastal transition, any temperature, flat
         addBiome(
                 BiomeType.GRAVEL_BEACH,
-                new Range(-0.6f, 0.05f),  // Continentalness: expanded coastal zone
+                new Range(-0.5f, -0.15f), // Continentalness: narrowed to true coastal zone (was -0.6 to 0.05)
                 new Range(0.5f, 1.0f),    // Erosion: very flat (beaches are flat)
                 new Range(-0.4f, 0.4f),   // PV: gentle (narrowed)
                 new Range(-1.0f, 1.0f),   // Weirdness: any
@@ -171,6 +171,41 @@ public class BiomeParameterTable {
                 new Range(-0.3f, 0.3f),   // PV: very gentle (glaciers are smooth)
                 new Range(-1.0f, 0.6f),   // Weirdness: normal
                 new Range(0.0f, 0.18f),   // Temperature: extremely cold (narrowed for rarity)
+                new Range(0.0f, 1.0f)     // Humidity: any
+        );
+
+        // ========== OCEAN BIOMES (Low Continentalness) ==========
+
+        // DEEP_OCEAN: Very deep water, any temperature/humidity
+        addBiome(
+                BiomeType.DEEP_OCEAN,
+                new Range(-1.0f, -0.7f),  // Continentalness: very low (deep ocean basins)
+                new Range(0.3f, 1.0f),    // Erosion: must be flat (prevents spawning on hills)
+                new Range(-1.0f, 1.0f),   // PV: any
+                new Range(-1.0f, 1.0f),   // Weirdness: any
+                new Range(0.2f, 1.0f),    // Temperature: not frozen
+                new Range(0.0f, 1.0f)     // Humidity: any
+        );
+
+        // OCEAN: Standard depth ocean, any temperature/humidity
+        addBiome(
+                BiomeType.OCEAN,
+                new Range(-0.7f, -0.45f), // Continentalness: low (ocean)
+                new Range(0.3f, 1.0f),    // Erosion: must be flat (prevents spawning on hills)
+                new Range(-1.0f, 1.0f),   // PV: any
+                new Range(-1.0f, 1.0f),   // Weirdness: any
+                new Range(0.2f, 1.0f),    // Temperature: not frozen
+                new Range(0.0f, 1.0f)     // Humidity: any
+        );
+
+        // FROZEN_OCEAN: Cold ocean with ice surface
+        addBiome(
+                BiomeType.FROZEN_OCEAN,
+                new Range(-1.0f, -0.45f), // Continentalness: all ocean depths
+                new Range(0.3f, 1.0f),    // Erosion: must be flat (prevents spawning on hills)
+                new Range(-1.0f, 1.0f),   // PV: any
+                new Range(-1.0f, 1.0f),   // Weirdness: any
+                new Range(0.0f, 0.2f),    // Temperature: very cold (frozen)
                 new Range(0.0f, 1.0f)     // Humidity: any
         );
 

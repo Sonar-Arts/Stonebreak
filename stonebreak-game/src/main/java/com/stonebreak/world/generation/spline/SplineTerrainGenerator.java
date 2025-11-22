@@ -149,9 +149,10 @@ public class SplineTerrainGenerator implements TerrainGenerator {
             // Calculate deviation from sea level (Y=64)
             float heightDeviation = modifiedHeight - 64.0f;
 
-            // Apply aggressive flattening: 0.3x to 0.15x of deviation
-            // flatteningStrength=0 → 0.3x, flatteningStrength=1 → 0.15x
-            float flatteningFactor = 0.3f - (flatteningStrength * 0.15f);
+            // Apply aggressive flattening: 0.25x to 0.10x of deviation
+            // flatteningStrength=0 → 0.25x, flatteningStrength=1 → 0.10x
+            // TERRA v.12: Increased flattening from 0.3x-0.15x to 0.25x-0.10x
+            float flatteningFactor = 0.25f - (flatteningStrength * 0.15f);
 
             // Apply flattening to deviation only (preserve sea level baseline)
             modifiedHeight = 64.0f + (heightDeviation * flatteningFactor);

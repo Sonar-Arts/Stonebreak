@@ -254,18 +254,20 @@ public class NoiseRouter {
 
     /**
      * Gets the regional flatness value at a position.
-     * Convenience method for TERRA v.11 regional flatness masking.
+     * Convenience method for TERRA v.11/v.12 regional flatness masking.
      *
-     * Regional flatness operates at a very large scale (1750 blocks) to create
+     * Regional flatness operates at a very large scale (2250 blocks) to create
      * regional variation in terrain flatness. High values (>0.3) indicate plains
      * regions that should be flattened, while low values preserve full terrain variation.
+     *
+     * TERRA v.12: Increased from 1750 to 2250 blocks for larger flat regions.
      *
      * @param worldX World X coordinate
      * @param worldZ World Z coordinate
      * @return Regional flatness in range [-1.0, 1.0] (high values = flatter terrain)
      */
     public float getRegionalFlatness(int worldX, int worldZ) {
-        return regionalFlatnessNoise.noise(worldX / 1750.0f, worldZ / 1750.0f);
+        return regionalFlatnessNoise.noise(worldX / 2250.0f, worldZ / 2250.0f);
     }
 
     /**

@@ -19,6 +19,8 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.DeterministicRandom;
 
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.Random;
 
 /**
@@ -282,19 +284,9 @@ public class TerrainGenerationSystem {
                     }
 
                     if (!shouldBeSolid) {
-                        // Block is air - determine if it should be filled with water/lava
-                        BlockType blockType = BlockType.AIR;
-
-                        // Aquifers disabled - caves remain dry (no underground water/lava pools)
-                        if (isCave) {
-                            blockType = BlockType.AIR; // DISABLED: aquiferGenerator.applyAquifer(worldX, y, worldZ, true);
-                        }
-                        // Handle regular water level for non-cave air blocks
-                        else if (y < SEA_LEVEL) {
-                            blockType = BlockType.WATER;
-                        }
-
-                        chunk.setBlock(x, y, z, blockType);
+                        // Block is air - water will be filled via flood-fill after terrain generation
+                        // This ensures caves stay dry while ocean water fills properly
+                        chunk.setBlock(x, y, z, BlockType.AIR);
                         continue;
                     }
 
@@ -305,6 +297,11 @@ public class TerrainGenerationSystem {
                 }
             }
         }
+
+        // Flood-fill ocean water from surface
+        // This ensures caves stay dry while ocean water fills properly
+        updateLoadingProgress("Filling Ocean Water");
+        floodFillOceanWater(chunk);
 
         // Features will be populated after chunk registration to avoid recursion
         chunk.setFeaturesPopulated(false);
@@ -378,6 +375,10 @@ public class TerrainGenerationSystem {
             case GRAVEL_BEACH -> BlockType.SAND;  // Sandy subsurface beneath gravel
             case ICE_FIELDS -> BlockType.ICE;  // Deep glacial ice layers
             case BADLANDS -> BlockType.RED_SANDSTONE;  // Sedimentary layers beneath badlands
+
+            // Ocean biomes - subsurface materials
+            case OCEAN, DEEP_OCEAN -> BlockType.SAND;  // Sand beneath ocean floor
+            case FROZEN_OCEAN -> BlockType.GRAVEL;  // Gravel beneath frozen ocean floor
         };
     }
 
@@ -405,7 +406,111 @@ public class TerrainGenerationSystem {
             case GRAVEL_BEACH -> BlockType.GRAVEL;  // Gravel shoreline (mixed with sand in decorations)
             case ICE_FIELDS -> BlockType.ICE;  // Glacial ice surface
             case BADLANDS -> BlockType.RED_SAND;  // Eroded red sand mesas
+
+            // Ocean biomes - ocean floor materials
+            case OCEAN, DEEP_OCEAN -> BlockType.SAND;  // Sandy ocean floor
+            case FROZEN_OCEAN -> BlockType.GRAVEL;  // Gravel ocean floor in cold waters
         };
+    }
+
+    /**
+     * Flood-fills ocean water from the surface down through connected air blocks.
+     *
+     * This algorithm ensures that:
+     * - Ocean water fills from sea level down to ocean floor
+     * - Caves and enclosed air pockets stay dry (not connected to surface)
+     * - Coastal caves that open to ocean will fill with water (realistic)
+     *
+     * Algorithm:
+     * 1. Identify ocean entry points (air at sea level with terrain below)
+     * 2. BFS flood-fill from entry points through connected air blocks
+     * 3. Fill all reachable air blocks at or below sea level with water
+     *
+     * @param chunk The chunk to fill with ocean water
+     */
+    private void floodFillOceanWater(Chunk chunk) {
+        int chunkSize = WorldConfiguration.CHUNK_SIZE;
+        boolean[][][] visited = new boolean[chunkSize][SEA_LEVEL + 1][chunkSize];
+        Queue<int[]> queue = new LinkedList<>();
+
+        // Get chunk world coordinates for continentalness lookup
+        int chunkWorldX = chunk.getChunkX() * chunkSize;
+        int chunkWorldZ = chunk.getChunkZ() * chunkSize;
+
+        // Find all ocean entry points (air at sea level with low continentalness)
+        for (int x = 0; x < chunkSize; x++) {
+            for (int z = 0; z < chunkSize; z++) {
+                // Check if this column has air at sea level
+                if (chunk.getBlock(x, SEA_LEVEL, z) == BlockType.AIR) {
+                    // Calculate world coordinates for continentalness check
+                    int worldX = chunkWorldX + x;
+                    int worldZ = chunkWorldZ + z;
+
+                    // Check continentalness to verify this is actually ocean, not a floating island
+                    float continentalness = biomeManager.getNoiseRouter().getContinentalness(worldX, worldZ);
+                    if (continentalness >= -0.45f) {
+                        // Not ocean - skip this position (prevents flooding under floating islands)
+                        continue;
+                    }
+
+                    // Check if there's solid terrain below (not air all the way down)
+                    boolean hasTerrain = false;
+                    for (int y = SEA_LEVEL - 1; y >= 0; y--) {
+                        BlockType block = chunk.getBlock(x, y, z);
+                        if (block != BlockType.AIR) {
+                            hasTerrain = true;
+                            break;
+                        }
+                    }
+                    if (hasTerrain) {
+                        // This is an ocean entry point - start flood-fill from here
+                        queue.add(new int[]{x, SEA_LEVEL, z});
+                        visited[x][SEA_LEVEL][z] = true;
+                    }
+                }
+            }
+        }
+
+        // BFS flood-fill through connected air blocks
+        // Direction offsets: +X, -X, +Y, -Y, +Z, -Z
+        int[] dx = {1, -1, 0, 0, 0, 0};
+        int[] dy = {0, 0, 1, -1, 0, 0};
+        int[] dz = {0, 0, 0, 0, 1, -1};
+
+        while (!queue.isEmpty()) {
+            int[] pos = queue.poll();
+            int x = pos[0], y = pos[1], z = pos[2];
+
+            // Fill this block with water (if it's air and at or below sea level)
+            if (y <= SEA_LEVEL && chunk.getBlock(x, y, z) == BlockType.AIR) {
+                chunk.setBlock(x, y, z, BlockType.WATER);
+            }
+
+            // Check all 6 neighbors
+            for (int i = 0; i < 6; i++) {
+                int nx = x + dx[i];
+                int ny = y + dy[i];
+                int nz = z + dz[i];
+
+                // Bounds check (stay within chunk, don't go above sea level or below 0)
+                if (nx < 0 || nx >= chunkSize ||
+                    ny < 0 || ny > SEA_LEVEL ||
+                    nz < 0 || nz >= chunkSize) {
+                    continue;
+                }
+
+                // Skip if already visited
+                if (visited[nx][ny][nz]) {
+                    continue;
+                }
+
+                // Only spread through air blocks
+                if (chunk.getBlock(nx, ny, nz) == BlockType.AIR) {
+                    visited[nx][ny][nz] = true;
+                    queue.add(new int[]{nx, ny, nz});
+                }
+            }
+        }
     }
 
     /**

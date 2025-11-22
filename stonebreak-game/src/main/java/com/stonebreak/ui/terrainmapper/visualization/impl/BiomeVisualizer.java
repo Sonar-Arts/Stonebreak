@@ -16,7 +16,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Sampling Process:
  * 1. Sample all 6 parameters via NoiseRouter
  * 2. Select biome via BiomeParameterTable lookup
- * 3. Return biome ordinal (0-9 for 10 biomes)
+ * 3. Return biome ordinal (0-12 for 13 biomes)
  *
  * Visualization Modes:
  * - Grayscale: Each biome ID mapped to gray value (0=black, 9=white)
@@ -112,6 +112,9 @@ public class BiomeVisualizer implements NoiseVisualizer {
             case GRAVEL_BEACH -> new int[]{162, 162, 132}; // Tan
             case ICE_FIELDS -> new int[]{160, 200, 255};   // Ice blue
             case BADLANDS -> new int[]{150, 100, 80};      // Brown
+            case OCEAN -> new int[]{0, 105, 148};          // Ocean blue
+            case DEEP_OCEAN -> new int[]{0, 60, 100};      // Deep ocean blue
+            case FROZEN_OCEAN -> new int[]{112, 160, 200}; // Frozen ocean blue-gray
         };
     }
 

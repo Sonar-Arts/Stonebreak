@@ -17,5 +17,10 @@ public enum BiomeType {
     STONY_PEAKS,     // Cool-Cold + Very Dry - Rocky mountains
     GRAVEL_BEACH,    // Temperate + Moderate - Coastal shoreline
     ICE_FIELDS,      // Very Cold + Very Wet - Glaciers
-    BADLANDS;        // Very Hot + Very Dry - Eroded plateaus
+    BADLANDS,        // Very Hot + Very Dry - Eroded plateaus
+
+    // Ocean biomes
+    OCEAN,           // Standard ocean - moderate depth
+    DEEP_OCEAN,      // Deep ocean - maximum depth
+    FROZEN_OCEAN;    // Frozen ocean - ice surface
 }
