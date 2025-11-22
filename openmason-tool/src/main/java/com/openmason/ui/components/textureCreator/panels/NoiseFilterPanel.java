@@ -67,8 +67,8 @@ public class NoiseFilterPanel {
 
     // Dependencies (injected)
     private FilterCoordinator filterCoordinator;
-    private LayerManager layerManager;
-    private CommandHistory commandHistory;
+    private LayerManagerProvider layerManagerProvider;
+    private CommandHistoryProvider commandHistoryProvider;
 
     /**
      * Create noise filter panel.
@@ -80,13 +80,32 @@ public class NoiseFilterPanel {
 
     /**
      * Set dependencies for filter application and preview.
+     * Uses provider pattern to avoid stale references when LayerManager is replaced (e.g., when loading OMT files).
      *
-     * @param layerManager Layer manager instance
-     * @param commandHistory Command history for undo/redo
+     * @param layerManagerProvider Provider for current LayerManager instance
+     * @param commandHistoryProvider Provider for current CommandHistory instance
      */
-    public void setDependencies(LayerManager layerManager, CommandHistory commandHistory) {
-        this.layerManager = layerManager;
-        this.commandHistory = commandHistory;
+    public void setDependencies(LayerManagerProvider layerManagerProvider, CommandHistoryProvider commandHistoryProvider) {
+        this.layerManagerProvider = layerManagerProvider;
+        this.commandHistoryProvider = commandHistoryProvider;
+    }
+
+    /**
+     * Provider interface for LayerManager.
+     * Allows dynamic retrieval to avoid stale references.
+     */
+    @FunctionalInterface
+    public interface LayerManagerProvider {
+        LayerManager getLayerManager();
+    }
+
+    /**
+     * Provider interface for CommandHistory.
+     * Allows dynamic retrieval to avoid stale references.
+     */
+    @FunctionalInterface
+    public interface CommandHistoryProvider {
+        CommandHistory getCommandHistory();
     }
 
     /**
@@ -505,6 +524,7 @@ public class NoiseFilterPanel {
     }
 
     private void renderActionButtons() {
+        LayerManager layerManager = getLayerManager();
         boolean canApply = layerManager != null && layerManager.getActiveLayer() != null;
 
         float panelWidth = ImGui.getContentRegionAvailX();
@@ -559,6 +579,7 @@ public class NoiseFilterPanel {
     }
 
     private void startPreview() {
+        LayerManager layerManager = getLayerManager();
         if (layerManager == null) return;
 
         activeLayer = layerManager.getActiveLayer();
@@ -608,10 +629,14 @@ public class NoiseFilterPanel {
         filter.apply(canvas, activeSelection);
 
         // Mark composite dirty
-        layerManager.markCompositeDirty();
+        LayerManager currentLayerManager = getLayerManager();
+        if (currentLayerManager != null) {
+            currentLayerManager.markCompositeDirty();
+        }
     }
 
     private void acceptNoise() {
+        CommandHistory commandHistory = getCommandHistory();
         if (!previewActive || activeLayer == null || commandHistory == null) return;
 
         // Create command for undo/redo
@@ -658,7 +683,10 @@ public class NoiseFilterPanel {
         }
 
         // Mark composite dirty
-        layerManager.markCompositeDirty();
+        LayerManager layerManager = getLayerManager();
+        if (layerManager != null) {
+            layerManager.markCompositeDirty();
+        }
 
         // Clean up preview state
         previewActive = false;
@@ -683,5 +711,21 @@ public class NoiseFilterPanel {
 
     private float lerp(float a, float b, float t) {
         return a + t * (b - a);
+    }
+
+    /**
+     * Get current LayerManager from provider.
+     * This ensures we always have the latest LayerManager instance, even after loading OMT files.
+     */
+    private LayerManager getLayerManager() {
+        return layerManagerProvider != null ? layerManagerProvider.getLayerManager() : null;
+    }
+
+    /**
+     * Get current CommandHistory from provider.
+     * This ensures we always have the latest CommandHistory instance, even after loading OMT files.
+     */
+    private CommandHistory getCommandHistory() {
+        return commandHistoryProvider != null ? commandHistoryProvider.getCommandHistory() : null;
     }
 }

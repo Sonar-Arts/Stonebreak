@@ -217,7 +217,8 @@ public class TextureCreatorImGui {
         KeyboardShortcutManager shortcutManager = new KeyboardShortcutManager();
 
         // Wire up dependencies to noise filter panel
-        noiseFilterPanel.setDependencies(controller.getLayerManager(), controller.getCommandHistory());
+        // Use lambda providers to avoid stale references when LayerManager is replaced (e.g., loading OMT files)
+        noiseFilterPanel.setDependencies(controller::getLayerManager, controller::getCommandHistory);
 
         // Create about menu handler and about dialog
         AboutMenuHandler aboutMenuHandler = new AboutMenuHandler(windowState);
