@@ -28,7 +28,6 @@ import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.services.StatusService;
 import imgui.type.ImBoolean;
 import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWDropCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,9 +107,8 @@ public class TextureCreatorImGui {
     // Window handle
     private long windowHandle = 0;
 
-    // Drag-and-drop
+    // Drag-and-drop handler for processing dropped files
     private final DragDropHandler dragDropHandler;
-    private GLFWDropCallback dropCallback;
 
     /**
      * Create texture creator UI with dependency injection.
@@ -362,7 +360,8 @@ public class TextureCreatorImGui {
             moveTool.setWindowHandle(windowHandle);
         }
 
-        setupDragDropCallback();
+        // Note: Drop callbacks are now managed globally by ViewportDropCallbackManager
+        // which registers callbacks on ALL ImGui platform windows (including floating windows)
     }
 
     /**
@@ -391,29 +390,12 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Set up drag-and-drop.
+     * Process dropped files (PNG and OMT).
+     * Called from TextureEditorWindow when processing pending file drops.
+     *
+     * @param filePaths array of file paths to process
      */
-    private void setupDragDropCallback() {
-        if (windowHandle == 0) return;
-
-        dropCallback = new GLFWDropCallback() {
-            @Override
-            public void invoke(long window, int count, long names) {
-                String[] filePaths = new String[count];
-                for (int i = 0; i < count; i++) {
-                    filePaths[i] = GLFWDropCallback.getName(names, i);
-                }
-                handleDroppedFiles(filePaths);
-            }
-        };
-
-        GLFW.glfwSetDropCallback(windowHandle, dropCallback);
-    }
-
-    /**
-     * Handle dropped files.
-     */
-    private void handleDroppedFiles(String[] filePaths) {
+    public void processDroppedFiles(String[] filePaths) {
         if (filePaths == null || filePaths.length == 0) return;
 
         List<String> pngFiles = new ArrayList<>();
@@ -585,9 +567,6 @@ public class TextureCreatorImGui {
      */
     public void dispose() {
         preferences.setColorHistory(colorPanel.getColorHistory());
-        if (dropCallback != null) {
-            dropCallback.free();
-        }
         TextureToolIconManager.getInstance().dispose();
         logger.info("Texture Creator UI disposed");
     }

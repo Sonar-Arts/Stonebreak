@@ -10,6 +10,7 @@ import com.openmason.ui.viewport.ViewportImGuiInterface;
 import com.openmason.ui.hub.ProjectHubScreen;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.drop.ViewportDropCallbackManager;
 import com.openmason.ui.windows.TextureEditorWindow;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
@@ -252,6 +253,10 @@ public class OpenMasonApp {
         if (ImGui.getIO().hasConfigFlags(ImGuiConfigFlags.ViewportsEnable)) {
             long backupContext = glfwGetCurrentContext();
             ImGui.updatePlatformWindows();
+
+            // Register drop callbacks on any new platform windows (for floating ImGui windows)
+            ViewportDropCallbackManager.updateDropCallbacks();
+
             ImGui.renderPlatformWindowsDefault();
             glfwMakeContextCurrent(backupContext);
         }

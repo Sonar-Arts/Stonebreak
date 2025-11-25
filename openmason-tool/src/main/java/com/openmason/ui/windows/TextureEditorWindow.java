@@ -1,9 +1,9 @@
 package com.openmason.ui.windows;
 
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.drop.PendingFileDrops;
 import imgui.ImGui;
 import imgui.flag.ImGuiDockNodeFlags;
-import imgui.flag.ImGuiFocusedFlags;
 import imgui.flag.ImGuiMouseCursor;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
@@ -113,6 +113,11 @@ public class TextureEditorWindow {
 
         // Begin standalone window with custom title bar
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
+            // Process any pending file drops now that ImGui frame is active
+            // This is done here because GLFW drop callbacks fire before ImGui.newFrame(),
+            // so we cannot check window state at drop time
+            processPendingFileDrops();
+
             try {
                 // Handle keyboard shortcuts FIRST, before any widgets consume input
                 // Only block shortcuts if actively typing in a text input field
@@ -409,5 +414,20 @@ public class TextureEditorWindow {
      */
     public TextureCreatorImGui getTextureCreator() {
         return textureCreator;
+    }
+
+    /**
+     * Process any pending file drops.
+     * Called during render when the window is visible, allowing us to properly
+     * route dropped files to this texture editor window.
+     */
+    private void processPendingFileDrops() {
+        while (PendingFileDrops.hasPending()) {
+            String[] filePaths = PendingFileDrops.poll();
+            if (filePaths != null && filePaths.length > 0) {
+                logger.debug("Processing {} dropped file(s) in texture editor", filePaths.length);
+                textureCreator.processDroppedFiles(filePaths);
+            }
+        }
     }
 }
