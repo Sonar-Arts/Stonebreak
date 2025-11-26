@@ -22,7 +22,6 @@ import com.openmason.ui.viewport.state.ViewportState;
 import com.openmason.ui.viewport.ui.ModelControlsUI;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
-import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -354,16 +353,6 @@ public class ViewportController {
     }
 
     /**
-     * Unload current model and cancel loading.
-     */
-    private void unloadCurrentModel() {
-        logger.info("Unloading current model: {}", renderingState.getCurrentModelName());
-        modelLoader.cancelLoading();
-        renderingState.clearModel();
-        logger.info("Model unloaded successfully");
-    }
-
-    /**
      * Set block to render in viewport.
      */
     public void setSelectedBlock(BlockType blockType) {
@@ -397,20 +386,6 @@ public class ViewportController {
     }
 
     // ========== Transform ==========
-
-    /** Set rotation and uniform scale (preserves position) */
-    public void setModelTransform(float rotX, float rotY, float rotZ, float scale) {
-        transformState.setTransform(
-            transformState.getPositionX(), transformState.getPositionY(), transformState.getPositionZ(),
-            rotX, rotY, rotZ, scale
-        );
-    }
-
-    /** Set position, rotation, and uniform scale */
-    public void setModelTransform(float posX, float posY, float posZ,
-                                  float rotX, float rotY, float rotZ, float scale) {
-        transformState.setTransform(posX, posY, posZ, rotX, rotY, rotZ, scale);
-    }
 
     /** Set position, rotation, and non-uniform scale */
     public void setModelTransform(float posX, float posY, float posZ,
@@ -507,8 +482,6 @@ public class ViewportController {
     public float getModelScaleZ() { return transformState.getScaleZ(); }
     public float getMinScale() { return TransformState.getMinScale(); }
     public float getMaxScale() { return TransformState.getMaxScale(); }
-
-    public Matrix4f getUserTransformMatrix() { return transformState.getTransformMatrix(); }
 
     // ========== Gizmo API ==========
 
