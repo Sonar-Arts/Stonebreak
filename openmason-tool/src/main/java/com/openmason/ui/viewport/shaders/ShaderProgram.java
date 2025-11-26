@@ -71,8 +71,6 @@ public class ShaderProgram {
     // Getters
     public ShaderType getType() { return type; }
     public int getProgramId() { return programId; }
-    public int getVertexShaderId() { return vertexShaderId; }
-    public int getFragmentShaderId() { return fragmentShaderId; }
     public int getMvpMatrixLocation() { return mvpMatrixLocation; }
     public int getColorLocation() { return colorLocation; }
     public int getModelMatrixLocation() { return modelMatrixLocation; }
@@ -154,20 +152,6 @@ public class ShaderProgram {
         int location = glGetUniformLocation(programId, name);
         if (location != -1) {
             glUniform3f(location, vector.x, vector.y, vector.z);
-        }
-    }
-
-    /**
-     * Set a vec3 uniform in the shader with individual components.
-     * @param name The uniform name
-     * @param x The x component
-     * @param y The y component
-     * @param z The z component
-     */
-    public void setVec3(String name, float x, float y, float z) {
-        int location = glGetUniformLocation(programId, name);
-        if (location != -1) {
-            glUniform3f(location, x, y, z);
         }
     }
 

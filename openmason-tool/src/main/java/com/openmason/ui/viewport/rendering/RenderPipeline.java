@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Orchestrates the main rendering pipeline for the viewport.
@@ -533,18 +532,7 @@ public class RenderPipeline {
     }
 
     /**
-     * Gets the gizmo renderer for external access (input handling, etc.).
-     *
-     * @return The gizmo renderer (may be null)
-     */
-    public GizmoRenderer getGizmoRenderer() {
-        return gizmoRenderer;
-    }
-
-    /**
      * Gets the vertex renderer for external access (preferences, etc.).
-     *
-     * @return The vertex renderer
      */
     public VertexRenderer getVertexRenderer() {
         return vertexRenderer;
@@ -552,8 +540,6 @@ public class RenderPipeline {
 
     /**
      * Gets the edge renderer for external access (preferences, etc.).
-     *
-     * @return The edge renderer
      */
     public EdgeRenderer getEdgeRenderer() {
         return edgeRenderer;

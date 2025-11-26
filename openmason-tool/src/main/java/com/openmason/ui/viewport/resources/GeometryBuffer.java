@@ -123,8 +123,6 @@ public class GeometryBuffer implements AutoCloseable {
 
     // Getters
     public String getName() { return name; }
-    public int getVaoId() { return vaoId; }
-    public int getVboId() { return vboId; }
     public int getVertexCount() { return vertexCount; }
     public boolean isInitialized() { return initialized; }
 

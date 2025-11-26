@@ -1,43 +1,24 @@
 package com.openmason.ui.viewport.rendering;
 
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Utility class for detecting vertex hover interactions.
- * Uses screen-space distance with actual vertex point size (same pattern as gizmo).
- *
- * <p>Follows SOLID principles:
- * - Single Responsibility: Only handles vertex hover detection
- * - KISS: Simple screen-space distance check using actual point size
- * - SAFE: Validates all inputs and handles edge cases
+ * Detects hovered vertex by projecting positions to screen space
+ * and checking distance against the vertex point size.
  */
 public final class VertexHoverDetector {
 
     private static final Logger logger = LoggerFactory.getLogger(VertexHoverDetector.class);
 
-    // Private constructor to prevent instantiation (utility class)
     private VertexHoverDetector() {
         throw new AssertionError("VertexHoverDetector is a utility class and should not be instantiated");
     }
 
     /**
-     * Detects which vertex (if any) is currently hovered by the mouse.
-     * Uses screen-space distance with actual vertex point size (KISS approach).
-     *
-     * @param mouseX Mouse X coordinate in screen space (pixels)
-     * @param mouseY Mouse Y coordinate in screen space (pixels)
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     * @param viewMatrix Camera view matrix
-     * @param projectionMatrix Camera projection matrix
-     * @param vertexPositions Array of vertex positions [x, y, z, x, y, z, ...]
-     * @param vertexCount Number of vertices
-     * @param pointSize Vertex point size in pixels
-     * @return Index of the hovered vertex, or -1 if no vertex is hovered
+     * Returns the index of the hovered vertex, or -1 if none.
      */
     public static int detectHoveredVertex(float mouseX, float mouseY,
                                          int viewportWidth, int viewportHeight,

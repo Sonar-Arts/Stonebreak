@@ -149,31 +149,6 @@ public class TransformState {
     }
 
     /**
-     * Set scale for a specific axis.
-     * @param axis 'x', 'y', or 'z'
-     * @param value Scale value with constraints
-     */
-    public void setScaleAxis(char axis, float value) {
-        float constrainedValue = Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
-        switch (Character.toLowerCase(axis)) {
-            case 'x' -> this.scaleX = constrainedValue;
-            case 'y' -> this.scaleY = constrainedValue;
-            case 'z' -> this.scaleZ = constrainedValue;
-            default -> throw new IllegalArgumentException("Invalid axis: " + axis + " (must be 'x', 'y', or 'z')");
-        }
-        this.dirty = true;
-    }
-
-    /**
-     * Set all transform values at once.
-     */
-    public void setTransform(float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float scale) {
-        setPosition(posX, posY, posZ);
-        setRotation(rotX, rotY, rotZ);
-        setScale(scale);
-    }
-
-    /**
      * Get transform matrix (updates if dirty).
      */
     public Matrix4f getTransformMatrix() {
@@ -234,7 +209,6 @@ public class TransformState {
     public float getScaleZ() { return scaleZ; }
     public float getScale() { return scaleX; } // Backward compatibility - returns X scale
     public boolean isGizmoEnabled() { return gizmoEnabled; }
-    public boolean isDirty() { return dirty; }
 
     /**
      * Get gizmo position as a Vector3f.
@@ -250,14 +224,6 @@ public class TransformState {
     // Constraint getters
     public static float getMinScale() { return MIN_SCALE; }
     public static float getMaxScale() { return MAX_SCALE; }
-    public static float getGridSize() { return GRID_SIZE; }
-
-    /**
-     * Validate if scale is within bounds.
-     */
-    public boolean isScaleValid(float testScale) {
-        return testScale >= MIN_SCALE && testScale <= MAX_SCALE;
-    }
 
     @Override
     public String toString() {

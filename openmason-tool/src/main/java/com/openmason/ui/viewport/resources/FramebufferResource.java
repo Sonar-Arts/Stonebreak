@@ -160,9 +160,7 @@ public class FramebufferResource implements AutoCloseable {
     }
 
     // Getters
-    public int getFramebufferId() { return framebufferId; }
     public int getColorTextureId() { return colorTextureId; }
-    public int getDepthRenderbufferId() { return depthRenderbufferId; }
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public boolean isInitialized() { return initialized; }

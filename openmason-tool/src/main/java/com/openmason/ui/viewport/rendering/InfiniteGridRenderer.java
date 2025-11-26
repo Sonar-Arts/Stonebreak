@@ -158,40 +158,6 @@ public class InfiniteGridRenderer {
         logger.debug("InfiniteGridRenderer cleanup complete");
     }
 
-    // Getters and setters for grid appearance
-
-    public float getGridScale() {
-        return gridScale;
-    }
-
-    public void setGridScale(float gridScale) {
-        this.gridScale = gridScale;
-    }
-
-    public float getGridLineWidth() {
-        return gridLineWidth;
-    }
-
-    public void setGridLineWidth(float gridLineWidth) {
-        this.gridLineWidth = gridLineWidth;
-    }
-
-    public float getFadeDistance() {
-        return fadeDistance;
-    }
-
-    public void setFadeDistance(float fadeDistance) {
-        this.fadeDistance = fadeDistance;
-    }
-
-    public float getMaxDistance() {
-        return maxDistance;
-    }
-
-    public void setMaxDistance(float maxDistance) {
-        this.maxDistance = maxDistance;
-    }
-
     public boolean isInitialized() {
         return initialized;
     }

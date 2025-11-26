@@ -91,16 +91,6 @@ public class RenderingState {
     }
 
     /**
-     * Clear current model.
-     */
-    public void clearModel() {
-        this.currentModel = null;
-        this.currentModelName = null;
-        this.currentTextureVariant = "default";
-        logger.debug("Model cleared");
-    }
-
-    /**
      * Set current model (without switching mode).
      */
     public void setCurrentModel(LegacyCowStonebreakModel model) {

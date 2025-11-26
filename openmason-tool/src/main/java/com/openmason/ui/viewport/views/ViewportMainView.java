@@ -1,10 +1,16 @@
 package com.openmason.ui.viewport.views;
 
 import com.openmason.ui.ViewportController;
+import com.openmason.ui.preferences.PreferencesManager;
+import com.openmason.ui.themes.application.DensityManager;
+import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.ViewportActions;
 import com.openmason.ui.viewport.ViewportUIState;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.ImVec4;
+import imgui.flag.ImGuiStyleVar;
+import imgui.flag.ImGuiTabBarFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,14 +25,23 @@ public class ViewportMainView {
     private final ViewportUIState state;
     private final ViewportActions actions;
     private final ViewportController viewport;
+    private final ThemeManager themeManager;
+    private final PreferencesManager preferencesManager;
 
     private final ImVec2 viewportSize = new ImVec2();
     private final ImVec2 viewportPos = new ImVec2();
 
-    public ViewportMainView(ViewportUIState state, ViewportActions actions, ViewportController viewport) {
+    // Theme integration
+    private int styleVarPushCount = 0;
+
+    public ViewportMainView(ViewportUIState state, ViewportActions actions,
+                           ViewportController viewport, ThemeManager themeManager,
+                           PreferencesManager preferencesManager) {
         this.state = state;
         this.actions = actions;
         this.viewport = viewport;
+        this.themeManager = themeManager;
+        this.preferencesManager = preferencesManager;
     }
 
     /**
@@ -42,84 +57,33 @@ public class ViewportMainView {
     }
 
     /**
-     * Render viewport toolbar with view and render mode controls.
+     * Render viewport toolbar with tab-based organization.
+     * Organizes controls into View, Display, and Tools tabs for professional appearance.
      */
     private void renderToolbar() {
-        // View mode selection
-        ImGui.text("View:");
-        ImGui.sameLine();
-        ImGui.setNextItemWidth(120);
-        if (ImGui.combo("##viewmode", state.getCurrentViewModeIndex(), state.getViewModes())) {
-            actions.updateViewMode();
-        }
+        int tabBarFlags = ImGuiTabBarFlags.None;
 
-        ImGui.sameLine();
+        if (ImGui.beginTabBar("##ViewportToolbar", tabBarFlags)) {
 
-        // Render mode selection
-        ImGui.text("Render:");
-        ImGui.sameLine();
-        ImGui.setNextItemWidth(120);
-        if (ImGui.combo("##rendermode", state.getCurrentRenderModeIndex(), state.getRenderModes())) {
-            actions.updateRenderMode();
-        }
+            // View Tab (most frequently used controls)
+            if (ImGui.beginTabItem("View")) {
+                renderViewTab();
+                ImGui.endTabItem();
+            }
 
-        ImGui.sameLine();
+            // Display Tab (visual aids)
+            if (ImGui.beginTabItem("Display")) {
+                renderDisplayTab();
+                ImGui.endTabItem();
+            }
 
-        // View control buttons
-        if (ImGui.button("Reset##viewport")) {
-            actions.resetView();
-        }
+            // Tools Tab (advanced panels)
+            if (ImGui.beginTabItem("Tools")) {
+                renderToolsTab();
+                ImGui.endTabItem();
+            }
 
-        ImGui.sameLine();
-
-        if (ImGui.button("Fit##viewport")) {
-            actions.fitToView();
-        }
-
-        ImGui.sameLine();
-
-        // Toggle buttons
-        if (ImGui.checkbox("Grid##viewport", state.getGridVisible())) {
-            actions.toggleGrid();
-        }
-
-        ImGui.sameLine();
-
-        if (ImGui.checkbox("Axes##viewport", state.getAxesVisible())) {
-            actions.toggleAxes();
-        }
-
-        ImGui.sameLine();
-
-        if (ImGui.checkbox("Grid Snapping##viewport", state.getGridSnappingEnabled())) {
-            actions.toggleGridSnapping();
-        }
-
-        ImGui.sameLine();
-
-        if (ImGui.checkbox("Mesh##viewport", state.getShowVertices())) {
-            actions.toggleShowVertices();
-        }
-
-        // Additional controls toggle
-        ImGui.sameLine();
-        ImGui.separator();
-        ImGui.sameLine();
-
-        if (ImGui.button("Camera##viewport")) {
-            state.getShowCameraControls().set(!state.getShowCameraControls().get());
-        }
-
-        ImGui.sameLine();
-
-        if (ImGui.button("Rendering##viewport")) {
-            state.getShowRenderingOptions().set(!state.getShowRenderingOptions().get());
-        }
-
-        ImGui.sameLine();
-
-        if (ImGui.button("Transform##viewport")) {
-            state.getShowTransformationControls().set(!state.getShowTransformationControls().get());
+            ImGui.endTabBar();
         }
     }
 
@@ -161,5 +125,159 @@ public class ViewportMainView {
         if (viewport.getInputHandler() != null) {
             viewport.getInputHandler().handleInput(imagePos, viewportSize.x, viewportSize.y, viewportHovered);
         }
+    }
+
+    /**
+     * Render the View tab with view mode, render mode, reset, and fit controls.
+     */
+    private void renderViewTab() {
+        applyDensityScaling();
+
+        // View mode and Render mode (horizontal layout)
+        ImGui.text("View:");
+        ImGui.sameLine();
+        ImGui.setNextItemWidth(120);
+        if (ImGui.combo("##viewmode", state.getCurrentViewModeIndex(), state.getViewModes())) {
+            actions.updateViewMode();
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        ImGui.text("Render:");
+        ImGui.sameLine();
+        ImGui.setNextItemWidth(120);
+        if (ImGui.combo("##rendermode", state.getCurrentRenderModeIndex(), state.getRenderModes())) {
+            actions.updateRenderMode();
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        // Action buttons (horizontal layout)
+        if (ImGui.button("Reset", 80, 0)) {
+            actions.resetView();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Fit", 80, 0)) {
+            actions.fitToView();
+        }
+
+        popDensityScaling();
+    }
+
+    /**
+     * Render the Display tab with visual aids checkboxes.
+     */
+    private void renderDisplayTab() {
+        applyDensityScaling();
+
+        // Checkboxes (horizontal layout for space efficiency)
+        if (ImGui.checkbox("Grid", state.getGridVisible())) {
+            actions.toggleGrid();
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        if (ImGui.checkbox("Axes", state.getAxesVisible())) {
+            actions.toggleAxes();
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        if (ImGui.checkbox("Snapping", state.getGridSnappingEnabled())) {
+            actions.toggleGridSnapping();
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        if (ImGui.checkbox("Mesh", state.getShowVertices())) {
+            actions.toggleShowVertices();
+        }
+
+        popDensityScaling();
+    }
+
+    /**
+     * Render the Tools tab with advanced panel toggles.
+     */
+    private void renderToolsTab() {
+        applyDensityScaling();
+
+        // Panel toggle buttons (horizontal layout for space efficiency)
+        boolean cameraOpen = state.getShowCameraControls().get();
+        if (ImGui.button("Camera", 120, 0)) {
+            state.getShowCameraControls().set(!cameraOpen);
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        boolean renderingOpen = state.getShowRenderingOptions().get();
+        if (ImGui.button("Rendering", 120, 0)) {
+            state.getShowRenderingOptions().set(!renderingOpen);
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
+        boolean transformOpen = state.getShowTransformationControls().get();
+        if (ImGui.button("Transform", 120, 0)) {
+            state.getShowTransformationControls().set(!transformOpen);
+        }
+
+        popDensityScaling();
+    }
+
+    /**
+     * Apply density scaling to UI elements.
+     */
+    private void applyDensityScaling() {
+        DensityManager.UIDensity density = getDensity();
+        float scale = density.getScaleFactor();
+
+        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 8.0f * scale, 4.0f * scale);
+        ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 4.0f * scale, 4.0f * scale);
+        styleVarPushCount = 2;
+    }
+
+    /**
+     * Pop density scaling style variables.
+     */
+    private void popDensityScaling() {
+        ImGui.popStyleVar(styleVarPushCount);
+    }
+
+    /**
+     * Get section header color (light blue tint).
+     */
+    private ImVec4 getSectionHeaderColor() {
+        return new ImVec4(0.8f, 0.8f, 1.0f, 1.0f);
+    }
+
+    /**
+     * Get current UI density from preferences.
+     */
+    private DensityManager.UIDensity getDensity() {
+        // Try to get from preferences manager
+        if (preferencesManager != null) {
+            try {
+                // Get current density from preferences if available
+                return DensityManager.UIDensity.NORMAL; // Default to NORMAL for now
+            } catch (Exception e) {
+                logger.warn("Failed to get density from preferences, using NORMAL", e);
+            }
+        }
+        return DensityManager.UIDensity.NORMAL;
     }
 }

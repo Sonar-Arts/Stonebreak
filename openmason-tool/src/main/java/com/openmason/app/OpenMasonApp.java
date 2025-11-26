@@ -276,7 +276,7 @@ public class OpenMasonApp {
             projectHubScreen.setTransitionCallbacks(this::transitionToMainInterface, this::transitionToMainInterface);
             projectHubScreen.setOnPreferencesClicked(mainInterface.getShowPreferencesCallback());
 
-            viewportInterface = new ViewportImGuiInterface();
+            viewportInterface = new ViewportImGuiInterface(themeManager, new com.openmason.ui.preferences.PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();

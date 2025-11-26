@@ -57,15 +57,6 @@ public class RenderContext {
     }
 
     /**
-     * Get reusable float buffer for matrix data.
-     * Buffer is cleared before each use.
-     */
-    public FloatBuffer getMatrixBuffer() {
-        matrixBuffer.clear();
-        return matrixBuffer;
-    }
-
-    /**
      * Upload matrix to buffer and return it.
      */
     public FloatBuffer uploadMatrix(Matrix4f matrix) {
@@ -74,27 +65,10 @@ public class RenderContext {
         return matrixBuffer;
     }
 
-    /**
-     * Create MVP matrix by multiplying view-projection with model matrix.
-     */
-    public Matrix4f createMVPMatrix(Matrix4f modelMatrix) {
-        Matrix4f mvp = new Matrix4f();
-        viewProjectionMatrix.mul(modelMatrix, mvp);
-        return mvp;
-    }
-
     // Getters
     public ViewportCamera getCamera() { return viewportCamera; }
     public int getViewportWidth() { return viewportWidth; }
     public int getViewportHeight() { return viewportHeight; }
-    public boolean isWireframeMode() { return wireframeMode; }
-
-    /**
-     * Get aspect ratio.
-     */
-    public float getAspectRatio() {
-        return viewportHeight > 0 ? (float) viewportWidth / viewportHeight : 1.0f;
-    }
 
     @Override
     public String toString() {

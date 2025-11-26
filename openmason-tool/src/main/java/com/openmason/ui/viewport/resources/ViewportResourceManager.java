@@ -167,7 +167,6 @@ public class ViewportResourceManager implements AutoCloseable {
 
     // Getters
     public FramebufferResource getFramebuffer() { return framebuffer; }
-    public GeometryBuffer getTestCube() { return testCube; }
     public GeometryBuffer getGrid() { return grid; }
     public boolean isInitialized() { return initialized; }
 

@@ -16,14 +16,9 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Renders model vertices as colored points, similar to Blender's vertex display mode.
- * Follows KISS, SOLID, DRY, and YAGNI principles.
- *
- * Single Responsibility: Render model vertices as points (extraction delegated to VertexExtractor).
- * Open/Closed: Works with any Collection of ModelParts without modification.
- * DRY: Single code path for all model types.
- * YAGNI: No unnecessary features, no model-type-specific code.
- */
+  * Renders model vertices as colored points, similar to Blender's vertex display mode.
+  * Vertex positions are extracted by VertexExtractor; this class handles rendering.
+  */
 public class VertexRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(VertexRenderer.class);
@@ -38,7 +33,6 @@ public class VertexRenderer {
     private boolean enabled = false;
     private float pointSize = 5.0f;
     private final Vector3f defaultVertexColor = new Vector3f(1.0f, 0.6f, 0.0f); // Blender's orange
-    private final Vector3f hoverVertexColor = new Vector3f(1.0f, 1.0f, 0.0f); // Yellow for hover
 
     // Hover state
     private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
@@ -95,13 +89,6 @@ public class VertexRenderer {
     /**
      * Update vertex data from a collection of model parts with transformation.
      * Generic method that works with ANY model type - cow, cube, sheep, future models.
-     *
-     * KISS: Single, simple method for all use cases.
-     * DRY: No duplicate code paths.
-     * Open/Closed: Add new model types without changing this class.
-     *
-     * @param parts Collection of model parts to render vertices from
-     * @param transformMatrix Transformation matrix to apply
      */
     public void updateVertexData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
@@ -239,8 +226,6 @@ public class VertexRenderer {
             float normalIntensity = 1.0f;
             float hoverIntensity = 2.5f; // Orange * 2.5 ≈ Yellow
 
-            // Get intensity uniform location
-            int intensityLoc = glGetUniformLocation(shader.getProgramId(), "uIntensity");
 
             // Render all vertices at once with appropriate intensity
             if (hoveredVertexIndex >= 0) {
@@ -292,33 +277,6 @@ public class VertexRenderer {
     }
 
     /**
-     * Set the hovered vertex index.
-     * @param vertexIndex Index of the hovered vertex, or -1 for no hover
-     */
-    public void setHoveredVertex(int vertexIndex) {
-        if (this.hoveredVertexIndex != vertexIndex) {
-            this.hoveredVertexIndex = vertexIndex;
-            logger.trace("Hovered vertex changed to: {}", vertexIndex);
-        }
-    }
-
-    /**
-     * Get the hovered vertex index.
-     * @return Index of the hovered vertex, or -1 if no vertex is hovered
-     */
-    public int getHoveredVertexIndex() {
-        return hoveredVertexIndex;
-    }
-
-    /**
-     * Get vertex positions for hit testing.
-     * @return Array of vertex positions [x, y, z, x, y, z, ...] or null if no data
-     */
-    public float[] getVertexPositions() {
-        return vertexPositions;
-    }
-
-    /**
      * Get the number of vertices.
      * @return Number of vertices
      */
@@ -336,10 +294,6 @@ public class VertexRenderer {
         this.enabled = enabled;
     }
 
-    public float getPointSize() {
-        return pointSize;
-    }
-
     public void setPointSize(float pointSize) {
         this.pointSize = Math.max(1.0f, Math.min(15.0f, pointSize));
         logger.trace("Point size set to: {}", this.pointSize);
@@ -349,19 +303,4 @@ public class VertexRenderer {
         return initialized;
     }
 
-    public Vector3f getVertexColor() {
-        return new Vector3f(defaultVertexColor);
-    }
-
-    public void setVertexColor(float r, float g, float b) {
-        this.defaultVertexColor.set(r, g, b);
-    }
-
-    public Vector3f getHoverVertexColor() {
-        return new Vector3f(hoverVertexColor);
-    }
-
-    public void setHoverVertexColor(float r, float g, float b) {
-        this.hoverVertexColor.set(r, g, b);
-    }
 }

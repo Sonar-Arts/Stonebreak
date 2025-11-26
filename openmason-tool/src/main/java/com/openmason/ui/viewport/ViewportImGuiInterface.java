@@ -2,6 +2,7 @@ package com.openmason.ui.viewport;
 
 import com.openmason.ui.ViewportController;
 import com.openmason.ui.preferences.PreferencesManager;
+import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.viewport.views.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,10 +32,25 @@ public class ViewportImGuiInterface {
     // Preferences manager for backward compatibility
     private PreferencesManager preferencesManager;
 
+    // Theme manager for UI styling
+    private ThemeManager themeManager;
+
+    /**
+     * Default constructor for backward compatibility.
+     * Creates default instances of PreferencesManager and ThemeManager.
+     */
     public ViewportImGuiInterface() {
-        // Backward compatibility constructor
+        this(new ThemeManager(), new PreferencesManager());
+    }
+
+    /**
+     * Constructor with dependency injection.
+     * Preferred for proper dependency management.
+     */
+    public ViewportImGuiInterface(ThemeManager themeManager, PreferencesManager preferencesManager) {
         this.state = new ViewportUIState();
-        this.preferencesManager = new PreferencesManager(); // Create default
+        this.themeManager = themeManager;
+        this.preferencesManager = preferencesManager;
         this.actions = null;
         this.keyboardShortcuts = null;
         this.mainView = null;
@@ -59,7 +75,7 @@ public class ViewportImGuiInterface {
         this.keyboardShortcuts = new ViewportKeyboardShortcuts(actions, state);
 
         // Initialize view components
-        this.mainView = new ViewportMainView(state, actions, viewport3D);
+        this.mainView = new ViewportMainView(state, actions, viewport3D, themeManager, preferencesManager);
         this.cameraControlsView = new CameraControlsView(state, actions);
         this.renderingOptionsView = new RenderingOptionsView(state, actions);
         this.transformControlsView = new TransformControlsView(state, actions, viewport3D);
