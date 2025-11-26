@@ -37,46 +37,6 @@ public class ViewportImGuiInterface {
     // Preferences manager for backward compatibility
     private PreferencesManager preferencesManager;
 
-    /**
-     * Constructor with dependency injection.
-     * @param preferencesManager The preferences manager for persistence
-     */
-    public ViewportImGuiInterface(PreferencesManager preferencesManager) {
-        // Initialize state
-        this.state = new ViewportUIState();
-        this.preferencesManager = preferencesManager;
-
-        // Actions will be initialized after viewport is set
-        this.actions = null;
-        this.keyboardShortcuts = null;
-
-        // Views will be initialized after viewport is set
-        this.mainView = null;
-        this.cameraControlsView = null;
-        this.renderingOptionsView = null;
-        this.transformControlsView = null;
-    }
-
-    /**
-     * Internal constructor used after viewport is injected.
-     */
-    private ViewportImGuiInterface(ViewportUIState state, ViewportController viewport, PreferencesManager preferencesManager) {
-        this.state = state;
-        this.viewport3D = viewport;
-        this.preferencesManager = preferencesManager;
-
-        // Initialize all components
-        initializeComponents();
-    }
-
-    /**
-     * Factory method to create fully initialized controller.
-     */
-    public static ViewportImGuiInterface create(ViewportController viewport, PreferencesManager preferencesManager) {
-        ViewportUIState state = new ViewportUIState();
-        return new ViewportImGuiInterface(state, viewport, preferencesManager);
-    }
-
     public ViewportImGuiInterface() {
         // Backward compatibility constructor
         this.state = new ViewportUIState();
@@ -112,17 +72,6 @@ public class ViewportImGuiInterface {
 
         state.setViewportInitialized(true);
         logger.info("ViewportImGuiInterface components initialized");
-    }
-
-    /**
-     * Initialize the viewport interface and set up 3D viewport.
-     * @deprecated Use factory method create() instead
-     */
-    @Deprecated
-    public void initialize() {
-        if (viewport3D != null) {
-            state.setViewportInitialized(true);
-        }
     }
 
     /**
@@ -175,15 +124,13 @@ public class ViewportImGuiInterface {
 
     /**
      * Set the shared 3D viewport instance.
-     * @deprecated Use factory method create() instead
      */
-    @Deprecated
     public void setViewport3D(ViewportController viewport) {
         this.viewport3D = viewport;
         logger.info("Shared 3D viewport injected into ViewportImGuiInterface: {}",
                    viewport != null ? System.identityHashCode(viewport) : "NULL");
 
-        // Initialize components now that viewport is available (backward compatibility)
+        // Initialize components now that viewport is available
         initializeComponents();
     }
 
@@ -198,49 +145,15 @@ public class ViewportImGuiInterface {
         }
     }
 
-    /**
-     * Toggle wireframe mode (public method for external access).
-     */
-    public void toggleWireframe() {
-        if (actions != null) {
-            actions.toggleWireframe();
-        }
-    }
-
-    // ========== Getters for external access ==========
-
-    public ViewportController getViewport3D() {
-        return viewport3D;
-    }
-
-    public boolean isWireframeMode() {
-        return state.getWireframeMode().get();
-    }
-
-    public boolean isGridVisible() {
-        return state.getGridVisible().get();
-    }
-
-    public boolean isAxesVisible() {
-        return state.getAxesVisible().get();
-    }
-
-    public boolean isViewportInitialized() {
-        return state.isViewportInitialized();
-    }
-
-    public ViewportUIState getState() {
-        return state;
-    }
-
     // ========== Lifecycle methods ==========
 
     /**
      * Update method called every frame.
+     * Currently no frame-based updates needed - keyboard shortcuts and rendering
+     * are handled in the render() method.
      */
     public void update(float deltaTime) {
-        // Update any animated elements or periodic updates
-        // Currently no frame-based updates needed
+        // Reserved for future animated elements or periodic updates
     }
 
     /**
@@ -253,12 +166,5 @@ public class ViewportImGuiInterface {
             viewport3D = null;
         }
         state.setViewportInitialized(false);
-    }
-
-    /**
-     * Reset viewport to defaults.
-     */
-    public void resetToDefaults() {
-        state.resetToDefaults();
     }
 }
