@@ -7,14 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Controller for the 3D viewport interface.
- * Follows MVC architecture - this is the Controller.
- * Follows SOLID principles:
- * - Single Responsibility: Coordinates between views, state, and actions
- * - Open/Closed: Can extend with new views without modifying controller
- * - Liskov Substitution: N/A (no inheritance)
- * - Interface Segregation: Uses focused interfaces for dependencies
- * - Dependency Inversion: Depends on abstractions via constructor injection
+ * Controller for the 3D viewport (MVC).
+ * Adheres to SOLID: Single Responsibility, Open/Closed, Interface Segregation, Dependency Inversion.
  */
 public class ViewportImGuiInterface {
 

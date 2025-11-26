@@ -75,7 +75,6 @@ public class ViewportState {
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public boolean isShowGrid() { return showGrid; }
-    public boolean isShowAxes() { return showAxes; }
     public boolean isWireframeMode() { return wireframeMode; }
     public boolean isShowVertices() { return showVertices; }
     public boolean isInitialized() { return initialized; }
@@ -95,13 +94,6 @@ public class ViewportState {
         int heightDiff = Math.abs(newHeight - height);
 
         return widthDiff >= RESIZE_THRESHOLD || heightDiff >= RESIZE_THRESHOLD;
-    }
-
-    /**
-     * Check if dimensions are valid.
-     */
-    public boolean hasValidDimensions() {
-        return width > 0 && height > 0;
     }
 
     /**
