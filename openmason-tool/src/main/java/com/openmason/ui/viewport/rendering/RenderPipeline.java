@@ -37,7 +37,7 @@ public class RenderPipeline {
     private final ShaderManager shaderManager;
 
     // Specialized renderers
-    private final InfiniteGridRenderer infiniteGridRenderer;
+    private final GridRenderer gridRenderer;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
 
@@ -67,7 +67,7 @@ public class RenderPipeline {
         this.context = context;
         this.resources = resources;
         this.shaderManager = shaderManager;
-        this.infiniteGridRenderer = new InfiniteGridRenderer();
+        this.gridRenderer = new GridRenderer();
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
         this.legacyCowModelRenderer = legacyCowModelRenderer;
@@ -150,13 +150,13 @@ public class RenderPipeline {
     private void renderGrid() {
         try {
             // Initialize infinite grid renderer if needed
-            if (!infiniteGridRenderer.isInitialized()) {
-                infiniteGridRenderer.initialize();
+            if (!gridRenderer.isInitialized()) {
+                gridRenderer.initialize();
             }
 
             // Use infinite grid shader
             ShaderProgram infiniteGridShader = shaderManager.getShaderProgram(ShaderType.INFINITE_GRID);
-            infiniteGridRenderer.render(infiniteGridShader, context);
+            gridRenderer.render(infiniteGridShader, context);
         } catch (Exception e) {
             logger.error("Error rendering infinite grid", e);
         }
@@ -351,9 +351,7 @@ public class RenderPipeline {
         try {
             gizmoRenderer.render(
                 context.getCamera().getViewMatrix(),
-                context.getCamera().getProjectionMatrix(),
-                viewportState.getWidth(),
-                viewportState.getHeight()
+                context.getCamera().getProjectionMatrix()
             );
         } catch (Exception e) {
             logger.error("Error rendering gizmo", e);
@@ -549,8 +547,8 @@ public class RenderPipeline {
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
-        if (infiniteGridRenderer != null && infiniteGridRenderer.isInitialized()) {
-            infiniteGridRenderer.cleanup();
+        if (gridRenderer != null && gridRenderer.isInitialized()) {
+            gridRenderer.cleanup();
         }
         if (vertexRenderer != null && vertexRenderer.isInitialized()) {
             vertexRenderer.cleanup();

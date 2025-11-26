@@ -9,11 +9,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Utility class for detecting edge hover interactions.
  * Mirrors VertexHoverDetector pattern but for line segments.
- *
- * <p>Follows SOLID principles:
- * - Single Responsibility: Only handles edge hover detection
- * - KISS: Simple point-to-line distance check in screen space
- * - SAFE: Validates all inputs and handles edge cases
  */
 public final class EdgeHoverDetector {
 
@@ -27,17 +22,6 @@ public final class EdgeHoverDetector {
     /**
      * Detects which edge (if any) is currently hovered by the mouse.
      * Uses screen-space point-to-line distance with line width as threshold.
-     *
-     * @param mouseX Mouse X coordinate in screen space (pixels)
-     * @param mouseY Mouse Y coordinate in screen space (pixels)
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     * @param viewMatrix Camera view matrix
-     * @param projectionMatrix Camera projection matrix
-     * @param edgePositions Array of edge endpoints [x1,y1,z1, x2,y2,z2, ...] (2 endpoints per edge)
-     * @param edgeCount Number of edges
-     * @param lineWidth Edge line width in pixels
-     * @return Index of the hovered edge, or -1 if no edge is hovered
      */
     public static int detectHoveredEdge(float mouseX, float mouseY,
                                        int viewportWidth, int viewportHeight,
@@ -156,14 +140,6 @@ public final class EdgeHoverDetector {
     /**
      * Calculate the shortest distance from a point to a line segment.
      * Uses parametric line equation to find closest point on segment.
-     *
-     * @param px Point X
-     * @param py Point Y
-     * @param x1 Line segment start X
-     * @param y1 Line segment start Y
-     * @param x2 Line segment end X
-     * @param y2 Line segment end Y
-     * @return Distance in pixels
      */
     private static float pointToLineSegmentDistance(float px, float py,
                                                    float x1, float y1,

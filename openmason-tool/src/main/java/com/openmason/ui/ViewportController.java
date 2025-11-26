@@ -8,7 +8,7 @@ import com.openmason.ui.viewport.ViewportCamera;
 import com.openmason.ui.viewport.ViewportInputHandler;
 import com.openmason.ui.viewport.gizmo.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
-import com.openmason.ui.viewport.model.AsyncModelLoader;
+import com.openmason.deprecated.AsyncModelLoader;
 import com.openmason.rendering.core.BlockRenderer;
 import com.openmason.rendering.core.ItemRenderer;
 import com.openmason.deprecated.LegacyCowTextureAtlas;
@@ -19,7 +19,6 @@ import com.openmason.ui.viewport.shaders.ShaderManager;
 import com.openmason.ui.viewport.state.RenderingState;
 import com.openmason.ui.viewport.state.TransformState;
 import com.openmason.ui.viewport.state.ViewportState;
-import com.openmason.ui.viewport.ui.ModelControlsUI;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -28,16 +27,6 @@ import org.slf4j.LoggerFactory;
 /**
  * 3D viewport controller using modular architecture.
  * Displays models, blocks, and items from stonebreak-game module.
- *
- * <p>Delegates to specialized modules:
- * <ul>
- *   <li>Shaders → {@link ShaderManager}</li>
- *   <li>Resources → {@link ViewportResourceManager}</li>
- *   <li>Rendering → {@link RenderPipeline}</li>
- *   <li>State → {@link ViewportState}, {@link RenderingState}, {@link TransformState}</li>
- *   <li>UI → {@link ModelControlsUI}</li>
- *   <li>Models → {@link AsyncModelLoader}</li>
- * </ul>
  */
 public class ViewportController {
 

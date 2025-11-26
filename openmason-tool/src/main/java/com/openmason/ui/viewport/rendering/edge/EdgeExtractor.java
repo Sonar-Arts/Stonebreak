@@ -11,14 +11,6 @@ import java.util.Collection;
 /**
  * Extracts edges from model data and applies transformations.
  * Mirrors VertexExtractor pattern for consistency.
- *
- * Single Responsibility: Only handles edge extraction and transformation.
- * No rendering logic - purely data extraction.
- *
- * KISS: Simple face-based edge extraction (4 edges per quad face)
- * DRY: Single implementation works for all model types
- * SOLID: Single responsibility, works with any ModelPart collection
- * YAGNI: No deduplication, no unnecessary features
  */
 public class EdgeExtractor {
 
@@ -27,10 +19,6 @@ public class EdgeExtractor {
     /**
      * Extract edges from a collection of model parts with transformation applied.
      * Each face (4 vertices) generates 4 edges forming a quad outline.
-     *
-     * @param parts Collection of model parts to extract edges from
-     * @param globalTransform Global transformation matrix (from viewport controls)
-     * @return Array of edge endpoints [x1,y1,z1, x2,y2,z2, ...] for GL_LINES rendering
      */
     public float[] extractEdges(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
         if (parts == null || parts.isEmpty()) {

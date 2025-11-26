@@ -1,7 +1,5 @@
-package com.openmason.ui.viewport.model;
+package com.openmason.deprecated;
 
-import com.openmason.deprecated.LegacyCowModelManager;
-import com.openmason.deprecated.LegacyCowStonebreakModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +9,13 @@ import java.util.function.Consumer;
 /**
  * Handles asynchronous model loading with progress callbacks.
  * Follows Single Responsibility Principle - only handles model loading.
+ *
+ * @deprecated This class is cow-specific and only uses deprecated legacy cow classes
+ *             (LegacyCowModelManager, LegacyCowStonebreakModel). It should not be used
+ *             for general model loading. Consider using the stonebreak-game module's
+ *             ModelLoader directly for generic model loading needs.
  */
+@Deprecated
 public class AsyncModelLoader {
 
     private static final Logger logger = LoggerFactory.getLogger(AsyncModelLoader.class);
@@ -95,27 +99,10 @@ public class AsyncModelLoader {
     }
 
     /**
-     * Cancel any pending model loading.
-     */
-    public void cancelLoading() {
-        if (currentLoadingFuture != null && !currentLoadingFuture.isDone()) {
-            logger.info("Cancelling pending model loading");
-            currentLoadingFuture.cancel(true);
-            currentLoadingFuture = null;
-        }
-    }
-
-    /**
      * Check if a model is currently loading.
      */
     public boolean isLoading() {
         return currentLoadingFuture != null && !currentLoadingFuture.isDone();
     }
 
-    /**
-     * Get current loading future (for UI status display).
-     */
-    public CompletableFuture<Void> getCurrentLoadingFuture() {
-        return currentLoadingFuture;
-    }
 }

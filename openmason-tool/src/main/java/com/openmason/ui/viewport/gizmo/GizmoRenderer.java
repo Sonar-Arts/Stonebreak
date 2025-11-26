@@ -21,14 +21,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Main gizmo renderer that orchestrates all transform modes and handles rendering.
- *
- * <p>This class follows SOLID principles:
- * - Single Responsibility: Only orchestrates gizmo rendering
- * - Open/Closed: Extensible with new modes without modification
- * - Liskov Substitution: All modes are interchangeable via IGizmoMode
- * - Dependency Inversion: Depends on abstractions (IGizmoMode, GizmoState)
- * - RAII: Proper resource cleanup
+ * Orchestrates transform gizmo rendering and interaction (translate, rotate, scale).
+ * Extends SOLID principles with extensible mode system and proper resource management.
  */
 public class GizmoRenderer {
 
@@ -37,11 +31,9 @@ public class GizmoRenderer {
     private final GizmoInteractionHandler interactionHandler;
     private ViewportState viewportState;
 
-    // Gizmo modes
     private final Map<GizmoState.Mode, IGizmoMode> modes = new HashMap<>();
     private IGizmoMode currentMode;
 
-    // OpenGL resources
     private int shaderProgram = -1;
     private boolean initialized = false;
 
@@ -66,12 +58,10 @@ public class GizmoRenderer {
         this.viewportState = viewportState;
         this.interactionHandler = new GizmoInteractionHandler(gizmoState, transformState, viewportState);
 
-        // Create mode instances
         modes.put(GizmoState.Mode.TRANSLATE, new TranslateMode());
         modes.put(GizmoState.Mode.ROTATE, new RotateMode());
         modes.put(GizmoState.Mode.SCALE, new ScaleMode());
 
-        // Set initial mode
         currentMode = modes.get(gizmoState.getCurrentMode());
     }
 
@@ -87,17 +77,14 @@ public class GizmoRenderer {
         }
 
         try {
-            // Load shaders
             shaderProgram = loadGizmoShaders();
             if (shaderProgram < 0) {
                 throw new IllegalStateException("Failed to load gizmo shaders");
             }
 
-            // Initialize all modes
             for (IGizmoMode mode : modes.values()) {
                 mode.initialize();
 
-                // Set shader program for each mode
                 if (mode instanceof TranslateMode) {
                     ((TranslateMode) mode).setShaderProgram(shaderProgram);
                 } else if (mode instanceof RotateMode) {
@@ -109,60 +96,57 @@ public class GizmoRenderer {
 
             initialized = true;
         } catch (Exception e) {
-            dispose(); // Clean up partial initialization
+            dispose();
             throw new IllegalStateException("Failed to initialize GizmoRenderer", e);
         }
     }
 
-    /**
-     * Renders the gizmo at the specified position.
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     */
-    public void render(Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                      int viewportWidth, int viewportHeight) {
+    public void render(Matrix4f viewMatrix, Matrix4f projectionMatrix) {
         if (!initialized) {
             throw new IllegalStateException("GizmoRenderer not initialized");
         }
         if (!gizmoState.isEnabled()) {
-            return; // Gizmo disabled
+            return;
         }
 
-        // Update mode if changed
+        updateCurrentMode();
+        if (currentMode == null) {
+            return;
+        }
+
+        Matrix4f gizmoTransform = createGizmoTransform();
+        Matrix4f viewProjection = new Matrix4f(projectionMatrix).mul(viewMatrix);
+
+        boolean cullFaceEnabled = GL30.glIsEnabled(GL30.GL_CULL_FACE);
+
+        configureRenderState();
+        currentMode.render(gizmoTransform, viewProjection, gizmoState);
+        restoreRenderState(cullFaceEnabled);
+    }
+
+    private void updateCurrentMode() {
         IGizmoMode newMode = modes.get(gizmoState.getCurrentMode());
         if (newMode != currentMode) {
             currentMode = newMode;
         }
+    }
 
-        if (currentMode == null) {
-            return; // No valid mode
-        }
-
-        // Create gizmo transform matrix at object position
-        Vector3f gizmoPosition = new Vector3f(
+    private Matrix4f createGizmoTransform() {
+        Vector3f position = new Vector3f(
             transformState.getPositionX(),
             transformState.getPositionY(),
             transformState.getPositionZ()
         );
-        Matrix4f gizmoTransform = new Matrix4f().identity().translate(gizmoPosition);
+        return new Matrix4f().identity().translate(position);
+    }
 
-        // Create view-projection matrix
-        Matrix4f viewProjection = new Matrix4f(projectionMatrix).mul(viewMatrix);
-
-        // Save current OpenGL state
-        boolean cullFaceEnabled = GL30.glIsEnabled(GL30.GL_CULL_FACE);
-
-        // Enable depth testing but render gizmo on top (always visible)
+    private void configureRenderState() {
         GL30.glEnable(GL30.GL_DEPTH_TEST);
-        GL30.glDepthFunc(GL30.GL_ALWAYS);  // Always render on top, never occluded
+        GL30.glDepthFunc(GL30.GL_ALWAYS);  // Always on top, never occluded
+        GL30.glDisable(GL30.GL_CULL_FACE); // Show all rotation grabber sides
+    }
 
-        // Disable backface culling so all sides of rotation grabbers are visible
-        GL30.glDisable(GL30.GL_CULL_FACE);
-
-        // Render current mode
-        currentMode.render(gizmoTransform, viewProjection, gizmoState);
-
-        // Restore OpenGL state
+    private void restoreRenderState(boolean cullFaceEnabled) {
         if (cullFaceEnabled) {
             GL30.glEnable(GL30.GL_CULL_FACE);
         }
@@ -172,13 +156,6 @@ public class GizmoRenderer {
 
     /**
      * Handles mouse movement for gizmo interaction.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @param viewMatrix View matrix
-     * @param projectionMatrix Projection matrix
-     * @param viewportWidth Viewport width
-     * @param viewportHeight Viewport height
      */
     public void handleMouseMove(float mouseX, float mouseY,
                                Matrix4f viewMatrix, Matrix4f projectionMatrix,
@@ -187,10 +164,8 @@ public class GizmoRenderer {
             return;
         }
 
-        // Update camera for raycasting
         interactionHandler.updateCamera(viewMatrix, projectionMatrix, viewportWidth, viewportHeight);
 
-        // Get interactive parts from current mode
         Vector3f gizmoPosition = new Vector3f(
             transformState.getPositionX(),
             transformState.getPositionY(),
@@ -198,15 +173,11 @@ public class GizmoRenderer {
         );
         List<GizmoPart> parts = currentMode.getInteractiveParts(gizmoPosition);
 
-        // Handle mouse movement
         interactionHandler.handleMouseMove(mouseX, mouseY, parts);
     }
 
     /**
      * Handles mouse press for starting drag operations.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
      * @return true if gizmo was clicked, false otherwise
      */
     public boolean handleMousePress(float mouseX, float mouseY) {
@@ -219,9 +190,6 @@ public class GizmoRenderer {
 
     /**
      * Handles mouse release for ending drag operations.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
      */
     public void handleMouseRelease(float mouseX, float mouseY) {
         if (!initialized || !gizmoState.isEnabled()) {
@@ -232,16 +200,7 @@ public class GizmoRenderer {
     }
 
     /**
-     * Cycles to the next gizmo mode (Translate → Rotate → Scale → Translate).
-     */
-    public void cycleMode() {
-        gizmoState.cycleMode();
-    }
-
-    /**
      * Sets the gizmo mode directly.
-     *
-     * @param mode The mode to set (must not be null)
      * @throws IllegalArgumentException if mode is null
      */
     public void setMode(GizmoState.Mode mode) {
@@ -251,36 +210,16 @@ public class GizmoRenderer {
         gizmoState.setCurrentMode(mode);
     }
 
-    /**
-     * Gets the current gizmo mode.
-     *
-     * @return Current mode (never null)
-     */
     public GizmoState.Mode getCurrentMode() {
         return gizmoState.getCurrentMode();
     }
 
-    /**
-     * Checks if the gizmo is currently being dragged.
-     *
-     * @return true if dragging, false otherwise
-     */
     public boolean isDragging() {
         return gizmoState.isDragging();
     }
 
     /**
-     * Updates the viewport state for grid snapping configuration.
-     * Should be called whenever viewport state changes (e.g., grid snapping enabled/disabled,
-     * snap increment changed).
-     *
-     * <p>This method:
-     * <ul>
-     *   <li>Stores the new viewport state</li>
-     *   <li>Forwards it to the interaction handler for use during gizmo dragging</li>
-     * </ul>
-     *
-     * @param viewportState The new viewport state (must not be null)
+     * Updates viewport state for grid snapping configuration.
      * @throws IllegalArgumentException if viewportState is null
      */
     public void updateViewportState(com.openmason.ui.viewport.state.ViewportState viewportState) {
@@ -295,16 +234,11 @@ public class GizmoRenderer {
         }
     }
 
-    /**
-     * Disposes of all OpenGL resources.
-     */
     public void dispose() {
-        // Dispose all modes
         for (IGizmoMode mode : modes.values()) {
             mode.dispose();
         }
 
-        // Delete shader program
         if (shaderProgram >= 0) {
             GL30.glDeleteProgram(shaderProgram);
             shaderProgram = -1;
@@ -313,39 +247,27 @@ public class GizmoRenderer {
         initialized = false;
     }
 
-    /**
-     * Checks if the renderer has been initialized.
-     *
-     * @return true if initialized, false otherwise
-     */
     public boolean isInitialized() {
         return initialized;
     }
 
-    /**
-     * Gets the gizmo state for external configuration.
-     *
-     * @return The gizmo state (never null)
-     */
     public GizmoState getGizmoState() {
         return gizmoState;
     }
 
     /**
-     * Loads and compiles the gizmo shaders.
-     *
+     * Loads and compiles gizmo shaders. Attaches individual shaders to program,
+     * validates link, and cleans up shader objects.
      * @return Shader program ID, or -1 on failure
      */
     private int loadGizmoShaders() {
         try {
-            // Load vertex shader
             String vertexSource = loadShaderSource("/shaders/gizmo.vert");
             int vertexShader = compileShader(vertexSource, GL30.GL_VERTEX_SHADER);
             if (vertexShader < 0) {
                 return -1;
             }
 
-            // Load fragment shader
             String fragmentSource = loadShaderSource("/shaders/gizmo.frag");
             int fragmentShader = compileShader(fragmentSource, GL30.GL_FRAGMENT_SHADER);
             if (fragmentShader < 0) {
@@ -353,13 +275,11 @@ public class GizmoRenderer {
                 return -1;
             }
 
-            // Link program
             int program = GL30.glCreateProgram();
             GL30.glAttachShader(program, vertexShader);
             GL30.glAttachShader(program, fragmentShader);
             GL30.glLinkProgram(program);
 
-            // Check link status
             int linkStatus = GL30.glGetProgrami(program, GL30.GL_LINK_STATUS);
             if (linkStatus == GL30.GL_FALSE) {
                 String log = GL30.glGetProgramInfoLog(program);
@@ -370,7 +290,6 @@ public class GizmoRenderer {
                 return -1;
             }
 
-            // Clean up individual shaders (no longer needed after linking)
             GL30.glDeleteShader(vertexShader);
             GL30.glDeleteShader(fragmentShader);
 
@@ -384,9 +303,6 @@ public class GizmoRenderer {
 
     /**
      * Loads shader source code from resources.
-     *
-     * @param path Resource path to shader file
-     * @return Shader source code
      * @throws Exception if loading fails
      */
     private String loadShaderSource(String path) throws Exception {
@@ -407,10 +323,8 @@ public class GizmoRenderer {
     }
 
     /**
-     * Compiles a shader.
-     *
-     * @param source Shader source code
-     * @param type Shader type (GL_VERTEX_SHADER or GL_FRAGMENT_SHADER)
+     * Compiles a shader and validates compilation.
+     * @param type GL_VERTEX_SHADER or GL_FRAGMENT_SHADER
      * @return Shader ID, or -1 on failure
      */
     private int compileShader(String source, int type) {
@@ -418,7 +332,6 @@ public class GizmoRenderer {
         GL30.glShaderSource(shader, source);
         GL30.glCompileShader(shader);
 
-        // Check compile status
         int compileStatus = GL30.glGetShaderi(shader, GL30.GL_COMPILE_STATUS);
         if (compileStatus == GL30.GL_FALSE) {
             String log = GL30.glGetShaderInfoLog(shader);

@@ -11,14 +11,6 @@ import java.util.Collection;
 /**
  * Extracts vertices from model data and applies transformations.
  * Follows Blender's approach: vertices stored in local space, rendered in world space.
- *
- * Single Responsibility: Only handles vertex extraction and transformation.
- * No rendering logic - purely data extraction.
- *
- * KISS: Simple, focused functionality
- * DRY: Single implementation works for all model types
- * SOLID: Single responsibility, works with any ModelPart collection
- * YAGNI: No unnecessary features, no model-type-specific code
  */
 public class VertexExtractor {
 
@@ -27,10 +19,6 @@ public class VertexExtractor {
     /**
      * Extract vertices from a collection of model parts with transformation applied.
      * Generic method that works with ANY model type - cow, cube, sheep, etc.
-     *
-     * @param parts Collection of model parts to extract vertices from
-     * @param globalTransform Global transformation matrix (from viewport controls)
-     * @return Array of transformed vertex positions [x, y, z, x, y, z, ...]
      */
     public float[] extractVertices(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
         if (parts == null || parts.isEmpty()) {

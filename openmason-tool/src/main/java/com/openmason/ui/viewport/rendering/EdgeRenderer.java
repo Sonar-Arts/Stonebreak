@@ -20,11 +20,6 @@ import static org.lwjgl.opengl.GL30.*;
 /**
  * Renders model edges as lines, complementing VertexRenderer.
  * Mirrors VertexRenderer pattern for consistency.
- *
- * Single Responsibility: Render model edges as lines (extraction delegated to EdgeExtractor).
- * Open/Closed: Works with any Collection of ModelParts without modification.
- * DRY: Single code path for all model types.
- * YAGNI: No unnecessary features, simple line rendering.
  */
 public class EdgeRenderer {
 
@@ -97,13 +92,6 @@ public class EdgeRenderer {
     /**
      * Update edge data from a collection of model parts with transformation.
      * Generic method that works with ANY model type.
-     *
-     * KISS: Single, simple method for all use cases.
-     * DRY: No duplicate code paths.
-     * Open/Closed: Add new model types without changing this class.
-     *
-     * @param parts Collection of model parts to render edges from
-     * @param transformMatrix Transformation matrix to apply
      */
     public void updateEdgeData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
@@ -329,63 +317,8 @@ public class EdgeRenderer {
         this.enabled = enabled;
     }
 
-    public float getLineWidth() {
-        return lineWidth;
-    }
-
-    public void setLineWidth(float lineWidth) {
-        this.lineWidth = Math.max(0.5f, Math.min(5.0f, lineWidth));
-        logger.trace("Line width set to: {}", this.lineWidth);
-    }
-
     public boolean isInitialized() {
         return initialized;
     }
 
-    public Vector3f getEdgeColor() {
-        return new Vector3f(edgeColor);
-    }
-
-    public void setEdgeColor(float r, float g, float b) {
-        this.edgeColor.set(r, g, b);
-    }
-
-    public int getEdgeCount() {
-        return edgeCount;
-    }
-
-    /**
-     * Set the hovered edge index.
-     * @param edgeIndex Index of the hovered edge, or -1 for no hover
-     */
-    public void setHoveredEdge(int edgeIndex) {
-        if (this.hoveredEdgeIndex != edgeIndex) {
-            this.hoveredEdgeIndex = edgeIndex;
-            logger.trace("Hovered edge changed to: {}", edgeIndex);
-        }
-    }
-
-    /**
-     * Get the hovered edge index.
-     * @return Index of the hovered edge, or -1 if no edge is hovered
-     */
-    public int getHoveredEdgeIndex() {
-        return hoveredEdgeIndex;
-    }
-
-    /**
-     * Get edge positions for hit testing.
-     * @return Array of edge positions [x1,y1,z1, x2,y2,z2, ...] or null if no data
-     */
-    public float[] getEdgePositions() {
-        return edgePositions;
-    }
-
-    public Vector3f getHoverEdgeColor() {
-        return new Vector3f(hoverEdgeColor);
-    }
-
-    public void setHoverEdgeColor(float r, float g, float b) {
-        this.hoverEdgeColor.set(r, g, b);
-    }
 }
