@@ -22,27 +22,12 @@ import com.openmason.ui.viewport.state.ViewportState;
 import com.openmason.ui.viewport.ui.ModelControlsUI;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
-import imgui.ImGui;
-import imgui.ImVec2;
-import imgui.flag.ImGuiWindowFlags;
-import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Clean and robust 3D viewport implementation using modular architecture.
  * Displays 3D models, blocks, and items loaded from stonebreak-game module.
- *
- * This class acts as a thin orchestrator/facade, delegating to specialized modules:
- * - Shader management → ShaderManager
- * - Resource management → ViewportResourceManager
- * - Rendering → RenderPipeline
- * - State → ViewportState, RenderingState, TransformState
- * - UI → ModelControlsUI
- * - Model loading → AsyncModelLoader
- *
- * Note: Main viewport controls (grid, snapping, rendering) are now in ViewportImGuiInterface.
- * Follows SOLID principles for maintainability and extensibility.
  */
 public class ViewportController {
 
@@ -283,83 +268,6 @@ public class ViewportController {
     }
 
     /**
-     * Display viewport in ImGui.
-     */
-    public void displayInImGui() {
-        if (!viewportState.isInitialized() || resourceManager.getFramebuffer().getColorTextureId() == -1) {
-            ImGui.text("Viewport not initialized");
-            return;
-        }
-
-        // Begin 3D Viewport window
-        ImGui.begin("3D Viewport", ImGuiWindowFlags.None);
-
-        // Get available content region
-        ImVec2 contentRegion = ImGui.getContentRegionAvail();
-        int newWidth = (int) contentRegion.x;
-        int newHeight = (int) contentRegion.y;
-
-        // Resize if needed
-        if (newWidth > 0 && newHeight > 0) {
-            resize(newWidth, newHeight);
-        }
-
-        // Render 3D content
-        render();
-
-        // Display the rendered texture
-        ImVec2 imagePos = ImGui.getCursorScreenPos();
-        ImGui.image(resourceManager.getFramebuffer().getColorTextureId(),
-                   contentRegion.x, contentRegion.y, 0, 1, 1, 0);
-
-        // Check if the viewport window itself is being hovered
-        // This prevents mouse capture when interacting with overlaying windows
-        boolean viewportHovered = ImGui.isWindowHovered();
-
-        // Handle input
-        if (inputHandler != null) {
-            inputHandler.handleInput(imagePos, contentRegion.x, contentRegion.y, viewportHovered);
-        }
-
-        ImGui.end();
-
-        // Show control windows
-        // Note: Viewport controls migrated to ViewportImGuiInterface
-        showModelControls();
-    }
-
-
-    /**
-     * Show model controls window.
-     */
-    private void showModelControls() {
-        modelControlsUI.updateState(
-            renderingState.getCurrentModelName(),
-            renderingState.getCurrentTextureVariant(),
-            renderingState.getCurrentModel(),
-            modelLoader.getCurrentLoadingFuture(),
-                legacyCowModelRenderer
-        );
-
-        ModelControlsUI.ModelControlsResult result = modelControlsUI.render();
-
-        // Handle model loading
-        if (result.loadModelName != null) {
-            loadModel(result.loadModelName);
-        }
-
-        // Handle model unload
-        if (result.unloadModel) {
-            unloadCurrentModel();
-        }
-
-        // Handle texture variant change
-        if (result.newTextureVariant != null) {
-            setCurrentTextureVariant(result.newTextureVariant);
-        }
-    }
-
-    /**
      * Load model asynchronously.
      */
     public void loadModel(String modelName) {
@@ -465,21 +373,6 @@ public class ViewportController {
 
             currentBlockModel = null;
         }
-    }
-
-    /**
-     * Unload current model.
-     */
-    private void unloadCurrentModel() {
-        logger.info("Unloading current model: {}", renderingState.getCurrentModelName());
-
-        // Cancel pending loading
-        modelLoader.cancelLoading();
-
-        // Clear model state
-        renderingState.clearModel();
-
-        logger.info("Model unloaded successfully");
     }
 
     /**
@@ -603,25 +496,20 @@ public class ViewportController {
     public LegacyCowModelRenderer getModelRenderer() { return legacyCowModelRenderer; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
 
-    public boolean isShowGrid() { return viewportState.isShowGrid(); }
     public void setShowGrid(boolean showGrid) {
         this.viewportState = viewportState.toBuilder().showGrid(showGrid).build();
     }
 
-    public boolean isGridVisible() { return viewportState.isShowGrid(); }
     public void setGridVisible(boolean visible) { setShowGrid(visible); }
 
-    public boolean isWireframeMode() { return viewportState.isWireframeMode(); }
     public void setWireframeMode(boolean wireframe) {
         this.viewportState = viewportState.toBuilder().wireframeMode(wireframe).build();
     }
 
-    public boolean isAxesVisible() { return viewportState.isShowAxes(); }
     public void setAxesVisible(boolean visible) {
         this.viewportState = viewportState.toBuilder().showAxes(visible).build();
     }
 
-    public boolean isGridSnappingEnabled() { return viewportState.isGridSnappingEnabled(); }
     public void setGridSnappingEnabled(boolean enabled) {
         this.viewportState = viewportState.toBuilder().gridSnappingEnabled(enabled).build();
         // Update gizmo renderer with new viewport state for snapping
@@ -630,7 +518,6 @@ public class ViewportController {
         }
     }
 
-    public float getGridSnappingIncrement() { return viewportState.getGridSnappingIncrement(); }
     public void setGridSnappingIncrement(float increment) {
         this.viewportState = viewportState.toBuilder().gridSnappingIncrement(increment).build();
         // Update gizmo renderer with new viewport state for snapping
@@ -640,7 +527,6 @@ public class ViewportController {
         logger.debug("Grid snapping increment updated to: {}", increment);
     }
 
-    public boolean isShowVertices() { return viewportState.isShowVertices(); }
     public void setShowVertices(boolean showVertices) {
         this.viewportState = viewportState.toBuilder().showVertices(showVertices).build();
         // Enable/disable vertex renderer
@@ -663,17 +549,8 @@ public class ViewportController {
     public boolean isInitialized() { return viewportState.isInitialized(); }
 
     public String getCurrentModelName() { return renderingState.getCurrentModelName(); }
-    public void setCurrentModelName(String modelName) {
-        // Legacy method - use loadModel() instead
-        loadModel(modelName);
-    }
 
     public LegacyCowStonebreakModel getCurrentModel() { return renderingState.getCurrentModel(); }
-    public void setCurrentModel(LegacyCowStonebreakModel model) {
-        renderingState.setCurrentModel(model);
-    }
-
-    public String getCurrentTextureVariant() { return renderingState.getCurrentTextureVariant(); }
 
     public float getModelPositionX() { return transformState.getPositionX(); }
     public float getModelPositionY() { return transformState.getPositionY(); }
@@ -681,24 +558,11 @@ public class ViewportController {
     public float getModelRotationX() { return transformState.getRotationX(); }
     public float getModelRotationY() { return transformState.getRotationY(); }
     public float getModelRotationZ() { return transformState.getRotationZ(); }
-    public float getModelScale() { return transformState.getScale(); }
     public float getModelScaleX() { return transformState.getScaleX(); }
     public float getModelScaleY() { return transformState.getScaleY(); }
     public float getModelScaleZ() { return transformState.getScaleZ(); }
     public float getMinScale() { return TransformState.getMinScale(); }
     public float getMaxScale() { return TransformState.getMaxScale(); }
-
-    public Matrix4f getUserTransformMatrix() { return transformState.getTransformMatrix(); }
-
-    public boolean isDragging() { return inputHandler != null && inputHandler.isDragging(); }
-    public boolean isMouseCaptured() { return inputHandler != null && inputHandler.isMouseCaptured(); }
-    public boolean isRawMouseMotionSupported() { return inputHandler != null && inputHandler.isRawMouseMotionSupported(); }
-
-    public void forceReleaseMouse() {
-        if (inputHandler != null) {
-            inputHandler.forceReleaseMouse();
-        }
-    }
 
     public void resetCamera() {
         if (viewportCamera != null) {
@@ -712,18 +576,6 @@ public class ViewportController {
         }
         if (inputHandler != null) {
             inputHandler.handleKeyboardInput(deltaTime);
-        }
-    }
-
-    public void renderToFramebuffer(int width, int height) {
-        int originalWidth = viewportState.getWidth();
-        int originalHeight = viewportState.getHeight();
-
-        try {
-            resize(width, height);
-            render();
-        } finally {
-            resize(originalWidth, originalHeight);
         }
     }
 
@@ -741,10 +593,6 @@ public class ViewportController {
 
     // ========== Gizmo API ==========
 
-    public GizmoState getGizmoState() {
-        return gizmoState;
-    }
-
     public GizmoRenderer getGizmoRenderer() {
         return gizmoRenderer;
     }
@@ -756,10 +604,6 @@ public class ViewportController {
 
     public boolean isGizmoEnabled() {
         return gizmoState.isEnabled();
-    }
-
-    public void cycleGizmoMode() {
-        gizmoRenderer.cycleMode();
     }
 
     public void setGizmoMode(GizmoState.Mode mode) {
