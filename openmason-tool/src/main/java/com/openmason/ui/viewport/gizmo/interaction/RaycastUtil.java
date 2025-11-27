@@ -45,11 +45,11 @@ public final class RaycastUtil {
         }
 
         // Vector from ray origin to sphere center
-        Vector3f oc = new Vector3f(ray.origin).sub(sphereCenter);
+        Vector3f oc = new Vector3f(ray.origin()).sub(sphereCenter);
 
         // Quadratic equation coefficients: at^2 + bt + c = 0
-        float a = ray.direction.dot(ray.direction); // Should be 1.0 since normalized
-        float b = 2.0f * oc.dot(ray.direction);
+        float a = ray.direction().dot(ray.direction()); // Should be 1.0 since normalized
+        float b = 2.0f * oc.dot(ray.direction());
         float c = oc.dot(oc) - sphereRadius * sphereRadius;
 
         // Discriminant
@@ -75,74 +75,6 @@ public final class RaycastUtil {
     }
 
     /**
-     * Tests intersection between a ray and a line segment.
-     * Returns the closest distance between the ray and the line.
-     */
-    public static float intersectRayLine(CoordinateSystem.Ray ray, Vector3f lineStart, Vector3f lineEnd, float threshold) {
-        if (ray == null || lineStart == null || lineEnd == null) {
-            throw new IllegalArgumentException("Parameters cannot be null");
-        }
-        if (threshold <= 0.0f) {
-            throw new IllegalArgumentException("Threshold must be positive");
-        }
-
-        // Line direction
-        Vector3f lineDir = new Vector3f(lineEnd).sub(lineStart);
-        float lineLength = lineDir.length();
-        if (lineLength < 0.0001f) {
-            // Degenerate line, treat as point
-            return intersectRaySphere(ray, lineStart, threshold);
-        }
-        lineDir.normalize();
-
-        // Vector from line start to ray origin
-        Vector3f w0 = new Vector3f(ray.origin).sub(lineStart);
-
-        // Compute closest points on both lines
-        float a = ray.direction.dot(ray.direction); // 1.0
-        float b = ray.direction.dot(lineDir);
-        float c = lineDir.dot(lineDir); // 1.0
-        float d = ray.direction.dot(w0);
-        float e = lineDir.dot(w0);
-
-        float denom = a * c - b * b; // 1.0 - cos^2(angle) = sin^2(angle)
-
-        float sc, tc;
-        if (denom < 0.0001f) {
-            // Lines are parallel
-            sc = 0.0f;
-            tc = (b > c ? d / b : e / c);
-        } else {
-            sc = (b * e - c * d) / denom;
-            tc = (a * e - b * d) / denom;
-        }
-
-        // Clamp tc to line segment bounds [0, lineLength]
-        tc = Math.max(0.0f, Math.min(lineLength, tc));
-
-        // Get closest points
-        Vector3f pointOnRay = new Vector3f(ray.origin).add(
-            ray.direction.x * sc,
-            ray.direction.y * sc,
-            ray.direction.z * sc
-        );
-
-        Vector3f pointOnLine = new Vector3f(lineStart).add(
-            lineDir.x * tc,
-            lineDir.y * tc,
-            lineDir.z * tc
-        );
-
-        // Check distance
-        float distance = pointOnRay.distance(pointOnLine);
-        if (distance <= threshold && sc > 0.0f) {
-            return sc; // Distance along ray
-        }
-
-        return Float.POSITIVE_INFINITY;
-    }
-
-    /**
      * Tests intersection between a ray and a plane.
      */
     public static float intersectRayPlane(CoordinateSystem.Ray ray, Vector3f planePoint, Vector3f planeNormal) {
@@ -151,13 +83,13 @@ public final class RaycastUtil {
         }
 
         // Check if ray is parallel to plane
-        float denom = planeNormal.dot(ray.direction);
+        float denom = planeNormal.dot(ray.direction());
         if (Math.abs(denom) < 0.0001f) {
             return Float.POSITIVE_INFINITY; // Parallel, no intersection
         }
 
         // Calculate intersection distance
-        Vector3f p0l0 = new Vector3f(planePoint).sub(ray.origin);
+        Vector3f p0l0 = new Vector3f(planePoint).sub(ray.origin());
         float t = p0l0.dot(planeNormal) / denom;
 
         if (t >= 0.0f) {
@@ -187,10 +119,10 @@ public final class RaycastUtil {
         }
 
         // Get intersection point on plane
-        Vector3f intersectionPoint = new Vector3f(ray.origin).add(
-            ray.direction.x * t,
-            ray.direction.y * t,
-            ray.direction.z * t
+        Vector3f intersectionPoint = new Vector3f(ray.origin()).add(
+            ray.direction().x * t,
+            ray.direction().y * t,
+            ray.direction().z * t
         );
 
         // Check if point is within the circle's interaction band
