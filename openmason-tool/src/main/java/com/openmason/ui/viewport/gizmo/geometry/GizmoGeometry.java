@@ -8,11 +8,6 @@ import java.util.List;
 /**
  * Base utilities for generating gizmo geometry data.
  * Provides common functions for creating vertex data for various shapes.
- *
- * <p>This class follows SOLID principles:
- * - Single Responsibility: Only handles geometric calculations
- * - DRY: Shared utilities prevent code duplication
- * - KISS: Simple, straightforward geometry generation
  */
 public final class GizmoGeometry {
 
@@ -23,11 +18,6 @@ public final class GizmoGeometry {
 
     /**
      * Generates vertices for a line segment.
-     *
-     * @param start Start point of the line
-     * @param end End point of the line
-     * @param color Color for both vertices
-     * @return Array of vertex data [x1,y1,z1,r,g,b, x2,y2,z2,r,g,b]
      */
     public static float[] createLine(Vector3f start, Vector3f end, Vector3f color) {
         if (start == null || end == null || color == null) {
@@ -45,74 +35,8 @@ public final class GizmoGeometry {
     }
 
     /**
-     * Generates vertices for a circle (or arc) in 3D space.
-     *
-     * @param center Center of the circle
-     * @param radius Radius of the circle
-     * @param normal Normal vector defining the circle's plane
-     * @param color Color for all vertices
-     * @param segments Number of line segments (more = smoother)
-     * @param startAngle Start angle in radians (0 = +X axis)
-     * @param endAngle End angle in radians (2*PI = full circle)
-     * @return List of vertex data for line segments
-     */
-    public static List<Float> createCircle(Vector3f center, float radius, Vector3f normal,
-                                           Vector3f color, int segments,
-                                           float startAngle, float endAngle) {
-        if (center == null || normal == null || color == null) {
-            throw new IllegalArgumentException("Parameters cannot be null");
-        }
-        if (radius <= 0.0f) {
-            throw new IllegalArgumentException("Radius must be positive");
-        }
-        if (segments < 3) {
-            throw new IllegalArgumentException("Segments must be at least 3");
-        }
-
-        List<Float> vertices = new ArrayList<>();
-
-        // Create two perpendicular vectors in the circle's plane
-        Vector3f tangent1 = new Vector3f();
-        Vector3f tangent2 = new Vector3f();
-        createCircleBasis(normal, tangent1, tangent2);
-
-        // Generate circle vertices
-        float angleStep = (endAngle - startAngle) / segments;
-        for (int i = 0; i <= segments; i++) {
-            float angle = startAngle + i * angleStep;
-            float cos = (float) Math.cos(angle);
-            float sin = (float) Math.sin(angle);
-
-            // Point on circle = center + radius * (cos*tangent1 + sin*tangent2)
-            Vector3f point = new Vector3f(center)
-                .add(tangent1.x * radius * cos, tangent1.y * radius * cos, tangent1.z * radius * cos)
-                .add(tangent2.x * radius * sin, tangent2.y * radius * sin, tangent2.z * radius * sin);
-
-            // Add vertex (position + color)
-            vertices.add(point.x);
-            vertices.add(point.y);
-            vertices.add(point.z);
-            vertices.add(color.x);
-            vertices.add(color.y);
-            vertices.add(color.z);
-
-            // Add line segment (except for last vertex)
-            if (i > 0) {
-                // Previous vertex already in list, this creates a line segment
-                // OpenGL will connect consecutive vertices with GL_LINES
-            }
-        }
-
-        return vertices;
-    }
-
-    /**
      * Creates an orthonormal basis for a circle given its normal vector.
      * Uses the "Frisvad" method for numerical stability.
-     *
-     * @param normal The normal vector (will be normalized internally)
-     * @param tangent1 Output: first tangent vector
-     * @param tangent2 Output: second tangent vector
      */
     private static void createCircleBasis(Vector3f normal, Vector3f tangent1, Vector3f tangent2) {
         // Normalize the normal vector
@@ -132,41 +56,7 @@ public final class GizmoGeometry {
     }
 
     /**
-     * Generates vertices for a triangle.
-     *
-     * @param v1 First vertex position
-     * @param v2 Second vertex position
-     * @param v3 Third vertex position
-     * @param color Color for all vertices
-     * @return Array of vertex data
-     */
-    public static float[] createTriangle(Vector3f v1, Vector3f v2, Vector3f v3, Vector3f color) {
-        if (v1 == null || v2 == null || v3 == null || color == null) {
-            throw new IllegalArgumentException("Parameters cannot be null");
-        }
-
-        return new float[] {
-            // Vertex 1
-            v1.x, v1.y, v1.z,
-            color.x, color.y, color.z,
-            // Vertex 2
-            v2.x, v2.y, v2.z,
-            color.x, color.y, color.z,
-            // Vertex 3
-            v3.x, v3.y, v3.z,
-            color.x, color.y, color.z
-        };
-    }
-
-    /**
      * Generates vertices for a quadrilateral (two triangles).
-     *
-     * @param v1 First corner
-     * @param v2 Second corner
-     * @param v3 Third corner
-     * @param v4 Fourth corner
-     * @param color Color for all vertices
-     * @return Array of vertex data for two triangles
      */
     public static float[] createQuad(Vector3f v1, Vector3f v2, Vector3f v3, Vector3f v4, Vector3f color) {
         if (v1 == null || v2 == null || v3 == null || v4 == null || color == null) {
@@ -188,13 +78,6 @@ public final class GizmoGeometry {
 
     /**
      * Generates vertices for a cone (used for arrow tips).
-     *
-     * @param base Center of the cone base
-     * @param tip Position of the cone tip
-     * @param baseRadius Radius of the cone base
-     * @param color Color for all vertices
-     * @param segments Number of segments around the cone (more = smoother)
-     * @return List of vertex data for triangles
      */
     public static List<Float> createCone(Vector3f base, Vector3f tip, float baseRadius,
                                          Vector3f color, int segments) {
@@ -270,19 +153,7 @@ public final class GizmoGeometry {
         List<Float> vertices = new ArrayList<>();
 
         // Define 8 corners of the box
-        float x = center.x, y = center.y, z = center.z;
-        float sx = size.x, sy = size.y, sz = size.z;
-
-        Vector3f[] corners = {
-            new Vector3f(x - sx, y - sy, z - sz), // 0: left-bottom-back
-            new Vector3f(x + sx, y - sy, z - sz), // 1: right-bottom-back
-            new Vector3f(x + sx, y + sy, z - sz), // 2: right-top-back
-            new Vector3f(x - sx, y + sy, z - sz), // 3: left-top-back
-            new Vector3f(x - sx, y - sy, z + sz), // 4: left-bottom-front
-            new Vector3f(x + sx, y - sy, z + sz), // 5: right-bottom-front
-            new Vector3f(x + sx, y + sy, z + sz), // 6: right-top-front
-            new Vector3f(x - sx, y + sy, z + sz)  // 7: left-top-front
-        };
+        Vector3f[] corners = createBoxCorners(center, size);
 
         // Define 6 faces (each face = 2 triangles)
         int[][] faces = {
@@ -309,11 +180,26 @@ public final class GizmoGeometry {
     }
 
     /**
+     * Creates the 8 corner vertices of a box.
+     */
+    private static Vector3f[] createBoxCorners(Vector3f center, Vector3f size) {
+        float x = center.x, y = center.y, z = center.z;
+        float sx = size.x, sy = size.y, sz = size.z;
+
+        return new Vector3f[] {
+            new Vector3f(x - sx, y - sy, z - sz), // 0: left-bottom-back
+            new Vector3f(x + sx, y - sy, z - sz), // 1: right-bottom-back
+            new Vector3f(x + sx, y + sy, z - sz), // 2: right-top-back
+            new Vector3f(x - sx, y + sy, z - sz), // 3: left-top-back
+            new Vector3f(x - sx, y - sy, z + sz), // 4: left-bottom-front
+            new Vector3f(x + sx, y - sy, z + sz), // 5: right-bottom-front
+            new Vector3f(x + sx, y + sy, z + sz), // 6: right-top-front
+            new Vector3f(x - sx, y + sy, z + sz)  // 7: left-top-front
+        };
+    }
+
+    /**
      * Helper method to add a vertex to the vertex list.
-     *
-     * @param vertices List to add to
-     * @param position Vertex position
-     * @param color Vertex color
      */
     private static void addVertex(List<Float> vertices, Vector3f position, Vector3f color) {
         vertices.add(position.x);
@@ -326,9 +212,6 @@ public final class GizmoGeometry {
 
     /**
      * Converts a list of floats to a float array.
-     *
-     * @param list List of floats
-     * @return float array
      */
     public static float[] toFloatArray(List<Float> list) {
         if (list == null) {
