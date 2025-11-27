@@ -6,7 +6,7 @@ import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.openmason.deprecated.LegacyCowModelRenderer;
 import com.openmason.ui.viewport.ViewportCamera;
 import com.openmason.ui.viewport.ViewportInputHandler;
-import com.openmason.ui.viewport.gizmo.GizmoRenderer;
+import com.openmason.ui.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.deprecated.AsyncModelLoader;
 import com.openmason.rendering.core.BlockRenderer;

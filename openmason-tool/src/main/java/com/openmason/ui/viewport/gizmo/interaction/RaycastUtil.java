@@ -4,22 +4,10 @@ import com.openmason.ui.viewport.coordinates.CoordinateSystem;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 
 /**
  * Utility class for 3D raycasting and intersection tests.
  * Provides functions for ray-sphere, ray-line, ray-plane, and ray-circle intersection.
- *
- * <p>This class follows SOLID principles:
- * - Single Responsibility: Only handles geometric intersection calculations
- * - KISS: Uses straightforward mathematical formulas
- * - SAFE: Validates all inputs and handles edge cases
- *
- * <p><b>Coordinate System:</b>
- * This class uses the unified {@link CoordinateSystem} for all coordinate conversions.
- * All rays are in world space. All intersection results are distances along rays in world units.
- *
- * @see CoordinateSystem
  */
 public final class RaycastUtil {
 
@@ -29,46 +17,15 @@ public final class RaycastUtil {
     }
 
     /**
-     * Represents a 3D ray with origin and direction.
-     * @deprecated Use {@link CoordinateSystem.Ray} instead.
-     */
-    @Deprecated
-    public static class Ray {
-        public final Vector3f origin;
-        public final Vector3f direction; // Normalized
-
-        public Ray(Vector3f origin, Vector3f direction) {
-            if (origin == null || direction == null) {
-                throw new IllegalArgumentException("Ray parameters cannot be null");
-            }
-            this.origin = new Vector3f(origin);
-            this.direction = new Vector3f(direction).normalize();
-        }
-    }
-
-    /**
      * Creates a ray from screen coordinates using camera matrices.
-     *
-     * <p><b>Coordinate System:</b> Uses unified {@link CoordinateSystem} for conversion.
-     *
-     * @param screenX Screen X coordinate (pixels)
-     * @param screenY Screen Y coordinate (pixels)
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     * @param viewMatrix View matrix
-     * @param projectionMatrix Projection matrix
-     * @return Ray in world space
      */
-    public static Ray createRayFromScreen(float screenX, float screenY,
+    public static CoordinateSystem.Ray createRayFromScreen(float screenX, float screenY,
                                          int viewportWidth, int viewportHeight,
                                          Matrix4f viewMatrix, Matrix4f projectionMatrix) {
         // Delegate to unified coordinate system
-        CoordinateSystem.Ray unifiedRay = CoordinateSystem.createWorldRayFromScreen(
+        return CoordinateSystem.createWorldRayFromScreen(
             screenX, screenY, viewportWidth, viewportHeight, viewMatrix, projectionMatrix
         );
-
-        // Convert to legacy Ray type for backward compatibility
-        return new Ray(unifiedRay.origin, unifiedRay.direction);
     }
 
     /**
@@ -79,7 +36,7 @@ public final class RaycastUtil {
      * @param sphereRadius Radius of the sphere
      * @return Distance along ray to intersection, or Float.POSITIVE_INFINITY if no hit
      */
-    public static float intersectRaySphere(Ray ray, Vector3f sphereCenter, float sphereRadius) {
+    public static float intersectRaySphere(CoordinateSystem.Ray ray, Vector3f sphereCenter, float sphereRadius) {
         if (ray == null || sphereCenter == null) {
             throw new IllegalArgumentException("Parameters cannot be null");
         }
@@ -120,14 +77,8 @@ public final class RaycastUtil {
     /**
      * Tests intersection between a ray and a line segment.
      * Returns the closest distance between the ray and the line.
-     *
-     * @param ray The ray to test
-     * @param lineStart Start of the line segment
-     * @param lineEnd End of the line segment
-     * @param threshold Maximum distance to consider a hit
-     * @return Distance along ray to closest point, or Float.POSITIVE_INFINITY if too far
      */
-    public static float intersectRayLine(Ray ray, Vector3f lineStart, Vector3f lineEnd, float threshold) {
+    public static float intersectRayLine(CoordinateSystem.Ray ray, Vector3f lineStart, Vector3f lineEnd, float threshold) {
         if (ray == null || lineStart == null || lineEnd == null) {
             throw new IllegalArgumentException("Parameters cannot be null");
         }
@@ -193,13 +144,8 @@ public final class RaycastUtil {
 
     /**
      * Tests intersection between a ray and a plane.
-     *
-     * @param ray The ray to test
-     * @param planePoint A point on the plane
-     * @param planeNormal Normal vector of the plane (must be normalized)
-     * @return Distance along ray to intersection, or Float.POSITIVE_INFINITY if no hit
      */
-    public static float intersectRayPlane(Ray ray, Vector3f planePoint, Vector3f planeNormal) {
+    public static float intersectRayPlane(CoordinateSystem.Ray ray, Vector3f planePoint, Vector3f planeNormal) {
         if (ray == null || planePoint == null || planeNormal == null) {
             throw new IllegalArgumentException("Parameters cannot be null");
         }
@@ -224,15 +170,8 @@ public final class RaycastUtil {
     /**
      * Tests intersection between a ray and a circle (torus approximation).
      * Used for rotation gizmo interaction.
-     *
-     * @param ray The ray to test
-     * @param circleCenter Center of the circle
-     * @param circleNormal Normal vector defining the circle plane
-     * @param circleRadius Radius of the circle
-     * @param thickness Thickness of the interaction band
-     * @return Distance along ray to intersection, or Float.POSITIVE_INFINITY if no hit
      */
-    public static float intersectRayCircle(Ray ray, Vector3f circleCenter, Vector3f circleNormal,
+    public static float intersectRayCircle(CoordinateSystem.Ray ray, Vector3f circleCenter, Vector3f circleNormal,
                                           float circleRadius, float thickness) {
         if (ray == null || circleCenter == null || circleNormal == null) {
             throw new IllegalArgumentException("Parameters cannot be null");
@@ -268,36 +207,17 @@ public final class RaycastUtil {
 
     /**
      * Gets the intersection point on a ray at a given distance.
-     *
-     * @param ray The ray
-     * @param distance Distance along the ray
-     * @return The point at that distance
      */
-    public static Vector3f getPointOnRay(Ray ray, float distance) {
+    public static Vector3f getPointOnRay(CoordinateSystem.Ray ray, float distance) {
         if (ray == null) {
             throw new IllegalArgumentException("Ray cannot be null");
         }
 
-        return new Vector3f(ray.origin).add(
-            ray.direction.x * distance,
-            ray.direction.y * distance,
-            ray.direction.z * distance
-        );
+        return ray.getPoint(distance);
     }
 
     /**
      * Projects a screen-space delta (mouse movement) onto a world-space axis.
-     *
-     * <p><b>Coordinate System:</b> Uses unified {@link CoordinateSystem} for conversion.
-     * All coordinate system handling is delegated to the centralized system.
-     *
-     * @param screenDelta Mouse movement in screen space (pixels, ImGui coordinates)
-     * @param axis World-space axis to project onto (must be normalized)
-     * @param viewMatrix View matrix
-     * @param projectionMatrix Projection matrix
-     * @param viewportWidth Viewport width
-     * @param viewportHeight Viewport height
-     * @return Projected movement along the axis in world units
      */
     public static float projectScreenDeltaOntoAxis(Vector2f screenDelta, Vector3f axis,
                                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,

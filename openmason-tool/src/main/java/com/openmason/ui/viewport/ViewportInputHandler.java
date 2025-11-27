@@ -1,6 +1,6 @@
 package com.openmason.ui.viewport;
 
-import com.openmason.ui.viewport.gizmo.GizmoRenderer;
+import com.openmason.ui.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.ui.viewport.rendering.VertexRenderer;
 import imgui.ImGui;
 import imgui.ImVec2;

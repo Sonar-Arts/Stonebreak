@@ -4,7 +4,7 @@ import com.openmason.deprecated.LegacyCowTextureAtlas;
 import com.openmason.rendering.core.BlockRenderer;
 import com.openmason.rendering.core.ItemRenderer;
 import com.openmason.deprecated.LegacyCowModelRenderer;
-import com.openmason.ui.viewport.gizmo.GizmoRenderer;
+import com.openmason.ui.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
 import com.openmason.ui.viewport.shaders.ShaderManager;
 import com.openmason.ui.viewport.shaders.ShaderProgram;

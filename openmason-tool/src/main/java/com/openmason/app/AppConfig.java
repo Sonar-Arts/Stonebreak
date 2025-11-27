@@ -66,9 +66,7 @@ public class AppConfig {
                 loadDefaultConfiguration();
                 saveConfiguration(); // Save default config to file
             }
-            
-            logger.info("Configuration initialized successfully");
-            
+
         } catch (Exception e) {
             logger.error("Failed to initialize configuration, using defaults", e);
             loadDefaultConfiguration();
@@ -81,7 +79,6 @@ public class AppConfig {
     private void loadConfigurationFromFile() throws IOException {
         try (InputStream input = Files.newInputStream(configFilePath)) {
             properties.load(input);
-            logger.info("Loaded configuration from: {}", configFilePath);
         }
     }
     
@@ -108,13 +105,11 @@ public class AppConfig {
 
         // Viewport settings
         properties.setProperty("viewport.vertex.point.size", String.valueOf(DEFAULT_VERTEX_POINT_SIZE));
-        
+
         // Performance settings
         properties.setProperty("performance.max.texture.cache", "512"); // MB
         properties.setProperty("performance.max.model.cache", "128");   // MB
         properties.setProperty("performance.vsync.enabled", "true");
-        
-        logger.info("Loaded default configuration");
     }
     
     /**

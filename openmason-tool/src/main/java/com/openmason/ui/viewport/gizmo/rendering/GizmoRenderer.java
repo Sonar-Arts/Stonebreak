@@ -1,5 +1,6 @@
-package com.openmason.ui.viewport.gizmo;
+package com.openmason.ui.viewport.gizmo.rendering;
 
+import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.gizmo.interaction.GizmoInteractionHandler;
 import com.openmason.ui.viewport.gizmo.interaction.GizmoPart;
 import com.openmason.ui.viewport.gizmo.modes.IGizmoMode;

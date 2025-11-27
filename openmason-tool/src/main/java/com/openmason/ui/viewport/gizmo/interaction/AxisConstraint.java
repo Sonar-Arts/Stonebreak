@@ -66,30 +66,4 @@ public enum AxisConstraint {
         return this == XY || this == XZ || this == YZ;
     }
 
-    /**
-     * Check if this constraint involves the X axis.
-     *
-     * @return true if X axis is involved, false otherwise
-     */
-    public boolean hasX() {
-        return this == X || this == XY || this == XZ;
-    }
-
-    /**
-     * Check if this constraint involves the Y axis.
-     *
-     * @return true if Y axis is involved, false otherwise
-     */
-    public boolean hasY() {
-        return this == Y || this == XY || this == YZ;
-    }
-
-    /**
-     * Check if this constraint involves the Z axis.
-     *
-     * @return true if Z axis is involved, false otherwise
-     */
-    public boolean hasZ() {
-        return this == Z || this == XZ || this == YZ;
-    }
 }

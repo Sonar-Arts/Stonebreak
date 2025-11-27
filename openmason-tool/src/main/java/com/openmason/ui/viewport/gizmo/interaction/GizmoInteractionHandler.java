@@ -1,5 +1,6 @@
 package com.openmason.ui.viewport.gizmo.interaction;
 
+import com.openmason.ui.viewport.coordinates.CoordinateSystem;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.state.TransformState;
 import com.openmason.ui.viewport.state.ViewportState;
@@ -12,11 +13,6 @@ import java.util.List;
 /**
  * Handles mouse interaction with the transform gizmo.
  * Manages hover detection, click handling, and drag operations.
- *
- * <p>This class follows SOLID principles:
- * - Single Responsibility: Only handles gizmo interaction logic
- * - Dependency Inversion: Depends on abstractions (GizmoState, TransformState)
- * - SAFE: Validates all inputs and handles edge cases
  */
 public class GizmoInteractionHandler {
 
@@ -32,11 +28,6 @@ public class GizmoInteractionHandler {
 
     /**
      * Creates a new GizmoInteractionHandler.
-     *
-     * @param gizmoState The gizmo state to manage (must not be null)
-     * @param transformState The transform state to modify (must not be null)
-     * @param viewportState The viewport state for snapping settings (can be null)
-     * @throws IllegalArgumentException if gizmoState or transformState is null
      */
     public GizmoInteractionHandler(GizmoState gizmoState, TransformState transformState, ViewportState viewportState) {
         if (gizmoState == null) {
@@ -54,8 +45,6 @@ public class GizmoInteractionHandler {
     /**
      * Update viewport state for snapping settings.
      * Should be called whenever viewport state changes.
-     *
-     * @param viewportState The new viewport state
      */
     public void updateViewportState(ViewportState viewportState) {
         this.viewportState = viewportState;
@@ -64,11 +53,6 @@ public class GizmoInteractionHandler {
     /**
      * Updates the camera matrices used for raycasting.
      * Should be called each frame before processing input.
-     *
-     * @param view View matrix
-     * @param projection Projection matrix
-     * @param width Viewport width
-     * @param height Viewport height
      */
     public void updateCamera(Matrix4f view, Matrix4f projection, int width, int height) {
         if (view == null || projection == null) {
@@ -161,6 +145,10 @@ public class GizmoInteractionHandler {
      * @param mouseY Mouse Y position
      */
     public void handleMouseRelease(float mouseX, float mouseY) {
+        if (!gizmoState.isEnabled()) {
+            return;
+        }
+
         if (gizmoState.isDragging()) {
             gizmoState.endDrag();
         }
@@ -175,7 +163,7 @@ public class GizmoInteractionHandler {
      */
     private void handleHover(float mouseX, float mouseY, List<GizmoPart> gizmoParts) {
         // Create ray from mouse position
-        RaycastUtil.Ray ray = RaycastUtil.createRayFromScreen(
+        CoordinateSystem.Ray ray = RaycastUtil.createRayFromScreen(
             mouseX,
             mouseY,
             viewportWidth,
@@ -207,7 +195,7 @@ public class GizmoInteractionHandler {
      * @param part The gizmo part
      * @return Distance to intersection, or Float.POSITIVE_INFINITY if no hit
      */
-    private float intersectPart(RaycastUtil.Ray ray, GizmoPart part) {
+    private float intersectPart(CoordinateSystem.Ray ray, GizmoPart part) {
         switch (part.getType()) {
             case ARROW:
             case BOX:
@@ -348,7 +336,7 @@ public class GizmoInteractionHandler {
      */
     private void handleRotateDrag(float mouseX, float mouseY, AxisConstraint constraint) {
         // Create current ray
-        RaycastUtil.Ray currentRay = RaycastUtil.createRayFromScreen(
+        CoordinateSystem.Ray currentRay = RaycastUtil.createRayFromScreen(
             mouseX, mouseY, viewportWidth, viewportHeight, viewMatrix, projectionMatrix
         );
 
@@ -371,7 +359,7 @@ public class GizmoInteractionHandler {
 
         // Also get start point
         Vector2f startMouse = gizmoState.getDragStartMousePos();
-        RaycastUtil.Ray startRay = RaycastUtil.createRayFromScreen(
+        CoordinateSystem.Ray startRay = RaycastUtil.createRayFromScreen(
             startMouse.x, startMouse.y, viewportWidth, viewportHeight, viewMatrix, projectionMatrix
         );
         float tStart = RaycastUtil.intersectRayPlane(startRay, center, axis);
