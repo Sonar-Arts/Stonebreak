@@ -26,6 +26,10 @@ public class ViewportUIState {
     private final String[] viewModes = {"Perspective", "Orthographic", "Front", "Side", "Top", "Bottom", "Isometric"};
     private final ImInt currentViewModeIndex = new ImInt(0);
 
+    // Camera mode state
+    private final String[] cameraModes = {"Arcball", "First-Person"};
+    private final ImInt currentCameraModeIndex = new ImInt(0);
+
     // Render mode state
     private final String[] renderModes = {"Solid", "Wireframe", "Points", "Textured"};
     private final ImInt currentRenderModeIndex = new ImInt(0);
@@ -56,6 +60,11 @@ public class ViewportUIState {
     public ImInt getCurrentViewModeIndex() { return currentViewModeIndex; }
     public String getCurrentViewMode() { return viewModes[currentViewModeIndex.get()]; }
 
+    // Getters for camera mode
+    public String[] getCameraModes() { return cameraModes; }
+    public ImInt getCurrentCameraModeIndex() { return currentCameraModeIndex; }
+    public String getCurrentCameraMode() { return cameraModes[currentCameraModeIndex.get()]; }
+
     // Getters for render mode
     public String[] getRenderModes() { return renderModes; }
     public ImInt getCurrentRenderModeIndex() { return currentRenderModeIndex; }
@@ -71,11 +80,9 @@ public class ViewportUIState {
     public boolean isViewportInitialized() { return viewportInitialized; }
     public void setViewportInitialized(boolean initialized) { this.viewportInitialized = initialized; }
 
-    /**
-     * Reset all state to defaults.
-     */
     public void resetToDefaults() {
         currentViewModeIndex.set(0);
+        currentCameraModeIndex.set(0);
         currentRenderModeIndex.set(0);
         cameraDistance.set(5.0f);
         cameraPitch.set(30.0f);

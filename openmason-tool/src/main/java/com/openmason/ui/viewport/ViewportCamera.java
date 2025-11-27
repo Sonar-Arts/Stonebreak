@@ -185,13 +185,20 @@ public class ViewportCamera {
 
     // ========== Camera Mode Management ==========
 
-    /**
-     * Gets the current camera mode.
-     *
-     * @return Current camera mode
-     */
     public CameraMode getCameraMode() {
         return currentMode;
+    }
+
+    public void setCameraMode(CameraMode mode) {
+        if (this.currentMode == mode) {
+            return;
+        }
+
+        this.currentMode = mode;
+        this.activeController = (mode == CameraMode.ARCBALL) ? arcballController : firstPersonController;
+        viewMatrixDirty = true;
+
+        logger.info("Camera mode changed to: {}", mode);
     }
 
     // ========== Getters and Setters ==========

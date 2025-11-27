@@ -408,7 +408,7 @@ public class ViewportInputHandler {
             viewportCamera.moveUp(deltaTime);
             moved = true;
         }
-        if (ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT)) {
+        if (ImGui.isKeyDown(GLFW.GLFW_KEY_LEFT_CONTROL) || ImGui.isKeyDown(GLFW.GLFW_KEY_RIGHT_CONTROL)) {
             viewportCamera.moveUp(-deltaTime);
             moved = true;
         }

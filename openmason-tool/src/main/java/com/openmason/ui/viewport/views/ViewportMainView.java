@@ -156,7 +156,17 @@ public class ViewportMainView {
         ImGui.spacing();
         ImGui.sameLine();
 
-        // Action buttons (horizontal layout)
+        ImGui.text("Camera:");
+        ImGui.sameLine();
+        ImGui.setNextItemWidth(120);
+        if (ImGui.combo("##cameramode", state.getCurrentCameraModeIndex(), state.getCameraModes())) {
+            actions.updateCameraMode();
+        }
+
+        ImGui.sameLine();
+        ImGui.spacing();
+        ImGui.sameLine();
+
         if (ImGui.button("Reset", 80, 0)) {
             actions.resetView();
         }

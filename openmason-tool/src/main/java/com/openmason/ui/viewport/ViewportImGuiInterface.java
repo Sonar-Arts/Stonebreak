@@ -157,13 +157,10 @@ public class ViewportImGuiInterface {
 
     // ========== Lifecycle methods ==========
 
-    /**
-     * Update method called every frame.
-     * Currently no frame-based updates needed - keyboard shortcuts and rendering
-     * are handled in the render() method.
-     */
     public void update(float deltaTime) {
-        // Reserved for future animated elements or periodic updates
+        if (viewport3D != null) {
+            viewport3D.update(deltaTime);
+        }
     }
 
     /**

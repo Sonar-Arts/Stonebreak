@@ -140,6 +140,17 @@ public class ViewportActions {
 
     // ========== Camera Operations ==========
 
+    public void updateCameraMode() {
+        String cameraMode = state.getCurrentCameraMode();
+        ViewportCamera camera = viewport.getCamera();
+
+        switch (cameraMode.toLowerCase()) {
+            case "arcball" -> camera.setCameraMode(ViewportCamera.CameraMode.ARCBALL);
+            case "first-person" -> camera.setCameraMode(ViewportCamera.CameraMode.FIRST_PERSON);
+            default -> logger.warn("Unknown camera mode: {}", cameraMode);
+        }
+    }
+
     public void updateCameraDistance() {
         float distance = state.getCameraDistance().get();
         logger.debug("Camera distance updated: {}", distance);
