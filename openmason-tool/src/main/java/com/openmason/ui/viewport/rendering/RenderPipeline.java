@@ -323,13 +323,8 @@ public class RenderPipeline {
             // Set up MVP matrix
             matrixShader.setMat4("uMVPMatrix", viewProjectionMatrix);
 
-            // Apply gizmo transform if enabled
-            org.joml.Matrix4f modelMatrix = new org.joml.Matrix4f();
-            if (transformState.isGizmoEnabled() && transformState.getGizmoPosition() != null) {
-                org.joml.Vector3f gizmoPos = transformState.getGizmoPosition();
-                modelMatrix.translate(gizmoPos);
-            }
-
+            // Apply transform matrix (includes position, rotation, scale from gizmo)
+            org.joml.Matrix4f modelMatrix = transformState.getTransformMatrix();
             matrixShader.setMat4("uModelMatrix", modelMatrix);
 
             // Enable texturing

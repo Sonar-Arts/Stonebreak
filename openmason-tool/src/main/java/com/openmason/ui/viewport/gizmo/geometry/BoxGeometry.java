@@ -8,16 +8,9 @@ import java.util.List;
 /**
  * Generates geometry for scale gizmo box handles.
  * Each scale gizmo consists of small boxes at the end of each axis and a center cube.
- *
- * <p>This class follows SOLID principles:
- * - Single Responsibility: Only generates box geometry
- * - DRY: Reuses GizmoGeometry utilities
- * - KISS: Simple box construction
  */
 public final class BoxGeometry {
 
-    private static final float BOX_SIZE = 0.08f; // Size of scale handles relative to gizmo
-    private static final float CENTER_BOX_SIZE = 0.12f; // Size of center uniform scale box
     private static final float LINE_LENGTH = 1.0f; // Length of axis lines to box center (ensures attachment)
 
     // Private constructor to prevent instantiation (utility class)
@@ -27,13 +20,6 @@ public final class BoxGeometry {
 
     /**
      * Generates vertex data for a scale handle (line + box) along a specified axis.
-     *
-     * @param origin Starting point
-     * @param direction Direction vector (will be normalized)
-     * @param length Total length to the box center
-     * @param boxSize Size of the box handle
-     * @param color Color for the line and box
-     * @return Vertex data for rendering
      */
     public static float[] createScaleHandle(Vector3f origin, Vector3f direction, float length,
                                            float boxSize, Vector3f color) {
@@ -141,32 +127,7 @@ public final class BoxGeometry {
     }
 
     /**
-     * Gets the box size for standard scale handles.
-     *
-     * @param gizmoSize Overall size of the gizmo
-     * @return Box size for axis handles
-     */
-    public static float getHandleBoxSize(float gizmoSize) {
-        return gizmoSize * BOX_SIZE;
-    }
-
-    /**
-     * Gets the box size for the center uniform scale box.
-     *
-     * @param gizmoSize Overall size of the gizmo
-     * @return Box size for center box
-     */
-    public static float getCenterBoxSize(float gizmoSize) {
-        return gizmoSize * CENTER_BOX_SIZE;
-    }
-
-    /**
      * Gets the center position of a scale handle box.
-     *
-     * @param origin Origin point
-     * @param direction Direction vector (will be normalized)
-     * @param length Length to the box center
-     * @return Center position of the box
      */
     public static Vector3f getHandleCenter(Vector3f origin, Vector3f direction, float length) {
         if (origin == null || direction == null) {
@@ -194,78 +155,5 @@ public final class BoxGeometry {
     public static float getInteractionRadius(float boxSize) {
         // Use box diagonal for sphere-based hit detection
         return boxSize * 0.866f; // sqrt(3)/2 ≈ 0.866
-    }
-
-    /**
-     * Checks if a point is inside or near a box (for hit detection).
-     *
-     * @param point Point to test
-     * @param boxCenter Center of the box
-     * @param boxSize Size of the box
-     * @return true if point is within interaction range
-     */
-    public static boolean isPointNearBox(Vector3f point, Vector3f boxCenter, float boxSize) {
-        if (point == null || boxCenter == null) {
-            throw new IllegalArgumentException("Parameters cannot be null");
-        }
-        if (boxSize <= 0.0f) {
-            throw new IllegalArgumentException("Box size must be positive");
-        }
-
-        // Use sphere approximation for simplicity
-        float radius = getInteractionRadius(boxSize);
-        float distanceSquared = point.distanceSquared(boxCenter);
-
-        return distanceSquared <= radius * radius;
-    }
-
-    /**
-     * Generates vertex data for wireframe box outline (for debugging or preview).
-     *
-     * @param center Center of the box
-     * @param size Half-extents of the box
-     * @param color Color for the wireframe
-     * @return Vertex data for wireframe edges
-     */
-    public static float[] createWireframeBox(Vector3f center, Vector3f size, Vector3f color) {
-        if (center == null || size == null || color == null) {
-            throw new IllegalArgumentException("Parameters cannot be null");
-        }
-
-        List<Float> vertices = new ArrayList<>();
-
-        // Define 8 corners
-        float x = center.x, y = center.y, z = center.z;
-        float sx = size.x, sy = size.y, sz = size.z;
-
-        Vector3f[] corners = {
-            new Vector3f(x - sx, y - sy, z - sz), // 0
-            new Vector3f(x + sx, y - sy, z - sz), // 1
-            new Vector3f(x + sx, y + sy, z - sz), // 2
-            new Vector3f(x - sx, y + sy, z - sz), // 3
-            new Vector3f(x - sx, y - sy, z + sz), // 4
-            new Vector3f(x + sx, y - sy, z + sz), // 5
-            new Vector3f(x + sx, y + sy, z + sz), // 6
-            new Vector3f(x - sx, y + sy, z + sz)  // 7
-        };
-
-        // Define 12 edges
-        int[][] edges = {
-            // Bottom face
-            {0, 1}, {1, 2}, {2, 3}, {3, 0},
-            // Top face
-            {4, 5}, {5, 6}, {6, 7}, {7, 4},
-            // Vertical edges
-            {0, 4}, {1, 5}, {2, 6}, {3, 7}
-        };
-
-        for (int[] edge : edges) {
-            float[] line = GizmoGeometry.createLine(corners[edge[0]], corners[edge[1]], color);
-            for (float v : line) {
-                vertices.add(v);
-            }
-        }
-
-        return GizmoGeometry.toFloatArray(vertices);
     }
 }

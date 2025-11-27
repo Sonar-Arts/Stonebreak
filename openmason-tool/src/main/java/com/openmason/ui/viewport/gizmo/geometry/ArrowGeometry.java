@@ -18,8 +18,6 @@ public final class ArrowGeometry {
 
     // Arrow dimensions (relative units, will be scaled by gizmo size)
     private static final float SHAFT_LENGTH = 0.8f;
-    private static final float SHAFT_THICKNESS = 0.02f;
-    private static final float TIP_LENGTH = 0.2f;
     private static final float TIP_RADIUS = 0.05f;
     private static final int TIP_SEGMENTS = 12; // Smoothness of cone tip
 
@@ -50,7 +48,6 @@ public final class ArrowGeometry {
 
         // Calculate key points along the arrow
         float shaftLen = length * SHAFT_LENGTH;
-        float tipLen = length * TIP_LENGTH;
 
         Vector3f shaftEnd = new Vector3f(origin).add(
             dir.x * shaftLen,
@@ -58,7 +55,7 @@ public final class ArrowGeometry {
             dir.z * shaftLen
         );
 
-        Vector3f tipBase = shaftEnd; // Tip base is at shaft end
+        // Tip base is at shaft end
         Vector3f tipEnd = new Vector3f(origin).add(
             dir.x * length,
             dir.y * length,
@@ -76,7 +73,7 @@ public final class ArrowGeometry {
 
         // 2. Generate cone tip
         List<Float> cone = GizmoGeometry.createCone(
-            tipBase,
+                shaftEnd,
             tipEnd,
             length * TIP_RADIUS,
             color,
@@ -154,13 +151,12 @@ public final class ArrowGeometry {
             .add(a1.x * offset, a1.y * offset, a1.z * offset)
             .add(a2.x * offset, a2.y * offset, a2.z * offset);
 
-        Vector3f corner1 = start;
         Vector3f corner2 = new Vector3f(start).add(a1.x * size, a1.y * size, a1.z * size);
         Vector3f corner3 = new Vector3f(corner2).add(a2.x * size, a2.y * size, a2.z * size);
         Vector3f corner4 = new Vector3f(start).add(a2.x * size, a2.y * size, a2.z * size);
 
         // Create quad (2 triangles)
-        return GizmoGeometry.createQuad(corner1, corner2, corner3, corner4, color);
+        return GizmoGeometry.createQuad(start, corner2, corner3, corner4, color);
     }
 
     /**
