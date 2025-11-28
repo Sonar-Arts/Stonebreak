@@ -17,10 +17,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Layer panel renderer - displays layer list with controls.
- *
- * Follows SOLID principles - Single Responsibility: renders layer UI only.
- *
- * @author Open Mason Team
  */
 public class LayerPanelRenderer {
 
@@ -259,7 +255,7 @@ public class LayerPanelRenderer {
         // Drag-drop target (handle drops on this layer)
         if (ImGui.beginDragDropTarget()) {
             Object payload = ImGui.acceptDragDropPayload(DRAG_DROP_PAYLOAD_TYPE);
-            if (payload != null && payload instanceof Integer) {
+            if (payload instanceof Integer) {
                 int sourceIndex = (Integer) payload;
                 if (sourceIndex != index) {
                     if (commandHistory != null) {

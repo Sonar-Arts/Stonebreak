@@ -90,7 +90,7 @@ public class PanelRenderingCoordinator {
         }
 
         ImGuiViewport viewport = ImGui.getMainViewport();
-        float toolbarHeight = toolOptionsBar.getHeight(state.getCurrentTool());
+        float toolbarHeight = toolOptionsBar.getHeight();
 
         ImGui.setNextWindowPos(viewport.getWorkPosX(), viewport.getWorkPosY() + toolbarHeight);
         ImGui.setNextWindowSize(viewport.getWorkSizeX(), viewport.getWorkSizeY() - toolbarHeight);

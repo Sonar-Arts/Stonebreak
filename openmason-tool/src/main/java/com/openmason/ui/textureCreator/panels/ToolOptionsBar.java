@@ -10,38 +10,16 @@ import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Tool options toolbar - displays tool-specific options below the menu bar.
- *
- * This toolbar is:
- * - Fixed position (non-draggable)
- * - Horizontally oriented
- * - Only visible when the current tool has options
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only renders tool-specific options UI
- * - Open/Closed: Easy to add new tool options without modifying existing code
- * - Dependency Inversion: Depends on DrawingTool abstraction
- *
- * Follows YAGNI, KISS, DRY:
- * - YAGNI: Only implements options for tools that need them
- * - KISS: Simple type-checking and direct rendering
- * - DRY: Shared toolbar rendering logic
- *
- * @author Open Mason Team
  */
 public class ToolOptionsBar {
-
-    private static final Logger logger = LoggerFactory.getLogger(ToolOptionsBar.class);
 
     // Toolbar dimensions - fixed height for consistency
     private static final float TOOLBAR_HEIGHT = 32.0f; // Fixed height that fits all content
     private static final float OPTION_SPACING = 15.0f; // Spacing between options
     private static final float LEFT_PADDING = 10.0f;   // Left padding from window edge
-    private static final float VERTICAL_PADDING = 6.0f; // Top/bottom padding
 
     private final TextureCreatorPreferences preferences;
 
@@ -151,10 +129,9 @@ public class ToolOptionsBar {
      * Get the height of the toolbar for layout calculations.
      * Always returns the fixed toolbar height.
      *
-     * @param currentTool The currently active tool (unused, kept for API compatibility)
      * @return Fixed toolbar height in pixels
      */
-    public float getHeight(DrawingTool currentTool) {
+    public float getHeight() {
         return TOOLBAR_HEIGHT;
     }
 
@@ -171,10 +148,7 @@ public class ToolOptionsBar {
         if (tool instanceof ShapeTool) {
             return true;
         }
-        if (tool.supportsBrushSize()) {
-            return true;
-        }
-        return false;
+        return tool.supportsBrushSize();
     }
 
     private void renderMoveToolOptions(MoveToolController moveTool) {

@@ -13,18 +13,6 @@ import java.util.Map;
 
 /**
  * Layer thumbnail cache with version-based invalidation.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Manages thumbnail texture lifecycle only
- * - Open/Closed: Extensible through configuration constants
- * - Dependency Inversion: Depends on Layer abstraction, not concrete implementation
- *
- * Follows KISS/YAGNI/DRY:
- * - Simple version-based dirty checking
- * - Only caches what's needed
- * - Reuses textures across frames
- *
- * @author Open Mason Team
  */
 public class LayerThumbnailCache {
 
@@ -37,25 +25,13 @@ public class LayerThumbnailCache {
     private final Map<Integer, CachedThumbnail> cache = new HashMap<>();
 
     /**
-     * Cached thumbnail entry with OpenGL texture and version tracking.
-     */
-    private static class CachedThumbnail {
-        final int textureId;
-        final long layerVersion;
-
-        CachedThumbnail(int textureId, long layerVersion) {
-            this.textureId = textureId;
-            this.layerVersion = layerVersion;
-        }
+         * Cached thumbnail entry with OpenGL texture and version tracking.
+         */
+        private record CachedThumbnail(int textureId, long layerVersion) {
     }
 
     /**
      * Get thumbnail texture for a layer.
-     * Returns cached texture if layer hasn't changed, otherwise regenerates.
-     *
-     * @param layer layer to get thumbnail for
-     * @param layerIndex layer index for cache key
-     * @return OpenGL texture ID
      */
     public int getThumbnail(Layer layer, int layerIndex) {
         if (layer == null) {
@@ -86,18 +62,6 @@ public class LayerThumbnailCache {
     }
 
     /**
-     * Invalidate cache entry for a specific layer.
-     *
-     * @param layerIndex layer index to invalidate
-     */
-    public void invalidate(int layerIndex) {
-        CachedThumbnail cached = cache.remove(layerIndex);
-        if (cached != null) {
-            GL11.glDeleteTextures(cached.textureId);
-        }
-    }
-
-    /**
      * Invalidate all cache entries.
      * Useful when layer indices change (reordering, deletion).
      */
@@ -123,10 +87,6 @@ public class LayerThumbnailCache {
 
     /**
      * Create thumbnail texture from canvas data.
-     * Generates 64x64 texture with checkerboard background and scaled canvas content.
-     *
-     * @param canvas pixel canvas to convert
-     * @return OpenGL texture ID
      */
     private int createThumbnailTexture(PixelCanvas canvas) {
         int textureId = GL11.glGenTextures();
@@ -207,12 +167,4 @@ public class LayerThumbnailCache {
         return textureId;
     }
 
-    /**
-     * Get cache statistics for debugging.
-     *
-     * @return number of cached thumbnails
-     */
-    public int getCacheSize() {
-        return cache.size();
-    }
 }

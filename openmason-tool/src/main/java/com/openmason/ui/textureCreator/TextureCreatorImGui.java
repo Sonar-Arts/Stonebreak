@@ -88,7 +88,6 @@ public class TextureCreatorImGui {
                               CanvasPanel canvasPanel,
                               LayerPanelRenderer layerPanel,
                               ColorPanel colorPanel,
-                              PreferencesPanel preferencesPanel,
                               NewTextureDialog newTextureDialog,
                               ImportPNGDialog importPNGDialog,
                               OMTImportDialog omtImportDialog,
@@ -156,7 +155,6 @@ public class TextureCreatorImGui {
         LayerPanelRenderer layerPanel = new LayerPanelRenderer();
         ColorPanel colorPanel = new ColorPanel();
         NoiseFilterPanel noiseFilterPanel = new NoiseFilterPanel();
-        PreferencesPanel preferencesPanel = new PreferencesPanel();
         SymmetryPanel symmetryPanel = new SymmetryPanel();
 
         // Create dialogs
@@ -198,7 +196,7 @@ public class TextureCreatorImGui {
 
         return new TextureCreatorImGui(
             state, controller, preferences, windowState,
-            toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, preferencesPanel,
+            toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel,
             newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog, aboutDialog,
             fileOperations, filterCoordinator, toolCoordinator, pasteCoordinator, shortcutManager,
             menuBarRenderer, windowedMenuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler

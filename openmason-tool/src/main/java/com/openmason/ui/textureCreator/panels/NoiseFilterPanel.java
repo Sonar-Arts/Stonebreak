@@ -21,19 +21,6 @@ import java.util.Map;
 
 /**
  * Noise filter panel for applying procedural noise to layers.
- *
- * Features:
- * - Three noise algorithms: Perlin, Value, White
- * - Adjustable strength slider
- * - Gradient/Uniform mode toggle
- * - Real-time preview on canvas
- * - Accept/Cancel buttons for confirming changes
- *
- * Follows SOLID principles:
- * - Single Responsibility: Noise filter configuration UI
- * - Integrates with existing theme system
- *
- * @author Open Mason Team
  */
 public class NoiseFilterPanel {
 
@@ -46,7 +33,7 @@ public class NoiseFilterPanel {
     // Noise parameters
     private float strength = 0.5f;
     private boolean gradient = false;
-    private float scale = 1.0f;
+    private final float scale = 1.0f;
     private long noiseSeed = System.nanoTime(); // Consistent seed for preview
     private final ImString seedInput = new ImString(32); // Buffer for manual seed input
 

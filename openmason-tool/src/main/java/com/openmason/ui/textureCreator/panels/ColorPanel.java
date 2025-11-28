@@ -16,21 +16,6 @@ import java.util.List;
 
 /**
  * Professional color panel with HSV/RGB picker, history, and harmony tools.
- *
- * Features:
- * - HSV color wheel with saturation/value picking
- * - RGB sliders with direct component control
- * - Mode switching between HSV and RGB
- * - Alpha slider with checkerboard preview
- * - Color history (last 10 colors)
- * - Hex input/output
- * - Tabbed interface for organization
- *
- * Follows SOLID principles:
- * - Single Responsibility: Color selection and management UI
- * - Maintains backward compatibility with existing API
- *
- * @author Open Mason Team
  */
 public class ColorPanel {
 
@@ -425,13 +410,6 @@ public class ColorPanel {
     /**
      * Render custom rainbow gradient hue slider.
      * Professional vertical gradient with smooth color transitions.
-     *
-     * @param drawList ImGui draw list
-     * @param x slider X position
-     * @param y slider Y position
-     * @param width slider width
-     * @param height slider height
-     * @return true if hue value changed
      */
     private boolean renderCustomHueSlider(ImDrawList drawList, float x, float y, float width, float height) {
         // Define rainbow gradient colors in ABGR format (0xAABBGGRR)
@@ -647,7 +625,6 @@ public class ColorPanel {
                                       float width, float height,
                                       int gradientStart, int gradientEnd) {
         ImDrawList drawList = ImGui.getWindowDrawList();
-        ImVec2 labelPos = ImGui.getCursorScreenPos();
 
         // Render label with value display
         ImGui.text(label + ":");
@@ -691,7 +668,6 @@ public class ColorPanel {
         // Calculate indicator position
         float normalizedValue = value.get() / 255.0f;
         float indicatorX = cursorPos.x + normalizedValue * width;
-        float indicatorY = cursorPos.y + height / 2;
 
         // Draw custom position indicator (vertical line with triangles)
         float lineWidth = 2.5f;
@@ -797,7 +773,7 @@ public class ColorPanel {
         int[] rgb = PixelCanvas.unpackRGBA(currentColor);
 
         // ABGR format: 0xAABBGGRR
-        int colorTransparent = 0x00000000 | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
+        int colorTransparent = (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
         int colorOpaque = 0xFF000000 | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
 
         drawList.addRectFilledMultiColor(
@@ -1079,26 +1055,6 @@ public class ColorPanel {
 
     /**
      * Add a color to the history and update previous color tracking.
-     * Should be called when a color is actually painted/applied on the canvas.
-     *
-     * Flow:
-     * 1. User selects color (current changes, previous unchanged)
-     * 2. User paints → this method called
-     * 3. If color is DIFFERENT from last painted:
-     *    - previousColor = lastPaintedColor (shows last different color)
-     *    - lastPaintedColor = current (track what we just painted)
-     * 4. If color is SAME as last painted:
-     *    - Keep both unchanged (previous stays as last different color)
-     *
-     * Example:
-     * - Paint Red: previous=Black, lastPainted=Red
-     * - Paint Red again: previous=Black (unchanged!), lastPainted=Red
-     * - Select Blue, Paint Blue: previous=Red, lastPainted=Blue
-     * - Paint Blue again: previous=Red (unchanged!), lastPainted=Blue
-     *
-     * Public API for canvas tools to register color usage.
-     *
-     * @param color packed RGBA color to add
      */
     public void addColorToHistory(int color) {
         int currentColor = getCurrentColor();

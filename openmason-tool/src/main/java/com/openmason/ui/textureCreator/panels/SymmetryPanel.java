@@ -7,21 +7,10 @@ import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.function.Consumer;
+
 /**
  * Symmetry/Mirror mode panel for texture editor.
- *
- * Features:
- * - Mode selection (None, Horizontal, Vertical, Quadrant)
- * - Axis offset controls (X and Y)
- * - Show axis lines toggle
- * - Per-tool enable/disable checkboxes
- * - Reset to defaults button
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only handles symmetry UI rendering
- * - Delegates state management to SymmetryState
- *
- * @author Open Mason Team
  */
 public class SymmetryPanel {
 
@@ -161,10 +150,7 @@ public class SymmetryPanel {
             "Negative = left, Positive = right\n" +
             "Canvas center: " + (canvasWidth / 2) + " pixels",
             offsetXSlider,
-            MIN_OFFSET,
-            MAX_OFFSET,
-            "%d px",
-            value -> symmetryState.setAxisOffsetX(value)
+                symmetryState::setAxisOffsetX
         );
 
         // Y Offset
@@ -174,10 +160,7 @@ public class SymmetryPanel {
             "Negative = up, Positive = down\n" +
             "Canvas center: " + (canvasHeight / 2) + " pixels",
             offsetYSlider,
-            MIN_OFFSET,
-            MAX_OFFSET,
-            "%d px",
-            value -> symmetryState.setAxisOffsetY(value)
+                symmetryState::setAxisOffsetY
         );
     }
 
@@ -186,10 +169,7 @@ public class SymmetryPanel {
      */
     private void renderDisplayOptions(SymmetryState symmetryState) {
         renderCheckboxSetting(
-            "Show Axis Lines",
-            "Display visual indicators showing the symmetry axes on the canvas.\n" +
-            "When enabled, you'll see lines marking the horizontal and/or vertical symmetry axes.",
-            showAxisLinesCheckbox,
+                showAxisLinesCheckbox,
             symmetryState::setShowAxisLines
         );
     }
@@ -320,8 +300,7 @@ public class SymmetryPanel {
      * Render a slider setting (integer version).
      */
     private void renderSliderSetting(String label, String tooltip, ImInt value,
-                                     int min, int max, String format,
-                                     java.util.function.Consumer<Integer> onChanged) {
+                                     Consumer<Integer> onChanged) {
         ImGui.text(label);
         ImGui.sameLine();
         ImGui.textDisabled("(?)");
@@ -329,7 +308,7 @@ public class SymmetryPanel {
             ImGui.setTooltip(tooltip);
         }
 
-        if (ImGui.sliderInt("##" + label, value.getData(), min, max, format)) {
+        if (ImGui.sliderInt("##" + label, value.getData(), SymmetryPanel.MIN_OFFSET, SymmetryPanel.MAX_OFFSET, "%d px")) {
             onChanged.accept(value.get());
         }
 
@@ -339,16 +318,16 @@ public class SymmetryPanel {
     /**
      * Render a checkbox setting.
      */
-    private void renderCheckboxSetting(String label, String tooltip, ImBoolean value,
-                                       java.util.function.Consumer<Boolean> onChanged) {
-        if (ImGui.checkbox(label, value)) {
+    private void renderCheckboxSetting(ImBoolean value,
+                                       Consumer<Boolean> onChanged) {
+        if (ImGui.checkbox("Show Axis Lines", value)) {
             onChanged.accept(value.get());
         }
 
         ImGui.sameLine();
         ImGui.textDisabled("(?)");
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(tooltip);
+            ImGui.setTooltip("Display visual indicators showing the symmetry axes on the canvas.\nWhen enabled, you'll see lines marking the horizontal and/or vertical symmetry axes.");
         }
 
         ImGui.spacing();
