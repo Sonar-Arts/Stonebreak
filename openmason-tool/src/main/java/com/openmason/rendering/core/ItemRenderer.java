@@ -23,10 +23,6 @@ public class ItemRenderer implements AutoCloseable {
     private final String debugPrefix;
     private final FloatBuffer matrixBuffer = BufferUtils.createFloatBuffer(16);
 
-    // Statistics
-    private long totalRenderCalls = 0;
-    private ItemType currentItem = null;
-
     /**
      * Creates a new ItemRenderer.
      *
@@ -100,8 +96,6 @@ public class ItemRenderer implements AutoCloseable {
             // Render using per-voxel colors (matching stonebreak's approach)
             renderVoxelMeshWithColors(itemType, mesh, shaderProgram, mvpLocation, modelLocation,
                                      vpMatrix, modelMatrix, colorLocation);
-
-            currentItem = itemType;
 
         } catch (Exception e) {
             System.err.println("[" + debugPrefix + "] Error rendering item " + itemType + ": " + e.getMessage());
@@ -200,8 +194,6 @@ public class ItemRenderer implements AutoCloseable {
             glDisable(GL_BLEND);
             glDepthMask(true);
 
-            totalRenderCalls++;
-
         } catch (Exception e) {
             System.err.println("[" + debugPrefix + "] Error rendering voxel mesh: " + e.getMessage());
             e.printStackTrace();
@@ -218,17 +210,6 @@ public class ItemRenderer implements AutoCloseable {
     }
 
     /**
-     * Gets rendering statistics as a string.
-     *
-     * @return Statistics string
-     */
-    public String getStatistics() {
-        return String.format("[%s] Stats: %d render calls, current item: %s",
-            debugPrefix, totalRenderCalls,
-            currentItem != null ? currentItem.name() : "none");
-    }
-
-    /**
      * Cleanup resources.
      */
     @Override
@@ -236,7 +217,6 @@ public class ItemRenderer implements AutoCloseable {
         if (initialized) {
             System.out.println("[" + debugPrefix + "] Shutting down ItemRenderer");
             initialized = false;
-            currentItem = null;
         }
     }
 

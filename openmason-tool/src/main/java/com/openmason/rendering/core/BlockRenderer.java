@@ -22,8 +22,6 @@ public class BlockRenderer implements AutoCloseable {
     private final FloatBuffer matrixBuffer = BufferUtils.createFloatBuffer(16);
 
     // Statistics
-    private long totalRenderCalls = 0;
-    private BlockType currentBlock = null;
 
     /**
      * Creates a new BlockRenderer.
@@ -92,9 +90,6 @@ public class BlockRenderer implements AutoCloseable {
             // Render the block resource with proper shader setup
             renderBlockResource(resource, shaderProgram, mvpLocation, modelLocation,
                               vpMatrix, modelMatrix, blockAtlas, textureLocation, useTextureLocation);
-
-            currentBlock = blockType;
-            totalRenderCalls++;
 
         } catch (Exception e) {
             System.err.println("[" + debugPrefix + "] Error rendering block " + blockType + ": " + e.getMessage());
@@ -227,8 +222,6 @@ public class BlockRenderer implements AutoCloseable {
                 glEnable(GL_CULL_FACE); // Restore face culling
             }
 
-            totalRenderCalls++;
-
         } catch (Exception e) {
             System.err.println("[" + debugPrefix + "] Error rendering block resource: " + e.getMessage());
             e.printStackTrace();
@@ -244,15 +237,6 @@ public class BlockRenderer implements AutoCloseable {
     }
 
     /**
-     * Gets rendering statistics as a string.
-     */
-    public String getStatistics() {
-        return String.format("[%s] Stats: %d render calls, current block: %s",
-            debugPrefix, totalRenderCalls,
-            currentBlock != null ? currentBlock.name() : "none");
-    }
-
-    /**
      * Cleanup resources.
      */
     @Override
@@ -260,7 +244,6 @@ public class BlockRenderer implements AutoCloseable {
         if (initialized) {
             System.out.println("[" + debugPrefix + "] Shutting down BlockRenderer");
             initialized = false;
-            currentBlock = null;
         }
     }
 }
