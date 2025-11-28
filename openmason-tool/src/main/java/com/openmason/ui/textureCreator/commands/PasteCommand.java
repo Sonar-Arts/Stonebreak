@@ -10,11 +10,6 @@ import java.util.Map;
 
 /**
  * Command for pasting clipboard content to canvas.
- *
- * Records all pixel changes for undo/redo support.
- * Follows Command pattern for integration with command history.
- *
- * @author Open Mason Team
  */
 public class PasteCommand implements Command {
 
@@ -24,7 +19,6 @@ public class PasteCommand implements Command {
     private final PixelCanvas clipboardCanvas;
     private final int pasteX;
     private final int pasteY;
-    private final SelectionRegion pastedSelection;
     private final boolean skipTransparentPixels;
 
     // Pixel changes: key = encoded coordinate (y * width + x), value = [oldColor, newColor]
@@ -34,13 +28,6 @@ public class PasteCommand implements Command {
 
     /**
      * Create paste command.
-     *
-     * @param targetCanvas canvas to paste onto
-     * @param clipboardCanvas clipboard data to paste
-     * @param pasteX X position to paste at
-     * @param pasteY Y position to paste at
-     * @param pastedSelection selection region after paste (for selection update)
-     * @param skipTransparentPixels if true, fully transparent pixels won't overwrite existing pixels
      */
     public PasteCommand(PixelCanvas targetCanvas, PixelCanvas clipboardCanvas,
                        int pasteX, int pasteY, SelectionRegion pastedSelection,
@@ -49,7 +36,6 @@ public class PasteCommand implements Command {
         this.clipboardCanvas = clipboardCanvas;
         this.pasteX = pasteX;
         this.pasteY = pasteY;
-        this.pastedSelection = pastedSelection;
         this.skipTransparentPixels = skipTransparentPixels;
     }
 
@@ -146,20 +132,4 @@ public class PasteCommand implements Command {
         return String.format("Paste at (%d, %d)", pasteX, pasteY);
     }
 
-    /**
-     * Check if this paste made any changes.
-     * @return true if pixels were changed
-     */
-    public boolean hasChanges() {
-        return !pixelChanges.isEmpty();
-    }
-
-    /**
-     * Get the selection region after paste.
-     * Used to update the active selection to the pasted region.
-     * @return pasted selection region
-     */
-    public SelectionRegion getPastedSelection() {
-        return pastedSelection;
-    }
 }

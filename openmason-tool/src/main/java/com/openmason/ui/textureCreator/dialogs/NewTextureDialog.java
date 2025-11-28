@@ -10,21 +10,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Modal dialog for creating a new texture with canvas size selection.
- *
- * Provides visual previews of both canvas types (16x16 and 64x48 cube net)
- * and allows user to select which type to create.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only handles new texture dialog UI
- * - Open/Closed: Extensible for additional canvas sizes
- * - Dependency Inversion: Returns selection instead of calling controller directly
- *
- * Design principles:
- * - KISS: Simple modal popup with radio buttons
- * - DRY: Reusable preview rendering methods
- * - YAGNI: No complex template system or image caching
- *
- * @author Open Mason Team
  */
 public class NewTextureDialog {
 
@@ -53,7 +38,6 @@ public class NewTextureDialog {
     private static final int GRID_COLOR = ImColor.rgba(200, 200, 200, 255); // Medium gray
     private static final int BORDER_COLOR = ImColor.rgba(120, 120, 120, 255); // Dark gray
     private static final int FACE_COLOR = ImColor.rgba(100, 150, 255, 255); // Blue
-    private static final int TEXT_COLOR = ImColor.rgba(60, 60, 60, 255); // Dark gray text
     private static final int NON_EDITABLE_COLOR = ImColor.rgba(200, 200, 200, 200); // Light gray transparent
     private static final int PREVIEW_BORDER_COLOR = ImColor.rgba(200, 200, 200, 255); // Light border for previews
 

@@ -10,11 +10,6 @@ import java.awt.Rectangle;
 
 /**
  * Simple clipboard manager for copy/cut/paste operations.
- *
- * Follows KISS principle - straightforward clipboard storage and retrieval.
- * Stores copied pixel data and source position for paste operations.
- *
- * @author Open Mason Team
  */
 public class ClipboardManager {
 
@@ -28,9 +23,6 @@ public class ClipboardManager {
 
     /**
      * Copy pixels from canvas within selection bounds to clipboard.
-     *
-     * @param canvas source canvas to copy from
-     * @param selection selection region defining what to copy
      */
     public void copy(PixelCanvas canvas, SelectionRegion selection) {
         if (canvas == null) {
@@ -138,14 +130,6 @@ public class ClipboardManager {
      */
     public int getSourceY() {
         return sourceY;
-    }
-
-    /**
-     * Get the original selection region that was copied.
-     * @return source selection region, or null if not available
-     */
-    public SelectionRegion getSourceSelection() {
-        return sourceSelection;
     }
 
     /**

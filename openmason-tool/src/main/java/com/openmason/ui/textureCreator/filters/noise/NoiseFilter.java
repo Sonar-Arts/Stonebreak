@@ -18,12 +18,12 @@ public class NoiseFilter implements LayerFilter {
 
     @Override
     public String getName() {
-        return "Noise (" + config.getGenerator().getName() + ")";
+        return "Noise (" + config.generator().getName() + ")";
     }
 
     @Override
     public String getDescription() {
-        return "Applies " + config.getGenerator().getName() + " noise to the layer";
+        return "Applies " + config.generator().getName() + " noise to the layer";
     }
 
     @Override
@@ -77,14 +77,14 @@ public class NoiseFilter implements LayerFilter {
 
     private float generateNoiseValue(int x, int y, int width, int height) {
         // Scale coordinates
-        float sx = x * config.getScale();
-        float sy = y * config.getScale();
+        float sx = x * config.scale();
+        float sy = y * config.scale();
 
         // Generate base noise
-        float noise = config.getGenerator().generate(sx, sy);
+        float noise = config.generator().generate(sx, sy);
 
         // Apply gradient if enabled
-        if (config.isGradient()) {
+        if (config.gradient()) {
             // Create gradient from top-left to bottom-right
             float gradientFactor = ((float) x / width + (float) y / height) * 0.5f;
             noise = lerp(noise, gradientFactor, 0.5f);
@@ -95,7 +95,7 @@ public class NoiseFilter implements LayerFilter {
 
     private int applyNoise(int channelValue, float noiseValue) {
         // Map noise from [0, 1] to [-1, 1] for bidirectional effect
-        float noise = (noiseValue * 2.0f - 1.0f) * config.getStrength() * 255.0f;
+        float noise = (noiseValue * 2.0f - 1.0f) * config.strength() * 255.0f;
 
         // Apply noise to channel
         int result = (int) (channelValue + noise);
@@ -113,22 +113,22 @@ public class NoiseFilter implements LayerFilter {
      */
     private void applyDiffusionEffects(float[][] noiseBuffer, int width, int height, SelectionRegion selection) {
         // Apply octaves (Fractal Brownian Motion)
-        if (config.getOctaves() > 1) {
+        if (config.octaves() > 1) {
             applyOctaves(noiseBuffer, width, height, selection);
         }
 
         // Apply spread (contrast stretching)
-        if (config.getSpread() != 0.5f) {
+        if (config.spread() != 0.5f) {
             applySpread(noiseBuffer, width, height, selection);
         }
 
         // Apply edge softness (smoothstep)
-        if (config.getEdgeSoftness() > 0.0f) {
+        if (config.edgeSoftness() > 0.0f) {
             applyEdgeSoftness(noiseBuffer, width, height, selection);
         }
 
         // Apply blur (box blur)
-        if (config.getBlur() > 0.0f) {
+        if (config.blur() > 0.0f) {
             applyBlur(noiseBuffer, width, height, selection);
         }
     }
@@ -137,7 +137,7 @@ public class NoiseFilter implements LayerFilter {
      * Apply Fractal Brownian Motion by layering multiple octaves of noise.
      */
     private void applyOctaves(float[][] noiseBuffer, int width, int height, SelectionRegion selection) {
-        int octaves = config.getOctaves();
+        int octaves = config.octaves();
         float[][] tempBuffer = new float[width][height];
 
         // Copy original noise
@@ -162,9 +162,9 @@ public class NoiseFilter implements LayerFilter {
                         continue;
                     }
 
-                    float sx = x * config.getScale() * frequency;
-                    float sy = y * config.getScale() * frequency;
-                    float octaveNoise = config.getGenerator().generate(sx, sy);
+                    float sx = x * config.scale() * frequency;
+                    float sy = y * config.scale() * frequency;
+                    float octaveNoise = config.generator().generate(sx, sy);
                     tempBuffer[x][y] += octaveNoise * amplitude;
                 }
             }
@@ -185,7 +185,7 @@ public class NoiseFilter implements LayerFilter {
      * Apply contrast stretching based on spread parameter.
      */
     private void applySpread(float[][] noiseBuffer, int width, int height, SelectionRegion selection) {
-        float spread = config.getSpread();
+        float spread = config.spread();
 
         // Find min and max values
         float min = 1.0f;
@@ -224,7 +224,7 @@ public class NoiseFilter implements LayerFilter {
      * Apply smoothstep to soften transitions between noise values.
      */
     private void applyEdgeSoftness(float[][] noiseBuffer, int width, int height, SelectionRegion selection) {
-        float softness = config.getEdgeSoftness();
+        float softness = config.edgeSoftness();
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -245,7 +245,7 @@ public class NoiseFilter implements LayerFilter {
      * Apply box blur to smooth the noise.
      */
     private void applyBlur(float[][] noiseBuffer, int width, int height, SelectionRegion selection) {
-        float blur = config.getBlur();
+        float blur = config.blur();
         int radius = (int) Math.ceil(blur * 5.0f); // Max radius of 5 pixels
 
         if (radius <= 0) return;
@@ -297,12 +297,4 @@ public class NoiseFilter implements LayerFilter {
         return t * t * (3.0f - 2.0f * t);
     }
 
-    @Override
-    public boolean requiresDialog() {
-        return true;
-    }
-
-    public NoiseConfig getConfig() {
-        return config;
-    }
 }

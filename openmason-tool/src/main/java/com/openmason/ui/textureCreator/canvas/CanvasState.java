@@ -2,11 +2,6 @@ package com.openmason.ui.textureCreator.canvas;
 
 /**
  * State management for the canvas display and interaction.
- *
- * Handles zoom, pan, and view transformation state.
- * Follows KISS principle - simple state with clear responsibilities.
- *
- * @author Open Mason Team
  */
 public class CanvasState {
 
@@ -88,16 +83,6 @@ public class CanvasState {
      */
     public float getPanOffsetY() {
         return panOffsetY;
-    }
-
-    /**
-     * Set pan offset.
-     * @param offsetX horizontal offset
-     * @param offsetY vertical offset
-     */
-    public void setPanOffset(float offsetX, float offsetY) {
-        this.panOffsetX = offsetX;
-        this.panOffsetY = offsetY;
     }
 
     /**
@@ -189,21 +174,5 @@ public class CanvasState {
         result[1] = (int) Math.floor(canvasY);
 
         return true; // Bounds checking done by caller
-    }
-
-    /**
-     * Convert canvas pixel coordinates to screen coordinates.
-     *
-     * @param canvasX canvas pixel X coordinate
-     * @param canvasY canvas pixel Y coordinate
-     * @param canvasDisplayX canvas display area X offset
-     * @param canvasDisplayY canvas display area Y offset
-     * @param result array to store result [x, y]
-     */
-    public void canvasToScreenCoords(int canvasX, int canvasY,
-                                     float canvasDisplayX, float canvasDisplayY,
-                                     float[] result) {
-        result[0] = canvasX * zoomLevel + panOffsetX + canvasDisplayX;
-        result[1] = canvasY * zoomLevel + panOffsetY + canvasDisplayY;
     }
 }

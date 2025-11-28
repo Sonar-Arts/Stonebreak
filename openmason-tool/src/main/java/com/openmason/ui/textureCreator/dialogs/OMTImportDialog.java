@@ -10,20 +10,6 @@ import java.io.File;
 
 /**
  * Modal dialog for choosing how to import .OMT files.
- *
- * Provides two import options:
- * - Flatten to Single Layer: Composites all layers into one
- * - Import All Layers: Preserves all layers with names/visibility/opacity
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only handles .OMT import choice UI
- * - Dependency Inversion: Returns choice instead of calling handler directly
- *
- * Design principles:
- * - KISS: Simple modal with two buttons
- * - YAGNI: No layer previews or "remember choice" checkbox
- *
- * @author Open Mason Team
  */
 public class OMTImportDialog {
 

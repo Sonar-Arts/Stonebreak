@@ -28,10 +28,4 @@ public interface LayerFilter {
      */
     void apply(PixelCanvas canvas, SelectionRegion selection);
 
-    /**
-     * @return true if this filter requires a dialog for parameter configuration
-     */
-    default boolean requiresDialog() {
-        return false;
-    }
 }

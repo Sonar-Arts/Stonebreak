@@ -10,21 +10,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Modal dialog for importing PNG files with canvas size selection.
- *
- * Displays detected PNG dimensions and allows user to select target canvas size
- * (16x16 or 64x48). Shows visual indication if resizing will occur.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only handles import PNG dialog UI
- * - Open/Closed: Extensible for additional canvas sizes
- * - Dependency Inversion: Returns selection instead of calling controller directly
- *
- * Design principles:
- * - KISS: Simple modal popup with radio buttons
- * - DRY: Reusable preview rendering methods (mirrors NewTextureDialog)
- * - YAGNI: No complex preview system or image caching
- *
- * @author Open Mason Team
  */
 public class ImportPNGDialog {
 

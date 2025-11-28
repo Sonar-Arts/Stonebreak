@@ -2,11 +2,6 @@ package com.openmason.ui.textureCreator.commands;
 
 /**
  * Command interface for undo/redo operations.
- *
- * Follows the Command pattern for implementing undo/redo functionality.
- * Each command encapsulates a reversible operation.
- *
- * @author Open Mason Team
  */
 public interface Command {
 

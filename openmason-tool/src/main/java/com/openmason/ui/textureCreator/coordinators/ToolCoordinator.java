@@ -10,15 +10,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Coordinates tool state transitions and management.
- * Follows SOLID principles: Single Responsibility for tool lifecycle management.
- *
- * Responsibilities:
- * - Tool switching
- * - Tool state synchronization between state and UI
- * - Finding and activating specific tools
- * - Tool-specific keyboard handlers (Enter/ESC for move tool)
- *
- * @author Open Mason Team
  */
 public class ToolCoordinator {
     private static final Logger logger = LoggerFactory.getLogger(ToolCoordinator.class);
@@ -30,9 +21,6 @@ public class ToolCoordinator {
 
     /**
      * Create tool coordinator.
-     *
-     * @param state the texture creator state
-     * @param toolbarPanel the toolbar panel managing tool UI
      */
     public ToolCoordinator(TextureCreatorState state, TextureEditorToolbarRenderer toolbarPanel) {
         this.state = state;
@@ -41,7 +29,6 @@ public class ToolCoordinator {
 
     /**
      * Set controller and paste coordinator.
-     * Called after construction to avoid circular dependencies.
      */
     public void setDependencies(TextureCreatorController controller, PasteCoordinator pasteCoordinator) {
         this.controller = controller;
@@ -50,9 +37,6 @@ public class ToolCoordinator {
 
     /**
      * Switch to a specific tool.
-     * Updates both state and UI.
-     *
-     * @param tool the tool to switch to
      */
     public void switchToTool(DrawingTool tool) {
         if (tool == null) {
@@ -67,7 +51,6 @@ public class ToolCoordinator {
 
     /**
      * Switch to the grabber tool (default navigation tool).
-     * Safe fallback when other operations complete.
      */
     public void switchToGrabberTool() {
         toolbarPanel.getTools().stream()
@@ -99,8 +82,7 @@ public class ToolCoordinator {
      * @return move tool or null if not found
      */
     public MoveToolController getMoveTool() {
-        return (MoveToolController)
-            toolbarPanel.getMoveToolInstance();
+        return toolbarPanel.getMoveToolInstance();
     }
 
     /**
@@ -126,9 +108,8 @@ public class ToolCoordinator {
      * Extracted from main UI to keep tool-specific logic in tool coordinator.
      */
     public void handleEnterKey() {
-        if (!(getCurrentTool() instanceof MoveToolController)) return;
+        if (!(getCurrentTool() instanceof MoveToolController moveTool)) return;
 
-        MoveToolController moveTool = (MoveToolController) getCurrentTool();
         if (!moveTool.isActive() || moveTool.getPendingCommand() == null) return;
 
         var pendingCmd = moveTool.getPendingCommand();
@@ -157,8 +138,7 @@ public class ToolCoordinator {
      * Extracted from main UI to keep tool-specific logic in tool coordinator.
      */
     public void handleEscapeKey() {
-        if (getCurrentTool() instanceof MoveToolController) {
-            MoveToolController moveTool = (MoveToolController) getCurrentTool();
+        if (getCurrentTool() instanceof MoveToolController moveTool) {
 
             if (moveTool.isMouseCaptured()) {
                 moveTool.forceReleaseMouse();

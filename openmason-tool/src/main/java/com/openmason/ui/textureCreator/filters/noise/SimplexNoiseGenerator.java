@@ -4,13 +4,6 @@ import java.util.Random;
 
 /**
  * Simplex noise generator - Ken Perlin's improved noise algorithm.
- * Offers better performance and fewer directional artifacts than Perlin noise.
- *
- * Key advantages over Perlin noise:
- * - Lower computational complexity
- * - Fewer directional artifacts
- * - Better visual quality
- * - Scales better to higher dimensions
  */
 public class SimplexNoiseGenerator implements NoiseGenerator {
 

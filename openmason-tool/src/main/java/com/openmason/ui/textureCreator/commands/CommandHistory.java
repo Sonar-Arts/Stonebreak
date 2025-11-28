@@ -7,11 +7,6 @@ import java.util.Stack;
 
 /**
  * Command history manager for undo/redo operations.
- *
- * Maintains two stacks: undo stack and redo stack.
- * Follows KISS principle - simple stack-based implementation.
- *
- * @author Open Mason Team
  */
 public class CommandHistory {
 
@@ -113,43 +108,11 @@ public class CommandHistory {
     }
 
     /**
-     * Get description of the next undo command.
-     * @return command description, or null if nothing to undo
-     */
-    public String getUndoDescription() {
-        return undoStack.isEmpty() ? null : undoStack.peek().getDescription();
-    }
-
-    /**
-     * Get description of the next redo command.
-     * @return command description, or null if nothing to redo
-     */
-    public String getRedoDescription() {
-        return redoStack.isEmpty() ? null : redoStack.peek().getDescription();
-    }
-
-    /**
      * Clear all history.
      */
     public void clear() {
         undoStack.clear();
         redoStack.clear();
         logger.debug("Command history cleared");
-    }
-
-    /**
-     * Get undo stack size.
-     * @return number of commands in undo stack
-     */
-    public int getUndoStackSize() {
-        return undoStack.size();
-    }
-
-    /**
-     * Get redo stack size.
-     * @return number of commands in redo stack
-     */
-    public int getRedoStackSize() {
-        return redoStack.size();
     }
 }

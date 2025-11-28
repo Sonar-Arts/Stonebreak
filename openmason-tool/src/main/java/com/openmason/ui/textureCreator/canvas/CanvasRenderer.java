@@ -18,11 +18,6 @@ import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 
 /**
  * OpenGL-based canvas renderer.
- *
- * Handles uploading pixel data to GPU texture and rendering to ImGui.
- * Follows SOLID principles - Single Responsibility: only renders canvas.
- *
- * @author Open Mason Team
  */
 public class CanvasRenderer {
 
@@ -190,7 +185,7 @@ public class CanvasRenderer {
         float canvasY = imagePos.y;
 
         // Render transparency checkerboard background first
-        renderCheckerboard(canvas, canvasState, canvasX, canvasY, displayWidth, displayHeight);
+        renderCheckerboard(canvasX, canvasY, displayWidth, displayHeight);
 
         // Render grid if enabled (after checkerboard, before cube net overlay and pixels)
         if (showGrid) {
@@ -249,11 +244,6 @@ public class CanvasRenderer {
 
     /**
      * Render border around the canvas to define its boundaries.
-     *
-     * @param canvasX canvas display X position
-     * @param canvasY canvas display Y position
-     * @param displayWidth canvas display width
-     * @param displayHeight canvas display height
      */
     private void renderCanvasBorder(float canvasX, float canvasY, float displayWidth, float displayHeight) {
         ImDrawList drawList = ImGui.getWindowDrawList();
@@ -264,16 +254,8 @@ public class CanvasRenderer {
 
     /**
      * Render transparency checkerboard background (like image editors).
-     *
-     * @param canvas pixel canvas
-     * @param canvasState canvas view state
-     * @param canvasX canvas display X position
-     * @param canvasY canvas display Y position
-     * @param displayWidth canvas display width
-     * @param displayHeight canvas display height
      */
-    private void renderCheckerboard(PixelCanvas canvas, CanvasState canvasState,
-                                    float canvasX, float canvasY,
+    private void renderCheckerboard(float canvasX, float canvasY,
                                     float displayWidth, float displayHeight) {
         ImDrawList drawList = ImGui.getWindowDrawList();
 
@@ -335,25 +317,23 @@ public class CanvasRenderer {
         // Draw vertical lines
         for (int x = 0; x <= width; x++) {
             float lineX = canvasX + x * zoom;
-            float startY = canvasY;
             float endY = canvasY + height * zoom;
 
             // Every 4th line is a major line for quadrant division
             int color = (x % 4 == 0) ? majorLineColor : minorLineColor;
 
-            drawList.addLine(lineX, startY, lineX, endY, color, GRID_LINE_THICKNESS);
+            drawList.addLine(lineX, canvasY, lineX, endY, color, GRID_LINE_THICKNESS);
         }
 
         // Draw horizontal lines
         for (int y = 0; y <= height; y++) {
             float lineY = canvasY + y * zoom;
-            float startX = canvasX;
             float endX = canvasX + width * zoom;
 
             // Every 4th line is a major line for quadrant division
             int color = (y % 4 == 0) ? majorLineColor : minorLineColor;
 
-            drawList.addLine(startX, lineY, endX, lineY, color, GRID_LINE_THICKNESS);
+            drawList.addLine(canvasX, lineY, endX, lineY, color, GRID_LINE_THICKNESS);
         }
     }
 

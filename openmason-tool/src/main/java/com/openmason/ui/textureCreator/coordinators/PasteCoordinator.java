@@ -14,19 +14,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Coordinates paste operations with transformation workflow.
- * Follows SOLID principles: Single Responsibility for paste lifecycle management.
- *
- * Paste Workflow:
- * 1. Validate clipboard has content
- * 2. Execute paste command (adds pixels to active layer with undo support)
- * 3. Create selection around pasted content
- * 4. Activate move tool for transformation (user can drag to reposition)
- * 5. User commits (Enter) or cancels (ESC)
- * 6. Restore previous tool
- *
- * This coordinator eliminates 65+ lines of complex paste logic from the main UI class.
- *
- * @author Open Mason Team
  */
 public class PasteCoordinator {
     private static final Logger logger = LoggerFactory.getLogger(PasteCoordinator.class);
@@ -42,11 +29,6 @@ public class PasteCoordinator {
 
     /**
      * Create paste coordinator.
-     *
-     * @param state texture creator state
-     * @param controller texture creator controller
-     * @param toolCoordinator tool coordinator for tool switching
-     * @param preferences user preferences
      */
     public PasteCoordinator(TextureCreatorState state,
                            TextureCreatorController controller,
@@ -60,8 +42,6 @@ public class PasteCoordinator {
 
     /**
      * Check if paste operation can be initiated.
-     *
-     * @return true if clipboard has content and active layer exists
      */
     public boolean canPaste() {
         return controller.canPaste();
@@ -69,14 +49,11 @@ public class PasteCoordinator {
 
     /**
      * Initiate paste operation.
-     * Pastes clipboard content to active layer and activates transformation mode.
-     *
-     * @return true if paste was initiated successfully, false otherwise
      */
-    public boolean initiatePaste() {
+    public void initiatePaste() {
         if (!canPaste()) {
             logger.warn("Cannot paste - clipboard is empty");
-            return false;
+            return;
         }
 
         // Get clipboard data
@@ -85,21 +62,21 @@ public class PasteCoordinator {
 
         if (clipboardCanvas == null) {
             logger.warn("Cannot paste - clipboard canvas is null");
-            return false;
+            return;
         }
 
         // Get move tool for transformation
         MoveToolController moveTool = toolCoordinator.getMoveTool();
         if (moveTool == null) {
             logger.error("Cannot paste - move tool not available");
-            return false;
+            return;
         }
 
         // Get active layer canvas
         PixelCanvas activeCanvas = controller.getActiveLayerCanvas();
         if (activeCanvas == null) {
             logger.error("Cannot paste - no active layer");
-            return false;
+            return;
         }
 
         // Create paste selection region (rectangular region for pasted content)
@@ -138,7 +115,6 @@ public class PasteCoordinator {
         moveTool.setupPasteSession(activeCanvas, pasteSelection);
 
         logger.info("Paste activated at ({}, {})", clipboard.getSourceX(), clipboard.getSourceY());
-        return true;
     }
 
     /**
@@ -237,11 +213,4 @@ public class PasteCoordinator {
         return pasteSessionActive;
     }
 
-    /**
-     * Get the tool that was active before paste was initiated.
-     * Used for restoration after commit/cancel.
-     */
-    public DrawingTool getToolBeforePaste() {
-        return toolBeforePaste;
-    }
 }

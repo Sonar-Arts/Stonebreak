@@ -2,29 +2,13 @@ package com.openmason.ui.textureCreator.canvas;
 
 import com.openmason.ui.textureCreator.selection.SelectionManager;
 import com.openmason.ui.textureCreator.selection.SelectionRegion;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 
 /**
  * Core pixel canvas data structure.
- *
- * Stores pixel data as a simple RGBA integer array.
- * Follows KISS principle - straightforward data structure with clear operations.
- * Now integrates with SelectionManager for centralized selection state.
- *
- * Pixel format: 0xAABBGGRR (alpha, blue, green, red)
- * - Alpha: bits 24-31
- * - Blue:  bits 16-23
- * - Green: bits 8-15
- * - Red:   bits 0-7
- *
- * @author Open Mason Team
  */
 public class PixelCanvas {
-
-    private static final Logger logger = LoggerFactory.getLogger(PixelCanvas.class);
 
     private final int width;
     private final int height;
@@ -273,21 +257,6 @@ public class PixelCanvas {
     }
 
     /**
-     * Set the active selection region (legacy method).
-     * When SelectionManager is set, this method has no effect as selection is managed centrally.
-     * When a selection is active, only pixels within the selection can be modified.
-     *
-     * @param selection The selection region to set (null to clear selection)
-     */
-    public void setActiveSelection(SelectionRegion selection) {
-        if (selectionManager != null) {
-            logger.warn("setActiveSelection called but SelectionManager is active - use SelectionManager instead");
-            return;
-        }
-        this.activeSelection = selection;
-    }
-
-    /**
      * Get the active selection region.
      * If SelectionManager is set, returns its selection; otherwise returns local selection.
      *
@@ -336,12 +305,4 @@ public class PixelCanvas {
         this.bypassSelectionConstraint = bypass;
     }
 
-    /**
-     * Check if selection constraint is currently bypassed.
-     *
-     * @return true if bypass is enabled, false otherwise
-     */
-    public boolean isBypassSelectionConstraint() {
-        return bypassSelectionConstraint;
-    }
 }

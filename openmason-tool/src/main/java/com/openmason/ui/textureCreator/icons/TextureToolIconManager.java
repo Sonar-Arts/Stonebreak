@@ -23,19 +23,6 @@ import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Manages texture editor tool icons.
- * Loads SVG files from resources, converts them to OpenGL textures using Apache Batik.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Manages tool icon loading and caching only
- * - Open/Closed: Can be extended with new icon types without modification
- * - Interface Segregation: Simple, focused API
- * - Dependency Inversion: Uses resource loading abstraction
- *
- * Follows KISS: Simple SVG-to-texture pipeline without over-engineering
- * Follows DRY: Centralized icon management, no duplication
- * Follows YAGNI: Only implements what's needed - direct SVG loading
- *
- * @author Open Mason Team
  */
 public class TextureToolIconManager {
 
@@ -197,31 +184,9 @@ public class TextureToolIconManager {
 
     /**
      * Get OpenGL texture ID for a tool.
-     *
-     * @param toolName tool name (e.g., "Pencil", "Eraser")
-     * @return OpenGL texture ID, or -1 if icon not found
      */
     public int getIconTexture(String toolName) {
         return iconTextures.getOrDefault(toolName, -1);
-    }
-
-    /**
-     * Check if icon is loaded for a tool.
-     *
-     * @param toolName tool name
-     * @return true if icon is loaded
-     */
-    public boolean hasIcon(String toolName) {
-        return iconTextures.containsKey(toolName) && iconTextures.get(toolName) != -1;
-    }
-
-    /**
-     * Get icon size.
-     *
-     * @return icon size in pixels (width and height are the same)
-     */
-    public int getIconSize() {
-        return ICON_SIZE;
     }
 
     /**

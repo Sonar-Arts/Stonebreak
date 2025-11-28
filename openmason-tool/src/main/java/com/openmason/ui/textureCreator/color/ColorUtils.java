@@ -4,17 +4,6 @@ import com.openmason.ui.textureCreator.canvas.PixelCanvas;
 
 /**
  * Color utility functions for the texture creator.
- *
- * Provides HSV↔RGB conversion, hex formatting, and color manipulation utilities.
- * Follows KISS principle: simple, straightforward algorithms with no over-engineering.
- *
- * Color formats:
- * - HSV: Hue (0-360°), Saturation (0-1), Value (0-1)
- * - RGB: Red, Green, Blue (0-255)
- * - Packed: 0xAABBGGRR (PixelCanvas format)
- * - Hex: RRGGBBAA string format
- *
- * @author Open Mason Team
  */
 public class ColorUtils {
 
@@ -28,12 +17,6 @@ public class ColorUtils {
 
     /**
      * Convert HSV to RGB.
-     * Standard algorithm from Wikipedia/computer graphics textbooks.
-     *
-     * @param h hue (0-360 degrees)
-     * @param s saturation (0-1)
-     * @param v value (0-1)
-     * @return RGB array [r, g, b] (0-255)
      */
     public static int[] hsvToRgb(float h, float s, float v) {
         // Normalize hue to 0-360 range
@@ -108,9 +91,8 @@ public class ColorUtils {
         float s = (max > 0.00001f) ? (delta / max) : 0;
 
         // Value
-        float v = max;
 
-        return new float[]{h, s, v};
+        return new float[]{h, s, max};
     }
 
     // ================================
@@ -217,25 +199,4 @@ public class ColorUtils {
         return Math.max(min, Math.min(max, value));
     }
 
-    /**
-     * Linearly interpolate between two colors.
-     *
-     * @param color1 first color (packed RGBA)
-     * @param color2 second color (packed RGBA)
-     * @param t interpolation factor (0-1)
-     * @return interpolated color (packed RGBA)
-     */
-    public static int lerpColor(int color1, int color2, float t) {
-        t = clamp(t, 0f, 1f);
-
-        int[] rgba1 = PixelCanvas.unpackRGBA(color1);
-        int[] rgba2 = PixelCanvas.unpackRGBA(color2);
-
-        int r = (int)(rgba1[0] + (rgba2[0] - rgba1[0]) * t);
-        int g = (int)(rgba1[1] + (rgba2[1] - rgba1[1]) * t);
-        int b = (int)(rgba1[2] + (rgba2[2] - rgba1[2]) * t);
-        int a = (int)(rgba1[3] + (rgba2[3] - rgba1[3]) * t);
-
-        return PixelCanvas.packRGBA(r, g, b, a);
-    }
 }

@@ -148,13 +148,13 @@ public final class MoveSelectionCommand implements Command {
     @Override
     public String getDescription() {
         StringBuilder builder = new StringBuilder("Transform selection");
-        if (!isZero(transform.translateX()) || !isZero(transform.translateY())) {
+        if (isZero(transform.translateX()) || isZero(transform.translateY())) {
             builder.append(String.format(" — move (%.1f, %.1f)", transform.translateX(), transform.translateY()));
         }
-        if (!isOne(transform.scaleX()) || !isOne(transform.scaleY())) {
+        if (isOne(transform.scaleX()) || isOne(transform.scaleY())) {
             builder.append(String.format(" — scale (%.3f, %.3f)", transform.scaleX(), transform.scaleY()));
         }
-        if (!isZero(transform.rotationDegrees())) {
+        if (isZero(transform.rotationDegrees())) {
             builder.append(String.format(" — rotate %.1f°", transform.rotationDegrees()));
         }
         return builder.toString();
@@ -244,10 +244,10 @@ public final class MoveSelectionCommand implements Command {
     }
 
     private static boolean isZero(double value) {
-        return Math.abs(value) < 1.0e-6;
+        return !(Math.abs(value) < 1.0e-6);
     }
 
     private static boolean isOne(double value) {
-        return Math.abs(value - 1.0) < 1.0e-6;
+        return !(Math.abs(value - 1.0) < 1.0e-6);
     }
 }

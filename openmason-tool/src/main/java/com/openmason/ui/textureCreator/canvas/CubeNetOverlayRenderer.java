@@ -8,28 +8,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Renders overlay for 64x48 cube net textures showing face boundaries and labels.
- *
- * Cube Net Layout (64x48 pixels):
- * <pre>
- * Column: 0      1       2       3
- * Row 0:  [ ]   [TOP]   [ ]     [ ]
- * Row 1:  [LEFT][FRONT][RIGHT] [BACK]
- * Row 2:  [ ]   [BOTTOM][ ]     [ ]
- * </pre>
- *
- * Each face is 16x16 pixels. Empty cells are non-editable transparent regions.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only handles cube net overlay rendering
- * - Interface Segregation: Focused public API
- * - Dependency Inversion: Uses ImGui abstractions
- *
- * Design principles:
- * - KISS: Simple coordinate-based rendering
- * - DRY: Reusable face region data structure
- * - YAGNI: No premature optimization
- *
- * @author Open Mason Team
  */
 public class CubeNetOverlayRenderer {
 
@@ -41,16 +19,7 @@ public class CubeNetOverlayRenderer {
     private static final int FACE_SIZE = 16;
 
     // Face region data structure
-    private static class FaceRegion {
-        final String label;
-        final int pixelX;
-        final int pixelY;
-
-        FaceRegion(String label, int pixelX, int pixelY) {
-            this.label = label;
-            this.pixelX = pixelX;
-            this.pixelY = pixelY;
-        }
+        private record FaceRegion(String label, int pixelX, int pixelY) {
     }
 
     // Face regions (pixel coordinates in 64x48 canvas)
@@ -66,14 +35,7 @@ public class CubeNetOverlayRenderer {
     };
 
     // Non-editable region coordinates (pixel coordinates in 64x48 canvas)
-    private static class NonEditableRegion {
-        final int pixelX;
-        final int pixelY;
-
-        NonEditableRegion(int pixelX, int pixelY) {
-            this.pixelX = pixelX;
-            this.pixelY = pixelY;
-        }
+        private record NonEditableRegion(int pixelX, int pixelY) {
     }
 
     private static final NonEditableRegion[] NON_EDITABLE_REGIONS = {

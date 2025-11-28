@@ -5,8 +5,6 @@ import com.openmason.ui.textureCreator.layers.LayerManager;
 
 /**
  * Command for layer operations (add, remove, reorder, etc.).
- *
- * @author Open Mason Team
  */
 public class LayerCommand implements Command {
 

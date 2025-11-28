@@ -11,16 +11,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Coordinates all file operations (open, save, import, export).
- * Follows DRY principle by eliminating duplicate file operation patterns.
- * Follows Template Method pattern for consistent operation handling.
- *
- * Benefits:
- * - Eliminates ~150 lines of duplicate file operation code
- * - Consistent error handling and logging
- * - Centralized file dialog management
- * - Single point of change for file operation behavior
- *
- * @author Open Mason Team
  */
 public class FileOperationsCoordinator {
     private static final Logger logger = LoggerFactory.getLogger(FileOperationsCoordinator.class);
@@ -171,11 +161,10 @@ public class FileOperationsCoordinator {
      * Call this after dialog confirms a canvas size selection.
      *
      * @param selectedSize the canvas size selected by user
-     * @return true if import was processed and path consumed, false if no pending import
      */
-    public boolean processPendingPNGImport(TextureCreatorState.CanvasSize selectedSize) {
+    public void processPendingPNGImport(TextureCreatorState.CanvasSize selectedSize) {
         if (pendingImportPath == null || selectedSize == null) {
-            return false;
+            return;
         }
 
         String filePath = pendingImportPath;
@@ -191,7 +180,6 @@ public class FileOperationsCoordinator {
             logger.error("Failed to import PNG: {}", filePath);
         }
 
-        return true;
     }
 
     /**
@@ -241,17 +229,4 @@ public class FileOperationsCoordinator {
         });
     }
 
-    /**
-     * Check if there's a pending PNG import waiting for dialog confirmation.
-     */
-    public boolean hasPendingPNGImport() {
-        return pendingImportPath != null;
-    }
-
-    /**
-     * Clear pending PNG import (e.g., if dialog is cancelled).
-     */
-    public void clearPendingPNGImport() {
-        pendingImportPath = null;
-    }
 }

@@ -3,7 +3,6 @@ package com.openmason.ui.textureCreator.panels;
 import com.openmason.ui.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.textureCreator.commands.CommandHistory;
 import com.openmason.ui.textureCreator.commands.DrawCommand;
-import com.openmason.ui.textureCreator.coordinators.FilterCoordinator;
 import com.openmason.ui.textureCreator.filters.noise.*;
 import com.openmason.ui.textureCreator.layers.LayerManager;
 import com.openmason.ui.textureCreator.layers.Layer;
@@ -53,7 +52,6 @@ public class NoiseFilterPanel {
     private static final int PREVIEW_RESOLUTION = 64;
 
     // Dependencies (injected)
-    private FilterCoordinator filterCoordinator;
     private LayerManagerProvider layerManagerProvider;
     private CommandHistoryProvider commandHistoryProvider;
 
@@ -609,8 +607,8 @@ public class NoiseFilterPanel {
 
         // Then apply noise to canvas in real-time
         NoiseGenerator generator = createGenerator();
-        NoiseConfig config = new NoiseConfig(generator, strength, gradient, scale, noiseSeed,
-                                              blur, octaves, spread, edgeSoftness);
+        NoiseConfig config = new NoiseConfig(generator, strength, gradient, scale,
+                blur, octaves, spread, edgeSoftness);
         NoiseFilter filter = new NoiseFilter(config);
 
         filter.apply(canvas, activeSelection);

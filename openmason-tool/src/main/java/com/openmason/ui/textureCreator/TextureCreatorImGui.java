@@ -1,7 +1,6 @@
 package com.openmason.ui.textureCreator;
 
 import com.openmason.ui.textureCreator.coordinators.FileOperationsCoordinator;
-import com.openmason.ui.textureCreator.coordinators.FilterCoordinator;
 import com.openmason.ui.textureCreator.coordinators.PasteCoordinator;
 import com.openmason.ui.textureCreator.coordinators.ToolCoordinator;
 import com.openmason.ui.textureCreator.dialogs.ImportPNGDialog;
@@ -94,7 +93,6 @@ public class TextureCreatorImGui {
                               ExportFormatDialog exportFormatDialog,
                               AboutDialog aboutDialog,
                               FileOperationsCoordinator fileOperations,
-                              FilterCoordinator filterCoordinator,
                               ToolCoordinator toolCoordinator,
                               PasteCoordinator pasteCoordinator,
                               KeyboardShortcutManager shortcutManager,
@@ -172,8 +170,6 @@ public class TextureCreatorImGui {
         PasteCoordinator pasteCoordinator = new PasteCoordinator(state, controller, toolCoordinator, preferences);
         FileOperationsCoordinator fileOperations = new FileOperationsCoordinator(
             fileDialogService, controller, state, importResolver);
-        FilterCoordinator filterCoordinator = new FilterCoordinator(
-            controller, state, controller.getLayerManager(), controller.getCommandHistory());
         KeyboardShortcutManager shortcutManager = new KeyboardShortcutManager();
 
         // Wire up dependencies to noise filter panel
@@ -198,7 +194,7 @@ public class TextureCreatorImGui {
             state, controller, preferences, windowState,
             toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel,
             newTextureDialog, importPNGDialog, omtImportDialog, exportFormatDialog, aboutDialog,
-            fileOperations, filterCoordinator, toolCoordinator, pasteCoordinator, shortcutManager,
+            fileOperations, toolCoordinator, pasteCoordinator, shortcutManager,
             menuBarRenderer, windowedMenuBarRenderer, panelRenderer, dialogProcessor, dragDropHandler
         );
     }
