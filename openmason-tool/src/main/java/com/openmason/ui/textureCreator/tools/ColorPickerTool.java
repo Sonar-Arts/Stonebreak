@@ -5,11 +5,6 @@ import com.openmason.ui.textureCreator.commands.DrawCommand;
 
 /**
  * Color picker tool (eyedropper) - samples pixel color.
- *
- * Note: This tool needs to communicate picked color back to the application.
- * The actual color setting is handled by the controller.
- *
- * @author Open Mason Team
  */
 public class ColorPickerTool implements DrawingTool {
 
@@ -34,7 +29,6 @@ public class ColorPickerTool implements DrawingTool {
 
     /**
      * Get the last picked color.
-     * @return picked color (RGBA packed)
      */
     public int getPickedColor() {
         return pickedColor;

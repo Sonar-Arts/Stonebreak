@@ -9,8 +9,6 @@ import java.util.Queue;
 
 /**
  * Fill tool - flood fills connected pixels.
- *
- * @author Open Mason Team
  */
 public class FillTool implements DrawingTool {
 

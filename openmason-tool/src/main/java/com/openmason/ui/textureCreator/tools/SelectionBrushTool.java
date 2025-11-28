@@ -14,14 +14,6 @@ import java.util.Set;
 
 /**
  * Brush-style selection tool that supports painting arbitrary, non-contiguous
- * selections with variable brush size.
- * Integrates with the {@link SelectionManager} so the move tool and
- * other systems can work with the resulting mask-based selection region.
- *
- * Modifier keys (evaluated on stroke start):
- * - ALT: subtract from existing selection
- * - CTRL: replace existing selection with brush stroke
- * - Default: additive (union)
  */
 public final class SelectionBrushTool implements SelectionTool {
 

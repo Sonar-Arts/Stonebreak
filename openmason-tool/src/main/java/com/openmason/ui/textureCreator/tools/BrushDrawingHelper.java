@@ -185,7 +185,7 @@ public class BrushDrawingHelper {
             // Skip the first point (original), draw the rest (mirrored)
             for (int i = 1; i < mirrorPoints.size(); i++) {
                 SymmetryHelper.Point2i point = mirrorPoints.get(i);
-                drawBrushStroke(point.x, point.y, color, canvas, command, brushSize);
+                drawBrushStroke(point.x(), point.y(), color, canvas, command, brushSize);
             }
         }
     }
@@ -235,7 +235,7 @@ public class BrushDrawingHelper {
             for (int i = 1; i < startMirrors.size() && i < endMirrors.size(); i++) {
                 SymmetryHelper.Point2i start = startMirrors.get(i);
                 SymmetryHelper.Point2i end = endMirrors.get(i);
-                drawBrushLine(start.x, start.y, end.x, end.y, color, canvas, command, brushSize);
+                drawBrushLine(start.x(), start.y(), end.x(), end.y(), color, canvas, command, brushSize);
             }
         }
     }

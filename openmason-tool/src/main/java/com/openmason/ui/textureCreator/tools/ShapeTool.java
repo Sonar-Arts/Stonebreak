@@ -330,19 +330,13 @@ public class ShapeTool implements DrawingTool {
         int minY = Math.min(y0, y1);
         int maxY = Math.max(y0, y1);
 
-        int centerX = (minX + maxX) / 2;
-        int apexX = centerX;
-        int apexY = minY;
-        int baseLeftX = minX;
-        int baseLeftY = maxY;
-        int baseRightX = maxX;
-        int baseRightY = maxY;
+        int apexX = (minX + maxX) / 2;
 
         if (filled) {
             for (int y = minY; y <= maxY; y++) {
                 float progress = (maxY == minY) ? 0 : (float)(y - minY) / (maxY - minY);
-                int leftX = Math.round(apexX + progress * (baseLeftX - apexX));
-                int rightX = Math.round(apexX + progress * (baseRightX - apexX));
+                int leftX = Math.round(apexX + progress * (minX - apexX));
+                int rightX = Math.round(apexX + progress * (maxX - apexX));
 
                 for (int x = leftX; x <= rightX; x++) {
                     if (isPreview) {
@@ -353,9 +347,9 @@ public class ShapeTool implements DrawingTool {
                 }
             }
         } else {
-            drawLine(apexX, apexY, baseLeftX, baseLeftY, color, canvas, command, isPreview);
-            drawLine(apexX, apexY, baseRightX, baseRightY, color, canvas, command, isPreview);
-            drawLine(baseLeftX, baseLeftY, baseRightX, baseRightY, color, canvas, command, isPreview);
+            drawLine(apexX, minY, minX, maxY, color, canvas, command, isPreview);
+            drawLine(apexX, minY, maxX, maxY, color, canvas, command, isPreview);
+            drawLine(minX, maxY, maxX, maxY, color, canvas, command, isPreview);
         }
     }
 

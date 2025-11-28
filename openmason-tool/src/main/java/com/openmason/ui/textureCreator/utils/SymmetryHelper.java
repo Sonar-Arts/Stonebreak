@@ -7,59 +7,30 @@ import java.util.List;
 
 /**
  * Utility class for calculating mirrored coordinates for symmetry/mirror mode.
- *
- * Follows KISS and DRY principles:
- * - Simple coordinate transformations
- * - Stateless utility methods
- * - Reusable across all drawing tools
- *
- * @author Open Mason Team
  */
 public class SymmetryHelper {
 
     /**
-     * Simple 2D integer point structure.
-     */
-    public static class Point2i {
-        public final int x;
-        public final int y;
-
-        public Point2i(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
+         * Simple 2D integer point structure.
+         */
+        public record Point2i(int x, int y) {
 
         @Override
-        public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (!(obj instanceof Point2i)) return false;
-            Point2i other = (Point2i) obj;
+            public boolean equals(Object obj) {
+                if (this == obj) return true;
+                if (!(obj instanceof Point2i other)) return false;
             return x == other.x && y == other.y;
-        }
+            }
 
         @Override
-        public int hashCode() {
-            return 31 * x + y;
+            public String toString() {
+                return "(" + x + ", " + y + ")";
+            }
         }
-
-        @Override
-        public String toString() {
-            return "(" + x + ", " + y + ")";
-        }
-    }
 
     /**
      * Calculate all mirrored points for a given coordinate based on symmetry mode.
      * Returns all points including the original point that should be drawn.
-     *
-     * @param x Original X coordinate
-     * @param y Original Y coordinate
-     * @param mode Symmetry mode
-     * @param canvasWidth Canvas width in pixels
-     * @param canvasHeight Canvas height in pixels
-     * @param offsetX Horizontal offset from center in pixels
-     * @param offsetY Vertical offset from center in pixels
-     * @return List of all points to draw (including original)
      */
     public static List<Point2i> calculateMirrorPoints(int x, int y,
                                                       SymmetryState.SymmetryMode mode,
@@ -118,7 +89,6 @@ public class SymmetryHelper {
                 }
                 break;
 
-            case NONE:
             default:
                 // Already handled above
                 break;
@@ -129,9 +99,6 @@ public class SymmetryHelper {
 
     /**
      * Get the axis center X coordinate with offset.
-     * @param canvasWidth Canvas width in pixels
-     * @param offsetX Horizontal offset from center in pixels
-     * @return Center X coordinate
      */
     public static float getAxisCenterX(int canvasWidth, int offsetX) {
         return ((canvasWidth - 1) / 2.0f) + offsetX;
@@ -139,9 +106,6 @@ public class SymmetryHelper {
 
     /**
      * Get the axis center Y coordinate with offset.
-     * @param canvasHeight Canvas height in pixels
-     * @param offsetY Vertical offset from center in pixels
-     * @return Center Y coordinate
      */
     public static float getAxisCenterY(int canvasHeight, int offsetY) {
         return ((canvasHeight - 1) / 2.0f) + offsetY;

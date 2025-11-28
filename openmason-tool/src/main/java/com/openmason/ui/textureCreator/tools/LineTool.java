@@ -9,8 +9,6 @@ import java.util.Map;
 
 /**
  * Line tool - draws straight lines with real-time preview.
- *
- * @author Open Mason Team
  */
 public class LineTool implements DrawingTool {
 

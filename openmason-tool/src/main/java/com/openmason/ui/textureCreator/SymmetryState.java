@@ -100,8 +100,6 @@ public class SymmetryState {
 
     /**
      * Check if symmetry is enabled for a specific tool.
-     * @param toolClassName Simple class name of the tool (e.g., "PencilTool")
-     * @return true if symmetry is enabled for this tool
      */
     public boolean isEnabledForTool(String toolClassName) {
         return toolEnabledMap.getOrDefault(toolClassName, false);
@@ -109,8 +107,6 @@ public class SymmetryState {
 
     /**
      * Set whether symmetry is enabled for a specific tool.
-     * @param toolClassName Simple class name of the tool
-     * @param enabled true to enable symmetry for this tool
      */
     public void setEnabledForTool(String toolClassName, boolean enabled) {
         toolEnabledMap.put(toolClassName, enabled);
@@ -118,7 +114,6 @@ public class SymmetryState {
 
     /**
      * Check if symmetry is currently active (mode != NONE).
-     * @return true if symmetry mode is active
      */
     public boolean isActive() {
         return mode != SymmetryMode.NONE;

@@ -6,10 +6,6 @@ import com.openmason.ui.textureCreator.commands.DrawCommand;
 
 /**
  * Pencil tool - draws pixels with variable brush size.
- * Supports brush sizes from 1 pixel to 20 pixels diameter.
- * Supports symmetry/mirror mode.
- *
- * @author Open Mason Team
  */
 public class PencilTool implements DrawingTool {
 

@@ -134,10 +134,10 @@ public class CanvasPanel {
                 // Rectangle preview: pass as bounds array for efficient rectangle rendering
                 RectanglePreview rectPreview = (RectanglePreview) preview;
                 selectionPreviewBounds = new int[]{
-                    rectPreview.getStartX(),
-                    rectPreview.getStartY(),
-                    rectPreview.getEndX(),
-                    rectPreview.getEndY()
+                    rectPreview.startX(),
+                    rectPreview.startY(),
+                    rectPreview.endX(),
+                    rectPreview.endY()
                 };
             } else if (preview instanceof PixelsPreview) {
                 // Pixels preview: convert to MaskSelectionRegion for freeform rendering
@@ -145,7 +145,7 @@ public class CanvasPanel {
                     (PixelsPreview) preview;
                 if (!pixelsPreview.isEmpty()) {
                     pixelBasedPreview = MaskSelectionRegion
-                        .fromEncodedPixels(pixelsPreview.getEncodedPixels());
+                        .fromEncodedPixels(pixelsPreview.encodedPixels());
                 }
             }
         }

@@ -8,25 +8,6 @@ import com.openmason.ui.textureCreator.tools.selection.SelectionPreview;
 
 /**
  * Rectangle selection tool - creates rectangular selection regions.
- * Click and drag to create a new rectangular selection.
- *
- * REFACTORED: Now extends AbstractSelectionTool for common selection logic.
- * Implements only rectangle-specific behavior.
- *
- * Architecture:
- * - Base: AbstractSelectionTool (handles common selection state and lifecycle)
- * - This: Rectangle-specific selection creation and preview
- *
- * SOLID Principles:
- * - Single Responsibility: Handles only rectangular selection creation
- * - Open/Closed: Extensible via AbstractSelectionTool template methods
- * - Liskov Substitution: Can be used anywhere SelectionTool is expected
- *
- * KISS: Simple, focused on rectangle logic only
- * DRY: Reuses common selection logic from AbstractSelectionTool
- * YAGNI: No unnecessary features like unused aspect ratio constraints
- *
- * @author Open Mason Team
  */
 public class RectangleSelectionTool extends AbstractSelectionTool {
 
