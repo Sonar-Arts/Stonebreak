@@ -1,0 +1,87 @@
+version: 2
+updates:
+  # Monitor Maven dependencies for the parent POM
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "maven"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    reviewers:
+      - "Cheeseyacht"
+    assignees:
+      - "Cheeseyacht"
+    # Group related dependency updates
+    groups:
+      lwjgl:
+        patterns:
+          - "org.lwjgl:*"
+        update-types:
+          - "minor"
+          - "patch"
+      jackson:
+        patterns:
+          - "com.fasterxml.jackson.*:*"
+        update-types:
+          - "minor"
+          - "patch"
+      logging:
+        patterns:
+          - "org.slf4j:*"
+          - "ch.qos.logback:*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Monitor stonebreak-game module
+  - package-ecosystem: "maven"
+    directory: "/stonebreak-game"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "maven"
+      - "stonebreak-game"
+    commit-message:
+      prefix: "deps(game)"
+      include: "scope"
+
+  # Monitor openmason-tool module
+  - package-ecosystem: "maven"
+    directory: "/openmason-tool"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "maven"
+      - "openmason-tool"
+    commit-message:
+      prefix: "deps(openmason)"
+      include: "scope"
+
+  # Monitor GitHub Actions if present
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
