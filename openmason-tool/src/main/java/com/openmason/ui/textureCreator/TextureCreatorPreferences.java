@@ -9,17 +9,6 @@ import java.util.List;
 
 /**
  * Texture creator preferences for rendering and UI settings.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only manages preferences state
- * - Provides observable properties for UI binding
- * - Delegates persistence to PreferencesManager
- *
- * Features:
- * - Grid opacity settings
- * - Color history persistence
- *
- * @author Open Mason Team
  */
 public class TextureCreatorPreferences {
 
@@ -29,14 +18,9 @@ public class TextureCreatorPreferences {
     public static final float MIN_OPACITY = 0.0f;
     public static final float MAX_OPACITY = 1.0f;
 
-    // Default opacity values (must match PreferencesManager defaults)
-    public static final float DEFAULT_GRID_OPACITY = 0.5f;
-    public static final float DEFAULT_CUBE_NET_OVERLAY_OPACITY = 0.5f;
-
     // Rotation speed limits (degrees per pixel)
     public static final float MIN_ROTATION_SPEED = 0.1f;
     public static final float MAX_ROTATION_SPEED = 2.0f;
-    public static final float DEFAULT_ROTATION_SPEED = 0.5f;
 
     private final PreferencesManager preferencesManager;
 
@@ -128,28 +112,7 @@ public class TextureCreatorPreferences {
     }
 
     /**
-     * Get grid alpha value as integer (0-255).
-     * Useful for ImGui color calculations.
-     * @return alpha value (0-255)
-     */
-    public int getGridAlpha() {
-        return (int) (getGridOpacity() * 255.0f);
-    }
-
-    /**
-     * Get cube net overlay alpha value as integer (0-255).
-     * Useful for ImGui color calculations.
-     * @return alpha value (0-255)
-     */
-    public int getCubeNetOverlayAlpha() {
-        return (int) (getCubeNetOverlayOpacity() * 255.0f);
-    }
-
-    /**
      * Check if transparent pixels should be skipped on paste/move operations.
-     * When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels.
-     * When disabled, transparent pixels will clear the destination.
-     * @return true to skip transparent pixels, false to apply all pixels
      */
     public boolean isSkipTransparentPixelsOnPaste() {
         return preferencesManager.getTextureEditorSkipTransparentPixelsOnPaste();
@@ -157,10 +120,6 @@ public class TextureCreatorPreferences {
 
     /**
      * Set whether transparent pixels should be skipped on paste/move operations.
-     * When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels.
-     * When disabled, transparent pixels will clear the destination.
-     * Auto-saves to preferences file.
-     * @param skip true to skip transparent pixels, false to apply all pixels
      */
     public void setSkipTransparentPixelsOnPaste(boolean skip) {
         preferencesManager.setTextureEditorSkipTransparentPixelsOnPaste(skip);
@@ -169,9 +128,6 @@ public class TextureCreatorPreferences {
 
     /**
      * Check if shape tool should draw filled shapes.
-     * When enabled, shapes are filled with the selected color.
-     * When disabled, only the outline is drawn.
-     * @return true for filled shapes, false for outline only
      */
     public boolean isShapeToolFillMode() {
         return preferencesManager.getTextureEditorShapeToolFillMode();
@@ -179,10 +135,6 @@ public class TextureCreatorPreferences {
 
     /**
      * Set whether shape tool should draw filled shapes.
-     * When enabled, shapes are filled with the selected color.
-     * When disabled, only the outline is drawn.
-     * Auto-saves to preferences file.
-     * @param fillMode true for filled shapes, false for outline only
      */
     public void setShapeToolFillMode(boolean fillMode) {
         preferencesManager.setTextureEditorShapeToolFillMode(fillMode);
@@ -199,8 +151,6 @@ public class TextureCreatorPreferences {
 
     /**
      * Set color history.
-     * Auto-saves to preferences file.
-     * @param colorHistory list of colors (packed RGBA ints)
      */
     public void setColorHistory(List<Integer> colorHistory) {
         if (colorHistory == null) {

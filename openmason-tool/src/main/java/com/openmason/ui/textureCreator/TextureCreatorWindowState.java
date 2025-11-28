@@ -7,19 +7,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Manages visibility state for all texture creator windows and panels.
- *
- * This class centralizes window visibility management using ImBoolean references
- * that can be directly passed to ImGui.begin() calls. When a user clicks the (x)
- * button on a window, ImGui automatically updates these ImBoolean flags.
- *
- * Windows are categorized as:
- * - Core panels (Tools, Canvas) - Always visible, not closeable
- * - Closeable panels (Layers, Color) - Can be closed and reopened via menu
- * - Dialog windows (Preferences, Noise Filter) - Floating windows that can be closed
- *
- * Implements HelpWindowVisibilityState to support help menu functionality.
- *
- * @author Open Mason Team
  */
 public class TextureCreatorWindowState implements HelpWindowVisibilityState {
 
@@ -182,56 +169,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
     // ========================================
 
     /**
-     * Show preferences window (if currently hidden).
-     */
-    public void showPreferencesWindow() {
-        if (!showPreferencesWindow.get()) {
-            showPreferencesWindow.set(true);
-            logger.debug("Preferences window opened");
-        }
-    }
-
-    /**
-     * Show noise filter window (if currently hidden).
-     */
-    public void showNoiseFilterWindow() {
-        if (!showNoiseFilterWindow.get()) {
-            showNoiseFilterWindow.set(true);
-            logger.debug("Noise filter window opened");
-        }
-    }
-
-    /**
-     * Show symmetry window (if currently hidden).
-     */
-    public void showSymmetryWindow() {
-        if (!showSymmetryWindow.get()) {
-            showSymmetryWindow.set(true);
-            logger.debug("Symmetry window opened");
-        }
-    }
-
-    /**
-     * Show layers panel (if currently hidden).
-     */
-    public void showLayersPanel() {
-        if (!showLayersPanel.get()) {
-            showLayersPanel.set(true);
-            logger.debug("Layers panel opened");
-        }
-    }
-
-    /**
-     * Show color panel (if currently hidden).
-     */
-    public void showColorPanel() {
-        if (!showColorPanel.get()) {
-            showColorPanel.set(true);
-            logger.debug("Color panel opened");
-        }
-    }
-
-    /**
      * Show about window (if currently hidden).
      */
     @Override
@@ -242,40 +179,4 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
         }
     }
 
-    // ========================================
-    // UTILITY METHODS
-    // ========================================
-
-    /**
-     * Reset all panels to default visibility.
-     * Core panels (Tools, Canvas) are always visible.
-     * Closeable panels (Layers, Color) are shown by default.
-     * Dialog windows (Preferences, Noise, Symmetry, About) are hidden by default.
-     */
-    public void resetToDefault() {
-        showLayersPanel.set(true);
-        showColorPanel.set(true);
-        showPreferencesWindow.set(false);
-        showNoiseFilterWindow.set(false);
-        showSymmetryWindow.set(false);
-        showAboutWindow.set(false);
-        logger.info("Window visibility reset to defaults");
-    }
-
-    /**
-     * Check if any panel is hidden (useful for "show all" functionality).
-     * @return true if any closeable panel is hidden
-     */
-    public boolean hasHiddenPanels() {
-        return !showLayersPanel.get() || !showColorPanel.get();
-    }
-
-    /**
-     * Show all closeable panels (does not affect dialog windows).
-     */
-    public void showAllPanels() {
-        showLayersPanel.set(true);
-        showColorPanel.set(true);
-        logger.info("All panels shown");
-    }
 }

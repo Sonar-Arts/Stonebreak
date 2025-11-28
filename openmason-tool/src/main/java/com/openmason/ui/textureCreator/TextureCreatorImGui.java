@@ -38,38 +38,6 @@ import java.util.List;
 
 /**
  * Main UI interface for the Texture Creator tool.
- *
- * SOLID Architecture (Post-Refactoring):
- * This class follows Single Responsibility Principle - it ONLY wires components and delegates.
- *
- * All complex logic extracted into specialized coordinators and renderers:
- *
- * Coordinators (Business Logic):
- * - PasteCoordinator: Paste workflow management
- * - FileOperationsCoordinator: File operation handling
- * - ToolCoordinator: Tool state management + Enter/ESC handlers
- * - KeyboardShortcutManager: Keyboard shortcut routing
- *
- * Renderers (UI):
- * - MenuBarRenderer: Menu bar rendering
- * - PanelRenderingCoordinator: All panel rendering
- * - DialogProcessor: Dialog result processing
- *
- * This Class Only Does:
- * 1. Component wiring (constructor)
- * 2. Shortcut registration (declarative)
- * 3. Delegation to coordinators
- * 4. Drag-drop setup
- * 5. Lifecycle (dispose)
- *
- * Benefits:
- * - 990 lines → ~350 lines (65% reduction!)
- * - True Single Responsibility
- * - Every concern properly isolated
- * - Fully testable components
- * - Easy to extend
- *
- * @author Open Mason Team
  */
 public class TextureCreatorImGui {
 
@@ -86,7 +54,6 @@ public class TextureCreatorImGui {
     private final PasteCoordinator pasteCoordinator;
     private final KeyboardShortcutManager shortcutManager;
     private final FileOperationsCoordinator fileOperations;
-    private final FilterCoordinator filterCoordinator;
     private final ToolCoordinator toolCoordinator;
 
     // Renderers (UI)
@@ -104,9 +71,6 @@ public class TextureCreatorImGui {
 
     // Panels (passed to renderer)
     private final ColorPanel colorPanel;
-
-    // Window handle
-    private long windowHandle = 0;
 
     // Drag-and-drop handler for processing dropped files
     private final DragDropHandler dragDropHandler;
@@ -150,7 +114,6 @@ public class TextureCreatorImGui {
         this.exportFormatDialog = exportFormatDialog;
         this.aboutDialog = aboutDialog;
         this.fileOperations = fileOperations;
-        this.filterCoordinator = filterCoordinator;
         this.toolCoordinator = toolCoordinator;
         this.pasteCoordinator = pasteCoordinator;
         this.shortcutManager = shortcutManager;
@@ -352,7 +315,7 @@ public class TextureCreatorImGui {
      * Set window handle.
      */
     public void setWindowHandle(long windowHandle) {
-        this.windowHandle = windowHandle;
+        // Window handle
         menuBarRenderer.setWindowHandle(windowHandle);
 
         // Set window handle for move tool (enables mouse capture for rotation/dragging)
@@ -467,18 +430,6 @@ public class TextureCreatorImGui {
         panelRenderer.renderSymmetryWindow();
 
         dialogProcessor.processAll();
-    }
-
-    /**
-     * Render in windowed mode (for use inside TextureEditorWindow).
-     * Skips fullscreen dockspace and main menu bar, uses windowed equivalents.
-     */
-    public void renderWindowed() {
-        shortcutManager.handleInput();
-        renderWindowedMenuBar();
-        renderWindowedToolbar();
-        // Note: Parent window creates dockspace between toolbar and panels
-        renderWindowedPanels();
     }
 
     /**

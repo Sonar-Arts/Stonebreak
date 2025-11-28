@@ -15,12 +15,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Texture creator controller - coordinates all texture creator operations.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Coordinates business logic only
- * - Dependency Inversion: Depends on abstractions (interfaces)
- *
- * @author Open Mason Team
  */
 public class TextureCreatorController {
 
@@ -245,14 +239,6 @@ public class TextureCreatorController {
      */
     public TextureCreatorState getState() {
         return state;
-    }
-
-    /**
-     * Get the texture exporter.
-     * @return exporter
-     */
-    public TextureExporter getExporter() {
-        return exporter;
     }
 
     /**

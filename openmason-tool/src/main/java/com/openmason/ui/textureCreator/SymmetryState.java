@@ -5,12 +5,6 @@ import java.util.Map;
 
 /**
  * State management for symmetry/mirror mode in the texture editor.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only manages symmetry state
- * - Immutable where possible for thread safety
- *
- * @author Open Mason Team
  */
 public class SymmetryState {
 

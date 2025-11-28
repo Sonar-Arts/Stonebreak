@@ -7,13 +7,6 @@ import imgui.type.ImBoolean;
 
 /**
  * State management for the Texture Creator component.
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only manages texture creator state
- * - Immutable where possible for thread safety
- * - Now delegates selection management to SelectionManager for centralized control
- *
- * @author Open Mason Team
  */
 public class TextureCreatorState {
 
@@ -47,9 +40,6 @@ public class TextureCreatorState {
     private final SelectionManager selectionManager; // Centralized selection management
     private final SymmetryState symmetryState; // Symmetry/mirror mode state
     private final ImBoolean showGrid;
-    private final ImBoolean showLayersPanel;
-    private final ImBoolean showColorPanel;
-    private final ImBoolean showToolbar;
 
     /**
      * Create new texture creator state with defaults.
@@ -64,9 +54,6 @@ public class TextureCreatorState {
         this.selectionManager = new SelectionManager(); // Initialize selection manager
         this.symmetryState = new SymmetryState(); // Initialize symmetry state
         this.showGrid = new ImBoolean(true);
-        this.showLayersPanel = new ImBoolean(true);
-        this.showColorPanel = new ImBoolean(true);
-        this.showToolbar = new ImBoolean(true);
     }
 
     // Getters and setters
@@ -103,28 +90,12 @@ public class TextureCreatorState {
         this.currentFilePath = filePath;
     }
 
-    public boolean hasUnsavedChanges() {
-        return unsavedChanges;
-    }
-
     public void setUnsavedChanges(boolean unsavedChanges) {
         this.unsavedChanges = unsavedChanges;
     }
 
     public ImBoolean getShowGrid() {
         return showGrid;
-    }
-
-    public ImBoolean getShowLayersPanel() {
-        return showLayersPanel;
-    }
-
-    public ImBoolean getShowColorPanel() {
-        return showColorPanel;
-    }
-
-    public ImBoolean getShowToolbar() {
-        return showToolbar;
     }
 
     /**
