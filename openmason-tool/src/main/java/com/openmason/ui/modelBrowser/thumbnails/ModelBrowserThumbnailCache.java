@@ -9,23 +9,6 @@ import java.util.Map;
 
 /**
  * Manages thumbnail texture cache for the Model Browser.
- *
- * <p>Adapted from LayerThumbnailCache, this cache stores OpenGL texture IDs
- * for block, item, and model thumbnails. Uses version-based invalidation and
- * memory-efficient cleanup.</p>
- *
- * <p>Thumbnail sizes:</p>
- * <ul>
- *   <li>Grid view: 64x64 pixels</li>
- *   <li>List view: 32x32 pixels</li>
- *   <li>Compact view: 16x16 pixels</li>
- * </ul>
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li><strong>Single Responsibility</strong>: Only manages thumbnail textures</li>
- *   <li><strong>Open/Closed</strong>: Easy to add new thumbnail types</li>
- * </ul>
  */
 public class ModelBrowserThumbnailCache {
 
@@ -51,10 +34,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Gets or creates a thumbnail texture.
-     *
-     * @param key Unique key for the thumbnail (e.g., "block_grass_64")
-     * @param generator Function to generate the texture if not cached
-     * @return OpenGL texture ID
      */
     public int getOrCreate(String key, ThumbnailGenerator generator) {
         return getOrCreate(key, 0, generator);
@@ -62,11 +41,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Gets or creates a thumbnail texture with version checking.
-     *
-     * @param key Unique key for the thumbnail
-     * @param version Version number for cache invalidation (0 = no versioning)
-     * @param generator Function to generate the texture if not cached
-     * @return OpenGL texture ID
      */
     public int getOrCreate(String key, long version, ThumbnailGenerator generator) {
         // Check if cached and version matches
@@ -93,7 +67,7 @@ public class ModelBrowserThumbnailCache {
                 return 0;
             }
         } catch (Exception e) {
-            logger.error("Error generating thumbnail: " + key, e);
+            logger.error("Error generating thumbnail: {}", key, e);
             return 0;
         }
     }
@@ -129,8 +103,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Gets the number of cached thumbnails.
-     *
-     * @return Cache size
      */
     public int size() {
         return textureCache.size();
@@ -138,9 +110,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Checks if a thumbnail is cached.
-     *
-     * @param key The thumbnail key
-     * @return true if cached
      */
     public boolean contains(String key) {
         return textureCache.containsKey(key);
@@ -148,10 +117,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Generates a cache key for a block thumbnail.
-     *
-     * @param blockName Block name
-     * @param size Thumbnail size
-     * @return Cache key
      */
     public static String blockKey(String blockName, int size) {
         return "block_" + blockName + "_" + size;
@@ -159,10 +124,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Generates a cache key for an item thumbnail.
-     *
-     * @param itemName Item name
-     * @param size Thumbnail size
-     * @return Cache key
      */
     public static String itemKey(String itemName, int size) {
         return "item_" + itemName + "_" + size;
@@ -170,10 +131,6 @@ public class ModelBrowserThumbnailCache {
 
     /**
      * Generates a cache key for a model thumbnail.
-     *
-     * @param modelName Model name
-     * @param size Thumbnail size
-     * @return Cache key
      */
     public static String modelKey(String modelName, int size) {
         return "model_" + modelName + "_" + size;
@@ -186,8 +143,6 @@ public class ModelBrowserThumbnailCache {
     public interface ThumbnailGenerator {
         /**
          * Generates a thumbnail texture.
-         *
-         * @return OpenGL texture ID, or 0 if failed
          */
         int generate();
     }

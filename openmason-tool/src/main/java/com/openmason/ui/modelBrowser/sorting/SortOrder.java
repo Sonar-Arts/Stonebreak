@@ -27,10 +27,6 @@ public enum SortOrder {
         return displayName;
     }
 
-    public String getSymbol() {
-        return symbol;
-    }
-
     /**
      * Toggles between ascending and descending.
      *

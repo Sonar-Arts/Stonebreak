@@ -17,17 +17,6 @@ import java.nio.file.Paths;
 
 /**
  * Generates thumbnail textures for blocks by extracting from the texture atlas.
- * Supports multiple sizes (64x64, 32x32, 16x16) with proper alpha channel handling.
- *
- * <p>Features:</p>
- * <ul>
- *   <li>Checkerboard background for transparent areas</li>
- *   <li>Special handling for AIR block (fully transparent)</li>
- *   <li>Fail-fast validation for missing textures</li>
- * </ul>
- *
- * <p>This renderer requires a valid texture atlas and uses fail-fast validation.
- * Throws {@link IllegalStateException} if the atlas is not available.</p>
  */
 public class BlockThumbnailRenderer {
 
@@ -77,6 +66,7 @@ public class BlockThumbnailRenderer {
             atlasMetadata.initializeLookupMaps();
 
             atlasLoaded = true;
+            assert atlasImage != null;
             logger.info("Loaded texture atlas: {}x{} with {} textures",
                 atlasImage.getWidth(), atlasImage.getHeight(), atlasMetadata.getTextures().size());
         } catch (Exception e) {
@@ -119,7 +109,7 @@ public class BlockThumbnailRenderer {
         try {
             return generateFromAtlas(blockType, size);
         } catch (Exception e) {
-            logger.error("Failed to generate thumbnail for block: " + blockType, e);
+            logger.error("Failed to generate thumbnail for block: {}", blockType, e);
             throw new RuntimeException("Failed to generate thumbnail for block: " + blockType, e);
         }
     }
@@ -127,10 +117,8 @@ public class BlockThumbnailRenderer {
     /**
      * Generates a thumbnail by extracting from the texture atlas.
      *
-     * @throws IllegalArgumentException if block type has no texture mapping
-     * @throws IllegalStateException if texture is not found in atlas
      */
-    private int generateFromAtlas(BlockType blockType, int size) throws Exception {
+    private int generateFromAtlas(BlockType blockType, int size) {
         // Get block texture base name
         String textureName = getBlockTextureName(blockType);
 

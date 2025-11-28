@@ -17,14 +17,6 @@ import java.nio.file.Paths;
 
 /**
  * Generates thumbnail textures for items by extracting from the texture atlas.
- * Supports multiple sizes (64x64, 32x32, 16x16) with proper alpha channel handling.
- *
- * <p>Features:</p>
- * <ul>
- *   <li>Checkerboard background for transparent item sprites</li>
- *   <li>Alpha compositing over checkerboard pattern</li>
- *   <li>Fallback colored rendering when textures unavailable</li>
- * </ul>
  */
 public class ItemThumbnailRenderer {
 
@@ -49,8 +41,6 @@ public class ItemThumbnailRenderer {
 
     /**
      * Creates a new item thumbnail renderer.
-     *
-     * @param cache The thumbnail cache to use
      */
     public ItemThumbnailRenderer(ModelBrowserThumbnailCache cache) {
         this.cache = cache;
@@ -72,6 +62,7 @@ public class ItemThumbnailRenderer {
                 atlasMetadata.initializeLookupMaps();
 
                 atlasLoaded = true;
+                assert atlasImage != null;
                 logger.info("Loaded texture atlas for items: {}x{} with {} textures",
                     atlasImage.getWidth(), atlasImage.getHeight(), atlasMetadata.getTextures().size());
             } else {
@@ -105,7 +96,7 @@ public class ItemThumbnailRenderer {
                 return generateFallback(itemType, size);
             }
         } catch (Exception e) {
-            logger.error("Failed to generate thumbnail for item: " + itemType, e);
+            logger.error("Failed to generate thumbnail for item: {}", itemType, e);
             return generateFallback(itemType, size);
         }
     }
@@ -113,7 +104,7 @@ public class ItemThumbnailRenderer {
     /**
      * Generates a thumbnail by extracting from the texture atlas.
      */
-    private int generateFromAtlas(ItemType itemType, int size) throws Exception {
+    private int generateFromAtlas(ItemType itemType, int size) {
         // Get item texture name
         String textureName = getItemTextureName(itemType);
 
@@ -190,17 +181,17 @@ public class ItemThumbnailRenderer {
             fillCheckerboard(pixels, size);
 
             // Draw border
-            drawBorder(pixels, size, BORDER_COLOR);
+            drawBorder(pixels, size);
 
             // Overlay item color
-            overlayColor(pixels, size, color, 0.8f);
+            overlayColor(pixels, size, color);
 
             pixels.flip();
 
             return createTexture(pixels, size);
 
         } catch (Exception e) {
-            logger.error("Failed to generate fallback thumbnail for item: " + itemType, e);
+            logger.error("Failed to generate fallback thumbnail for item: {}", itemType, e);
             return 0;
         }
     }
@@ -217,7 +208,6 @@ public class ItemThumbnailRenderer {
             case WOODEN_AXE -> "wooden_axe";
             case WOODEN_BUCKET -> "wooden_bucket_base";
             case WOODEN_BUCKET_WATER -> "wooden_bucket_water";
-            default -> null;
         };
     }
 
@@ -232,7 +222,7 @@ public class ItemThumbnailRenderer {
             case WOODEN_AXE -> 0xFF6D4C41; // Darker brown
             case WOODEN_BUCKET -> 0xFFA1887F; // Light brown
             case WOODEN_BUCKET_WATER -> 0xFF2196F3; // Blue (water)
-            default -> 0xFFBDBDBD; // Light gray
+            // Light gray
         };
     }
 
@@ -240,23 +230,23 @@ public class ItemThumbnailRenderer {
         fillCheckerboardPattern(pixels, size);
     }
 
-    private void drawBorder(ByteBuffer pixels, int size, int borderColor) {
+    private void drawBorder(ByteBuffer pixels, int size) {
         pixels.position(0);
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 if (x == 0 || y == 0 || x == size - 1 || y == size - 1) {
                     pixels.position((y * size + x) * 4);
-                    putPixel(pixels, borderColor);
+                    putPixel(pixels);
                 }
             }
         }
     }
 
-    private void overlayColor(ByteBuffer pixels, int size, int color, float alpha) {
+    private void overlayColor(ByteBuffer pixels, int size, int color) {
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
-        int a = (int) (alpha * 255);
+        int a = (int) ((float) 0.8 * 255);
 
         pixels.position(0);
         for (int y = 1; y < size - 1; y++) {
@@ -281,10 +271,10 @@ public class ItemThumbnailRenderer {
         }
     }
 
-    private void putPixel(ByteBuffer pixels, int color) {
-        pixels.put((byte) ((color >> 16) & 0xFF)); // R
-        pixels.put((byte) ((color >> 8) & 0xFF));  // G
-        pixels.put((byte) (color & 0xFF));         // B
+    private void putPixel(ByteBuffer pixels) {
+        pixels.put((byte) ((ItemThumbnailRenderer.BORDER_COLOR >> 16) & 0xFF)); // R
+        pixels.put((byte) ((ItemThumbnailRenderer.BORDER_COLOR >> 8) & 0xFF));  // G
+        pixels.put((byte) (ItemThumbnailRenderer.BORDER_COLOR & 0xFF));         // B
         pixels.put((byte) 0xFF);                   // A - Always fully opaque
     }
 

@@ -2,8 +2,6 @@ package com.openmason.ui.modelBrowser.sorting;
 
 /**
  * Enumeration of available sort fields for the Model Browser.
- *
- * <p>Defines which property to use when sorting items in list view.</p>
  */
 public enum SortBy {
 

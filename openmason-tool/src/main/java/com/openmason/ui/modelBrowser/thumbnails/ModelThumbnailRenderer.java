@@ -9,9 +9,6 @@ import java.nio.ByteBuffer;
 
 /**
  * Renders thumbnails for 3D models.
- *
- * <p>Currently uses placeholder thumbnails showing a generic 3D cube icon.
- * Future enhancement: Render actual 3D model to texture using mini viewport.</p>
  */
 public class ModelThumbnailRenderer {
 
@@ -28,8 +25,6 @@ public class ModelThumbnailRenderer {
 
     /**
      * Creates a new model thumbnail renderer.
-     *
-     * @param cache The thumbnail cache to use
      */
     public ModelThumbnailRenderer(ModelBrowserThumbnailCache cache) {
         this.cache = cache;
@@ -37,10 +32,6 @@ public class ModelThumbnailRenderer {
 
     /**
      * Gets or generates a thumbnail for a model.
-     *
-     * @param modelName The model name
-     * @param size The thumbnail size (64, 32, or 16)
-     * @return OpenGL texture ID
      */
     public int getThumbnail(String modelName, int size) {
         String key = ModelBrowserThumbnailCache.modelKey(modelName, size);
@@ -56,10 +47,10 @@ public class ModelThumbnailRenderer {
             ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * 4);
 
             // Fill background
-            fillSolid(pixels, size, BACKGROUND_COLOR);
+            fillSolid(pixels, size);
 
             // Draw border
-            drawBorder(pixels, size, BORDER_COLOR);
+            drawBorder(pixels, size);
 
             // Draw isometric cube icon
             drawCubeIcon(pixels, size);
@@ -69,7 +60,7 @@ public class ModelThumbnailRenderer {
             return createTexture(pixels, size);
 
         } catch (Exception e) {
-            logger.error("Failed to generate thumbnail for model: " + modelName, e);
+            logger.error("Failed to generate thumbnail for model: {}", modelName, e);
             return 0;
         }
     }
@@ -77,22 +68,22 @@ public class ModelThumbnailRenderer {
     /**
      * Fills the buffer with a solid color.
      */
-    private void fillSolid(ByteBuffer pixels, int size, int color) {
+    private void fillSolid(ByteBuffer pixels, int size) {
         for (int i = 0; i < size * size; i++) {
-            putPixel(pixels, color);
+            putPixel(pixels, ModelThumbnailRenderer.BACKGROUND_COLOR);
         }
     }
 
     /**
      * Draws a border around the thumbnail.
      */
-    private void drawBorder(ByteBuffer pixels, int size, int borderColor) {
+    private void drawBorder(ByteBuffer pixels, int size) {
         pixels.position(0);
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 if (x == 0 || y == 0 || x == size - 1 || y == size - 1) {
                     pixels.position((y * size + x) * 4);
-                    putPixel(pixels, borderColor);
+                    putPixel(pixels, ModelThumbnailRenderer.BORDER_COLOR);
                 }
             }
         }
