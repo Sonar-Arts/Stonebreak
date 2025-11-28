@@ -1,10 +1,12 @@
 package com.openmason.main.systems.viewport;
 
 import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
+import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
 import imgui.ImGui;
 import imgui.ImVec2;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -20,6 +22,7 @@ import java.nio.DoubleBuffer;
  * - Mouse capture for endless dragging
  * - Camera rotation and zooming
  * - Gizmo interaction (transform manipulation)
+ * - Vertex selection and manipulation
  * - Professional mouse sensitivity settings
  * - Raw mouse motion support
  * - Clean separation of input and rendering concerns
@@ -36,6 +39,9 @@ public class ViewportInputHandler {
 
     // Vertex renderer for vertex hover detection
     private VertexRenderer vertexRenderer = null;
+
+    // Vertex selection state for vertex manipulation
+    private VertexSelectionState vertexSelectionState = null;
 
     // Edge renderer for edge hover detection
     private EdgeRenderer edgeRenderer = null;
@@ -84,6 +90,15 @@ public class ViewportInputHandler {
     public void setVertexRenderer(VertexRenderer vertexRenderer) {
         this.vertexRenderer = vertexRenderer;
         logger.debug("Vertex renderer set in ViewportInputHandler");
+    }
+
+    /**
+     * Set the vertex selection state for vertex manipulation.
+     * This should be called after viewport initialization.
+     */
+    public void setVertexSelectionState(VertexSelectionState vertexSelectionState) {
+        this.vertexSelectionState = vertexSelectionState;
+        logger.debug("Vertex selection state set in ViewportInputHandler");
     }
 
     /**
@@ -256,6 +271,53 @@ public class ViewportInputHandler {
             }
         }
 
+        // ========== Vertex Selection Handling (Priority 2) ==========
+        // Handle vertex selection - gets priority after gizmo but before camera.
+        // This allows clicking on vertices to select them without camera interference.
+        boolean vertexHandledInput = false;
+
+        if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled() &&
+            vertexSelectionState != null && !gizmoHandledInput) {
+
+            // Handle ESC key to deselect vertex
+            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+                if (vertexSelectionState.hasSelection()) {
+                    vertexSelectionState.clearSelection();
+                    vertexRenderer.clearSelection();
+                    logger.debug("Vertex selection cleared (ESC key pressed)");
+                    vertexHandledInput = true;
+                }
+            }
+
+            // Handle mouse click for vertex selection
+            if (mouseInBounds && ImGui.isMouseClicked(0)) {
+                int hoveredVertex = vertexRenderer.getHoveredVertexIndex();
+
+                if (hoveredVertex >= 0) {
+                    // Clicking on a hovered vertex - select it
+                    Vector3f vertexPosition = getVertexPosition(hoveredVertex);
+                    if (vertexPosition != null) {
+                        vertexSelectionState.selectVertex(hoveredVertex, vertexPosition);
+                        vertexRenderer.setSelectedVertex(hoveredVertex);
+                        logger.debug("Vertex {} selected at position ({}, {}, {})",
+                                hoveredVertex,
+                                String.format("%.2f", vertexPosition.x),
+                                String.format("%.2f", vertexPosition.y),
+                                String.format("%.2f", vertexPosition.z));
+                        vertexHandledInput = true;
+                    }
+                } else {
+                    // Clicking on empty space - deselect if something was selected
+                    if (vertexSelectionState.hasSelection()) {
+                        vertexSelectionState.clearSelection();
+                        vertexRenderer.clearSelection();
+                        logger.debug("Vertex selection cleared (clicked on empty space)");
+                        vertexHandledInput = true;
+                    }
+                }
+            }
+        }
+
         // ========== Vertex Hover Detection ==========
         // Handle vertex hover using the same pattern as gizmo
         if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled()) {
@@ -285,13 +347,12 @@ public class ViewportInputHandler {
         }
 
         // ========== Camera Input Handling (Fallthrough) ==========
-        // Only process camera input if gizmo didn't capture the input.
-        // This ensures gizmo always has priority over camera controls.
+        // Only process camera input if gizmo or vertex didn't capture the input.
+        // This ensures gizmo and vertex selection have priority over camera controls.
         // Camera will only activate when:
-        // - Gizmo is disabled, OR
-        // - Gizmo is not hovered, AND
-        // - Gizmo is not dragging
-        if (!gizmoHandledInput) {
+        // - Gizmo is disabled OR not active, AND
+        // - Vertex selection didn't handle the input
+        if (!gizmoHandledInput && !vertexHandledInput) {
             boolean mouseClicked = ImGui.isMouseClicked(0);
 
             // Start camera dragging when left mouse button is pressed within viewport bounds
@@ -436,28 +497,43 @@ public class ViewportInputHandler {
         reset();
         // logger.info("ViewportInputHandler cleaned up");
     }
-    
+
+    /**
+     * Get the world-space position of a vertex by its index.
+     * This is a helper method for vertex selection.
+     *
+     * @param vertexIndex The index of the vertex
+     * @return The vertex position, or null if invalid
+     */
+    private Vector3f getVertexPosition(int vertexIndex) {
+        if (vertexRenderer == null || !vertexRenderer.isInitialized()) {
+            return null;
+        }
+
+        return vertexRenderer.getVertexPosition(vertexIndex);
+    }
+
     // Getters for state information
-    public boolean isDragging() { 
-        return isDragging; 
+    public boolean isDragging() {
+        return isDragging;
     }
-    
-    public boolean isMouseCaptured() { 
-        return isMouseCaptured; 
+
+    public boolean isMouseCaptured() {
+        return isMouseCaptured;
     }
-    
-    public boolean isRawMouseMotionSupported() { 
-        return rawMouseMotionSupported; 
+
+    public boolean isRawMouseMotionSupported() {
+        return rawMouseMotionSupported;
     }
-    
-    public double getSavedCursorX() { 
-        return savedCursorX; 
+
+    public double getSavedCursorX() {
+        return savedCursorX;
     }
-    
-    public double getSavedCursorY() { 
-        return savedCursorY; 
+
+    public double getSavedCursorY() {
+        return savedCursorY;
     }
-    
+
     public long getWindowHandle() {
         return windowHandle;
     }

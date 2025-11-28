@@ -19,6 +19,7 @@ import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.main.systems.viewport.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
@@ -44,6 +45,7 @@ public class ViewportController {
     private final ViewportUIState viewportState;
     private final RenderingState renderingState;
     private final TransformState transformState;
+    private final VertexSelectionState vertexSelectionState;
 
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
@@ -70,6 +72,7 @@ public class ViewportController {
         this.viewportState = new ViewportUIState();
         this.renderingState = new RenderingState();
         this.transformState = new TransformState();
+        this.vertexSelectionState = new VertexSelectionState();
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
@@ -149,6 +152,10 @@ public class ViewportController {
             if (renderPipeline.getEdgeRenderer() != null) {
                 inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
             }
+
+            // Connect vertex selection state for vertex manipulation
+            inputHandler.setVertexSelectionState(vertexSelectionState);
+            logger.debug("Vertex selection state connected to input handler");
 
             viewportState.setViewportInitialized(true);
             logger.info("Viewport initialized successfully");

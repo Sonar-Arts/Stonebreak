@@ -8,8 +8,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Handles all viewport business logic and operations.
- * Follows Single Responsibility Principle - only executes actions.
- * Follows Dependency Inversion Principle - depends on abstractions (interfaces).
  */
 public class ViewportActions {
 
@@ -21,9 +19,6 @@ public class ViewportActions {
 
     /**
      * Constructor with dependency injection.
-     * @param viewport The 3D viewport to operate on
-     * @param state The viewport state
-     * @param preferencesManager The preferences manager for persistence
      */
     public ViewportActions(ViewportController viewport, ViewportUIState state, PreferencesManager preferencesManager) {
         this.viewport = viewport;

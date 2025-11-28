@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -18,6 +20,7 @@ import static org.lwjgl.opengl.GL30.*;
 /**
   * Renders model vertices as colored points, similar to Blender's vertex display mode.
   * Vertex positions are extracted by VertexExtractor; this class handles rendering.
+  * Supports selection highlighting (white) and modification tracking (yellow).
   */
 public class VertexRenderer {
 
@@ -32,11 +35,18 @@ public class VertexRenderer {
     // Rendering state
     private boolean enabled = false;
     private float pointSize = 5.0f;
+    private float selectedPointSize = 8.0f;
     private final Vector3f defaultVertexColor = new Vector3f(1.0f, 0.6f, 0.0f); // Blender's orange
+    private final Vector3f selectedVertexColor = new Vector3f(1.0f, 1.0f, 1.0f); // White
+    private final Vector3f modifiedVertexColor = new Vector3f(1.0f, 1.0f, 0.0f); // Yellow
 
     // Hover state
     private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
     private float[] vertexPositions = null; // Store positions for hit testing
+
+    // Selection state
+    private int selectedVertexIndex = -1; // -1 means no vertex is selected
+    private Set<Integer> modifiedVertices = new HashSet<>(); // Indices of modified vertices
 
     // Vertex extraction (Single Responsibility)
     private final VertexExtractor vertexExtractor = new VertexExtractor();
@@ -111,7 +121,7 @@ public class VertexRenderer {
             vertexCount = positions.length / 3;
 
             // Create interleaved vertex data (position + color)
-            // KISS: All vertices always orange - intensity uniform handles hover highlighting
+            // Color varies based on state: selected (white), modified (yellow), default (orange)
             float[] vertexData = new float[vertexCount * 6]; // 3 for position, 3 for color
 
             for (int i = 0; i < vertexCount; i++) {
@@ -123,10 +133,20 @@ public class VertexRenderer {
                 vertexData[dataIndex + 1] = positions[posIndex + 1];
                 vertexData[dataIndex + 2] = positions[posIndex + 2];
 
-                // All vertices use default orange color (same pattern as gizmo)
-                vertexData[dataIndex + 3] = defaultVertexColor.x;
-                vertexData[dataIndex + 4] = defaultVertexColor.y;
-                vertexData[dataIndex + 5] = defaultVertexColor.z;
+                // Determine color based on state (selected > modified > default)
+                Vector3f color;
+                if (i == selectedVertexIndex) {
+                    color = selectedVertexColor; // White for selected
+                } else if (modifiedVertices.contains(i)) {
+                    color = modifiedVertexColor; // Yellow for modified
+                } else {
+                    color = defaultVertexColor; // Orange for default
+                }
+
+                // Apply color
+                vertexData[dataIndex + 3] = color.x;
+                vertexData[dataIndex + 4] = color.y;
+                vertexData[dataIndex + 5] = color.z;
             }
 
             // Upload to GPU
@@ -221,34 +241,51 @@ public class VertexRenderer {
             // Bind VAO
             glBindVertexArray(vao);
 
-            // KISS: Render each vertex with appropriate intensity (same pattern as gizmo)
-            // Hovered vertex gets high intensity (brightens to yellow), others get normal intensity
+            // Render vertices in order: Normal → Modified → Hovered → Selected (always on top)
+            // Each state has different intensity for brightness control
             float normalIntensity = 1.0f;
-            float hoverIntensity = 2.5f; // Orange * 2.5 ≈ Yellow
+            float modifiedIntensity = 2.0f;   // Yellow glow for unsaved changes
+            float hoverIntensity = 2.5f;      // Bright yellow for hover
+            float selectedIntensity = 3.0f;   // Brightest white for selection
 
+            // Set normal point size for most vertices
+            glPointSize(pointSize);
 
-            // Render all vertices at once with appropriate intensity
-            if (hoveredVertexIndex >= 0) {
-                // Render non-hovered vertices with normal intensity
-                shader.setFloat("uIntensity", normalIntensity);
-
-                // Draw all except hovered
-                for (int i = 0; i < vertexCount; i++) {
-                    if (i != hoveredVertexIndex) {
-                        glDrawArrays(GL_POINTS, i, 1);
-                    }
+            // Render normal and modified vertices
+            shader.setFloat("uIntensity", normalIntensity);
+            for (int i = 0; i < vertexCount; i++) {
+                // Skip hovered and selected vertices (will render separately)
+                if (i == hoveredVertexIndex || i == selectedVertexIndex) {
+                    continue;
                 }
 
-                // Render hovered vertex with high intensity (yellow)
+                // Modified vertices get higher intensity for visual distinction
+                if (modifiedVertices.contains(i)) {
+                    shader.setFloat("uIntensity", modifiedIntensity);
+                    glDrawArrays(GL_POINTS, i, 1);
+                    shader.setFloat("uIntensity", normalIntensity);
+                } else {
+                    glDrawArrays(GL_POINTS, i, 1);
+                }
+            }
+
+            // Render hovered vertex (if any and not selected)
+            if (hoveredVertexIndex >= 0 && hoveredVertexIndex != selectedVertexIndex) {
                 shader.setFloat("uIntensity", hoverIntensity);
                 glDrawArrays(GL_POINTS, hoveredVertexIndex, 1);
-            } else {
-                // No hover - render all vertices with normal intensity
-                shader.setFloat("uIntensity", normalIntensity);
-                glDrawArrays(GL_POINTS, 0, vertexCount);
+            }
+
+            // Render selected vertex last (always on top) with larger point size
+            if (selectedVertexIndex >= 0) {
+                glPointSize(selectedPointSize);
+                shader.setFloat("uIntensity", selectedIntensity);
+                glDrawArrays(GL_POINTS, selectedVertexIndex, 1);
             }
 
             glBindVertexArray(0);
+
+            // Restore normal point size
+            glPointSize(pointSize);
 
             // Restore previous depth function
             glDepthFunc(prevDepthFunc);
@@ -282,6 +319,141 @@ public class VertexRenderer {
      */
     public int getVertexCount() {
         return vertexCount;
+    }
+
+    /**
+     * Set the selected vertex index.
+     * @param index Vertex index to select, or -1 to clear selection
+     */
+    public void setSelectedVertex(int index) {
+        if (index < -1 || (index >= 0 && index >= vertexCount)) {
+            logger.warn("Invalid vertex index for selection: {} (max: {})", index, vertexCount - 1);
+            return;
+        }
+
+        if (selectedVertexIndex != index) {
+            selectedVertexIndex = index;
+            logger.debug("Selected vertex set to: {}", index);
+        }
+    }
+
+    /**
+     * Get the currently selected vertex index.
+     * @return Selected vertex index, or -1 if no selection
+     */
+    public int getSelectedVertexIndex() {
+        return selectedVertexIndex;
+    }
+
+    /**
+     * Clear the current selection.
+     */
+    public void clearSelection() {
+        selectedVertexIndex = -1;
+        logger.debug("Vertex selection cleared");
+    }
+
+    /**
+     * Set which vertices are modified (unsaved changes).
+     * @param indices Set of modified vertex indices
+     */
+    public void setModifiedVertices(Set<Integer> indices) {
+        if (indices == null) {
+            modifiedVertices.clear();
+        } else {
+            modifiedVertices = new HashSet<>(indices);
+        }
+        logger.debug("Modified vertices updated: {} vertices marked as modified", modifiedVertices.size());
+    }
+
+    /**
+     * Get the set of modified vertex indices.
+     * @return Copy of modified vertices set
+     */
+    public Set<Integer> getModifiedVertices() {
+        return new HashSet<>(modifiedVertices);
+    }
+
+    /**
+     * Update a single vertex position (for live preview during drag).
+     * This modifies the GPU buffer directly without re-extracting all vertices.
+     *
+     * @param index Vertex index to update
+     * @param position New world-space position
+     */
+    public void updateVertexPosition(int index, Vector3f position) {
+        if (!initialized) {
+            logger.warn("Cannot update vertex position: renderer not initialized");
+            return;
+        }
+
+        if (index < 0 || index >= vertexCount) {
+            logger.warn("Invalid vertex index for position update: {} (max: {})", index, vertexCount - 1);
+            return;
+        }
+
+        if (position == null) {
+            logger.warn("Cannot update vertex position: position is null");
+            return;
+        }
+
+        try {
+            // Update in-memory position array
+            int posIndex = index * 3;
+            vertexPositions[posIndex + 0] = position.x;
+            vertexPositions[posIndex + 1] = position.y;
+            vertexPositions[posIndex + 2] = position.z;
+
+            // Update VBO (only the position part of this vertex)
+            // Vertex data is interleaved: [x,y,z, r,g,b, x,y,z, r,g,b, ...]
+            int dataIndex = index * 6; // 6 floats per vertex
+            long offset = dataIndex * Float.BYTES;
+
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+            // Create temporary array with just position data
+            float[] positionData = new float[] { position.x, position.y, position.z };
+
+            // Update only position floats in VBO (leave color unchanged)
+            glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.trace("Updated vertex {} position to ({}, {}, {})",
+                    index,
+                    String.format("%.2f", position.x),
+                    String.format("%.2f", position.y),
+                    String.format("%.2f", position.z));
+
+        } catch (Exception e) {
+            logger.error("Error updating vertex position for index {}", index, e);
+        }
+    }
+
+    /**
+     * Get the hovered vertex index.
+     * @return Hovered vertex index, or -1 if no vertex is hovered
+     */
+    public int getHoveredVertexIndex() {
+        return hoveredVertexIndex;
+    }
+
+    /**
+     * Get the position of a specific vertex by index.
+     * @param index Vertex index
+     * @return Vertex position as Vector3f, or null if invalid index
+     */
+    public Vector3f getVertexPosition(int index) {
+        if (vertexPositions == null || index < 0 || index >= vertexCount) {
+            return null;
+        }
+
+        int posIndex = index * 3;
+        return new Vector3f(
+            vertexPositions[posIndex + 0],
+            vertexPositions[posIndex + 1],
+            vertexPositions[posIndex + 2]
+        );
     }
 
     // Getters and setters
