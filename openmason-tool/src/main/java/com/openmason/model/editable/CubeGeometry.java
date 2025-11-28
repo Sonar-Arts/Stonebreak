@@ -4,23 +4,6 @@ import java.util.Objects;
 
 /**
  * Simple cubic geometry implementation for block models.
- *
- * <p>Represents a single cuboid shape with width, height, and depth dimensions,
- * positioned at a specific location in 3D space.
- *
- * <p>Default dimensions are 16x16x16 pixels (standard Minecraft/Stonebreak block size).
- *
- * <p>This class is mutable but provides validation on all setters to maintain
- * valid state at all times.
- *
- * <p>Design Principles:
- * <ul>
- *   <li>SOLID: Single Responsibility - only stores and validates geometry data</li>
- *   <li>KISS: Simple data class with validation</li>
- *   <li>YAGNI: No complex shapes or transformations yet</li>
- * </ul>
- *
- * @since 1.0
  */
 public class CubeGeometry implements ModelGeometry {
 
@@ -42,27 +25,7 @@ public class CubeGeometry implements ModelGeometry {
     }
 
     /**
-     * Creates a cube geometry with specified dimensions at origin.
-     *
-     * @param width the width in pixels
-     * @param height the height in pixels
-     * @param depth the depth in pixels
-     * @throws IllegalArgumentException if any dimension is not positive
-     */
-    public CubeGeometry(int width, int height, int depth) {
-        this(width, height, depth, 0, 0, 0);
-    }
-
-    /**
      * Creates a cube geometry with specified dimensions and position.
-     *
-     * @param width the width in pixels
-     * @param height the height in pixels
-     * @param depth the depth in pixels
-     * @param x the X coordinate
-     * @param y the Y coordinate
-     * @param z the Z coordinate
-     * @throws IllegalArgumentException if any dimension is not positive
      */
     public CubeGeometry(int width, int height, int depth, double x, double y, double z) {
         setDimensions(width, height, depth);
@@ -132,8 +95,7 @@ public class CubeGeometry implements ModelGeometry {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof CubeGeometry)) return false;
-        CubeGeometry that = (CubeGeometry) o;
+        if (!(o instanceof CubeGeometry that)) return false;
         return width == that.width &&
                height == that.height &&
                depth == that.depth &&

@@ -202,16 +202,16 @@ public class ModelBrowserController {
 
         try {
             // Update state
-            state.setSelectedModelInfo("Selected: " + entry.getName() + " (.OMO Model)");
-            state.addRecentFile(entry.getName());
+            state.setSelectedModelInfo("Selected: " + entry.name() + " (.OMO Model)");
+            state.addRecentFile(entry.name());
 
             // Load the .OMO file using ModelOperationService
-            statusService.updateStatus("Loading .OMO model: " + entry.getName());
+            statusService.updateStatus("Loading .OMO model: " + entry.name());
             modelOperationService.loadOMOModel(entry.getFilePathString());
 
-            logger.debug(".OMO file selected: {}", entry.getName());
+            logger.debug(".OMO file selected: {}", entry.name());
         } catch (Exception e) {
-            logger.error("Failed to load .OMO file: {}", entry.getName(), e);
+            logger.error("Failed to load .OMO file: {}", entry.name(), e);
             statusService.updateStatus("Error loading .OMO model: " + e.getMessage());
         }
     }

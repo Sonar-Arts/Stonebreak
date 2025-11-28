@@ -15,37 +15,6 @@ import java.nio.file.Path;
 
 /**
  * Factory for creating blank block models with default gray textures.
- *
- * <p>Creates a single-cube model (16x16x16) with a 64x48 cube net texture.
- * The cube net has all faces filled with light gray pixels (RGB 192, 192, 192).
- *
- * <p>Cube Net Layout (64x48 pixels):
- * <pre>
- * Column: 0      1       2       3
- * Row 0:  [ ]   [TOP]   [ ]     [ ]
- * Row 1:  [LEFT][FRONT][RIGHT] [BACK]
- * Row 2:  [ ]   [BOTTOM][ ]     [ ]
- * </pre>
- *
- * Each face is 16x16 pixels:
- * <ul>
- *   <li>TOP: (16, 0) to (31, 15)</li>
- *   <li>LEFT: (0, 16) to (15, 31)</li>
- *   <li>FRONT: (16, 16) to (31, 31)</li>
- *   <li>RIGHT: (32, 16) to (47, 31)</li>
- *   <li>BACK: (48, 16) to (63, 31)</li>
- *   <li>BOTTOM: (16, 32) to (31, 47)</li>
- * </ul>
- *
- * <p>Design Principles:
- * <ul>
- *   <li>SOLID: Factory Pattern - encapsulates complex object creation</li>
- *   <li>DRY: Reuses existing .OMT serialization infrastructure</li>
- *   <li>KISS: Simple implementation using existing components</li>
- *   <li>YAGNI: No complex features, just basic blank model generation</li>
- * </ul>
- *
- * @since 1.0
  */
 public class BlankModelFactory {
 
@@ -123,7 +92,7 @@ public class BlankModelFactory {
 
         // Fill all 6 faces with gray pixels
         for (int[] facePos : FACE_POSITIONS) {
-            fillFace(canvas, facePos[0], facePos[1], LIGHT_GRAY);
+            fillFace(canvas, facePos[0], facePos[1]);
         }
 
         // Create layer with the canvas
@@ -159,41 +128,12 @@ public class BlankModelFactory {
      * @param canvas the pixel canvas to draw on
      * @param startX X coordinate of top-left corner
      * @param startY Y coordinate of top-left corner
-     * @param color the color to fill with (packed RGBA)
      */
-    private void fillFace(PixelCanvas canvas, int startX, int startY, int color) {
+    private void fillFace(PixelCanvas canvas, int startX, int startY) {
         for (int y = startY; y < startY + FACE_SIZE; y++) {
             for (int x = startX; x < startX + FACE_SIZE; x++) {
-                canvas.setPixel(x, y, color);
+                canvas.setPixel(x, y, BlankModelFactory.LIGHT_GRAY);
             }
         }
-    }
-
-    /**
-     * Creates a blank cube model with a custom name.
-     *
-     * @param name the name for the model
-     * @return a new blank BlockModel with the specified name
-     * @throws IOException if texture file creation fails
-     */
-    public BlockModel createBlankCube(String name) throws IOException {
-        BlockModel model = createBlankCube();
-        model.setName(name);
-        return model;
-    }
-
-    /**
-     * Creates a blank cube model with custom dimensions.
-     *
-     * @param width the width in pixels
-     * @param height the height in pixels
-     * @param depth the depth in pixels
-     * @return a new blank BlockModel with the specified dimensions
-     * @throws IOException if texture file creation fails
-     */
-    public BlockModel createBlankCube(int width, int height, int depth) throws IOException {
-        BlockModel model = createBlankCube();
-        model.setGeometry(new CubeGeometry(width, height, depth));
-        return model;
     }
 }

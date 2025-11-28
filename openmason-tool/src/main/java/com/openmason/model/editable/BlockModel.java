@@ -5,39 +5,6 @@ import java.util.Objects;
 
 /**
  * Concrete implementation of a simple single-cube block model.
- *
- * <p>This class represents a basic block model with:
- * <ul>
- *   <li>A single cuboid geometry (16x16x16 by default)</li>
- *   <li>An associated texture in .OMT format (auto-detected as 64x48 cube net or 16x16 flat)</li>
- *   <li>Metadata (name, file path)</li>
- *   <li>Dirty state tracking for save operations</li>
- * </ul>
- *
- * <p>The model can be saved as a .OMO file (Open Mason Object) which contains:
- * <ul>
- *   <li>manifest.json - Model metadata and geometry</li>
- *   <li>texture.omt - Embedded texture file</li>
- * </ul>
- *
- * <p>Texture format is automatically detected from the .OMT file dimensions:
- * <ul>
- *   <li>64x48 textures → Cube net UV mapping</li>
- *   <li>16x16 textures → Flat UV mapping (same texture on all sides)</li>
- * </ul>
- *
- * <p>Thread Safety: This class is NOT thread-safe. External synchronization
- * is required if accessed from multiple threads (typically UI thread only).
- *
- * <p>Design Principles:
- * <ul>
- *   <li>SOLID: Single Responsibility - manages block model state only</li>
- *   <li>SOLID: Dependency Inversion - depends on ModelGeometry interface</li>
- *   <li>KISS: Simple mutable bean with validation</li>
- *   <li>YAGNI: Only properties needed for current functionality</li>
- * </ul>
- *
- * @since 1.0
  */
 public class BlockModel implements EditableModel {
 
@@ -66,11 +33,6 @@ public class BlockModel implements EditableModel {
 
     /**
      * Creates a new block model with specified properties.
-     *
-     * @param name the model name, must not be null or empty
-     * @param geometry the model geometry, must not be null
-     * @param texturePath the texture file path, may be null
-     * @throws IllegalArgumentException if name or geometry is invalid
      */
     public BlockModel(String name, ModelGeometry geometry, Path texturePath) {
         setName(name);
@@ -176,8 +138,7 @@ public class BlockModel implements EditableModel {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof BlockModel)) return false;
-        BlockModel that = (BlockModel) o;
+        if (!(o instanceof BlockModel that)) return false;
         return Objects.equals(name, that.name) &&
                Objects.equals(geometry, that.geometry) &&
                Objects.equals(texturePath, that.texturePath) &&

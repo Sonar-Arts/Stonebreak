@@ -4,24 +4,6 @@ import java.nio.file.Path;
 
 /**
  * Interface for models that can be edited in Open Mason.
- *
- * <p>This interface provides the contract for any model that supports:
- * <ul>
- *   <li>Name and metadata editing</li>
- *   <li>Geometry manipulation (future: resize, reposition)</li>
- *   <li>Texture management (future: painting, UV mapping)</li>
- * </ul>
- *
- * <p>Implementations must be thread-safe for UI operations.
- *
- * <p>Design Principles:
- * <ul>
- *   <li>SOLID: Interface Segregation - only essential editing methods</li>
- *   <li>SOLID: Dependency Inversion - depend on abstraction, not concrete types</li>
- *   <li>YAGNI: Only methods needed for current functionality</li>
- * </ul>
- *
- * @since 1.0
  */
 public interface EditableModel {
 

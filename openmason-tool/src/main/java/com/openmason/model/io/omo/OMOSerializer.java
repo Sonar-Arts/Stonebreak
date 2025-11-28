@@ -196,33 +196,6 @@ public class OMOSerializer {
     }
 
     /**
-     * Validates that a file path is writable.
-     *
-     * @param filePath the path to validate
-     * @return true if the path is valid and writable
-     */
-    public boolean validateFilePath(String filePath) {
-        if (filePath == null || filePath.trim().isEmpty()) {
-            return false;
-        }
-
-        try {
-            File file = new File(OMOFormat.ensureExtension(filePath));
-            File parent = file.getParentFile();
-
-            // Check if parent directory exists or can be created
-            if (parent != null && !parent.exists()) {
-                return parent.mkdirs();
-            }
-
-            return true;
-        } catch (Exception e) {
-            logger.warn("Invalid file path: {}", filePath, e);
-            return false;
-        }
-    }
-
-    /**
      * Data Transfer Object for JSON serialization of manifest.
      * Jackson serializes public fields automatically.
      *
@@ -236,11 +209,11 @@ public class OMOSerializer {
         public String textureFile;
 
         public ManifestDTO(OMOFormat.Document document) {
-            this.version = document.getVersion();
-            this.objectName = document.getObjectName();
-            this.modelType = document.getModelType();
-            this.geometry = new GeometryDTO(document.getGeometry());
-            this.textureFile = document.getTextureFile();
+            this.version = document.version();
+            this.objectName = document.objectName();
+            this.modelType = document.modelType();
+            this.geometry = new GeometryDTO(document.geometry());
+            this.textureFile = document.textureFile();
         }
     }
 
@@ -251,10 +224,10 @@ public class OMOSerializer {
         public PositionDTO position;
 
         public GeometryDTO(OMOFormat.GeometryData geometryData) {
-            this.width = geometryData.getWidth();
-            this.height = geometryData.getHeight();
-            this.depth = geometryData.getDepth();
-            this.position = new PositionDTO(geometryData.getPosition());
+            this.width = geometryData.width();
+            this.height = geometryData.height();
+            this.depth = geometryData.depth();
+            this.position = new PositionDTO(geometryData.position());
         }
     }
 
@@ -264,9 +237,9 @@ public class OMOSerializer {
         public double z;
 
         public PositionDTO(OMOFormat.Position position) {
-            this.x = position.getX();
-            this.y = position.getY();
-            this.z = position.getZ();
+            this.x = position.x();
+            this.y = position.y();
+            this.z = position.z();
         }
     }
 }

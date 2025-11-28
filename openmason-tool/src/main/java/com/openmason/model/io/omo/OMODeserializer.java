@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipEntry;
@@ -151,7 +152,7 @@ public class OMODeserializer {
     private OMOFormat.Document readManifest(ZipInputStream zis) throws IOException {
         // Read JSON from stream
         byte[] jsonBytes = readStreamToByteArray(zis);
-        String json = new String(jsonBytes, "UTF-8");
+        String json = new String(jsonBytes, StandardCharsets.UTF_8);
 
         // Parse JSON
         JsonNode root = objectMapper.readTree(json);
@@ -239,40 +240,32 @@ public class OMODeserializer {
      */
     private BlockModel buildModel(LoadedData data) {
         OMOFormat.Document document = data.document;
-        OMOFormat.GeometryData geometryData = document.getGeometry();
-        OMOFormat.Position position = geometryData.getPosition();
+        OMOFormat.GeometryData geometryData = document.geometry();
+        OMOFormat.Position position = geometryData.position();
 
         // Create geometry
         ModelGeometry geometry = new CubeGeometry(
-            geometryData.getWidth(),
-            geometryData.getHeight(),
-            geometryData.getDepth(),
-            position.getX(),
-            position.getY(),
-            position.getZ()
+            geometryData.width(),
+            geometryData.height(),
+            geometryData.depth(),
+            position.x(),
+            position.y(),
+            position.z()
         );
 
         // Create model
         // Note: Texture format (cube net vs flat) is auto-detected from .OMT dimensions at load time
-        BlockModel model = new BlockModel(
-            document.getObjectName(),
+
+        return new BlockModel(
+            document.objectName(),
             geometry,
             data.texturePath
         );
-
-        return model;
     }
 
     /**
-     * Container for loaded manifest and texture data.
-     */
-    private static class LoadedData {
-        final OMOFormat.Document document;
-        final Path texturePath;
-
-        LoadedData(OMOFormat.Document document, Path texturePath) {
-            this.document = document;
-            this.texturePath = texturePath;
-        }
+         * Container for loaded manifest and texture data.
+         */
+        private record LoadedData(OMOFormat.Document document, Path texturePath) {
     }
 }

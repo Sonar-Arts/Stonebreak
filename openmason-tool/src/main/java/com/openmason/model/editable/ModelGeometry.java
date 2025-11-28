@@ -2,26 +2,6 @@ package com.openmason.model.editable;
 
 /**
  * Interface for model geometry definitions.
- *
- * <p>Represents the spatial and dimensional properties of a model.
- * Current implementation focuses on simple cuboid geometry, but the
- * interface allows for future extension to complex multi-part models.
- *
- * <p>Coordinates use the Minecraft/Stonebreak coordinate system:
- * <ul>
- *   <li>X: East (positive) / West (negative)</li>
- *   <li>Y: Up (positive) / Down (negative)</li>
- *   <li>Z: South (positive) / North (negative)</li>
- * </ul>
- *
- * <p>Design Principles:
- * <ul>
- *   <li>SOLID: Single Responsibility - only geometry data, no rendering logic</li>
- *   <li>SOLID: Open/Closed - extensible for future geometry types</li>
- *   <li>KISS: Simple interface for current needs</li>
- * </ul>
- *
- * @since 1.0
  */
 public interface ModelGeometry {
 

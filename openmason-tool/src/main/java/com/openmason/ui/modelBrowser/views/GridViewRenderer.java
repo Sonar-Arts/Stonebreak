@@ -234,8 +234,8 @@ public class GridViewRenderer implements ViewRenderer {
         for (OMOFileManager.OMOFileEntry entry : omoFiles) {
             items.add(new GridItem(
                     GridItemType.OMO_MODEL,
-                    entry.getName(),
-                    entry.getName(),
+                    entry.name(),
+                    entry.name(),
                     entry
             ));
         }
@@ -380,7 +380,7 @@ public class GridViewRenderer implements ViewRenderer {
             case BLOCK -> blockRenderer.getThumbnail((BlockType) item.data, THUMBNAIL_SIZE);
             case ITEM -> itemRenderer.getThumbnail((ItemType) item.data, THUMBNAIL_SIZE);
             case MODEL -> modelRenderer.getThumbnail((String) item.data, THUMBNAIL_SIZE);
-            case OMO_MODEL -> modelRenderer.getThumbnail(((OMOFileManager.OMOFileEntry) item.data).getName(), THUMBNAIL_SIZE);
+            case OMO_MODEL -> modelRenderer.getThumbnail(((OMOFileManager.OMOFileEntry) item.data).name(), THUMBNAIL_SIZE);
         };
     }
 

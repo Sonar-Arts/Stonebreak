@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,24 +14,13 @@ import java.util.stream.Stream;
 
 /**
  * Manages discovery and access to .OMO model files.
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li>Single Responsibility: Only handles .OMO file discovery and listing</li>
- *   <li>Open/Closed: New file sources can be added without modifying existing code</li>
- * </ul>
- *
- * <p>Following KISS: Simple file scanning with standard Java NIO</p>
- * <p>Following YAGNI: No caching, no complex features - just basic file discovery</p>
- *
- * @author Open Mason Team
  */
 public class OMOFileManager {
 
     private static final Logger logger = LoggerFactory.getLogger(OMOFileManager.class);
     private static final String OMO_EXTENSION = ".omo";
 
-    private Path searchDirectory;
+    private final Path searchDirectory;
     private List<OMOFileEntry> cachedEntries; // Cache to avoid repeated scans
 
     /**
@@ -56,42 +44,6 @@ public class OMOFileManager {
     }
 
     /**
-     * Creates a new OMO file manager with a custom search directory.
-     *
-     * @param searchDirectory The directory to search for .OMO files
-     */
-    public OMOFileManager(Path searchDirectory) {
-        if (searchDirectory == null) {
-            throw new IllegalArgumentException("Search directory cannot be null");
-        }
-        this.searchDirectory = searchDirectory;
-    }
-
-    /**
-     * Gets the current search directory.
-     *
-     * @return The directory where .OMO files are searched
-     */
-    public Path getSearchDirectory() {
-        return searchDirectory;
-    }
-
-    /**
-     * Sets the search directory for .OMO files.
-     * Clears the cache since the directory has changed.
-     *
-     * @param searchDirectory The new search directory
-     */
-    public void setSearchDirectory(Path searchDirectory) {
-        if (searchDirectory == null) {
-            throw new IllegalArgumentException("Search directory cannot be null");
-        }
-        this.searchDirectory = searchDirectory;
-        this.cachedEntries = null; // Clear cache when directory changes
-        logger.debug("Search directory changed to: {}", searchDirectory);
-    }
-
-    /**
      * Scans the search directory for .OMO files.
      * Returns a list of .OMO file entries with name and path information.
      * Results are cached to avoid repeated file I/O on every frame.
@@ -107,17 +59,6 @@ public class OMOFileManager {
         // Perform initial scan
         cachedEntries = performScan();
         return cachedEntries;
-    }
-
-    /**
-     * Refreshes the cache by re-scanning the directory.
-     * Call this when you know files have been added/removed.
-     *
-     * @return List of OMO file entries after refresh
-     */
-    public List<OMOFileEntry> refresh() {
-        cachedEntries = null; // Clear cache
-        return scanForOMOFiles();
     }
 
     /**
@@ -153,34 +94,6 @@ public class OMOFileManager {
     }
 
     /**
-     * Gets a list of .OMO file names (without extension).
-     *
-     * @return List of model names
-     */
-    public List<String> getModelNames() {
-        return scanForOMOFiles().stream()
-                .map(OMOFileEntry::getName)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Finds an .OMO file by name (without extension).
-     *
-     * @param modelName The model name to search for
-     * @return The OMOFileEntry if found, or null
-     */
-    public OMOFileEntry findByName(String modelName) {
-        if (modelName == null || modelName.trim().isEmpty()) {
-            return null;
-        }
-
-        return scanForOMOFiles().stream()
-                .filter(entry -> entry.getName().equalsIgnoreCase(modelName))
-                .findFirst()
-                .orElse(null);
-    }
-
-    /**
      * Creates an OMOFileEntry from a file path.
      *
      * @param filePath The path to the .OMO file
@@ -194,47 +107,42 @@ public class OMOFileManager {
     }
 
     /**
-     * Represents an .OMO file entry with name and path information.
-     */
-    public static class OMOFileEntry {
-        private final String name;
-        private final Path filePath;
-
-        public OMOFileEntry(String name, Path filePath) {
-            this.name = name;
-            this.filePath = filePath;
-        }
+         * Represents an .OMO file entry with name and path information.
+         */
+        public record OMOFileEntry(String name, Path filePath) {
 
         /**
-         * Gets the model name (filename without .omo extension).
-         *
-         * @return The model name
-         */
-        public String getName() {
-            return name;
-        }
+             * Gets the model name (filename without .omo extension).
+             *
+             * @return The model name
+             */
+            @Override
+            public String name() {
+                return name;
+            }
 
-        /**
-         * Gets the full file path.
-         *
-         * @return The file path
-         */
-        public Path getFilePath() {
-            return filePath;
-        }
+            /**
+             * Gets the full file path.
+             *
+             * @return The file path
+             */
+            @Override
+            public Path filePath() {
+                return filePath;
+            }
 
-        /**
-         * Gets the file path as a string.
-         *
-         * @return The file path string
-         */
-        public String getFilePathString() {
-            return filePath.toString();
-        }
+            /**
+             * Gets the file path as a string.
+             *
+             * @return The file path string
+             */
+            public String getFilePathString() {
+                return filePath.toString();
+            }
 
-        @Override
-        public String toString() {
-            return "OMOFileEntry{name='" + name + "', path='" + filePath + "'}";
+            @Override
+            public String toString() {
+                return "OMOFileEntry{name='" + name + "', path='" + filePath + "'}";
+            }
         }
-    }
 }
