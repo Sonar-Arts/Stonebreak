@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation;
 
+import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.generation.spline.SplineTerrainGenerator;
@@ -22,9 +23,10 @@ class SplineTerrainIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        generator2D = new SplineTerrainGenerator(TEST_SEED, false);
-        generator3D = new SplineTerrainGenerator(TEST_SEED, true);
-        noiseRouter = new NoiseRouter(TEST_SEED);
+        TerrainGenerationConfig config = TerrainGenerationConfig.defaultConfig();
+        generator2D = new SplineTerrainGenerator(TEST_SEED, config, false);
+        generator3D = new SplineTerrainGenerator(TEST_SEED, config, true);
+        noiseRouter = new NoiseRouter(TEST_SEED, config);
     }
 
     @Test

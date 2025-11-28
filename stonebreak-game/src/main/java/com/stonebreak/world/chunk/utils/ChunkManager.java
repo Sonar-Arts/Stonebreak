@@ -17,6 +17,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.PriorityBlockingQueue;
 
 /**
  * CCO-optimized chunk manager for efficient chunk lifecycle management.
@@ -55,8 +57,13 @@ public class ChunkManager {
 
         // Create thread pool with optimal thread count
         // Typically 4-6 threads on modern CPUs
+        // Uses PriorityBlockingQueue to ensure chunks load in distance order
         int threadCount = this.config.getChunkBuildThreads();
-        this.chunkExecutor = Executors.newFixedThreadPool(threadCount,
+        this.chunkExecutor = new ThreadPoolExecutor(
+            threadCount,  // corePoolSize
+            threadCount,  // maximumPoolSize
+            0L, TimeUnit.MILLISECONDS,  // keepAliveTime
+            new PriorityBlockingQueue<Runnable>(),  // Priority queue for distance-based ordering
             new java.util.concurrent.ThreadFactory() {
                 private int threadId = 0;
                 @Override
@@ -157,24 +164,28 @@ public class ChunkManager {
             // OPTIMIZATION: Batch unload clean chunks in single executor task
             if (!cleanChunksToUnload.isEmpty()) {
                 final int batchSize = cleanChunksToUnload.size();
-                chunkExecutor.submit(() -> {
-                    for (ChunkPosition pos : cleanChunksToUnload) {
-                        try {
-                            world.unloadChunk(pos.getX(), pos.getZ());
-                        } catch (Exception e) {
-                            // Extract meaningful error message
-                            String errorMsg = e.getMessage();
-                            if (errorMsg == null && e.getCause() != null) {
-                                errorMsg = e.getCause().getMessage();
-                            }
-                            if (errorMsg == null || errorMsg.isEmpty()) {
-                                errorMsg = e.getClass().getSimpleName();
-                                if (e.getCause() != null) {
-                                    errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                // Use low priority (high value) for unload tasks - they're less urgent than loading
+                ChunkLoadTask unloadTask = new ChunkLoadTask(
+                    cleanChunksToUnload.get(0),  // Use first chunk position for task identity
+                    Integer.MAX_VALUE,  // Lowest priority - unloads happen after all loads
+                    () -> {
+                        for (ChunkPosition pos : cleanChunksToUnload) {
+                            try {
+                                world.unloadChunk(pos.getX(), pos.getZ());
+                            } catch (Exception e) {
+                                // Extract meaningful error message
+                                String errorMsg = e.getMessage();
+                                if (errorMsg == null && e.getCause() != null) {
+                                    errorMsg = e.getCause().getMessage();
                                 }
-                            }
+                                if (errorMsg == null || errorMsg.isEmpty()) {
+                                    errorMsg = e.getClass().getSimpleName();
+                                    if (e.getCause() != null) {
+                                        errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                                    }
+                                }
 
-                            System.err.println("ChunkManager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                                System.err.println("ChunkManager: Failed to unload chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
                             if (e.getCause() != null && e.getCause().getMessage() != null) {
                                 System.err.println("  Caused by: " + e.getCause().getMessage());
                             }
@@ -184,6 +195,7 @@ public class ChunkManager {
                         }
                     }
                 });
+                chunkExecutor.submit(unloadTask);
                 unloadedCount = batchSize;
             }
 
@@ -209,40 +221,44 @@ public class ChunkManager {
             // Remove from active chunks first to prevent double-processing
             activeChunkPositions.remove(pos);
 
-            // Submit save-then-unload operation
-            chunkExecutor.submit(() -> {
-                try {
-                    // The WorldChunkStore.unloadChunk() method already handles saving dirty chunks
-                    // via saveChunkOnUnload() before proceeding with unload
-                    world.unloadChunk(pos.getX(), pos.getZ());
-                    // Logging removed for performance - saves happen frequently
-                } catch (Exception e) {
-                    // Extract meaningful error message
-                    String errorMsg = e.getMessage();
-                    if (errorMsg == null && e.getCause() != null) {
-                        errorMsg = e.getCause().getMessage();
-                    }
-                    if (errorMsg == null || errorMsg.isEmpty()) {
-                        errorMsg = e.getClass().getSimpleName();
-                        if (e.getCause() != null) {
-                            errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+            // Submit save-then-unload operation with low priority
+            ChunkLoadTask saveUnloadTask = new ChunkLoadTask(
+                pos,
+                Integer.MAX_VALUE,  // Lowest priority - saves/unloads happen after all loads
+                () -> {
+                    try {
+                        // The WorldChunkStore.unloadChunk() method already handles saving dirty chunks
+                        // via saveChunkOnUnload() before proceeding with unload
+                        world.unloadChunk(pos.getX(), pos.getZ());
+                        // Logging removed for performance - saves happen frequently
+                    } catch (Exception e) {
+                        // Extract meaningful error message
+                        String errorMsg = e.getMessage();
+                        if (errorMsg == null && e.getCause() != null) {
+                            errorMsg = e.getCause().getMessage();
                         }
+                        if (errorMsg == null || errorMsg.isEmpty()) {
+                            errorMsg = e.getClass().getSimpleName();
+                            if (e.getCause() != null) {
+                                errorMsg += " (caused by " + e.getCause().getClass().getSimpleName() + ")";
+                            }
+                        }
+
+                        System.err.println("ChunkManager: CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
+                        if (e.getCause() != null && e.getCause().getMessage() != null) {
+                            System.err.println("  Caused by: " + e.getCause().getMessage());
+                        }
+                        System.err.println("Full stack trace:");
+                        e.printStackTrace();
+
+                        // Re-add to active chunks if save-then-unload failed
+                        activeChunkPositions.add(pos);
+
+                        // Remove UNLOADING state since we failed
+                        stateManager.removeState(CcoChunkState.UNLOADING);
                     }
-
-                    System.err.println("ChunkManager: CRITICAL: Failed to save-then-unload dirty chunk (" + pos.getX() + ", " + pos.getZ() + "): " + errorMsg);
-                    if (e.getCause() != null && e.getCause().getMessage() != null) {
-                        System.err.println("  Caused by: " + e.getCause().getMessage());
-                    }
-                    System.err.println("Full stack trace:");
-                    e.printStackTrace();
-
-                    // Re-add to active chunks if save-then-unload failed
-                    activeChunkPositions.add(pos);
-
-                    // Remove UNLOADING state since we failed
-                    stateManager.removeState(CcoChunkState.UNLOADING);
-                }
-            });
+                });
+            chunkExecutor.submit(saveUnloadTask);
 
         } catch (Exception e) {
             System.err.println("ChunkManager: Error initiating save-then-unload for chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
@@ -274,7 +290,8 @@ public class ChunkManager {
                     // Calculate priority based on distance
                     int distance = Math.max(Math.abs(pos.getX() - playerChunkX), Math.abs(pos.getZ() - playerChunkZ));
 
-                    chunkExecutor.submit(() -> {
+                    // Wrap in priority task for distance-based ordering in executor queue
+                    ChunkLoadTask task = new ChunkLoadTask(pos, distance, () -> {
                         try {
                             long startTime = System.currentTimeMillis();
                             Chunk chunk = world.getChunkAt(pos.getX(), pos.getZ());
@@ -303,6 +320,8 @@ public class ChunkManager {
                             System.err.println("Stack trace: " + java.util.Arrays.toString(e.getStackTrace()));
                         }
                     });
+
+                    chunkExecutor.submit(task);
                 }
             }
         }
