@@ -1,0 +1,26 @@
+package com.openmason.main.systems.menus.textureCreator.tools.move;
+
+/**
+ * Identifiers for transformation handles rendered by the move tool.
+ */
+public enum TransformHandle {
+    NONE,
+
+    // Corner scaling (uniform/stretch depending on modifier keys)
+    SCALE_NORTH_WEST,
+    SCALE_NORTH_EAST,
+    SCALE_SOUTH_EAST,
+    SCALE_SOUTH_WEST,
+
+    // Edge scaling / stretching
+    SCALE_NORTH,
+    SCALE_EAST,
+    SCALE_SOUTH,
+    SCALE_WEST,
+
+    // Dedicated rotation handle (positioned above selection)
+    ROTATE,
+
+    // Center pivot point (visible but not draggable in current implementation)
+    PIVOT_CENTER
+}

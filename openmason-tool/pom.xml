@@ -271,7 +271,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.openmason.app.OpenMasonApp</mainClass>
+                                    <mainClass>com.openmason.main.mainOpenMason</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>
@@ -282,7 +282,7 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.openmason.app.OpenMasonApp</mainClass>
+                    <mainClass>com.openmason.main.mainOpenMason</mainClass>
                     <options>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
                         <option>--enable-native-access=ALL-UNNAMED</option>
