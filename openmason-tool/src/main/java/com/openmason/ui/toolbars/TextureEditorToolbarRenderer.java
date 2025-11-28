@@ -84,18 +84,6 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
     }
 
     /**
-     * Set the GLFW window handle for mouse capture functionality.
-     * This enables infinite dragging in the move tool.
-     * @param windowHandle The GLFW window handle
-     */
-    public void setWindowHandle(long windowHandle) {
-        if (moveToolInstance != null) {
-            moveToolInstance.setWindowHandle(windowHandle);
-            logger.debug("Move tool configured with window handle for mouse capture");
-        }
-    }
-
-    /**
      * Configures tools with preferences.
      * This allows tools to access user settings.
      * @param preferences The TextureCreatorPreferences to use
@@ -237,7 +225,6 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
 
     /**
      * Set the current tool.
-     * @param tool tool to activate
      */
     public void setCurrentTool(DrawingTool tool) {
         if (currentTool != null) {
@@ -249,7 +236,6 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
 
     /**
      * Get the current tool.
-     * @return current tool
      */
     public DrawingTool getCurrentTool() {
         return currentTool;
@@ -257,37 +243,15 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
 
     /**
      * Get all available tools.
-     * @return list of tools
      */
     public List<DrawingTool> getTools() {
         return tools;
     }
 
-    /**
-     * Get tool by index.
-     * @param index tool index
-     * @return tool at index
-     */
-    public DrawingTool getTool(int index) {
-        if (index < 0 || index >= tools.size()) {
-            return null;
-        }
-        return tools.get(index);
-    }
-
-    /**
-     * Get the paste tool instance.
-     * Used for programmatic activation (Ctrl+V).
-     * @return paste tool instance
-     */
-    public PasteTool getPasteTool() {
-        return pasteToolInstance;
-    }
 
     /**
      * Get the move tool instance.
-     * Used for paste operations (reuses move tool for DRY principle).
-     * @return move tool instance
+     * Used for paste operations
      */
     public MoveToolController getMoveToolInstance() {
         return moveToolInstance;

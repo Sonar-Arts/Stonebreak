@@ -13,16 +13,6 @@ import imgui.ImGui;
 /**
  * Model viewer toolbar renderer.
  * Extends BaseToolbarRenderer for consistent styling and DRY principles.
- * Follows KISS, DRY, YAGNI, and SOLID principles.
- *
- * <p>Features:</p>
- * <ul>
- *   <li>File operations (Open, Save)</li>
- *   <li>View controls (Reset, Fit, Zoom)</li>
- *   <li>Status display (Model name, Progress bar)</li>
- * </ul>
- *
- * @author Open Mason Team
  */
 public class ModelViewerToolbarRenderer extends BaseToolbarRenderer {
 
