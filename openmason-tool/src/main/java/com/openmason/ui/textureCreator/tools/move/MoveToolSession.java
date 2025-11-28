@@ -58,10 +58,6 @@ final class MoveToolSession {
         return transformedImage != null && !transformedImage.isEmpty();
     }
 
-    Optional<TransformedImage> transformedImage() {
-        return Optional.ofNullable(transformedImage);
-    }
-
     Optional<TransformedSelectionRegion> transformedSelection() {
         return Optional.ofNullable(transformedSelection);
     }

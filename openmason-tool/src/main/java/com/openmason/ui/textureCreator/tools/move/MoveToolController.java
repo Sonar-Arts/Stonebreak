@@ -113,7 +113,6 @@ public class MoveToolController implements DrawingTool {
             // This ensures infinite rotation continues even when onMouseDrag stops being called
             // (onMouseDrag only fires when canvas coords change, which stops at canvas edges)
             // Transform update happens in updateMouseDelta(), so we don't need to do it here
-            return;
         } else {
             newTransform = computeScaleTransform(canvasX, canvasY);
             session.updateTransformation(newTransform);
@@ -134,7 +133,7 @@ public class MoveToolController implements DrawingTool {
 
         if (session.hasPreview()) {
             // Get skip transparent pixels preference (default true if not set)
-            boolean skipTransparent = preferences != null ? preferences.isSkipTransparentPixelsOnPaste() : true;
+            boolean skipTransparent = preferences == null || preferences.isSkipTransparentPixelsOnPaste();
             pendingCommand = session.createCommand(canvas, selectionManager, skipTransparent);
         }
 
@@ -191,11 +190,6 @@ public class MoveToolController implements DrawingTool {
      * Updates the accumulated mouse delta for rotation tracking.
      * Call this every frame during rendering to accumulate mouse movement.
      * Uses ImGui's mouse delta which works correctly with captured mouse.
-     *
-     * This method also updates the rotation transform every frame when mouse is captured,
-     * ensuring infinite rotation continues even when onMouseDrag stops being called.
-     *
-     * @param mouseDeltaX the horizontal mouse movement delta from ImGui
      */
     public void updateMouseDelta(float mouseDeltaX) {
         // Safety check: if mouse is captured but we have no drag context, release it
@@ -533,6 +527,22 @@ public class MoveToolController implements DrawingTool {
 
         // Convert accumulated horizontal movement to rotation degrees
         // Speed is in degrees per pixel of screen movement
+        double finalAngle = getFinalAngle(rotationSpeed);
+
+        if (shiftHeld) {
+            // Snap to 15° increments on the absolute angle
+            finalAngle = Math.round(finalAngle / 15.0) * 15.0;
+        } else {
+            // Magnetic snapping to cardinal angles (0°, 90°, 180°, 270°) with fixed threshold
+            finalAngle = snapToCardinalAngles(finalAngle);
+        }
+
+        // withRotation() sets the absolute rotation angle (replaces old rotation)
+        // This is correct because finalAngle already includes the base angle
+        return dragContext.baseTransform.withRotation(finalAngle);
+    }
+
+    private double getFinalAngle(double rotationSpeed) {
         double rotationFromMovement = -accumulatedDeltaX * rotationSpeed;
 
         // Calculate the final absolute angle by ADDING to the base angle
@@ -542,19 +552,7 @@ public class MoveToolController implements DrawingTool {
         // - finalAngle = previous rotations + current rotation delta
         // Example: Rotate 45° → release → rotate 30° more → finalAngle = 45° + 30° = 75°
         double baseAngle = dragContext.baseTransform.rotationDegrees();
-        double finalAngle = baseAngle + rotationFromMovement;
-
-        if (shiftHeld) {
-            // Snap to 15° increments on the absolute angle
-            finalAngle = Math.round(finalAngle / 15.0) * 15.0;
-        } else {
-            // Magnetic snapping to cardinal angles (0°, 90°, 180°, 270°) with fixed threshold
-            finalAngle = snapToCardinalAngles(finalAngle, 5.0);
-        }
-
-        // withRotation() sets the absolute rotation angle (replaces old rotation)
-        // This is correct because finalAngle already includes the base angle
-        return dragContext.baseTransform.withRotation(finalAngle);
+        return baseAngle + rotationFromMovement;
     }
 
     private TransformationState computeScaleTransform(double canvasX, double canvasY) {
@@ -649,36 +647,23 @@ public class MoveToolController implements DrawingTool {
     }
 
     private static boolean affectsXAxis(TransformHandle handle) {
-        switch (handle) {
-            case SCALE_NORTH_EAST:
-            case SCALE_SOUTH_EAST:
-            case SCALE_NORTH_WEST:
-            case SCALE_SOUTH_WEST:
-            case SCALE_EAST:
-            case SCALE_WEST:
-                return true;
-            default:
-                return false;
-        }
+        return switch (handle) {
+            case SCALE_NORTH_EAST, SCALE_SOUTH_EAST, SCALE_NORTH_WEST, SCALE_SOUTH_WEST, SCALE_EAST, SCALE_WEST -> true;
+            default -> false;
+        };
     }
 
     private static boolean affectsYAxis(TransformHandle handle) {
-        switch (handle) {
-            case SCALE_NORTH_EAST:
-            case SCALE_SOUTH_EAST:
-            case SCALE_NORTH_WEST:
-            case SCALE_SOUTH_WEST:
-            case SCALE_NORTH:
-            case SCALE_SOUTH:
-                return true;
-            default:
-                return false;
-        }
+        return switch (handle) {
+            case SCALE_NORTH_EAST, SCALE_SOUTH_EAST, SCALE_NORTH_WEST, SCALE_SOUTH_WEST, SCALE_NORTH, SCALE_SOUTH ->
+                    true;
+            default -> false;
+        };
     }
 
     private static double snapSize(double rawSize) {
         double snapped = Math.round(rawSize);
-        if (Double.isNaN(snapped) || Double.isInfinite(snapped)) {
+        if (Double.isInfinite(snapped)) {
             snapped = 1.0;
         }
         if (Math.abs(snapped) < 1.0) {
@@ -702,10 +687,9 @@ public class MoveToolController implements DrawingTool {
      * This provides magnetic snapping behavior for precise alignment.
      *
      * @param angle the angle in degrees
-     * @param threshold the snapping threshold in degrees
      * @return the snapped angle if within threshold, otherwise the original angle
      */
-    private static double snapToCardinalAngles(double angle, double threshold) {
+    private static double snapToCardinalAngles(double angle) {
         // First normalize to [0, 360) range to check all cardinal angles uniformly
         double positive = angle % 360.0;
         if (positive < 0) {
@@ -713,15 +697,15 @@ public class MoveToolController implements DrawingTool {
         }
 
         // Check proximity to each cardinal angle in positive space
-        double snappedPositive = positive;
+        double snappedPositive;
 
-        if (Math.abs(positive) < threshold || Math.abs(positive - 360.0) < threshold) {
+        if (Math.abs(positive) < 5.0 || Math.abs(positive - 360.0) < 5.0) {
             snappedPositive = 0.0;  // Snap to 0°/360°
-        } else if (Math.abs(positive - 90.0) < threshold) {
+        } else if (Math.abs(positive - 90.0) < 5.0) {
             snappedPositive = 90.0;  // Snap to 90°
-        } else if (Math.abs(positive - 180.0) < threshold) {
+        } else if (Math.abs(positive - 180.0) < 5.0) {
             snappedPositive = 180.0;  // Snap to 180°
-        } else if (Math.abs(positive - 270.0) < threshold) {
+        } else if (Math.abs(positive - 270.0) < 5.0) {
             snappedPositive = 270.0;  // Snap to 270°
         } else {
             return angle;  // No snapping, return original angle
@@ -738,26 +722,17 @@ public class MoveToolController implements DrawingTool {
         double width = snapshot.width();
         double height = snapshot.height();
 
-        switch (handle) {
-            case SCALE_NORTH_WEST:
-                return new double[]{width, height};
-            case SCALE_NORTH_EAST:
-                return new double[]{0.0, height};
-            case SCALE_SOUTH_EAST:
-                return new double[]{0.0, 0.0};
-            case SCALE_SOUTH_WEST:
-                return new double[]{width, 0.0};
-            case SCALE_NORTH:
-                return new double[]{width / 2.0, height};
-            case SCALE_EAST:
-                return new double[]{0.0, height / 2.0};
-            case SCALE_SOUTH:
-                return new double[]{width / 2.0, 0.0};
-            case SCALE_WEST:
-                return new double[]{width, height / 2.0};
-            default:
-                return new double[]{width / 2.0, height / 2.0};
-        }
+        return switch (handle) {
+            case SCALE_NORTH_WEST -> new double[]{width, height};
+            case SCALE_NORTH_EAST -> new double[]{0.0, height};
+            case SCALE_SOUTH_EAST -> new double[]{0.0, 0.0};
+            case SCALE_SOUTH_WEST -> new double[]{width, 0.0};
+            case SCALE_NORTH -> new double[]{width / 2.0, height};
+            case SCALE_EAST -> new double[]{0.0, height / 2.0};
+            case SCALE_SOUTH -> new double[]{width / 2.0, 0.0};
+            case SCALE_WEST -> new double[]{width, height / 2.0};
+            default -> new double[]{width / 2.0, height / 2.0};
+        };
     }
 
     private static final class DragContext {

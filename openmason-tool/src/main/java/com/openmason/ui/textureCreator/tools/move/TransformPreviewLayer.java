@@ -170,20 +170,4 @@ public final class TransformPreviewLayer extends FloatingPixelLayer {
             }
         }
     }
-
-    /**
-     * Get the selection snapshot.
-     * @return selection snapshot
-     */
-    public SelectionSnapshot getSnapshot() {
-        return snapshot;
-    }
-
-    /**
-     * Get the transformed image.
-     * @return transformed image
-     */
-    public TransformedImage getTransformedImage() {
-        return transformedImage;
-    }
 }

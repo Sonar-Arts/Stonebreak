@@ -9,11 +9,6 @@ import java.util.Map;
 
 /**
  * Draws selection outlines and interaction handles for the move tool following
- * Photoshop-style transform UI standards:
- * - White handles with dark outlines for visibility
- * - Rotation triggered by hovering outside corners (no separate rotation handles)
- * - Center pivot point for rotation reference
- * - Professional blue highlight colors
  */
 final class TransformOverlayRenderer {
 
@@ -23,12 +18,7 @@ final class TransformOverlayRenderer {
     private static final float PIVOT_RADIUS = 5.0f;
     private static final float PIVOT_INNER_RADIUS = 2.0f;
 
-    // Rotation detection zone (distance outside corners to trigger rotation)
-    private static final float ROTATION_ZONE_DISTANCE = 20.0f;
-    private static final float ROTATION_ARC_RADIUS = 16.0f;  // Radius for rotation arc indicators
-    private static final float ROTATION_ARROW_SIZE = 4.0f;   // Size of arrow heads
-
-    // Professional color scheme (ABGR format for ImGui)
+    // Professional color scheme
     private static final int OUTLINE_COLOR = 0xFF3D3D3D;           // Dark gray outline
     private static final int HANDLE_FILL = 0xFFFFFFFF;             // White fill
     private static final int HANDLE_OUTLINE = 0xFF000000;          // Black outline
@@ -38,8 +28,6 @@ final class TransformOverlayRenderer {
     private static final int HANDLE_ACTIVE_OUTLINE = 0xFF0055AA;   // Deep blue outline
     private static final int PIVOT_COLOR = 0xFF3D3D3D;             // Dark gray for pivot
     private static final int PIVOT_HOVER_COLOR = 0xFF0077CC;       // Blue when hovering
-    private static final int ROTATION_ARC_COLOR = 0xAA0077CC;      // Semi-transparent blue for rotation arcs
-    private static final int ROTATION_ARC_ACTIVE = 0xFF0077CC;     // Opaque blue for active rotation
 
     void render(ImDrawList drawList,
                 Rectangle bounds,
@@ -119,18 +107,6 @@ final class TransformOverlayRenderer {
         }
 
         return closest;
-    }
-
-    boolean isInside(float mouseX,
-                     float mouseY,
-                     Rectangle bounds,
-                     TransformationState transform,
-                     CanvasState canvasState,
-                     float canvasDisplayX,
-                     float canvasDisplayY) {
-
-        float[][] polygon = toScreen(computeCorners(bounds, transform), canvasState, canvasDisplayX, canvasDisplayY);
-        return pointInPolygon(mouseX, mouseY, polygon);
     }
 
     private static double[][] computeCorners(Rectangle bounds, TransformationState transform) {
@@ -257,91 +233,4 @@ final class TransformOverlayRenderer {
         drawList.addCircle(point[0], point[1], arcRadius, arcColor, 12, arcThickness);
     }
 
-    /**
-     * Draw rotation arc indicator with arrow showing rotation direction.
-     * Appears outside the corner handle when hovering in rotation mode.
-     */
-    private static void drawRotationArcIndicator(ImDrawList drawList, float[] cornerPos, TransformHandle corner, boolean active) {
-        if (cornerPos == null) return;
-
-        int color = active ? ROTATION_ARC_ACTIVE : ROTATION_ARC_COLOR;
-
-        // Determine arc angle range based on corner position
-        float startAngle = 0;
-        float endAngle = 0;
-        boolean clockwise = true;
-
-        switch (corner) {
-            case SCALE_NORTH_WEST:
-                startAngle = (float) Math.toRadians(180);
-                endAngle = (float) Math.toRadians(270);
-                clockwise = true;
-                break;
-            case SCALE_NORTH_EAST:
-                startAngle = (float) Math.toRadians(270);
-                endAngle = (float) Math.toRadians(360);
-                clockwise = true;
-                break;
-            case SCALE_SOUTH_EAST:
-                startAngle = (float) Math.toRadians(0);
-                endAngle = (float) Math.toRadians(90);
-                clockwise = true;
-                break;
-            case SCALE_SOUTH_WEST:
-                startAngle = (float) Math.toRadians(90);
-                endAngle = (float) Math.toRadians(180);
-                clockwise = true;
-                break;
-            default:
-                return;
-        }
-
-        // Draw arc (curved arrow path)
-        int numSegments = 12;
-        for (int i = 0; i < numSegments; i++) {
-            float t1 = (float) i / numSegments;
-            float t2 = (float) (i + 1) / numSegments;
-
-            float angle1 = startAngle + (endAngle - startAngle) * t1;
-            float angle2 = startAngle + (endAngle - startAngle) * t2;
-
-            float x1 = cornerPos[0] + (float) Math.cos(angle1) * ROTATION_ARC_RADIUS;
-            float y1 = cornerPos[1] + (float) Math.sin(angle1) * ROTATION_ARC_RADIUS;
-            float x2 = cornerPos[0] + (float) Math.cos(angle2) * ROTATION_ARC_RADIUS;
-            float y2 = cornerPos[1] + (float) Math.sin(angle2) * ROTATION_ARC_RADIUS;
-
-            drawList.addLine(x1, y1, x2, y2, color, 2.0f);
-        }
-
-        // Draw arrow head at the end of the arc
-        float arrowAngle = endAngle;
-        float arrowX = cornerPos[0] + (float) Math.cos(arrowAngle) * ROTATION_ARC_RADIUS;
-        float arrowY = cornerPos[1] + (float) Math.sin(arrowAngle) * ROTATION_ARC_RADIUS;
-
-        // Arrow head points in the direction of rotation
-        float arrowDir = arrowAngle + (float) Math.toRadians(90); // Perpendicular to radius
-        float arrow1X = arrowX + (float) Math.cos(arrowDir + Math.toRadians(150)) * ROTATION_ARROW_SIZE;
-        float arrow1Y = arrowY + (float) Math.sin(arrowDir + Math.toRadians(150)) * ROTATION_ARROW_SIZE;
-        float arrow2X = arrowX + (float) Math.cos(arrowDir + Math.toRadians(210)) * ROTATION_ARROW_SIZE;
-        float arrow2Y = arrowY + (float) Math.sin(arrowDir + Math.toRadians(210)) * ROTATION_ARROW_SIZE;
-
-        drawList.addTriangleFilled(arrowX, arrowY, arrow1X, arrow1Y, arrow2X, arrow2Y, color);
-    }
-
-    private static boolean pointInPolygon(float x, float y, float[][] polygon) {
-        boolean inside = false;
-        for (int i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-            float xi = polygon[i][0];
-            float yi = polygon[i][1];
-            float xj = polygon[j][0];
-            float yj = polygon[j][1];
-
-            boolean intersect = ((yi > y) != (yj > y))
-                    && (x < (xj - xi) * (y - yi) / (yj - yi + 1e-6f) + xi);
-            if (intersect) {
-                inside = !inside;
-            }
-        }
-        return inside;
-    }
 }

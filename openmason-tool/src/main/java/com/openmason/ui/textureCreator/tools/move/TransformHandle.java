@@ -2,12 +2,6 @@ package com.openmason.ui.textureCreator.tools.move;
 
 /**
  * Identifiers for transformation handles rendered by the move tool.
- *
- * Interaction model:
- * - 8 scaling handles (corners + edges)
- * - 1 dedicated rotation handle above selection
- * - Center pivot point for rotation reference
- * - Translation by clicking inside the selection
  */
 public enum TransformHandle {
     NONE,

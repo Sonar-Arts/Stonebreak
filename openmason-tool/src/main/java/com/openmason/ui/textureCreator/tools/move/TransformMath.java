@@ -115,10 +115,10 @@ final class TransformMath {
         int canvasWidth = snapshot.canvasWidth();
         int canvasHeight = snapshot.canvasHeight();
 
-        int destMinX = clamp((int) Math.floor(minX), 0, canvasWidth - 1);
-        int destMaxX = clamp((int) Math.ceil(maxX) - 1, 0, canvasWidth - 1);
-        int destMinY = clamp((int) Math.floor(minY), 0, canvasHeight - 1);
-        int destMaxY = clamp((int) Math.ceil(maxY) - 1, 0, canvasHeight - 1);
+        int destMinX = clamp((int) Math.floor(minX), canvasWidth - 1);
+        int destMaxX = clamp((int) Math.ceil(maxX) - 1, canvasWidth - 1);
+        int destMinY = clamp((int) Math.floor(minY), canvasHeight - 1);
+        int destMaxY = clamp((int) Math.ceil(maxY) - 1, canvasHeight - 1);
 
         if (destMaxX < destMinX || destMaxY < destMinY) {
             Rectangle empty = new Rectangle(destMinX, destMinY, 0, 0);
@@ -209,8 +209,8 @@ final class TransformMath {
         return new TransformedImage(destBounds, croppedPixels, croppedMask, pixelCount);
     }
 
-    static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
+    static int clamp(int value, int max) {
+        return Math.max(0, Math.min(max, value));
     }
 
     /**

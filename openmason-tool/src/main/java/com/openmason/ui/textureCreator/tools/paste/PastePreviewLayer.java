@@ -2,22 +2,11 @@ package com.openmason.ui.textureCreator.tools.paste;
 
 import com.openmason.ui.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.textureCreator.layers.FloatingPixelLayer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Floating preview layer for paste operations.
- *
- * <p>Shows clipboard content at specified position before committing to canvas.
- * Extends {@link FloatingPixelLayer} for non-destructive preview generation.</p>
- *
- * <p>This implementation handles simple position-based compositing without transformation.</p>
- *
- * @author Open Mason Team
  */
 public class PastePreviewLayer extends FloatingPixelLayer {
-
-    private static final Logger logger = LoggerFactory.getLogger(PastePreviewLayer.class);
 
     private final PixelCanvas clipboardCanvas;
     private final int pasteX;
@@ -25,10 +14,6 @@ public class PastePreviewLayer extends FloatingPixelLayer {
 
     /**
      * Create paste preview layer.
-     *
-     * @param clipboardCanvas clipboard content to preview
-     * @param pasteX X position to paste at
-     * @param pasteY Y position to paste at
      */
     public PastePreviewLayer(PixelCanvas clipboardCanvas, int pasteX, int pasteY) {
         if (clipboardCanvas == null) {
@@ -42,13 +27,6 @@ public class PastePreviewLayer extends FloatingPixelLayer {
 
     /**
      * Get the floating pixel color at the specified canvas coordinate.
-     *
-     * <p>Returns the clipboard pixel color if the canvas coordinate maps to a position
-     * within the clipboard bounds, otherwise returns null.</p>
-     *
-     * @param canvasX canvas X coordinate
-     * @param canvasY canvas Y coordinate
-     * @return clipboard pixel color, or null if no clipboard pixel at this position
      */
     @Override
     protected Integer getFloatingPixelAt(int canvasX, int canvasY) {
@@ -71,29 +49,5 @@ public class PastePreviewLayer extends FloatingPixelLayer {
         }
 
         return color;
-    }
-
-    /**
-     * Get paste X position.
-     * @return X coordinate
-     */
-    public int getPasteX() {
-        return pasteX;
-    }
-
-    /**
-     * Get paste Y position.
-     * @return Y coordinate
-     */
-    public int getPasteY() {
-        return pasteY;
-    }
-
-    /**
-     * Get clipboard canvas.
-     * @return clipboard content
-     */
-    public PixelCanvas getClipboardCanvas() {
-        return clipboardCanvas;
     }
 }

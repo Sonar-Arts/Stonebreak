@@ -8,7 +8,7 @@ import java.awt.Rectangle;
 /**
  * Immutable capture of a selection's pixel data and mask at the moment a move
  * interaction begins. The snapshot is the single source of truth for all
- * transformation previews so that we never re-sample the canvas mid gesture.
+ * transformation previews so that we never re-sample the canvas mid-gesture.
  */
 public final class SelectionSnapshot {
 
@@ -93,10 +93,4 @@ public final class SelectionSnapshot {
         return localY * width() + localX;
     }
 
-    public boolean isInside(int localX, int localY) {
-        if (localX < 0 || localY < 0 || localX >= width() || localY >= height()) {
-            return false;
-        }
-        return mask[indexFor(localX, localY)];
-    }
 }

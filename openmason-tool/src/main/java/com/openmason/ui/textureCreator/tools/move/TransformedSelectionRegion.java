@@ -64,8 +64,7 @@ public final class TransformedSelectionRegion implements SelectionRegion {
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (!(obj instanceof TransformedSelectionRegion)) return false;
-        TransformedSelectionRegion other = (TransformedSelectionRegion) obj;
+        if (!(obj instanceof TransformedSelectionRegion other)) return false;
         return pixelCount == other.pixelCount &&
                 bounds.equals(other.bounds) &&
                 java.util.Arrays.equals(mask, other.mask);

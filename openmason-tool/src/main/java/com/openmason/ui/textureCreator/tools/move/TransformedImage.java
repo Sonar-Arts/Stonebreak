@@ -10,12 +10,7 @@ import java.awt.Rectangle;
  * top-left origin addressing scheme for cache friendliness when applying to a
  * {@link PixelCanvas}.
  */
-public final class TransformedImage {
-
-    private final Rectangle bounds;
-    private final int[] pixels;
-    private final boolean[] mask;
-    private final int pixelCount;
+public record TransformedImage(Rectangle bounds, int[] pixels, boolean[] mask, int pixelCount) {
 
     public TransformedImage(Rectangle bounds, int[] pixels, boolean[] mask, int pixelCount) {
         this.bounds = new Rectangle(bounds);
@@ -24,6 +19,7 @@ public final class TransformedImage {
         this.pixelCount = pixelCount;
     }
 
+    @Override
     public Rectangle bounds() {
         return new Rectangle(bounds);
     }
@@ -36,34 +32,8 @@ public final class TransformedImage {
         return bounds.height;
     }
 
-    public int[] pixels() {
-        return pixels;
-    }
-
-    public boolean[] mask() {
-        return mask;
-    }
-
-    public int pixelCount() {
-        return pixelCount;
-    }
-
     public boolean isEmpty() {
         return pixelCount == 0;
     }
 
-    public int indexFor(int localX, int localY) {
-        return localY * width() + localX;
-    }
-
-    public boolean hasPixel(int localX, int localY) {
-        if (localX < 0 || localY < 0 || localX >= width() || localY >= height()) {
-            return false;
-        }
-        return mask[indexFor(localX, localY)];
-    }
-
-    public int colorAt(int localX, int localY) {
-        return pixels[indexFor(localX, localY)];
-    }
 }
