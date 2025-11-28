@@ -2,7 +2,6 @@ package com.openmason.ui.hub;
 
 import com.openmason.ui.LogoManager;
 import com.openmason.ui.hub.components.*;
-import com.openmason.ui.hub.model.NavigationItem;
 import com.openmason.ui.hub.services.HubActionService;
 import com.openmason.ui.hub.services.RecentProjectsService;
 import com.openmason.ui.hub.services.TemplateService;
@@ -21,10 +20,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Main coordinator for Unity Hub-style project hub interface.
- * Replaces HomeScreenOM.java.
- *
- * Follows Composition over Inheritance and Dependency Injection patterns.
- * Orchestrates all hub components following SOLID, KISS, DRY, and YAGNI principles.
  */
 public class ProjectHubScreen {
 
@@ -36,15 +31,11 @@ public class ProjectHubScreen {
 
     // Dependencies
     private final ThemeManager themeManager;
-    private final LogoManager logoManager;
 
     // State
     private final HubState hubState;
     private final HubVisibilityState visibilityState;
 
-    // Services
-    private final TemplateService templateService;
-    private final RecentProjectsService recentProjectsService;
     private final HubActionService actionService;
 
     // UI Components
@@ -57,10 +48,6 @@ public class ProjectHubScreen {
     // Animation state
     private float animationTime = 0.0f;
 
-    // Window dimensions
-    private float windowWidth = 0.0f;
-    private float windowHeight = 0.0f;
-
     /**
      * Create Project Hub Screen with dependency injection.
      */
@@ -70,19 +57,19 @@ public class ProjectHubScreen {
         }
 
         this.themeManager = themeManager;
-        this.logoManager = LogoManager.getInstance();
+        LogoManager logoManager = LogoManager.getInstance();
 
         // Initialize state
         this.hubState = new HubState();
         this.visibilityState = new HubVisibilityState();
 
         // Initialize services
-        this.templateService = new TemplateService();
-        this.recentProjectsService = new RecentProjectsService(templateService);
+        TemplateService templateService = new TemplateService();
+        RecentProjectsService recentProjectsService = new RecentProjectsService();
         this.actionService = new HubActionService();
 
         // Initialize UI components with dependency injection
-        this.topToolbar = new HubTopToolbar(themeManager, hubState);
+        this.topToolbar = new HubTopToolbar(hubState);
         this.sidebarNav = new HubSidebarNav(themeManager, hubState, logoManager);
         this.templatesPanel = new TemplatesPanel(themeManager, hubState, templateService);
         this.recentProjectsPanel = new RecentProjectsPanel(themeManager, hubState, recentProjectsService);
@@ -99,8 +86,9 @@ public class ProjectHubScreen {
         ImVec2 viewportSize = ImGui.getMainViewport().getSize();
         ImVec2 viewportPos = ImGui.getMainViewport().getPos();
 
-        windowWidth = viewportSize.x;
-        windowHeight = viewportSize.y;
+        // Window dimensions
+        float windowWidth = viewportSize.x;
+        float windowHeight = viewportSize.y;
 
         ImGui.setNextWindowPos(viewportPos.x, viewportPos.y);
         ImGui.setNextWindowSize(windowWidth, windowHeight);
@@ -258,31 +246,4 @@ public class ProjectHubScreen {
         topToolbar.setOnPreferencesClicked(callback);
     }
 
-    /**
-     * Check if there's a pending transition action.
-     */
-    public boolean shouldTransition() {
-        return actionService.hasPendingAction();
-    }
-
-    /**
-     * Get the action service for accessing pending actions.
-     */
-    public HubActionService getActionService() {
-        return actionService;
-    }
-
-    /**
-     * Get the hub state.
-     */
-    public HubState getHubState() {
-        return hubState;
-    }
-
-    /**
-     * Get the visibility state.
-     */
-    public HubVisibilityState getVisibilityState() {
-        return visibilityState;
-    }
 }

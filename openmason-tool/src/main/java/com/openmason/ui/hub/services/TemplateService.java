@@ -31,19 +31,6 @@ public class TemplateService {
     }
 
     /**
-     * Filter templates by category.
-     */
-    public List<ProjectTemplate> filterByCategory(String category) {
-        if (category == null || category.isEmpty() || category.equals("All")) {
-            return getAllTemplates();
-        }
-
-        return templates.stream()
-                .filter(t -> t.getCategory().equalsIgnoreCase(category))
-                .collect(Collectors.toList());
-    }
-
-    /**
      * Search templates by name or description.
      */
     public List<ProjectTemplate> search(String query) {
@@ -55,27 +42,6 @@ public class TemplateService {
         return templates.stream()
                 .filter(t -> t.getName().toLowerCase().contains(lowerQuery) ||
                            t.getDescription().toLowerCase().contains(lowerQuery))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get template by ID.
-     */
-    public ProjectTemplate getTemplateById(String id) {
-        return templates.stream()
-                .filter(t -> t.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-    }
-
-    /**
-     * Get all unique categories.
-     */
-    public List<String> getCategories() {
-        return templates.stream()
-                .map(ProjectTemplate::getCategory)
-                .distinct()
-                .sorted()
                 .collect(Collectors.toList());
     }
 

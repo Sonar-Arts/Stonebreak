@@ -1,11 +1,9 @@
 package com.openmason.ui.hub.services;
 
-import com.openmason.ui.hub.model.ProjectTemplate;
 import com.openmason.ui.hub.model.RecentProject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -20,10 +18,8 @@ public class RecentProjectsService {
     private static final Logger logger = LoggerFactory.getLogger(RecentProjectsService.class);
 
     private final List<RecentProject> recentProjects;
-    private final TemplateService templateService;
 
-    public RecentProjectsService(TemplateService templateService) {
-        this.templateService = templateService;
+    public RecentProjectsService() {
         this.recentProjects = createMockRecentProjects();
         logger.info("Initialized RecentProjectsService with {} mock projects", recentProjects.size());
     }
@@ -54,22 +50,11 @@ public class RecentProjectsService {
     }
 
     /**
-     * Get project by ID.
-     */
-    public RecentProject getProjectById(String id) {
-        return recentProjects.stream()
-                .filter(p -> p.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-    }
-
-    /**
      * Create mock recent projects for Phase 1.
      * Returns empty list - will be populated when actual project saving is implemented.
      */
     private List<RecentProject> createMockRecentProjects() {
-        List<RecentProject> projects = new ArrayList<>();
         // No mock projects - only saved projects will appear here in the future
-        return projects;
+        return new ArrayList<>();
     }
 }

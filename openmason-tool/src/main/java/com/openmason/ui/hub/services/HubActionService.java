@@ -15,8 +15,6 @@ public class HubActionService {
 
     private Runnable createProjectCallback;
     private Runnable openProjectCallback;
-    private ProjectTemplate pendingTemplate;
-    private RecentProject pendingProject;
 
     /**
      * Create a new project from the selected template.
@@ -30,7 +28,6 @@ public class HubActionService {
         }
 
         logger.info("Creating project from template: {}", template.getName());
-        this.pendingTemplate = template;
 
         if (createProjectCallback != null) {
             createProjectCallback.run();
@@ -51,7 +48,6 @@ public class HubActionService {
         }
 
         logger.info("Opening recent project: {}", project.getName());
-        this.pendingProject = project;
 
         if (openProjectCallback != null) {
             openProjectCallback.run();
@@ -74,32 +70,4 @@ public class HubActionService {
         this.openProjectCallback = callback;
     }
 
-    /**
-     * Get the pending template for creation.
-     */
-    public ProjectTemplate getPendingTemplate() {
-        return pendingTemplate;
-    }
-
-    /**
-     * Get the pending project for opening.
-     */
-    public RecentProject getPendingProject() {
-        return pendingProject;
-    }
-
-    /**
-     * Clear pending actions.
-     */
-    public void clearPending() {
-        this.pendingTemplate = null;
-        this.pendingProject = null;
-    }
-
-    /**
-     * Check if there's a pending action.
-     */
-    public boolean hasPendingAction() {
-        return pendingTemplate != null || pendingProject != null;
-    }
 }

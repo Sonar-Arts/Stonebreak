@@ -10,7 +10,6 @@ public class NavigationItem {
 
     private final String id;
     private final String label;
-    private final String iconText;
     private final ViewType viewType;
     private final Runnable onSelectAction;
 
@@ -24,10 +23,9 @@ public class NavigationItem {
         SETTINGS
     }
 
-    public NavigationItem(String id, String label, String iconText, ViewType viewType, Runnable onSelectAction) {
+    public NavigationItem(String id, String label, ViewType viewType, Runnable onSelectAction) {
         this.id = Objects.requireNonNull(id, "Navigation ID cannot be null");
         this.label = Objects.requireNonNull(label, "Navigation label cannot be null");
-        this.iconText = iconText != null ? iconText : "";
         this.viewType = Objects.requireNonNull(viewType, "View type cannot be null");
         this.onSelectAction = onSelectAction;
     }
@@ -40,10 +38,6 @@ public class NavigationItem {
 
     public String getLabel() {
         return label;
-    }
-
-    public String getIconText() {
-        return iconText;
     }
 
     public ViewType getViewType() {

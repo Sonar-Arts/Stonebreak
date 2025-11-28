@@ -9,7 +9,6 @@ import imgui.ImGui;
 
 /**
  * View menu handler.
- * Follows Single Responsibility Principle - only handles view menu operations.
  */
 public class ViewMenuHandler {
 
@@ -67,9 +66,7 @@ public class ViewMenuHandler {
 
         ImGui.separator();
 
-        if (ImGui.menuItem("Show 3D Viewport", "Ctrl+1", true)) {
-            // Viewport always visible in current implementation
-        }
+        ImGui.menuItem("Show 3D Viewport", "Ctrl+1", true);// Viewport always visible in current implementation
 
         if (ImGui.menuItem("Show Model Browser", "Ctrl+2", uiState.getShowModelBrowser().get())) {
             uiState.toggleModelBrowser();

@@ -6,7 +6,6 @@ import java.util.Objects;
 /**
  * Immutable recent project entry.
  * Contains metadata for previously opened projects (mock data for Phase 1).
- *
  * Uses Builder pattern for flexible construction following best practices.
  */
 public class RecentProject {
@@ -15,7 +14,6 @@ public class RecentProject {
     private final String name;
     private final String path;
     private final LocalDateTime lastOpened;
-    private final String thumbnailPath;
     private final String description;
     private final ProjectTemplate sourceTemplate;
 
@@ -24,7 +22,6 @@ public class RecentProject {
         this.name = Objects.requireNonNull(builder.name, "Project name cannot be null");
         this.path = builder.path != null ? builder.path : "";
         this.lastOpened = Objects.requireNonNull(builder.lastOpened, "Last opened time cannot be null");
-        this.thumbnailPath = builder.thumbnailPath;
         this.description = builder.description != null ? builder.description : "";
         this.sourceTemplate = builder.sourceTemplate;
     }
@@ -45,10 +42,6 @@ public class RecentProject {
 
     public LocalDateTime getLastOpened() {
         return lastOpened;
-    }
-
-    public String getThumbnailPath() {
-        return thumbnailPath;
     }
 
     public String getDescription() {
@@ -89,10 +82,14 @@ public class RecentProject {
         private String id;
         private String name;
         private String path;
-        private LocalDateTime lastOpened;
-        private String thumbnailPath;
+        private final LocalDateTime lastOpened;
         private String description;
-        private ProjectTemplate sourceTemplate;
+        private final ProjectTemplate sourceTemplate;
+
+        public Builder(LocalDateTime lastOpened, ProjectTemplate sourceTemplate) {
+            this.lastOpened = lastOpened;
+            this.sourceTemplate = sourceTemplate;
+        }
 
         public Builder id(String id) {
             this.id = id;
@@ -109,23 +106,8 @@ public class RecentProject {
             return this;
         }
 
-        public Builder lastOpened(LocalDateTime lastOpened) {
-            this.lastOpened = lastOpened;
-            return this;
-        }
-
-        public Builder thumbnailPath(String thumbnailPath) {
-            this.thumbnailPath = thumbnailPath;
-            return this;
-        }
-
         public Builder description(String description) {
             this.description = description;
-            return this;
-        }
-
-        public Builder sourceTemplate(ProjectTemplate sourceTemplate) {
-            this.sourceTemplate = sourceTemplate;
             return this;
         }
 

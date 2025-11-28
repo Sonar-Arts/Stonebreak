@@ -7,7 +7,6 @@ import java.util.Objects;
 /**
  * Immutable project template definition.
  * Represents a template that users can create new projects from.
- *
  * Uses Builder pattern for flexible construction following best practices.
  */
 public class ProjectTemplate {
@@ -16,8 +15,6 @@ public class ProjectTemplate {
     private final String name;
     private final String description;
     private final String category;
-    private final String iconPath;
-    private final String previewImagePath;
     private final TemplateType type;
     private final Map<String, String> metadata;
 
@@ -38,8 +35,6 @@ public class ProjectTemplate {
         this.name = Objects.requireNonNull(builder.name, "Template name cannot be null");
         this.description = builder.description != null ? builder.description : "";
         this.category = builder.category != null ? builder.category : "General";
-        this.iconPath = builder.iconPath;
-        this.previewImagePath = builder.previewImagePath;
         this.type = Objects.requireNonNull(builder.type, "Template type cannot be null");
         this.metadata = new HashMap<>(builder.metadata);
     }
@@ -60,14 +55,6 @@ public class ProjectTemplate {
 
     public String getCategory() {
         return category;
-    }
-
-    public String getIconPath() {
-        return iconPath;
-    }
-
-    public String getPreviewImagePath() {
-        return previewImagePath;
     }
 
     public TemplateType getType() {
@@ -113,8 +100,6 @@ public class ProjectTemplate {
         private String name;
         private String description;
         private String category;
-        private String iconPath;
-        private String previewImagePath;
         private TemplateType type;
         private final Map<String, String> metadata = new HashMap<>();
 
@@ -135,16 +120,6 @@ public class ProjectTemplate {
 
         public Builder category(String category) {
             this.category = category;
-            return this;
-        }
-
-        public Builder iconPath(String iconPath) {
-            this.iconPath = iconPath;
-            return this;
-        }
-
-        public Builder previewImagePath(String previewImagePath) {
-            this.previewImagePath = previewImagePath;
             return this;
         }
 

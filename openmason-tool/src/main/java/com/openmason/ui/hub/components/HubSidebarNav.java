@@ -5,7 +5,6 @@ import com.openmason.ui.hub.model.NavigationItem;
 import com.openmason.ui.hub.state.HubState;
 import com.openmason.ui.themes.core.ThemeDefinition;
 import com.openmason.ui.themes.core.ThemeManager;
-import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -141,7 +140,6 @@ public class HubSidebarNav {
         items.add(new NavigationItem(
                 "templates",
                 "Templates",
-                "",
                 NavigationItem.ViewType.TEMPLATES,
                 () -> hubState.setCurrentView(NavigationItem.ViewType.TEMPLATES)
         ));
@@ -149,7 +147,6 @@ public class HubSidebarNav {
         items.add(new NavigationItem(
                 "recent-projects",
                 "Projects",
-                "",
                 NavigationItem.ViewType.RECENT_PROJECTS,
                 () -> hubState.setCurrentView(NavigationItem.ViewType.RECENT_PROJECTS)
         ));
@@ -157,7 +154,6 @@ public class HubSidebarNav {
         items.add(new NavigationItem(
                 "learn",
                 "Learn",
-                "",
                 NavigationItem.ViewType.LEARN,
                 () -> hubState.setCurrentView(NavigationItem.ViewType.LEARN)
         ));

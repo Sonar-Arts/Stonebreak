@@ -18,23 +18,11 @@ public class HubState {
     private ProjectTemplate selectedTemplate;
     private RecentProject selectedRecentProject;
     private String searchQuery = "";
-    private String filterCategory = "All";
-
     private final List<StateChangeListener> listeners = new ArrayList<>();
 
     // State change listener interface
     public interface StateChangeListener {
         void onStateChanged(HubState state);
-    }
-
-    public void addListener(StateChangeListener listener) {
-        if (listener != null && !listeners.contains(listener)) {
-            listeners.add(listener);
-        }
-    }
-
-    public void removeListener(StateChangeListener listener) {
-        listeners.remove(listener);
     }
 
     private void notifyListeners() {
@@ -96,17 +84,6 @@ public class HubState {
     public void setSearchQuery(String searchQuery) {
         if (!this.searchQuery.equals(searchQuery)) {
             this.searchQuery = searchQuery != null ? searchQuery : "";
-            notifyListeners();
-        }
-    }
-
-    public String getFilterCategory() {
-        return filterCategory;
-    }
-
-    public void setFilterCategory(String filterCategory) {
-        if (!this.filterCategory.equals(filterCategory)) {
-            this.filterCategory = filterCategory != null ? filterCategory : "All";
             notifyListeners();
         }
     }

@@ -11,11 +11,9 @@ import imgui.ImGui;
 public class EditMenuHandler {
 
     private final UIVisibilityState uiState;
-    private final StatusService statusService;
 
     public EditMenuHandler(UIVisibilityState uiState, StatusService statusService) {
         this.uiState = uiState;
-        this.statusService = statusService;
     }
 
     /**

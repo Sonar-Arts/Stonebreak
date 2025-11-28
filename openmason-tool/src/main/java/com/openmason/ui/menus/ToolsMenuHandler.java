@@ -4,7 +4,6 @@ import imgui.ImGui;
 
 /**
  * Tools menu handler.
- * Follows Single Responsibility Principle - only handles tools menu operations.
  */
 public class ToolsMenuHandler {
 

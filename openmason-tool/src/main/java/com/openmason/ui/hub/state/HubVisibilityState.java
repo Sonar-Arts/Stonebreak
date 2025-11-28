@@ -12,34 +12,8 @@ public class HubVisibilityState {
     private final ImBoolean showPreviewPanel = new ImBoolean(true);
     private final ImBoolean showTopToolbar = new ImBoolean(true);
 
-    // Getters for ImBoolean references (allows direct binding to ImGui)
 
-    public ImBoolean getShowSidebar() {
-        return showSidebar;
-    }
-
-    public ImBoolean getShowPreviewPanel() {
-        return showPreviewPanel;
-    }
-
-    public ImBoolean getShowTopToolbar() {
-        return showTopToolbar;
-    }
-
-    // Convenience methods
-
-    public void setSidebarVisible(boolean visible) {
-        showSidebar.set(visible);
-    }
-
-    public void setPreviewPanelVisible(boolean visible) {
-        showPreviewPanel.set(visible);
-    }
-
-    public void setTopToolbarVisible(boolean visible) {
-        showTopToolbar.set(visible);
-    }
-
+//  getters
     public boolean isSidebarVisible() {
         return showSidebar.get();
     }

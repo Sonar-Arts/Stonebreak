@@ -1,11 +1,7 @@
 package com.openmason.ui.hub.components;
 
 import com.openmason.ui.hub.state.HubState;
-import com.openmason.ui.themes.core.ThemeDefinition;
-import com.openmason.ui.themes.core.ThemeManager;
 import imgui.ImGui;
-import imgui.ImVec4;
-import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiInputTextFlags;
 import imgui.type.ImString;
 
@@ -15,14 +11,11 @@ import imgui.type.ImString;
  */
 public class HubTopToolbar {
 
-    private final ThemeManager themeManager;
     private final HubState hubState;
     private final ImString searchBuffer = new ImString(256);
-    private String editorVersion = "Open Mason v0.0.2";
     private Runnable onPreferencesClicked;
 
-    public HubTopToolbar(ThemeManager themeManager, HubState hubState) {
-        this.themeManager = themeManager;
+    public HubTopToolbar(HubState hubState) {
         this.hubState = hubState;
     }
 
@@ -30,9 +23,8 @@ public class HubTopToolbar {
      * Render the top toolbar.
      */
     public void render() {
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-
         // Version info (left side)
+        String editorVersion = "Open Mason v0.0.2";
         ImGui.text(editorVersion);
         ImGui.sameLine();
         ImGui.spacing();
@@ -52,7 +44,6 @@ public class HubTopToolbar {
 
         // Push to right side
         float windowWidth = ImGui.getWindowWidth();
-        float cursorX = ImGui.getCursorPosX();
         float itemWidth = 100.0f; // Approximate width for preferences button
         ImGui.setCursorPosX(windowWidth - itemWidth);
 
@@ -75,10 +66,4 @@ public class HubTopToolbar {
         this.onPreferencesClicked = callback;
     }
 
-    /**
-     * Set editor version text.
-     */
-    public void setEditorVersion(String version) {
-        this.editorVersion = version != null ? version : "Open Mason";
-    }
 }

@@ -6,14 +6,10 @@ import imgui.ImGui;
 
 /**
  * Menu bar coordinator - composes all menu handlers.
- * Extends BaseMenuBarRenderer for consistent styling and DRY principles.
- * Follows Single Responsibility Principle - only coordinates menu rendering.
- * Follows Open/Closed Principle - easy to add new menus without modification.
  */
 public class MenuBarCoordinator extends BaseMenuBarRenderer {
 
     private final UIVisibilityState uiState;
-    private final LogoManager logoManager;
 
     private final FileMenuHandler fileMenu;
     private final EditMenuHandler editMenu;
@@ -26,7 +22,6 @@ public class MenuBarCoordinator extends BaseMenuBarRenderer {
                               ViewMenuHandler viewMenu, ToolsMenuHandler toolsMenu,
                               AboutMenuHandler aboutMenu) {
         this.uiState = uiState;
-        this.logoManager = logoManager;
         this.fileMenu = fileMenu;
         this.editMenu = editMenu;
         this.viewMenu = viewMenu;

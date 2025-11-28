@@ -244,25 +244,4 @@ public class TemplatesPanel {
         }
     }
 
-    /**
-     * Get icon for template type.
-     */
-    private String getTemplateIcon(ProjectTemplate.TemplateType type) {
-        switch (type) {
-            case BASIC_3D_MODEL:
-                return "[MODEL]";
-            case ADVANCED_3D_MODEL:
-                return "[3D]";
-            case TEXTURE_PACK:
-                return "[TEXTURE]";
-            case BLOCK_SET:
-                return "[BLOCK]";
-            case FULL_GAME_TEMPLATE:
-                return "[GAME]";
-            case CUSTOM:
-                return "[NEW]";
-            default:
-                return "[PROJECT]";
-        }
-    }
 }

@@ -234,22 +234,14 @@ public class RecentProjectsPanel {
             return "[P]";
         }
 
-        switch (project.getSourceTemplate().getType()) {
-            case BASIC_3D_MODEL:
-                return "[M]";
-            case ADVANCED_3D_MODEL:
-                return "[3D]";
-            case TEXTURE_PACK:
-                return "[T]";
-            case BLOCK_SET:
-                return "[B]";
-            case FULL_GAME_TEMPLATE:
-                return "[G]";
-            case CUSTOM:
-                return "[P]";
-            default:
-                return "[P]";
-        }
+        return switch (project.getSourceTemplate().getType()) {
+            case BASIC_3D_MODEL -> "[M]";
+            case ADVANCED_3D_MODEL -> "[3D]";
+            case TEXTURE_PACK -> "[T]";
+            case BLOCK_SET -> "[B]";
+            case FULL_GAME_TEMPLATE -> "[G]";
+            case CUSTOM -> "[P]";
+        };
     }
 
     /**
