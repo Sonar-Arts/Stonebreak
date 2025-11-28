@@ -289,8 +289,7 @@ public class RenderPipeline {
                 matrixShader.getModelMatrixLocation(),
                 vpArray,
                 transformState.getTransformMatrix(),
-                matrixShader.getTextureLocation(),
-                matrixShader.getUseTextureLocation()
+                    matrixShader.getUseTextureLocation()
             );
 
             logger.trace("Item rendered: {}", renderingState.getSelectedItem().name());

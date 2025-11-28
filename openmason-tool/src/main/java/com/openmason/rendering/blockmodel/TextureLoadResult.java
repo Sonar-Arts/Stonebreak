@@ -2,16 +2,6 @@ package com.openmason.rendering.blockmodel;
 
 /**
  * Result of loading an OMT texture file.
- * Contains both the OpenGL texture ID and metadata about the texture.
- *
- * <p>Design Principles:
- * <ul>
- *   <li>KISS: Simple data container with essential properties</li>
- *   <li>SOLID: Single responsibility - holds texture load results only</li>
- *   <li>Immutable: All fields final for thread safety</li>
- * </ul>
- *
- * @since 1.0
  */
 public class TextureLoadResult {
 
@@ -23,11 +13,6 @@ public class TextureLoadResult {
 
     /**
      * Creates a successful texture load result.
-     *
-     * @param textureId OpenGL texture ID
-     * @param width texture width in pixels
-     * @param height texture height in pixels
-     * @param hasTransparency true if texture contains transparent/translucent pixels
      */
     public TextureLoadResult(int textureId, int width, int height, boolean hasTransparency) {
         this.textureId = textureId;
@@ -39,8 +24,6 @@ public class TextureLoadResult {
 
     /**
      * Creates a failed texture load result.
-     *
-     * @return failed result with 0 textureId
      */
     public static TextureLoadResult failed() {
         return new TextureLoadResult(0, 0, 0, false);
@@ -48,8 +31,6 @@ public class TextureLoadResult {
 
     /**
      * Gets the OpenGL texture ID.
-     *
-     * @return texture ID, or 0 if load failed
      */
     public int getTextureId() {
         return textureId;
@@ -57,8 +38,6 @@ public class TextureLoadResult {
 
     /**
      * Gets the texture width.
-     *
-     * @return width in pixels
      */
     public int getWidth() {
         return width;
@@ -66,8 +45,6 @@ public class TextureLoadResult {
 
     /**
      * Gets the texture height.
-     *
-     * @return height in pixels
      */
     public int getHeight() {
         return height;
@@ -75,8 +52,6 @@ public class TextureLoadResult {
 
     /**
      * Checks if the texture loaded successfully.
-     *
-     * @return true if textureId > 0
      */
     public boolean isSuccess() {
         return success;
@@ -84,8 +59,6 @@ public class TextureLoadResult {
 
     /**
      * Checks if the texture contains transparent or translucent pixels.
-     *
-     * @return true if texture has alpha values less than 255
      */
     public boolean hasTransparency() {
         return hasTransparency;
@@ -93,8 +66,6 @@ public class TextureLoadResult {
 
     /**
      * Checks if this is a cube net texture (64x48).
-     *
-     * @return true if dimensions are 64x48
      */
     public boolean isCubeNet() {
         return width == 64 && height == 48;
@@ -102,8 +73,6 @@ public class TextureLoadResult {
 
     /**
      * Checks if this is a flat texture (16x16).
-     *
-     * @return true if dimensions are 16x16
      */
     public boolean isFlat16x16() {
         return width == 16 && height == 16;

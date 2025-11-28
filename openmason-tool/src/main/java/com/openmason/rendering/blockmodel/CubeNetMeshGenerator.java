@@ -46,9 +46,7 @@ package com.openmason.rendering.blockmodel;
 public class CubeNetMeshGenerator {
 
     // Cube net dimensions (standard for Minecraft-style cube nets)
-    private static final int TEXTURE_WIDTH = 64;
     private static final int TEXTURE_HEIGHT = 48;
-    private static final int FACE_SIZE = 16;
 
     // No UV inset needed with GL_NEAREST filtering (no interpolation = no bleeding)
     // This gives full 16x16 pixel coverage per face with no edge cutoff
@@ -65,8 +63,6 @@ public class CubeNetMeshGenerator {
     // Mesh properties
     private static final int VERTICES_PER_FACE = 4;
     private static final int FACES = 6;
-    private static final int TOTAL_VERTICES = VERTICES_PER_FACE * FACES;
-    private static final int FLOATS_PER_VERTEX = 5; // x, y, z, u, v
     private static final int INDICES_PER_FACE = 6;  // 2 triangles * 3 vertices
     private static final int TOTAL_INDICES = INDICES_PER_FACE * FACES;
 
@@ -184,56 +180,16 @@ public class CubeNetMeshGenerator {
             int baseVertex = face * VERTICES_PER_FACE;
 
             // Triangle 1: vertices 0, 1, 2
-            indices[idx++] = baseVertex + 0;
+            indices[idx++] = baseVertex;
             indices[idx++] = baseVertex + 1;
             indices[idx++] = baseVertex + 2;
 
             // Triangle 2: vertices 2, 3, 0
             indices[idx++] = baseVertex + 2;
             indices[idx++] = baseVertex + 3;
-            indices[idx++] = baseVertex + 0;
+            indices[idx++] = baseVertex;
         }
 
         return indices;
-    }
-
-    /**
-     * Gets the number of vertices per face.
-     * @return vertices per face (always 4)
-     */
-    public static int getVerticesPerFace() {
-        return VERTICES_PER_FACE;
-    }
-
-    /**
-     * Gets the total number of vertices in the cube mesh.
-     * @return total vertices (24 = 4 per face * 6 faces)
-     */
-    public static int getTotalVertices() {
-        return TOTAL_VERTICES;
-    }
-
-    /**
-     * Gets the number of floats per vertex.
-     * @return floats per vertex (5 = position XYZ + texture UV)
-     */
-    public static int getFloatsPerVertex() {
-        return FLOATS_PER_VERTEX;
-    }
-
-    /**
-     * Gets the total number of indices.
-     * @return total indices (36 = 6 per face * 6 faces)
-     */
-    public static int getTotalIndices() {
-        return TOTAL_INDICES;
-    }
-
-    /**
-     * Gets the number of indices per face.
-     * @return indices per face (6 = 2 triangles * 3 vertices)
-     */
-    public static int getIndicesPerFace() {
-        return INDICES_PER_FACE;
     }
 }

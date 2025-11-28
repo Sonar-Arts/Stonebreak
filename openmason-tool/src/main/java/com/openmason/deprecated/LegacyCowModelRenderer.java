@@ -34,8 +34,6 @@ import java.nio.FloatBuffer;
  *             - {@link com.openmason.deprecated.LegacyCowModelManager} for coordinate space management
  *             - {@link com.openmason.deprecated.LegacyCowCoordinateSystemIntegration} for mesh generation
  *             - {@link com.openmason.deprecated.LegacyCowTextureAtlas} for texture management
- *             - {@link TextureCoordinateBuffer} (deprecated) for cow-specific UV mapping
- *             - {@link TextureAtlas} (deprecated) for cow texture generation
  *             <p>
  *             <b>Used by:</b>
  *             - {@link ViewportController} for cow model visualization
@@ -238,11 +236,6 @@ public class LegacyCowModelRenderer implements AutoCloseable {
                 textureCoordinates = integratedData.getTextureCoordinates();
                 // System.out.println("Using integrated texture coordinates for part: " + partName);
             }
-            
-            // Create VAO for matrix-based rendering with proper texture coordinates
-            VertexArray vao = VertexArray.fromModelPart(vertices, indices, textureDefinition, textureField, partName, vaoKey);
-            
-            modelPartVAOs.put(partName, vao);
             currentTextureVariants.put(partName, "default");
             
             return true;
@@ -785,7 +778,6 @@ public class LegacyCowModelRenderer implements AutoCloseable {
                 if (vao != null) {
                     System.out.println("[ModelRenderer] Updating " + partName + " (texture: " + textureField + ") to variant: " + textureVariant);
                     // Use the dynamically loaded variant definition instead of model's fixed definition
-                    vao.updateTextureVariant(variantDefinition, partName, textureVariant);
                     currentTextureVariants.put(partName, textureVariant);
                 } else {
                     System.err.println("[ModelRenderer] ERROR: No VAO found for part: " + partName);

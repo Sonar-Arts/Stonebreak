@@ -14,13 +14,6 @@ import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Simple block renderer for Open Mason following KISS principles.
- * Leverages CBR API's built-in rendering capabilities instead of recreating
- * buffer management logic.
- *
- * Design Principles:
- * - KISS: Simple delegation to CBR API
- * - YAGNI: Only implements basic rendering
- * - DRY: Reuses CBR rendering, no duplicate code
  */
 public class BlockRenderer implements AutoCloseable {
 
@@ -244,34 +237,7 @@ public class BlockRenderer implements AutoCloseable {
 
 
     /**
-     * Gets the currently rendered block type.
-     *
-     * @return The current block type or null
-     */
-    public BlockType getCurrentBlock() {
-        return currentBlock;
-    }
-
-    /**
-     * Gets the total number of render calls.
-     *
-     * @return Number of render calls
-     */
-    public long getTotalRenderCalls() {
-        return totalRenderCalls;
-    }
-
-    /**
-     * Resets statistics.
-     */
-    public void resetStatistics() {
-        totalRenderCalls = 0;
-    }
-
-    /**
      * Checks if the renderer is initialized.
-     *
-     * @return true if initialized
      */
     public boolean isInitialized() {
         return initialized;
@@ -279,32 +245,11 @@ public class BlockRenderer implements AutoCloseable {
 
     /**
      * Gets rendering statistics as a string.
-     *
-     * @return Statistics string
      */
     public String getStatistics() {
         return String.format("[%s] Stats: %d render calls, current block: %s",
             debugPrefix, totalRenderCalls,
             currentBlock != null ? currentBlock.name() : "none");
-    }
-
-    /**
-     * Validates that a block can be rendered.
-     *
-     * @param blockType The block type to validate
-     * @return true if the block can be rendered
-     */
-    public boolean canRender(BlockType blockType) {
-        if (!initialized || blockType == null) {
-            return false;
-        }
-
-        try {
-            BlockManager manager = BlockManager.getInstance();
-            return manager.validateBlock(blockType);
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     /**
@@ -317,17 +262,5 @@ public class BlockRenderer implements AutoCloseable {
             initialized = false;
             currentBlock = null;
         }
-    }
-
-    /**
-     * Static utility to create and initialize a BlockRenderer.
-     *
-     * @param debugPrefix Debug prefix
-     * @return Initialized BlockRenderer
-     */
-    public static BlockRenderer createAndInitialize(String debugPrefix) {
-        BlockRenderer renderer = new BlockRenderer(debugPrefix);
-        renderer.initialize();
-        return renderer;
     }
 }

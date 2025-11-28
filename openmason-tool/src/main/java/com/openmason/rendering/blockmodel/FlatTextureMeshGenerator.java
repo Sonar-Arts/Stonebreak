@@ -2,18 +2,6 @@ package com.openmason.rendering.blockmodel;
 
 /**
  * Generates cube mesh with flat texture UV mapping.
- *
- * <p>For 16x16 flat textures where the same texture is applied to all faces.
- * Each face uses simple 0-1 UV coordinates mapping the entire texture to each face.
- *
- * <p>Design Principles:
- * <ul>
- *   <li>KISS: Simple UV coordinates (0-1 for each face)</li>
- *   <li>DRY: Reuses CubeNetMeshGenerator's vertex positions and indices</li>
- *   <li>SOLID: Single responsibility - generates flat texture UVs only</li>
- * </ul>
- *
- * @since 1.0
  */
 public class FlatTextureMeshGenerator {
 
@@ -22,9 +10,6 @@ public class FlatTextureMeshGenerator {
 
     /**
      * Generates vertex data with flat texture UV mapping.
-     * Each face gets simple 0-1 UV coordinates.
-     *
-     * @return interleaved vertex data (position + UVs)
      */
     public static float[] generateVertices() {
         float[] vertices = new float[6 * VERTICES_PER_FACE * FLOATS_PER_VERTEX];
@@ -85,14 +70,6 @@ public class FlatTextureMeshGenerator {
 
     /**
      * Adds a quad to the vertex array with simple 0-1 UV coordinates.
-     *
-     * @param vertices target array
-     * @param offset current offset in array
-     * @param x0, y0, z0 top-left vertex position
-     * @param x1, y1, z1 top-right vertex position
-     * @param x2, y2, z2 bottom-right vertex position
-     * @param x3, y3, z3 bottom-left vertex position
-     * @return new offset after adding vertices
      */
     private static int addQuad(float[] vertices, int offset,
                                float x0, float y0, float z0,
@@ -128,15 +105,5 @@ public class FlatTextureMeshGenerator {
         vertices[offset++] = 1.0f;  // V
 
         return offset;
-    }
-
-    /**
-     * Generates indices for the cube (same for both UV modes).
-     * Delegates to CubeNetMeshGenerator for DRY compliance.
-     *
-     * @return index array
-     */
-    public static int[] generateIndices() {
-        return CubeNetMeshGenerator.generateIndices();
     }
 }

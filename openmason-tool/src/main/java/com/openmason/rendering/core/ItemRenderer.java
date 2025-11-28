@@ -1,7 +1,6 @@
 package com.openmason.rendering.core;
 
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.player.items.voxelization.ColorPalette;
 import com.stonebreak.rendering.player.items.voxelization.VoxelMesh;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.player.items.voxelization.VoxelData;
@@ -17,12 +16,6 @@ import static org.lwjgl.opengl.GL20.*;
 /**
  * Simple item renderer for Open Mason following the same pattern as BlockRenderer.
  * Leverages the voxelization system to render 3D item representations.
- *
- * Design Principles:
- * - KISS: Simple delegation to ItemManager and VoxelMesh
- * - YAGNI: Only implements basic voxelized item rendering
- * - DRY: Reuses voxelization API, no duplicate code
- * - API Consistency: Mirrors BlockRenderer's interface
  */
 public class ItemRenderer implements AutoCloseable {
 
@@ -70,13 +63,12 @@ public class ItemRenderer implements AutoCloseable {
      * @param modelLocation Location of model matrix uniform
      * @param vpMatrix View-projection matrix from camera
      * @param modelMatrix Model transformation matrix
-     * @param textureLocation Location of texture sampler uniform (unused for items)
      * @param useTextureLocation Location of useTexture flag uniform (unused for items)
      */
     public void renderItem(ItemType itemType, int shaderProgram,
                           int mvpLocation, int modelLocation,
                           float[] vpMatrix, Matrix4f modelMatrix,
-                          int textureLocation, int useTextureLocation) {
+                           int useTextureLocation) {
         if (!initialized) {
             throw new IllegalStateException("ItemRenderer not initialized");
         }
@@ -168,10 +160,9 @@ public class ItemRenderer implements AutoCloseable {
             glCullFace(GL_BACK);
 
             // Get voxel data from ItemManager
-            ItemManager manager = ItemManager.getInstance();
             SpriteVoxelizer.VoxelizationResult result = SpriteVoxelizer.voxelizeSpriteWithPalette(itemType);
 
-            if (result == null || !result.isValid() || result.getVoxels().isEmpty()) {
+            if (!result.isValid() || result.getVoxels().isEmpty()) {
                 System.err.println("[" + debugPrefix + "] No voxel data available for " + itemType);
                 return;
             }
@@ -192,7 +183,6 @@ public class ItemRenderer implements AutoCloseable {
                 float red = ((rgba >> 16) & 0xFF) / 255.0f;
                 float green = ((rgba >> 8) & 0xFF) / 255.0f;
                 float blue = (rgba & 0xFF) / 255.0f;
-                float alpha = ((rgba >> 24) & 0xFF) / 255.0f;
 
                 // Set color uniform for this voxel (using vec3 to match shader)
                 if (colorLocation != -1) {
@@ -201,7 +191,7 @@ public class ItemRenderer implements AutoCloseable {
 
                 // Render this voxel's faces
                 int startIndex = i * facesPerVoxel * indicesPerFace;
-                glDrawElements(GL_TRIANGLES, facesPerVoxel * indicesPerFace, GL_UNSIGNED_INT, startIndex * Integer.BYTES);
+                glDrawElements(GL_TRIANGLES, facesPerVoxel * indicesPerFace, GL_UNSIGNED_INT, (long) startIndex * Integer.BYTES);
             }
 
             mesh.unbind();
@@ -216,125 +206,6 @@ public class ItemRenderer implements AutoCloseable {
             System.err.println("[" + debugPrefix + "] Error rendering voxel mesh: " + e.getMessage());
             e.printStackTrace();
         }
-    }
-
-    /**
-     * Renders an item with transparency support.
-     * Uses special rendering settings for items with alpha channels.
-     *
-     * @param itemType The item type to render
-     * @param shaderProgram The shader program to use
-     * @param mvpLocation Location of MVP matrix uniform
-     * @param modelLocation Location of model matrix uniform
-     * @param vpMatrix View-projection matrix from camera
-     * @param modelMatrix Model transformation matrix
-     * @param textureLocation Location of texture sampler uniform
-     * @param useTextureLocation Location of useTexture flag uniform
-     * @param enableTransparency Whether to enable transparency rendering
-     */
-    public void renderItemWithTransparency(ItemType itemType, int shaderProgram,
-                                          int mvpLocation, int modelLocation,
-                                          float[] vpMatrix, Matrix4f modelMatrix,
-                                          int textureLocation, int useTextureLocation,
-                                          boolean enableTransparency) {
-        if (!initialized) {
-            throw new IllegalStateException("ItemRenderer not initialized");
-        }
-
-        if (itemType == null) {
-            System.err.println("[" + debugPrefix + "] Cannot render null item type");
-            return;
-        }
-
-        try {
-            ItemManager manager = ItemManager.getInstance();
-            VoxelMesh mesh = manager.getItemMesh(itemType);
-            ColorPalette palette = manager.getItemPalette(itemType);
-
-            if (mesh == null || !mesh.isCreated()) {
-                return;
-            }
-
-            // Use the shader program
-            glUseProgram(shaderProgram);
-
-            // Set uniforms
-            if (mvpLocation != -1 && vpMatrix != null) {
-                glUniformMatrix4fv(mvpLocation, false, vpMatrix);
-            }
-            if (modelLocation != -1 && modelMatrix != null) {
-                modelMatrix.get(matrixBuffer);
-                glUniformMatrix4fv(modelLocation, false, matrixBuffer);
-            }
-
-            // Bind palette
-            if (palette != null) {
-                palette.bind();
-                if (textureLocation != -1) {
-                    glUniform1i(textureLocation, 0);
-                }
-                if (useTextureLocation != -1) {
-                    glUniform1i(useTextureLocation, 1);
-                }
-            }
-
-            // Special transparency handling
-            if (enableTransparency) {
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glDepthMask(false); // Don't write to depth buffer for transparent objects
-                glDisable(GL_CULL_FACE); // Render both sides for transparent objects
-            } else {
-                glDisable(GL_BLEND);
-                glDepthMask(true);
-                glEnable(GL_CULL_FACE);
-                glCullFace(GL_BACK);
-            }
-
-            // Render
-            mesh.bind();
-            glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
-            mesh.unbind();
-
-            // Restore state
-            if (enableTransparency) {
-                glDisable(GL_BLEND);
-                glDepthMask(true);
-                glEnable(GL_CULL_FACE);
-            }
-
-            currentItem = itemType;
-            totalRenderCalls++;
-
-        } catch (Exception e) {
-            System.err.println("[" + debugPrefix + "] Error rendering item with transparency: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Gets the currently rendered item type.
-     *
-     * @return The current item type or null
-     */
-    public ItemType getCurrentItem() {
-        return currentItem;
-    }
-
-    /**
-     * Gets the total number of render calls.
-     *
-     * @return Number of render calls
-     */
-    public long getTotalRenderCalls() {
-        return totalRenderCalls;
-    }
-
-    /**
-     * Resets statistics.
-     */
-    public void resetStatistics() {
-        totalRenderCalls = 0;
     }
 
     /**
@@ -358,25 +229,6 @@ public class ItemRenderer implements AutoCloseable {
     }
 
     /**
-     * Validates that an item can be rendered.
-     *
-     * @param itemType The item type to validate
-     * @return true if the item can be rendered
-     */
-    public boolean canRender(ItemType itemType) {
-        if (!initialized || itemType == null) {
-            return false;
-        }
-
-        try {
-            ItemManager manager = ItemManager.getInstance();
-            return manager.validateItem(itemType);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
      * Cleanup resources.
      */
     @Override
@@ -388,15 +240,4 @@ public class ItemRenderer implements AutoCloseable {
         }
     }
 
-    /**
-     * Static utility to create and initialize an ItemRenderer.
-     *
-     * @param debugPrefix Debug prefix
-     * @return Initialized ItemRenderer
-     */
-    public static ItemRenderer createAndInitialize(String debugPrefix) {
-        ItemRenderer renderer = new ItemRenderer(debugPrefix);
-        renderer.initialize();
-        return renderer;
-    }
 }

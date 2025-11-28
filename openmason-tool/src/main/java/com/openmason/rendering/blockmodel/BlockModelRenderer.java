@@ -1,43 +1,16 @@
 package com.openmason.rendering.blockmodel;
 
-import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
-import static org.lwjgl.opengl.GL20.*;
+import static org.lwjgl.opengl.GL20.glEnableVertexAttribArray;
+import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Renderer for BlockModel instances (editable .OMO models).
- *
- * <p>Renders simple single-cube models with texture mapping from embedded .OMT files.
- * Uses standard OpenGL vertex buffers for efficient rendering.
- *
- * <p>Cube net UV mapping (64x48 texture):
- * <pre>
- *      [TOP]
- * [LEFT][FRONT][RIGHT][BACK]
- *      [BOTTOM]
- * </pre>
- *
- * <p>Design Principles:
- * <ul>
- *   <li>KISS: Simple cube mesh with basic texture mapping</li>
- *   <li>SOLID: Single responsibility - only renders BlockModels</li>
- *   <li>YAGNI: No complex features, just basic cube rendering</li>
- *   <li>DRY: Reuses OpenGL patterns from existing renderers</li>
- * </ul>
- *
- * @since 1.0
  */
 public class BlockModelRenderer {
 
@@ -49,9 +22,7 @@ public class BlockModelRenderer {
     private int ebo;  // Element Buffer Object
 
     // Cube properties
-    private static final int VERTICES_PER_FACE = 4;
     private static final int FACES = 6;
-    private static final int TOTAL_VERTICES = VERTICES_PER_FACE * FACES;
     private static final int FLOATS_PER_VERTEX = 5; // x, y, z, u, v
     private static final int INDICES_PER_FACE = 6;  // 2 triangles * 3 vertices
     private static final int TOTAL_INDICES = INDICES_PER_FACE * FACES;
@@ -153,15 +124,6 @@ public class BlockModelRenderer {
         this.textureId = textureLoadResult.getTextureId();
         this.hasTransparency = textureLoadResult.hasTransparency();
         logger.debug("Texture set: {} (transparency: {})", textureId, hasTransparency);
-    }
-
-    /**
-     * Gets whether the current texture has transparency.
-     *
-     * @return true if texture contains transparent/translucent pixels
-     */
-    public boolean hasTransparency() {
-        return hasTransparency;
     }
 
     /**
