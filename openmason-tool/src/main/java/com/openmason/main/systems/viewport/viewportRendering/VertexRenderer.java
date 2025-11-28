@@ -8,9 +8,7 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -42,11 +40,15 @@ public class VertexRenderer {
 
     // Hover state
     private int hoveredVertexIndex = -1; // -1 means no vertex is hovered
-    private float[] vertexPositions = null; // Store positions for hit testing
+    private float[] vertexPositions = null; // Store positions for hit testing (unique vertices only)
 
     // Selection state
     private int selectedVertexIndex = -1; // -1 means no vertex is selected
     private Set<Integer> modifiedVertices = new HashSet<>(); // Indices of modified vertices
+
+    // Mesh instance mapping (fixes vertex duplication bug)
+    private Map<Integer, List<Integer>> uniqueToMeshMapping = new HashMap<>(); // Maps unique vertex index to mesh vertex indices
+    private float[] allMeshVertices = null; // Store ALL mesh vertices for mapping
 
     // Vertex extraction (Single Responsibility)
     private final VertexExtractor vertexExtractor = new VertexExtractor();
@@ -99,6 +101,7 @@ public class VertexRenderer {
     /**
      * Update vertex data from a collection of model parts with transformation.
      * Generic method that works with ANY model type - cow, cube, sheep, future models.
+     * Extracts UNIQUE vertices only to prevent duplication bug.
      */
     public void updateVertexData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
@@ -109,18 +112,26 @@ public class VertexRenderer {
         if (parts == null || parts.isEmpty()) {
             vertexCount = 0;
             vertexPositions = null;
+            allMeshVertices = null;
+            uniqueToMeshMapping.clear();
             return;
         }
 
         try {
-            // Extract vertices using VertexExtractor (Single Responsibility)
-            float[] positions = vertexExtractor.extractVertices(parts, transformMatrix);
+            // Extract ALL mesh vertices (24 for cube) for mapping
+            allMeshVertices = vertexExtractor.extractVertices(parts, transformMatrix);
 
-            // Store positions for hit testing
-            vertexPositions = positions;
-            vertexCount = positions.length / 3;
+            // Extract UNIQUE vertices only (8 for cube) for rendering
+            float[] uniquePositions = vertexExtractor.extractUniqueVertices(parts, transformMatrix);
 
-            // Create interleaved vertex data (position + color)
+            // Store unique positions for hit testing
+            vertexPositions = uniquePositions;
+            vertexCount = uniquePositions.length / 3;
+
+            // Build mapping from unique vertex index to mesh vertex indices
+            buildUniqueToMeshMapping(uniquePositions, allMeshVertices);
+
+            // Create interleaved vertex data (position + color) using UNIQUE vertices
             // Color varies based on state: selected (white), modified (yellow), default (orange)
             float[] vertexData = new float[vertexCount * 6]; // 3 for position, 3 for color
 
@@ -128,10 +139,10 @@ public class VertexRenderer {
                 int posIndex = i * 3;
                 int dataIndex = i * 6;
 
-                // Copy position
-                vertexData[dataIndex + 0] = positions[posIndex + 0];
-                vertexData[dataIndex + 1] = positions[posIndex + 1];
-                vertexData[dataIndex + 2] = positions[posIndex + 2];
+                // Copy position from unique vertices
+                vertexData[dataIndex + 0] = uniquePositions[posIndex + 0];
+                vertexData[dataIndex + 1] = uniquePositions[posIndex + 1];
+                vertexData[dataIndex + 2] = uniquePositions[posIndex + 2];
 
                 // Determine color based on state (selected > modified > default)
                 Vector3f color;
@@ -160,6 +171,59 @@ public class VertexRenderer {
     }
 
     /**
+     * Build mapping from unique vertex indices to mesh vertex indices.
+     * For a cube: Each of the 8 unique corner vertices maps to 3 mesh vertex instances.
+     *
+     * @param uniquePositions Array of unique vertex positions
+     * @param meshPositions Array of ALL mesh vertex positions
+     */
+    private void buildUniqueToMeshMapping(float[] uniquePositions, float[] meshPositions) {
+        uniqueToMeshMapping.clear();
+
+        float epsilon = 0.0001f; // Same epsilon as VertexExtractor
+
+        // For each mesh vertex, find its matching unique vertex
+        int meshVertexCount = meshPositions.length / 3;
+        int uniqueVertexCount = uniquePositions.length / 3;
+
+        for (int meshIndex = 0; meshIndex < meshVertexCount; meshIndex++) {
+            int meshPosIndex = meshIndex * 3;
+            Vector3f meshPos = new Vector3f(
+                    meshPositions[meshPosIndex + 0],
+                    meshPositions[meshPosIndex + 1],
+                    meshPositions[meshPosIndex + 2]
+            );
+
+            // Find which unique vertex this mesh vertex matches
+            for (int uniqueIndex = 0; uniqueIndex < uniqueVertexCount; uniqueIndex++) {
+                int uniquePosIndex = uniqueIndex * 3;
+                Vector3f uniquePos = new Vector3f(
+                        uniquePositions[uniquePosIndex + 0],
+                        uniquePositions[uniquePosIndex + 1],
+                        uniquePositions[uniquePosIndex + 2]
+                );
+
+                if (meshPos.distance(uniquePos) < epsilon) {
+                    // Found matching unique vertex - add to mapping
+                    uniqueToMeshMapping.computeIfAbsent(uniqueIndex, k -> new ArrayList<>()).add(meshIndex);
+                    break;
+                }
+            }
+        }
+
+        logger.debug("Built vertex mapping: {} unique vertices → {} mesh vertices",
+                uniqueVertexCount, meshVertexCount);
+
+        // Log mapping for debugging (only for small models like cube)
+        if (uniqueVertexCount <= 10) {
+            for (Map.Entry<Integer, List<Integer>> entry : uniqueToMeshMapping.entrySet()) {
+                logger.trace("Unique vertex {} → mesh vertices {}",
+                        entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    /**
      * Handle mouse movement for vertex hover detection.
      * Follows the same pattern as GizmoRenderer.handleMouseMove().
      *
@@ -167,11 +231,13 @@ public class VertexRenderer {
      * @param mouseY Mouse Y coordinate in viewport space
      * @param viewMatrix Camera view matrix
      * @param projectionMatrix Camera projection matrix
+     * @param modelMatrix Model transformation matrix
      * @param viewportWidth Viewport width in pixels
      * @param viewportHeight Viewport height in pixels
      */
     public void handleMouseMove(float mouseX, float mouseY,
                                Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                               Matrix4f modelMatrix,
                                int viewportWidth, int viewportHeight) {
         if (!initialized || !enabled) {
             return;
@@ -182,10 +248,11 @@ public class VertexRenderer {
         }
 
         // Detect hovered vertex using screen-space point size detection
+        // Pass model matrix so vertices in model space are properly transformed
         int newHoveredVertex = VertexHoverDetector.detectHoveredVertex(
             mouseX, mouseY,
             viewportWidth, viewportHeight,
-            viewMatrix, projectionMatrix,
+            viewMatrix, projectionMatrix, modelMatrix,
             vertexPositions,
             vertexCount,
             pointSize  // Use actual vertex point size for accurate detection
@@ -204,8 +271,12 @@ public class VertexRenderer {
     /**
      * Render vertices as points.
      * KISS: Simple, focused rendering logic.
+     *
+     * @param shader The shader program to use
+     * @param context The render context
+     * @param modelMatrix The model transformation matrix (for gizmo transforms)
      */
-    public void render(ShaderProgram shader, RenderContext context) {
+    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
         if (!initialized) {
             logger.warn("VertexRenderer not initialized");
             return;
@@ -223,10 +294,10 @@ public class VertexRenderer {
             // Use shader
             shader.use();
 
-            // Calculate MVP matrix (model is identity since vertices are already transformed)
+            // Calculate MVP matrix with model transform (vertices are in model space)
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
-            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix);
+            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
 
             // Upload MVP matrix
             shader.setMat4("uMVPMatrix", mvpMatrix);
@@ -375,20 +446,22 @@ public class VertexRenderer {
     }
 
     /**
-     * Update a single vertex position (for live preview during drag).
-     * This modifies the GPU buffer directly without re-extracting all vertices.
+     * Update a single UNIQUE vertex position (for live preview during drag).
+     * This updates ALL mesh instances of this vertex to eliminate duplication.
+     * For example, when dragging corner vertex 0 on a cube, all 3 mesh instances
+     * at that corner are updated simultaneously.
      *
-     * @param index Vertex index to update
-     * @param position New world-space position
+     * @param uniqueIndex Unique vertex index to update (0-7 for cube)
+     * @param position New position in model space
      */
-    public void updateVertexPosition(int index, Vector3f position) {
+    public void updateVertexPosition(int uniqueIndex, Vector3f position) {
         if (!initialized) {
             logger.warn("Cannot update vertex position: renderer not initialized");
             return;
         }
 
-        if (index < 0 || index >= vertexCount) {
-            logger.warn("Invalid vertex index for position update: {} (max: {})", index, vertexCount - 1);
+        if (uniqueIndex < 0 || uniqueIndex >= vertexCount) {
+            logger.warn("Invalid vertex index for position update: {} (max: {})", uniqueIndex, vertexCount - 1);
             return;
         }
 
@@ -398,15 +471,14 @@ public class VertexRenderer {
         }
 
         try {
-            // Update in-memory position array
-            int posIndex = index * 3;
+            // Update in-memory position array (unique vertices)
+            int posIndex = uniqueIndex * 3;
             vertexPositions[posIndex + 0] = position.x;
             vertexPositions[posIndex + 1] = position.y;
             vertexPositions[posIndex + 2] = position.z;
 
-            // Update VBO (only the position part of this vertex)
-            // Vertex data is interleaved: [x,y,z, r,g,b, x,y,z, r,g,b, ...]
-            int dataIndex = index * 6; // 6 floats per vertex
+            // Update VBO for the unique vertex display
+            int dataIndex = uniqueIndex * 6; // 6 floats per vertex (x,y,z, r,g,b)
             long offset = dataIndex * Float.BYTES;
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -417,16 +489,32 @@ public class VertexRenderer {
             // Update only position floats in VBO (leave color unchanged)
             glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
 
+            // CRITICAL FIX: Update ALL mesh instances of this unique vertex
+            // This prevents the "cloning" bug where old vertex stays visible
+            List<Integer> meshIndices = uniqueToMeshMapping.get(uniqueIndex);
+            if (meshIndices != null && allMeshVertices != null) {
+                for (Integer meshIndex : meshIndices) {
+                    int meshPosIndex = meshIndex * 3;
+                    if (meshPosIndex + 2 < allMeshVertices.length) {
+                        allMeshVertices[meshPosIndex + 0] = position.x;
+                        allMeshVertices[meshPosIndex + 1] = position.y;
+                        allMeshVertices[meshPosIndex + 2] = position.z;
+                    }
+                }
+                logger.trace("Updated {} mesh instances for unique vertex {}",
+                        meshIndices.size(), uniqueIndex);
+            }
+
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-            logger.trace("Updated vertex {} position to ({}, {}, {})",
-                    index,
+            logger.trace("Updated unique vertex {} position to ({}, {}, {})",
+                    uniqueIndex,
                     String.format("%.2f", position.x),
                     String.format("%.2f", position.y),
                     String.format("%.2f", position.z));
 
         } catch (Exception e) {
-            logger.error("Error updating vertex position for index {}", index, e);
+            logger.error("Error updating vertex position for index {}", uniqueIndex, e);
         }
     }
 
@@ -454,6 +542,16 @@ public class VertexRenderer {
             vertexPositions[posIndex + 1],
             vertexPositions[posIndex + 2]
         );
+    }
+
+    /**
+     * Get all unique vertex positions as a flat array.
+     * Used for updating the BlockModelRenderer mesh when vertices are dragged.
+     *
+     * @return Array of vertex positions [x0,y0,z0, x1,y1,z1, ...] or null if no vertices
+     */
+    public float[] getAllVertexPositions() {
+        return vertexPositions;
     }
 
     // Getters and setters

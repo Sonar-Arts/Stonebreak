@@ -13,6 +13,7 @@ import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.stonebreak.model.ModelDefinition;
+import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,14 @@ public class RenderPipeline {
     // Diagnostic throttling
     private long lastDiagnosticLogTime = 0;
     private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000;
+
+    // Vertex data caching to prevent unnecessary updates
+    private boolean vertexDataNeedsUpdate = true;
+    private Matrix4f lastTransformMatrix = new Matrix4f();
+
+    // Edge data caching to prevent unnecessary updates (same pattern as vertices)
+    private boolean edgeDataNeedsUpdate = true;
+    private Matrix4f lastTransformMatrixEdges = new Matrix4f();
 
     /**
      * Create render pipeline with all required dependencies.
@@ -301,10 +310,18 @@ public class RenderPipeline {
                 case BLOCK_MODEL:
                     // Editable .OMO block model rendering (simple cube)
                     Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-                    vertexRenderer.updateVertexData(cubeParts, transformState.getTransformMatrix());
+
+                    // Only extract vertex data ONCE (in MODEL SPACE, no transform)
+                    // Vertices will be transformed by model matrix in shader (like BlockModelRenderer)
+                    if (vertexDataNeedsUpdate) {
+                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                        vertexRenderer.updateVertexData(cubeParts, identityTransform);
+                        vertexDataNeedsUpdate = false;
+                        logger.trace("Vertex data extracted in model space");
+                    }
 
                     ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    vertexRenderer.render(basicShaderBlockModel, context);
+                    vertexRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:
@@ -340,10 +357,18 @@ public class RenderPipeline {
                 case BLOCK_MODEL:
                     // Editable .OMO block model rendering (simple cube)
                     Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
-                    edgeRenderer.updateEdgeData(cubeParts, transformState.getTransformMatrix());
+
+                    // Only extract edge data ONCE (in MODEL SPACE, no transform)
+                    // Edges will be transformed by model matrix in shader (like BlockModelRenderer)
+                    if (edgeDataNeedsUpdate) {
+                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                        edgeRenderer.updateEdgeData(cubeParts, identityTransform);
+                        edgeDataNeedsUpdate = false;
+                        logger.trace("Edge data extracted in model space");
+                    }
 
                     ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
-                    edgeRenderer.render(basicShaderBlockModel, context);
+                    edgeRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
                     break;
 
                 case BLOCK:
@@ -408,6 +433,31 @@ public class RenderPipeline {
      */
     public EdgeRenderer getEdgeRenderer() {
         return edgeRenderer;
+    }
+
+    /**
+     * Gets the block model renderer for external access (vertex editing, etc.).
+     */
+    public BlockModelRenderer getBlockModelRenderer() {
+        return blockModelRenderer;
+    }
+
+    /**
+     * Mark vertex data as needing update.
+     * Call this when the model changes to force vertex re-extraction.
+     */
+    public void markVertexDataDirty() {
+        vertexDataNeedsUpdate = true;
+        logger.debug("Vertex data marked as dirty - will update on next frame");
+    }
+
+    /**
+     * Mark edge data as needing update.
+     * Call this when vertices are modified to force edge re-extraction.
+     */
+    public void markEdgeDataDirty() {
+        edgeDataNeedsUpdate = true;
+        logger.debug("Edge data marked as dirty - will update on next frame");
     }
 
     /**

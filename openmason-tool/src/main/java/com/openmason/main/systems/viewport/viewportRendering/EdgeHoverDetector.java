@@ -22,14 +22,27 @@ public final class EdgeHoverDetector {
     /**
      * Detects which edge (if any) is currently hovered by the mouse.
      * Uses screen-space point-to-line distance with line width as threshold.
+     *
+     * @param mouseX Mouse X coordinate in viewport space
+     * @param mouseY Mouse Y coordinate in viewport space
+     * @param viewportWidth Viewport width in pixels
+     * @param viewportHeight Viewport height in pixels
+     * @param viewMatrix Camera view matrix
+     * @param projectionMatrix Camera projection matrix
+     * @param modelMatrix Model transformation matrix (transforms edges from model space to world space)
+     * @param edgePositions Edge positions in MODEL SPACE (6 floats per edge: x1,y1,z1, x2,y2,z2)
+     * @param edgeCount Number of edges
+     * @param lineWidth Line width in pixels for hit testing
+     * @return Index of hovered edge, or -1 if none
      */
     public static int detectHoveredEdge(float mouseX, float mouseY,
                                        int viewportWidth, int viewportHeight,
                                        Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                       Matrix4f modelMatrix,
                                        float[] edgePositions, int edgeCount,
                                        float lineWidth) {
         // Validate inputs
-        if (viewMatrix == null || projectionMatrix == null) {
+        if (viewMatrix == null || projectionMatrix == null || modelMatrix == null) {
             return -1;
         }
 
@@ -46,8 +59,9 @@ public final class EdgeHoverDetector {
         }
 
         try {
-            // Create MVP matrix for projection
-            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix);
+            // Create MVP matrix for projection: projection * view * model
+            // This transforms edges from model space → world space → view space → clip space
+            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
 
             // Track closest edge (by distance)
             int closestEdgeIndex = -1;
@@ -58,33 +72,33 @@ public final class EdgeHoverDetector {
             float thresholdPixels = lineWidth * 2.0f;
 
             // Test each edge
-            Vector4f worldPos1 = new Vector4f();
-            Vector4f worldPos2 = new Vector4f();
+            Vector4f modelPos1 = new Vector4f();
+            Vector4f modelPos2 = new Vector4f();
             Vector2f screenPos1 = new Vector2f();
             Vector2f screenPos2 = new Vector2f();
 
             for (int i = 0; i < edgeCount; i++) {
                 int posIndex = i * 6; // Each edge has 2 endpoints × 3 coords = 6 floats
 
-                // Get edge endpoints in world space
-                worldPos1.set(
+                // Get edge endpoints in MODEL SPACE
+                modelPos1.set(
                     edgePositions[posIndex + 0],
                     edgePositions[posIndex + 1],
                     edgePositions[posIndex + 2],
                     1.0f
                 );
-                worldPos2.set(
+                modelPos2.set(
                     edgePositions[posIndex + 3],
                     edgePositions[posIndex + 4],
                     edgePositions[posIndex + 5],
                     1.0f
                 );
 
-                // Project both endpoints to screen space
+                // Project both endpoints from model space to clip space
                 Vector4f clipPos1 = new Vector4f();
                 Vector4f clipPos2 = new Vector4f();
-                mvpMatrix.transform(worldPos1, clipPos1);
-                mvpMatrix.transform(worldPos2, clipPos2);
+                mvpMatrix.transform(modelPos1, clipPos1);
+                mvpMatrix.transform(modelPos2, clipPos2);
 
                 // Check if either endpoint is behind camera
                 if (clipPos1.w <= 0 || clipPos2.w <= 0) {

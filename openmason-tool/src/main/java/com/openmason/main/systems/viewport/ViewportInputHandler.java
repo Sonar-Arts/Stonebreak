@@ -4,6 +4,7 @@ import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.joml.Vector3f;
@@ -43,8 +44,14 @@ public class ViewportInputHandler {
     // Vertex selection state for vertex manipulation
     private VertexSelectionState vertexSelectionState = null;
 
+    // Vertex translation handler for drag operations
+    private VertexTranslationHandler vertexTranslationHandler = null;
+
     // Edge renderer for edge hover detection
     private EdgeRenderer edgeRenderer = null;
+
+    // Transform state for model matrix access
+    private com.openmason.main.systems.viewport.state.TransformState transformState = null;
 
     // Mouse interaction state
     private boolean isDragging = false;
@@ -102,12 +109,30 @@ public class ViewportInputHandler {
     }
 
     /**
+     * Set the vertex translation handler for drag operations.
+     * This should be called after viewport initialization.
+     */
+    public void setVertexTranslationHandler(VertexTranslationHandler vertexTranslationHandler) {
+        this.vertexTranslationHandler = vertexTranslationHandler;
+        logger.debug("Vertex translation handler set in ViewportInputHandler");
+    }
+
+    /**
      * Set the edge renderer for edge hover detection.
      * This should be called after viewport initialization.
      */
     public void setEdgeRenderer(EdgeRenderer edgeRenderer) {
         this.edgeRenderer = edgeRenderer;
         logger.debug("Edge renderer set in ViewportInputHandler");
+    }
+
+    /**
+     * Set the transform state for model matrix access.
+     * This should be called after viewport initialization.
+     */
+    public void setTransformState(com.openmason.main.systems.viewport.state.TransformState transformState) {
+        this.transformState = transformState;
+        logger.debug("Transform state set in ViewportInputHandler");
     }
     
     /**
@@ -271,17 +296,33 @@ public class ViewportInputHandler {
             }
         }
 
-        // ========== Vertex Selection Handling (Priority 2) ==========
-        // Handle vertex selection - gets priority after gizmo but before camera.
-        // This allows clicking on vertices to select them without camera interference.
+        // ========== Vertex Selection & Translation Handling (Priority 2) ==========
+        // Handle vertex selection and translation - gets priority after gizmo but before camera.
+        // This allows clicking on vertices to select them and dragging to translate.
         boolean vertexHandledInput = false;
 
         if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled() &&
             vertexSelectionState != null && !gizmoHandledInput) {
 
-            // Handle ESC key to deselect vertex
+            // Update translation handler camera if available
+            if (vertexTranslationHandler != null) {
+                vertexTranslationHandler.updateCamera(
+                    viewportCamera.getViewMatrix(),
+                    viewportCamera.getProjectionMatrix(),
+                    (int) imageWidth,
+                    (int) imageHeight
+                );
+            }
+
+            // Handle ESC key to cancel drag or deselect vertex
             if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-                if (vertexSelectionState.hasSelection()) {
+                if (vertexTranslationHandler != null && vertexTranslationHandler.isDragging()) {
+                    // Cancel active drag
+                    vertexTranslationHandler.cancelDrag();
+                    logger.debug("Vertex drag cancelled (ESC key pressed)");
+                    vertexHandledInput = true;
+                } else if (vertexSelectionState.hasSelection()) {
+                    // Clear selection
                     vertexSelectionState.clearSelection();
                     vertexRenderer.clearSelection();
                     logger.debug("Vertex selection cleared (ESC key pressed)");
@@ -289,8 +330,38 @@ public class ViewportInputHandler {
                 }
             }
 
-            // Handle mouse click for vertex selection
-            if (mouseInBounds && ImGui.isMouseClicked(0)) {
+            // Handle vertex translation (dragging)
+            if (vertexTranslationHandler != null) {
+                if (vertexTranslationHandler.isDragging()) {
+                    // Continue dragging
+                    vertexTranslationHandler.handleMouseMove(viewportMouseX, viewportMouseY);
+                    vertexHandledInput = true;
+
+                    // End drag on mouse release
+                    if (ImGui.isMouseReleased(0)) {
+                        vertexTranslationHandler.handleMouseRelease(viewportMouseX, viewportMouseY);
+                        logger.debug("Vertex drag ended");
+                    }
+                } else {
+                    // Start drag on selected vertex
+                    if (mouseInBounds && ImGui.isMouseClicked(0) && vertexSelectionState.hasSelection()) {
+                        int selectedVertex = vertexRenderer.getSelectedVertexIndex();
+                        int hoveredVertex = vertexRenderer.getHoveredVertexIndex();
+
+                        // Check if clicking on the selected vertex
+                        if (selectedVertex >= 0 && selectedVertex == hoveredVertex) {
+                            // Start dragging the selected vertex
+                            if (vertexTranslationHandler.handleMousePress(viewportMouseX, viewportMouseY)) {
+                                logger.debug("Started dragging vertex {}", selectedVertex);
+                                vertexHandledInput = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle mouse click for vertex selection (if not dragging)
+            if (!vertexHandledInput && mouseInBounds && ImGui.isMouseClicked(0)) {
                 int hoveredVertex = vertexRenderer.getHoveredVertexIndex();
 
                 if (hoveredVertex >= 0) {
@@ -321,12 +392,18 @@ public class ViewportInputHandler {
         // ========== Vertex Hover Detection ==========
         // Handle vertex hover using the same pattern as gizmo
         if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled()) {
-            // Update vertex hover with camera matrices for raycasting
+            // Get model matrix for proper vertex transformation
+            org.joml.Matrix4f modelMatrix = (transformState != null)
+                ? transformState.getTransformMatrix()
+                : new org.joml.Matrix4f(); // Identity if no transform state
+
+            // Update vertex hover with camera matrices AND model matrix for raycasting
             vertexRenderer.handleMouseMove(
                 viewportMouseX,
                 viewportMouseY,
                 viewportCamera.getViewMatrix(),
                 viewportCamera.getProjectionMatrix(),
+                modelMatrix,
                 (int) imageWidth,
                 (int) imageHeight
             );
@@ -335,12 +412,18 @@ public class ViewportInputHandler {
         // ========== Edge Hover Detection ==========
         // Handle edge hover using the same pattern as vertex hover
         if (edgeRenderer != null && edgeRenderer.isInitialized() && edgeRenderer.isEnabled()) {
-            // Update edge hover with camera matrices for raycasting
+            // Get model matrix for proper edge transformation
+            org.joml.Matrix4f modelMatrix = (transformState != null)
+                ? transformState.getTransformMatrix()
+                : new org.joml.Matrix4f(); // Identity if no transform state
+
+            // Update edge hover with camera matrices AND model matrix for raycasting
             edgeRenderer.handleMouseMove(
                 viewportMouseX,
                 viewportMouseY,
                 viewportCamera.getViewMatrix(),
                 viewportCamera.getProjectionMatrix(),
+                modelMatrix,
                 (int) imageWidth,
                 (int) imageHeight
             );

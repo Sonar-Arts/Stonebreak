@@ -19,14 +19,27 @@ public final class VertexHoverDetector {
 
     /**
      * Returns the index of the hovered vertex, or -1 if none.
+     *
+     * @param mouseX Mouse X coordinate in viewport space
+     * @param mouseY Mouse Y coordinate in viewport space
+     * @param viewportWidth Viewport width in pixels
+     * @param viewportHeight Viewport height in pixels
+     * @param viewMatrix Camera view matrix
+     * @param projectionMatrix Camera projection matrix
+     * @param modelMatrix Model transformation matrix (transforms vertices from model space to world space)
+     * @param vertexPositions Vertex positions in MODEL SPACE
+     * @param vertexCount Number of vertices
+     * @param pointSize Point size in pixels for hit testing
+     * @return Index of hovered vertex, or -1 if none
      */
     public static int detectHoveredVertex(float mouseX, float mouseY,
                                          int viewportWidth, int viewportHeight,
                                          Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                         Matrix4f modelMatrix,
                                          float[] vertexPositions, int vertexCount,
                                          float pointSize) {
         // Validate inputs
-        if (viewMatrix == null || projectionMatrix == null) {
+        if (viewMatrix == null || projectionMatrix == null || modelMatrix == null) {
             return -1;
         }
 
@@ -43,8 +56,9 @@ public final class VertexHoverDetector {
         }
 
         try {
-            // Create MVP matrix for projection
-            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix);
+            // Create MVP matrix for projection: projection * view * model
+            // This transforms vertices from model space → world space → view space → clip space
+            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
 
             // Track closest vertex (by depth)
             int closestVertexIndex = -1;
@@ -54,21 +68,21 @@ public final class VertexHoverDetector {
             float radiusPixels = pointSize / 2.0f;
 
             // Test each vertex
-            Vector4f worldPos = new Vector4f();
+            Vector4f modelPos = new Vector4f();
             for (int i = 0; i < vertexCount; i++) {
                 int posIndex = i * 3;
 
-                // Get vertex world position
-                worldPos.set(
+                // Get vertex position in MODEL SPACE
+                modelPos.set(
                     vertexPositions[posIndex + 0],
                     vertexPositions[posIndex + 1],
                     vertexPositions[posIndex + 2],
                     1.0f
                 );
 
-                // Project to clip space
+                // Transform from model space to clip space using MVP matrix
                 Vector4f clipPos = new Vector4f();
-                mvpMatrix.transform(worldPos, clipPos);
+                mvpMatrix.transform(modelPos, clipPos);
 
                 // Check if behind camera
                 if (clipPos.w <= 0) {

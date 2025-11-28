@@ -149,11 +149,13 @@ public class EdgeRenderer {
      * @param mouseY Mouse Y coordinate in viewport space
      * @param viewMatrix Camera view matrix
      * @param projectionMatrix Camera projection matrix
+     * @param modelMatrix Model transformation matrix
      * @param viewportWidth Viewport width in pixels
      * @param viewportHeight Viewport height in pixels
      */
     public void handleMouseMove(float mouseX, float mouseY,
                                Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                               Matrix4f modelMatrix,
                                int viewportWidth, int viewportHeight) {
         if (!initialized || !enabled) {
             return;
@@ -164,10 +166,11 @@ public class EdgeRenderer {
         }
 
         // Detect hovered edge using screen-space point-to-line distance detection
+        // Pass model matrix so edges in model space are properly transformed
         int newHoveredEdge = EdgeHoverDetector.detectHoveredEdge(
             mouseX, mouseY,
             viewportWidth, viewportHeight,
-            viewMatrix, projectionMatrix,
+            viewMatrix, projectionMatrix, modelMatrix,
             edgePositions,
             edgeCount,
             lineWidth  // Use actual line width for accurate detection
@@ -186,8 +189,12 @@ public class EdgeRenderer {
     /**
      * Render edges as lines with hover highlighting.
      * KISS: Simple rendering with intensity-based highlighting (same pattern as vertices).
+     *
+     * @param shader The shader program to use
+     * @param context The render context
+     * @param modelMatrix The model transformation matrix (for gizmo transforms)
      */
-    public void render(ShaderProgram shader, RenderContext context) {
+    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
         if (!initialized) {
             logger.warn("EdgeRenderer not initialized");
             return;
@@ -205,10 +212,10 @@ public class EdgeRenderer {
             // Use shader
             shader.use();
 
-            // Calculate MVP matrix (model is identity since edges are already transformed)
+            // Calculate MVP matrix with model transform (edges are in model space)
             Matrix4f viewMatrix = context.getCamera().getViewMatrix();
             Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
-            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix);
+            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
 
             // Upload MVP matrix
             shader.setMat4("uMVPMatrix", mvpMatrix);
@@ -319,6 +326,86 @@ public class EdgeRenderer {
 
     public boolean isInitialized() {
         return initialized;
+    }
+
+    /**
+     * Update all edge endpoints that match a dragged vertex position.
+     * Searches through ALL edge endpoints and updates any that were at the old vertex position.
+     * This handles the fact that EdgeExtractor creates 24 face-based edges (4 per face × 6 faces)
+     * instead of 12 unique edges, so multiple edge endpoints share the same vertex position.
+     *
+     * @param oldPosition The original position of the vertex before dragging
+     * @param newPosition The new position of the vertex after dragging
+     */
+    public void updateEdgesConnectedToVertex(Vector3f oldPosition, Vector3f newPosition) {
+        if (!initialized) {
+            logger.warn("Cannot update edge endpoints: renderer not initialized");
+            return;
+        }
+
+        if (edgePositions == null || edgeCount == 0) {
+            logger.warn("Cannot update edge endpoints: no edge data");
+            return;
+        }
+
+        if (oldPosition == null || newPosition == null) {
+            logger.warn("Cannot update edge endpoints: positions are null");
+            return;
+        }
+
+        try {
+            float epsilon = 0.0001f; // Same epsilon as VertexExtractor for consistency
+            int updatedCount = 0;
+
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+            // Search through ALL edge endpoints (2 endpoints per edge)
+            int totalEndpoints = edgeCount * 2;
+            for (int endpointIdx = 0; endpointIdx < totalEndpoints; endpointIdx++) {
+                int posIndex = endpointIdx * 3; // 3 floats per position (x,y,z)
+
+                // Check if this endpoint matches the old vertex position
+                if (posIndex + 2 < edgePositions.length) {
+                    Vector3f endpointPos = new Vector3f(
+                            edgePositions[posIndex + 0],
+                            edgePositions[posIndex + 1],
+                            edgePositions[posIndex + 2]
+                    );
+
+                    if (endpointPos.distance(oldPosition) < epsilon) {
+                        // Found a matching endpoint - update it!
+
+                        // Update VBO (interleaved: position + color)
+                        int dataIndex = endpointIdx * 6; // 6 floats per endpoint (x,y,z, r,g,b)
+                        long offset = dataIndex * Float.BYTES;
+
+                        float[] positionData = new float[] { newPosition.x, newPosition.y, newPosition.z };
+                        glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
+
+                        // Update in-memory array
+                        edgePositions[posIndex + 0] = newPosition.x;
+                        edgePositions[posIndex + 1] = newPosition.y;
+                        edgePositions[posIndex + 2] = newPosition.z;
+
+                        updatedCount++;
+                    }
+                }
+            }
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.trace("Updated {} edge endpoints from ({}, {}, {}) to ({}, {}, {})",
+                    updatedCount,
+                    String.format("%.2f", oldPosition.x),
+                    String.format("%.2f", oldPosition.y),
+                    String.format("%.2f", oldPosition.z),
+                    String.format("%.2f", newPosition.x),
+                    String.format("%.2f", newPosition.y),
+                    String.format("%.2f", newPosition.z));
+
+        } catch (Exception e) {
+            logger.error("Error updating edge endpoints", e);
+        }
     }
 
 }

@@ -98,6 +98,89 @@ public class BlockModelRenderer {
     }
 
     /**
+     * Updates vertex positions in the cube mesh based on 8 unique corner vertices.
+     * Used for live preview when dragging vertices in edit mode.
+     * The 8 unique vertices are mapped to all 24 mesh vertices (4 per face × 6 faces).
+     *
+     * @param uniqueVertexPositions Array of 8 unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
+     *                              in order: back-bottom-left, back-bottom-right, front-bottom-right, front-bottom-left,
+     *                                       back-top-left, back-top-right, front-top-right, front-top-left
+     */
+    public void updateVertexPositions(float[] uniqueVertexPositions) {
+        if (!initialized) {
+            logger.warn("Cannot update vertex positions: renderer not initialized");
+            return;
+        }
+
+        if (uniqueVertexPositions == null || uniqueVertexPositions.length != 24) {
+            logger.error("Invalid unique vertex positions array: expected 24 floats (8 vertices × 3 coords), got {}",
+                    uniqueVertexPositions == null ? "null" : uniqueVertexPositions.length);
+            return;
+        }
+
+        try {
+            // Generate full mesh with current UV mode
+            float[] fullMesh;
+            if (currentUVMode == UVMode.CUBE_NET) {
+                fullMesh = CubeNetMeshGenerator.generateVertices();
+            } else {
+                fullMesh = FlatTextureMeshGenerator.generateVertices();
+            }
+
+            // Update only the position coordinates (x, y, z) for each vertex, keep UVs unchanged
+            // Mesh format: x, y, z, u, v (5 floats per vertex)
+            // 24 vertices total (4 per face × 6 faces)
+
+            // Mapping from unique vertex indices (0-7) to mesh vertex indices
+            // Based on cube topology from CubeNetMeshGenerator
+            int[][] uniqueToMeshIndices = {
+                // Unique vertex 0: back-bottom-left (-0.5, -0.5, -0.5)
+                {5, 12, 20},  // BACK face vertex 1, BOTTOM face vertex 0, LEFT face vertex 0
+                // Unique vertex 1: back-bottom-right (0.5, -0.5, -0.5)
+                {4, 13, 16},  // BACK face vertex 0, BOTTOM face vertex 1, RIGHT face vertex 0
+                // Unique vertex 2: front-bottom-right (0.5, -0.5, 0.5)
+                {1, 14, 17},  // FRONT face vertex 1, BOTTOM face vertex 2, RIGHT face vertex 1
+                // Unique vertex 3: front-bottom-left (-0.5, -0.5, 0.5)
+                {0, 15, 21},  // FRONT face vertex 0, BOTTOM face vertex 3, LEFT face vertex 1
+                // Unique vertex 4: back-top-left (-0.5, 0.5, -0.5)
+                {6, 11, 23},  // BACK face vertex 2, TOP face vertex 3, LEFT face vertex 3
+                // Unique vertex 5: back-top-right (0.5, 0.5, -0.5)
+                {7, 10, 19},  // BACK face vertex 3, TOP face vertex 2, RIGHT face vertex 3
+                // Unique vertex 6: front-top-right (0.5, 0.5, 0.5)
+                {2, 9, 18},   // FRONT face vertex 2, TOP face vertex 1, RIGHT face vertex 2
+                // Unique vertex 7: front-top-left (-0.5, 0.5, 0.5)
+                {3, 8, 22}    // FRONT face vertex 3, TOP face vertex 0, LEFT face vertex 2
+            };
+
+            // Update position for each unique vertex's mesh instances
+            for (int uniqueIdx = 0; uniqueIdx < 8; uniqueIdx++) {
+                float x = uniqueVertexPositions[uniqueIdx * 3 + 0];
+                float y = uniqueVertexPositions[uniqueIdx * 3 + 1];
+                float z = uniqueVertexPositions[uniqueIdx * 3 + 2];
+
+                // Update all mesh vertices that correspond to this unique vertex
+                for (int meshIdx : uniqueToMeshIndices[uniqueIdx]) {
+                    int offset = meshIdx * FLOATS_PER_VERTEX; // 5 floats per vertex
+                    fullMesh[offset + 0] = x;
+                    fullMesh[offset + 1] = y;
+                    fullMesh[offset + 2] = z;
+                    // fullMesh[offset + 3] and [offset + 4] are UVs, keep unchanged
+                }
+            }
+
+            // Upload updated mesh to GPU
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, fullMesh, GL_DYNAMIC_DRAW); // Use DYNAMIC_DRAW for editable mesh
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.trace("Updated BlockModelRenderer vertex positions from 8 unique vertices");
+
+        } catch (Exception e) {
+            logger.error("Error updating vertex positions", e);
+        }
+    }
+
+    /**
      * Sets the texture to use for rendering.
      *
      * @param textureId OpenGL texture ID

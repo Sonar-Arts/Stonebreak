@@ -21,6 +21,7 @@ import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -156,6 +157,25 @@ public class ViewportController {
             // Connect vertex selection state for vertex manipulation
             inputHandler.setVertexSelectionState(vertexSelectionState);
             logger.debug("Vertex selection state connected to input handler");
+
+            // Connect transform state for model matrix access in hover detection
+            inputHandler.setTransformState(transformState);
+            logger.debug("Transform state connected to input handler");
+
+            // Create and connect vertex translation handler
+            if (renderPipeline.getVertexRenderer() != null && renderPipeline.getEdgeRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
+                VertexTranslationHandler translationHandler = new VertexTranslationHandler(
+                    vertexSelectionState,
+                    renderPipeline.getVertexRenderer(),
+                    renderPipeline.getEdgeRenderer(),  // Pass edgeRenderer for direct edge updates
+                    renderPipeline.getBlockModelRenderer(),  // Pass blockModelRenderer for cube face updates
+                    viewportState,
+                    renderPipeline,  // Pass renderPipeline for caching control
+                    transformState   // Pass transformState for world/model space conversion
+                );
+                inputHandler.setVertexTranslationHandler(translationHandler);
+                logger.debug("Vertex translation handler created and connected");
+            }
 
             viewportState.setViewportInitialized(true);
             logger.info("Viewport initialized successfully");
