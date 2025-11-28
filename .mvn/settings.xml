@@ -5,17 +5,16 @@
   
   <profiles>
     <profile>
-      <id>stonebreak-java17</id>
+      <id>stonebreak-java25</id>
       <properties>
-        <java.home>C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot</java.home>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
       </properties>
     </profile>
   </profiles>
-  
+
   <activeProfiles>
-    <activeProfile>stonebreak-java17</activeProfile>
+    <activeProfile>stonebreak-java25</activeProfile>
   </activeProfiles>
   
 </settings>
