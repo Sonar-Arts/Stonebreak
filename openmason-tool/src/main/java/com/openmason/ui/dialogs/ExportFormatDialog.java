@@ -8,11 +8,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Export format selection dialog for texture creator.
- *
  * Allows user to choose between PNG (flattened export) and OMT (project export).
- * Follows SOLID principles - Single Responsibility: Format selection only.
- *
- * @author Open Mason Team
  */
 public class ExportFormatDialog {
 
@@ -133,7 +129,6 @@ public class ExportFormatDialog {
 
     /**
      * Check if dialog is currently open.
-     * @return true if open
      */
     public boolean isOpen() {
         return isOpen;

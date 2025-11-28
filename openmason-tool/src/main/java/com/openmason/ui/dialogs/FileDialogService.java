@@ -4,7 +4,6 @@ import com.openmason.ui.services.StatusService;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.nfd.NFDFilterItem;
-import org.lwjgl.util.nfd.NativeFileDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,47 +15,54 @@ import static org.lwjgl.util.nfd.NativeFileDialog.*;
 
 /**
  * File dialog service for open/save/export operations.
- * Follows Single Responsibility Principle - only handles file dialogs.
- * Follows DRY - eliminates duplicated file chooser code.
- *
  * Uses LWJGL NFD for native file dialogs (PNG files) and Swing for legacy model dialogs.
+ * <p>
+ * Optimized to minimize NFD initialization overhead and reduce code duplication.
  */
 public class FileDialogService {
 
     private static final Logger logger = LoggerFactory.getLogger(FileDialogService.class);
 
     private final StatusService statusService;
+    private volatile boolean nfdInitialized = false;
 
     public FileDialogService(StatusService statusService) {
         this.statusService = statusService;
+        initializeNFD();
     }
 
     /**
-     * Show save model dialog.
+     * Initialize NFD once for all dialog operations.
+     * This avoids repeated initialization overhead.
      */
-    public void showSaveDialog(SaveCallback callback) {
-        statusService.updateStatus("Saving model as...");
-
-        try {
-            SwingUtilities.invokeLater(() -> {
-                JFileChooser fileChooser = createFileChooser("Save Model As");
-
-                FileNameExtensionFilter jsonFilter = new FileNameExtensionFilter("JSON Model Files (*.json)", "json");
-                fileChooser.addChoosableFileFilter(jsonFilter);
-                fileChooser.setFileFilter(jsonFilter);
-
-                int result = fileChooser.showSaveDialog(null);
-
-                if (result == JFileChooser.APPROVE_OPTION) {
-                    File selectedFile = ensureExtension(fileChooser.getSelectedFile(), "json");
-                    callback.onSave(selectedFile);
+    private void initializeNFD() {
+        if (!nfdInitialized) {
+            try {
+                int initResult = NFD_Init();
+                if (initResult == NFD_OKAY) {
+                    nfdInitialized = true;
+                    logger.debug("NFD initialized successfully");
                 } else {
-                    statusService.updateStatus("Save cancelled");
+                    logger.error("Failed to initialize NFD: {}", NFD_GetError());
                 }
-            });
-        } catch (Exception e) {
-            logger.error("Error showing save dialog", e);
-            statusService.updateStatus("Error opening save dialog: " + e.getMessage());
+            } catch (Exception e) {
+                logger.error("Exception during NFD initialization", e);
+            }
+        }
+    }
+
+    /**
+     * Cleanup NFD resources. Should be called when service is no longer needed.
+     */
+    public void cleanup() {
+        if (nfdInitialized) {
+            try {
+                NFD_Quit();
+                nfdInitialized = false;
+                logger.debug("NFD cleaned up successfully");
+            } catch (Exception e) {
+                logger.error("Error during NFD cleanup", e);
+            }
         }
     }
 
@@ -116,10 +122,122 @@ public class FileDialogService {
     }
 
     /**
-     * Callback interface for save operations.
+     * Create NFD filter for a single file type.
+     * Note: filters.get() returns a view into the buffer - it doesn't need separate resource management.
+     * The parent buffer is managed by try-with-resources in the calling methods.
      */
-    public interface SaveCallback {
-        void onSave(File file);
+    @SuppressWarnings("resource")
+    private void createFilter(NFDFilterItem.Buffer filters, int index, MemoryStack stack, String name, String spec) {
+        filters.get(index)
+                .name(stack.UTF8(name))
+                .spec(stack.UTF8(spec));
+    }
+
+    /**
+     * Generic open dialog implementation to reduce code duplication.
+     */
+    private void showNFDOpenDialog(String statusMessage, String filterName, String filterSpec,
+                                   String logPrefix, OpenCallback callback) {
+        showNFDOpenDialogMultiFilter(statusMessage, new String[]{filterName}, new String[]{filterSpec}, logPrefix, callback);
+    }
+
+    /**
+     * Generic open dialog with multiple filter support.
+     */
+    private void showNFDOpenDialogMultiFilter(String statusMessage, String[] filterNames, String[] filterSpecs,
+                                              String logPrefix, OpenCallback callback) {
+        if (!nfdInitialized) {
+            statusService.updateStatus("Error: File dialog not initialized");
+            return;
+        }
+
+        statusService.updateStatus(statusMessage);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer outPath = stack.mallocPointer(1);
+
+            // Create filters with proper resource management
+            try (NFDFilterItem.Buffer filters = NFDFilterItem.malloc(filterNames.length)) {
+                for (int i = 0; i < filterNames.length; i++) {
+                    createFilter(filters, i, stack, filterNames[i], filterSpecs[i]);
+                }
+
+                // Show open dialog
+                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+                    logger.info("{}: {}", logPrefix, selectedPath);
+                    callback.onOpen(selectedPath);
+                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled {} dialog", logPrefix);
+                    statusService.updateStatus("Open cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening file dialog");
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error showing {} dialog", logPrefix, e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Generic save dialog implementation to reduce code duplication.
+     */
+    private void showNFDSaveDialog(String statusMessage, String filterName, String filterSpec,
+                                   String defaultFileName, String logPrefix, SaveCallback callback) {
+        if (!nfdInitialized) {
+            statusService.updateStatus("Error: File dialog not initialized");
+            return;
+        }
+
+        statusService.updateStatus(statusMessage);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer outPath = stack.mallocPointer(1);
+
+            // Create filter with proper resource management
+            try (NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1)) {
+                createFilter(filters, 0, stack, filterName, filterSpec);
+
+                // Show save dialog
+                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8(defaultFileName));
+
+                if (result == NFD_OKAY) {
+                    String selectedPath = outPath.getStringUTF8(0);
+                    NFD_FreePath(outPath.get(0));
+
+                    // Ensure correct extension
+                    if (!selectedPath.toLowerCase().endsWith("." + filterSpec)) {
+                        selectedPath += "." + filterSpec;
+                    }
+
+                    logger.info("{}: {}", logPrefix, selectedPath);
+                    callback.onSave(selectedPath);
+                    statusService.updateStatus("Saved: " + new File(selectedPath).getName());
+                } else if (result == NFD_CANCEL) {
+                    logger.info("User cancelled {} dialog", logPrefix);
+                    statusService.updateStatus("Save cancelled");
+                } else {
+                    logger.error("NFD Error: {}", NFD_GetError());
+                    statusService.updateStatus("Error opening save dialog");
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error showing {} dialog", logPrefix, e);
+            statusService.updateStatus("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Generic save callback interface.
+     */
+    private interface SaveCallback {
+        void onSave(String filePath);
     }
 
     /**
@@ -131,53 +249,10 @@ public class FileDialogService {
 
     /**
      * Show open PNG dialog using native file dialog.
-     * @param callback callback to receive selected file path
      */
     public void showOpenPNGDialog(OpenCallback callback) {
-        statusService.updateStatus("Opening PNG file...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filter for PNG files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
-                filters.get(0)
-                        .name(stack.UTF8("PNG Image"))
-                        .spec(stack.UTF8("png"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show open dialog
-                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-                    logger.info("Selected file: {}", selectedPath);
-                    callback.onOpen(selectedPath);
-                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled file dialog");
-                    statusService.updateStatus("Open cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening file dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing open PNG dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDOpenDialog("Opening PNG file...", "PNG Image", "png",
+                "Selected PNG file", callback);
     }
 
     /**
@@ -185,56 +260,8 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSavePNGDialog(SavePNGCallback callback) {
-        statusService.updateStatus("Saving PNG file...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filter for PNG files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
-                filters.get(0)
-                        .name(stack.UTF8("PNG Image"))
-                        .spec(stack.UTF8("png"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show save dialog
-                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8("texture.png"));
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-
-                    // Ensure .png extension
-                    if (!selectedPath.toLowerCase().endsWith(".png")) {
-                        selectedPath += ".png";
-                    }
-
-                    logger.info("Save to file: {}", selectedPath);
-                    callback.onSave(selectedPath);
-                    statusService.updateStatus("Saved: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled save dialog");
-                    statusService.updateStatus("Save cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening save dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing save PNG dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDSaveDialog("Saving PNG file...", "PNG Image", "png",
+                "texture.png", "Save PNG to file", callback::onSave);
     }
 
     /**
@@ -256,50 +283,8 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenOMTDialog(OpenCallback callback) {
-        statusService.updateStatus("Opening OMT project...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filter for OMT files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
-                filters.get(0)
-                        .name(stack.UTF8("Open Mason Texture"))
-                        .spec(stack.UTF8("omt"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show open dialog
-                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-                    logger.info("Selected OMT file: {}", selectedPath);
-                    callback.onOpen(selectedPath);
-                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled OMT open dialog");
-                    statusService.updateStatus("Open cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening file dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing open OMT dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDOpenDialog("Opening OMT project...", "Open Mason Texture", "omt",
+                "Selected OMT file", callback);
     }
 
     /**
@@ -309,53 +294,10 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenTextureDialog(OpenCallback callback) {
-        statusService.updateStatus("Opening texture file...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filters for BOTH OMT and PNG files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(2, stack);
-                filters.get(0)
-                        .name(stack.UTF8("Open Mason Texture"))
-                        .spec(stack.UTF8("omt"));
-                filters.get(1)
-                        .name(stack.UTF8("PNG Image"))
-                        .spec(stack.UTF8("png"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show open dialog
-                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-                    logger.info("Selected texture file: {}", selectedPath);
-                    callback.onOpen(selectedPath);
-                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled texture open dialog");
-                    statusService.updateStatus("Open cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening file dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing open texture dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDOpenDialogMultiFilter("Opening texture file...",
+                new String[]{"Open Mason Texture", "PNG Image"},
+                new String[]{"omt", "png"},
+                "Selected texture file", callback);
     }
 
     /**
@@ -363,56 +305,8 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveOMTDialog(SaveOMTCallback callback) {
-        statusService.updateStatus("Saving OMT project...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filter for OMT files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
-                filters.get(0)
-                        .name(stack.UTF8("Open Mason Texture"))
-                        .spec(stack.UTF8("omt"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show save dialog
-                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8("texture.omt"));
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-
-                    // Ensure .omt extension
-                    if (!selectedPath.toLowerCase().endsWith(".omt")) {
-                        selectedPath += ".omt";
-                    }
-
-                    logger.info("Save OMT to file: {}", selectedPath);
-                    callback.onSave(selectedPath);
-                    statusService.updateStatus("Saved: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled OMT save dialog");
-                    statusService.updateStatus("Save cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening save dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing save OMT dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDSaveDialog("Saving OMT project...", "Open Mason Texture", "omt",
+                "texture.omt", "Save OMT to file", callback::onSave);
     }
 
     /**
@@ -427,50 +321,8 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenOMODialog(OpenCallback callback) {
-        statusService.updateStatus("Opening OMO model...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filter for OMO files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
-                filters.get(0)
-                        .name(stack.UTF8("Open Mason Object"))
-                        .spec(stack.UTF8("omo"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show open dialog
-                int result = NFD_OpenDialog(outPath, filters, (CharSequence) null);
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-                    logger.info("Selected OMO file: {}", selectedPath);
-                    callback.onOpen(selectedPath);
-                    statusService.updateStatus("Opened: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled OMO open dialog");
-                    statusService.updateStatus("Open cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening file dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing open OMO dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDOpenDialog("Opening OMO model...", "Open Mason Object", "omo",
+                "Selected OMO file", callback);
     }
 
     /**
@@ -478,56 +330,8 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveOMODialog(SaveOMOCallback callback) {
-        statusService.updateStatus("Saving OMO model...");
-
-        try {
-            // Initialize NFD
-            int initResult = NFD_Init();
-            if (initResult != NFD_OKAY) {
-                logger.error("Failed to initialize NFD: {}", NFD_GetError());
-                statusService.updateStatus("Error: Failed to initialize file dialog");
-                return;
-            }
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                // Create filter for OMO files
-                NFDFilterItem.Buffer filters = NFDFilterItem.malloc(1, stack);
-                filters.get(0)
-                        .name(stack.UTF8("Open Mason Object"))
-                        .spec(stack.UTF8("omo"));
-
-                PointerBuffer outPath = stack.mallocPointer(1);
-
-                // Show save dialog
-                int result = NFD_SaveDialog(outPath, filters, null, stack.UTF8("model.omo"));
-
-                if (result == NFD_OKAY) {
-                    String selectedPath = outPath.getStringUTF8(0);
-                    NFD_FreePath(outPath.get(0));
-
-                    // Ensure .omo extension
-                    if (!selectedPath.toLowerCase().endsWith(".omo")) {
-                        selectedPath += ".omo";
-                    }
-
-                    logger.info("Save OMO to file: {}", selectedPath);
-                    callback.onSave(selectedPath);
-                    statusService.updateStatus("Saved: " + new File(selectedPath).getName());
-                } else if (result == NFD_CANCEL) {
-                    logger.info("User cancelled OMO save dialog");
-                    statusService.updateStatus("Save cancelled");
-                } else {
-                    logger.error("NFD Error: {}", NFD_GetError());
-                    statusService.updateStatus("Error opening save dialog");
-                }
-            }
-
-            NFD_Quit();
-
-        } catch (Exception e) {
-            logger.error("Error showing save OMO dialog", e);
-            statusService.updateStatus("Error: " + e.getMessage());
-        }
+        showNFDSaveDialog("Saving OMO model...", "Open Mason Object", "omo",
+                "model.omo", "Save OMO to file", callback::onSave);
     }
 
     /**

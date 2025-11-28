@@ -13,17 +13,6 @@ import java.util.Set;
 
 /**
  * Manages GLFW drop callbacks for all ImGui platform windows.
- *
- * When ViewportsEnable is active, ImGui creates separate OS windows (GLFW windows)
- * for floating/detached ImGui windows. Each of these needs its own drop callback
- * registered to receive file drops.
- *
- * This manager iterates all ImGui viewports each frame and registers drop callbacks
- * on any new platform windows that don't already have one.
- *
- * Usage:
- * - Call updateDropCallbacks() after ImGui.updatePlatformWindows() in the render loop
- * - All dropped files are queued via PendingFileDrops for later processing
  */
 public class ViewportDropCallbackManager {
 

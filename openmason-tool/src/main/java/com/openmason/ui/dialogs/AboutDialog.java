@@ -8,7 +8,6 @@ import imgui.flag.ImGuiWindowFlags;
 /**
  * About dialog window.
  * Uses interface-based design to support multiple tools.
- * Follows Single Responsibility Principle - only handles about window rendering.
  */
 public class AboutDialog {
 
@@ -18,10 +17,6 @@ public class AboutDialog {
 
     /**
      * Create about dialog.
-     *
-     * @param visibilityState the visibility state interface for managing about window
-     * @param logoManager optional logo manager (null to skip logo rendering)
-     * @param toolName the name of the tool (e.g., "Model Viewer", "Texture Creator")
      */
     public AboutDialog(HelpWindowVisibilityState visibilityState, LogoManager logoManager, String toolName) {
         this.visibilityState = visibilityState;
