@@ -15,6 +15,7 @@ import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.services.*;
 import com.openmason.ui.state.*;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.openmason.ui.themes.utils.ImGuiHelpers;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.toolbar.ModelViewerToolbarRenderer;
@@ -50,7 +51,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     // State Objects
     private final ModelState modelState;
-    private final ViewportState viewportState;
+    private final ViewportUIState viewportState;
     private final UIVisibilityState uiVisibilityState;
     private final TransformState transformState;
 
@@ -105,7 +106,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         // Initialize state objects
         this.modelState = new ModelState();
-        this.viewportState = new ViewportState();
+        this.viewportState = new ViewportUIState();
         this.uiVisibilityState = new UIVisibilityState();
         this.transformState = new TransformState();
 

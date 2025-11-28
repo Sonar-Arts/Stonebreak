@@ -3,7 +3,7 @@ package com.openmason.ui.viewport.gizmo.interaction;
 import com.openmason.ui.viewport.coordinates.CoordinateSystem;
 import com.openmason.ui.viewport.gizmo.GizmoState;
 import com.openmason.ui.viewport.state.TransformState;
-import com.openmason.ui.viewport.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -18,7 +18,7 @@ public class GizmoInteractionHandler {
 
     private final GizmoState gizmoState;
     private final TransformState transformState;
-    private ViewportState viewportState;
+    private ViewportUIState viewportState;
 
     // Cached camera matrices
     private Matrix4f viewMatrix = new Matrix4f();
@@ -29,7 +29,7 @@ public class GizmoInteractionHandler {
     /**
      * Creates a new GizmoInteractionHandler.
      */
-    public GizmoInteractionHandler(GizmoState gizmoState, TransformState transformState, ViewportState viewportState) {
+    public GizmoInteractionHandler(GizmoState gizmoState, TransformState transformState, ViewportUIState viewportState) {
         if (gizmoState == null) {
             throw new IllegalArgumentException("GizmoState cannot be null");
         }
@@ -46,7 +46,7 @@ public class GizmoInteractionHandler {
      * Update viewport state for snapping settings.
      * Should be called whenever viewport state changes.
      */
-    public void updateViewportState(ViewportState viewportState) {
+    public void updateViewportState(ViewportUIState viewportState) {
         this.viewportState = viewportState;
     }
 
@@ -319,9 +319,9 @@ public class GizmoInteractionHandler {
         }
 
         // Apply grid snapping from viewport state if available
-        if (viewportState != null && viewportState.isGridSnappingEnabled()) {
+        if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
             transformState.setPosition(newPos.x, newPos.y, newPos.z,
-                                     true, viewportState.getGridSnappingIncrement());
+                                     true, viewportState.getGridSnappingIncrement().get());
         } else {
             transformState.setPosition(newPos.x, newPos.y, newPos.z);
         }

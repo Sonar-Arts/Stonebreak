@@ -1,6 +1,6 @@
 package com.openmason.ui.services;
 
-import com.openmason.ui.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.openmason.ui.state.TransformState;
 import com.openmason.ui.ViewportController;
 import org.slf4j.Logger;
@@ -15,10 +15,10 @@ public class ViewportOperationService {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportOperationService.class);
 
-    private final ViewportState viewportState;
+    private final ViewportUIState viewportState;
     private final StatusService statusService;
 
-    public ViewportOperationService(ViewportState viewportState, StatusService statusService) {
+    public ViewportOperationService(ViewportUIState viewportState, StatusService statusService) {
         this.viewportState = viewportState;
         this.statusService = statusService;
     }
@@ -46,7 +46,7 @@ public class ViewportOperationService {
     public void toggleGrid(ViewportController viewport) {
         viewportState.toggleGrid();
         if (viewport != null) {
-            viewport.setGridVisible(viewportState.isShowGrid());
+            viewport.setGridVisible(viewportState.getGridVisible().get());
         }
     }
 
@@ -56,7 +56,7 @@ public class ViewportOperationService {
     public void toggleAxes(ViewportController viewport) {
         viewportState.toggleAxes();
         if (viewport != null) {
-            viewport.setAxesVisible(viewportState.isShowAxes());
+            viewport.setAxesVisible(viewportState.getAxesVisible().get());
         }
     }
 
@@ -66,9 +66,9 @@ public class ViewportOperationService {
     public void toggleWireframe(ViewportController viewport) {
         viewportState.toggleWireframe();
         if (viewport != null) {
-            viewport.setWireframeMode(viewportState.isWireframeMode());
+            viewport.setWireframeMode(viewportState.getWireframeMode().get());
         }
-        statusService.updateStatus("Wireframe " + (viewportState.isWireframeMode() ? "enabled" : "disabled"));
+        statusService.updateStatus("Wireframe " + (viewportState.getWireframeMode().get() ? "enabled" : "disabled"));
     }
 
     /**
@@ -77,9 +77,9 @@ public class ViewportOperationService {
     public void toggleGizmo(ViewportController viewport) {
         viewportState.toggleGizmo();
         if (viewport != null && viewport.getGizmoRenderer() != null) {
-            viewport.getGizmoRenderer().getGizmoState().setEnabled(viewportState.isShowGizmo());
+            viewport.getGizmoRenderer().getGizmoState().setEnabled(viewportState.getShowGizmo().get());
         }
-        statusService.updateStatus("Transform gizmo " + (viewportState.isShowGizmo() ? "enabled" : "disabled"));
+        statusService.updateStatus("Transform gizmo " + (viewportState.getShowGizmo().get() ? "enabled" : "disabled"));
     }
 
     /**
@@ -99,17 +99,17 @@ public class ViewportOperationService {
     /**
      * Change render mode (wireframe/solid/textured).
      */
-    public void changeRenderMode(ViewportController viewport, ViewportState state) {
+    public void changeRenderMode(ViewportController viewport, ViewportUIState state) {
         String renderMode = state.getCurrentRenderMode();
 
         if (viewport != null) {
             switch (renderMode.toLowerCase()) {
                 case "wireframe":
-                    state.setWireframeMode(true);
+                    state.getWireframeMode().set(true);
                     viewport.setWireframeMode(true);
                     break;
                 default:
-                    state.setWireframeMode(false);
+                    state.getWireframeMode().set(false);
                     viewport.setWireframeMode(false);
                     break;
             }

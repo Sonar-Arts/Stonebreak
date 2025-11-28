@@ -5,10 +5,15 @@ import imgui.type.ImFloat;
 import imgui.type.ImInt;
 
 /**
- * Holds all viewport UI state in a centralized, immutable-friendly manner.
- * Follows Single Responsibility Principle - only manages state.
+ * Centralized viewport state management.
+ * Consolidates all viewport-related state from multiple legacy state classes.
+ * Follows Single Responsibility Principle - only manages viewport state.
  */
 public class ViewportUIState {
+
+    // Viewport dimensions
+    private int width = 800;
+    private int height = 600;
 
     // Viewport visibility state
     private final ImBoolean gridVisible = new ImBoolean(true);
@@ -16,6 +21,7 @@ public class ViewportUIState {
     private final ImBoolean gridSnappingEnabled = new ImBoolean(false);
     private final ImBoolean wireframeMode = new ImBoolean(false);
     private final ImBoolean showVertices = new ImBoolean(false);
+    private final ImBoolean showGizmo = new ImBoolean(true);
 
     // Window visibility state
     private final ImBoolean showCameraControls = new ImBoolean(false);
@@ -40,8 +46,24 @@ public class ViewportUIState {
     private final ImFloat cameraYaw = new ImFloat(45.0f);
     private final ImFloat cameraFOV = new ImFloat(60.0f);
 
+    // Grid snapping state
+    private final ImFloat gridSnappingIncrement = new ImFloat(0.5f); // Half block (0.5 units)
+
     // Initialization state
     private boolean viewportInitialized = false;
+
+    // Resize threshold to prevent excessive resizing from small ImGui layout fluctuations
+    private static final int RESIZE_THRESHOLD = 5;
+
+    // Getters for viewport dimensions
+    public int getWidth() { return width; }
+    public int getHeight() { return height; }
+    public void setWidth(int width) { this.width = width; }
+    public void setHeight(int height) { this.height = height; }
+    public void setDimensions(int width, int height) {
+        this.width = width;
+        this.height = height;
+    }
 
     // Getters for visibility state
     public ImBoolean getGridVisible() { return gridVisible; }
@@ -49,6 +71,7 @@ public class ViewportUIState {
     public ImBoolean getGridSnappingEnabled() { return gridSnappingEnabled; }
     public ImBoolean getWireframeMode() { return wireframeMode; }
     public ImBoolean getShowVertices() { return showVertices; }
+    public ImBoolean getShowGizmo() { return showGizmo; }
 
     // Getters for window visibility
     public ImBoolean getShowCameraControls() { return showCameraControls; }
@@ -76,24 +99,11 @@ public class ViewportUIState {
     public ImFloat getCameraYaw() { return cameraYaw; }
     public ImFloat getCameraFOV() { return cameraFOV; }
 
-    // Initialization state
-    public boolean isViewportInitialized() { return viewportInitialized; }
-    public void setViewportInitialized(boolean initialized) { this.viewportInitialized = initialized; }
+    // Getters for grid snapping
+    public ImFloat getGridSnappingIncrement() { return gridSnappingIncrement; }
 
-    public void resetToDefaults() {
-        currentViewModeIndex.set(0);
-        currentCameraModeIndex.set(0);
-        currentRenderModeIndex.set(0);
-        cameraDistance.set(5.0f);
-        cameraPitch.set(30.0f);
-        cameraYaw.set(45.0f);
-        cameraFOV.set(60.0f);
-        gridVisible.set(true);
-        axesVisible.set(true);
-        gridSnappingEnabled.set(false);
-        wireframeMode.set(false);
-        showVertices.set(false);
-    }
+    // Initialization state
+    public void setViewportInitialized(boolean initialized) { this.viewportInitialized = initialized; }
 
     /**
      * Reset camera state to defaults.
@@ -113,5 +123,52 @@ public class ViewportUIState {
         cameraPitch.set(pitch);
         cameraYaw.set(yaw);
         cameraFOV.set(fov);
+    }
+
+    /**
+     * Check if dimensions have changed significantly.
+     * Uses a threshold to prevent constant resizing from small pixel fluctuations.
+     */
+    public boolean dimensionsChanged(int newWidth, int newHeight) {
+        int widthDiff = Math.abs(newWidth - width);
+        int heightDiff = Math.abs(newHeight - height);
+        return widthDiff >= RESIZE_THRESHOLD || heightDiff >= RESIZE_THRESHOLD;
+    }
+
+    /**
+     * Get aspect ratio.
+     */
+    public float getAspectRatio() {
+        return height > 0 ? (float) width / height : 1.0f;
+    }
+
+    /**
+     * Toggle methods for convenience.
+     */
+    public void toggleGrid() {
+        gridVisible.set(!gridVisible.get());
+    }
+
+    public void toggleAxes() {
+        axesVisible.set(!axesVisible.get());
+    }
+
+    public void toggleWireframe() {
+        wireframeMode.set(!wireframeMode.get());
+    }
+
+    public void toggleGizmo() {
+        showGizmo.set(!showGizmo.get());
+    }
+
+    public boolean isInitialized() {
+        return viewportInitialized;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("ViewportUIState{%dx%d, grid=%s, axes=%s, wireframe=%s, gizmo=%s, vertices=%s, initialized=%s, snapping=%s (%.4f)}",
+                width, height, gridVisible.get(), axesVisible.get(), wireframeMode.get(), showGizmo.get(),
+                showVertices.get(), viewportInitialized, gridSnappingEnabled.get(), gridSnappingIncrement.get());
     }
 }

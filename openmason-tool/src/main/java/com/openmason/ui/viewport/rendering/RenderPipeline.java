@@ -11,7 +11,7 @@ import com.openmason.ui.viewport.shaders.ShaderProgram;
 import com.openmason.ui.viewport.shaders.ShaderType;
 import com.openmason.ui.viewport.state.RenderingState;
 import com.openmason.ui.viewport.state.TransformState;
-import com.openmason.ui.viewport.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.stonebreak.model.ModelDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,14 +81,14 @@ public class RenderPipeline {
     /**
      * Execute complete render pipeline.
      */
-    public void render(ViewportState viewportState, RenderingState renderingState, TransformState transformState) {
+    public void render(ViewportUIState viewportState, RenderingState renderingState, TransformState transformState) {
         try {
             // Update camera animation
             context.getCamera().update(0.016f); // Assuming ~60fps (16ms frame time)
             context.getCamera().updateMatrices(); // Force matrix update
 
             // Update render context
-            context.update(viewportState.getWidth(), viewportState.getHeight(), viewportState.isWireframeMode());
+            context.update(viewportState.getWidth(), viewportState.getHeight(), viewportState.getWireframeMode().get());
 
             // Bind framebuffer
             resources.getFramebuffer().bind();
@@ -106,27 +106,27 @@ public class RenderPipeline {
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
             // Apply wireframe mode
-            if (viewportState.isWireframeMode()) {
+            if (viewportState.getWireframeMode().get()) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             } else {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
             // PASS 1: Render grid (if enabled)
-            if (viewportState.isShowGrid()) {
+            if (viewportState.getGridVisible().get()) {
                 renderGrid();
             }
 
             // PASS 2: Render content (model/block/item)
-            renderContent(renderingState, transformState, viewportState.isWireframeMode());
+            renderContent(renderingState, transformState, viewportState.getWireframeMode().get());
 
             // Restore polygon mode after content rendering
-            if (viewportState.isWireframeMode()) {
+            if (viewportState.getWireframeMode().get()) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
             // PASS 3: Render mesh (vertices + edges, debug overlay, Blender-style)
-            if (viewportState.isShowVertices()) {
+            if (viewportState.getShowVertices().get()) {
                 renderVertices(renderingState, transformState);
                 renderEdges(renderingState, transformState);
             }
@@ -342,7 +342,7 @@ public class RenderPipeline {
     /**
      * Render gizmo pass.
      */
-    private void renderGizmo(ViewportState viewportState) {
+    private void renderGizmo(ViewportUIState viewportState) {
         try {
             gizmoRenderer.render(
                 context.getCamera().getViewMatrix(),

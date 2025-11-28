@@ -25,7 +25,6 @@ public class ModelState {
     private int partCount = 0;
     private int vertexCount = 0;
     private int triangleCount = 0;
-    private int textureVariantCount = 4;
 
     // Model Part Selection
     private String selectedPart = "None";
@@ -57,52 +56,12 @@ public class ModelState {
         this.unsavedChanges = unsavedChanges;
     }
 
-    public int getPartCount() {
-        return partCount;
-    }
-
-    public void setPartCount(int partCount) {
-        this.partCount = partCount;
-    }
-
     public int getVertexCount() {
         return vertexCount;
     }
 
     public void setVertexCount(int vertexCount) {
         this.vertexCount = vertexCount;
-    }
-
-    public int getTriangleCount() {
-        return triangleCount;
-    }
-
-    public void setTriangleCount(int triangleCount) {
-        this.triangleCount = triangleCount;
-    }
-
-    public int getTextureVariantCount() {
-        return textureVariantCount;
-    }
-
-    public void setTextureVariantCount(int textureVariantCount) {
-        this.textureVariantCount = textureVariantCount;
-    }
-
-    public String getSelectedPart() {
-        return selectedPart;
-    }
-
-    public void setSelectedPart(String selectedPart) {
-        this.selectedPart = selectedPart;
-    }
-
-    public String getPartCoordinates() {
-        return partCoordinates;
-    }
-
-    public void setPartCoordinates(String partCoordinates) {
-        this.partCoordinates = partCoordinates;
     }
 
     public ModelSource getModelSource() {

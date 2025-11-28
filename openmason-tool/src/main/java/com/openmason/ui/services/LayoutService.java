@@ -1,7 +1,7 @@
 package com.openmason.ui.services;
 
 import com.openmason.ui.state.UIVisibilityState;
-import com.openmason.ui.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.openmason.ui.ViewportController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +19,10 @@ public class LayoutService {
     private static final Logger logger = LoggerFactory.getLogger(LayoutService.class);
 
     private final UIVisibilityState uiState;
-    private final ViewportState viewportState;
+    private final ViewportUIState viewportState;
     private final StatusService statusService;
 
-    public LayoutService(UIVisibilityState uiState, ViewportState viewportState, StatusService statusService) {
+    public LayoutService(UIVisibilityState uiState, ViewportUIState viewportState, StatusService statusService) {
         this.uiState = uiState;
         this.viewportState = viewportState;
         this.statusService = statusService;
@@ -74,9 +74,9 @@ public class LayoutService {
             viewport.setWireframeMode(false);
         }
 
-        viewportState.setShowGrid(true);
-        viewportState.setShowAxes(true);
-        viewportState.setWireframeMode(false);
+        viewportState.getGridVisible().set(true);
+        viewportState.getAxesVisible().set(true);
+        viewportState.getWireframeMode().set(false);
 
         statusService.updateStatus("Modeling layout applied");
     }
@@ -97,9 +97,9 @@ public class LayoutService {
             viewport.setWireframeMode(false);
         }
 
-        viewportState.setShowGrid(false);
-        viewportState.setShowAxes(false);
-        viewportState.setWireframeMode(false);
+        viewportState.getGridVisible().set(false);
+        viewportState.getAxesVisible().set(false);
+        viewportState.getWireframeMode().set(false);
 
         statusService.updateStatus("Texturing layout applied");
     }

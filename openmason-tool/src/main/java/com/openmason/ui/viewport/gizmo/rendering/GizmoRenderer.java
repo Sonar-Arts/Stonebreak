@@ -8,7 +8,7 @@ import com.openmason.ui.viewport.gizmo.modes.RotateMode;
 import com.openmason.ui.viewport.gizmo.modes.ScaleMode;
 import com.openmason.ui.viewport.gizmo.modes.TranslateMode;
 import com.openmason.ui.viewport.state.TransformState;
-import com.openmason.ui.viewport.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL30;
@@ -30,7 +30,7 @@ public class GizmoRenderer {
     private final GizmoState gizmoState;
     private final TransformState transformState;
     private final GizmoInteractionHandler interactionHandler;
-    private ViewportState viewportState;
+    private ViewportUIState viewportState;
 
     private final Map<GizmoState.Mode, IGizmoMode> modes = new HashMap<>();
     private IGizmoMode currentMode;
@@ -46,7 +46,7 @@ public class GizmoRenderer {
      * @param viewportState The viewport state for grid snapping (may be null initially)
      * @throws IllegalArgumentException if gizmoState or transformState is null
      */
-    public GizmoRenderer(GizmoState gizmoState, TransformState transformState, ViewportState viewportState) {
+    public GizmoRenderer(GizmoState gizmoState, TransformState transformState, ViewportUIState viewportState) {
         if (gizmoState == null) {
             throw new IllegalArgumentException("GizmoState cannot be null");
         }
@@ -223,7 +223,7 @@ public class GizmoRenderer {
      * Updates viewport state for grid snapping configuration.
      * @throws IllegalArgumentException if viewportState is null
      */
-    public void updateViewportState(com.openmason.ui.viewport.state.ViewportState viewportState) {
+    public void updateViewportState(ViewportUIState viewportState) {
         if (viewportState == null) {
             throw new IllegalArgumentException("ViewportState cannot be null");
         }

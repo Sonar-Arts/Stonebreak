@@ -18,7 +18,7 @@ import com.openmason.ui.viewport.resources.ViewportResourceManager;
 import com.openmason.ui.viewport.shaders.ShaderManager;
 import com.openmason.ui.viewport.state.RenderingState;
 import com.openmason.ui.viewport.state.TransformState;
-import com.openmason.ui.viewport.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -40,7 +40,7 @@ public class ViewportController {
     private RenderPipeline renderPipeline;
 
     // ========== State ==========
-    private ViewportState viewportState;
+    private ViewportUIState viewportState;
     private final RenderingState renderingState;
     private final TransformState transformState;
 
@@ -69,7 +69,7 @@ public class ViewportController {
     public ViewportController() {
         logger.info("Creating viewport with modular architecture");
 
-        this.viewportState = ViewportState.createDefault();
+        this.viewportState = new ViewportUIState();
         this.renderingState = new RenderingState();
         this.transformState = new TransformState();
 
@@ -160,7 +160,7 @@ public class ViewportController {
                 inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
             }
 
-            this.viewportState = viewportState.toBuilder().initialized(true).build();
+            viewportState.setViewportInitialized(true);
             logger.info("Viewport initialized successfully");
 
         } catch (Exception e) {
@@ -198,7 +198,7 @@ public class ViewportController {
         resourceManager.close();
         shaderManager.cleanup();
 
-        this.viewportState = viewportState.toBuilder().initialized(false).build();
+        viewportState.setViewportInitialized(false);
         logger.info("Viewport cleanup complete");
     }
 
@@ -238,7 +238,7 @@ public class ViewportController {
             return;
         }
 
-        this.viewportState = viewportState.toBuilder().dimensions(width, height).build();
+        viewportState.setDimensions(width, height);
 
         if (viewportState.isInitialized()) {
             resourceManager.resizeFramebuffer(width, height);
@@ -393,7 +393,7 @@ public class ViewportController {
     // ========== Viewport Configuration ==========
 
     public void setShowGrid(boolean showGrid) {
-        this.viewportState = viewportState.toBuilder().showGrid(showGrid).build();
+        viewportState.getGridVisible().set(showGrid);
     }
 
     /** Alias for {@link #setShowGrid(boolean)} */
@@ -402,30 +402,30 @@ public class ViewportController {
     }
 
     public void setWireframeMode(boolean wireframe) {
-        this.viewportState = viewportState.toBuilder().wireframeMode(wireframe).build();
+        viewportState.getWireframeMode().set(wireframe);
     }
 
     public void setAxesVisible(boolean visible) {
-        this.viewportState = viewportState.toBuilder().showAxes(visible).build();
+        viewportState.getAxesVisible().set(visible);
     }
 
     public void setGridSnappingEnabled(boolean enabled) {
-        this.viewportState = viewportState.toBuilder().gridSnappingEnabled(enabled).build();
+        viewportState.getGridSnappingEnabled().set(enabled);
         if (gizmoRenderer != null) {
-            gizmoRenderer.updateViewportState(this.viewportState);
+            gizmoRenderer.updateViewportState(viewportState);
         }
     }
 
     public void setGridSnappingIncrement(float increment) {
-        this.viewportState = viewportState.toBuilder().gridSnappingIncrement(increment).build();
+        viewportState.getGridSnappingIncrement().set(increment);
         if (gizmoRenderer != null) {
-            gizmoRenderer.updateViewportState(this.viewportState);
+            gizmoRenderer.updateViewportState(viewportState);
         }
         logger.debug("Grid snapping increment: {}", increment);
     }
 
     public void setShowVertices(boolean showVertices) {
-        this.viewportState = viewportState.toBuilder().showVertices(showVertices).build();
+        viewportState.getShowVertices().set(showVertices);
         if (renderPipeline != null && renderPipeline.getVertexRenderer() != null) {
             renderPipeline.getVertexRenderer().setEnabled(showVertices);
         }

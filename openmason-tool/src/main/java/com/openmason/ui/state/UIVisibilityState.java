@@ -9,7 +9,6 @@ import imgui.type.ImBoolean;
  */
 public class UIVisibilityState implements HelpWindowVisibilityState {
 
-    private final ImBoolean showHomeScreen = new ImBoolean(true);
     private final ImBoolean showModelBrowser = new ImBoolean(true);
     private final ImBoolean showPropertyPanel = new ImBoolean(true);
     private final ImBoolean showToolbar = new ImBoolean(true);
@@ -17,10 +16,6 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
     private final ImBoolean showAboutWindow = new ImBoolean(false);
 
     // Getters
-
-    public ImBoolean getShowHomeScreen() {
-        return showHomeScreen;
-    }
 
     public ImBoolean getShowModelBrowser() {
         return showModelBrowser;
@@ -68,20 +63,6 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
      */
     public void showAbout() {
         showAboutWindow.set(true);
-    }
-
-    /**
-     * Hide the Home screen (transition to main interface).
-     */
-    public void hideHomeScreen() {
-        showHomeScreen.set(false);
-    }
-
-    /**
-     * Show the Home screen.
-     */
-    public void showHomeScreen() {
-        showHomeScreen.set(true);
     }
 
     /**

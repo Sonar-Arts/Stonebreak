@@ -15,50 +15,16 @@ public class TransformState {
     private final ImFloat rotationZ = new ImFloat(0.0f);
     private final ImFloat scale = new ImFloat(1.0f);
 
-    // Texture Variant State
+    // Deprecated usage of texture variants. Remove when legacy cow methods are removed.
     private final ImString textureVariant = new ImString("Default", 256);
     private final String[] textureVariants = {"Default", "Angus", "Highland", "Jersey"};
     private int currentTextureVariantIndex = 0;
-
-    // Getters
-
-    public ImFloat getRotationX() {
-        return rotationX;
-    }
-
-    public ImFloat getRotationY() {
-        return rotationY;
-    }
-
-    public ImFloat getRotationZ() {
-        return rotationZ;
-    }
-
-    public ImFloat getScale() {
-        return scale;
-    }
-
-    public ImString getTextureVariant() {
-        return textureVariant;
-    }
-
-    public String[] getTextureVariants() {
-        return textureVariants;
-    }
-
-    public int getCurrentTextureVariantIndex() {
-        return currentTextureVariantIndex;
-    }
 
     public void setCurrentTextureVariantIndex(int index) {
         if (index >= 0 && index < textureVariants.length) {
             this.currentTextureVariantIndex = index;
             this.textureVariant.set(textureVariants[index]);
         }
-    }
-
-    public String getCurrentTextureVariant() {
-        return textureVariants[currentTextureVariantIndex];
     }
 
     /**

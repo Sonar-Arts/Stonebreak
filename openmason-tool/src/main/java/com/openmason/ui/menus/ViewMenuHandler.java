@@ -3,7 +3,7 @@ package com.openmason.ui.menus;
 import com.openmason.ui.services.LayoutService;
 import com.openmason.ui.services.ViewportOperationService;
 import com.openmason.ui.state.UIVisibilityState;
-import com.openmason.ui.state.ViewportState;
+import com.openmason.ui.viewport.ViewportUIState;
 import com.openmason.ui.ViewportController;
 import imgui.ImGui;
 
@@ -14,13 +14,13 @@ import imgui.ImGui;
 public class ViewMenuHandler {
 
     private final UIVisibilityState uiState;
-    private final ViewportState viewportState;
+    private final ViewportUIState viewportState;
     private final ViewportOperationService viewportOperations;
     private final LayoutService layoutService;
 
     private ViewportController viewport;
 
-    public ViewMenuHandler(UIVisibilityState uiState, ViewportState viewportState,
+    public ViewMenuHandler(UIVisibilityState uiState, ViewportUIState viewportState,
                            ViewportOperationService viewportOperations, LayoutService layoutService) {
         this.uiState = uiState;
         this.viewportState = viewportState;
@@ -53,15 +53,15 @@ public class ViewMenuHandler {
 
         ImGui.separator();
 
-        if (ImGui.menuItem("Show Grid", "Ctrl+G", viewportState.isShowGrid())) {
+        if (ImGui.menuItem("Show Grid", "Ctrl+G", viewportState.getGridVisible().get())) {
             viewportOperations.toggleGrid(viewport);
         }
 
-        if (ImGui.menuItem("Show Axes", "Ctrl+X", viewportState.isShowAxes())) {
+        if (ImGui.menuItem("Show Axes", "Ctrl+X", viewportState.getAxesVisible().get())) {
             viewportOperations.toggleAxes(viewport);
         }
 
-        if (ImGui.menuItem("Wireframe Mode", "Ctrl+W", viewportState.isWireframeMode())) {
+        if (ImGui.menuItem("Wireframe Mode", "Ctrl+W", viewportState.getWireframeMode().get())) {
             viewportOperations.toggleWireframe(viewport);
         }
 
