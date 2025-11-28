@@ -27,19 +27,6 @@ import java.util.Map;
 
 /**
  * List view renderer for the Model Browser.
- *
- * <p>Displays items in a sortable table with columns for thumbnail, name, type, and category.
- * Similar to Windows Explorer "Details" view.</p>
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li><strong>Single Responsibility</strong>: Only renders list/table view</li>
- *   <li><strong>Dependency Inversion</strong>: Depends on controller abstraction</li>
- * </ul>
- *
- * <p>Following KISS: Simple table with straightforward sorting.</p>
- * <p>Following DRY: Reuses thumbnail renderers and filtering logic from GridViewRenderer.</p>
- * <p>Following YAGNI: Only implements essential table features.</p>
  */
 public class ListViewRenderer implements ViewRenderer {
 
@@ -50,7 +37,6 @@ public class ListViewRenderer implements ViewRenderer {
     private static final float THUMBNAIL_COLUMN_WIDTH = 40.0f;
     private static final float NAME_COLUMN_WIDTH = 200.0f;
     private static final float TYPE_COLUMN_WIDTH = 100.0f;
-    private static final float CATEGORY_COLUMN_WIDTH = 150.0f;
 
     private final ModelBrowserController controller;
     private final ModelBrowserThumbnailCache thumbnailCache;
@@ -477,11 +463,6 @@ public class ListViewRenderer implements ViewRenderer {
     }
 
     @Override
-    public ViewMode getViewMode() {
-        return ViewMode.LIST;
-    }
-
-    @Override
     public void cleanup() {
         thumbnailCache.cleanup();
     }
@@ -489,23 +470,11 @@ public class ListViewRenderer implements ViewRenderer {
     /**
      * Simple data class for list items.
      * Following YAGNI: Only essential fields for table display.
+     *
+     * @param data BlockType, ItemType, or String (model name)
      */
-    private static class ListItem {
-        final ListItemType itemType;
-        final String id;
-        final String displayName;
-        final String type;
-        final String category;
-        final Object data; // BlockType, ItemType, or String (model name)
-
-        ListItem(ListItemType itemType, String id, String displayName, String type, String category, Object data) {
-            this.itemType = itemType;
-            this.id = id;
-            this.displayName = displayName;
-            this.type = type;
-            this.category = category;
-            this.data = data;
-        }
+        private record ListItem(ListItemType itemType, String id, String displayName, String type, String category,
+                                Object data) {
     }
 
     /**

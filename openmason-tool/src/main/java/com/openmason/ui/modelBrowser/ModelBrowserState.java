@@ -13,18 +13,6 @@ import java.util.List;
 
 /**
  * Manages all state for the Model Browser component.
- *
- * <p>This class follows the Single Responsibility Principle by focusing solely on
- * state management. It provides a clean interface for accessing and modifying
- * model browser state, making it easy to serialize for preferences persistence.</p>
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li>Single Responsibility: Only manages model browser state</li>
- *   <li>Open/Closed: New state fields can be added without modifying existing code</li>
- * </ul>
- *
- * <p>Thread-safe through defensive copying where appropriate.</p>
  */
 public class ModelBrowserState {
 
@@ -45,7 +33,6 @@ public class ModelBrowserState {
     private SortBy sortBy;
     private SortOrder sortOrder;
     private float sidebarWidth;
-    private boolean sidebarCollapsed;
 
     // Navigation state (NEW for file explorer)
     private final List<String> navigationPath; // Breadcrumb trail: ["Home", "Blocks", "Terrain"]
@@ -71,7 +58,6 @@ public class ModelBrowserState {
         this.sortBy = SortBy.NAME;
         this.sortOrder = SortOrder.ASCENDING;
         this.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
-        this.sidebarCollapsed = false;
 
         // Navigation defaults
         this.navigationPath = new ArrayList<>();
@@ -129,56 +115,12 @@ public class ModelBrowserState {
     }
 
     /**
-     * Gets the current filter index value.
-     *
-     * @return The current filter index
-     */
-    public int getCurrentFilterValue() {
-        return currentFilterIndex.get();
-    }
-
-    /**
-     * Sets the current filter index.
-     *
-     * @param index The new filter index
-     */
-    public void setCurrentFilterIndex(int index) {
-        if (index >= 0 && index < filters.length) {
-            currentFilterIndex.set(index);
-        }
-    }
-
-    /**
-     * Gets the current filter name.
-     *
-     * @return The name of the currently selected filter
-     */
-    public String getCurrentFilterName() {
-        int index = currentFilterIndex.get();
-        if (index >= 0 && index < filters.length) {
-            return filters[index];
-        }
-        return filters[0];
-    }
-
-    /**
      * Gets the current filter type.
      *
      * @return The currently selected FilterType enum value
      */
     public FilterType getCurrentFilter() {
         return FilterType.values()[currentFilterIndex.get()];
-    }
-
-    /**
-     * Sets the current filter by type.
-     *
-     * @param filterType The filter type to set
-     */
-    public void setCurrentFilter(FilterType filterType) {
-        if (filterType != null) {
-            currentFilterIndex.set(filterType.ordinal());
-        }
     }
 
     /**
@@ -239,13 +181,6 @@ public class ModelBrowserState {
         while (recentFiles.size() > MAX_RECENT_FILES) {
             recentFiles.remove(recentFiles.size() - 1);
         }
-    }
-
-    /**
-     * Clears the recent files list.
-     */
-    public void clearRecentFiles() {
-        recentFiles.clear();
     }
 
     /**
@@ -346,13 +281,6 @@ public class ModelBrowserState {
     }
 
     /**
-     * Toggles the sort order between ascending and descending.
-     */
-    public void toggleSortOrder() {
-        this.sortOrder = this.sortOrder.toggle();
-    }
-
-    /**
      * Gets the sidebar width in pixels.
      *
      * @return The sidebar width
@@ -368,31 +296,6 @@ public class ModelBrowserState {
      */
     public void setSidebarWidth(float width) {
         this.sidebarWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, width));
-    }
-
-    /**
-     * Checks if the sidebar is collapsed.
-     *
-     * @return true if sidebar is collapsed
-     */
-    public boolean isSidebarCollapsed() {
-        return sidebarCollapsed;
-    }
-
-    /**
-     * Sets the sidebar collapsed state.
-     *
-     * @param collapsed true to collapse, false to expand
-     */
-    public void setSidebarCollapsed(boolean collapsed) {
-        this.sidebarCollapsed = collapsed;
-    }
-
-    /**
-     * Toggles the sidebar collapsed state.
-     */
-    public void toggleSidebarCollapsed() {
-        this.sidebarCollapsed = !this.sidebarCollapsed;
     }
 
     // ==================== Navigation ====================
@@ -433,26 +336,6 @@ public class ModelBrowserState {
             while (navigationPath.size() > index + 1) {
                 navigationPath.remove(navigationPath.size() - 1);
             }
-        }
-    }
-
-    /**
-     * Adds a segment to the navigation path.
-     *
-     * @param segment The segment to add
-     */
-    public void pushNavigationSegment(String segment) {
-        if (segment != null && !segment.trim().isEmpty()) {
-            navigationPath.add(segment);
-        }
-    }
-
-    /**
-     * Removes the last segment from the navigation path (go back).
-     */
-    public void popNavigationSegment() {
-        if (navigationPath.size() > 1) {
-            navigationPath.remove(navigationPath.size() - 1);
         }
     }
 

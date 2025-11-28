@@ -26,19 +26,6 @@ import java.util.Map;
 
 /**
  * Compact list view renderer for the Model Browser.
- *
- * <p>Displays items in a dense list with small icons, optimized for viewing
- * many items at once. Similar to Windows Explorer "Compact" view.</p>
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li><strong>Single Responsibility</strong>: Only renders compact list view</li>
- *   <li><strong>Dependency Inversion</strong>: Depends on controller abstraction</li>
- * </ul>
- *
- * <p>Following KISS: Simplest view renderer - just icon + name.</p>
- * <p>Following DRY: Reuses thumbnail renderers and filtering logic.</p>
- * <p>Following YAGNI: Minimal features for dense list display.</p>
  */
 public class CompactListRenderer implements ViewRenderer {
 
@@ -431,31 +418,14 @@ public class CompactListRenderer implements ViewRenderer {
     }
 
     @Override
-    public ViewMode getViewMode() {
-        return ViewMode.COMPACT;
-    }
-
-    @Override
     public void cleanup() {
         thumbnailCache.cleanup();
     }
 
     /**
      * Simple data class for compact list items.
-     * Following YAGNI: Minimal fields - just what's needed for display.
      */
-    private static class CompactItem {
-        final CompactItemType type;
-        final String id;
-        final String displayName;
-        final Object data; // BlockType, ItemType, or String (model name)
-
-        CompactItem(CompactItemType type, String id, String displayName, Object data) {
-            this.type = type;
-            this.id = id;
-            this.displayName = displayName;
-            this.data = data;
-        }
+        private record CompactItem(CompactItemType type, String id, String displayName, Object data) {
     }
 
     /**

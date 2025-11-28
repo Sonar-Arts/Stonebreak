@@ -49,9 +49,7 @@ public class GridViewRenderer implements ViewRenderer {
     // Grid layout constants
     private static final int THUMBNAIL_SIZE = ModelBrowserThumbnailCache.SIZE_LARGE; // 64x64
     private static final float ITEM_WIDTH = 100.0f;  // Total width including padding
-    private static final float ITEM_HEIGHT = 100.0f; // Total height including label
     private static final float PADDING = 8.0f;
-    private static final float LABEL_HEIGHT = 32.0f;
 
     private final ModelBrowserController controller;
     private final ModelBrowserThumbnailCache thumbnailCache;
@@ -352,7 +350,7 @@ public class GridViewRenderer implements ViewRenderer {
 
         if (textSize.x > THUMBNAIL_SIZE) {
             // Truncate with ellipsis to fit within thumbnail width
-            while (labelText.length() > 0 && ImGui.calcTextSize(labelText + "...").x > THUMBNAIL_SIZE) {
+            while (!labelText.isEmpty() && ImGui.calcTextSize(labelText + "...").x > THUMBNAIL_SIZE) {
                 labelText = labelText.substring(0, labelText.length() - 1);
             }
             labelText = labelText + "...";
@@ -467,8 +465,7 @@ public class GridViewRenderer implements ViewRenderer {
         return switch (item.type) {
             case BLOCK -> ModelBrowserThumbnailCache.blockKey(item.id, THUMBNAIL_SIZE);
             case ITEM -> ModelBrowserThumbnailCache.itemKey(item.id, THUMBNAIL_SIZE);
-            case MODEL -> ModelBrowserThumbnailCache.modelKey(item.id, THUMBNAIL_SIZE);
-            case OMO_MODEL -> ModelBrowserThumbnailCache.modelKey(item.id, THUMBNAIL_SIZE);
+            case MODEL, OMO_MODEL -> ModelBrowserThumbnailCache.modelKey(item.id, THUMBNAIL_SIZE);
         };
     }
 
@@ -504,11 +501,6 @@ public class GridViewRenderer implements ViewRenderer {
     }
 
     @Override
-    public ViewMode getViewMode() {
-        return ViewMode.GRID;
-    }
-
-    @Override
     public void cleanup() {
         thumbnailCache.cleanup();
     }
@@ -516,19 +508,10 @@ public class GridViewRenderer implements ViewRenderer {
     /**
      * Simple data class for grid items.
      * Following YAGNI: Only essential fields.
+     *
+     * @param data BlockType, ItemType, or String (model name)
      */
-    private static class GridItem {
-        final GridItemType type;
-        final String id;
-        final String displayName;
-        final Object data; // BlockType, ItemType, or String (model name)
-
-        GridItem(GridItemType type, String id, String displayName, Object data) {
-            this.type = type;
-            this.id = id;
-            this.displayName = displayName;
-            this.data = data;
-        }
+        private record GridItem(GridItemType type, String id, String displayName, Object data) {
     }
 
     /**

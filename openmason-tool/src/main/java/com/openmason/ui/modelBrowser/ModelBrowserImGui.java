@@ -1,64 +1,32 @@
 package com.openmason.ui.modelBrowser;
 
-import com.openmason.block.BlockManager;
-import com.openmason.item.ItemManager;
-import com.openmason.ui.modelBrowser.categorizers.BlockCategorizer;
-import com.openmason.ui.modelBrowser.categorizers.ItemCategorizer;
 import com.openmason.ui.modelBrowser.components.BreadcrumbNavigator;
 import com.openmason.ui.modelBrowser.components.SidebarRenderer;
 import com.openmason.ui.modelBrowser.filters.FilterType;
 import com.openmason.ui.modelBrowser.sorting.SortBy;
 import com.openmason.ui.modelBrowser.sorting.SortOrder;
-import com.openmason.ui.modelBrowser.views.CompactListRenderer;
-import com.openmason.ui.modelBrowser.views.GridViewRenderer;
-import com.openmason.ui.modelBrowser.views.ListViewRenderer;
-import com.openmason.ui.modelBrowser.views.ViewMode;
-import com.openmason.ui.modelBrowser.views.ViewRenderer;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.items.ItemType;
+import com.openmason.ui.modelBrowser.views.*;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiMouseCursor;
-import imgui.flag.ImGuiStyleVar;
-import imgui.flag.ImGuiTreeNodeFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
-
 /**
  * Model Browser UI component using Dear ImGui.
- *
- * <p>This class follows the Single Responsibility Principle by focusing solely on
- * rendering the model browser UI. All business logic is delegated to the
- * ModelBrowserController.</p>
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li>Single Responsibility: Only handles UI rendering</li>
- *   <li>Dependency Inversion: Depends on controller abstraction</li>
- * </ul>
- *
- * <p>Following KISS: Simple rendering logic, no complex state management.</p>
- * <p>Following DRY: Reuses rendering methods for similar UI elements.</p>
  */
 public class ModelBrowserImGui {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelBrowserImGui.class);
 
     // UI spacing and styling constants
-    private static final float SECTION_SPACING = 8.0f;
-    private static final float CONTROL_SPACING = 4.0f;
     private static final float SEARCH_BAR_WIDTH = 220.0f;
     private static final float FILTER_WIDTH = 150.0f;
-    private static final float INDENT_SPACING = 16.0f;
     private static final float SPLITTER_WIDTH = 4.0f;
-    private static final float TOOLBAR_HEIGHT = 60.0f;
 
     private final ModelBrowserController controller;
     private final ImBoolean visible;
@@ -267,7 +235,7 @@ public class ModelBrowserImGui {
 
         // Sort order toggle button
         ImGui.sameLine();
-        String orderIcon = state.getSortOrder() == SortOrder.ASCENDING ? "\u2191" : "\u2193"; // Up/Down arrows
+        String orderIcon = state.getSortOrder() == SortOrder.ASCENDING ? "↑" : "↓"; // Up/Down arrows
         if (ImGui.smallButton(orderIcon)) {
             state.setSortOrder(state.getSortOrder().toggle());
         }
@@ -356,7 +324,6 @@ public class ModelBrowserImGui {
         ImGui.sameLine();
 
         ImGui.pushItemWidth(SEARCH_BAR_WIDTH);
-        boolean textChanged = ImGui.inputTextWithHint("##search", "Search models, blocks, items...", state.getSearchText());
         ImGui.popItemWidth();
 
         // Clear button
@@ -422,184 +389,6 @@ public class ModelBrowserImGui {
         float availWidth = ImGui.getContentRegionAvailX();
         ImGui.setCursorPosX(ImGui.getCursorPosX() + availWidth - 180);
         ImGui.textDisabled("Tip: Right-click items for options");
-    }
-
-    /**
-     * Renders the main model tree view.
-     */
-    private void renderModelTree() {
-        FilterType currentFilter = controller.getState().getCurrentFilter();
-
-        // Entity Models section
-        if (currentFilter.showEntityModels()) {
-            if (ImGui.treeNodeEx("Entity Models", ImGuiTreeNodeFlags.DefaultOpen)) {
-                renderEntityModels();
-                ImGui.treePop();
-            }
-        }
-
-        // Blocks section
-        if (currentFilter.showBlocks()) {
-            if (ImGui.treeNodeEx("Blocks", ImGuiTreeNodeFlags.DefaultOpen)) {
-                renderBlocksTree();
-                ImGui.treePop();
-            }
-        }
-
-        // Items section
-        if (currentFilter.showItems()) {
-            if (ImGui.treeNode("Items")) {
-                renderItemsTree();
-                ImGui.treePop();
-            }
-        }
-
-        // Recent files section
-        if (currentFilter.showRecentFiles()) {
-            if (ImGui.treeNode("Recent Files")) {
-                renderRecentFiles();
-                ImGui.treePop();
-            }
-        }
-    }
-
-    /**
-     * Renders the entity models section.
-     */
-    private void renderEntityModels() {
-        if (ImGui.treeNode("Cow Models")) {
-            String[] recentFiles = controller.getState().getRecentFilesArray();
-            for (String fileName : recentFiles) {
-                if (fileName.toLowerCase().contains("cow")) {
-                    if (ImGui.selectable(fileName, false)) {
-                        controller.selectModel(fileName);
-                    }
-                }
-            }
-            ImGui.treePop();
-        }
-    }
-
-    /**
-     * Renders the blocks tree with categorization and enhanced styling.
-     */
-    private void renderBlocksTree() {
-        Map<BlockCategorizer.Category, List<BlockType>> categorized = controller.getCategorizedBlocks();
-        int totalVisibleBlocks = 0;
-
-        for (BlockCategorizer.Category category : BlockCategorizer.Category.values()) {
-            List<BlockType> blocks = categorized.get(category);
-            if (blocks == null || blocks.isEmpty()) {
-                continue;
-            }
-
-            // Apply search filter
-            List<BlockType> filtered = controller.filterBlocks(blocks);
-            if (filtered.isEmpty()) {
-                continue;
-            }
-
-            totalVisibleBlocks += filtered.size();
-
-            // Category header with count
-            String categoryLabel = category.getDisplayName() + " (" + filtered.size() + ")";
-            if (ImGui.treeNode(categoryLabel)) {
-                renderCategoryItems(filtered, block -> {
-                    String displayName = BlockManager.getDisplayName(block);
-                    if (ImGui.selectable(displayName, false)) {
-                        controller.selectBlock(block);
-                    }
-                });
-                ImGui.treePop();
-            }
-        }
-
-        // Show "no results" message if search is active and nothing found
-        if (totalVisibleBlocks == 0 && controller.getState().isSearchActive()) {
-            ImGui.indent(INDENT_SPACING);
-            ImGui.textDisabled("No blocks match your search");
-            ImGui.unindent(INDENT_SPACING);
-        }
-    }
-
-    /**
-     * Renders the items tree with categorization and enhanced styling.
-     */
-    private void renderItemsTree() {
-        Map<ItemCategorizer.Category, List<ItemType>> categorized = controller.getCategorizedItems();
-        int totalVisibleItems = 0;
-
-        for (ItemCategorizer.Category category : ItemCategorizer.Category.values()) {
-            List<ItemType> items = categorized.get(category);
-            if (items == null || items.isEmpty()) {
-                continue;
-            }
-
-            // Apply search filter
-            List<ItemType> filtered = controller.filterItems(items);
-            if (filtered.isEmpty()) {
-                continue;
-            }
-
-            totalVisibleItems += filtered.size();
-
-            // Category header with count
-            String categoryLabel = category.getDisplayName() + " (" + filtered.size() + ")";
-            if (ImGui.treeNode(categoryLabel)) {
-                renderCategoryItems(filtered, item -> {
-                    String displayName = ItemManager.getDisplayName(item);
-                    if (ImGui.selectable(displayName, false)) {
-                        controller.selectItem(item);
-                    }
-                });
-                ImGui.treePop();
-            }
-        }
-
-        // Show "no results" message if search is active and nothing found
-        if (totalVisibleItems == 0 && controller.getState().isSearchActive()) {
-            ImGui.indent(INDENT_SPACING);
-            ImGui.textDisabled("No items match your search");
-            ImGui.unindent(INDENT_SPACING);
-        }
-    }
-
-    /**
-     * Generic category items renderer following DRY principle.
-     * Renders a list of items with consistent spacing and styling.
-     *
-     * @param items The list of items to render
-     * @param itemRenderer Consumer that renders each individual item
-     * @param <T> The type of items being rendered
-     */
-    private <T> void renderCategoryItems(List<T> items, java.util.function.Consumer<T> itemRenderer) {
-        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0, CONTROL_SPACING);
-        for (T item : items) {
-            itemRenderer.accept(item);
-        }
-        ImGui.popStyleVar();
-    }
-
-    /**
-     * Renders the recent files list with enhanced styling.
-     */
-    private void renderRecentFiles() {
-        List<String> recentFiles = controller.getState().getRecentFiles();
-
-        if (recentFiles.isEmpty()) {
-            ImGui.indent(INDENT_SPACING);
-            ImGui.textDisabled("No recent files");
-            ImGui.unindent(INDENT_SPACING);
-            return;
-        }
-
-        ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0, CONTROL_SPACING);
-        for (String fileName : recentFiles) {
-            if (ImGui.selectable(fileName, false)) {
-                controller.loadRecentFile(fileName);
-            }
-        }
-        ImGui.popStyleVar();
     }
 
     /**
