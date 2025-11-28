@@ -45,12 +45,19 @@ public class SurfaceDecorationGenerator {
                                      SnowLayerManager snowLayerManager) {
         int chunkSize = WorldConfiguration.CHUNK_SIZE;
 
+        // Get surface height cache for performance optimization
+        int[][] surfaceCache = chunk.getSurfaceHeightCache();
+
         for (int x = 0; x < chunkSize; x++) {
             for (int z = 0; z < chunkSize; z++) {
                 int worldX = chunkX * chunkSize + x;
                 int worldZ = chunkZ * chunkSize + z;
 
-                int surfaceHeight = findSurfaceHeight(chunk, x, z);
+                // Use cached surface height (eliminates O(256) scan per column)
+                // Cache stores highest solid block Y, add 1 for first air block above
+                int surfaceHeight = (surfaceCache != null)
+                    ? surfaceCache[x][z] + 1
+                    : findSurfaceHeight(chunk, x, z);
                 if (surfaceHeight == 0 || surfaceHeight >= WorldConfiguration.WORLD_HEIGHT) continue;
 
                 // Generate biome-specific decorations

@@ -49,6 +49,11 @@ public class Chunk {
     private MmsRenderableHandle renderableHandle;
     private boolean meshGenerated = false;
 
+    // Surface height cache for performance optimization
+    // Caches the highest non-air block Y coordinate for each X,Z column
+    // Eliminates ~131,000 redundant block accesses per chunk during feature generation
+    private int[][] surfaceHeightCache;
+
     /**
      * Creates a new chunk at the specified position using CCO API.
      */
@@ -57,12 +62,11 @@ public class Chunk {
         this.z = z;
 
         // Initialize block array (16x256x16)
+        // Optimized: Y→X→Z loop order for cache locality + Arrays.fill() for Z dimension
         BlockType[][][] blockArray = new BlockType[16][256][16];
-        for (int ix = 0; ix < 16; ix++) {
-            for (int iy = 0; iy < 256; iy++) {
-                for (int iz = 0; iz < 16; iz++) {
-                    blockArray[ix][iy][iz] = BlockType.AIR;
-                }
+        for (int iy = 0; iy < 256; iy++) {
+            for (int ix = 0; ix < 16; ix++) {
+                java.util.Arrays.fill(blockArray[ix][iy], BlockType.AIR);
             }
         }
 
@@ -280,6 +284,26 @@ public class Chunk {
         return stateManager.hasState(CcoChunkState.MESH_GENERATING);
     }
 
+    // ===== Surface Height Cache =====
+
+    /**
+     * Gets the cached surface heights for this chunk.
+     * Returns a 16x16 array where each element is the Y coordinate of the highest non-air block.
+     * @return The surface height cache, or null if not yet computed
+     */
+    public int[][] getSurfaceHeightCache() {
+        return surfaceHeightCache;
+    }
+
+    /**
+     * Sets the surface height cache for this chunk.
+     * This should be called during terrain generation to cache surface heights.
+     * @param cache A 16x16 array of surface heights
+     */
+    public void setSurfaceHeightCache(int[][] cache) {
+        this.surfaceHeightCache = cache;
+    }
+
     // ===== Dirty Tracking (CCO-based) =====
 
     /**
@@ -333,7 +357,8 @@ public class Chunk {
         BlockType[][][] blocksCopy = blocks.deepCopy();
 
         // Extract water metadata from WaterSystem
-        java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
+        // Use Long keys for performance (eliminates string allocation overhead)
+        java.util.Map<Long, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata = new java.util.HashMap<>();
 
         int totalWaterBlocks = 0;
         int sourceBlocks = 0;
@@ -359,7 +384,9 @@ public class Chunk {
                             } else {
                                 flowingBlocks++;
                                 // Only save non-source water (source is default)
-                                String key = localX + "," + y + "," + localZ;
+                                // Pack coordinates into long: (x << 16) | (y << 8) | z
+                                // Eliminates 100-500 string allocations per ocean chunk
+                                long key = ((long)localX << 16) | ((long)y << 8) | (long)localZ;
                                 waterMetadata.put(key, new com.stonebreak.world.save.model.ChunkData.WaterBlockData(
                                     waterBlock.level(),
                                     waterBlock.falling()

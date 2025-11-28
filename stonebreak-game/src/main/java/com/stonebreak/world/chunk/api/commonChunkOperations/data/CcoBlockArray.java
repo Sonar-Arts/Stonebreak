@@ -61,11 +61,10 @@ public final class CcoBlockArray {
     public static CcoBlockArray createEmpty(int sizeX, int sizeY, int sizeZ) {
         BlockType[][][] blocks = new BlockType[sizeX][sizeY][sizeZ];
 
-        for (int x = 0; x < sizeX; x++) {
-            for (int y = 0; y < sizeY; y++) {
-                for (int z = 0; z < sizeZ; z++) {
-                    blocks[x][y][z] = BlockType.AIR;
-                }
+        // Optimized: Y→X→Z loop order for cache locality + Arrays.fill() for Z dimension
+        for (int y = 0; y < sizeY; y++) {
+            for (int x = 0; x < sizeX; x++) {
+                java.util.Arrays.fill(blocks[x][y], BlockType.AIR);
             }
         }
 
@@ -135,8 +134,9 @@ public final class CcoBlockArray {
     public BlockType[][][] deepCopy() {
         BlockType[][][] copy = new BlockType[sizeX][sizeY][sizeZ];
 
-        for (int x = 0; x < sizeX; x++) {
-            for (int y = 0; y < sizeY; y++) {
+        // Optimized: Y→X loop order for cache locality
+        for (int y = 0; y < sizeY; y++) {
+            for (int x = 0; x < sizeX; x++) {
                 System.arraycopy(blocks[x][y], 0, copy[x][y], 0, sizeZ);
             }
         }
@@ -161,8 +161,9 @@ public final class CcoBlockArray {
      */
     public int countNonAirBlocks() {
         int count = 0;
-        for (int x = 0; x < sizeX; x++) {
-            for (int y = 0; y < sizeY; y++) {
+        // Optimized: Y→X→Z loop order for cache locality
+        for (int y = 0; y < sizeY; y++) {
+            for (int x = 0; x < sizeX; x++) {
                 for (int z = 0; z < sizeZ; z++) {
                     if (blocks[x][y][z] != BlockType.AIR) {
                         count++;

@@ -19,7 +19,7 @@ public final class ChunkData {
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
     private final boolean hasEntitiesGenerated;
-    private final Map<String, WaterBlockData> waterMetadata;
+    private final Map<Long, WaterBlockData> waterMetadata;  // Long keys for performance (packed coords)
     private final List<EntityData> entities;
 
     private ChunkData(Builder builder) {
@@ -40,7 +40,7 @@ public final class ChunkData {
     public LocalDateTime getLastModified() { return lastModified; }
     public boolean isFeaturesPopulated() { return featuresPopulated; }
     public boolean hasEntitiesGenerated() { return hasEntitiesGenerated; }
-    public Map<String, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
+    public Map<Long, WaterBlockData> getWaterMetadata() { return new HashMap<>(waterMetadata); }
     public List<EntityData> getEntities() { return new ArrayList<>(entities); }
 
     /**
@@ -68,7 +68,7 @@ public final class ChunkData {
         private LocalDateTime lastModified = LocalDateTime.now();
         private boolean featuresPopulated = false;
         private boolean hasEntitiesGenerated = false;
-        private Map<String, WaterBlockData> waterMetadata = new HashMap<>();
+        private Map<Long, WaterBlockData> waterMetadata = new HashMap<>();  // Long keys for performance
         private List<EntityData> entities = new ArrayList<>();
 
         public Builder chunkX(int chunkX) {
@@ -101,7 +101,7 @@ public final class ChunkData {
             return this;
         }
 
-        public Builder waterMetadata(Map<String, WaterBlockData> waterMetadata) {
+        public Builder waterMetadata(Map<Long, WaterBlockData> waterMetadata) {
             this.waterMetadata = waterMetadata;
             return this;
         }

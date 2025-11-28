@@ -111,7 +111,7 @@ public final class ChunkCodec {
             }
             BlockType[][][] blocks = decompressBlocks(compressedBlocks);
 
-            Map<String, ChunkData.WaterBlockData> waterMeta = readWaterMetadata(in);
+            Map<Long, ChunkData.WaterBlockData> waterMeta = readWaterMetadata(in);
             List<EntityData> entities = readEntities(in);
 
             return ChunkData.builder()
@@ -130,28 +130,33 @@ public final class ChunkCodec {
     }
 
     private static void writeWaterMetadata(DataOutputStream out,
-                                           Map<String, ChunkData.WaterBlockData> metadata) throws IOException {
+                                           Map<Long, ChunkData.WaterBlockData> metadata) throws IOException {
         out.writeInt(metadata.size());
-        for (Map.Entry<String, ChunkData.WaterBlockData> entry : metadata.entrySet()) {
-            int[] coords = parseKey(entry.getKey());
-            out.writeByte(coords[0]); // localX 0-15
-            out.writeShort(coords[1]); // y 0-255
-            out.writeByte(coords[2]); // localZ 0-15
+        for (Map.Entry<Long, ChunkData.WaterBlockData> entry : metadata.entrySet()) {
+            // Unpack long key: (x << 16) | (y << 8) | z
+            long key = entry.getKey();
+            int localX = (int)((key >> 16) & 0xFFFF);
+            int y = (int)((key >> 8) & 0xFF);
+            int localZ = (int)(key & 0xFF);
+            out.writeByte(localX); // localX 0-15
+            out.writeShort(y); // y 0-255
+            out.writeByte(localZ); // localZ 0-15
             out.writeByte(entry.getValue().level());
             out.writeBoolean(entry.getValue().falling());
         }
     }
 
-    private static Map<String, ChunkData.WaterBlockData> readWaterMetadata(DataInputStream in) throws IOException {
+    private static Map<Long, ChunkData.WaterBlockData> readWaterMetadata(DataInputStream in) throws IOException {
         int count = in.readInt();
-        Map<String, ChunkData.WaterBlockData> result = new HashMap<>(Math.max(count, 0));
+        Map<Long, ChunkData.WaterBlockData> result = new HashMap<>(Math.max(count, 0));
         for (int i = 0; i < count; i++) {
             int localX = Byte.toUnsignedInt(in.readByte());
             int y = Short.toUnsignedInt(in.readShort());
             int localZ = Byte.toUnsignedInt(in.readByte());
             int level = Byte.toUnsignedInt(in.readByte());
             boolean falling = in.readBoolean();
-            String key = localX + "," + y + "," + localZ;
+            // Pack coordinates into long: (x << 16) | (y << 8) | z
+            long key = ((long)localX << 16) | ((long)y << 8) | (long)localZ;
             result.put(key, new ChunkData.WaterBlockData(level, falling));
         }
         return result;

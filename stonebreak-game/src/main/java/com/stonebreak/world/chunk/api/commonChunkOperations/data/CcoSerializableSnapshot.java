@@ -33,7 +33,7 @@ public final class CcoSerializableSnapshot {
     private final LocalDateTime lastModified;
     private final boolean featuresPopulated;
     private final boolean hasEntitiesGenerated;  // Whether entities were spawned for this chunk
-    private final Map<String, ChunkData.WaterBlockData> waterMetadata;  // Water flow levels (non-source only)
+    private final Map<Long, ChunkData.WaterBlockData> waterMetadata;  // Water flow levels (packed long keys for performance)
     private final List<EntityData> entities;  // Entity data for this chunk
 
     /**
@@ -62,7 +62,7 @@ public final class CcoSerializableSnapshot {
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
-                                   Map<String, ChunkData.WaterBlockData> waterMetadata) {
+                                   Map<Long, ChunkData.WaterBlockData> waterMetadata) {
         this(chunkX, chunkZ, blocks, lastModified, featuresPopulated, false, waterMetadata, new ArrayList<>());
     }
 
@@ -75,13 +75,13 @@ public final class CcoSerializableSnapshot {
      * @param lastModified Last modification timestamp
      * @param featuresPopulated Whether features are populated
      * @param hasEntitiesGenerated Whether entities were spawned for this chunk
-     * @param waterMetadata Water flow level metadata (defensive copy made)
+     * @param waterMetadata Water flow level metadata (defensive copy made, Long keys for performance)
      * @param entities Entity data for this chunk (defensive copy made)
      */
     public CcoSerializableSnapshot(int chunkX, int chunkZ, BlockType[][][] blocks,
                                    LocalDateTime lastModified, boolean featuresPopulated,
                                    boolean hasEntitiesGenerated,
-                                   Map<String, ChunkData.WaterBlockData> waterMetadata,
+                                   Map<Long, ChunkData.WaterBlockData> waterMetadata,
                                    List<EntityData> entities) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
@@ -152,7 +152,7 @@ public final class CcoSerializableSnapshot {
         return featuresPopulated;
     }
 
-    public Map<String, ChunkData.WaterBlockData> getWaterMetadata() {
+    public Map<Long, ChunkData.WaterBlockData> getWaterMetadata() {
         return new HashMap<>(waterMetadata);  // Defensive copy
     }
 

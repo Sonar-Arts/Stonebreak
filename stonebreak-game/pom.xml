@@ -153,6 +153,12 @@
             <artifactId>junit-platform-suite-engine</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Fastutil for high-performance primitive collections -->
+        <dependency>
+            <groupId>it.unimi.dsi</groupId>
+            <artifactId>fastutil</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
@@ -160,6 +166,11 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs>
+                        <arg>--enable-preview</arg>
+                    </compilerArgs>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -193,6 +204,8 @@
                 <configuration>
                     <mainClass>com.stonebreak.core.Main</mainClass>
                     <options>
+                        <!-- Enable preview features for JDK 25 ScopedValue API -->
+                        <option>--enable-preview</option>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
                         <option>--enable-native-access=ALL-UNNAMED</option>
                         <!-- Alternative: specific modules if needed -->

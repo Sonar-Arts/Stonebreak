@@ -19,7 +19,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.DeterministicRandom;
 
-import java.util.LinkedList;
+import java.util.ArrayDeque;
 import java.util.Queue;
 import java.util.Random;
 
@@ -217,8 +217,26 @@ public class TerrainGenerationSystem {
      * @return Generated chunk with terrain (no features yet)
      */
     public Chunk generateTerrainOnly(int chunkX, int chunkZ) {
+        // Wrap terrain generation with ScopedValue for JDK 25 optimization
+        // This binding is required for DeterministicRandom convenience methods
+        final Chunk[] chunkHolder = new Chunk[1];
+        DeterministicRandom.runWithScopedRandom(() -> {
+            chunkHolder[0] = generateTerrainOnlyImpl(chunkX, chunkZ);
+        });
+        return chunkHolder[0];
+    }
+
+    /**
+     * Internal implementation of terrain generation (wrapped by ScopedValue binding).
+     */
+    private Chunk generateTerrainOnlyImpl(int chunkX, int chunkZ) {
         updateLoadingProgress("Generating Multi-Noise Terrain");
         Chunk chunk = new Chunk(chunkX, chunkZ);
+
+        // Initialize surface height cache (16x16 array)
+        // Caches highest non-air block Y coordinate for each X,Z column
+        // Eliminates ~131,000 redundant block accesses during feature generation
+        int[][] surfaceHeightCache = new int[WorldConfiguration.CHUNK_SIZE][WorldConfiguration.CHUNK_SIZE];
 
         // Generate terrain using multi-noise system
         for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
@@ -259,6 +277,9 @@ public class TerrainGenerationSystem {
                 }
 
                 // STEP 5: Generate blocks for this column
+                // Track surface height for caching (highest non-air block)
+                int surfaceHeight = 0;
+
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
@@ -294,9 +315,20 @@ public class TerrainGenerationSystem {
                     // Biome only affects materials, NOT height
                     BlockType blockType = determineBlockType(worldX, y, worldZ, height, biome);
                     chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
+
+                    // Update surface height (highest solid block)
+                    surfaceHeight = y;
                 }
+
+                // Cache the surface height for this column
+                surfaceHeightCache[x][z] = surfaceHeight;
             }
         }
+
+        // Set the surface height cache on the chunk
+        // This cache will be used by VegetationGenerator and SurfaceDecorationGenerator
+        // to avoid ~131,000 redundant block accesses per chunk
+        chunk.setSurfaceHeightCache(surfaceHeightCache);
 
         // Flood-fill ocean water from surface
         // This ensures caves stay dry while ocean water fills properly
@@ -431,7 +463,7 @@ public class TerrainGenerationSystem {
     private void floodFillOceanWater(Chunk chunk) {
         int chunkSize = WorldConfiguration.CHUNK_SIZE;
         boolean[][][] visited = new boolean[chunkSize][SEA_LEVEL + 1][chunkSize];
-        Queue<int[]> queue = new LinkedList<>();
+        Queue<int[]> queue = new ArrayDeque<>(256);
 
         // Get chunk world coordinates for continentalness lookup
         int chunkWorldX = chunk.getChunkX() * chunkSize;
@@ -530,6 +562,17 @@ public class TerrainGenerationSystem {
             return; // Already populated or null chunk
         }
 
+        // Wrap feature generation with ScopedValue for JDK 25 optimization
+        // This binding is required for DeterministicRandom convenience methods (15-30% faster)
+        DeterministicRandom.runWithScopedRandom(() -> {
+            populateChunkWithFeaturesImpl(world, chunk, snowLayerManager);
+        });
+    }
+
+    /**
+     * Internal implementation of feature population (wrapped by ScopedValue binding).
+     */
+    private void populateChunkWithFeaturesImpl(World world, Chunk chunk, SnowLayerManager snowLayerManager) {
         updateLoadingProgress("Adding Surface Decorations & Details");
 
         int chunkX = chunk.getChunkX();

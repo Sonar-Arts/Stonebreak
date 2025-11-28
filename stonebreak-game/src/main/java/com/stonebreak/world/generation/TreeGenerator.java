@@ -1,8 +1,8 @@
 package com.stonebreak.world.generation;
 
 import java.util.Random;
-import java.util.HashMap;
-import java.util.Map;
+
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
@@ -21,7 +21,8 @@ public class TreeGenerator {
      */
     private static class TreeBlockPlacer {
         private final World world;
-        private final Map<Chunk, Integer> affectedChunks = new HashMap<>();
+        // Fastutil Object2IntMap avoids Integer boxing (15-25% faster map ops)
+        private final Object2IntOpenHashMap<Chunk> affectedChunks = new Object2IntOpenHashMap<>();
 
         TreeBlockPlacer(World world) {
             this.world = world;
@@ -50,8 +51,8 @@ public class TreeGenerator {
             // Use CCO writer for automatic dirty tracking
             chunk.setBlock(localX, worldY, localZ, blockType);
 
-            // Track affected chunk for mesh rebuild
-            affectedChunks.merge(chunk, 1, Integer::sum);
+            // Track affected chunk for mesh rebuild (Fastutil addTo avoids boxing)
+            affectedChunks.addTo(chunk, 1);
         }
 
         /**

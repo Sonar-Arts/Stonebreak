@@ -20,7 +20,10 @@ module stonebreak.game {
     requires com.fasterxml.jackson.core;
     requires com.fasterxml.jackson.annotation;
     requires com.fasterxml.jackson.datatype.jsr310;
-    
+
+    // Fastutil for high-performance primitive collections
+    requires it.unimi.dsi.fastutil;
+
     // Java base modules
     requires java.desktop;
     requires java.management;

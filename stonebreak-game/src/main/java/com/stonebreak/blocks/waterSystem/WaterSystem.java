@@ -661,18 +661,19 @@ public final class WaterSystem {
      * Loads water metadata for a chunk from save data.
      * Called when a chunk is loaded from disk to restore water depth states.
      */
-    public void loadWaterMetadata(int chunkX, int chunkZ, java.util.Map<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata) {
+    public void loadWaterMetadata(int chunkX, int chunkZ, java.util.Map<Long, com.stonebreak.world.save.model.ChunkData.WaterBlockData> waterMetadata) {
         if (waterMetadata.isEmpty()) {
             System.out.println("[WATER-LOAD] Chunk (" + chunkX + "," + chunkZ + "): No water metadata to load");
             return;
         }
 
         int loadedCount = 0;
-        for (java.util.Map.Entry<String, com.stonebreak.world.save.model.ChunkData.WaterBlockData> entry : waterMetadata.entrySet()) {
-            String[] coords = entry.getKey().split(",");
-            int localX = Integer.parseInt(coords[0]);
-            int y = Integer.parseInt(coords[1]);
-            int localZ = Integer.parseInt(coords[2]);
+        for (java.util.Map.Entry<Long, com.stonebreak.world.save.model.ChunkData.WaterBlockData> entry : waterMetadata.entrySet()) {
+            // Decode packed long key: (x << 16) | (y << 8) | z
+            long key = entry.getKey();
+            int localX = (int)((key >> 16) & 0xFFFF);
+            int y = (int)((key >> 8) & 0xFF);
+            int localZ = (int)(key & 0xFF);
 
             int worldX = chunkX * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localX;
             int worldZ = chunkZ * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE + localZ;
