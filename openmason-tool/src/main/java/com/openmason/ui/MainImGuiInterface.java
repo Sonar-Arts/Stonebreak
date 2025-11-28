@@ -39,7 +39,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     // Services
     private final StatusService statusService;
-    private final PerformanceService performanceService;
     private final ModelOperationService modelOperations;
     private final ViewportOperationService viewportOperations;
     private final FileDialogService fileDialogService;
@@ -87,7 +86,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         // Initialize services
         this.statusService = new StatusService();
-        this.performanceService = new PerformanceService();
 
         // Initialize managers
         this.preferencesManager = new PreferencesManager();
@@ -127,7 +125,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         // Initialize toolbar
         this.toolbarRenderer = new ModelViewerToolbarRenderer(uiVisibilityState, modelState, modelOperations,
-                viewportOperations, performanceService, statusService);
+                viewportOperations, statusService);
 
         // Initialize components
         initializeComponents();
@@ -166,7 +164,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
             setupViewport();
             setupPropertiesPanel();
             setupModelBrowser();
-            performanceService.updateAll(viewport3D);
 
             // Initialize unified preferences window after components are created
             // (needs viewport and property panel for real-time updates)

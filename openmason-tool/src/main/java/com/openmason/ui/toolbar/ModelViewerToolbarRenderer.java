@@ -1,7 +1,6 @@
 package com.openmason.ui.toolbar;
 
 import com.openmason.ui.services.ModelOperationService;
-import com.openmason.ui.services.PerformanceService;
 import com.openmason.ui.services.StatusService;
 import com.openmason.ui.services.ViewportOperationService;
 import com.openmason.ui.state.ModelState;
@@ -20,19 +19,17 @@ public class ModelViewerToolbarRenderer extends BaseToolbarRenderer {
     private final ModelState modelState;
     private final ModelOperationService modelOperations;
     private final ViewportOperationService viewportOperations;
-    private final PerformanceService performanceService;
     private final StatusService statusService;
 
     private ViewportController viewport;
 
     public ModelViewerToolbarRenderer(UIVisibilityState uiState, ModelState modelState,
                            ModelOperationService modelOperations, ViewportOperationService viewportOperations,
-                           PerformanceService performanceService, StatusService statusService) {
+                           StatusService statusService) {
         this.uiState = uiState;
         this.modelState = modelState;
         this.modelOperations = modelOperations;
         this.viewportOperations = viewportOperations;
-        this.performanceService = performanceService;
         this.statusService = statusService;
     }
 
@@ -113,12 +110,6 @@ public class ModelViewerToolbarRenderer extends BaseToolbarRenderer {
         if (modelState.isModelLoaded()) {
             renderSeparator();
             ImGui.text(modelState.getCurrentModelPath());
-        }
-
-        // Progress bar (if active)
-        if (performanceService.getProgress().get() > 0.0f) {
-            renderSeparator();
-            ImGui.progressBar(performanceService.getProgress().get(), 100.0f, 0.0f);
         }
     }
 }

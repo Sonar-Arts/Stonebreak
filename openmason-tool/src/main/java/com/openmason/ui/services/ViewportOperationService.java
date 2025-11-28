@@ -1,10 +1,7 @@
 package com.openmason.ui.services;
 
-import com.openmason.ui.viewport.ViewportUIState;
-import com.openmason.ui.state.TransformState;
 import com.openmason.ui.ViewportController;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.openmason.ui.viewport.ViewportUIState;
 
 /**
  * Viewport operation service.
@@ -12,8 +9,6 @@ import org.slf4j.LoggerFactory;
  * Follows DRY - eliminates duplicated viewport operation code.
  */
 public class ViewportOperationService {
-
-    private static final Logger logger = LoggerFactory.getLogger(ViewportOperationService.class);
 
     private final ViewportUIState viewportState;
     private final StatusService statusService;
@@ -71,49 +66,4 @@ public class ViewportOperationService {
         statusService.updateStatus("Wireframe " + (viewportState.getWireframeMode().get() ? "enabled" : "disabled"));
     }
 
-    /**
-     * Toggle transform gizmo visibility.
-     */
-    public void toggleGizmo(ViewportController viewport) {
-        viewportState.toggleGizmo();
-        if (viewport != null && viewport.getGizmoRenderer() != null) {
-            viewport.getGizmoRenderer().getGizmoState().setEnabled(viewportState.getShowGizmo().get());
-        }
-        statusService.updateStatus("Transform gizmo " + (viewportState.getShowGizmo().get() ? "enabled" : "disabled"));
-    }
-
-    /**
-     * Switch texture variant.
-     */
-    public void switchTextureVariant(ViewportController viewport, TransformState transformState, String variantName) {
-        int index = transformState.getVariantIndexByName(variantName);
-        transformState.setCurrentTextureVariantIndex(index);
-
-        if (viewport != null) {
-            viewport.setCurrentTextureVariant(variantName.toLowerCase());
-        }
-
-        statusService.updateStatus("Switched to " + variantName + " variant");
-    }
-
-    /**
-     * Change render mode (wireframe/solid/textured).
-     */
-    public void changeRenderMode(ViewportController viewport, ViewportUIState state) {
-        String renderMode = state.getCurrentRenderMode();
-
-        if (viewport != null) {
-            switch (renderMode.toLowerCase()) {
-                case "wireframe":
-                    state.getWireframeMode().set(true);
-                    viewport.setWireframeMode(true);
-                    break;
-                default:
-                    state.getWireframeMode().set(false);
-                    viewport.setWireframeMode(false);
-                    break;
-            }
-            statusService.updateStatus("Render mode: " + renderMode);
-        }
-    }
 }
