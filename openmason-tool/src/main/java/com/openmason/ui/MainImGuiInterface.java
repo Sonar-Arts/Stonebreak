@@ -8,7 +8,7 @@ import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.menus.*;
-import com.openmason.ui.preferences.UnifiedPreferencesWindow;
+import com.openmason.ui.preferences.PreferencesWindow;
 import com.openmason.ui.preferences.PreferencesManager;
 import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.services.*;
@@ -49,7 +49,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private PropertyPanelImGui propertyPanelImGui;
     private ModelBrowserImGui modelBrowserImGui;
 
-    private UnifiedPreferencesWindow unifiedPreferencesWindow; // Initialized after components
+    private PreferencesWindow preferencesWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
@@ -109,7 +109,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Viewer");
 
         // Note: UnifiedPreferencesWindow will be initialized after components (needs viewport and property panel)
-        this.unifiedPreferencesWindow = null; // Initialized in initializeComponents()
+        this.preferencesWindow = null; // Initialized in initializeComponents()
 
         // Initialize menu handlers
         this.fileMenuHandler = new FileMenuHandler(modelState, modelOperations,
@@ -168,7 +168,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
             // Initialize unified preferences window after components are created
             // (needs viewport and property panel for real-time updates)
             // Note: TextureCreatorImGui will be set later from OpenMasonApp after it's created
-            this.unifiedPreferencesWindow = new UnifiedPreferencesWindow(
+            this.preferencesWindow = new PreferencesWindow(
                     uiVisibilityState.getShowPreferencesWindow(),
                     preferencesManager,
                     themeManager,
@@ -468,8 +468,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
      */
     public Runnable getShowPreferencesCallback() {
         return () -> {
-            if (unifiedPreferencesWindow != null) {
-                unifiedPreferencesWindow.show();
+            if (preferencesWindow != null) {
+                preferencesWindow.show();
             } else {
                 logger.warn("Unified preferences window not yet initialized");
             }
@@ -479,16 +479,16 @@ public class MainImGuiInterface implements ModelBrowserListener {
     /**
      * Gets the unified preferences window for external rendering.
      */
-    public UnifiedPreferencesWindow getUnifiedPreferencesWindow() {
-        return unifiedPreferencesWindow;
+    public PreferencesWindow getUnifiedPreferencesWindow() {
+        return preferencesWindow;
     }
 
     /**
      * Sets the TextureCreatorImGui instance for unified preferences.
      */
     public void setTextureCreatorInterface(TextureCreatorImGui textureCreatorImGui) {
-        if (unifiedPreferencesWindow != null) {
-            unifiedPreferencesWindow.setTextureCreatorImGui(textureCreatorImGui);
+        if (preferencesWindow != null) {
+            preferencesWindow.setTextureCreatorImGui(textureCreatorImGui);
             logger.debug("TextureCreatorImGui wired up to unified preferences window");
         } else {
             logger.warn("Cannot set TextureCreatorImGui - unified preferences window not initialized");

@@ -142,16 +142,6 @@ public class PreferencesManager {
     }
     
     /**
-     * Reset all preferences to defaults.
-     */
-    public void resetToDefaults() {
-        properties.clear();
-        setDefaults();
-        savePreferences();
-        // logger.info("Reset all preferences to defaults");
-    }
-    
-    /**
      * Reset camera settings to defaults.
      */
     public void resetCameraToDefaults() {
@@ -162,17 +152,6 @@ public class PreferencesManager {
     }
 
     // Grid Snapping Settings
-
-    /**
-     * Get grid snapping enabled setting.
-     */
-    public boolean isGridSnappingEnabled() {
-        String value = properties.getProperty(GRID_SNAPPING_ENABLED_KEY);
-        if (value != null) {
-            return Boolean.parseBoolean(value);
-        }
-        return DEFAULT_GRID_SNAPPING_ENABLED;
-    }
 
     /**
      * Set grid snapping enabled setting.
@@ -203,20 +182,6 @@ public class PreferencesManager {
     public void setGridSnappingIncrement(float increment) {
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(increment));
         savePreferences();
-    }
-
-    /**
-     * Get the path to the preferences file.
-     */
-    public Path getPreferencesPath() {
-        return preferencesPath;
-    }
-
-    /**
-     * Check if preferences file exists.
-     */
-    public boolean preferencesFileExists() {
-        return Files.exists(preferencesPath);
     }
 
     // Texture Creator Settings

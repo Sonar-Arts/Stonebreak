@@ -1,6 +1,6 @@
 package com.openmason.ui.properties.sections;
 
-import com.openmason.ui.preferences.PreferencesPageRenderer;
+import com.openmason.ui.themes.utils.ImGuiComponents;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import imgui.ImGui;
 import imgui.type.ImInt;
@@ -30,7 +30,7 @@ public class TextureVariantSection implements IPanelSection {
         }
 
         // Use compact blue header box with JetBrains Mono Bold
-        PreferencesPageRenderer.renderCompactSectionHeader("Texture Variants");
+        ImGuiComponents.renderCompactSectionHeader("Texture Variants");
 
         if (availableVariants.length > 0) {
             ImGui.text("Current Variant:");

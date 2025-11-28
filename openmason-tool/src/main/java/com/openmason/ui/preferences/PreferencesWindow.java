@@ -15,24 +15,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Unified preferences window for Open Mason.
- * <p>
- * Provides a centralized interface for managing preferences across all tools:
- * - Model Viewer settings
- * - Texture Editor settings
- * - Common settings (theme, UI density)
- * </p>
- * <p>
- * Features:
- * - Floating standalone window (TextureEditorWindow style)
- * - Custom title bar with minimize/close buttons
- * - Left sidebar navigation with page selection
- * - Right content area with selected page
- * - KISS, YAGNI, DRY, and SOLID principles
- * </p>
  */
-public class UnifiedPreferencesWindow {
+public class PreferencesWindow {
 
-    private static final Logger logger = LoggerFactory.getLogger(UnifiedPreferencesWindow.class);
+    private static final Logger logger = LoggerFactory.getLogger(PreferencesWindow.class);
 
     private static final String WINDOW_TITLE = "Preferences";
     private static final float SIDEBAR_WIDTH = 150.0f;
@@ -46,7 +32,7 @@ public class UnifiedPreferencesWindow {
     private final PreferencesState state;
 
     // Unified page renderer
-    private final UnifiedPreferencesPageRenderer pageRenderer;
+    private final PreferencesPageRenderer pageRenderer;
 
     // Window state
     private boolean iniFileSet = false;
@@ -55,20 +41,13 @@ public class UnifiedPreferencesWindow {
 
     /**
      * Creates a new unified preferences window.
-     *
-     * @param visible               external visibility state (typically from UIVisibilityState)
-     * @param preferencesManager    the preferences manager for persistence
-     * @param themeManager          the theme manager for appearance settings
-     * @param textureCreatorImGui   the texture creator instance (for accessing preferences)
-     * @param viewport              the 3D viewport for real-time camera updates (can be null)
-     * @param propertyPanel         the property panel for real-time UI updates (can be null)
      */
-    public UnifiedPreferencesWindow(ImBoolean visible,
-                                    PreferencesManager preferencesManager,
-                                    ThemeManager themeManager,
-                                    TextureCreatorImGui textureCreatorImGui,
-                                    ViewportController viewport,
-                                    PropertyPanelImGui propertyPanel) {
+    public PreferencesWindow(ImBoolean visible,
+                             PreferencesManager preferencesManager,
+                             ThemeManager themeManager,
+                             TextureCreatorImGui textureCreatorImGui,
+                             ViewportController viewport,
+                             PropertyPanelImGui propertyPanel) {
         if (visible == null) {
             throw new IllegalArgumentException("Visibility state cannot be null");
         }
@@ -77,7 +56,7 @@ public class UnifiedPreferencesWindow {
         this.state = new PreferencesState();
 
         // Initialize unified page renderer with all dependencies
-        this.pageRenderer = new UnifiedPreferencesPageRenderer(
+        this.pageRenderer = new PreferencesPageRenderer(
                 preferencesManager,
                 themeManager,
                 textureCreatorImGui,
@@ -106,20 +85,9 @@ public class UnifiedPreferencesWindow {
 
     /**
      * Checks if the preferences window is visible.
-     *
-     * @return true if visible, false otherwise
      */
     public boolean isVisible() {
         return visible.get();
-    }
-
-    /**
-     * Gets the visibility state (for external control).
-     *
-     * @return the ImBoolean visibility state
-     */
-    public ImBoolean getVisibleState() {
-        return visible;
     }
 
     /**
@@ -321,7 +289,6 @@ public class UnifiedPreferencesWindow {
 
         // Get current theme colors for selection highlighting
         int selectedColor = ImGui.getColorU32(ImGuiCol.Header);
-        int hoveredColor = ImGui.getColorU32(ImGuiCol.ButtonHovered);
 
         for (PreferencesState.PreferencePage page : PreferencesState.PreferencePage.values()) {
             boolean isSelected = state.getCurrentPage() == page;
@@ -357,30 +324,13 @@ public class UnifiedPreferencesWindow {
 
     /**
      * Sets the current page to display.
-     *
-     * @param page the page to display
      */
     public void setCurrentPage(PreferencesState.PreferencePage page) {
         state.setCurrentPage(page);
     }
 
     /**
-     * Gets the current page.
-     *
-     * @return the current page
-     */
-    public PreferencesState.PreferencePage getCurrentPage() {
-        return state.getCurrentPage();
-    }
-
-    /**
      * Sets the TextureCreatorImGui instance for texture editor preferences.
-     * <p>
-     * This allows the texture creator interface to be wired up after construction,
-     * enabling real-time updates for texture editor settings.
-     * </p>
-     *
-     * @param textureCreatorImGui the texture creator instance (can be null)
      */
     public void setTextureCreatorImGui(TextureCreatorImGui textureCreatorImGui) {
         pageRenderer.setTextureCreatorImGui(textureCreatorImGui);

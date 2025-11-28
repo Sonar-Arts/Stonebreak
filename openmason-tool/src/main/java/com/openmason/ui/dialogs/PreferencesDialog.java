@@ -2,7 +2,7 @@ package com.openmason.ui.dialogs;
 
 import com.openmason.ui.config.WindowConfig;
 import com.openmason.ui.preferences.PreferencesManager;
-import com.openmason.ui.properties.PropertyPanelImGui;
+import com.openmason.ui.preferences.PreferencesWindow;
 import com.openmason.ui.services.StatusService;
 import com.openmason.ui.state.UIVisibilityState;
 import com.openmason.ui.themes.application.DensityManager;
@@ -11,7 +11,6 @@ import com.openmason.ui.themes.core.ThemeDefinition;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.ViewportController;
 import imgui.ImGui;
-import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;
 
@@ -19,7 +18,7 @@ import imgui.type.ImInt;
  * Preferences dialog window.
  * Follows Single Responsibility Principle - only handles preferences window.
  *
- * @deprecated Replaced by {@link com.openmason.ui.preferences.UnifiedPreferencesWindow}.
+ * @deprecated Replaced by {@link PreferencesWindow}.
  *             This class is kept for one release cycle for compatibility.
  *             Use UnifiedPreferencesWindow for unified preferences across all Open Mason tools.
  */

@@ -1,387 +1,597 @@
 package com.openmason.ui.preferences;
 
+import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.components.textureCreator.TextureCreatorPreferences;
+import com.openmason.ui.properties.PropertyPanelImGui;
+import com.openmason.ui.themes.application.DensityManager;
+import com.openmason.ui.themes.core.ThemeDefinition;
+import com.openmason.ui.themes.core.ThemeManager;
+import com.openmason.ui.themes.utils.ImGuiComponents;
+import com.openmason.ui.ViewportController;
+import com.openmason.ui.viewport.util.SnappingUtil;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
 import imgui.type.ImInt;
-
-import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Provides DRY (Don't Repeat Yourself) helper methods for rendering preference UI components.
+ * Unified preferences page renderer for all Open Mason tools.
  * <p>
- * This class eliminates duplicate UI rendering code across preference pages by providing
- * reusable components with consistent styling.
+ * Consolidates Model Viewer, Texture Editor, and Common preference pages into a single
+ * KISS-compliant class following DRY principles.
  * </p>
  * <p>
- * All methods are static for simple, functional usage without instance management.
+ * Architecture:
+ * - Single class with page-specific render methods
+ * - Shared state synchronization logic
+ * - Consistent reset button pattern
+ * - Real-time updates for all settings
  * </p>
  */
 public class PreferencesPageRenderer {
 
-    // Private constructor to prevent instantiation (utility class)
-    private PreferencesPageRenderer() {
+    private static final Logger logger = LoggerFactory.getLogger(PreferencesPageRenderer.class);
+
+    // Model Viewer constants
+    private static final float MIN_CAMERA_SENSITIVITY = 0.1f;
+    private static final float MAX_CAMERA_SENSITIVITY = 10.0f;
+    private static final float MIN_VERTEX_POINT_SIZE = 1.0f;
+    private static final float MAX_VERTEX_POINT_SIZE = 15.0f;
+
+    // Grid snapping increment options (based on STANDARD_BLOCK_SIZE = 1.0)
+    // Ordered from coarse to fine, with recommended default (1/2 Block) providing
+    // good visual alignment with the 1.0 unit grid (2 snaps per grid square)
+    private static final String[] GRID_SNAPPING_INCREMENT_NAMES = {
+        "1 Block (1.0)",        // Coarsest - 1 snap per grid square
+        "1/2 Block (0.5)",      // Recommended default - 2 snaps per grid square
+        "1/4 Block (0.25)",     // Fine - 4 snaps per grid square
+        "1/8 Block (0.125)",    // Very fine - 8 snaps per grid square
+        "1/16 Block (0.0625)"   // Ultra fine - 16 snaps per grid square
+    };
+    private static final float[] GRID_SNAPPING_INCREMENT_VALUES = {
+        SnappingUtil.SNAP_FULL_BLOCK,      // 1.0
+        SnappingUtil.SNAP_HALF_BLOCK,      // 0.5 (default)
+        SnappingUtil.SNAP_QUARTER_BLOCK,   // 0.25
+        0.125f,                             // 1/8 block
+        0.0625f                             // 1/16 block
+    };
+
+    // Model Viewer ImGui state holders
+    private final ImFloat cameraMouseSensitivity = new ImFloat();
+    private final ImInt gridSnappingIncrementIndex = new ImInt();
+    private final ImFloat vertexPointSize = new ImFloat();
+
+    // Texture Editor ImGui state holders
+    private final ImFloat gridOpacitySlider = new ImFloat();
+    private final ImFloat cubeNetOverlayOpacitySlider = new ImFloat();
+    private final ImFloat rotationSpeedSlider = new ImFloat();
+    private final ImBoolean skipTransparentPixelsCheckbox = new ImBoolean();
+
+    // Common ImGui state holders
+    private final ImInt themeIndex = new ImInt();
+    private final ImInt densityIndex = new ImInt();
+
+    // Dependencies
+    private final PreferencesManager preferencesManager;
+    private final ThemeManager themeManager;
+    private TextureCreatorImGui textureCreatorImGui; // Mutable - can be set after construction
+
+    // Component references for real-time updates
+    private final ViewportController viewport;
+    private final PropertyPanelImGui propertyPanel;
+
+    /**
+     * Creates a new unified preferences page renderer.
+     *
+     * @param preferencesManager   the preferences manager for persistence
+     * @param themeManager         the theme manager for appearance settings
+     * @param textureCreatorImGui  the texture creator instance (for accessing preferences)
+     * @param viewport             the 3D viewport for camera updates (can be null)
+     * @param propertyPanel        the property panel for UI updates (can be null)
+     */
+    public PreferencesPageRenderer(PreferencesManager preferencesManager,
+                                   ThemeManager themeManager,
+                                   TextureCreatorImGui textureCreatorImGui,
+                                   ViewportController viewport,
+                                   PropertyPanelImGui propertyPanel) {
+        this.preferencesManager = preferencesManager;
+        this.themeManager = themeManager;
+        this.textureCreatorImGui = textureCreatorImGui;
+        this.viewport = viewport;
+        this.propertyPanel = propertyPanel;
+        logger.debug("Unified preferences page renderer created");
+    }
+
+    /**
+     * Renders the selected preference page.
+     *
+     * @param page the page to render
+     */
+    public void render(PreferencesState.PreferencePage page) {
+        switch (page) {
+            case MODEL_VIEWER:
+                renderModelViewerPage();
+                break;
+            case TEXTURE_EDITOR:
+                renderTextureEditorPage();
+                break;
+            case COMMON:
+                renderCommonPage();
+                break;
+            default:
+                ImGui.text("Unknown page: " + page);
+                break;
+        }
     }
 
     // ========================================
-    // Section Headers
+    // Model Viewer Page
     // ========================================
 
-    /**
-     * Renders a prominent section header with blue accent border and background.
-     * <p>
-     * Creates a visually distinct section header with:
-     * - Bright blue left accent bar (4px width)
-     * - Darker gray-blue background box
-     * - Compact sizing (fits text with padding)
-     * - Thick separator line below
-     * </p>
-     *
-     * @param title the section title text
-     */
-    public static void renderSectionHeader(String title) {
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        imgui.ImVec2 textSize = ImGui.calcTextSize(title);
+    private void renderModelViewerPage() {
+        // Sync state from preferences
+        syncModelViewerState();
 
-        // Visible blue accent color
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.26f, 0.59f, 0.98f, 1.0f); // Bright blue
+        // Camera Settings Section
+        ImGuiComponents.renderSectionHeader("Camera Settings");
+        renderCameraSettings();
 
-        // Draw prominent left border accent
-        float borderWidth = 4.0f;
-        float padding = 8.0f;
-        float height = textSize.y + padding * 2;
-        float boxWidth = textSize.x + padding * 2; // Compact, sized to text
+        ImGuiComponents.addSectionSeparator();
 
-        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
+        // Grid Settings Section
+        ImGuiComponents.renderSectionHeader("Grid Settings");
+        renderGridSettings();
 
-        // Left accent bar (bright blue)
-        drawList.addRectFilled(
-                cursorPos.x,
-                cursorPos.y,
-                cursorPos.x + borderWidth,
-                cursorPos.y + height,
-                borderColor,
-                2.0f
+        ImGuiComponents.addSectionSeparator();
+
+        // Add extra spacing for visual consistency
+        ImGui.spacing();
+
+        // Reset button
+        ImGuiComponents.renderButton(
+                "Reset to Defaults",
+                150.0f,
+                0.0f,
+                this::resetModelViewerToDefaults
+        );
+    }
+
+    private void renderCameraSettings() {
+        ImGuiComponents.renderSliderSetting(
+                "Camera Drag Speed",
+                "Controls how fast the camera rotates when dragging with the mouse.\n" +
+                        "Higher values = faster camera movement.\n" +
+                        "Default: 3.0",
+                cameraMouseSensitivity,
+                MIN_CAMERA_SENSITIVITY,
+                MAX_CAMERA_SENSITIVITY,
+                "%.1f",
+                this::onCameraSensitivityChanged
+        );
+    }
+
+    private void renderGridSettings() {
+        ImGuiComponents.renderComboBoxSetting(
+                "Grid Snapping Increment",
+                "Controls the snapping precision when grid snapping is enabled.\n" +
+                        "Smaller increments allow for finer positioning control.\n" +
+                        "Enable grid snapping in the Viewport Controls window.\n" +
+                        "Default: 1/16 Block",
+                GRID_SNAPPING_INCREMENT_NAMES,
+                gridSnappingIncrementIndex,
+                200.0f,
+                this::onGridSnappingIncrementChanged
         );
 
-        // Compact background box (darker gray-blue)
-        int bgColor = ImGui.colorConvertFloat4ToU32(0.25f, 0.28f, 0.35f, 1.0f);
-        drawList.addRectFilled(
-                cursorPos.x + borderWidth,
-                cursorPos.y,
-                cursorPos.x + borderWidth + boxWidth,
-                cursorPos.y + height,
-                bgColor,
-                2.0f
+        ImGuiComponents.renderSliderSetting(
+                "Vertex Point Size",
+                "Controls the size of vertex points when 'Show Mesh' is enabled.\n" +
+                        "Larger values make vertices more visible.\n" +
+                        "Enable mesh display (vertices + edges) with the 'Mesh' checkbox in the viewport toolbar.\n" +
+                        "Default: 5.0",
+                vertexPointSize,
+                MIN_VERTEX_POINT_SIZE,
+                MAX_VERTEX_POINT_SIZE,
+                "%.1f",
+                this::onVertexPointSizeChanged
+        );
+    }
+
+    private void onCameraSensitivityChanged(Float newValue) {
+        // Clamp value to valid range
+        float clampedValue = Math.max(MIN_CAMERA_SENSITIVITY,
+                Math.min(MAX_CAMERA_SENSITIVITY, newValue));
+
+        // Save to preferences
+        preferencesManager.setCameraMouseSensitivity(clampedValue);
+
+        // Apply to viewport in real-time
+        if (viewport != null && viewport.getCamera() != null) {
+            viewport.getCamera().setMouseSensitivity(clampedValue);
+            logger.debug("Camera mouse sensitivity updated in real-time: {}", clampedValue);
+        } else {
+            logger.debug("Camera mouse sensitivity saved (viewport will apply on next load): {}", clampedValue);
+        }
+    }
+
+    private void onGridSnappingIncrementChanged(Integer newIndex) {
+        // Validate index
+        if (newIndex < 0 || newIndex >= GRID_SNAPPING_INCREMENT_VALUES.length) {
+            logger.warn("Invalid grid snapping increment index: {}", newIndex);
+            return;
+        }
+
+        // Get the selected increment value
+        float newIncrement = GRID_SNAPPING_INCREMENT_VALUES[newIndex];
+
+        // Save to preferences (persists to disk)
+        preferencesManager.setGridSnappingIncrement(newIncrement);
+
+        // Apply immediately to viewport (real-time update)
+        if (viewport != null) {
+            viewport.setGridSnappingIncrement(newIncrement);
+            logger.debug("Grid snapping increment applied to viewport: {} ({})",
+                        GRID_SNAPPING_INCREMENT_NAMES[newIndex], newIncrement);
+        } else {
+            logger.debug("Grid snapping increment saved to preferences: {} ({}) - will apply on next viewport creation",
+                        GRID_SNAPPING_INCREMENT_NAMES[newIndex], newIncrement);
+        }
+    }
+
+    private void onVertexPointSizeChanged(Float newValue) {
+        // Clamp value to valid range
+        float clampedValue = Math.max(MIN_VERTEX_POINT_SIZE,
+                Math.min(MAX_VERTEX_POINT_SIZE, newValue));
+
+        // Save to AppConfig (persists to disk)
+        try {
+            com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+            appConfig.setVertexPointSize(clampedValue);
+            appConfig.saveConfiguration();
+        } catch (Exception e) {
+            logger.error("Failed to save vertex point size to AppConfig", e);
+        }
+
+        // Apply to viewport in real-time
+        if (viewport != null) {
+            viewport.setVertexPointSize(clampedValue);
+            logger.debug("Vertex point size updated in real-time: {}", clampedValue);
+        } else {
+            logger.debug("Vertex point size saved (viewport will apply on next load): {}", clampedValue);
+        }
+    }
+
+    private void resetModelViewerToDefaults() {
+        // Reset camera sensitivity
+        preferencesManager.setCameraMouseSensitivity(3.0f);
+        if (viewport != null && viewport.getCamera() != null) {
+            viewport.getCamera().setMouseSensitivity(3.0f);
+        }
+
+        // Reset grid snapping increment (default: 1/16 block = 0.0625)
+        preferencesManager.setGridSnappingIncrement(0.0625f);
+
+        // Reset vertex point size (default: 5.0)
+        try {
+            com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+            appConfig.setVertexPointSize(5.0f);
+            appConfig.saveConfiguration();
+            if (viewport != null) {
+                viewport.setVertexPointSize(5.0f);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to reset vertex point size", e);
+        }
+
+        logger.info("Model Viewer preferences reset to defaults");
+    }
+
+    private void syncModelViewerState() {
+        cameraMouseSensitivity.set(preferencesManager.getCameraMouseSensitivity());
+
+        // Sync grid snapping increment
+        float currentIncrement = preferencesManager.getGridSnappingIncrement();
+        int index = findGridSnappingIncrementIndex(currentIncrement);
+        gridSnappingIncrementIndex.set(index);
+
+        // Sync vertex point size from AppConfig
+        // Note: Using AppConfig directly since PreferencesManager doesn't handle vertex point size yet
+        try {
+            com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
+            vertexPointSize.set(appConfig.getVertexPointSize());
+        } catch (Exception e) {
+            logger.warn("Failed to sync vertex point size, using default: 5.0", e);
+            vertexPointSize.set(5.0f);
+        }
+    }
+
+    /**
+     * Find the index of a grid snapping increment value.
+     * Returns the closest match if exact value not found.
+     */
+    private int findGridSnappingIncrementIndex(float value) {
+        // Find exact match or closest match
+        int closestIndex = 0;
+        float closestDiff = Math.abs(GRID_SNAPPING_INCREMENT_VALUES[0] - value);
+
+        for (int i = 1; i < GRID_SNAPPING_INCREMENT_VALUES.length; i++) {
+            float diff = Math.abs(GRID_SNAPPING_INCREMENT_VALUES[i] - value);
+            if (diff < closestDiff) {
+                closestDiff = diff;
+                closestIndex = i;
+            }
+        }
+
+        return closestIndex;
+    }
+
+    // ========================================
+    // Texture Editor Page
+    // ========================================
+
+    private void renderTextureEditorPage() {
+        TextureCreatorPreferences preferences = getTexturePreferences();
+        if (preferences == null) {
+            ImGui.text("No preferences available");
+            return;
+        }
+
+        // Sync state from preferences
+        syncTextureEditorState(preferences);
+
+        // Grid Overlay Section
+        ImGuiComponents.renderSectionHeader("Grid Overlay");
+        ImGui.indent();
+        renderGridSettings(preferences);
+        ImGui.unindent();
+
+        ImGuiComponents.addSectionSeparator();
+
+        // Cube Net Reference Section
+        ImGuiComponents.renderSectionHeader("Cube Net Reference (64x48)");
+        ImGui.indent();
+        renderCubeNetSettings(preferences);
+        ImGui.unindent();
+
+        ImGuiComponents.addSectionSeparator();
+
+        // Tool Behavior Section
+        ImGuiComponents.renderSectionHeader("Tool Behavior");
+        ImGui.indent();
+        renderToolBehaviorSettings(preferences);
+        ImGui.unindent();
+
+        ImGuiComponents.addSectionSeparator();
+
+        // Add extra spacing for visual consistency
+        ImGui.spacing();
+
+        // Reset button
+        ImGuiComponents.renderButton(
+                "Reset to Defaults",
+                150.0f,
+                0.0f,
+                () -> resetTextureEditorToDefaults(preferences)
+        );
+    }
+
+    private void renderGridSettings(TextureCreatorPreferences preferences) {
+        ImGuiComponents.renderSliderSetting(
+                "Grid Opacity",
+                "Controls the opacity of the pixel grid overlay (toggleable with 'G' key).\n" +
+                        "Includes both minor grid lines (every pixel) and major lines (every 4th pixel).\n" +
+                        "Grid only visible when zoomed in 3x or more.",
+                gridOpacitySlider,
+                TextureCreatorPreferences.MIN_OPACITY,
+                TextureCreatorPreferences.MAX_OPACITY,
+                "%.2f",
+                preferences::setGridOpacity
+        );
+    }
+
+    private void renderCubeNetSettings(TextureCreatorPreferences preferences) {
+        ImGuiComponents.renderSliderSetting(
+                "Reference Opacity",
+                "Controls opacity of the cube-net reference overlay (independent of grid).\n" +
+                        "Shows face labels (TOP, LEFT, FRONT, RIGHT, BACK, BOTTOM) and boundaries.\n" +
+                        "Always visible under pixels, renders over grid when enabled.\n" +
+                        "Only appears when editing 64x48 canvases.",
+                cubeNetOverlayOpacitySlider,
+                TextureCreatorPreferences.MIN_OPACITY,
+                TextureCreatorPreferences.MAX_OPACITY,
+                "%.2f",
+                preferences::setCubeNetOverlayOpacity
+        );
+    }
+
+    private void renderToolBehaviorSettings(TextureCreatorPreferences preferences) {
+        // Move Tool Settings
+        ImGuiComponents.renderSubHeader("Move Tool");
+        ImGuiComponents.renderSettingSeparator();
+
+        ImGuiComponents.renderSliderSetting(
+                "Rotation Speed",
+                "Controls rotation speed when using the move tool's rotate handle.\n" +
+                        "Higher values = faster rotation.\n" +
+                        "Default: 0.5 degrees per pixel of mouse movement",
+                rotationSpeedSlider,
+                TextureCreatorPreferences.MIN_ROTATION_SPEED,
+                TextureCreatorPreferences.MAX_ROTATION_SPEED,
+                "%.2f deg/px",
+                preferences::setRotationSpeed
         );
 
-        // Render text with padding
-        ImGui.setCursorScreenPos(cursorPos.x + borderWidth + padding, cursorPos.y + padding);
-        ImGui.text(title);
+        ImGuiComponents.addSpacing();
 
-        // Reset cursor for next element
-        ImGui.setCursorScreenPos(cursorPos.x, cursorPos.y + height);
-        ImGui.spacing();
-        ImGui.spacing();
+        // Paste/Move Operations Settings
+        ImGuiComponents.renderSubHeader("Paste/Move Operations");
+        ImGuiComponents.renderSettingSeparator();
 
-        // Draw big separator line below section header
-        renderBigSeparator();
+        ImGuiComponents.renderCheckboxSetting(
+                "Skip Transparent Pixels",
+                "When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels\n" +
+                        "during paste or move operations. When disabled, transparent pixels will clear\n" +
+                        "the destination, allowing you to erase with transparent selections.",
+                skipTransparentPixelsCheckbox,
+                preferences::setSkipTransparentPixelsOnPaste
+        );
     }
 
-    /**
-     * Renders a compact property panel header with bold-style text.
-     * <p>
-     * Creates a sleek, professional header with:
-     * - Smaller height (compact design)
-     * - Longer blue background bar (extends to available width with max limit)
-     * - Bold-style text (rendered with double-pass technique)
-     * - Thin blue left accent (2px width)
-     * - Minimal padding for space efficiency
-     * - Maximum width constraint (250px) to prevent excessive stretching
-     * </p>
-     *
-     * @param title the section title text
-     */
-    public static void renderCompactSectionHeader(String title) {
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        float availableWidth = ImGui.getContentRegionAvailX();
+    private void resetTextureEditorToDefaults(TextureCreatorPreferences preferences) {
+        preferences.resetToDefaults();
+        logger.info("Texture Editor preferences reset to defaults");
+    }
 
-        imgui.ImVec2 textSize = ImGui.calcTextSize(title);
+    private void syncTextureEditorState(TextureCreatorPreferences preferences) {
+        gridOpacitySlider.set(preferences.getGridOpacity());
+        cubeNetOverlayOpacitySlider.set(preferences.getCubeNetOverlayOpacity());
+        rotationSpeedSlider.set(preferences.getRotationSpeed());
+        skipTransparentPixelsCheckbox.set(preferences.isSkipTransparentPixelsOnPaste());
+    }
 
-        // Visible blue accent color
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.26f, 0.59f, 0.98f, 1.0f); // Bright blue
+    private TextureCreatorPreferences getTexturePreferences() {
+        if (textureCreatorImGui != null) {
+            return textureCreatorImGui.getPreferences();
+        }
+        return null;
+    }
 
-        // Compact dimensions with size limit
-        float borderWidth = 2.0f; // Thinner accent bar
-        float padding = 4.0f; // Smaller padding
-        float height = textSize.y + padding * 2; // Smaller height
-        float maxWidth = 250.0f; // Maximum width constraint
-        float boxWidth = Math.min(availableWidth, maxWidth); // Extends to available width but capped at maxWidth
+    // ========================================
+    // Common Page
+    // ========================================
 
-        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
+    private void renderCommonPage() {
+        // Sync state from current theme/density
+        syncCommonState();
 
-        // Left accent bar (bright blue, thinner)
-        drawList.addRectFilled(
-                cursorPos.x,
-                cursorPos.y,
-                cursorPos.x + borderWidth,
-                cursorPos.y + height,
-                borderColor,
-                1.0f // Less rounding
+        // Appearance Settings Section
+        ImGuiComponents.renderSectionHeader("Appearance");
+        renderAppearanceSettings();
+
+        ImGuiComponents.addSectionSeparator();
+
+        // Add extra spacing for visual consistency
+        ImGui.spacing();
+
+        // Reset button
+        ImGuiComponents.renderButton(
+                "Reset to Defaults",
+                150.0f,
+                0.0f,
+                this::resetCommonToDefaults
+        );
+    }
+
+    private void renderAppearanceSettings() {
+        // Theme selection
+        String[] themeNames = themeManager.getAvailableThemes().stream()
+                .map(ThemeDefinition::getName)
+                .toArray(String[]::new);
+
+        ImGuiComponents.renderComboBoxSetting(
+                "Theme",
+                "Select the color theme for Open Mason.\n" +
+                        "Themes define the overall look and color scheme of the interface.\n" +
+                        "Changes apply immediately.",
+                themeNames,
+                themeIndex,
+                200.0f,
+                this::onThemeChanged
         );
 
-        // Long background box (darker gray-blue, extends to available width with max limit)
-        int bgColor = ImGui.colorConvertFloat4ToU32(0.25f, 0.28f, 0.35f, 1.0f);
-        drawList.addRectFilled(
-                cursorPos.x + borderWidth,
-                cursorPos.y,
-                cursorPos.x + borderWidth + boxWidth,
-                cursorPos.y + height,
-                bgColor,
-                1.0f // Less rounding
+        // UI Density selection
+        String[] densityNames = new String[DensityManager.UIDensity.values().length];
+        int idx = 0;
+        for (DensityManager.UIDensity density : DensityManager.UIDensity.values()) {
+            densityNames[idx++] = density.getDisplayName();
+        }
+
+        ImGuiComponents.renderComboBoxSetting(
+                "UI Density",
+                "Controls the spacing and size of UI elements.\n" +
+                        "Compact: Minimal padding, more content visible\n" +
+                        "Normal: Balanced spacing\n" +
+                        "Comfortable: Generous spacing\n" +
+                        "Spacious: Maximum spacing for accessibility\n" +
+                        "Changes apply immediately.",
+                densityNames,
+                densityIndex,
+                200.0f,
+                this::onDensityChanged
         );
-
-        // Render text with bold effect (double-pass rendering with slight offset)
-        float textX = cursorPos.x + borderWidth + padding;
-        float textY = cursorPos.y + padding;
-
-        // First pass: normal position
-        ImGui.setCursorScreenPos(textX, textY);
-        ImGui.text(title);
-
-        // Second pass: slight offset for bold effect
-        ImGui.setCursorScreenPos(textX + 0.5f, textY);
-        ImGui.text(title);
-
-        // Reset cursor for next element
-        ImGui.setCursorScreenPos(cursorPos.x, cursorPos.y + height);
-        ImGui.spacing();
     }
 
+    private void onThemeChanged(Integer newIndex) {
+        if (newIndex < 0 || newIndex >= themeManager.getAvailableThemes().size()) {
+            logger.warn("Invalid theme index: {}", newIndex);
+            return;
+        }
+
+        ThemeDefinition selectedTheme = themeManager.getAvailableThemes().get(newIndex);
+        themeManager.applyTheme(selectedTheme);
+
+        logger.info("Theme changed to: {}", selectedTheme.getName());
+    }
+
+    private void onDensityChanged(Integer newIndex) {
+        if (newIndex < 0 || newIndex >= DensityManager.UIDensity.values().length) {
+            logger.warn("Invalid density index: {}", newIndex);
+            return;
+        }
+
+        DensityManager.UIDensity selectedDensity = DensityManager.UIDensity.values()[newIndex];
+        themeManager.setUIDensity(selectedDensity);
+
+        logger.info("UI Density changed to: {}", selectedDensity.getDisplayName());
+    }
+
+    private void resetCommonToDefaults() {
+        // Reset to default theme (first available theme, typically "Dark Professional")
+        if (!themeManager.getAvailableThemes().isEmpty()) {
+            ThemeDefinition defaultTheme = themeManager.getAvailableThemes().get(0);
+            themeManager.applyTheme(defaultTheme);
+        }
+
+        // Reset to default density (NORMAL)
+        themeManager.setUIDensity(DensityManager.UIDensity.NORMAL);
+
+        logger.info("Common preferences reset to defaults");
+    }
+
+    private void syncCommonState() {
+        // Find current theme index
+        ThemeDefinition currentTheme = themeManager.getCurrentTheme();
+        if (currentTheme != null) {
+            for (int i = 0; i < themeManager.getAvailableThemes().size(); i++) {
+                if (themeManager.getAvailableThemes().get(i).getId().equals(currentTheme.getId())) {
+                    themeIndex.set(i);
+                    break;
+                }
+            }
+        }
+
+        // Get current density index
+        DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
+        densityIndex.set(currentDensity.ordinal());
+    }
+
+    // ========================================
+    // Lifecycle Methods
+    // ========================================
+
     /**
-     * Renders a sub-header with emphasized bold-style text.
+     * Sets the TextureCreatorImGui instance for texture editor preferences.
      * <p>
-     * Creates visual hierarchy within sections by rendering emphasized text
-     * (simulates bold by drawing twice with slight offset).
+     * This allows the texture creator interface to be wired up after construction,
+     * which is necessary because MainImGuiInterface is created before TextureCreatorImGui.
      * </p>
      *
-     * @param title the sub-header title text
+     * @param textureCreatorImGui the texture creator instance (can be null)
      */
-    public static void renderSubHeader(String title) {
-        // Simulate bold by rendering text twice with slight offset (common technique)
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-
-        // Draw text
-        ImGui.text(title);
-
-        // Draw again slightly offset to create bold effect
-        ImGui.setCursorScreenPos(cursorPos.x + 0.5f, cursorPos.y);
-        ImGui.text(title);
-
-        // Reset cursor to after text
-        ImGui.setCursorScreenPos(cursorPos.x, cursorPos.y);
-        ImGui.dummy(ImGui.calcTextSize(title).x, ImGui.calcTextSize(title).y);
-
-        ImGui.spacing();
-    }
-
-    // ========================================
-    // Separators
-    // ========================================
-
-    /**
-     * Renders a prominent separator line with accent color.
-     * <p>
-     * Used below section headers for clear visual separation.
-     * Creates a 2px thick line with 8px vertical spacing.
-     * </p>
-     */
-    public static void renderBigSeparator() {
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        float availWidth = ImGui.getContentRegionAvailX();
-        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
-
-        // Draw thicker separator line with accent color
-        int separatorColor = ImGui.colorConvertFloat4ToU32(0.5f, 0.5f, 0.55f, 0.6f);
-        drawList.addLine(
-                cursorPos.x,
-                cursorPos.y,
-                cursorPos.x + availWidth,
-                cursorPos.y,
-                separatorColor,
-                2.0f // Thicker line (2px)
-        );
-
-        // Add vertical spacing
-        ImGui.dummy(0, 8.0f);
-    }
-
-    /**
-     * Renders a subtle separator line for settings sections.
-     * <p>
-     * Used between sub-header and settings for visual clarity.
-     * Creates a 1px thin line with 4px vertical spacing.
-     * </p>
-     */
-    public static void renderSettingSeparator() {
-        imgui.ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        float availWidth = ImGui.getContentRegionAvailX();
-        imgui.ImDrawList drawList = ImGui.getWindowDrawList();
-
-        // Draw thin separator line with subtle color
-        int separatorColor = ImGui.colorConvertFloat4ToU32(0.4f, 0.4f, 0.4f, 0.3f);
-        drawList.addLine(
-                cursorPos.x,
-                cursorPos.y,
-                cursorPos.x + availWidth,
-                cursorPos.y,
-                separatorColor,
-                1.0f
-        );
-
-        // Add vertical spacing
-        ImGui.dummy(0, 4.0f);
-    }
-
-    // ========================================
-    // Settings Controls
-    // ========================================
-
-    /**
-     * Renders a labeled slider with tooltip and change callback.
-     * <p>
-     * Creates a consistent slider control with:
-     * - Label with (?) tooltip
-     * - Slider widget with custom formatting
-     * - Callback on value change
-     * </p>
-     *
-     * @param label      the setting label text
-     * @param tooltip    the tooltip text shown on (?) hover
-     * @param value      the ImFloat value holder
-     * @param min        minimum slider value
-     * @param max        maximum slider value
-     * @param format     slider display format (e.g., "%.2f", "%.2f deg/px")
-     * @param onChanged  callback invoked when value changes
-     */
-    public static void renderSliderSetting(String label, String tooltip, ImFloat value,
-                                           float min, float max, String format,
-                                           Consumer<Float> onChanged) {
-        ImGui.text(label);
-        ImGui.sameLine();
-        ImGui.textDisabled("(?)");
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(tooltip);
-        }
-
-        if (ImGui.sliderFloat("##" + label, value.getData(), min, max, format)) {
-            onChanged.accept(value.get());
-        }
-
-        ImGui.spacing();
-    }
-
-    /**
-     * Renders a labeled checkbox with tooltip and change callback.
-     * <p>
-     * Creates a consistent checkbox control with:
-     * - Checkbox widget
-     * - Label with (?) tooltip on same line
-     * - Callback on value change
-     * </p>
-     *
-     * @param label      the setting label text
-     * @param tooltip    the tooltip text shown on (?) hover
-     * @param value      the ImBoolean value holder
-     * @param onChanged  callback invoked when value changes
-     */
-    public static void renderCheckboxSetting(String label, String tooltip, ImBoolean value,
-                                             Consumer<Boolean> onChanged) {
-        if (ImGui.checkbox(label, value)) {
-            onChanged.accept(value.get());
-        }
-
-        ImGui.sameLine();
-        ImGui.textDisabled("(?)");
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(tooltip);
-        }
-
-        ImGui.spacing();
-    }
-
-    /**
-     * Renders a labeled combo box (dropdown) with tooltip and change callback.
-     * <p>
-     * Creates a consistent dropdown control with:
-     * - Label with (?) tooltip
-     * - Combo box widget with items array
-     * - Callback on selection change
-     * </p>
-     *
-     * @param label      the setting label text
-     * @param tooltip    the tooltip text shown on (?) hover
-     * @param items      array of dropdown items
-     * @param selected   the ImInt selected index holder
-     * @param width      combo box width (0 for auto-width)
-     * @param onChanged  callback invoked when selection changes
-     */
-    public static void renderComboBoxSetting(String label, String tooltip, String[] items,
-                                             ImInt selected, float width,
-                                             Consumer<Integer> onChanged) {
-        ImGui.text(label);
-        ImGui.sameLine();
-        ImGui.textDisabled("(?)");
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(tooltip);
-        }
-
-        if (width > 0) {
-            ImGui.setNextItemWidth(width);
-        }
-
-        if (ImGui.combo("##" + label, selected, items)) {
-            onChanged.accept(selected.get());
-        }
-
-        ImGui.spacing();
-    }
-
-    /**
-     * Renders a button with consistent styling.
-     * <p>
-     * Creates a simple button with optional sizing and click callback.
-     * </p>
-     *
-     * @param label     the button label text
-     * @param width     button width (0 for auto-width)
-     * @param height    button height (0 for auto-height)
-     * @param onClick   callback invoked when button is clicked
-     */
-    public static void renderButton(String label, float width, float height, Runnable onClick) {
-        if (ImGui.button(label, width, height)) {
-            onClick.run();
-        }
-    }
-
-    // ========================================
-    // Layout Helpers
-    // ========================================
-
-    /**
-     * Adds standard spacing between settings or sections.
-     */
-    public static void addSpacing() {
-        ImGui.spacing();
-        ImGui.spacing();
-    }
-
-    /**
-     * Adds a standard separator between major sections.
-     */
-    public static void addSectionSeparator() {
-        ImGui.spacing();
-        ImGui.separator();
-        ImGui.spacing();
+    public void setTextureCreatorImGui(TextureCreatorImGui textureCreatorImGui) {
+        this.textureCreatorImGui = textureCreatorImGui;
+        logger.debug("TextureCreatorImGui reference updated for real-time preference updates");
     }
 }

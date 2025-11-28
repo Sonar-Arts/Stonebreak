@@ -1,6 +1,6 @@
 package com.openmason.ui.properties.sections;
 
-import com.openmason.ui.preferences.PreferencesPageRenderer;
+import com.openmason.ui.themes.utils.ImGuiComponents;
 import com.openmason.ui.properties.components.Vec3SliderGroup;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import com.openmason.ui.properties.interfaces.ITransformState;
@@ -48,7 +48,7 @@ public class TransformSection implements IPanelSection {
         }
 
         // Use compact blue header box with JetBrains Mono Bold
-        PreferencesPageRenderer.renderCompactSectionHeader("Transform");
+        ImGuiComponents.renderCompactSectionHeader("Transform");
 
         // Sync from viewport if connected and not interacting
         syncFromViewportIfNeeded();
@@ -177,7 +177,7 @@ public class TransformSection implements IPanelSection {
      */
     private void renderScaleControls() {
         // Use compact blue header box for scale section
-        PreferencesPageRenderer.renderCompactSectionHeader("Scale");
+        ImGuiComponents.renderCompactSectionHeader("Scale");
 
         // Uniform mode checkbox with renamed label
         if (ImGui.checkbox("Uniform Scale Toggle", transformState.getUniformScaleMode())) {

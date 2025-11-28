@@ -5,10 +5,6 @@ import java.util.List;
 
 /**
  * Manages the state of the unified preferences window, including current page selection.
- * <p>
- * This class follows the Single Responsibility Principle by only handling state management,
- * with no UI or persistence logic.
- * </p>
  */
 public class PreferencesState {
 
@@ -53,8 +49,6 @@ public class PreferencesState {
 
     /**
      * Sets the current page and notifies listeners if changed.
-     *
-     * @param newPage the page to switch to
      */
     public void setCurrentPage(PreferencePage newPage) {
         if (newPage == null) {
@@ -66,26 +60,6 @@ public class PreferencesState {
             currentPage = newPage;
             notifyListeners(oldPage, newPage);
         }
-    }
-
-    /**
-     * Registers a listener for state changes.
-     *
-     * @param listener the listener to add
-     */
-    public void addListener(StateChangeListener listener) {
-        if (listener != null && !listeners.contains(listener)) {
-            listeners.add(listener);
-        }
-    }
-
-    /**
-     * Removes a listener.
-     *
-     * @param listener the listener to remove
-     */
-    public void removeListener(StateChangeListener listener) {
-        listeners.remove(listener);
     }
 
     /**

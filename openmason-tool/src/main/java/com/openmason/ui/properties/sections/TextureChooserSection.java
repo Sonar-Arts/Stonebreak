@@ -2,7 +2,7 @@ package com.openmason.ui.properties.sections;
 
 import com.openmason.model.editable.BlockModel;
 import com.openmason.ui.dialogs.FileDialogService;
-import com.openmason.ui.preferences.PreferencesPageRenderer;
+import com.openmason.ui.themes.utils.ImGuiComponents;
 import com.openmason.ui.properties.interfaces.IPanelSection;
 import com.openmason.ui.state.ModelState;
 import imgui.ImGui;
@@ -51,7 +51,7 @@ public class TextureChooserSection implements IPanelSection {
         }
 
         // Use compact blue header box with JetBrains Mono Bold
-        PreferencesPageRenderer.renderCompactSectionHeader("Texture");
+        ImGuiComponents.renderCompactSectionHeader("Texture");
 
         // Display current texture
         Path texturePath = currentModel.getTexturePath();
