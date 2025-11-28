@@ -41,7 +41,7 @@ module com.openmason {
     opens com.openmason.ui.themes.core to com.fasterxml.jackson.databind;
     opens com.openmason.ui.themes.registry to com.fasterxml.jackson.databind;
     opens com.openmason.ui.themes.persistence to com.fasterxml.jackson.databind;
-    opens com.openmason.ui.components.textureCreator.io to com.fasterxml.jackson.databind;
+    opens com.openmason.ui.textureCreator.io to com.fasterxml.jackson.databind;
     opens com.openmason.model.io.omo to com.fasterxml.jackson.databind;
 
     // Export packages for potential future extensions

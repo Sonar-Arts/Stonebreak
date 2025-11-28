@@ -1,6 +1,6 @@
 package com.openmason.ui.windows;
 
-import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.drop.PendingFileDrops;
 import imgui.ImGui;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -9,7 +9,6 @@ import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWVidMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

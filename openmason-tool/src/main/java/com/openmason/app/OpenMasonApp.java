@@ -9,7 +9,7 @@ import com.openmason.ui.MainImGuiInterface;
 import com.openmason.ui.viewport.ViewportImGuiInterface;
 import com.openmason.ui.hub.ProjectHubScreen;
 import com.openmason.ui.themes.core.ThemeManager;
-import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.drop.ViewportDropCallbackManager;
 import com.openmason.ui.windows.TextureEditorWindow;
 import org.lwjgl.glfw.*;

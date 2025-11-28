@@ -22,33 +22,10 @@ public class WindowConfig {
     private int flags = 0; // ImGui window flags
     
     /**
-     * Default constructor
-     */
-    public WindowConfig() {
-        this.title = "Default Window";
-    }
-    
-    /**
      * Constructor with title
      */
     public WindowConfig(String title) {
         this.title = title != null ? title : "Untitled Window";
-    }
-    
-    /**
-     * Constructor with title and size
-     */
-    public WindowConfig(String title, int width, int height) {
-        this(title);
-        setSize(width, height);
-    }
-    
-    /**
-     * Constructor with full configuration
-     */
-    public WindowConfig(String title, int width, int height, int x, int y) {
-        this(title, width, height);
-        setPosition(x, y);
     }
     
     // Default configurations
@@ -56,32 +33,11 @@ public class WindowConfig {
         return new WindowConfig("Default Window").setSize(400, 300);
     }
     
-    public static WindowConfig forViewport() {
-        return new WindowConfig("3D Viewport")
-            .setSize(800, 600)
-            .setMinSize(400, 300)
-            .setMaxSize(2000, 1500);
-    }
-    
     public static WindowConfig forProperties() {
         return new WindowConfig("Properties")
             .setSize(300, 500)
             .setMinSize(250, 400)
             .setMaxSize(600, 1000);
-    }
-    
-    public static WindowConfig forModelBrowser() {
-        return new WindowConfig("Model Browser")
-            .setSize(350, 450)
-            .setMinSize(300, 400)
-            .setMaxSize(700, 900);
-    }
-    
-    public static WindowConfig forAdvancedPreferences() {
-        return new WindowConfig("Advanced Preferences")
-            .setSize(500, 400)
-            .setMinSize(450, 350)
-            .setMaxSize(800, 600);
     }
     
     // Fluent API for easy configuration
@@ -98,12 +54,6 @@ public class WindowConfig {
             logger.debug("Window size clamped from {}x{} to {}x{}", width, height, this.width, this.height);
         }
         
-        return this; 
-    }
-    
-    public WindowConfig setPosition(int x, int y) { 
-        this.x = Math.max(-1, x); // -1 is allowed for auto-positioning
-        this.y = Math.max(-1, y);
         return this; 
     }
     
@@ -128,21 +78,6 @@ public class WindowConfig {
             setSize(Math.min(this.width, this.maxWidth), Math.min(this.height, this.maxHeight));
         }
         
-        return this;
-    }
-    
-    public WindowConfig setFlags(int flags) {
-        this.flags = flags;
-        return this;
-    }
-    
-    public WindowConfig addFlag(int flag) {
-        this.flags |= flag;
-        return this;
-    }
-    
-    public WindowConfig removeFlag(int flag) {
-        this.flags &= ~flag;
         return this;
     }
     
@@ -186,19 +121,8 @@ public class WindowConfig {
     public int getMinHeight() { return minHeight; }
     public int getMaxWidth() { return maxWidth; }
     public int getMaxHeight() { return maxHeight; }
-    public int getFlags() { return flags; }
-    
-    // Utility methods
-    public float getAspectRatio() {
-        return height != 0 ? (float) width / height : 1.0f;
-    }
-    
     public int getArea() {
         return width * height;
-    }
-    
-    public boolean hasFlag(int flag) {
-        return (flags & flag) != 0;
     }
     
     /**

@@ -1,6 +1,6 @@
 package com.openmason.ui.preferences;
 
-import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.properties.PropertyPanelImGui;
 import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.ViewportController;

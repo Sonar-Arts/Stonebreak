@@ -7,12 +7,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Warning dialog for attempting to save browser models.
- *
- * Blocks saving of models loaded from the Model Browser, as these are
- * read-only reference models from Stonebreak's repository.
- * Follows SOLID principles - Single Responsibility: Warning display only.
- *
- * @author Open Mason Team
  */
 public class SaveWarningDialog {
 

@@ -2,10 +2,10 @@ package com.openmason.model.factory;
 
 import com.openmason.model.editable.BlockModel;
 import com.openmason.model.editable.CubeGeometry;
-import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
-import com.openmason.ui.components.textureCreator.io.OMTSerializer;
-import com.openmason.ui.components.textureCreator.layers.Layer;
-import com.openmason.ui.components.textureCreator.layers.LayerManager;
+import com.openmason.ui.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.textureCreator.io.OMTSerializer;
+import com.openmason.ui.textureCreator.layers.Layer;
+import com.openmason.ui.textureCreator.layers.LayerManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

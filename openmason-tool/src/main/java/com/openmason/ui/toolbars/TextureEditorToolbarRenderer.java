@@ -1,11 +1,12 @@
 package com.openmason.ui.toolbars;
 
-import com.openmason.ui.components.textureCreator.icons.TextureToolIconManager;
-import com.openmason.ui.components.textureCreator.selection.SelectionManager;
-import com.openmason.ui.components.textureCreator.tools.*;
-import com.openmason.ui.components.textureCreator.tools.grabber.GrabberTool;
-import com.openmason.ui.components.textureCreator.tools.move.MoveToolController;
-import com.openmason.ui.components.textureCreator.tools.paste.PasteTool;
+import com.openmason.ui.textureCreator.TextureCreatorPreferences;
+import com.openmason.ui.textureCreator.icons.TextureToolIconManager;
+import com.openmason.ui.textureCreator.selection.SelectionManager;
+import com.openmason.ui.textureCreator.tools.*;
+import com.openmason.ui.textureCreator.tools.grabber.GrabberTool;
+import com.openmason.ui.textureCreator.tools.move.MoveToolController;
+import com.openmason.ui.textureCreator.tools.paste.PasteTool;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +89,7 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
      * This allows tools to access user settings.
      * @param preferences The TextureCreatorPreferences to use
      */
-    public void setPreferences(com.openmason.ui.components.textureCreator.TextureCreatorPreferences preferences) {
+    public void setPreferences(TextureCreatorPreferences preferences) {
         if (moveToolInstance != null) {
             moveToolInstance.setPreferences(preferences);
             logger.debug("Move tool configured with preferences");

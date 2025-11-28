@@ -1,10 +1,13 @@
 package com.openmason.ui;
 
-import com.openmason.ui.components.modelBrowser.ModelBrowserController;
-import com.openmason.ui.components.modelBrowser.ModelBrowserImGui;
-import com.openmason.ui.components.modelBrowser.events.*;
+import com.openmason.ui.modelBrowser.ModelBrowserController;
+import com.openmason.ui.modelBrowser.ModelBrowserImGui;
 import com.openmason.ui.config.WindowConfig;
-import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
+import com.openmason.ui.modelBrowser.events.BlockSelectedEvent;
+import com.openmason.ui.modelBrowser.events.ItemSelectedEvent;
+import com.openmason.ui.modelBrowser.events.ModelBrowserListener;
+import com.openmason.ui.modelBrowser.events.ModelSelectedEvent;
+import com.openmason.ui.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.menus.*;

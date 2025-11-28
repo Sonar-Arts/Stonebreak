@@ -1,8 +1,8 @@
 package com.openmason.rendering.blockmodel;
 
-import com.openmason.ui.components.textureCreator.canvas.PixelCanvas;
-import com.openmason.ui.components.textureCreator.io.OMTDeserializer;
-import com.openmason.ui.components.textureCreator.layers.LayerManager;
+import com.openmason.ui.textureCreator.canvas.PixelCanvas;
+import com.openmason.ui.textureCreator.io.OMTDeserializer;
+import com.openmason.ui.textureCreator.layers.LayerManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
