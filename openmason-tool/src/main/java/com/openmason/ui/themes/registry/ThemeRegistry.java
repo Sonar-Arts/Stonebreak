@@ -1,6 +1,6 @@
 package com.openmason.ui.themes.registry;
-import com.openmason.ui.themes.core.ThemeDefinition;
 
+import com.openmason.ui.themes.core.ThemeDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,20 +9,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
-import java.util.function.Predicate;
 
 /**
  * Thread-safe registry for theme storage and management.
- * Part of Phase 1 decomposition of ThemeManager monolith.
- * 
- * Responsibilities:
- * - Registry for built-in, community, and user themes
- * - Thread-safe theme lookup and storage operations
- * - Category-based organization and filtering
- * - Theme validation and duplicate detection
- * - Comprehensive error handling and logging
- * 
- * Estimated size: ~250 lines (extracted from ThemeManager registry functionality)
  */
 public class ThemeRegistry {
     
@@ -79,7 +68,6 @@ public class ThemeRegistry {
         
         public ThemeDefinition getTheme() { return theme; }
         public ThemeCategory getCategory() { return category; }
-        public long getRegistrationTime() { return registrationTime; }
         public String getSource() { return source; }
         
         @Override
@@ -91,13 +79,9 @@ public class ThemeRegistry {
     
     // Thread-safe storage using ConcurrentHashMap for high-performance reads
     private final ConcurrentHashMap<String, ThemeEntry> themeRegistry = new ConcurrentHashMap<>();
-    
+
     // ReadWriteLock for complex operations requiring atomicity
     private final ReadWriteLock registryLock = new ReentrantReadWriteLock();
-    
-    // Statistics tracking
-    private volatile long totalRegistrations = 0;
-    private volatile long totalRemovals = 0;
     
     /**
      * Initialize registry with built-in themes
@@ -106,29 +90,10 @@ public class ThemeRegistry {
         initializeBuiltInThemes();
         logger.info("ThemeRegistry initialized with {} built-in themes", getThemeCount(ThemeCategory.BUILT_IN));
     }
-    
-    /**
-     * Register a theme in the registry
-     * 
-     * @param name Theme name (used as unique identifier)
-     * @param theme Theme definition to register
-     * @param category Theme category for organization
-     * @return true if registration successful, false if theme already exists
-     * @throws IllegalArgumentException if validation fails
-     */
-    public boolean registerTheme(String name, ThemeDefinition theme, ThemeCategory category) {
-        return registerTheme(name, theme, category, "manual");
-    }
+
     
     /**
      * Register a theme in the registry with source tracking
-     * 
-     * @param name Theme name (used as unique identifier)
-     * @param theme Theme definition to register
-     * @param category Theme category for organization
-     * @param source Source of the theme registration
-     * @return true if registration successful, false if theme already exists
-     * @throws IllegalArgumentException if validation fails
      */
     public boolean registerTheme(String name, ThemeDefinition theme, ThemeCategory category, String source) {
         if (name == null || name.trim().isEmpty()) {
@@ -164,9 +129,8 @@ public class ThemeRegistry {
             // Create entry and register
             ThemeEntry entry = new ThemeEntry(theme, category, source);
             themeRegistry.put(name, entry);
-            totalRegistrations++;
-            
-            logger.debug("Registered theme '{}' in category {} from source '{}'", 
+
+            logger.debug("Registered theme '{}' in category {} from source '{}'",
                         name, category, source);
             return true;
             
@@ -191,18 +155,8 @@ public class ThemeRegistry {
     }
     
     /**
-     * Get a theme entry (including metadata) by name
-     * 
-     * @param name Theme name
-     * @return Theme entry or null if not found
-     */
-    public ThemeEntry getThemeEntry(String name) {
-        return themeRegistry.get(name);
-    }
-    
-    /**
      * Get all registered themes
-     * 
+     *
      * @return Unmodifiable map of all themes (name -> theme definition)
      */
     public Map<String, ThemeDefinition> getAllThemes() {
@@ -219,17 +173,8 @@ public class ThemeRegistry {
     }
     
     /**
-     * Get all theme entries (including metadata)
-     * 
-     * @return Unmodifiable map of all theme entries
-     */
-    public Map<String, ThemeEntry> getAllThemeEntries() {
-        return Collections.unmodifiableMap(new HashMap<>(themeRegistry));
-    }
-    
-    /**
      * Get themes by category
-     * 
+     *
      * @param category Theme category to filter by
      * @return Map of themes in the specified category
      */
@@ -254,26 +199,8 @@ public class ThemeRegistry {
     }
     
     /**
-     * Get theme names by category
-     * 
-     * @param category Theme category to filter by
-     * @return List of theme names in the specified category
-     */
-    public List<String> getThemeNamesByCategory(ThemeCategory category) {
-        if (category == null) {
-            return Collections.emptyList();
-        }
-        
-        return themeRegistry.entrySet().stream()
-                .filter(entry -> entry.getValue().getCategory() == category)
-                .map(Map.Entry::getKey)
-                .sorted()
-                .collect(Collectors.toList());
-    }
-    
-    /**
      * Remove a theme from the registry
-     * 
+     *
      * @param name Theme name to remove
      * @return true if theme was removed, false if not found
      */
@@ -286,7 +213,6 @@ public class ThemeRegistry {
         try {
             ThemeEntry removedEntry = themeRegistry.remove(name);
             if (removedEntry != null) {
-                totalRemovals++;
                 logger.debug("Removed theme '{}' from category {}", name, removedEntry.getCategory());
                 return true;
             } else {
@@ -299,18 +225,8 @@ public class ThemeRegistry {
     }
     
     /**
-     * Check if a theme is registered
-     * 
-     * @param name Theme name to check
-     * @return true if theme is registered
-     */
-    public boolean isThemeRegistered(String name) {
-        return name != null && themeRegistry.containsKey(name);
-    }
-    
-    /**
      * Get total number of registered themes
-     * 
+     *
      * @return Total theme count
      */
     public int getThemeCount() {
@@ -349,139 +265,6 @@ public class ThemeRegistry {
     }
     
     /**
-     * Clear all themes from a specific category
-     * 
-     * @param category Category to clear
-     * @return Number of themes removed
-     */
-    public int clearCategory(ThemeCategory category) {
-        if (category == null) {
-            return 0;
-        }
-        
-        registryLock.writeLock().lock();
-        try {
-            List<String> toRemove = themeRegistry.entrySet().stream()
-                    .filter(entry -> entry.getValue().getCategory() == category)
-                    .map(Map.Entry::getKey)
-                    .collect(Collectors.toList());
-            
-            int removedCount = 0;
-            for (String name : toRemove) {
-                if (themeRegistry.remove(name) != null) {
-                    removedCount++;
-                }
-            }
-            
-            totalRemovals += removedCount;
-            logger.info("Cleared {} themes from category {}", removedCount, category);
-            return removedCount;
-            
-        } finally {
-            registryLock.writeLock().unlock();
-        }
-    }
-    
-    /**
-     * Find themes matching a predicate
-     * 
-     * @param predicate Filter condition
-     * @return Map of matching themes
-     */
-    public Map<String, ThemeDefinition> findThemes(Predicate<ThemeEntry> predicate) {
-        if (predicate == null) {
-            return Collections.emptyMap();
-        }
-        
-        registryLock.readLock().lock();
-        try {
-            return themeRegistry.entrySet().stream()
-                    .filter(entry -> predicate.test(entry.getValue()))
-                    .collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            entry -> entry.getValue().getTheme(),
-                            (existing, replacement) -> existing,
-                            LinkedHashMap::new
-                    ));
-        } finally {
-            registryLock.readLock().unlock();
-        }
-    }
-    
-    /**
-     * Get registry statistics
-     * 
-     * @return Statistics string
-     */
-    public String getStatistics() {
-        Map<ThemeCategory, Integer> counts = getCategoryCounts();
-        
-        return String.format(
-                "ThemeRegistry Statistics: %d total themes (%d built-in, %d community, %d user, %d imported). " +
-                "Lifetime: %d registrations, %d removals.",
-                getThemeCount(),
-                counts.get(ThemeCategory.BUILT_IN),
-                counts.get(ThemeCategory.COMMUNITY), 
-                counts.get(ThemeCategory.USER),
-                counts.get(ThemeCategory.IMPORTED),
-                totalRegistrations,
-                totalRemovals
-        );
-    }
-    
-    /**
-     * Validate registry integrity
-     * 
-     * @return List of validation errors (empty if valid)
-     */
-    public List<String> validateRegistry() {
-        List<String> errors = new ArrayList<>();
-        
-        registryLock.readLock().lock();
-        try {
-            for (Map.Entry<String, ThemeEntry> entry : themeRegistry.entrySet()) {
-                String name = entry.getKey();
-                ThemeEntry themeEntry = entry.getValue();
-                ThemeDefinition theme = themeEntry.getTheme();
-                
-                // Validate name consistency
-                if (name == null || name.trim().isEmpty()) {
-                    errors.add("Invalid theme name: '" + name + "'");
-                }
-                
-                // Validate theme definition
-                if (theme == null) {
-                    errors.add("Null theme definition for name: '" + name + "'");
-                    continue;
-                }
-                
-                // Validate theme itself
-                try {
-                    theme.validate();
-                } catch (Exception e) {
-                    errors.add("Theme validation failed for '" + name + "': " + e.getMessage());
-                }
-                
-                // Validate category consistency
-                if (themeEntry.getCategory() == null) {
-                    errors.add("Null category for theme: '" + name + "'");
-                }
-            }
-            
-        } finally {
-            registryLock.readLock().unlock();
-        }
-        
-        if (errors.isEmpty()) {
-            logger.debug("Registry validation passed for {} themes", getThemeCount());
-        } else {
-            logger.warn("Registry validation found {} errors", errors.size());
-        }
-        
-        return errors;
-    }
-    
-    /**
      * Initialize built-in themes from ColorPalette
      */
     private void initializeBuiltInThemes() {
@@ -500,41 +283,6 @@ public class ThemeRegistry {
         } catch (Exception e) {
             logger.error("Failed to initialize built-in themes", e);
         }
-    }
-    
-    /**
-     * Clear the entire registry (use with caution)
-     */
-    public void clearRegistry() {
-        registryLock.writeLock().lock();
-        try {
-            int clearedCount = themeRegistry.size();
-            themeRegistry.clear();
-            totalRemovals += clearedCount;
-            
-            logger.warn("Cleared entire theme registry ({} themes removed)", clearedCount);
-            
-        } finally {
-            registryLock.writeLock().unlock();
-        }
-    }
-    
-    /**
-     * Get registry size information
-     * 
-     * @return Human-readable size information
-     */
-    public String getSizeInfo() {
-        return String.format("Registry contains %d themes using approximately %d KB memory",
-                           getThemeCount(), estimateMemoryUsage() / 1024);
-    }
-    
-    /**
-     * Estimate memory usage (rough approximation)
-     */
-    private long estimateMemoryUsage() {
-        // Rough estimate: each theme entry ~2KB (theme data + metadata)
-        return (long) getThemeCount() * 2048;
     }
     
     @Override

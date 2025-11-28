@@ -12,13 +12,12 @@ import java.util.List;
 /**
  * Built-in color schemes and theme creators extracted from ThemeManager.
  * Contains all built-in theme creation methods and color definitions.
- * Estimated size: ~250 lines (extracted from lines 266-674 of ThemeManager)
  */
 public class ColorPalette {
     private static final Logger logger = LoggerFactory.getLogger(ColorPalette.class);
     
     /**
-     * Create professional dark theme (extracted from createDarkTheme)
+     * Create professional dark theme
      */
     public static ThemeDefinition createDarkTheme() {
         ThemeDefinition theme = new ThemeDefinition("dark", "Dark",
@@ -714,37 +713,5 @@ public class ColorPalette {
         logger.info("Generated {} built-in themes", themes.size());
         return themes;
     }
-    
-    /**
-     * Get a specific built-in theme by ID
-     */
-    public static ThemeDefinition getBuiltInTheme(String themeId) {
-        switch (themeId.toLowerCase()) {
-            case "dark":
-                return createDarkTheme();
-            case "light":
-                return createLightTheme();
-            case "high-contrast":
-                return createHighContrastTheme();
-            case "blue":
-                return createBlueTheme();
-            case "mason-spectrum-light":
-                return createAdobeSpectrumLightTheme();
-            case "mason-spectrum-dark":
-                return createAdobeSpectrumDarkTheme();
-            default:
-                logger.warn("Unknown built-in theme ID: {}", themeId);
-                return null;
-        }
-    }
 
-    /**
-     * Check if a theme ID corresponds to a built-in theme
-     */
-    public static boolean isBuiltInTheme(String themeId) {
-        if (themeId == null) return false;
-        String id = themeId.toLowerCase();
-        return "dark".equals(id) || "light".equals(id) || "high-contrast".equals(id) ||
-               "blue".equals(id) || "mason-spectrum-light".equals(id) || "mason-spectrum-dark".equals(id);
-    }
 }
