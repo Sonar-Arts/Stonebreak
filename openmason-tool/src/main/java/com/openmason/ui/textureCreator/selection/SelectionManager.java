@@ -9,19 +9,6 @@ import java.util.List;
 /**
  * Centralized manager for selection state in the texture creator.
  * Provides single source of truth for selection and coordinates updates across components.
- *
- * Design principles:
- * - Single Responsibility: Manages selection lifecycle and change notifications
- * - Observer Pattern: Notifies listeners when selection changes
- * - Immutability: SelectionRegion instances are immutable, changes create new instances
- *
- * Benefits:
- * - Eliminates dual state management (TextureCreatorState + PixelCanvas)
- * - Provides centralized selection change tracking for undo/redo
- * - Simplifies move tool integration with automatic selection updates
- * - Enables future features like selection history and clipboard operations
- *
- * @author Open Mason Team
  */
 public class SelectionManager {
 
@@ -93,34 +80,6 @@ public class SelectionManager {
     }
 
     /**
-     * Translates the current selection by the given offset.
-     * Creates a new translated selection and updates the active selection.
-     *
-     * @param dx The x-offset to translate by
-     * @param dy The y-offset to translate by
-     * @return The new translated selection, or null if no active selection
-     */
-    public SelectionRegion translateSelection(int dx, int dy) {
-        if (activeSelection == null) {
-            return null;
-        }
-
-        SelectionRegion translatedSelection = activeSelection.translate(dx, dy);
-        setActiveSelection(translatedSelection);
-        return translatedSelection;
-    }
-
-    /**
-     * Replaces the current selection with a transformed version.
-     * This is used by the move tool to update the selection after transformation.
-     *
-     * @param transformedSelection The new transformed selection
-     */
-    public void updateTransformedSelection(SelectionRegion transformedSelection) {
-        setActiveSelection(transformedSelection);
-    }
-
-    /**
      * Adds a selection change listener.
      * @param listener The listener to add
      */
@@ -136,13 +95,6 @@ public class SelectionManager {
      */
     public void removeSelectionChangeListener(SelectionChangeListener listener) {
         listeners.remove(listener);
-    }
-
-    /**
-     * Removes all selection change listeners.
-     */
-    public void clearListeners() {
-        listeners.clear();
     }
 
     /**
@@ -187,19 +139,5 @@ public class SelectionManager {
         }
 
         return !oldSelection.equals(newSelection);
-    }
-
-    /**
-     * Gets a debug string representation of the current state.
-     * @return Debug string with selection information
-     */
-    public String getDebugString() {
-        if (activeSelection == null) {
-            return "SelectionManager[no selection]";
-        }
-        return String.format("SelectionManager[type=%s, bounds=%s, listeners=%d]",
-                activeSelection.getType(),
-                activeSelection.getBounds(),
-                listeners.size());
     }
 }

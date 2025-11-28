@@ -6,12 +6,6 @@ import java.util.Objects;
 
 /**
  * Selection region backed by a per-pixel mask. Supports arbitrary shapes and
- * disjoint areas while maintaining a compact bounding rectangle for efficient
- * iteration during transformations.
- *
- * The mask array is stored row-major within the local coordinate space defined
- * by {@link #bounds}. Instances are immutable and can therefore be freely
- * shared between systems (move tool, renderer, etc.).
  */
 public final class MaskSelectionRegion implements SelectionRegion {
 
@@ -41,7 +35,6 @@ public final class MaskSelectionRegion implements SelectionRegion {
 
     /**
      * Builds a mask selection from a collection of encoded pixel positions.
-     * Each encoded position must have been produced by {@link #encode(int, int)}.
      */
     public static MaskSelectionRegion fromEncodedPixels(Collection<Long> encodedPixels) {
         if (encodedPixels == null || encodedPixels.isEmpty()) {
@@ -84,44 +77,6 @@ public final class MaskSelectionRegion implements SelectionRegion {
         return new MaskSelectionRegion(bounds, mask, pixelCount);
     }
 
-    /**
-     * Converts any {@link SelectionRegion} to a mask-backed representation.
-     */
-    public static MaskSelectionRegion fromSelection(SelectionRegion region) {
-        if (region == null || region.isEmpty()) {
-            return EMPTY;
-        }
-
-        Rectangle bounds = region.getBounds();
-        int width = Math.max(bounds.width, 0);
-        int height = Math.max(bounds.height, 0);
-
-        if (width == 0 || height == 0) {
-            return EMPTY;
-        }
-
-        boolean[] mask = new boolean[width * height];
-        int pixelCount = 0;
-
-        for (int dy = 0; dy < height; dy++) {
-            int canvasY = bounds.y + dy;
-            for (int dx = 0; dx < width; dx++) {
-                int canvasX = bounds.x + dx;
-                if (region.contains(canvasX, canvasY)) {
-                    int index = dy * width + dx;
-                    mask[index] = true;
-                    pixelCount++;
-                }
-            }
-        }
-
-        if (pixelCount == 0) {
-            return EMPTY;
-        }
-
-        return new MaskSelectionRegion(bounds, mask, pixelCount);
-    }
-
     @Override
     public boolean contains(int x, int y) {
         if (!bounds.contains(x, y) || mask.length == 0) {
@@ -157,14 +112,6 @@ public final class MaskSelectionRegion implements SelectionRegion {
         translated.translate(dx, dy);
         // Mask is immutable; safe to share between translated instances.
         return new MaskSelectionRegion(translated, mask, pixelCount);
-    }
-
-    public boolean[] mask() {
-        return mask.clone();
-    }
-
-    public int pixelCount() {
-        return pixelCount;
     }
 
     public static long encode(int x, int y) {

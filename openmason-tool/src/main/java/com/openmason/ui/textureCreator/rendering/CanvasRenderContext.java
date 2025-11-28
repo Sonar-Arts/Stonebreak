@@ -13,8 +13,6 @@ import java.util.function.IntConsumer;
  * Encapsulates all context needed for canvas rendering.
  * Uses Builder pattern to avoid parameter explosion (was 13 parameters!).
  * Follows SOLID principles: Single Responsibility, Dependency Inversion.
- *
- * @author Open Mason Team
  */
 public class CanvasRenderContext {
     // Canvas data

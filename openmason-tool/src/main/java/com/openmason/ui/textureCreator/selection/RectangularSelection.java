@@ -5,9 +5,6 @@ import java.awt.Rectangle;
 /**
  * Rectangular selection region implementation.
  * Stores normalized bounds (x1 <= x2, y1 <= y2) for efficient containment testing.
- *
- * SOLID: Single responsibility - manages rectangular selection bounds
- * KISS: Simple rectangle containment logic
  */
 public class RectangularSelection implements SelectionRegion {
 
@@ -78,20 +75,6 @@ public class RectangularSelection implements SelectionRegion {
      */
     public int getY1() {
         return y1;
-    }
-
-    /**
-     * Gets the maximum x-coordinate of the selection.
-     */
-    public int getX2() {
-        return x2;
-    }
-
-    /**
-     * Gets the maximum y-coordinate of the selection.
-     */
-    public int getY2() {
-        return y2;
     }
 
     /**

@@ -5,68 +5,8 @@ import imgui.ImDrawList;
 
 /**
  * Renders selection regions with visual feedback.
- * Supports both rectangular and free-form pixel-based selections.
- * Uses ImGui's ImDrawList for consistency with CanvasRenderer.
- *
- * SOLID: Single responsibility - handles selection visualization only
- * KISS: Simple rendering with contrasting colors
- * Open/Closed: Extensible for new selection types
  */
 public class SelectionRenderer {
-
-    /**
-     * Represents a point in 2D space (used for edge vertices).
-     */
-    private static class Point {
-        final int x, y;
-
-        Point(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (!(obj instanceof Point)) return false;
-            Point other = (Point) obj;
-            return x == other.x && y == other.y;
-        }
-
-        @Override
-        public int hashCode() {
-            return 31 * x + y;
-        }
-
-        @Override
-        public String toString() {
-            return "(" + x + "," + y + ")";
-        }
-    }
-
-    /**
-     * Represents an edge segment between two points.
-     */
-    private static class Edge {
-        final Point start, end;
-
-        Edge(Point start, Point end) {
-            this.start = start;
-            this.end = end;
-        }
-
-        /**
-         * Check if this edge connects to another edge (shares an endpoint).
-         */
-        boolean connectsTo(Edge other) {
-            return end.equals(other.start);
-        }
-
-        @Override
-        public String toString() {
-            return start + " -> " + end;
-        }
-    }
 
     // Selection outline colors (bright blue with high contrast)
     private static final int SELECTION_OUTER_COLOR = ImColor.rgba(51, 153, 255, 255);  // Bright blue
@@ -83,12 +23,6 @@ public class SelectionRenderer {
 
     /**
      * Renders a selection region overlay on the canvas.
-     *
-     * @param drawList  ImGui draw list to render to
-     * @param selection The selection region to render
-     * @param canvasX   Canvas x-position in screen coordinates
-     * @param canvasY   Canvas y-position in screen coordinates
-     * @param zoom      Current zoom level
      */
     public void render(ImDrawList drawList, SelectionRegion selection,
                       float canvasX, float canvasY, float zoom) {
@@ -107,15 +41,6 @@ public class SelectionRenderer {
 
     /**
      * Renders a preview selection during drag (before finalization).
-     *
-     * @param drawList  ImGui draw list to render to
-     * @param startX    Start x-coordinate in canvas space
-     * @param startY    Start y-coordinate in canvas space
-     * @param endX      End x-coordinate in canvas space
-     * @param endY      End y-coordinate in canvas space
-     * @param canvasX   Canvas x-position in screen coordinates
-     * @param canvasY   Canvas y-position in screen coordinates
-     * @param zoom      Current zoom level
      */
     public void renderPreview(ImDrawList drawList, int startX, int startY, int endX, int endY,
                               float canvasX, float canvasY, float zoom) {

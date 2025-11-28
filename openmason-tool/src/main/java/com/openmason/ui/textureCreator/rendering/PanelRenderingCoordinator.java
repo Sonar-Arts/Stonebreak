@@ -34,7 +34,6 @@ public class PanelRenderingCoordinator {
     private final LayerPanelRenderer layerPanel;
     private final ColorPanel colorPanel;
     private final NoiseFilterPanel noiseFilterPanel;
-    private final PreferencesPanel preferencesPanel;
     private final SymmetryPanel symmetryPanel;
 
     // Windowed mode flag - when true, skip fullscreen dockspace creation
@@ -54,7 +53,6 @@ public class PanelRenderingCoordinator {
                                     LayerPanelRenderer layerPanel,
                                     ColorPanel colorPanel,
                                     NoiseFilterPanel noiseFilterPanel,
-                                    PreferencesPanel preferencesPanel,
                                     SymmetryPanel symmetryPanel) {
         this.state = state;
         this.controller = controller;
@@ -67,7 +65,6 @@ public class PanelRenderingCoordinator {
         this.layerPanel = layerPanel;
         this.colorPanel = colorPanel;
         this.noiseFilterPanel = noiseFilterPanel;
-        this.preferencesPanel = preferencesPanel;
         this.symmetryPanel = symmetryPanel;
     }
 
@@ -239,7 +236,6 @@ public class PanelRenderingCoordinator {
     public void renderPreferencesWindow() {
         if (windowState.getShowPreferencesWindow().get()) {
             if (ImGui.begin("Preferences", windowState.getShowPreferencesWindow())) {
-                preferencesPanel.render(preferences);
             }
             ImGui.end();
         }

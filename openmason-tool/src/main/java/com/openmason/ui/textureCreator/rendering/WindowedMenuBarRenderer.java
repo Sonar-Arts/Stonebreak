@@ -17,12 +17,6 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * Renders a window-based menu bar for Texture Creator (for use inside a separate window).
- * Unlike MenuBarRenderer which uses ImGui.beginMainMenuBar(), this renders inside a parent window.
- *
- * Follows DRY and SOLID principles by reusing menu logic from MenuBarRenderer.
- * Uses composition over inheritance to share menu rendering code.
- *
- * @author Open Mason Team
  */
 public class WindowedMenuBarRenderer {
     private static final float ZOOM_FACTOR = 1.2f;
@@ -66,10 +60,6 @@ public class WindowedMenuBarRenderer {
         this.exportFormatDialog = exportFormatDialog;
         this.logoManager = logoManager;
         this.aboutMenu = aboutMenu;
-    }
-
-    public void setWindowHandle(long windowHandle) {
-        this.windowHandle = windowHandle;
     }
 
     public void setBackToHomeCallback(Runnable callback) {

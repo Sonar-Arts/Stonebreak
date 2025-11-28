@@ -192,7 +192,7 @@ public class TextureCreatorImGui {
         WindowedMenuBarRenderer windowedMenuBarRenderer = new WindowedMenuBarRenderer(state, controller, fileOperations,
             newTextureDialog, importPNGDialog, exportFormatDialog, null, aboutMenuHandler);
         PanelRenderingCoordinator panelRenderer = new PanelRenderingCoordinator(state, controller, preferences,
-            toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, preferencesPanel, symmetryPanel);
+            toolCoordinator, windowState, toolbarPanel, toolOptionsBar, canvasPanel, layerPanel, colorPanel, noiseFilterPanel, symmetryPanel);
         DialogProcessor dialogProcessor = new DialogProcessor(controller, fileOperations, dragDropHandler,
             newTextureDialog, importPNGDialog, omtImportDialog);
 
@@ -425,7 +425,6 @@ public class TextureCreatorImGui {
         renderDialogs();
 
         // Render closeable windows (visibility managed by windowState)
-        panelRenderer.renderPreferencesWindow();
         panelRenderer.renderNoiseFilterWindow();
         panelRenderer.renderSymmetryWindow();
 

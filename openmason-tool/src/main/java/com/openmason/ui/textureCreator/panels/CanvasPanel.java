@@ -6,18 +6,17 @@ import com.openmason.ui.textureCreator.canvas.CanvasState;
 import com.openmason.ui.textureCreator.canvas.PixelCanvas;
 import com.openmason.ui.textureCreator.commands.CommandHistory;
 import com.openmason.ui.textureCreator.commands.DrawCommand;
+import com.openmason.ui.textureCreator.selection.MaskSelectionRegion;
 import com.openmason.ui.textureCreator.selection.SelectionRegion;
-import com.openmason.ui.textureCreator.selection.SelectionRenderer;
 import com.openmason.ui.textureCreator.tools.ColorPickerTool;
 import com.openmason.ui.textureCreator.tools.DrawingTool;
-import com.openmason.ui.textureCreator.selection.MaskSelectionRegion;
-import com.openmason.ui.textureCreator.tools.grabber.GrabberTool;
-import com.openmason.ui.textureCreator.tools.selection.PixelsPreview;
-import com.openmason.ui.textureCreator.tools.selection.SelectionTool;
-import com.openmason.ui.textureCreator.tools.selection.SelectionPreview;
-import com.openmason.ui.textureCreator.tools.selection.RectanglePreview;
-import com.openmason.ui.textureCreator.tools.move.MoveToolController;
 import com.openmason.ui.textureCreator.tools.SelectionBrushTool;
+import com.openmason.ui.textureCreator.tools.grabber.GrabberTool;
+import com.openmason.ui.textureCreator.tools.move.MoveToolController;
+import com.openmason.ui.textureCreator.tools.selection.PixelsPreview;
+import com.openmason.ui.textureCreator.tools.selection.RectanglePreview;
+import com.openmason.ui.textureCreator.tools.selection.SelectionPreview;
+import com.openmason.ui.textureCreator.tools.selection.SelectionTool;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.slf4j.Logger;
@@ -25,19 +24,12 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Canvas panel UI component.
- *
- * Handles rendering the canvas and processing mouse input for drawing.
- * Follows SOLID principles - Single Responsibility: canvas display and interaction.
- *
- * @author Open Mason Team
  */
 public class CanvasPanel {
 
     private static final Logger logger = LoggerFactory.getLogger(CanvasPanel.class);
 
     private final CanvasRenderer renderer;
-    private final SelectionRenderer selectionRenderer;
-    private boolean isMouseDown = false;
     private boolean wasMouseDown = false;
 
     // Callback for when drawing occurs
@@ -60,28 +52,11 @@ public class CanvasPanel {
      */
     public CanvasPanel() {
         this.renderer = new CanvasRenderer();
-        this.selectionRenderer = new SelectionRenderer();
         logger.debug("Canvas panel created");
     }
 
     /**
      * Render canvas panel.
-     *
-     * @param displayCanvas pixel canvas to display (composited view)
-     * @param drawingCanvas pixel canvas for drawing operations (active layer)
-     * @param backgroundCanvas pixel canvas with all layers except active (for multi-layer preview, can be null)
-     * @param canvasState view state (zoom, pan)
-     * @param currentTool currently selected drawing tool (can be null)
-     * @param currentColor current drawing color
-     * @param currentSelection current active selection region (can be null)
-     * @param showGrid whether to show grid overlay
-     * @param gridOpacity opacity for grid lines (0.0 to 1.0)
-     * @param cubeNetOverlayOpacity opacity for cube net overlay (0.0 to 1.0)
-     * @param commandHistory command history for undo/redo
-     * @param onDrawCallback callback invoked when drawing occurs (can be null)
-     * @param onColorPickedCallback callback invoked when color is picked (can be null)
-     * @param onColorUsedCallback callback invoked when color is used on canvas (can be null)
-     * @param onSelectionCreatedCallback callback invoked when selection is created/cleared (can be null)
      */
     public void render(PixelCanvas displayCanvas, PixelCanvas drawingCanvas, PixelCanvas backgroundCanvas,
                       CanvasState canvasState,
@@ -107,42 +82,25 @@ public class CanvasPanel {
         ImGui.beginChild("##canvas_area", 0, 0, false);
 
         // Calculate canvas display size and centering offset
-        float zoom = canvasState.getZoomLevel();
-        float displayWidth = displayCanvas.getWidth() * zoom;
-        float displayHeight = displayCanvas.getHeight() * zoom;
-
-        ImVec2 availableRegion = ImGui.getContentRegionAvail();
-        float centerOffsetX = Math.max(0, (availableRegion.x - displayWidth) / 2.0f);
-        float centerOffsetY = Math.max(0, (availableRegion.y - displayHeight) / 2.0f);
-
-        // Store canvas display region start position (with centering)
-        ImVec2 cursorPos = ImGui.getCursorScreenPos();
-        ImVec2 canvasRegionMin = new ImVec2(
-            cursorPos.x + centerOffsetX,
-            cursorPos.y + centerOffsetY
-        );
+        ImVec2 canvasRegionMin = getImVec2(displayCanvas, canvasState);
 
         // Get selection preview if using selection tool
         int[] selectionPreviewBounds = null;
         SelectionRegion pixelBasedPreview = null;
-        if (currentTool instanceof SelectionTool) {
-            SelectionTool selectionTool = (SelectionTool) currentTool;
+        if (currentTool instanceof SelectionTool selectionTool) {
             SelectionPreview preview = selectionTool.getPreview();
 
             // Handle different preview types
-            if (preview instanceof RectanglePreview) {
+            if (preview instanceof RectanglePreview rectPreview) {
                 // Rectangle preview: pass as bounds array for efficient rectangle rendering
-                RectanglePreview rectPreview = (RectanglePreview) preview;
                 selectionPreviewBounds = new int[]{
                     rectPreview.startX(),
                     rectPreview.startY(),
                     rectPreview.endX(),
                     rectPreview.endY()
                 };
-            } else if (preview instanceof PixelsPreview) {
+            } else if (preview instanceof PixelsPreview pixelsPreview) {
                 // Pixels preview: convert to MaskSelectionRegion for freeform rendering
-                PixelsPreview pixelsPreview =
-                    (PixelsPreview) preview;
                 if (!pixelsPreview.isEmpty()) {
                     pixelBasedPreview = MaskSelectionRegion
                         .fromEncodedPixels(pixelsPreview.encodedPixels());
@@ -190,8 +148,7 @@ public class CanvasPanel {
                        selectionToRender, selectionPreviewBounds, symmetryState);
 
         // Render move tool overlay if using move tool
-        if (currentTool instanceof MoveToolController) {
-            MoveToolController moveTool = (MoveToolController) currentTool;
+        if (currentTool instanceof MoveToolController moveTool) {
             imgui.ImDrawList drawList = imgui.ImGui.getWindowDrawList();
 
             // Update hovered handle for cursor feedback
@@ -225,6 +182,23 @@ public class CanvasPanel {
                    currentTool, currentColor, canvasRegionMin, commandHistory);
 
         ImGui.endChild();
+    }
+
+    private static ImVec2 getImVec2(PixelCanvas displayCanvas, CanvasState canvasState) {
+        float zoom = canvasState.getZoomLevel();
+        float displayWidth = displayCanvas.getWidth() * zoom;
+        float displayHeight = displayCanvas.getHeight() * zoom;
+
+        ImVec2 availableRegion = ImGui.getContentRegionAvail();
+        float centerOffsetX = Math.max(0, (availableRegion.x - displayWidth) / 2.0f);
+        float centerOffsetY = Math.max(0, (availableRegion.y - displayHeight) / 2.0f);
+
+        // Store canvas display region start position (with centering)
+        ImVec2 cursorPos = ImGui.getCursorScreenPos();
+        return new ImVec2(
+            cursorPos.x + centerOffsetX,
+            cursorPos.y + centerOffsetY
+        );
     }
 
     /**
@@ -321,8 +295,7 @@ public class CanvasPanel {
             currentTool.onMouseUp(currentColor, canvas, currentDrawCommand);
 
             // Handle color picker tool
-            if (currentTool instanceof ColorPickerTool) {
-                ColorPickerTool colorPicker = (ColorPickerTool) currentTool;
+            if (currentTool instanceof ColorPickerTool colorPicker) {
                 int pickedColor = colorPicker.getPickedColor();
                 if (onColorPickedCallback != null) {
                     onColorPickedCallback.accept(pickedColor);
@@ -330,8 +303,7 @@ public class CanvasPanel {
                 }
             }
             // Handle selection tools (rectangle, ellipse, lasso, etc.)
-            else if (currentTool instanceof SelectionTool) {
-                SelectionTool selectionTool = (SelectionTool) currentTool;
+            else if (currentTool instanceof SelectionTool selectionTool) {
 
                 // Handle selection creation/update
                 if (selectionTool.hasSelection()) {
@@ -377,7 +349,6 @@ public class CanvasPanel {
 
         // Update mouse state
         wasMouseDown = leftMouseDown;
-        isMouseDown = leftMouseDown;
     }
 
     /**
