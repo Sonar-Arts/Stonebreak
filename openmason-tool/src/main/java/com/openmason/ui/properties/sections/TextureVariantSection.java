@@ -12,7 +12,6 @@ import java.util.function.Consumer;
 /**
  * Texture variant selection section component.
  * Handles texture variant dropdown and selection.
- * Follows SRP - single responsibility of texture variant UI.
  */
 public class TextureVariantSection implements IPanelSection {
 
@@ -100,34 +99,6 @@ public class TextureVariantSection implements IPanelSection {
      */
     public void setVisible(boolean visible) {
         this.visible = visible;
-    }
-
-    /**
-     * Get the currently selected variant.
-     *
-     * @return The selected variant name
-     */
-    public String getSelectedVariant() {
-        return selectedVariant;
-    }
-
-    /**
-     * Get the number of available variants.
-     *
-     * @return Variant count
-     */
-    public int getVariantCount() {
-        return availableVariants.length;
-    }
-
-    /**
-     * Reset to default variant.
-     */
-    public void resetToDefault() {
-        if (availableVariants.length > 0) {
-            selectedVariantIndex.set(0);
-            handleVariantChange("default");
-        }
     }
 
     /**

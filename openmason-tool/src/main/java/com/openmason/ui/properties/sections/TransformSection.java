@@ -226,15 +226,13 @@ public class TransformSection implements IPanelSection {
                              Math.abs(transformState.getScaleZ().get() - maxScale) < 0.01f;
 
         if (atMinScale || atMaxScale) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange
             if (atMinScale) {
-                ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange
-                ImGui.text("⚠ Minimum scale reached");
-                ImGui.popStyleColor();
+                ImGui.text("Minimum scale reached");
             } else {
-                ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f); // Orange
-                ImGui.text("⚠ Maximum scale reached");
-                ImGui.popStyleColor();
+                ImGui.text("Maximum scale reached");
             }
+            ImGui.popStyleColor();
         }
     }
 

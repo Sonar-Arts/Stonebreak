@@ -26,12 +26,4 @@ public interface IPanelSection {
      */
     String getSectionName();
 
-    /**
-     * Check if this section is currently expanded (for collapsible sections).
-     *
-     * @return true if expanded, false if collapsed
-     */
-    default boolean isExpanded() {
-        return true; // Default to expanded
-    }
 }

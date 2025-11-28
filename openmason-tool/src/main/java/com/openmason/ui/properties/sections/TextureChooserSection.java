@@ -16,17 +16,6 @@ import java.util.function.Consumer;
 /**
  * Texture chooser section for editable models (NEW and OMO_FILE).
  * Allows user to select .OMT or .PNG texture files.
- *
- * <p>Following SOLID principles:</p>
- * <ul>
- *   <li><strong>Single Responsibility</strong>: Only handles texture file selection UI</li>
- *   <li><strong>Dependency Inversion</strong>: Depends on FileDialogService abstraction</li>
- * </ul>
- *
- * <p>Following KISS: Simple file chooser with clear button</p>
- * <p>Following DRY: Reuses FileDialogService and BlockModel API</p>
- *
- * @author Open Mason Team
  */
 public class TextureChooserSection implements IPanelSection {
 

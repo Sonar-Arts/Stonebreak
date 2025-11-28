@@ -2,9 +2,7 @@ package com.openmason.ui.properties.components;
 
 import imgui.ImGui;
 import imgui.type.ImFloat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -13,8 +11,6 @@ import java.util.function.Consumer;
  * Follows DRY and KISS principles.
  */
 public class Vec3SliderGroup {
-
-    private static final Logger logger = LoggerFactory.getLogger(Vec3SliderGroup.class);
 
     private final String label;
     private final ImFloat x;
@@ -115,13 +111,11 @@ public class Vec3SliderGroup {
      * Render with uniform scaling support.
      * In uniform mode, changing one slider affects all others proportionally.
      *
-     * @param uniformMode Whether uniform scaling is enabled
+     * @param uniformMode    Whether uniform scaling is enabled
      * @param onUniformScale Callback for applying uniform scaling (receives changed axis and new value)
-     * @return true if any slider was changed
      */
-    public boolean renderWithUniformScale(boolean uniformMode,
-                                          java.util.function.BiConsumer<Integer, Float> onUniformScale) {
-        boolean changed = false;
+    public void renderWithUniformScale(boolean uniformMode,
+                                       BiConsumer<Integer, Float> onUniformScale) {
 
         ImGui.text(label + ":");
 
@@ -135,7 +129,6 @@ public class Vec3SliderGroup {
             } else if (onChanged != null) {
                 onChanged.accept(0);
             }
-            changed = true;
         }
 
         // Y slider
@@ -145,7 +138,6 @@ public class Vec3SliderGroup {
             } else if (onChanged != null) {
                 onChanged.accept(1);
             }
-            changed = true;
         }
 
         // Z slider
@@ -155,13 +147,11 @@ public class Vec3SliderGroup {
             } else if (onChanged != null) {
                 onChanged.accept(2);
             }
-            changed = true;
         }
 
         // Restore default width
         ImGui.popItemWidth();
 
-        return changed;
     }
 
     // Static factory methods for common configurations

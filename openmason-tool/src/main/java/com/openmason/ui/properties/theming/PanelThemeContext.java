@@ -11,8 +11,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Centralized theme context for property panel.
- * Implements IThemeContext and follows SOLID principles.
- * Eliminates code duplication in theme application and status rendering.
  */
 public class PanelThemeContext implements IThemeContext {
 
@@ -24,8 +22,6 @@ public class PanelThemeContext implements IThemeContext {
 
     /**
      * Create a theme context.
-     *
-     * @param themeManager The theme manager (can be null)
      */
     public PanelThemeContext(ThemeManager themeManager) {
         this.themeManager = themeManager;
@@ -97,20 +93,20 @@ public class PanelThemeContext implements IThemeContext {
         // Render with appropriate color and icon
         switch (type) {
             case LOADING:
-                renderColoredStatus("⏳ " + statusMessage, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
+                renderColoredStatus("⏳ " + statusMessage, 0.0f, 1.0f, 1.0f); // Cyan
                 break;
             case VALIDATING:
-                renderColoredStatus("🔍 " + statusMessage, 1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+                renderColoredStatus("🔍 " + statusMessage, 1.0f, 1.0f, 0.0f); // Yellow
                 break;
             case ERROR:
-                float errorRed = available ? 1.0f : 1.0f;
+                float errorRed = 1.0f;
                 float errorGreen = available ? 0.2f : 0.0f;
-                renderColoredStatus("❌ " + statusMessage, errorRed, errorGreen, 0.2f, 1.0f);
+                renderColoredStatus("❌ " + statusMessage, errorRed, errorGreen, 0.2f);
                 break;
             case SUCCESS:
                 float successRed = available ? 0.2f : 0.0f;
-                float successGreen = available ? 1.0f : 1.0f;
-                renderColoredStatus("✅ " + statusMessage, successRed, successGreen, 0.2f, 1.0f);
+                float successGreen = 1.0f;
+                renderColoredStatus("✅ " + statusMessage, successRed, successGreen, 0.2f);
                 break;
             case NORMAL:
             default:
@@ -141,8 +137,8 @@ public class PanelThemeContext implements IThemeContext {
     /**
      * Render colored status text.
      */
-    private void renderColoredStatus(String text, float r, float g, float b, float a) {
-        ImGui.pushStyleColor(ImGuiCol.Text, r, g, b, a);
+    private void renderColoredStatus(String text, float r, float g, float b) {
+        ImGui.pushStyleColor(ImGuiCol.Text, r, g, b, (float) 1.0);
         ImGui.text(text);
         ImGui.popStyleColor();
     }
