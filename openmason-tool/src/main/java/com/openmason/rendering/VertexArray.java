@@ -1,6 +1,5 @@
 package com.openmason.rendering;
 
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayList;
@@ -24,7 +23,7 @@ public class VertexArray implements AutoCloseable {
     
     // Rendering statistics
     private long lastAccessTime;
-    private int renderCount;
+    private final int renderCount;
     
     /**
      * Creates a new Vertex Array Object.
@@ -94,81 +93,6 @@ public class VertexArray implements AutoCloseable {
             throw new IllegalStateException("Vertex Array is invalid: " + debugName);
         }
     }
-    
-    /**
-     * Sets the vertex buffer for this VAO and configures the vertex attribute.
-     *
-     * @param vertexBuffer The vertex buffer containing position data
-     */
-    public void setVertexBuffer(VertexBuffer vertexBuffer) {
-        validateVAO();
-        bind();
-
-        this.vertexBuffer = vertexBuffer;
-        vertexBuffer.enableVertexAttribute();
-
-        unbind();
-    }
-
-    /**
-     * Sets the index buffer for this VAO.
-     *
-     * @param indexBuffer The index buffer containing triangle indices
-     */
-    public void setIndexBuffer(IndexBuffer indexBuffer) {
-        validateVAO();
-        bind();
-        
-        this.indexBuffer = indexBuffer;
-        indexBuffer.bind(); // Binding an EBO while a VAO is bound associates it with the VAO
-        
-        unbind();
-    }
-    
-    /**
-     * Adds an additional buffer to this VAO for lifecycle management.
-     * 
-     * @param buffer Additional buffer to track
-     */
-    public void addBuffer(OpenGLBuffer buffer) {
-        additionalBuffers.add(buffer);
-    }
-    
-    /**
-     * Renders this VAO using triangles with the associated index buffer.
-     * The VAO must have an index buffer set for this method to work.
-     */
-    public void renderTriangles() {
-        validateVAO();
-        if (indexBuffer == null) {
-            throw new IllegalStateException("Cannot render triangles without an index buffer: " + debugName);
-        }
-        
-        bind();
-        indexBuffer.drawTriangles();
-        unbind();
-        
-        renderCount++;
-        lastAccessTime = System.currentTimeMillis();
-    }
-    
-    /**
-     * Renders this VAO using the specified primitive type and vertex count.
-     * Used when rendering without an index buffer (vertex arrays).
-     *
-     * @param primitiveType The OpenGL primitive type (GL_TRIANGLES, GL_QUADS, etc.)
-     * @param vertexCount Number of vertices to render
-     */
-    public void renderVertices(int primitiveType, int vertexCount) {
-        validateVAO();
-
-        bind();
-        GL11.glDrawArrays(primitiveType, 0, vertexCount);
-        unbind();
-
-        renderCount++;
-        lastAccessTime = System.currentTimeMillis();
-    }
 
     /**
      * Validates the VAO configuration and checks for common issues.
@@ -193,83 +117,6 @@ public class VertexArray implements AutoCloseable {
             result.addError("Index buffer is invalid");
         }
 
-        return result;
-    }
-    
-    /**
-     * Validates that the cleanup process works correctly with the BufferManager.
-     * This method verifies that all resources are properly tracked and can be cleaned up.
-     * 
-     * @return Validation result specifically focused on cleanup and lifecycle management
-     */
-    public ValidationResult validateCleanupCapability() {
-        ValidationResult result = new ValidationResult();
-        
-        if (isDisposed) {
-            result.addError("Cannot validate cleanup capability: VAO is already disposed");
-            return result;
-        }
-        
-        // Verify BufferManager tracking and statistics
-        try {
-            BufferManager bufferManager = BufferManager.getInstance();
-            BufferManager.BufferManagerStatistics stats = bufferManager.getStatistics();
-            
-            // Validate that the manager is functional
-            if (stats.activeVertexArrayCount() < 0 || stats.activeBufferCount() < 0) {
-                result.addError("BufferManager statistics are invalid");
-            }
-            
-            // Check for resource validation issues
-            List<String> issues = bufferManager.validateResources();
-            for (String issue : issues) {
-                // Only report issues related to this VAO
-                if (issue.contains(this.debugName)) {
-                    result.addWarning("BufferManager validation issue: " + issue);
-                }
-                // Report issues with our associated buffers
-                if (vertexBuffer != null && issue.contains(vertexBuffer.getDebugName())) {
-                    result.addWarning("Vertex buffer validation issue: " + issue);
-                }
-                if (indexBuffer != null && issue.contains(indexBuffer.getDebugName())) {
-                    result.addWarning("Index buffer validation issue: " + issue);
-                }
-            }
-            
-        } catch (Exception e) {
-            result.addError("Failed to validate BufferManager integration: " + e.getMessage());
-        }
-        
-        // Verify AutoCloseable pattern compliance
-        if (!(this instanceof AutoCloseable)) {
-            result.addError("VAO does not implement AutoCloseable correctly");
-        }
-        
-        // Check that all buffers implement AutoCloseable
-        if (vertexBuffer != null && !(vertexBuffer instanceof AutoCloseable)) {
-            result.addError("Vertex buffer does not implement AutoCloseable");
-        }
-
-        if (indexBuffer != null && !(indexBuffer instanceof AutoCloseable)) {
-            result.addError("Index buffer does not implement AutoCloseable");
-        }
-
-        // Validate that buffers are in valid state for cleanup
-        if (vertexBuffer != null && vertexBuffer.isDisposed()) {
-            result.addWarning("Vertex buffer is already disposed but still referenced");
-        }
-
-        if (indexBuffer != null && indexBuffer.isDisposed()) {
-            result.addWarning("Index buffer is already disposed but still referenced");
-        }
-        
-        // Check for potential double-cleanup issues
-        for (OpenGLBuffer buffer : additionalBuffers) {
-            if (buffer.isDisposed()) {
-                result.addWarning("Additional buffer is already disposed but still in list: " + buffer.getDebugName());
-            }
-        }
-        
         return result;
     }
     
@@ -329,12 +176,8 @@ public class VertexArray implements AutoCloseable {
     // Getters for monitoring and debugging
     public int getVaoId() { return vaoId; }
     public boolean isValid() { return isValid && !isDisposed; }
-    public boolean isDisposed() { return isDisposed; }
     public String getDebugName() { return debugName; }
     public long getLastAccessTime() { return lastAccessTime; }
-    public int getRenderCount() { return renderCount; }
-    public VertexBuffer getVertexBuffer() { return vertexBuffer; }
-    public IndexBuffer getIndexBuffer() { return indexBuffer; }
     
     @Override
     public String toString() {
@@ -350,8 +193,7 @@ public class VertexArray implements AutoCloseable {
         private final List<String> warnings = new ArrayList<>();
         
         public void addError(String error) { errors.add(error); }
-        public void addWarning(String warning) { warnings.add(warning); }
-        
+
         public boolean isValid() { return errors.isEmpty(); }
         
         @Override

@@ -2,9 +2,6 @@ package com.openmason.rendering;
 
 import org.lwjgl.opengl.GL15;
 
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-
 /**
  * Base class for OpenGL buffer objects with automatic resource management.
  * Provides lifecycle management, validation, and cleanup for all buffer types.
@@ -93,98 +90,7 @@ public abstract class OpenGLBuffer implements AutoCloseable {
             throw new IllegalStateException("Buffer is invalid: " + debugName);
         }
     }
-    
-    /**
-     * Uploads data to this buffer using the specified usage pattern.
-     * 
-     * @param data The data to upload
-     * @param usage OpenGL usage hint (GL_STATIC_DRAW, GL_DYNAMIC_DRAW, etc.)
-     */
-    protected void uploadData(FloatBuffer data, int usage) {
-        validateBuffer();
-        bind();
-        
-        this.dataSize = data.remaining() * Float.BYTES;
-        this.usage = usage;
-        
-        GL15.glBufferData(bufferType, data, usage);
-        
-        // Validate upload success
-        int error = GL15.glGetError();
-        if (error != GL15.GL_NO_ERROR) {
-            throw new RuntimeException("Failed to upload buffer data: " + debugName + " (Error: " + error + ")");
-        }
-        
-        unbind();
-    }
-    
-    /**
-     * Uploads data to this buffer using the specified usage pattern.
-     * 
-     * @param data The data to upload
-     * @param usage OpenGL usage hint (GL_STATIC_DRAW, GL_DYNAMIC_DRAW, etc.)
-     */
-    protected void uploadData(IntBuffer data, int usage) {
-        validateBuffer();
-        bind();
-        
-        this.dataSize = data.remaining() * Integer.BYTES;
-        this.usage = usage;
-        
-        GL15.glBufferData(bufferType, data, usage);
-        
-        // Validate upload success
-        int error = GL15.glGetError();
-        if (error != GL15.GL_NO_ERROR) {
-            throw new RuntimeException("Failed to upload buffer data: " + debugName + " (Error: " + error + ")");
-        }
-        
-        unbind();
-    }
-    
-    /**
-     * Updates a portion of the buffer data.
-     * 
-     * @param offset Offset in bytes where to start updating
-     * @param data New data to upload
-     */
-    protected void updateData(long offset, FloatBuffer data) {
-        validateBuffer();
-        bind();
-        
-        GL15.glBufferSubData(bufferType, offset, data);
-        
-        // Validate update success
-        int error = GL15.glGetError();
-        if (error != GL15.GL_NO_ERROR) {
-            throw new RuntimeException("Failed to update buffer data: " + debugName + " (Error: " + error + ")");
-        }
-        
-        unbind();
-        lastAccessTime = System.currentTimeMillis();
-    }
-    
-    /**
-     * Updates a portion of the buffer data.
-     * 
-     * @param offset Offset in bytes where to start updating
-     * @param data New data to upload
-     */
-    protected void updateData(long offset, IntBuffer data) {
-        validateBuffer();
-        bind();
-        
-        GL15.glBufferSubData(bufferType, offset, data);
-        
-        // Validate update success
-        int error = GL15.glGetError();
-        if (error != GL15.GL_NO_ERROR) {
-            throw new RuntimeException("Failed to update buffer data: " + debugName + " (Error: " + error + ")");
-        }
-        
-        unbind();
-        lastAccessTime = System.currentTimeMillis();
-    }
+
     
     /**
      * Disposes of this buffer and releases OpenGL resources.
@@ -221,12 +127,10 @@ public abstract class OpenGLBuffer implements AutoCloseable {
     public int getBufferId() { return bufferId; }
     public int getBufferType() { return bufferType; }
     public boolean isValid() { return isValid && !isDisposed; }
-    public boolean isDisposed() { return isDisposed; }
     public long getLastAccessTime() { return lastAccessTime; }
     public String getDebugName() { return debugName; }
     public int getDataSize() { return dataSize; }
-    public int getUsage() { return usage; }
-    
+
     @Override
     public String toString() {
         return String.format("OpenGLBuffer{name='%s', id=%d, type=%d, size=%d, valid=%b}",

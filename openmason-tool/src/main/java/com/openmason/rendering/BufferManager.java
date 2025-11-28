@@ -168,61 +168,6 @@ public class BufferManager {
     }
     
     /**
-     * Gets detailed statistics about buffer usage.
-     * 
-     * @return BufferManagerStatistics object with detailed information
-     */
-    public BufferManagerStatistics getStatistics() {
-        return new BufferManagerStatistics(
-            activeBuffers.size(),
-            activeVertexArrays.size(),
-            totalBuffersCreated.get(),
-            totalVertexArraysCreated.get(),
-            getCurrentMemoryUsage(),
-            totalMemoryAllocated.get(),
-            totalMemoryDeallocated.get(),
-            new ArrayList<>(bufferHistory)
-        );
-    }
-    
-    /**
-     * Validates all tracked resources and detects potential leaks.
-     * 
-     * @return List of validation issues found
-     */
-    public List<String> validateResources() {
-        List<String> issues = new ArrayList<>();
-
-        boolean enableLeakDetection = true;
-        if (!enableLeakDetection) {
-            return issues;
-        }
-        
-        long currentTime = System.currentTimeMillis();
-        long staleThreshold = 5 * 60 * 1000; // 5 minutes
-        
-        // Check for stale buffers
-        for (OpenGLBuffer buffer : activeBuffers.values()) {
-            if (!buffer.isValid()) {
-                issues.add("Invalid buffer still tracked: " + buffer.getDebugName());
-            } else if (currentTime - buffer.getLastAccessTime() > staleThreshold) {
-                issues.add("Stale buffer (not accessed recently): " + buffer.getDebugName());
-            }
-        }
-        
-        // Check for stale vertex arrays
-        for (VertexArray vao : activeVertexArrays.values()) {
-            if (!vao.isValid()) {
-                issues.add("Invalid vertex array still tracked: " + vao.getDebugName());
-            } else if (currentTime - vao.getLastAccessTime() > staleThreshold) {
-                issues.add("Stale vertex array (not accessed recently): " + vao.getDebugName());
-            }
-        }
-        
-        return issues;
-    }
-    
-    /**
      * Forces cleanup of all tracked resources.
      * Should be called before application shutdown.
      */
@@ -291,23 +236,4 @@ public class BufferManager {
         private record BufferStatistics(long timestamp, String bufferName, int bufferType, int dataSize,
                                         BufferOperation operation) {
     }
-
-    /**
-         * Complete statistics snapshot of the BufferManager state.
-         */
-        public record BufferManagerStatistics(int activeBufferCount, int activeVertexArrayCount, long totalBuffersCreated,
-                                              long totalVertexArraysCreated, long currentMemoryUsage,
-                                              long totalMemoryAllocated, long totalMemoryDeallocated,
-                                              List<BufferStatistics> history) {
-
-        @Override
-            public String toString() {
-                return String.format(
-                        "BufferManagerStatistics{activeBuffers=%d, activeVAOs=%d, totalBuffers=%d, " +
-                                "totalVAOs=%d, currentMemory=%d, totalAllocated=%d, totalDeallocated=%d}",
-                        activeBufferCount, activeVertexArrayCount, totalBuffersCreated,
-                        totalVertexArraysCreated, currentMemoryUsage, totalMemoryAllocated, totalMemoryDeallocated
-                );
-            }
-        }
 }
