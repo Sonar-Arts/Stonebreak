@@ -1,6 +1,5 @@
 package com.openmason.ui;
 
-import com.openmason.deprecated.LegacyCowModelManager;
 import com.openmason.ui.components.modelBrowser.ModelBrowserController;
 import com.openmason.ui.components.modelBrowser.ModelBrowserImGui;
 import com.openmason.ui.components.modelBrowser.events.*;
@@ -8,7 +7,6 @@ import com.openmason.ui.config.WindowConfig;
 import com.openmason.ui.components.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
-import com.openmason.ui.dialogs.PreferencesDialog;
 import com.openmason.ui.menus.*;
 import com.openmason.ui.preferences.UnifiedPreferencesWindow;
 import com.openmason.ui.preferences.PreferencesManager;
@@ -28,22 +26,8 @@ import imgui.type.ImFloat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
- * Main ImGui interface - refactored to follow KISS, SOLID, YAGNI, and DRY principles.
- *
- * This class now acts as a lightweight coordinator, delegating responsibilities to specialized modules:
- * - State management → ui.state package
- * - Business logic → ui.services package
- * - Dialog windows → ui.dialogs package
- * - Menu operations → ui.menus package
- * - Toolbar rendering → ui.toolbar package
- * - Model Browser → ui.components.modelBrowser package
- *
- * Reduced from 1700+ lines to ~300 lines by following Single Responsibility Principle.
- * Implements ModelBrowserListener to handle model browser events using Observer pattern.
+ * Main ImGui interface
  */
 public class MainImGuiInterface implements ModelBrowserListener {
 
@@ -51,44 +35,36 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     // State Objects
     private final ModelState modelState;
-    private final ViewportUIState viewportState;
     private final UIVisibilityState uiVisibilityState;
-    private final TransformState transformState;
 
     // Services
     private final StatusService statusService;
     private final PerformanceService performanceService;
     private final ModelOperationService modelOperations;
     private final ViewportOperationService viewportOperations;
-    private final LayoutService layoutService;
     private final FileDialogService fileDialogService;
 
     // UI Components
     private final ThemeManager themeManager;
     private final PreferencesManager preferencesManager;
-    private final LogoManager logoManager;
     private PropertyPanelImGui propertyPanelImGui;
     private ModelBrowserImGui modelBrowserImGui;
 
-    // Dialogs
-    private final PreferencesDialog preferencesDialog; // Deprecated - kept for one release
     private UnifiedPreferencesWindow unifiedPreferencesWindow; // Initialized after components
     private final AboutDialog aboutDialog;
 
     // Menu System
     private final MenuBarCoordinator menuBarCoordinator;
-    private FileMenuHandler fileMenuHandler;
-    private ToolsMenuHandler toolsMenuHandler;
+    private final FileMenuHandler fileMenuHandler;
+    private final ToolsMenuHandler toolsMenuHandler;
 
     // Toolbar
     private final ModelViewerToolbarRenderer toolbarRenderer;
 
     // Viewport
     private ViewportController viewport3D;
-    private LegacyCowModelManager legacyCowModelManager;
 
     // Window Configurations
-    private final WindowConfig viewportConfig = WindowConfig.forViewport();
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
 
     // Camera settings (shared with PreferencesDialog)
@@ -106,9 +82,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         // Initialize state objects
         this.modelState = new ModelState();
-        this.viewportState = new ViewportUIState();
+        ViewportUIState viewportState = new ViewportUIState();
         this.uiVisibilityState = new UIVisibilityState();
-        this.transformState = new TransformState();
 
         // Initialize services
         this.statusService = new StatusService();
@@ -116,8 +91,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
         // Initialize managers
         this.preferencesManager = new PreferencesManager();
-        this.logoManager = LogoManager.getInstance();
-        this.legacyCowModelManager = new LegacyCowModelManager();
+        LogoManager logoManager = LogoManager.getInstance();
 
         // Initialize camera sensitivity from preferences
         float savedSensitivity = preferencesManager.getCameraMouseSensitivity();
@@ -127,13 +101,12 @@ public class MainImGuiInterface implements ModelBrowserListener {
         this.fileDialogService = new FileDialogService(statusService);
 
         // Initialize operation services
-        this.modelOperations = new ModelOperationService(modelState, statusService, legacyCowModelManager, fileDialogService);
+        this.modelOperations = new ModelOperationService(modelState, statusService, fileDialogService);
         this.viewportOperations = new ViewportOperationService(viewportState, statusService);
-        this.layoutService = new LayoutService(uiVisibilityState, viewportState, statusService);
+        LayoutService layoutService = new LayoutService(uiVisibilityState, viewportState, statusService);
 
         // Initialize dialogs
-        this.preferencesDialog = new PreferencesDialog(uiVisibilityState, themeManager,
-                preferencesManager, statusService, cameraMouseSensitivity);
+        // Dialogs
 
         this.aboutDialog = new AboutDialog(uiVisibilityState, logoManager, "Model Viewer");
 
@@ -445,16 +418,8 @@ public class MainImGuiInterface implements ModelBrowserListener {
     /**
      * Update method called every frame.
      */
-    public void update(float deltaTime) {
-        performanceService.updateAll(viewport3D);
-    }
 
     // Public API
-
-    public PropertyPanelImGui getPropertyPanelImGui() {
-        return propertyPanelImGui;
-    }
-
     public ViewportController getViewport3D() {
         return viewport3D;
     }
@@ -463,58 +428,26 @@ public class MainImGuiInterface implements ModelBrowserListener {
         return themeManager;
     }
 
-    public Map<String, Object> getPerformanceMetrics() {
-        Map<String, Object> metrics = new HashMap<>();
-        metrics.put("modelLoaded", modelState.isModelLoaded());
-        metrics.put("currentModelPath", modelState.getCurrentModelPath());
-        metrics.put("unsavedChanges", modelState.hasUnsavedChanges());
-        metrics.put("memoryUsage", performanceService.getMemoryUsage());
-        metrics.put("frameRate", performanceService.getFrameRate());
-
-        // Property panel metrics removed as part of YAGNI cleanup
-        // The panel now focuses solely on its core responsibilities
-
-        return metrics;
-    }
-
-    public void forceTextureVariantReload(String modelName) {
-        if (propertyPanelImGui != null) {
-            propertyPanelImGui.loadTextureVariants(modelName);
-        }
-    }
-
     // Convenience methods for backward compatibility
 
     public void createNewModel() {
         modelOperations.newModel();
     }
 
-    public void openModel() {
-        modelOperations.openModel();
-    }
-
-    public void saveModel() {
-        modelOperations.saveModel();
-    }
-
     public void resetView() {
         viewportOperations.resetView(viewport3D);
     }
 
-    public void fitToView() {
-        viewportOperations.fitToView();
-    }
-
-    public void toggleGrid() {
-        viewportOperations.toggleGrid(viewport3D);
-    }
-
-    public void toggleWireframe() {
-        viewportOperations.toggleWireframe(viewport3D);
-    }
-
-    public void switchToVariant(String variantName) {
-        viewportOperations.switchTextureVariant(viewport3D, transformState, variantName);
+    /**
+     * Update method called every frame.
+     * Updates viewport camera and input handling.
+     *
+     * @param deltaTime time since last update in seconds
+     */
+    public void update(float deltaTime) {
+        if (viewport3D != null) {
+            viewport3D.update(deltaTime);
+        }
     }
 
     /**
@@ -539,12 +472,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     /**
      * Gets a callback that shows the unified preferences window.
-     * <p>
-     * This callback can be used by other components (like TextureCreatorImGui)
-     * to open the same preferences window instead of their own internal preferences.
-     * </p>
-     *
-     * @return a Runnable that shows the preferences window
      */
     public Runnable getShowPreferencesCallback() {
         return () -> {
@@ -558,12 +485,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     /**
      * Gets the unified preferences window for external rendering.
-     * <p>
-     * This allows the app to render the preferences window at the top level
-     * so it's accessible from both the Project Hub and the main interface.
-     * </p>
-     *
-     * @return the unified preferences window instance
      */
     public UnifiedPreferencesWindow getUnifiedPreferencesWindow() {
         return unifiedPreferencesWindow;
@@ -571,12 +492,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
 
     /**
      * Sets the TextureCreatorImGui instance for unified preferences.
-     * <p>
-     * This must be called after TextureCreatorImGui is created to enable
-     * real-time updates for texture editor preferences.
-     * </p>
-     *
-     * @param textureCreatorImGui the texture creator instance
      */
     public void setTextureCreatorInterface(TextureCreatorImGui textureCreatorImGui) {
         if (unifiedPreferencesWindow != null) {

@@ -1,6 +1,5 @@
 package com.openmason.ui.services;
 
-import com.openmason.deprecated.LegacyCowModelManager;
 import com.openmason.model.editable.BlockModel;
 import com.openmason.model.factory.BlankModelFactory;
 import com.openmason.model.io.omo.OMODeserializer;
@@ -15,21 +14,6 @@ import java.io.IOException;
 
 /**
  * Model operation service.
- *
- * <p>Handles model operations including:
- * <ul>
- *   <li>Creating new blank models</li>
- *   <li>Opening/saving .OMO files</li>
- *   <li>Managing editable model state</li>
- *   <li>Dirty state tracking</li>
- * </ul>
- *
- * <p>Design Principles:
- * <ul>
- *   <li>SOLID: Single Responsibility - only handles model operations</li>
- *   <li>DRY: Reuses factories and serializers</li>
- *   <li>YAGNI: No unimplemented features</li>
- * </ul>
  */
 public class ModelOperationService {
 
@@ -37,7 +21,6 @@ public class ModelOperationService {
 
     private final ModelState modelState;
     private final StatusService statusService;
-    private final LegacyCowModelManager legacyCowModelManager;
     private final FileDialogService fileDialogService;
 
     // Editable model support
@@ -51,11 +34,9 @@ public class ModelOperationService {
     private com.openmason.ui.properties.PropertyPanelImGui propertiesPanel;
 
     public ModelOperationService(ModelState modelState, StatusService statusService,
-                                 LegacyCowModelManager legacyCowModelManager,
                                  FileDialogService fileDialogService) {
         this.modelState = modelState;
         this.statusService = statusService;
-        this.legacyCowModelManager = legacyCowModelManager;
         this.fileDialogService = fileDialogService;
 
         // Initialize .OMO support
@@ -132,59 +113,17 @@ public class ModelOperationService {
     }
 
     /**
-     * Open model asynchronously.
+     * Open model with file dialog.
+     * Delegates to openOMOModel() to avoid code duplication (DRY).
      */
     public void openModel() {
-        statusService.updateStatus("Opening model...");
-
-        try {
-            if (legacyCowModelManager != null) {
-                String modelPath = "standard_cow";
-
-                legacyCowModelManager.loadModelInfoAsync(modelPath, LegacyCowModelManager.LoadingPriority.NORMAL, null)
-                    .thenAccept(modelInfo -> {
-                        if (modelInfo != null) {
-                            modelState.setModelLoaded(true);
-                            modelState.setCurrentModelPath(modelPath);
-                            modelState.setUnsavedChanges(false);
-
-                            // Extract model statistics
-                            int partCount = modelInfo.getPartCount();
-                            int vertexCount = partCount * 24;
-                            int triangleCount = partCount * 12;
-
-                            modelState.updateStatistics(partCount, vertexCount, triangleCount);
-                            statusService.updateStatus("Model loaded successfully: " + modelPath);
-                            logger.info("Model loaded: {} parts, {} vertices, {} triangles",
-                                    partCount, vertexCount, triangleCount);
-                        } else {
-                            statusService.updateStatus("Failed to load model");
-                            logger.error("Model loading returned null");
-                        }
-                    })
-                    .exceptionally(throwable -> {
-                        logger.error("Failed to load model", throwable);
-                        statusService.updateStatus("Error loading model: " + throwable.getMessage());
-                        return null;
-                    });
-            } else {
-                logger.warn("ModelManager not initialized, falling back to placeholder");
-                modelState.setModelLoaded(true);
-                modelState.setCurrentModelPath("standard_cow.json");
-                modelState.setUnsavedChanges(false);
-                modelState.updateStatistics(6, 1248, 624);
-                statusService.updateStatus("Model loaded (placeholder mode)");
-            }
-        } catch (Exception e) {
-            logger.error("Exception during model loading", e);
-            statusService.updateStatus("Error loading model: " + e.getMessage());
-        }
+        openOMOModel();
     }
 
     /**
      * Save current editable model.
      * If model hasn't been saved before, shows save dialog.
-     * Otherwise saves to existing file path.
+     * Otherwise, saves to existing file path.
      */
     public void saveModel() {
         if (currentEditableModel == null) {
@@ -209,15 +148,13 @@ public class ModelOperationService {
      */
     public void saveModelAs() {
         if (currentEditableModel == null) {
-            logger.warn("No editable model to save");
+            logger.warn("No editable model to save as");
             statusService.updateStatus("No model to save");
             return;
         }
 
         // Show save dialog
-        fileDialogService.showSaveOMODialog(filePath -> {
-            saveModelToFile(filePath);
-        });
+        fileDialogService.showSaveOMODialog(this::saveModelToFile);
     }
 
     /**
@@ -273,20 +210,10 @@ public class ModelOperationService {
     }
 
     /**
-     * Validate current model.
-     */
-    public void validateModel() {
-        statusService.updateStatus("Validating model...");
-        statusService.updateStatus("Model validation complete");
-    }
-
-    /**
      * Open a .OMO file with file dialog.
      */
     public void openOMOModel() {
-        fileDialogService.showOpenOMODialog(filePath -> {
-            loadOMOModelFromFile(filePath);
-        });
+        fileDialogService.showOpenOMODialog(this::loadOMOModelFromFile);
     }
 
     /**
@@ -348,32 +275,4 @@ public class ModelOperationService {
         }
     }
 
-    /**
-     * Gets the current editable model.
-     *
-     * @return the current BlockModel, or null if none is loaded
-     */
-    public BlockModel getCurrentEditableModel() {
-        return currentEditableModel;
-    }
-
-    /**
-     * Checks if there is an editable model currently loaded.
-     *
-     * @return true if an editable model is loaded
-     */
-    public boolean hasEditableModel() {
-        return currentEditableModel != null;
-    }
-
-    /**
-     * Marks the current editable model as modified (dirty).
-     * Called when the model is edited.
-     */
-    public void markEditableModelDirty() {
-        if (currentEditableModel != null && !currentEditableModel.isDirty()) {
-            // Model is clean but now modified
-            modelState.setUnsavedChanges(true);
-        }
-    }
 }
