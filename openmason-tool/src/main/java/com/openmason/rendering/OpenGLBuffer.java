@@ -1,8 +1,6 @@
 package com.openmason.rendering;
 
 import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -10,7 +8,6 @@ import java.nio.IntBuffer;
 /**
  * Base class for OpenGL buffer objects with automatic resource management.
  * Provides lifecycle management, validation, and cleanup for all buffer types.
- * 
  * This class ensures proper OpenGL buffer lifecycle management with automatic
  * cleanup and validation to prevent memory leaks and OpenGL errors.
  */
@@ -235,12 +232,6 @@ public abstract class OpenGLBuffer implements AutoCloseable {
         return String.format("OpenGLBuffer{name='%s', id=%d, type=%d, size=%d, valid=%b}",
             debugName, bufferId, bufferType, dataSize, isValid());
     }
-    
-    /**
-     * Cleanup detection using Cleaner instead of deprecated finalize().
-     * Should not be relied upon - always call close() explicitly.
-     * Cleaner is now defined at the top of the class for proper initialization order.
-     */
     
     /**
      * State holder for the cleaner to track buffer disposal.

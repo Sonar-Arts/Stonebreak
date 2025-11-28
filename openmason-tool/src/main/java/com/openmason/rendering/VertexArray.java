@@ -1,7 +1,5 @@
 package com.openmason.rendering;
 
-import com.openmason.deprecated.LegacyCowTextureCoordinateBuffer;
-import com.stonebreak.textures.mobs.CowTextureDefinition;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -17,26 +15,12 @@ public class VertexArray implements AutoCloseable {
     private int vaoId;
     private boolean isValid;
     private boolean isDisposed;
-    private String debugName;
+    private final String debugName;
     
     // Associated buffers for lifecycle management
     private VertexBuffer vertexBuffer;
-
-    /**
-     * @deprecated Cow-specific texture coordinate buffer. Only used for legacy cow model rendering.
-     */
-    @Deprecated
-    private LegacyCowTextureCoordinateBuffer textureCoordBuffer;
-
     private IndexBuffer indexBuffer;
     private final List<OpenGLBuffer> additionalBuffers;
-    
-    /**
-     * Texture mapping information for cow model parts (HEAD, BODY, LEG, etc.).
-     * @deprecated Cow-specific field. Only used for legacy cow texture coordinate generation.
-     */
-    @Deprecated
-    private String textureField;
     
     // Rendering statistics
     private long lastAccessTime;
@@ -113,42 +97,22 @@ public class VertexArray implements AutoCloseable {
     
     /**
      * Sets the vertex buffer for this VAO and configures the vertex attribute.
-     * 
+     *
      * @param vertexBuffer The vertex buffer containing position data
      */
     public void setVertexBuffer(VertexBuffer vertexBuffer) {
         validateVAO();
         bind();
-        
+
         this.vertexBuffer = vertexBuffer;
         vertexBuffer.enableVertexAttribute();
-        
+
         unbind();
     }
-    
-    /**
-     * Sets the texture coordinate buffer for this VAO and configures the texture attribute.
-     *
-     * @param textureCoordBuffer The texture coordinate buffer containing UV data
-     * @deprecated This method is cow-specific and only works with {@link LegacyCowTextureCoordinateBuffer}.
-     *             It's used exclusively for legacy cow model rendering in Open Mason's viewport.
-     *             For general texture coordinate handling, create a generic TextureCoordinateBuffer
-     *             that isn't hardcoded to cow anatomy.
-     */
-    @Deprecated
-    public void setTextureCoordinateBuffer(LegacyCowTextureCoordinateBuffer textureCoordBuffer) {
-        validateVAO();
-        bind();
-        
-        this.textureCoordBuffer = textureCoordBuffer;
-        textureCoordBuffer.enableVertexAttribute();
-        
-        unbind();
-    }
-    
+
     /**
      * Sets the index buffer for this VAO.
-     * 
+     *
      * @param indexBuffer The index buffer containing triangle indices
      */
     public void setIndexBuffer(IndexBuffer indexBuffer) {
@@ -191,138 +155,21 @@ public class VertexArray implements AutoCloseable {
     /**
      * Renders this VAO using the specified primitive type and vertex count.
      * Used when rendering without an index buffer (vertex arrays).
-     * 
+     *
      * @param primitiveType The OpenGL primitive type (GL_TRIANGLES, GL_QUADS, etc.)
      * @param vertexCount Number of vertices to render
      */
     public void renderVertices(int primitiveType, int vertexCount) {
         validateVAO();
-        
+
         bind();
         GL11.glDrawArrays(primitiveType, 0, vertexCount);
         unbind();
-        
+
         renderCount++;
         lastAccessTime = System.currentTimeMillis();
     }
-    
-    /**
-     * Updates the texture coordinates for a new texture variant.
-     * This enables real-time texture variant switching without recreating the VAO.
-     *
-     * @param textureDefinition The texture definition containing face mappings
-     * @param partName The model part name
-     * @param textureVariant The new texture variant name
-     * @deprecated This method is cow-specific and only works with {@link CowTextureDefinition}.
-     *             It's used exclusively for cow texture variant switching in Open Mason's viewport.
-     *             For general models, implement a generic texture variant system.
-     */
-    @Deprecated
-    public void updateTextureVariant(CowTextureDefinition.CowVariant textureDefinition,
-                                   String partName, String textureVariant) {
-        if (textureCoordBuffer != null) {
-            // Use stored texture field if available, otherwise fall back to part name
-            textureCoordBuffer.updateForTextureVariant(textureDefinition, textureField, partName, textureVariant);
-        } else {
-            System.err.println("[VertexArray] ERROR: No texture coordinate buffer available for " + debugName + " (part: " + partName + ")");
-        }
-    }
-    
-    /**
-     * Creates a complete VAO from model part data.
-     * This is the primary factory method for creating VAOs from the existing model system.
-     *
-     * Exception-safe creation with guaranteed cleanup of partial resources on failure.
-     * Utilizes existing BufferManager tracking and AutoCloseable pattern.
-     *
-     * @param vertices Vertex data from ModelPart.getVertices()
-     * @param indices Index data from ModelPart.getIndices()
-     * @param textureDefinition Texture definition for UV mapping
-     * @param partName Model part name for texture mapping
-     * @param debugName Debug name for the VAO
-     * @return Fully configured VAO ready for rendering
-     * @throws RuntimeException if VAO or buffer creation fails, with guaranteed cleanup
-     * @deprecated This factory method is cow-specific and only works with {@link CowTextureDefinition}.
-     *             It creates {@link LegacyCowTextureCoordinateBuffer} which is hardcoded for cow anatomy.
-     *             For general model rendering, create a generic factory method that doesn't require
-     *             cow-specific texture definitions.
-     */
-    @Deprecated
-    public static VertexArray fromModelPart(float[] vertices, int[] indices,
-                                          CowTextureDefinition.CowVariant textureDefinition,
-                                          String textureField, String partName, String debugName) {
-        VertexArray vao = null;
-        VertexBuffer vertexBuf = null;
-        IndexBuffer indexBuf = null;
-        LegacyCowTextureCoordinateBuffer texCoordBuf = null;
-        
-        try {
-            // Create VAO first
-            vao = new VertexArray(debugName);
-            
-            // Create and configure vertex buffer
-            vertexBuf = VertexBuffer.fromModelVertices(vertices, debugName + "_vertices");
-            vao.setVertexBuffer(vertexBuf);
-            
-            // Create and configure index buffer
-            indexBuf = IndexBuffer.fromModelIndices(indices, debugName + "_indices");
-            vao.setIndexBuffer(indexBuf);
-            
-            // Create texture coordinate buffer (will be populated when variant is set)
-            texCoordBuf = LegacyCowTextureCoordinateBuffer.createPlaceholder(
-                vertices.length / 3, debugName + "_texcoords");
-            vao.setTextureCoordinateBuffer(texCoordBuf);
-            
-            // Store texture field for proper atlas face mapping
-            vao.textureField = textureField;
-            
-            // All resources created successfully
-            return vao;
-            
-        } catch (Exception e) {
-            // Exception-safe cleanup: dispose resources in reverse creation order
-            // Each resource's close() method is idempotent and handles null checks
-            
-            try {
-                if (texCoordBuf != null) {
-                    texCoordBuf.close();
-                }
-            } catch (Exception cleanupEx) {
-                System.err.println("WARNING: Failed to cleanup texture coordinate buffer during exception handling: " + cleanupEx.getMessage());
-            }
-            
-            try {
-                if (indexBuf != null) {
-                    indexBuf.close();
-                }
-            } catch (Exception cleanupEx) {
-                System.err.println("WARNING: Failed to cleanup index buffer during exception handling: " + cleanupEx.getMessage());
-            }
-            
-            try {
-                if (vertexBuf != null) {
-                    vertexBuf.close();
-                }
-            } catch (Exception cleanupEx) {
-                System.err.println("WARNING: Failed to cleanup vertex buffer during exception handling: " + cleanupEx.getMessage());
-            }
-            
-            try {
-                if (vao != null) {
-                    // VAO close() will attempt to dispose associated buffers, but they're already disposed above
-                    // This ensures the VAO itself is properly cleaned up
-                    vao.close();
-                }
-            } catch (Exception cleanupEx) {
-                System.err.println("WARNING: Failed to cleanup VAO during exception handling: " + cleanupEx.getMessage());
-            }
-            
-            // Re-throw the original exception with context
-            throw new RuntimeException("Failed to create VertexArray from model part '" + debugName + 
-                "': " + e.getMessage() + ". All partial resources have been cleaned up.", e);
-        }
-    }
-    
+
     /**
      * Validates the VAO configuration and checks for common issues.
      * 
@@ -341,24 +188,11 @@ public class VertexArray implements AutoCloseable {
         } else if (!vertexBuffer.isValid()) {
             result.addError("Vertex buffer is invalid");
         }
-        
-        if (textureCoordBuffer != null && !textureCoordBuffer.isValid()) {
-            result.addWarning("Texture coordinate buffer is invalid");
-        }
-        
+
         if (indexBuffer != null && !indexBuffer.isValid()) {
             result.addError("Index buffer is invalid");
         }
-        
-        // Check vertex count consistency
-        if (vertexBuffer != null && textureCoordBuffer != null) {
-            if (vertexBuffer.getVertexCount() != textureCoordBuffer.getVertexCount()) {
-                result.addWarning(String.format(
-                    "Vertex count mismatch: vertices=%d, texcoords=%d",
-                    vertexBuffer.getVertexCount(), textureCoordBuffer.getVertexCount()));
-            }
-        }
-        
+
         return result;
     }
     
@@ -382,7 +216,7 @@ public class VertexArray implements AutoCloseable {
             BufferManager.BufferManagerStatistics stats = bufferManager.getStatistics();
             
             // Validate that the manager is functional
-            if (stats.activeVertexArrayCount < 0 || stats.activeBufferCount < 0) {
+            if (stats.activeVertexArrayCount() < 0 || stats.activeBufferCount() < 0) {
                 result.addError("BufferManager statistics are invalid");
             }
             
@@ -396,9 +230,6 @@ public class VertexArray implements AutoCloseable {
                 // Report issues with our associated buffers
                 if (vertexBuffer != null && issue.contains(vertexBuffer.getDebugName())) {
                     result.addWarning("Vertex buffer validation issue: " + issue);
-                }
-                if (textureCoordBuffer != null && issue.contains(textureCoordBuffer.getDebugName())) {
-                    result.addWarning("Texture coordinate buffer validation issue: " + issue);
                 }
                 if (indexBuffer != null && issue.contains(indexBuffer.getDebugName())) {
                     result.addWarning("Index buffer validation issue: " + issue);
@@ -418,24 +249,16 @@ public class VertexArray implements AutoCloseable {
         if (vertexBuffer != null && !(vertexBuffer instanceof AutoCloseable)) {
             result.addError("Vertex buffer does not implement AutoCloseable");
         }
-        
-        if (textureCoordBuffer != null && !(textureCoordBuffer instanceof AutoCloseable)) {
-            result.addError("Texture coordinate buffer does not implement AutoCloseable");
-        }
-        
+
         if (indexBuffer != null && !(indexBuffer instanceof AutoCloseable)) {
             result.addError("Index buffer does not implement AutoCloseable");
         }
-        
+
         // Validate that buffers are in valid state for cleanup
         if (vertexBuffer != null && vertexBuffer.isDisposed()) {
             result.addWarning("Vertex buffer is already disposed but still referenced");
         }
-        
-        if (textureCoordBuffer != null && textureCoordBuffer.isDisposed()) {
-            result.addWarning("Texture coordinate buffer is already disposed but still referenced");
-        }
-        
+
         if (indexBuffer != null && indexBuffer.isDisposed()) {
             result.addWarning("Index buffer is already disposed but still referenced");
         }
@@ -468,15 +291,7 @@ public class VertexArray implements AutoCloseable {
                     System.err.println("WARNING: Failed to dispose vertex buffer in VAO " + debugName + ": " + e.getMessage());
                 }
             }
-            
-            if (textureCoordBuffer != null) {
-                try {
-                    textureCoordBuffer.close();
-                } catch (Exception e) {
-                    System.err.println("WARNING: Failed to dispose texture coordinate buffer in VAO " + debugName + ": " + e.getMessage());
-                }
-            }
-            
+
             if (indexBuffer != null) {
                 try {
                     indexBuffer.close();
@@ -519,17 +334,6 @@ public class VertexArray implements AutoCloseable {
     public long getLastAccessTime() { return lastAccessTime; }
     public int getRenderCount() { return renderCount; }
     public VertexBuffer getVertexBuffer() { return vertexBuffer; }
-
-    /**
-     * Gets the texture coordinate buffer associated with this VAO.
-     *
-     * @return The texture coordinate buffer
-     * @deprecated This getter returns {@link LegacyCowTextureCoordinateBuffer} which is cow-specific.
-     *             For general texture coordinate access, implement a generic interface.
-     */
-    @Deprecated
-    public LegacyCowTextureCoordinateBuffer getTextureCoordinateBuffer() { return textureCoordBuffer; }
-
     public IndexBuffer getIndexBuffer() { return indexBuffer; }
     
     @Override
@@ -549,8 +353,6 @@ public class VertexArray implements AutoCloseable {
         public void addWarning(String warning) { warnings.add(warning); }
         
         public boolean isValid() { return errors.isEmpty(); }
-        public List<String> getErrors() { return errors; }
-        public List<String> getWarnings() { return warnings; }
         
         @Override
         public String toString() {

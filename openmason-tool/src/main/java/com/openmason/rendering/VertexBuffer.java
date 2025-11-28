@@ -74,28 +74,6 @@ public class VertexBuffer extends OpenGLBuffer {
     }
     
     /**
-     * Updates a portion of the vertex data.
-     * 
-     * @param startVertex The starting vertex index
-     * @param vertices New vertex data
-     */
-    public void updateVertices(int startVertex, float[] vertices) {
-        if (vertices.length % componentCount != 0) {
-            throw new IllegalArgumentException(
-                "Vertex data length (" + vertices.length + ") is not divisible by component count (" + componentCount + ")");
-        }
-        
-        long offset = (long) startVertex * stride;
-        FloatBuffer buffer = MemoryUtil.memAllocFloat(vertices.length);
-        try {
-            buffer.put(vertices).flip();
-            updateData(offset, buffer);
-        } finally {
-            MemoryUtil.memFree(buffer);
-        }
-    }
-    
-    /**
      * Enables this vertex buffer as a vertex attribute array.
      * This configures OpenGL to use this buffer for vertex data.
      */
@@ -105,13 +83,6 @@ public class VertexBuffer extends OpenGLBuffer {
         GL20.glVertexAttribPointer(attributeIndex, componentCount, GL11.GL_FLOAT, false, stride, 0);
         GL20.glEnableVertexAttribArray(attributeIndex);
         lastAccessTime = System.currentTimeMillis();
-    }
-    
-    /**
-     * Disables this vertex attribute array.
-     */
-    public void disableVertexAttribute() {
-        GL20.glDisableVertexAttribArray(attributeIndex);
     }
     
     /**
@@ -129,9 +100,6 @@ public class VertexBuffer extends OpenGLBuffer {
     }
     
     // Getters
-    public int getAttributeIndex() { return attributeIndex; }
-    public int getComponentCount() { return componentCount; }
-    public int getStride() { return stride; }
     public int getVertexCount() { return vertexCount; }
     
     @Override

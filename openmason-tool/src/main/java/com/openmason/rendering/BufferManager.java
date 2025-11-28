@@ -5,19 +5,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Map;
 
 /**
  * Central manager for OpenGL buffer lifecycle and memory monitoring.
  * Tracks all buffers and vertex arrays to prevent memory leaks and provide
  * debugging information about OpenGL resource usage.
- * 
- * This singleton class provides:
- * - Buffer registration and tracking
- * - Memory usage monitoring
- * - Automatic cleanup on shutdown
- * - Performance statistics
- * - Leak detection
  */
 public class BufferManager {
     private static volatile BufferManager instance;
@@ -35,11 +27,8 @@ public class BufferManager {
     private final AtomicLong totalMemoryDeallocated = new AtomicLong(0);
     
     // Configuration
-    private boolean enableMemoryTracking = true;
-    private boolean enableLeakDetection = true;
-    private long memoryWarningThreshold = 100 * 1024 * 1024; // 100MB
-    private int maxHistoryEntries = 1000;
-    
+    private final boolean enableMemoryTracking = true;
+
     private BufferManager() {
         // Private constructor for singleton
         Runtime.getRuntime().addShutdownHook(new Thread(this::cleanup));
@@ -146,6 +135,7 @@ public class BufferManager {
         bufferHistory.offer(stats);
         
         // Trim history if it gets too large
+        int maxHistoryEntries = 1000;
         while (bufferHistory.size() > maxHistoryEntries) {
             bufferHistory.poll();
         }
@@ -156,7 +146,9 @@ public class BufferManager {
      */
     private void checkMemoryUsage() {
         long currentMemory = getCurrentMemoryUsage();
-        
+
+        // 100MB
+        long memoryWarningThreshold = 100 * 1024 * 1024;
         if (currentMemory > memoryWarningThreshold) {
             System.err.println("WARNING: OpenGL buffer memory usage high: " + formatBytes(currentMemory));
             System.err.println("Active buffers: " + activeBuffers.size());
@@ -200,7 +192,8 @@ public class BufferManager {
      */
     public List<String> validateResources() {
         List<String> issues = new ArrayList<>();
-        
+
+        boolean enableLeakDetection = true;
         if (!enableLeakDetection) {
             return issues;
         }
@@ -270,13 +263,6 @@ public class BufferManager {
      * Prints final statistics when the manager is being cleaned up.
      */
     private void printFinalStatistics() {
-        // System.out.println("=== BufferManager Final Statistics ===");
-        // System.out.println("Total buffers created: " + totalBuffersCreated.get());
-        // System.out.println("Total vertex arrays created: " + totalVertexArraysCreated.get());
-        // System.out.println("Total memory allocated: " + formatBytes(totalMemoryAllocated.get()));
-        // System.out.println("Total memory deallocated: " + formatBytes(totalMemoryDeallocated.get()));
-        // System.out.println("Memory leak potential: " + formatBytes(totalMemoryAllocated.get() - totalMemoryDeallocated.get()));
-        // System.out.println("======================================");
     }
     
     /**
@@ -292,79 +278,36 @@ public class BufferManager {
         return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
     
-    // Configuration setters
-    public void setMemoryTrackingEnabled(boolean enabled) { this.enableMemoryTracking = enabled; }
-    public void setLeakDetectionEnabled(boolean enabled) { this.enableLeakDetection = enabled; }
-    public void setMemoryWarningThreshold(long threshold) { this.memoryWarningThreshold = threshold; }
-    public void setMaxHistoryEntries(int maxEntries) { this.maxHistoryEntries = maxEntries; }
-    
-    // Configuration getters
-    public boolean isMemoryTrackingEnabled() { return enableMemoryTracking; }
-    public boolean isLeakDetectionEnabled() { return enableLeakDetection; }
-    public long getMemoryWarningThreshold() { return memoryWarningThreshold; }
-    public int getMaxHistoryEntries() { return maxHistoryEntries; }
-    
     /**
      * Enumeration of buffer operations for statistics tracking.
      */
     private enum BufferOperation {
         CREATE, DESTROY, UPDATE
     }
-    
+
     /**
-     * Statistics record for a single buffer operation.
-     */
-    private static class BufferStatistics {
-        public final long timestamp;
-        public final String bufferName;
-        public final int bufferType;
-        public final int dataSize;
-        public final BufferOperation operation;
-        
-        public BufferStatistics(long timestamp, String bufferName, int bufferType, int dataSize, BufferOperation operation) {
-            this.timestamp = timestamp;
-            this.bufferName = bufferName;
-            this.bufferType = bufferType;
-            this.dataSize = dataSize;
-            this.operation = operation;
-        }
+         * Statistics record for a single buffer operation.
+         */
+        private record BufferStatistics(long timestamp, String bufferName, int bufferType, int dataSize,
+                                        BufferOperation operation) {
     }
-    
+
     /**
-     * Complete statistics snapshot of the BufferManager state.
-     */
-    public static class BufferManagerStatistics {
-        public final int activeBufferCount;
-        public final int activeVertexArrayCount;
-        public final long totalBuffersCreated;
-        public final long totalVertexArraysCreated;
-        public final long currentMemoryUsage;
-        public final long totalMemoryAllocated;
-        public final long totalMemoryDeallocated;
-        public final List<BufferStatistics> history;
-        
-        public BufferManagerStatistics(int activeBufferCount, int activeVertexArrayCount,
-                                     long totalBuffersCreated, long totalVertexArraysCreated,
-                                     long currentMemoryUsage, long totalMemoryAllocated,
-                                     long totalMemoryDeallocated, List<BufferStatistics> history) {
-            this.activeBufferCount = activeBufferCount;
-            this.activeVertexArrayCount = activeVertexArrayCount;
-            this.totalBuffersCreated = totalBuffersCreated;
-            this.totalVertexArraysCreated = totalVertexArraysCreated;
-            this.currentMemoryUsage = currentMemoryUsage;
-            this.totalMemoryAllocated = totalMemoryAllocated;
-            this.totalMemoryDeallocated = totalMemoryDeallocated;
-            this.history = history;
-        }
-        
+         * Complete statistics snapshot of the BufferManager state.
+         */
+        public record BufferManagerStatistics(int activeBufferCount, int activeVertexArrayCount, long totalBuffersCreated,
+                                              long totalVertexArraysCreated, long currentMemoryUsage,
+                                              long totalMemoryAllocated, long totalMemoryDeallocated,
+                                              List<BufferStatistics> history) {
+
         @Override
-        public String toString() {
-            return String.format(
-                "BufferManagerStatistics{activeBuffers=%d, activeVAOs=%d, totalBuffers=%d, " +
-                "totalVAOs=%d, currentMemory=%d, totalAllocated=%d, totalDeallocated=%d}",
-                activeBufferCount, activeVertexArrayCount, totalBuffersCreated,
-                totalVertexArraysCreated, currentMemoryUsage, totalMemoryAllocated, totalMemoryDeallocated
-            );
+            public String toString() {
+                return String.format(
+                        "BufferManagerStatistics{activeBuffers=%d, activeVAOs=%d, totalBuffers=%d, " +
+                                "totalVAOs=%d, currentMemory=%d, totalAllocated=%d, totalDeallocated=%d}",
+                        activeBufferCount, activeVertexArrayCount, totalBuffersCreated,
+                        totalVertexArraysCreated, currentMemoryUsage, totalMemoryAllocated, totalMemoryDeallocated
+                );
+            }
         }
-    }
 }

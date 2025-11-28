@@ -117,12 +117,12 @@ public class LegacyCowModelRenderer implements AutoCloseable {
         // Validate OpenGL context before model preparation
         if (contextValidationEnabled) {
             // First check if we have any OpenGL context at all
-            if (!OpenGLValidator.hasValidOpenGLContext()) {
+            if (OpenGLValidator.hasValidOpenGLContext()) {
                 // System.err.println("ModelRenderer.prepareModel: No valid OpenGL context available");
                 return false; // Return false instead of throwing exception
             }
             
-            List<String> contextIssues = OpenGLValidator.validateContext("prepareModel");
+            List<String> contextIssues = OpenGLValidator.validateContext();
             if (!contextIssues.isEmpty()) {
                 // System.err.println("OpenGL context validation failed in prepareModel:");
                 for (String issue : contextIssues) {
@@ -369,7 +369,7 @@ public class LegacyCowModelRenderer implements AutoCloseable {
         
         // Validate OpenGL context and rendering state before rendering
         if (contextValidationEnabled) {
-            List<String> contextIssues = OpenGLValidator.validateContext("renderModel");
+            List<String> contextIssues = OpenGLValidator.validateContext();
             if (!contextIssues.isEmpty()) {
                 // System.err.println("OpenGL context validation failed in renderModel:");
                 for (String issue : contextIssues) {
@@ -448,7 +448,7 @@ public class LegacyCowModelRenderer implements AutoCloseable {
         
         // Validate OpenGL context and rendering state before rendering
         if (contextValidationEnabled) {
-            List<String> contextIssues = OpenGLValidator.validateContext("renderModel");
+            List<String> contextIssues = OpenGLValidator.validateContext();
             if (!contextIssues.isEmpty()) {
                 // System.err.println("OpenGL context validation failed in renderModel:");
                 for (String issue : contextIssues) {
@@ -539,7 +539,7 @@ public class LegacyCowModelRenderer implements AutoCloseable {
                                                 Matrix4f userTransform) {
         // Validate OpenGL context before rendering individual parts
         if (contextValidationEnabled) {
-            List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
+            List<String> contextIssues = OpenGLValidator.validateContext();
             if (!contextIssues.isEmpty()) {
                 // System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
                 for (String issue : contextIssues) {
@@ -633,7 +633,7 @@ public class LegacyCowModelRenderer implements AutoCloseable {
                               int modelMatrixLocation, float[] viewProjectionMatrix) {
         // Validate OpenGL context before rendering individual parts
         if (contextValidationEnabled) {
-            List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
+            List<String> contextIssues = OpenGLValidator.validateContext();
             if (!contextIssues.isEmpty()) {
                 // System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
                 for (String issue : contextIssues) {
@@ -713,7 +713,7 @@ public class LegacyCowModelRenderer implements AutoCloseable {
     public void renderModelPart(String partName, LegacyCowStonebreakModel.BodyPart bodyPart) {
         // Validate OpenGL context before rendering individual parts
         if (contextValidationEnabled) {
-            List<String> contextIssues = OpenGLValidator.validateContext("renderModelPart:" + partName);
+            List<String> contextIssues = OpenGLValidator.validateContext();
             if (!contextIssues.isEmpty()) {
                 // System.err.println("OpenGL context validation failed in renderModelPart for " + partName + ":");
                 for (String issue : contextIssues) {
@@ -978,7 +978,7 @@ public class LegacyCowModelRenderer implements AutoCloseable {
         ValidationReport report = new ValidationReport();
         
         // Basic context validation
-        report.contextIssues.addAll(OpenGLValidator.validateContext("validateRenderingSystem"));
+        report.contextIssues.addAll(OpenGLValidator.validateContext());
         
         // Validate all VAOs
         for (Map.Entry<String, VertexArray> entry : modelPartVAOs.entrySet()) {
