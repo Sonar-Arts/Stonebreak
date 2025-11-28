@@ -6,17 +6,10 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImageWrite;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
 import java.nio.ByteBuffer;
 
 /**
  * Texture exporter - exports pixel canvas to PNG files and .OMT project files.
- *
- * Uses STB Image Write for PNG encoding.
- * Follows SOLID principles - Single Responsibility: Texture export operations.
- *
- * @author Open Mason Team
  */
 public class TextureExporter {
 
@@ -32,10 +25,6 @@ public class TextureExporter {
 
     /**
      * Export canvas to PNG file.
-     *
-     * @param canvas pixel canvas to export
-     * @param filePath output file path
-     * @return true if export succeeded
      */
     public boolean exportToPNG(PixelCanvas canvas, String filePath) {
         if (canvas == null) {
@@ -84,44 +73,7 @@ public class TextureExporter {
     }
 
     /**
-     * Validate output file path.
-     *
-     * @param filePath file path to validate
-     * @return true if path is valid and writable
-     */
-    public boolean validateFilePath(String filePath) {
-        if (filePath == null || filePath.trim().isEmpty()) {
-            return false;
-        }
-
-        try {
-            File file = new File(filePath);
-            File parent = file.getParentFile();
-
-            // Check if parent directory exists or can be created
-            if (parent != null && !parent.exists()) {
-                return parent.mkdirs();
-            }
-
-            return true;
-        } catch (Exception e) {
-            logger.warn("Invalid file path: {}", filePath, e);
-            return false;
-        }
-    }
-
-    /**
      * Export layer manager to .OMT project file.
-     *
-     * The .OMT format preserves all layer information including:
-     * - Layer names, visibility, and opacity
-     * - Pixel data for each layer
-     * - Active layer selection
-     * - Canvas dimensions
-     *
-     * @param layerManager layer manager to export
-     * @param filePath output file path
-     * @return true if export succeeded
      */
     public boolean exportToOMT(LayerManager layerManager, String filePath) {
         if (layerManager == null) {
@@ -138,13 +90,4 @@ public class TextureExporter {
         return omtSerializer.save(layerManager, filePath);
     }
 
-    /**
-     * Validate .OMT file path for writing.
-     *
-     * @param filePath file path to validate
-     * @return true if path is valid and writable
-     */
-    public boolean validateOMTFilePath(String filePath) {
-        return omtSerializer.validateFilePath(filePath);
-    }
 }

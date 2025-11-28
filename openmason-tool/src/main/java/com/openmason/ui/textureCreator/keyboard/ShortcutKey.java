@@ -103,24 +103,24 @@ public class ShortcutKey {
         }
 
         // Special keys
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_ENTER: return "Enter";
-            case GLFW.GLFW_KEY_ESCAPE: return "Esc";
-            case GLFW.GLFW_KEY_DELETE: return "Del";
-            case GLFW.GLFW_KEY_BACKSPACE: return "Backspace";
-            case GLFW.GLFW_KEY_TAB: return "Tab";
-            case GLFW.GLFW_KEY_SPACE: return "Space";
-            case GLFW.GLFW_KEY_COMMA: return ",";
-            case GLFW.GLFW_KEY_PERIOD: return ".";
-            case GLFW.GLFW_KEY_SLASH: return "/";
-            case GLFW.GLFW_KEY_EQUAL: return "=";
-            case GLFW.GLFW_KEY_MINUS: return "-";
-            case GLFW.GLFW_KEY_KP_ADD: return "Numpad +";
-            case GLFW.GLFW_KEY_KP_SUBTRACT: return "Numpad -";
-            case GLFW.GLFW_KEY_KP_0: return "Numpad 0";
-            case GLFW.GLFW_KEY_KP_ENTER: return "Numpad Enter";
-            default: return "Key " + keyCode;
-        }
+        return switch (keyCode) {
+            case GLFW.GLFW_KEY_ENTER -> "Enter";
+            case GLFW.GLFW_KEY_ESCAPE -> "Esc";
+            case GLFW.GLFW_KEY_DELETE -> "Del";
+            case GLFW.GLFW_KEY_BACKSPACE -> "Backspace";
+            case GLFW.GLFW_KEY_TAB -> "Tab";
+            case GLFW.GLFW_KEY_SPACE -> "Space";
+            case GLFW.GLFW_KEY_COMMA -> ",";
+            case GLFW.GLFW_KEY_PERIOD -> ".";
+            case GLFW.GLFW_KEY_SLASH -> "/";
+            case GLFW.GLFW_KEY_EQUAL -> "=";
+            case GLFW.GLFW_KEY_MINUS -> "-";
+            case GLFW.GLFW_KEY_KP_ADD -> "Numpad +";
+            case GLFW.GLFW_KEY_KP_SUBTRACT -> "Numpad -";
+            case GLFW.GLFW_KEY_KP_0 -> "Numpad 0";
+            case GLFW.GLFW_KEY_KP_ENTER -> "Numpad Enter";
+            default -> "Key " + keyCode;
+        };
     }
 
     @Override

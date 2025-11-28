@@ -14,12 +14,6 @@ import java.util.List;
 
 /**
  * Handles drag-and-drop operations for PNG and .OMT files in the texture editor.
- *
- * Features:
- * - Imports PNG files as new layers
- * - Imports .OMT files (flattened to a single layer)
- * - Validates file formats and dimensions
- * - Integrates with existing LayerManager
  */
 public class DragDropHandler {
     private static final Logger logger = LoggerFactory.getLogger(DragDropHandler.class);
@@ -36,17 +30,12 @@ public class DragDropHandler {
 
     /**
      * Processes dropped PNG files and adds them as layers to the LayerManager.
-     * Note: .OMT files are handled separately via dialog interaction in TextureCreatorImGui.
-     *
-     * @param filePaths Array of PNG file paths that were dropped
-     * @param layerManager The LayerManager to add layers to
-     * @return Number of successfully imported files (0 if all failed)
      */
     public int processDroppedPNGFiles(String[] filePaths, LayerManager layerManager) {
         int successCount = 0;
         lastImportedBounds = null; // Clear previous import bounds
 
-        if (filePaths == null || filePaths.length == 0) {
+        if (filePaths == null) {
             return successCount;
         }
 
@@ -236,25 +225,6 @@ public class DragDropHandler {
      * Extracts file extension from filename.
      */
     private String getFileExtension(String fileName) {
-        int lastDot = fileName.lastIndexOf('.');
-        if (lastDot == -1 || lastDot == fileName.length() - 1) {
-            return "";
-        }
-        return fileName.substring(lastDot + 1);
-    }
-
-    /**
-     * Validates if a file is a supported format for drag-drop.
-     */
-    public static boolean isSupportedFile(String filePath) {
-        String extension = getFileExtensionStatic(filePath).toLowerCase();
-        return extension.equals("png") || extension.equals("omt");
-    }
-
-    /**
-     * Static version of getFileExtension for validation.
-     */
-    private static String getFileExtensionStatic(String fileName) {
         int lastDot = fileName.lastIndexOf('.');
         if (lastDot == -1 || lastDot == fileName.length() - 1) {
             return "";

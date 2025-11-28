@@ -21,16 +21,6 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Deserializer for Open Mason Texture (.OMT) file format.
- *
- * Reads a ZIP-based container with:
- * - manifest.json: Metadata about canvas and layers
- * - layer_N.png: PNG image for each layer
- *
- * Follows SOLID principles:
- * - Single Responsibility: Only handles .OMT file reading
- * - Uses TextureImporter pattern for PNG decoding
- *
- * @author Open Mason Team
  */
 public class OMTDeserializer {
 
@@ -56,7 +46,7 @@ public class OMTDeserializer {
             return null;
         }
 
-        if (!OMTFormat.hasValidExtension(filePath)) {
+        if (OMTFormat.hasValidExtension(filePath)) {
             logger.error("File does not have .omt extension: {}", filePath);
             return null;
         }
@@ -83,9 +73,9 @@ public class OMTDeserializer {
             }
 
             // Validate format version
-            if (!OMTFormat.FORMAT_VERSION.equals(document.getVersion())) {
+            if (!OMTFormat.FORMAT_VERSION.equals(document.version())) {
                 logger.warn("Unsupported .OMT format version: {} (expected {})",
-                        document.getVersion(), OMTFormat.FORMAT_VERSION);
+                        document.version(), OMTFormat.FORMAT_VERSION);
                 // Continue anyway - might be compatible
             }
 
@@ -217,35 +207,35 @@ public class OMTDeserializer {
      */
     private LayerManager buildLayerManager(OMTFormat.Document document, OMTArchive archive) {
         // Create layer manager with canvas dimensions
-        int width = document.getCanvasSize().getWidth();
-        int height = document.getCanvasSize().getHeight();
+        int width = document.canvasSize().width();
+        int height = document.canvasSize().height();
         LayerManager layerManager = new LayerManager(width, height);
 
         // Load each layer from the file
-        List<OMTFormat.LayerInfo> layerInfos = document.getLayers();
+        List<OMTFormat.LayerInfo> layerInfos = document.layers();
         for (int i = 0; i < layerInfos.size(); i++) {
             OMTFormat.LayerInfo layerInfo = layerInfos.get(i);
 
             // Get layer PNG data
-            byte[] pngData = archive.layerData.get(layerInfo.getDataFile());
+            byte[] pngData = archive.layerData.get(layerInfo.dataFile());
             if (pngData == null) {
-                logger.error("Missing layer data file: {}", layerInfo.getDataFile());
+                logger.error("Missing layer data file: {}", layerInfo.dataFile());
                 return null;
             }
 
             // Decode PNG to PixelCanvas
             PixelCanvas canvas = decodePNG(pngData, width, height);
             if (canvas == null) {
-                logger.error("Failed to decode PNG for layer: {}", layerInfo.getName());
+                logger.error("Failed to decode PNG for layer: {}", layerInfo.name());
                 return null;
             }
 
             // Create layer with loaded data
             Layer layer = new Layer(
-                    layerInfo.getName(),
+                    layerInfo.name(),
                     canvas,
-                    layerInfo.isVisible(),
-                    layerInfo.getOpacity()
+                    layerInfo.visible(),
+                    layerInfo.opacity()
             );
 
             // Add layers after the default "Background" layer
@@ -258,7 +248,7 @@ public class OMTDeserializer {
         layerManager.removeLayer(0);
 
         // Set active layer (no need to adjust index since we added then removed)
-        layerManager.setActiveLayer(document.getActiveLayerIndex());
+        layerManager.setActiveLayer(document.activeLayerIndex());
 
         return layerManager;
     }
@@ -342,7 +332,7 @@ public class OMTDeserializer {
             return false;
         }
 
-        if (!OMTFormat.hasValidExtension(filePath)) {
+        if (OMTFormat.hasValidExtension(filePath)) {
             return false;
         }
 

@@ -12,11 +12,6 @@ import java.nio.IntBuffer;
 
 /**
  * Texture importer - imports PNG files to pixel canvas and .OMT project files to layer manager.
- *
- * Uses STB Image for PNG decoding.
- * Follows SOLID principles - Single Responsibility: Texture import operations.
- *
- * @author Open Mason Team
  */
 public class TextureImporter {
 
@@ -32,10 +27,6 @@ public class TextureImporter {
 
     /**
      * Get PNG file dimensions without loading the full image.
-     * Lightweight operation for dimension detection.
-     *
-     * @param filePath input file path
-     * @return array [width, height] or null if failed
      */
     public int[] getPNGDimensions(String filePath) {
         if (filePath == null || filePath.trim().isEmpty()) {
@@ -174,31 +165,7 @@ public class TextureImporter {
     }
 
     /**
-     * Validate input file path.
-     *
-     * @param filePath file path to validate
-     * @return true if path exists and is a PNG file
-     */
-    public boolean validateFilePath(String filePath) {
-        if (filePath == null || filePath.trim().isEmpty()) {
-            return false;
-        }
-
-        java.io.File file = new java.io.File(filePath);
-        return file.exists() && file.isFile() && filePath.toLowerCase().endsWith(".png");
-    }
-
-    /**
-     * Import .OMT project file to layer manager.
-     *
-     * The .OMT format restores all layer information including:
-     * - Layer names, visibility, and opacity
-     * - Pixel data for each layer
-     * - Active layer selection
-     * - Canvas dimensions
-     *
-     * @param filePath input file path
-     * @return loaded layer manager, or null if failed
+     * Import .OMT project file to layer manager
      */
     public LayerManager importFromOMT(String filePath) {
         if (filePath == null || filePath.trim().isEmpty()) {
@@ -210,13 +177,4 @@ public class TextureImporter {
         return omtDeserializer.load(filePath);
     }
 
-    /**
-     * Validate .OMT file path for reading.
-     *
-     * @param filePath file path to validate
-     * @return true if path exists and is a .OMT file
-     */
-    public boolean validateOMTFilePath(String filePath) {
-        return omtDeserializer.validateFilePath(filePath);
-    }
 }

@@ -293,13 +293,13 @@ public class OMTSerializer {
         public int activeLayerIndex;
 
         public ManifestDTO(OMTFormat.Document document) {
-            this.version = document.getVersion();
-            this.canvasSize = new CanvasSizeDTO(document.getCanvasSize());
+            this.version = document.version();
+            this.canvasSize = new CanvasSizeDTO(document.canvasSize());
             this.layers = new ArrayList<>();
-            for (OMTFormat.LayerInfo layerInfo : document.getLayers()) {
+            for (OMTFormat.LayerInfo layerInfo : document.layers()) {
                 this.layers.add(new LayerInfoDTO(layerInfo));
             }
-            this.activeLayerIndex = document.getActiveLayerIndex();
+            this.activeLayerIndex = document.activeLayerIndex();
         }
     }
 
@@ -308,8 +308,8 @@ public class OMTSerializer {
         public int height;
 
         public CanvasSizeDTO(OMTFormat.CanvasSize canvasSize) {
-            this.width = canvasSize.getWidth();
-            this.height = canvasSize.getHeight();
+            this.width = canvasSize.width();
+            this.height = canvasSize.height();
         }
     }
 
@@ -320,10 +320,10 @@ public class OMTSerializer {
         public String dataFile;
 
         public LayerInfoDTO(OMTFormat.LayerInfo layerInfo) {
-            this.name = layerInfo.getName();
-            this.visible = layerInfo.isVisible();
-            this.opacity = layerInfo.getOpacity();
-            this.dataFile = layerInfo.getDataFile();
+            this.name = layerInfo.name();
+            this.visible = layerInfo.visible();
+            this.opacity = layerInfo.opacity();
+            this.dataFile = layerInfo.dataFile();
         }
     }
 }

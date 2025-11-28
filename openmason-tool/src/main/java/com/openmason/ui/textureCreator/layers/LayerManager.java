@@ -10,11 +10,6 @@ import java.util.List;
 
 /**
  * Layer manager handles all layer operations.
- *
- * Follows DRY principle - centralized layer management logic.
- * Follows SOLID principles - Single Responsibility: manages layers only.
- *
- * @author Open Mason Team
  */
 public class LayerManager {
 
@@ -54,15 +49,13 @@ public class LayerManager {
      * Add a new layer.
      *
      * @param name layer name
-     * @return the added layer
      */
-    public Layer addLayer(String name) {
+    public void addLayer(String name) {
         Layer newLayer = new Layer(name, canvasWidth, canvasHeight);
         layers.add(newLayer);
         activeLayerIndex = layers.size() - 1; // New layer becomes active
         compositeCacheDirty = true;
         logger.debug("Added layer: {}", name);
-        return newLayer;
     }
 
     /**
@@ -85,9 +78,8 @@ public class LayerManager {
      * Remove layer at index.
      *
      * @param index layer index
-     * @return the removed layer
      */
-    public Layer removeLayer(int index) {
+    public void removeLayer(int index) {
         if (layers.size() <= 1) {
             throw new IllegalStateException("Cannot remove last layer");
         }
@@ -106,7 +98,6 @@ public class LayerManager {
 
         compositeCacheDirty = true;
         logger.debug("Removed layer: {}", removed.getName());
-        return removed;
     }
 
     /**
@@ -142,9 +133,8 @@ public class LayerManager {
      * Duplicate layer at index.
      *
      * @param index layer index to duplicate
-     * @return the duplicated layer
      */
-    public Layer duplicateLayer(int index) {
+    public void duplicateLayer(int index) {
         if (index < 0 || index >= layers.size()) {
             throw new IndexOutOfBoundsException("Invalid layer index: " + index);
         }
@@ -156,7 +146,6 @@ public class LayerManager {
 
         compositeCacheDirty = true;
         logger.debug("Duplicated layer: {}", original.getName());
-        return duplicate;
     }
 
     /**

@@ -4,9 +4,6 @@ import com.openmason.ui.textureCreator.TextureCreatorState;
 
 /**
  * Represents the action to take when importing a file.
- * Follows Strategy pattern for different import behaviors.
- *
- * @author Open Mason Team
  */
 public class ImportAction {
     public enum Type {
