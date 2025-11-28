@@ -423,8 +423,8 @@ public class OpenMasonApp {
     }
 
     private void cleanupImGui() {
-        if (imGuiGl3 != null) imGuiGl3.dispose();
-        if (imGuiGlfw != null) imGuiGlfw.dispose();
+        imGuiGl3.dispose();
+        imGuiGlfw.dispose();
         ImGui.destroyContext();
     }
 

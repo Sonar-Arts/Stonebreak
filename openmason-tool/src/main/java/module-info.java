@@ -52,7 +52,5 @@ module com.openmason {
     exports com.openmason.ui.themes.persistence;
     exports com.openmason.ui.themes.application;
     exports com.openmason.ui.themes.utils;
-    exports com.openmason.deprecated;
-    opens com.openmason.deprecated to com.fasterxml.jackson.databind;
     exports com.openmason.ui.viewport;
 }

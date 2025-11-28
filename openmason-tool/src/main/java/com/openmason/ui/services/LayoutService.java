@@ -69,7 +69,7 @@ public class LayoutService {
         uiState.getShowToolbar().set(true);
 
         if (viewport != null) {
-            viewport.setGridVisible(true);
+            viewport.setShowGrid(true);
             viewport.setAxesVisible(true);
             viewport.setWireframeMode(false);
         }
@@ -92,7 +92,7 @@ public class LayoutService {
         uiState.getShowToolbar().set(true);
 
         if (viewport != null) {
-            viewport.setGridVisible(false);
+            viewport.setShowGrid(false);
             viewport.setAxesVisible(false);
             viewport.setWireframeMode(false);
         }

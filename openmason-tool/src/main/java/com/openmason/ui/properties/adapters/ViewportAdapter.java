@@ -30,33 +30,9 @@ public class ViewportAdapter implements IViewportConnector {
     }
 
     @Override
-    public void loadModel(String modelFileName) {
-        if (viewport != null) {
-            viewport.loadModel(modelFileName);
-        }
-    }
-
-    @Override
-    public String getCurrentModelName() {
-        return viewport != null ? viewport.getCurrentModelName() : null;
-    }
-
-    @Override
-    public boolean hasModel() {
-        return viewport != null && viewport.getCurrentModel() != null;
-    }
-
-    @Override
     public void setTextureVariant(String variantName) {
         if (viewport != null) {
             viewport.setCurrentTextureVariant(variantName);
-        }
-    }
-
-    @Override
-    public void requestRender() {
-        if (viewport != null) {
-            viewport.requestRender();
         }
     }
 
@@ -149,10 +125,5 @@ public class ViewportAdapter implements IViewportConnector {
         if (viewport != null) {
             viewport.resetModelTransform();
         }
-    }
-
-    @Override
-    public Object getModelRenderer() {
-        return viewport != null ? viewport.getModelRenderer() : null;
     }
 }

@@ -286,7 +286,6 @@ public class TransformSection implements IPanelSection {
                     transformState.getScaleY().get(),
                     transformState.getScaleZ().get()
                 );
-                viewportConnector.requestRender();
             } catch (Exception e) {
                 logger.error("Error updating viewport transform", e);
             }

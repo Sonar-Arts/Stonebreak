@@ -6,7 +6,6 @@ import com.openmason.ui.config.WindowConfig;
 import com.openmason.ui.modelBrowser.events.BlockSelectedEvent;
 import com.openmason.ui.modelBrowser.events.ItemSelectedEvent;
 import com.openmason.ui.modelBrowser.events.ModelBrowserListener;
-import com.openmason.ui.modelBrowser.events.ModelSelectedEvent;
 import com.openmason.ui.textureCreator.TextureCreatorImGui;
 import com.openmason.ui.dialogs.AboutDialog;
 import com.openmason.ui.dialogs.FileDialogService;
@@ -357,22 +356,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
     }
 
     /**
-     * Handle model selection events from the Model Browser.
-     * Forwards the event to the viewport for display.
-     */
-    @Override
-    public void onModelSelected(ModelSelectedEvent event) {
-        try {
-            if (viewport3D != null) {
-                viewport3D.loadModel(event.getModelName());
-                logger.debug("Model selected via event: {}", event.getModelName());
-            }
-        } catch (Exception e) {
-            logger.error("Failed to handle model selection event", e);
-        }
-    }
-
-    /**
      * Render property panel.
      */
     private void renderPropertyPanel() {
@@ -382,7 +365,7 @@ public class MainImGuiInterface implements ModelBrowserListener {
                 !modelState.getCurrentModelPath().isEmpty() &&
                 modelState.getModelSource() == ModelState.ModelSource.BROWSER) {
                 String modelName = modelState.getCurrentModelPath().replace(".json", "");
-                propertyPanelImGui.loadTextureVariants(modelName);
+                propertyPanelImGui.loadTextureVariants();
             }
 
             propertyPanelImGui.setViewport3D(viewport3D);

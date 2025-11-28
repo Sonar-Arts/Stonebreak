@@ -185,7 +185,7 @@ public class FileMenuHandler {
      */
     private void exitApplication() {
         if (viewport != null) {
-            viewport.dispose();
+            viewport.cleanup();
         }
         if (logoManager != null) {
             logoManager.dispose();

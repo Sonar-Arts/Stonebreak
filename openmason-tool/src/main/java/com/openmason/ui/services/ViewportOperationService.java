@@ -41,7 +41,7 @@ public class ViewportOperationService {
     public void toggleGrid(ViewportController viewport) {
         viewportState.toggleGrid();
         if (viewport != null) {
-            viewport.setGridVisible(viewportState.getGridVisible().get());
+            viewport.setShowGrid(viewportState.getGridVisible().get());
         }
     }
 

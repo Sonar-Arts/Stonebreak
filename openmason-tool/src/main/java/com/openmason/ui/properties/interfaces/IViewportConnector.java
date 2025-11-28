@@ -15,37 +15,11 @@ public interface IViewportConnector {
     boolean isConnected();
 
     /**
-     * Load a model into the viewport.
-     *
-     * @param modelFileName The model file name to load
-     */
-    void loadModel(String modelFileName);
-
-    /**
-     * Get the currently loaded model name.
-     *
-     * @return The model name, or null if no model is loaded
-     */
-    String getCurrentModelName();
-
-    /**
-     * Check if the viewport has an actual model loaded.
-     *
-     * @return true if a model is loaded
-     */
-    boolean hasModel();
-
-    /**
      * Set the current texture variant in the viewport.
      *
      * @param variantName The variant name
      */
     void setTextureVariant(String variantName);
-
-    /**
-     * Request a render update from the viewport.
-     */
-    void requestRender();
 
     /**
      * Reload a BlockModel in the viewport (for texture updates).
@@ -146,11 +120,4 @@ public interface IViewportConnector {
      * Reset model transform to defaults.
      */
     void resetModelTransform();
-
-    /**
-     * Get the model renderer (for diagnostics).
-     *
-     * @return The model renderer instance, or null if not available
-     */
-    Object getModelRenderer();
 }

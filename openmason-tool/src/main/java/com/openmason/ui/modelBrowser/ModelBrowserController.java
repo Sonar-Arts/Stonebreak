@@ -8,10 +8,8 @@ import com.openmason.ui.modelBrowser.categorizers.ItemCategorizer;
 import com.openmason.ui.modelBrowser.events.BlockSelectedEvent;
 import com.openmason.ui.modelBrowser.events.ItemSelectedEvent;
 import com.openmason.ui.modelBrowser.events.ModelBrowserListener;
-import com.openmason.ui.modelBrowser.events.ModelSelectedEvent;
 import com.openmason.ui.modelBrowser.events.listeners.BlockSelectionListener;
 import com.openmason.ui.modelBrowser.events.listeners.ItemSelectionListener;
-import com.openmason.ui.modelBrowser.events.listeners.ModelSelectionListener;
 import com.openmason.ui.services.ModelOperationService;
 import com.openmason.ui.services.StatusService;
 import com.stonebreak.blocks.BlockType;
@@ -139,26 +137,24 @@ public class ModelBrowserController {
     }
 
     /**
-     * Handles model selection by the user.
+     * Handles model selection by the user (legacy cow functionality removed).
      *
      * @param modelName The selected model name
+     * @deprecated Legacy cow model support has been removed
      */
+    @Deprecated
     public void selectModel(String modelName) {
         handleSelection(
                 modelName,
                 "Model",
                 modelName,
-                "Loading model",
+                "Model selection (legacy)",
                 name -> {
-                    // Additional actions for model selection
-                    state.addRecentFile(name);
-                    modelOperationService.selectModel(name, "default");
+                    // Legacy model selection - no longer supported
+                    logger.debug("selectModel called but legacy model loading is no longer supported: {}", name);
                 },
                 listenerList -> {
-                    ModelSelectedEvent event = new ModelSelectedEvent(modelName);
-                    for (ModelSelectionListener listener : listenerList) {
-                        listener.onModelSelected(event);
-                    }
+                    // No listener notification - ModelSelectionListener removed
                 }
         );
     }

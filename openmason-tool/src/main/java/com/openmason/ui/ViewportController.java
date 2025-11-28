@@ -2,16 +2,12 @@ package com.openmason.ui;
 
 import com.openmason.block.BlockManager;
 import com.openmason.item.ItemManager;
-import com.openmason.deprecated.LegacyCowStonebreakModel;
-import com.openmason.deprecated.LegacyCowModelRenderer;
 import com.openmason.ui.viewport.ViewportCamera;
 import com.openmason.ui.viewport.ViewportInputHandler;
 import com.openmason.ui.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.ui.viewport.gizmo.GizmoState;
-import com.openmason.deprecated.AsyncModelLoader;
 import com.openmason.rendering.core.BlockRenderer;
 import com.openmason.rendering.core.ItemRenderer;
-import com.openmason.deprecated.LegacyCowTextureAtlas;
 import com.openmason.ui.viewport.rendering.RenderContext;
 import com.openmason.ui.viewport.rendering.RenderPipeline;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
@@ -40,15 +36,13 @@ public class ViewportController {
     private RenderPipeline renderPipeline;
 
     // ========== State ==========
-    private ViewportUIState viewportState;
+    private final ViewportUIState viewportState;
     private final RenderingState renderingState;
     private final TransformState transformState;
 
     // ========== Renderers ==========
-    private final LegacyCowModelRenderer legacyCowModelRenderer;
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final LegacyCowTextureAtlas legacyCowTextureAtlas;
     private final com.openmason.rendering.blockmodel.BlockModelRenderer blockModelRenderer;
 
     // ========== Gizmo ==========
@@ -58,8 +52,7 @@ public class ViewportController {
     // ========== Input & UI ==========
     private final ViewportInputHandler inputHandler;
 
-    // ========== Model Loading ==========
-    private final AsyncModelLoader modelLoader;
+    // ========== Block Model Loading ==========
     private final com.openmason.rendering.blockmodel.OMTTextureLoader omtTextureLoader;
     private com.openmason.model.editable.BlockModel currentBlockModel;
     private int currentBlockModelTextureId = 0;
@@ -84,16 +77,12 @@ public class ViewportController {
 
         this.inputHandler = new ViewportInputHandler(viewportCamera);
 
-        this.legacyCowModelRenderer = new LegacyCowModelRenderer("Viewport");
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
-        this.legacyCowTextureAtlas = new LegacyCowTextureAtlas("Viewport_CowAtlas");
         this.blockModelRenderer = new com.openmason.rendering.blockmodel.BlockModelRenderer();
 
         this.omtTextureLoader = new com.openmason.rendering.blockmodel.OMTTextureLoader();
         this.currentBlockModel = null;
-
-        this.modelLoader = new AsyncModelLoader();
 
         logger.info("Viewport created successfully");
     }
@@ -115,9 +104,6 @@ public class ViewportController {
             shaderManager.initialize();
             resourceManager.initialize(viewportState.getWidth(), viewportState.getHeight());
 
-            legacyCowModelRenderer.initialize();
-            legacyCowModelRenderer.setMatrixTransformationMode(true);
-
             if (!BlockManager.isInitialized()) BlockManager.initialize();
             blockRenderer.initialize();
 
@@ -125,7 +111,6 @@ public class ViewportController {
             itemRenderer.initialize();
 
             blockModelRenderer.initialize();
-            legacyCowTextureAtlas.initialize();
             gizmoRenderer.initialize();
 
             inputHandler.setGizmoRenderer(gizmoRenderer);
@@ -136,8 +121,8 @@ public class ViewportController {
 
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
-                legacyCowModelRenderer, blockRenderer, itemRenderer,
-                legacyCowTextureAtlas, blockModelRenderer, gizmoRenderer
+                blockRenderer, itemRenderer,
+                blockModelRenderer, gizmoRenderer
             );
 
             // Load vertex point size from config
@@ -178,13 +163,6 @@ public class ViewportController {
 
         if (inputHandler != null) inputHandler.cleanup();
 
-        if (legacyCowModelRenderer != null) {
-            try { legacyCowModelRenderer.close(); }
-            catch (Exception e) { logger.error("Error cleaning up model renderer", e); }
-        }
-
-        if (legacyCowTextureAtlas != null) legacyCowTextureAtlas.close();
-
         if (gizmoRenderer != null) {
             try { gizmoRenderer.dispose(); }
             catch (Exception e) { logger.error("Error cleaning up gizmo renderer", e); }
@@ -200,11 +178,6 @@ public class ViewportController {
 
         viewportState.setViewportInitialized(false);
         logger.info("Viewport cleanup complete");
-    }
-
-    /** Alias for {@link #cleanup()} */
-    public void dispose() {
-        cleanup();
     }
 
     /**
@@ -248,32 +221,7 @@ public class ViewportController {
         logger.trace("Viewport resized to {}x{}", width, height);
     }
 
-    /** No-op: rendering happens automatically in main loop */
-    public void requestRender() {
-        // Rendering happens automatically
-    }
-
     // ========== Content Loading ==========
-
-    /**
-     * Load model asynchronously by name.
-     */
-    public void loadModel(String modelName) {
-        if (modelName == null || modelName.trim().isEmpty()) {
-            logger.error("Cannot load model: name is null or empty");
-            return;
-        }
-
-        renderingState.setModelMode(modelName, null);
-        transformState.resetPosition();
-
-        logger.info("Loading model: {}", modelName);
-
-        modelLoader.loadModelAsync(modelName,
-            model -> renderingState.setCurrentModel(model),
-            error -> logger.error("Failed to load model: {}", error.getMessage())
-        );
-    }
 
     /**
      * Load BlockModel (.OMO file) for editing.
@@ -396,11 +344,6 @@ public class ViewportController {
         viewportState.getGridVisible().set(showGrid);
     }
 
-    /** Alias for {@link #setShowGrid(boolean)} */
-    public void setGridVisible(boolean visible) {
-        setShowGrid(visible);
-    }
-
     public void setWireframeMode(boolean wireframe) {
         viewportState.getWireframeMode().set(wireframe);
     }
@@ -443,9 +386,7 @@ public class ViewportController {
     // ========== Component Accessors ==========
 
     public ViewportCamera getCamera() { return viewportCamera; }
-    public LegacyCowModelRenderer getModelRenderer() { return legacyCowModelRenderer; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
-    public GizmoRenderer getGizmoRenderer() { return gizmoRenderer; }
 
     public void resetCamera() {
         if (viewportCamera != null) viewportCamera.reset();
@@ -455,10 +396,6 @@ public class ViewportController {
 
     public int getColorTexture() { return resourceManager.getFramebuffer().getColorTextureId(); }
     public boolean isInitialized() { return viewportState.isInitialized(); }
-    public float getCurrentFPS() { return 60.0f; } // Placeholder
-
-    public String getCurrentModelName() { return renderingState.getCurrentModelName(); }
-    public LegacyCowStonebreakModel getCurrentModel() { return renderingState.getCurrentModel(); }
 
     public float getModelPositionX() { return transformState.getPositionX(); }
     public float getModelPositionY() { return transformState.getPositionY(); }

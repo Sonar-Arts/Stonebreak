@@ -1,6 +1,5 @@
 package com.openmason.ui.viewport.state;
 
-import com.openmason.deprecated.LegacyCowStonebreakModel;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -14,12 +13,11 @@ public class RenderingState {
 
     private static final Logger logger = LoggerFactory.getLogger(RenderingState.class);
 
-    private RenderingMode mode = RenderingMode.MODEL;
+    private RenderingMode mode = RenderingMode.BLOCK_MODEL;
 
-    // Model state
+    // Model state (for BlockModels)
     private String currentModelName = null;
     private String currentTextureVariant = "default";
-    private LegacyCowStonebreakModel currentModel = null;
 
     // Block state
     private BlockType selectedBlock = null;
@@ -35,15 +33,12 @@ public class RenderingState {
     }
 
     /**
-     * Switch to model rendering mode.
+     * Switch to model rendering mode (legacy cow functionality removed).
+     * @deprecated Legacy cow model support has been removed
      */
-    public void setModelMode(String modelName, LegacyCowStonebreakModel model) {
-        this.mode = RenderingMode.MODEL;
-        this.currentModelName = modelName;
-        this.currentModel = model;
-        this.selectedBlock = null;
-        this.selectedItem = null;
-        logger.debug("Switched to MODEL rendering mode: {}", modelName);
+    @Deprecated
+    public void setModelMode(String modelName, Object model) {
+        logger.debug("setModelMode called but legacy MODEL rendering mode is no longer supported: {}", modelName);
     }
 
     /**
@@ -56,7 +51,6 @@ public class RenderingState {
         }
         this.mode = RenderingMode.BLOCK;
         this.selectedBlock = blockType;
-        this.currentModel = null;
         this.currentModelName = null;
         this.selectedItem = null;
         logger.debug("Switched to BLOCK rendering mode: {}", blockType.name());
@@ -68,7 +62,6 @@ public class RenderingState {
     public void setBlockModelMode(String modelName) {
         this.mode = RenderingMode.BLOCK_MODEL;
         this.currentModelName = modelName;
-        this.currentModel = null;
         this.selectedBlock = null;
         this.selectedItem = null;
         logger.debug("Switched to BLOCK_MODEL rendering mode: {}", modelName);
@@ -84,18 +77,18 @@ public class RenderingState {
         }
         this.mode = RenderingMode.ITEM;
         this.selectedItem = itemType;
-        this.currentModel = null;
         this.currentModelName = null;
         this.selectedBlock = null;
         logger.debug("Switched to ITEM rendering mode: {}", itemType.name());
     }
 
     /**
-     * Set current model (without switching mode).
+     * Set current model (legacy cow functionality removed).
+     * @deprecated Legacy cow model support has been removed
      */
-    public void setCurrentModel(LegacyCowStonebreakModel model) {
-        this.currentModel = model;
-        logger.trace("Current model updated: {}", model != null ? "loaded" : "null");
+    @Deprecated
+    public void setCurrentModel(Object model) {
+        logger.trace("setCurrentModel called but legacy model support is removed");
     }
 
     /**
@@ -114,15 +107,16 @@ public class RenderingState {
     public RenderingMode getMode() { return mode; }
     public String getCurrentModelName() { return currentModelName; }
     public String getCurrentTextureVariant() { return currentTextureVariant; }
-    public LegacyCowStonebreakModel getCurrentModel() { return currentModel; }
     public BlockType getSelectedBlock() { return selectedBlock; }
     public ItemType getSelectedItem() { return selectedItem; }
 
     /**
-     * Check if model is ready for rendering.
+     * Check if model is ready for rendering (legacy cow functionality removed).
+     * @deprecated Legacy MODEL mode is no longer supported
      */
+    @Deprecated
     public boolean isModelReady() {
-        return mode == RenderingMode.MODEL && currentModel != null;
+        return false; // Legacy MODEL mode no longer supported
     }
 
     /**

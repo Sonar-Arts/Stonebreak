@@ -1,6 +1,5 @@
 package com.openmason.ui.properties;
 
-import com.openmason.deprecated.LegacyCowTextureVariantManager;
 import com.openmason.model.editable.BlockModel;
 import com.openmason.ui.dialogs.FileDialogService;
 import com.openmason.ui.properties.adapters.ViewportAdapter;
@@ -18,8 +17,6 @@ import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-
 /**
  * Property Panel coordinator
  */
@@ -28,7 +25,6 @@ public class PropertyPanelImGui {
     private static final Logger logger = LoggerFactory.getLogger(PropertyPanelImGui.class);
 
     // Dependencies (injected)
-    private final LegacyCowTextureVariantManager textureManager;
     private final ModelState modelState;
     private final ThemeManager themeManager; // Store for getThemeManager() compatibility
     private final IThemeContext themeContext;
@@ -40,9 +36,7 @@ public class PropertyPanelImGui {
     private final TransformSection transformSection;
 
     // State
-    private String currentModelName = null;
     private boolean initialized = false;
-    private String lastViewportModelCheck = null;
     private BlockModel currentEditableModel = null;  // Current editable model for texture reloading
 
     /**
@@ -50,7 +44,6 @@ public class PropertyPanelImGui {
      */
     public PropertyPanelImGui(ThemeManager themeManager, FileDialogService fileDialogService, ModelState modelState) {
         // Initialize dependencies
-        this.textureManager = LegacyCowTextureVariantManager.getInstance();
         this.modelState = modelState;
         this.themeManager = themeManager; // Store for getThemeManager() compatibility
         this.themeContext = new PanelThemeContext(themeManager);
@@ -80,13 +73,7 @@ public class PropertyPanelImGui {
      */
     private void initialize() {
         try {
-            // Initialize TextureVariantManager
-            if (textureManager != null) {
-                textureManager.initialize();
-            }
-
             initialized = true;
-
         } catch (Exception e) {
             logger.error("Failed to initialize PropertyPanelImGui", e);
         }
@@ -106,7 +93,6 @@ public class PropertyPanelImGui {
             // Reload the BlockModel in the viewport to apply the new texture
             if (currentEditableModel != null && viewportConnector != null && viewportConnector.isConnected()) {
                 viewportConnector.reloadBlockModel(currentEditableModel);
-                viewportConnector.requestRender();
                 logger.info("Reloaded BlockModel with new texture: {}", texturePath);
             }
         });
@@ -190,90 +176,27 @@ public class PropertyPanelImGui {
     }
 
     /**
-     * Load texture variants for a model.
+     * Load texture variants for a model (legacy cow functionality removed).
+     * This method is deprecated and does nothing.
      *
-     * @param modelName The model name
+     * @deprecated Legacy cow model support has been removed
      */
-    public void loadTextureVariants(String modelName) {
-        if (modelName == null || modelName.isEmpty()) {
-            logger.warn("Cannot load texture variants for null or empty model name");
-            return;
-        }
-
-        // Prevent repeated loading
-        // (removed status section check)
-
-        // Check if already loaded
-        if (modelName.equals(this.currentModelName)) {
-            String modelFileName = modelName.toLowerCase().replace(" ", "_");
-            if (!modelFileName.equals(lastViewportModelCheck)) {
-                ensureViewportHasModel(modelFileName);
-                lastViewportModelCheck = modelFileName;
-            }
-            return;
-        }
-
-        this.currentModelName = modelName;
-        lastViewportModelCheck = null;
-
-        try {
-            // Load variants based on model type
-            List<String> variantsToLoad = getVariantsForModel(modelName);
-
-            // Update sections
-            textureVariantSection.setAvailableVariants(variantsToLoad.toArray(new String[0]));
-
-            // Load model into viewport
-            String modelFileName = modelName.toLowerCase().replace(" ", "_");
-            if (viewportConnector != null && viewportConnector.isConnected()) {
-                viewportConnector.loadModel(modelFileName);
-            }
-
-        } catch (Exception e) {
-            logger.error("Error loading texture variants for model: {}", modelName, e);
-        }
+    @Deprecated
+    public void loadTextureVariants() {
+        logger.debug("loadTextureVariants called but legacy model loading is no longer supported");
     }
 
     /**
-     * Switch to a different texture variant.
+     * Switch to a different texture variant (legacy cow functionality removed).
+     * This method is deprecated and does nothing.
      *
-     * @param variantName The variant name
+     * @param variantName The variant name (unused)
+     * @deprecated Legacy cow model support has been removed
      */
-    public void switchTextureVariant(String variantName) {
-        if (variantName == null || variantName.isEmpty()) {
-            logger.warn("Cannot switch to null or empty texture variant");
-            return;
-        }
-
-        long startTime = System.currentTimeMillis();
-
-        try {
-            String variantLower = variantName.toLowerCase();
-
-            // Switch variant using TextureVariantManager
-            boolean success = textureManager.switchToVariant(variantLower);
-
-            if (success) {
-                // Update viewport
-                if (viewportConnector != null && viewportConnector.isConnected()) {
-                    viewportConnector.setTextureVariant(variantLower);
-                    viewportConnector.requestRender();
-                }
-
-                long switchTime = System.currentTimeMillis() - startTime;
-
-                if (switchTime > 200) {
-                    logger.warn("Texture variant switch took {}ms (target: <200ms)", switchTime);
-                }
-            } else {
-                logger.error("TextureVariantManager failed to switch to variant: {}", variantName);
-            }
-
-        } catch (Exception e) {
-            logger.error("Error switching to texture variant: {}", variantName, e);
-        }
+    @Deprecated
+    private void switchTextureVariant(String variantName) {
+        logger.debug("switchTextureVariant called but legacy model variants are no longer supported");
     }
-
 
     /**
      * Check if initialized.
@@ -288,33 +211,4 @@ public class PropertyPanelImGui {
     public ThemeManager getThemeManager() {
         return themeManager;
     }
-
-    // Private helper methods
-
-    /**
-     * Get variants for a model type.
-     */
-    private List<String> getVariantsForModel(String modelName) {
-        if (modelName.toLowerCase().contains("cow")) {
-            return Arrays.asList("Default", "Angus", "Highland", "Jersey");
-        }
-        return List.of("Default");
-    }
-
-    /**
-     * Ensure viewport has the model loaded.
-     */
-    private void ensureViewportHasModel(String modelFileName) {
-        if (viewportConnector == null || !viewportConnector.isConnected()) {
-            return;
-        }
-
-        String currentViewportModel = viewportConnector.getCurrentModelName();
-        boolean hasActualModel = viewportConnector.hasModel();
-
-        if (!modelFileName.equals(currentViewportModel) || !hasActualModel) {
-            viewportConnector.loadModel(modelFileName);
-        }
-    }
-
 }

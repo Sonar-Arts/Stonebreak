@@ -21,7 +21,6 @@ public class AppConfig {
     // Configuration file paths
     private static final String CONFIG_DIR = ".openmason";
     private static final String CONFIG_FILE = "config.properties";
-    private static final String DEFAULT_CONFIG_RESOURCE = "/config/default.properties";
     
     // Default configuration values
     private static final String DEFAULT_STONEBREAK_PROJECT_PATH = "../stonebreak-game";
@@ -32,7 +31,7 @@ public class AppConfig {
     private static final boolean DEFAULT_DARK_THEME_ENABLED = true;
     private static final float DEFAULT_VERTEX_POINT_SIZE = 5.0f;
     
-    private Properties properties;
+    private final Properties properties;
     private Path configFilePath;
     
     /**
@@ -133,48 +132,12 @@ public class AppConfig {
     
     // Getter methods for configuration values
     
-    public String getStonebreakProjectPath() {
-        return properties.getProperty("stonebreak.project.path", DEFAULT_STONEBREAK_PROJECT_PATH);
-    }
-    
-    public String getStonebreakModelsPath() {
-        return properties.getProperty("stonebreak.models.path", DEFAULT_MODELS_PATH);
-    }
-    
-    public String getStonebreakTexturesPath() {
-        return properties.getProperty("stonebreak.textures.path", DEFAULT_TEXTURES_PATH);
-    }
-    
-    public boolean isAutoSaveEnabled() {
-        return Boolean.parseBoolean(properties.getProperty("app.auto.save.enabled", String.valueOf(DEFAULT_AUTO_SAVE_ENABLED)));
-    }
-    
-    public int getAutoSaveInterval() {
-        return Integer.parseInt(properties.getProperty("app.auto.save.interval", String.valueOf(DEFAULT_AUTO_SAVE_INTERVAL)));
-    }
-    
-    public boolean isDarkThemeEnabled() {
-        return Boolean.parseBoolean(properties.getProperty("app.dark.theme.enabled", String.valueOf(DEFAULT_DARK_THEME_ENABLED)));
-    }
-    
     public int getLastWindowWidth() {
         return Integer.parseInt(properties.getProperty("ui.last.window.width", "1600"));
     }
     
     public int getLastWindowHeight() {
         return Integer.parseInt(properties.getProperty("ui.last.window.height", "1000"));
-    }
-    
-    public boolean wasLastWindowMaximized() {
-        return Boolean.parseBoolean(properties.getProperty("ui.last.window.maximized", "false"));
-    }
-    
-    public int getMaxTextureCacheSize() {
-        return Integer.parseInt(properties.getProperty("performance.max.texture.cache", "512"));
-    }
-    
-    public int getMaxModelCacheSize() {
-        return Integer.parseInt(properties.getProperty("performance.max.model.cache", "128"));
     }
     
     public boolean isVSyncEnabled() {
@@ -187,55 +150,13 @@ public class AppConfig {
 
     // Setter methods for configuration values
     
-    public void setStonebreakProjectPath(String path) {
-        properties.setProperty("stonebreak.project.path", path);
-    }
-    
-    public void setAutoSaveEnabled(boolean enabled) {
-        properties.setProperty("app.auto.save.enabled", String.valueOf(enabled));
-    }
-    
-    public void setAutoSaveInterval(int interval) {
-        properties.setProperty("app.auto.save.interval", String.valueOf(interval));
-    }
-    
-    public void setDarkThemeEnabled(boolean enabled) {
-        properties.setProperty("app.dark.theme.enabled", String.valueOf(enabled));
-    }
-    
     public void setLastWindowSize(int width, int height, boolean maximized) {
         properties.setProperty("ui.last.window.width", String.valueOf(width));
         properties.setProperty("ui.last.window.height", String.valueOf(height));
         properties.setProperty("ui.last.window.maximized", String.valueOf(maximized));
     }
-    
-    public void setMaxTextureCacheSize(int sizeMB) {
-        properties.setProperty("performance.max.texture.cache", String.valueOf(sizeMB));
-    }
-    
-    public void setMaxModelCacheSize(int sizeMB) {
-        properties.setProperty("performance.max.model.cache", String.valueOf(sizeMB));
-    }
-    
-    public void setVSyncEnabled(boolean enabled) {
-        properties.setProperty("performance.vsync.enabled", String.valueOf(enabled));
-    }
 
     public void setVertexPointSize(float size) {
         properties.setProperty("viewport.vertex.point.size", String.valueOf(size));
-    }
-
-    /**
-     * Get the full path to Stonebreak models directory.
-     */
-    public Path getFullStonebreakModelsPath() {
-        return Paths.get(getStonebreakProjectPath()).resolve(getStonebreakModelsPath());
-    }
-    
-    /**
-     * Get the full path to Stonebreak textures directory.
-     */
-    public Path getFullStonebreakTexturesPath() {
-        return Paths.get(getStonebreakProjectPath()).resolve(getStonebreakTexturesPath());
     }
 }

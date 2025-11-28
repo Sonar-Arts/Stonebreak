@@ -22,18 +22,16 @@ public class TextureEditorWindow {
 
     private static final String WINDOW_TITLE = "Texture Editor";
     private static final String DOCKSPACE_NAME = "TextureEditorWindowDockspace";
-    private static final String INI_FILENAME = "texture_editor.ini";
 
     private final TextureCreatorImGui textureCreator;
     private final ImBoolean visible;
 
     private boolean iniFileSet = false;
-    private boolean isWindowed = true;
 
     // Title bar state
     private boolean isMaximized = false;
-    private float[] savedSize = new float[]{1200, 800};
-    private float[] savedPos = new float[]{100, 100};
+    private final float[] savedSize = new float[]{1200, 800};
+    private final float[] savedPos = new float[]{100, 100};
 
     // Drag state for smooth window movement
     private boolean isDraggingWindow = false;
@@ -126,7 +124,6 @@ public class TextureEditorWindow {
         } else {
             windowWidth = cachedWindowWidth;
         }
-        float cursorStartY = ImGui.getCursorPosY();
         ImGui.getWindowDrawList().addRectFilled(
             ImGui.getWindowPosX(),
             ImGui.getWindowPosY(),

@@ -1,9 +1,8 @@
 package com.openmason.ui.viewport.rendering;
 
-import com.openmason.deprecated.LegacyCowTextureAtlas;
+import com.openmason.rendering.blockmodel.BlockModelRenderer;
 import com.openmason.rendering.core.BlockRenderer;
 import com.openmason.rendering.core.ItemRenderer;
-import com.openmason.deprecated.LegacyCowModelRenderer;
 import com.openmason.ui.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.ui.viewport.resources.ViewportResourceManager;
 import com.openmason.ui.viewport.shaders.ShaderManager;
@@ -16,10 +15,8 @@ import com.stonebreak.model.ModelDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -41,11 +38,9 @@ public class RenderPipeline {
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
 
-    // External renderers (models, blocks, items)
-    private final LegacyCowModelRenderer legacyCowModelRenderer;
+    // External renderers (blocks, items)
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final LegacyCowTextureAtlas legacyCowTextureAtlas;
 
     // BlockModel renderer (.OMO editable models)
     private final com.openmason.rendering.blockmodel.BlockModelRenderer blockModelRenderer;
@@ -61,8 +56,8 @@ public class RenderPipeline {
      * Create render pipeline with all required dependencies.
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
-                          LegacyCowModelRenderer legacyCowModelRenderer, BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          LegacyCowTextureAtlas legacyCowTextureAtlas, com.openmason.rendering.blockmodel.BlockModelRenderer blockModelRenderer,
+                          BlockRenderer blockRenderer, ItemRenderer itemRenderer,
+                          BlockModelRenderer blockModelRenderer,
                           GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
@@ -70,10 +65,8 @@ public class RenderPipeline {
         this.gridRenderer = new GridRenderer();
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
-        this.legacyCowModelRenderer = legacyCowModelRenderer;
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
-        this.legacyCowTextureAtlas = legacyCowTextureAtlas;
         this.blockModelRenderer = blockModelRenderer;
         this.gizmoRenderer = gizmoRenderer;
     }
@@ -118,7 +111,7 @@ public class RenderPipeline {
             }
 
             // PASS 2: Render content (model/block/item)
-            renderContent(renderingState, transformState, viewportState.getWireframeMode().get());
+            renderContent(renderingState, transformState);
 
             // Restore polygon mode after content rendering
             if (viewportState.getWireframeMode().get()) {
@@ -133,7 +126,7 @@ public class RenderPipeline {
 
             // PASS 4: Render gizmo (after content, always in fill mode)
             if (gizmoRenderer != null && gizmoRenderer.isInitialized()) {
-                renderGizmo(viewportState);
+                renderGizmo();
             }
 
             // Unbind framebuffer
@@ -163,9 +156,9 @@ public class RenderPipeline {
     }
 
     /**
-     * Render content pass (model, block, item, or block model).
+     * Render content pass (block, item, or block model).
      */
-    private void renderContent(RenderingState renderingState, TransformState transformState, boolean wireframeMode) {
+    private void renderContent(RenderingState renderingState, TransformState transformState) {
         // Diagnostic logging (throttled)
         boolean shouldLog = shouldLogDiagnostics();
 
@@ -181,70 +174,9 @@ public class RenderPipeline {
             renderBlock(renderingState, transformState);
         } else if (renderingState.isItemReady()) {
             renderItem(renderingState, transformState);
-        } else if (renderingState.isModelReady()) {
-            if (prepareModelIfNeeded(renderingState)) {
-                renderModel(renderingState, transformState, wireframeMode);
-            } else {
-                // Model not ready, skip rendering
-                logger.trace("Model not prepared, skipping render");
-            }
         } else {
-            // No content to render (default blank model should load on startup)
+            // No content to render
             logger.trace("No content ready for rendering");
-        }
-    }
-
-    /**
-     * Prepare model for rendering if not already prepared.
-     */
-    private boolean prepareModelIfNeeded(RenderingState renderingState) {
-        if (legacyCowModelRenderer.isModelPrepared(renderingState.getCurrentModel())) {
-            return true;
-        }
-
-        try {
-            logger.debug("Preparing model for rendering: {}", renderingState.getCurrentModelName());
-            boolean prepared = legacyCowModelRenderer.prepareModel(renderingState.getCurrentModel());
-            if (!prepared) {
-                logger.error("Failed to prepare model: {}", renderingState.getCurrentModelName());
-                legacyCowModelRenderer.logDiagnosticInfo();
-            }
-            return prepared;
-        } catch (Exception e) {
-            logger.error("Exception preparing model: " + e.getMessage(), e);
-            return false;
-        }
-    }
-
-    /**
-     * Render model content.
-     */
-    private void renderModel(RenderingState renderingState, TransformState transformState, boolean wireframeMode) {
-        try {
-            ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
-            float[] vpArray = context.getViewProjectionArray();
-
-            // In wireframe mode, pass null textureAtlas to disable textures
-            LegacyCowTextureAtlas atlas = wireframeMode ? null : legacyCowTextureAtlas;
-
-            legacyCowModelRenderer.renderModel(
-                renderingState.getCurrentModel(),
-                renderingState.getCurrentTextureVariant(),
-                matrixShader.getProgramId(),
-                matrixShader.getMvpMatrixLocation(),
-                matrixShader.getModelMatrixLocation(),
-                vpArray,
-                transformState.getTransformMatrix(),
-                atlas,
-                matrixShader.getTextureLocation(),
-                matrixShader.getUseTextureLocation(),
-                matrixShader.getColorLocation()
-            );
-
-            logger.trace("Model rendered successfully");
-
-        } catch (Exception e) {
-            logger.error("Error rendering model", e);
         }
     }
 
@@ -341,7 +273,7 @@ public class RenderPipeline {
     /**
      * Render gizmo pass.
      */
-    private void renderGizmo(ViewportUIState viewportState) {
+    private void renderGizmo() {
         try {
             gizmoRenderer.render(
                 context.getCamera().getViewMatrix(),
@@ -365,21 +297,6 @@ public class RenderPipeline {
 
             // Render vertices based on current rendering mode
             switch (renderingState.getMode()) {
-                case MODEL:
-                    // Standard cow model rendering
-                    if (renderingState.isModelReady()) {
-                        // Extract all parts from cow model
-                        Collection<ModelDefinition.ModelPart> parts = extractModelParts(
-                            renderingState.getCurrentModel().getModelDefinition()
-                        );
-
-                        vertexRenderer.updateVertexData(parts, transformState.getTransformMatrix());
-
-                        ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
-                        vertexRenderer.render(basicShader, context);
-                    }
-                    break;
-
                 case BLOCK_MODEL:
                     // Editable .OMO block model rendering (simple cube)
                     Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
@@ -419,21 +336,6 @@ public class RenderPipeline {
 
             // Render edges based on current rendering mode (mirrors vertex rendering)
             switch (renderingState.getMode()) {
-                case MODEL:
-                    // Standard cow model rendering
-                    if (renderingState.isModelReady()) {
-                        // Extract all parts from cow model
-                        Collection<ModelDefinition.ModelPart> parts = extractModelParts(
-                            renderingState.getCurrentModel().getModelDefinition()
-                        );
-
-                        edgeRenderer.updateEdgeData(parts, transformState.getTransformMatrix());
-
-                        ShaderProgram basicShader = shaderManager.getShaderProgram(ShaderType.BASIC);
-                        edgeRenderer.render(basicShader, context);
-                    }
-                    break;
-
                 case BLOCK_MODEL:
                     // Editable .OMO block model rendering (simple cube)
                     Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
@@ -459,36 +361,6 @@ public class RenderPipeline {
         } catch (Exception e) {
             logger.error("Error rendering edges", e);
         }
-    }
-
-    /**
-     * Extract all model parts from a cow model definition.
-     * Generic approach - caller handles model structure.
-     */
-    private Collection<ModelDefinition.ModelPart> extractModelParts(ModelDefinition.CowModelDefinition cowModel) {
-        List<ModelDefinition.ModelPart> parts = new ArrayList<>();
-
-        if (cowModel == null || cowModel.getParts() == null) {
-            return parts;
-        }
-
-        ModelDefinition.ModelParts modelParts = cowModel.getParts();
-
-        // Add all parts to collection
-        if (modelParts.getBody() != null) parts.add(modelParts.getBody());
-        if (modelParts.getHead() != null) parts.add(modelParts.getHead());
-        if (modelParts.getUdder() != null) parts.add(modelParts.getUdder());
-        if (modelParts.getTail() != null) parts.add(modelParts.getTail());
-
-        if (modelParts.getLegs() != null) {
-            parts.addAll(modelParts.getLegs());
-        }
-
-        if (modelParts.getHorns() != null) {
-            parts.addAll(modelParts.getHorns());
-        }
-
-        return parts;
     }
 
     /**
@@ -541,13 +413,13 @@ public class RenderPipeline {
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
-        if (gridRenderer != null && gridRenderer.isInitialized()) {
+        if (gridRenderer.isInitialized()) {
             gridRenderer.cleanup();
         }
-        if (vertexRenderer != null && vertexRenderer.isInitialized()) {
+        if (vertexRenderer.isInitialized()) {
             vertexRenderer.cleanup();
         }
-        if (edgeRenderer != null && edgeRenderer.isInitialized()) {
+        if (edgeRenderer.isInitialized()) {
             edgeRenderer.cleanup();
         }
         logger.debug("RenderPipeline cleanup complete");

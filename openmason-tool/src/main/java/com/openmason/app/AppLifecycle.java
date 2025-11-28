@@ -73,25 +73,6 @@ public class AppLifecycle {
     }
     
     /**
-     * Add a lifecycle listener.
-     */
-    public void addListener(LifecycleListener listener) {
-        if (listener != null) {
-            listeners.add(listener);
-            // logger.debug("Added lifecycle listener: {}", listener.getClass().getSimpleName());
-        }
-    }
-    
-    /**
-     * Remove a lifecycle listener.
-     */
-    public void removeListener(LifecycleListener listener) {
-        if (listeners.remove(listener)) {
-            // logger.debug("Removed lifecycle listener: {}", listener.getClass().getSimpleName());
-        }
-    }
-    
-    /**
      * Called when application has started (UI loaded).
      */
     public void onApplicationStarted() {
@@ -160,10 +141,7 @@ public class AppLifecycle {
     private void performBackgroundInitialization() {
         try {
             // logger.debug("Starting background initialization...");
-            
-            // Initialize memory management
-            initializeMemoryManagement();
-            
+
             // Pre-load critical resources
             preloadCriticalResources();
             
@@ -176,23 +154,6 @@ public class AppLifecycle {
             logger.error("Background initialization failed", e);
             throw new RuntimeException("Failed to initialize application", e);
         }
-    }
-    
-    /**
-     * Initialize memory management and monitoring.
-     */
-    private void initializeMemoryManagement() {
-        // logger.debug("Initializing memory management...");
-        
-        // Set up memory monitoring
-        long maxMemory = Runtime.getRuntime().maxMemory();
-        long totalMemory = Runtime.getRuntime().totalMemory();
-        long freeMemory = Runtime.getRuntime().freeMemory();
-        
-        // logger.info("Memory initialized - Max: {}MB, Total: {}MB, Free: {}MB",
-        //     maxMemory / (1024 * 1024),
-        //     totalMemory / (1024 * 1024),
-        //     freeMemory / (1024 * 1024));
     }
     
     /**
@@ -258,47 +219,5 @@ public class AppLifecycle {
                 logger.error("Error notifying lifecycle listener: {}", listener.getClass().getSimpleName(), e);
             }
         }
-    }
-    
-    /**
-     * Submit a background task for execution.
-     */
-    public CompletableFuture<Void> submitBackgroundTask(Runnable task) {
-        if (isShuttingDown) {
-            return CompletableFuture.completedFuture(null);
-        }
-        
-        return CompletableFuture.runAsync(task, backgroundExecutor);
-    }
-    
-    /**
-     * Submit a background task with result for execution.
-     */
-    public <T> CompletableFuture<T> submitBackgroundTask(java.util.concurrent.Callable<T> task) {
-        if (isShuttingDown) {
-            return CompletableFuture.completedFuture(null);
-        }
-        
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return task.call();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }, backgroundExecutor);
-    }
-    
-    /**
-     * Check if application is started.
-     */
-    public boolean isStarted() {
-        return isStarted;
-    }
-    
-    /**
-     * Check if application is shutting down.
-     */
-    public boolean isShuttingDown() {
-        return isShuttingDown;
     }
 }

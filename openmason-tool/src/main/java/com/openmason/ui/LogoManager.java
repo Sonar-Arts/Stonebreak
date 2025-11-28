@@ -37,7 +37,6 @@ public class LogoManager {
     
     // Default logo display sizes
     public static final float SMALL_LOGO_SIZE = 24.0f;
-    public static final float MEDIUM_LOGO_SIZE = 48.0f;
     public static final float LARGE_LOGO_SIZE = 96.0f;
     
     private LogoManager() {
@@ -135,45 +134,7 @@ public class LogoManager {
         
         ImGui.image(logoTextureId, width, height);
     }
-    
-    /**
-     * Render the logo as a clickable button
-     * @param size The size of the logo button
-     * @return true if the logo was clicked
-     */
-    public boolean renderLogoButton(float size) {
-        return renderLogoButton(size, size);
-    }
-    
-    /**
-     * Render the logo as a clickable button with specified dimensions
-     * @param width The width of the logo button
-     * @param height The height of the logo button
-     * @return true if the logo was clicked
-     */
-    public boolean renderLogoButton(float width, float height) {
-        if (!logoLoaded || logoTextureId == -1) {
-            // Show placeholder button if logo not loaded
-            return ImGui.button("OM", width, height);
-        }
-        
-        return ImGui.imageButton(logoTextureId, width, height);
-    }
-    
-    /**
-     * Render a small logo in the top-left corner of a window
-     */
-    public void renderSmallLogoInCorner() {
-        if (!logoLoaded) return;
-        
-        ImVec2 windowPos = ImGui.getWindowPos();
-        ImVec2 windowSize = ImGui.getWindowSize();
-        
-        // Position logo in top-right corner with some padding
-        float padding = 8.0f;
-        ImGui.setCursorPos(windowSize.x - SMALL_LOGO_SIZE - padding, padding);
-        renderLogo(SMALL_LOGO_SIZE);
-    }
+
     
     /**
      * Render logo in the main menu bar
@@ -213,13 +174,6 @@ public class LogoManager {
     }
     
     /**
-     * Get the original logo dimensions
-     */
-    public ImVec2 getLogoDimensions() {
-        return new ImVec2(logoWidth, logoHeight);
-    }
-    
-    /**
      * Get the calculated size for the logo to fit within given constraints while maintaining aspect ratio
      */
     public ImVec2 getScaledLogoSize(float maxWidth, float maxHeight) {
@@ -238,20 +192,6 @@ public class LogoManager {
         }
         
         return new ImVec2(scaledWidth, scaledHeight);
-    }
-    
-    /**
-     * Check if the logo is successfully loaded
-     */
-    public boolean isLogoLoaded() {
-        return logoLoaded;
-    }
-    
-    /**
-     * Get the OpenGL texture ID for the logo (for advanced usage)
-     */
-    public int getLogoTextureId() {
-        return logoTextureId;
     }
     
     /**
