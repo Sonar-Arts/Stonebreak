@@ -4,7 +4,6 @@ import com.openmason.ui.themes.registry.ColorPalette;
 import com.openmason.ui.themes.persistence.ThemeSerializer;
 import com.openmason.ui.themes.application.DensityManager;
 import com.openmason.ui.themes.application.StyleApplicator;
-import com.openmason.ui.themes.preview.ThemePreview;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,8 +24,7 @@ import java.util.function.Consumer;
  * Components:
  * - ThemeRegistry: Theme storage and management
  * - ThemeSerializer: JSON persistence
- * - DensityManager: UI density scaling  
- * - ThemePreview: Real-time theme previewing
+ * - DensityManager: UI density scaling
  */
 public class ThemeManager {
     
@@ -36,7 +34,6 @@ public class ThemeManager {
     private final ThemeRegistry registry;
     private final ThemeSerializer serializer;
     private final DensityManager densityManager;
-    private final ThemePreview preview;
 
     // Simple configuration using Properties
     private final Properties config = new Properties();
@@ -59,7 +56,6 @@ public class ThemeManager {
         this.registry = new ThemeRegistry();
         this.serializer = new ThemeSerializer();
         this.densityManager = new DensityManager();
-        this.preview = new ThemePreview(densityManager);
 
         // Setup component callbacks
         densityManager.setDensityChangeCallback(this::onDensityChanged);
@@ -173,16 +169,12 @@ public class ThemeManager {
         
         try {
             ThemeDefinition oldTheme = currentTheme;
-            
-            if (preview.isPreviewActive()) {
-                preview.startPreview(theme, densityManager.getCurrentDensity());
-            } else {
-                StyleApplicator.applyThemeWithDensityManager(theme, densityManager);
-                currentTheme = theme;
-                saveConfiguration();
-                notifyThemeChanged(oldTheme, theme);
-            }
-            
+
+            StyleApplicator.applyThemeWithDensityManager(theme, densityManager);
+            currentTheme = theme;
+            saveConfiguration();
+            notifyThemeChanged(oldTheme, theme);
+
             logger.info("Applied theme: {}", theme.getName());
             
         } catch (Exception e) {
@@ -229,72 +221,6 @@ public class ThemeManager {
             
         } catch (Exception e) {
             logger.error("Failed to set UI density to: " + density.getDisplayName(), e);
-        }
-    }
-    
-    /**
-     * Preview a theme
-     */
-    public void previewTheme(ThemeDefinition theme) {
-        if (theme == null) {
-            logger.warn("Cannot preview null theme");
-            return;
-        }
-        
-        try {
-            boolean success = preview.startPreview(theme, densityManager.getCurrentDensity());
-            if (success) {
-                logger.debug("Previewing theme: {}", theme.getName());
-            } else {
-                logger.warn("Failed to start preview for theme: {}", theme.getName());
-            }
-        } catch (Exception e) {
-            logger.error("Failed to preview theme: " + theme.getName(), e);
-        }
-    }
-    
-    /**
-     * Exit preview mode
-     */
-    public void exitPreviewMode() {
-        try {
-            if (preview.isPreviewActive()) {
-                preview.endPreview();
-                logger.debug("Exited preview mode");
-            }
-        } catch (Exception e) {
-            logger.error("Failed to exit preview mode", e);
-        }
-    }
-    
-    /**
-     * Commit the currently previewed theme as the active theme
-     */
-    public void commitPreviewTheme() {
-        try {
-            if (!preview.isPreviewActive()) {
-                logger.warn("No preview active to commit");
-                return;
-            }
-            
-            ThemeDefinition previewedTheme = preview.getCurrentPreviewTheme();
-            if (previewedTheme != null) {
-                // Confirm the preview, making it permanent
-                boolean success = preview.confirmPreview();
-                if (success) {
-                    ThemeDefinition oldTheme = currentTheme;
-                    currentTheme = previewedTheme;
-                    saveConfiguration();
-                    notifyThemeChanged(oldTheme, previewedTheme);
-                    logger.info("Committed preview theme: {}", previewedTheme.getName());
-                } else {
-                    logger.warn("Failed to confirm preview theme");
-                }
-            } else {
-                logger.warn("No preview theme available to commit");
-            }
-        } catch (Exception e) {
-            logger.error("Failed to commit preview theme", e);
         }
     }
     
@@ -572,7 +498,6 @@ public class ThemeManager {
     // Core API methods
     public ThemeDefinition getCurrentTheme() { return currentTheme; }
     public DensityManager.UIDensity getCurrentDensity() { return currentDensity; }
-    public boolean isPreviewMode() { return preview.isPreviewActive(); }
     public ThemeDefinition getTheme(String themeId) { return registry.getTheme(themeId); }
     public List<ThemeDefinition> getAvailableThemes() {
         return new ArrayList<>(registry.getAllThemes().values());
@@ -620,11 +545,10 @@ public class ThemeManager {
             int totalCount = registry.getThemeCount();
             
             return String.format("Themes: %d total (%d built-in, %d custom, %d imported). " +
-                               "Current: %s (%s density). Preview: %s",
+                               "Current: %s (%s density)",
                                totalCount, builtInCount, customCount, importedCount,
                                currentTheme != null ? currentTheme.getName() : "none",
-                               currentDensity.getDisplayName(),
-                               isPreviewMode() ? "active" : "inactive");
+                               currentDensity.getDisplayName());
         } catch (Exception e) {
             logger.error("Failed to get theme statistics", e);
             return "Theme statistics unavailable";
@@ -678,21 +602,17 @@ public class ThemeManager {
     public void dispose() {
         try {
             logger.info("Disposing ThemeManager");
-            
+
             saveConfiguration();
-            
-            if (preview != null) {
-                preview.shutdown();
-            }
-            
+
             if (densityManager != null) {
                 densityManager.emergencyReset();
             }
-            
+
             themeChangeCallbacks.clear();
             densityChangeCallbacks.clear();
             currentTheme = null;
-            
+
             logger.info("ThemeManager disposed");
             
         } catch (Exception e) {

@@ -1,41 +1,30 @@
 package com.openmason.ui.themes.persistence;
-import com.openmason.ui.themes.core.ThemeDefinition;
-import com.openmason.ui.themes.registry.ThemeRegistry;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.openmason.ui.themes.core.ThemeDefinition;
+import com.openmason.ui.themes.registry.ThemeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Professional JSON persistence and file I/O component for the Open Mason theming system.
- * Part of Phase 1 UI Flexibility Refactoring Plan.
- * 
- * Responsibilities:
- * - JSON serialization/deserialization of ThemeDefinition objects
- * - File I/O operations with atomic writes and backup/restore
- * - Resource directory management for built-in, community, and user themes
- * - Import/export functionality with validation
- * - Comprehensive error handling and recovery
- * 
- * Architecture:
- * - Thread-safe operations using ReadWriteLock
- * - Atomic file operations (write to temp, then rename)
- * - Jackson ObjectMapper for JSON processing
- * - Resource path management for different theme categories
- * - Backup and restore functionality for critical operations
- * 
- * Estimated size: ~200 lines of production-ready code
+ * JSON persistence and file I/O component for the Open Mason theming system.
  */
 public class ThemeSerializer {
     
@@ -46,12 +35,6 @@ public class ThemeSerializer {
     
     // Jackson mapper for JSON operations
     private final ObjectMapper objectMapper;
-    
-    // Resource path constants
-    private static final String RESOURCES_BASE = "/themes";
-    private static final String BUILT_IN_DIR = "built-in";
-    private static final String COMMUNITY_DIR = "community";
-    private static final String USER_DIR = "user";
     
     // File system paths (for user themes in app data directory)
     private final Path userThemesPath;
@@ -82,12 +65,6 @@ public class ThemeSerializer {
     
     /**
      * Save a theme to JSON file with atomic write operation
-     * 
-     * @param theme Theme definition to save
-     * @param filename Filename (without extension)
-     * @param category Theme category determines target directory
-     * @throws IOException if file operation fails
-     * @throws IllegalArgumentException if theme validation fails
      */
     public void saveTheme(ThemeDefinition theme, String filename, ThemeRegistry.ThemeCategory category) 
             throws IOException, IllegalArgumentException {

@@ -1,20 +1,18 @@
 package com.openmason.ui.themes.core;
 
-import imgui.ImVec4;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import imgui.ImVec4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Collections;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Theme definition class extracted from ThemeManager inner class.
  * Contains theme data structure, validation, and manipulation methods.
- * Estimated size: ~200 lines (extracted from lines 91-186 of ThemeManager)
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ThemeDefinition {
@@ -76,8 +74,7 @@ public class ThemeDefinition {
     public ThemeType getType() { return type; }
     public Map<Integer, ImVec4> getColors() { return colors; }
     public Map<Integer, Float> getStyleVars() { return styleVars; }
-    public boolean isReadOnly() { return readOnly; }
-    
+
     // Setters
     public void setId(String id) { this.id = id; }
     public void setName(String name) { this.name = name; }
@@ -85,37 +82,11 @@ public class ThemeDefinition {
     public void setType(ThemeType type) { this.type = type; }
     public void setReadOnly(boolean readOnly) { this.readOnly = readOnly; }
     
-    // Internal setters for Jackson deserialization
-    @JsonProperty("colors")
-    private void setColors(Map<Integer, ImVec4> colors) {
-        this.colors.clear();
-        if (colors != null) {
-            this.colors.putAll(colors);
-        }
-    }
-    
-    @JsonProperty("style_vars")
-    private void setStyleVars(Map<Integer, Float> styleVars) {
-        this.styleVars.clear();
-        if (styleVars != null) {
-            this.styleVars.putAll(styleVars);
-        }
-    }
-    
-    // Color management
-    public void setColor(int colorId, ImVec4 color) {
-        if (!readOnly) {
-            colors.put(colorId, new ImVec4(color.x, color.y, color.z, color.w));
-        } else {
-            logger.warn("Cannot modify read-only theme: {}", name);
-        }
-    }
-    
     public void setColor(int colorId, float r, float g, float b, float a) {
         if (!readOnly) {
             colors.put(colorId, new ImVec4(r, g, b, a));
         } else {
-            logger.warn("Cannot modify read-only theme: {}", name);
+            logger.warn("Cannot set color theme: {}", name);
         }
     }
     
@@ -128,7 +99,7 @@ public class ThemeDefinition {
         if (!readOnly) {
             styleVars.put(styleVar, value);
         } else {
-            logger.warn("Cannot modify read-only theme: {}", name);
+            logger.warn("Cannot set style theme: {}", name);
         }
     }
     
@@ -179,28 +150,6 @@ public class ThemeDefinition {
         return styleVars.size();
     }
     
-    public boolean hasColor(int colorId) {
-        return colors.containsKey(colorId);
-    }
-    
-    public boolean hasStyleVar(int styleVar) {
-        return styleVars.containsKey(styleVar);
-    }
-    
-    public void clearColors() {
-        if (!readOnly) {
-            colors.clear();
-            logger.debug("Cleared colors for theme: {}", name);
-        }
-    }
-    
-    public void clearStyleVars() {
-        if (!readOnly) {
-            styleVars.clear();
-            logger.debug("Cleared style vars for theme: {}", name);
-        }
-    }
-    
     @Override
     public String toString() {
         return name != null ? name : "Unnamed Theme";
@@ -212,7 +161,7 @@ public class ThemeDefinition {
         if (obj == null || getClass() != obj.getClass()) return false;
         
         ThemeDefinition that = (ThemeDefinition) obj;
-        return id != null ? id.equals(that.id) : that.id == null;
+        return Objects.equals(id, that.id);
     }
     
     @Override

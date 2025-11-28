@@ -1,8 +1,7 @@
 package com.openmason.ui.themes.application;
-import com.openmason.ui.themes.core.ThemeDefinition;
 
+import com.openmason.ui.themes.core.ThemeDefinition;
 import imgui.ImGui;
-import imgui.ImGuiStyle;
 import imgui.flag.ImGuiStyleVar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +13,6 @@ import java.util.function.Consumer;
  * Manages UI density scaling for the Open Mason theming system.
  * Provides smooth density scaling for different screen sizes and user preferences
  * with seamless integration to ImGui styling and the existing theme system.
- * 
- * Phase 1 component of the UI Flexibility Refactoring Plan.
  */
 public class DensityManager {
     private static final Logger logger = LoggerFactory.getLogger(DensityManager.class);
@@ -119,13 +116,6 @@ public class DensityManager {
     }
     
     /**
-     * Get the current scale factor
-     */
-    public float getScaleFactor() {
-        return currentDensity.getScaleFactor();
-    }
-    
-    /**
      * Apply density scaling to a theme definition (creates scaled copy)
      */
     public ThemeDefinition applyDensityToTheme(ThemeDefinition theme) {
@@ -174,17 +164,6 @@ public class DensityManager {
     }
     
     /**
-     * Calculate scaled font size based on base size and current density
-     */
-    public float calculateFontSize(float baseSize) {
-        if (baseSize <= 0) {
-            logger.warn("Invalid base font size: {}", baseSize);
-            return baseFontSize * currentDensity.getScaleFactor();
-        }
-        return baseSize * currentDensity.getScaleFactor();
-    }
-    
-    /**
      * Calculate scaled padding based on base padding and current density
      */
     public float calculatePadding(float basePadding) {
@@ -205,7 +184,6 @@ public class DensityManager {
         }
         
         try {
-            ImGuiStyle style = ImGui.getStyle();
             float scale = currentDensity.getScaleFactor();
             
             // Apply font scaling
@@ -306,127 +284,10 @@ public class DensityManager {
     }
     
     /**
-     * Set base values for scaling calculations
-     */
-    public void setBaseValues(float fontSize, float itemSpacing, float windowPadding, float framePadding) {
-        if (fontSize > 0) this.baseFontSize = fontSize;
-        if (itemSpacing >= 0) this.baseItemSpacing = itemSpacing;
-        if (windowPadding >= 0) this.baseWindowPadding = windowPadding;
-        if (framePadding >= 0) this.baseFramePadding = framePadding;
-        
-        logger.debug("Updated base values - Font: {}, Item: {}, Window: {}, Frame: {}", 
-                    baseFontSize, baseItemSpacing, baseWindowPadding, baseFramePadding);
-    }
-    
-    /**
-     * Get base font size
-     */
-    public float getBaseFontSize() {
-        return baseFontSize;
-    }
-    
-    /**
-     * Get base item spacing
-     */
-    public float getBaseItemSpacing() {
-        return baseItemSpacing;
-    }
-    
-    /**
-     * Get base window padding
-     */
-    public float getBaseWindowPadding() {
-        return baseWindowPadding;
-    }
-    
-    /**
-     * Get base frame padding
-     */
-    public float getBaseFramePadding() {
-        return baseFramePadding;
-    }
-    
-    /**
-     * Check if density transition is in progress
-     */
-    public boolean isTransitionInProgress() {
-        return densityTransitionInProgress;
-    }
-    
-    /**
      * Set density change callback
      */
     public void setDensityChangeCallback(Consumer<UIDensity> callback) {
         this.densityChangeCallback = callback;
-    }
-    
-    /**
-     * Get all available density options
-     */
-    public UIDensity[] getAvailableDensities() {
-        return UIDensity.values();
-    }
-    
-    /**
-     * Get density by name (case-insensitive)
-     */
-    public UIDensity getDensityByName(String name) {
-        if (name == null || name.trim().isEmpty()) {
-            return UIDensity.NORMAL;
-        }
-        
-        try {
-            return UIDensity.valueOf(name.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            logger.warn("Unknown density name: {}, defaulting to NORMAL", name);
-            return UIDensity.NORMAL;
-        }
-    }
-    
-    /**
-     * Reset to normal density
-     */
-    public void resetToNormal() {
-        setDensity(UIDensity.NORMAL);
-    }
-    
-    /**
-     * Get density statistics
-     */
-    public String getDensityInfo() {
-        return String.format("Current density: %s (%.1fx scale). Base values - Font: %.1f, Spacing: %.1f, Padding: %.1fx%.1f. Transition: %s",
-                           currentDensity.getDisplayName(),
-                           currentDensity.getScaleFactor(),
-                           baseFontSize,
-                           baseItemSpacing,
-                           baseWindowPadding,
-                           baseFramePadding,
-                           isTransitionInProgress() ? "in progress" : "stable");
-    }
-    
-    /**
-     * Validate density configuration
-     */
-    public boolean validateDensity() {
-        boolean valid = true;
-        
-        if (currentDensity == null) {
-            logger.error("Current density is null");
-            valid = false;
-        }
-        
-        if (baseFontSize <= 0) {
-            logger.error("Invalid base font size: {}", baseFontSize);
-            valid = false;
-        }
-        
-        if (baseItemSpacing < 0 || baseWindowPadding < 0 || baseFramePadding < 0) {
-            logger.error("Invalid base padding values - Item: {}, Window: {}, Frame: {}", 
-                        baseItemSpacing, baseWindowPadding, baseFramePadding);
-            valid = false;
-        }
-        
-        return valid;
     }
     
     /**

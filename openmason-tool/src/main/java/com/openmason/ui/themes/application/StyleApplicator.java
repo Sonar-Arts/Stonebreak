@@ -12,8 +12,6 @@ import java.util.Map;
 
 /**
  * Handles application of themes to ImGui context with OpenGL awareness.
- * Extracted from ThemeManager theme application methods.
- * Estimated size: ~200 lines (extracted from lines 725-749 + related methods)
  */
 public class StyleApplicator {
     private static final Logger logger = LoggerFactory.getLogger(StyleApplicator.class);
@@ -252,29 +250,6 @@ public class StyleApplicator {
     }
     
     /**
-     * Apply theme with UI density scaling (legacy method for compatibility)
-     */
-    public static void applyThemeWithDensity(ThemeDefinition theme, float densityScale) {
-        if (theme == null) {
-            logger.warn("Cannot apply null theme with density");
-            return;
-        }
-        
-        // Apply the base theme first
-        applyTheme(theme);
-        
-        // Then apply density scaling
-        if (densityScale != 1.0f && isImGuiContextValid()) {
-            try {
-                applyDensityScaling(densityScale);
-                logger.debug("Applied theme {} with density scale {}", theme.getName(), densityScale);
-            } catch (Exception e) {
-                logger.error("Failed to apply density scaling", e);
-            }
-        }
-    }
-    
-    /**
      * Apply theme with DensityManager integration
      */
     public static void applyThemeWithDensityManager(ThemeDefinition theme, DensityManager densityManager) {
@@ -308,129 +283,6 @@ public class StyleApplicator {
             // Fallback to original theme
             applyTheme(theme);
         }
-    }
-    
-    /**
-     * Apply density scaling to ImGui style
-     */
-    private static void applyDensityScaling(float scaleFactor) {
-        if (!isValidStyleValue(scaleFactor) || scaleFactor <= 0.0f) {
-            logger.warn("Invalid density scale factor: {}", scaleFactor);
-            return;
-        }
-        
-        try {
-            // Scale common size-related style variables
-            scaleStyleVar(ImGuiStyleVar.WindowRounding, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.ChildRounding, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.FrameRounding, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.PopupRounding, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.ScrollbarRounding, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.GrabRounding, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.TabRounding, scaleFactor);
-            
-            // Scale border sizes
-            scaleStyleVar(ImGuiStyleVar.WindowBorderSize, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.ChildBorderSize, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.PopupBorderSize, scaleFactor);
-            scaleStyleVar(ImGuiStyleVar.FrameBorderSize, scaleFactor);
-            
-            logger.debug("Applied density scaling factor: {}", scaleFactor);
-            
-        } catch (Exception e) {
-            logger.error("Failed to apply density scaling", e);
-        }
-    }
-    
-    /**
-     * Scale a specific style variable by the given factor
-     * Directly modifies the style object, not using push/pop
-     */
-    private static void scaleStyleVar(int styleVar, float scaleFactor) {
-        try {
-            // Get the default value and scale it
-            float defaultValue = getDefaultStyleVarValue(styleVar);
-            float scaledValue = defaultValue * scaleFactor;
-
-            if (isValidStyleValue(scaledValue)) {
-                // Use the same applyStyleVar method which properly sets the style
-                applyStyleVar(styleVar, scaledValue);
-            }
-        } catch (Exception e) {
-            logger.debug("Failed to scale style var {}: {}", styleVar, e.getMessage());
-        }
-    }
-    
-    /**
-     * Get default style variable value
-     */
-    private static float getDefaultStyleVarValue(int styleVar) {
-        // Return reasonable default values for common style variables
-        switch (styleVar) {
-            case ImGuiStyleVar.WindowRounding: return 6.0f;
-            case ImGuiStyleVar.ChildRounding: return 3.0f;
-            case ImGuiStyleVar.FrameRounding: return 3.0f;
-            case ImGuiStyleVar.PopupRounding: return 3.0f;
-            case ImGuiStyleVar.ScrollbarRounding: return 9.0f;
-            case ImGuiStyleVar.GrabRounding: return 3.0f;
-            case ImGuiStyleVar.TabRounding: return 4.0f;
-            case ImGuiStyleVar.WindowBorderSize: return 1.0f;
-            case ImGuiStyleVar.ChildBorderSize: return 1.0f;
-            case ImGuiStyleVar.PopupBorderSize: return 1.0f;
-            case ImGuiStyleVar.FrameBorderSize: return 0.0f;
-            default: return 1.0f;
-        }
-    }
-    
-    /**
-     * Get current theme application status
-     */
-    public static String getApplicationStatus() {
-        if (!isImGuiContextValid()) {
-            return "ImGui context invalid";
-        }
-
-        return "ImGui context valid";
-    }
-    
-    /**
-     * Validate theme before application
-     */
-    public static boolean validateThemeForApplication(ThemeDefinition theme) {
-        if (theme == null) {
-            logger.warn("Theme validation failed: theme is null");
-            return false;
-        }
-        
-        if (!theme.isValid()) {
-            logger.warn("Theme validation failed: theme is invalid");
-            return false;
-        }
-        
-        if (!isImGuiContextValid()) {
-            logger.warn("Theme validation failed: ImGui context is invalid");
-            return false;
-        }
-        
-        // Check if colors are valid
-        for (Map.Entry<Integer, ImVec4> entry : theme.getColors().entrySet()) {
-            if (!isValidColor(entry.getValue())) {
-                logger.warn("Theme validation failed: invalid color for ID {}", entry.getKey());
-                return false;
-            }
-        }
-        
-        // Check if style variables are valid
-        for (Map.Entry<Integer, Float> entry : theme.getStyleVars().entrySet()) {
-            if (!isValidStyleVar(entry.getKey()) || !isValidStyleValue(entry.getValue())) {
-                logger.warn("Theme validation failed: invalid style var {} with value {}", 
-                           entry.getKey(), entry.getValue());
-                return false;
-            }
-        }
-        
-        logger.debug("Theme validation passed: {}", theme.getName());
-        return true;
     }
     
     /**
