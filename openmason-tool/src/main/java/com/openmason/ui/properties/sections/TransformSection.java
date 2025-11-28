@@ -24,7 +24,6 @@ public class TransformSection implements IPanelSection {
     private final ITransformState transformState;
     private IViewportConnector viewportConnector;
     private boolean visible = true;
-    private boolean showAdvancedOptions = false;
 
     private Vec3SliderGroup positionSliders;
     private Vec3SliderGroup rotationSliders;
@@ -109,15 +108,6 @@ public class TransformSection implements IPanelSection {
      */
     public void setVisible(boolean visible) {
         this.visible = visible;
-    }
-
-    /**
-     * Set whether to show advanced options.
-     *
-     * @param show true to show advanced options
-     */
-    public void setShowAdvancedOptions(boolean show) {
-        this.showAdvancedOptions = show;
     }
 
     /**

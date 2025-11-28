@@ -59,7 +59,6 @@ public class UnifiedPreferencesPageRenderer {
 
     // Model Viewer ImGui state holders
     private final ImFloat cameraMouseSensitivity = new ImFloat();
-    private final ImBoolean compactPropertiesMode = new ImBoolean();
     private final ImInt gridSnappingIncrementIndex = new ImInt();
     private final ImFloat vertexPointSize = new ImFloat();
 
@@ -146,12 +145,6 @@ public class UnifiedPreferencesPageRenderer {
 
         PreferencesPageRenderer.addSectionSeparator();
 
-        // UI Settings Section
-        PreferencesPageRenderer.renderSectionHeader("UI Settings");
-        renderUISettings();
-
-        PreferencesPageRenderer.addSectionSeparator();
-
         // Add extra spacing for visual consistency
         ImGui.spacing();
 
@@ -205,17 +198,6 @@ public class UnifiedPreferencesPageRenderer {
         );
     }
 
-    private void renderUISettings() {
-        PreferencesPageRenderer.renderCheckboxSetting(
-                "Compact Properties Panel",
-                "When enabled, shows only essential controls in the properties panel.\n" +
-                        "When disabled, shows all available options with expanded sections.\n" +
-                        "Default: Enabled",
-                compactPropertiesMode,
-                this::onCompactModeChanged
-        );
-    }
-
     private void onCameraSensitivityChanged(Float newValue) {
         // Clamp value to valid range
         float clampedValue = Math.max(MIN_CAMERA_SENSITIVITY,
@@ -230,19 +212,6 @@ public class UnifiedPreferencesPageRenderer {
             logger.debug("Camera mouse sensitivity updated in real-time: {}", clampedValue);
         } else {
             logger.debug("Camera mouse sensitivity saved (viewport will apply on next load): {}", clampedValue);
-        }
-    }
-
-    private void onCompactModeChanged(Boolean newValue) {
-        // Save to preferences
-        preferencesManager.setPropertiesCompactMode(newValue);
-
-        // Apply to property panel in real-time
-        if (propertyPanel != null) {
-            propertyPanel.setCompactMode(newValue);
-            logger.debug("Compact properties mode updated in real-time: {}", newValue);
-        } else {
-            logger.debug("Compact properties mode saved (panel will apply on next load): {}", newValue);
         }
     }
 
@@ -303,12 +272,6 @@ public class UnifiedPreferencesPageRenderer {
         // Reset grid snapping increment (default: 1/16 block = 0.0625)
         preferencesManager.setGridSnappingIncrement(0.0625f);
 
-        // Reset compact mode
-        preferencesManager.setPropertiesCompactMode(true);
-        if (propertyPanel != null) {
-            propertyPanel.setCompactMode(true);
-        }
-
         // Reset vertex point size (default: 5.0)
         try {
             com.openmason.app.AppConfig appConfig = new com.openmason.app.AppConfig();
@@ -326,7 +289,6 @@ public class UnifiedPreferencesPageRenderer {
 
     private void syncModelViewerState() {
         cameraMouseSensitivity.set(preferencesManager.getCameraMouseSensitivity());
-        compactPropertiesMode.set(preferencesManager.getPropertiesCompactMode());
 
         // Sync grid snapping increment
         float currentIncrement = preferencesManager.getGridSnappingIncrement();

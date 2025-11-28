@@ -24,7 +24,6 @@ public class PreferencesManager {
 
     // 3D Model Viewer preferences
     private static final String CAMERA_MOUSE_SENSITIVITY_KEY = "camera.mouse.sensitivity";
-    private static final String PROPERTIES_COMPACT_MODE_KEY = "ui.properties.compact.mode";
     private static final String GRID_SNAPPING_ENABLED_KEY = "viewport.grid.snapping.enabled";
     private static final String GRID_SNAPPING_INCREMENT_KEY = "viewport.grid.snapping.increment";
 
@@ -38,7 +37,6 @@ public class PreferencesManager {
 
     // Default values - 3D Model Viewer
     private static final float DEFAULT_CAMERA_MOUSE_SENSITIVITY = 3.0f;
-    private static final boolean DEFAULT_PROPERTIES_COMPACT_MODE = true;
     private static final boolean DEFAULT_GRID_SNAPPING_ENABLED = false;
     // Default grid snapping: Half block (0.5 units) = 2 snap positions per visual grid square
     // This provides good balance between precision and visual alignment with the 1.0 unit grid
@@ -106,7 +104,6 @@ public class PreferencesManager {
     private void setDefaults() {
         // 3D Model Viewer defaults
         properties.setProperty(CAMERA_MOUSE_SENSITIVITY_KEY, String.valueOf(DEFAULT_CAMERA_MOUSE_SENSITIVITY));
-        properties.setProperty(PROPERTIES_COMPACT_MODE_KEY, String.valueOf(DEFAULT_PROPERTIES_COMPACT_MODE));
         properties.setProperty(GRID_SNAPPING_ENABLED_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_ENABLED));
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(DEFAULT_GRID_SNAPPING_INCREMENT));
 
@@ -205,27 +202,6 @@ public class PreferencesManager {
      */
     public void setGridSnappingIncrement(float increment) {
         properties.setProperty(GRID_SNAPPING_INCREMENT_KEY, String.valueOf(increment));
-        savePreferences();
-    }
-
-    // UI Settings
-
-    /**
-     * Get properties panel compact mode setting.
-     */
-    public boolean getPropertiesCompactMode() {
-        String value = properties.getProperty(PROPERTIES_COMPACT_MODE_KEY);
-        if (value != null) {
-            return Boolean.parseBoolean(value);
-        }
-        return DEFAULT_PROPERTIES_COMPACT_MODE;
-    }
-
-    /**
-     * Set properties panel compact mode setting.
-     */
-    public void setPropertiesCompactMode(boolean compact) {
-        properties.setProperty(PROPERTIES_COMPACT_MODE_KEY, String.valueOf(compact));
         savePreferences();
     }
 

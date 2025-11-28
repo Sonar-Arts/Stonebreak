@@ -15,27 +15,13 @@ import com.openmason.ui.themes.core.ThemeManager;
 import com.openmason.ui.ViewportController;
 import imgui.ImGui;
 import imgui.flag.ImGuiWindowFlags;
-import imgui.type.ImBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
 /**
- * Property Panel coordinator following SOLID, DRY, YAGNI, and KISS principles.
- *
- * This class is a lightweight coordinator that composes specialized section components.
- * It has been refactored from a 1030-line monolithic class to a clean ~250-line coordinator.
- *
- * Architecture:
- * - Uses dependency injection for all dependencies
- * - Implements composition over inheritance
- * - Each section has a single responsibility
- * - All duplicated code extracted to utilities and components
- * - Removed all YAGNI features (simulated validation, unused metrics, etc.)
- *
- * @see com.openmason.ui.properties.interfaces.IPanelSection for section interface
- * @see com.openmason.ui.properties.state.TransformState for transform state management
+ * Property Panel coordinator
  */
 public class PropertyPanelImGui {
 
@@ -43,19 +29,15 @@ public class PropertyPanelImGui {
 
     // Dependencies (injected)
     private final LegacyCowTextureVariantManager textureManager;
-    private final FileDialogService fileDialogService;
     private final ModelState modelState;
     private final ThemeManager themeManager; // Store for getThemeManager() compatibility
     private final IThemeContext themeContext;
-    private final ITransformState transformState;
     private IViewportConnector viewportConnector;
 
     // Section components (composition)
-    private final ModelInfoSection modelInfoSection;
     private final TextureVariantSection textureVariantSection;  // For BROWSER models
     private final TextureChooserSection textureChooserSection;  // For NEW and OMO_FILE models
     private final TransformSection transformSection;
-    private final DiagnosticsSection diagnosticsSection;
 
     // State
     private String currentModelName = null;
@@ -63,32 +45,22 @@ public class PropertyPanelImGui {
     private String lastViewportModelCheck = null;
     private BlockModel currentEditableModel = null;  // Current editable model for texture reloading
 
-    // Compact/Advanced mode
-    private final ImBoolean compactMode = new ImBoolean(true); // Default to compact mode
-
     /**
      * Create PropertyPanelImGui with dependency injection.
-     *
-     * @param themeManager ThemeManager instance (can be null for basic functionality)
-     * @param fileDialogService File dialog service for texture selection
-     * @param modelState Model state for checking model source
      */
     public PropertyPanelImGui(ThemeManager themeManager, FileDialogService fileDialogService, ModelState modelState) {
         // Initialize dependencies
         this.textureManager = LegacyCowTextureVariantManager.getInstance();
-        this.fileDialogService = fileDialogService;
         this.modelState = modelState;
         this.themeManager = themeManager; // Store for getThemeManager() compatibility
         this.themeContext = new PanelThemeContext(themeManager);
-        this.transformState = new TransformState();
+        ITransformState transformState = new TransformState();
         this.viewportConnector = null; // Set later via setViewport3D()
 
         // Initialize sections (composition)
-        this.modelInfoSection = new ModelInfoSection();
         this.textureVariantSection = new TextureVariantSection();  // For BROWSER models
         this.textureChooserSection = new TextureChooserSection(fileDialogService, modelState);  // For editable models
         this.transformSection = new TransformSection(transformState);
-        this.diagnosticsSection = new DiagnosticsSection();
 
         // Configure section callbacks
         setupSectionCallbacks();
@@ -125,9 +97,7 @@ public class PropertyPanelImGui {
      */
     private void setupSectionCallbacks() {
         // Texture variant section callback (for BROWSER models)
-        textureVariantSection.setOnVariantChanged(variantName -> {
-            switchTextureVariant(variantName);
-        });
+        textureVariantSection.setOnVariantChanged(this::switchTextureVariant);
 
         // Texture chooser section callback (for NEW and OMO_FILE models)
         textureChooserSection.setOnTextureChanged(texturePath -> {
@@ -148,7 +118,7 @@ public class PropertyPanelImGui {
     }
 
     /**
-     * Render the properties panel using Dear ImGui.
+     * Render the standard properties panel using Dear ImGui.
      */
     public void render() {
         // Apply theme-aware styling
@@ -168,12 +138,15 @@ public class PropertyPanelImGui {
             // Matches the pattern used in ColorPanel (texture editor)
             ImGui.beginChild("##properties_content", 0, 0, false);
 
-            // Render sections based on mode (compact/full mode controlled via Preferences)
-            if (compactMode.get()) {
-                renderCompactMode();
+            // Render standard properties: texture selection + transform controls
+            ModelState.ModelSource source = modelState.getModelSource();
+            if (source == ModelState.ModelSource.BROWSER) {
+                textureVariantSection.render();
             } else {
-                renderFullMode();
+                textureChooserSection.render();
             }
+            ImGui.separator();
+            transformSection.render();
 
             // End bounded child region
             ImGui.endChild();
@@ -184,41 +157,6 @@ public class PropertyPanelImGui {
         themeContext.restorePanelStyle();
     }
 
-    /**
-     * Render compact mode (essential controls only).
-     */
-    private void renderCompactMode() {
-        // Render appropriate texture section based on model source
-        ModelState.ModelSource source = modelState.getModelSource();
-        if (source == ModelState.ModelSource.BROWSER) {
-            textureVariantSection.render();
-        } else {
-            textureChooserSection.render();
-        }
-        ImGui.separator();
-        transformSection.render();
-    }
-
-    /**
-     * Render full mode (all sections).
-     */
-    private void renderFullMode() {
-        modelInfoSection.render();
-        ImGui.separator();
-
-        // Render appropriate texture section based on model source
-        ModelState.ModelSource source = modelState.getModelSource();
-        if (source == ModelState.ModelSource.BROWSER) {
-            textureVariantSection.render();
-        } else {
-            textureChooserSection.render();
-        }
-        ImGui.separator();
-
-        transformSection.render();
-        ImGui.separator();
-        diagnosticsSection.render();
-    }
 
     // Public API Methods
 
@@ -232,7 +170,6 @@ public class PropertyPanelImGui {
 
         // Update sections with viewport connector
         transformSection.setViewportConnector(viewportConnector);
-        diagnosticsSection.setViewportConnector(viewportConnector);
     }
 
     /**
@@ -246,7 +183,6 @@ public class PropertyPanelImGui {
         textureChooserSection.setModel(model);
 
         if (model != null) {
-            modelInfoSection.setModelName(model.getName());
             logger.debug("Updated properties panel with editable model: {}", model.getName());
         } else {
             logger.debug("Cleared editable model from properties panel");
@@ -286,8 +222,6 @@ public class PropertyPanelImGui {
 
             // Update sections
             textureVariantSection.setAvailableVariants(variantsToLoad.toArray(new String[0]));
-            modelInfoSection.setModelName(modelName);
-            modelInfoSection.setVariantCount(variantsToLoad.size());
 
             // Load model into viewport
             String modelFileName = modelName.toLowerCase().replace(" ", "_");
@@ -340,37 +274,9 @@ public class PropertyPanelImGui {
         }
     }
 
-    /**
-     * Set compact mode.
-     * Called from PreferencesDialog when user changes the setting.
-     *
-     * @param compact true for compact mode, false for full mode
-     */
-    public void setCompactMode(boolean compact) {
-        this.compactMode.set(compact);
-
-        // Update section visibility based on mode
-        modelInfoSection.setVisible(!compact);
-        diagnosticsSection.setVisible(!compact);
-        transformSection.setShowAdvancedOptions(!compact);
-
-        logger.debug("UI mode changed to: {}", compact ? "Compact" : "Full");
-    }
-
-
-    /**
-     * Get the selected variant.
-     *
-     * @return Selected variant name
-     */
-    public String getSelectedVariant() {
-        return textureVariantSection.getSelectedVariant();
-    }
 
     /**
      * Check if initialized.
-     *
-     * @return true if initialized
      */
     public boolean isInitialized() {
         return initialized;
@@ -378,20 +284,9 @@ public class PropertyPanelImGui {
 
     /**
      * Get the theme manager (for compatibility).
-     *
-     * @return ThemeManager instance or null
      */
     public ThemeManager getThemeManager() {
         return themeManager;
-    }
-
-    /**
-     * Check if theme system is available.
-     *
-     * @return true if available
-     */
-    public boolean isThemeSystemAvailable() {
-        return themeContext.isAvailable();
     }
 
     // Private helper methods
@@ -403,7 +298,7 @@ public class PropertyPanelImGui {
         if (modelName.toLowerCase().contains("cow")) {
             return Arrays.asList("Default", "Angus", "Highland", "Jersey");
         }
-        return Arrays.asList("Default");
+        return List.of("Default");
     }
 
     /**
@@ -421,4 +316,5 @@ public class PropertyPanelImGui {
             viewportConnector.loadModel(modelFileName);
         }
     }
+
 }

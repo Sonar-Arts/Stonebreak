@@ -40,13 +40,8 @@ public class PreferencesDialog {
     private final ImInt pendingDensityIndex = new ImInt(1);
     private boolean hasUnsavedThemeChanges = false;
 
-    // UI settings
-    private final ImBoolean pendingCompactMode = new ImBoolean(true);
-    private boolean hasUnsavedUIChanges = false;
-
     // References
     private ViewportController viewport;
-    private PropertyPanelImGui propertyPanel;
 
     public PreferencesDialog(UIVisibilityState uiState, ThemeManager themeManager,
                              PreferencesManager preferencesManager, StatusService statusService,
@@ -64,13 +59,6 @@ public class PreferencesDialog {
      */
     public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
-    }
-
-    /**
-     * Set property panel reference for UI settings.
-     */
-    public void setPropertyPanel(PropertyPanelImGui propertyPanel) {
-        this.propertyPanel = propertyPanel;
     }
 
     /**
@@ -93,11 +81,6 @@ public class PreferencesDialog {
             }
 
             renderThemeSettings();
-            ImGui.spacing();
-            ImGui.separator();
-            ImGui.spacing();
-
-            renderUISettings();
             ImGui.spacing();
             ImGui.separator();
             ImGui.spacing();
@@ -129,10 +112,6 @@ public class PreferencesDialog {
         DensityManager.UIDensity currentDensity = themeManager.getCurrentDensity();
         pendingDensityIndex.set(currentDensity.ordinal());
         hasUnsavedThemeChanges = false;
-
-        // UI settings
-        pendingCompactMode.set(preferencesManager.getPropertiesCompactMode());
-        hasUnsavedUIChanges = false;
     }
 
     /**
@@ -172,29 +151,6 @@ public class PreferencesDialog {
         if (hasUnsavedThemeChanges) {
             ImGui.spacing();
             ImGui.textColored(1.0f, 0.8f, 0.0f, 1.0f, "* You have unsaved theme changes");
-        }
-    }
-
-    /**
-     * Render UI settings section.
-     */
-    private void renderUISettings() {
-        ImGui.text("UI Settings");
-        ImGui.separator();
-
-        // Compact mode toggle
-        if (ImGui.checkbox("Compact Properties Panel", pendingCompactMode)) {
-            hasUnsavedUIChanges = true;
-        }
-
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Show only essential controls in the properties panel");
-        }
-
-        // Show unsaved changes indicator
-        if (hasUnsavedUIChanges) {
-            ImGui.spacing();
-            ImGui.textColored(1.0f, 0.8f, 0.0f, 1.0f, "* You have unsaved UI changes");
         }
     }
 
@@ -248,17 +204,8 @@ public class PreferencesDialog {
 
         hasUnsavedThemeChanges = false;
 
-        // Apply UI settings
-        boolean compact = pendingCompactMode.get();
-        preferencesManager.setPropertiesCompactMode(compact);
-        if (propertyPanel != null) {
-            propertyPanel.setCompactMode(compact);
-        }
-        hasUnsavedUIChanges = false;
-
         statusService.updateStatus("Preferences applied: " + selectedTheme.getName() +
-                " / " + selectedDensity.getDisplayName() +
-                " / " + (compact ? "Compact" : "Full") + " mode");
+                " / " + selectedDensity.getDisplayName());
     }
 
     /**
@@ -273,14 +220,6 @@ public class PreferencesDialog {
         pendingThemeIndex.set(0);
         pendingDensityIndex.set(1);
         hasUnsavedThemeChanges = false;
-
-        // Reset UI settings to default
-        pendingCompactMode.set(true); // Default to compact mode
-        preferencesManager.setPropertiesCompactMode(true);
-        if (propertyPanel != null) {
-            propertyPanel.setCompactMode(true);
-        }
-        hasUnsavedUIChanges = false;
 
         // Reset camera to default
         if (preferencesManager != null) {

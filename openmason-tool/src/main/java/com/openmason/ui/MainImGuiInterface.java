@@ -208,10 +208,6 @@ public class MainImGuiInterface implements ModelBrowserListener {
     private void setupPropertiesPanel() {
         try {
             propertyPanelImGui = new PropertyPanelImGui(themeManager, fileDialogService, modelState);
-
-            // Initialize compact mode from preferences
-            boolean compactMode = preferencesManager.getPropertiesCompactMode();
-            propertyPanelImGui.setCompactMode(compactMode);
         } catch (Exception e) {
             logger.error("Failed to setup properties panel", e);
         }
