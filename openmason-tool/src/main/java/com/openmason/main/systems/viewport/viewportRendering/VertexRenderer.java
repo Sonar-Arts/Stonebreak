@@ -554,6 +554,58 @@ public class VertexRenderer {
         return vertexPositions;
     }
 
+    /**
+     * Update all vertices that match an old position to a new position.
+     * Used for edge translation to update connected vertices.
+     *
+     * @param oldPosition The original vertex position
+     * @param newPosition The new vertex position
+     */
+    public void updateVerticesByPosition(Vector3f oldPosition, Vector3f newPosition) {
+        if (!initialized || vertexPositions == null || vertexCount == 0) {
+            logger.warn("Cannot update vertices: renderer not initialized or no vertices");
+            return;
+        }
+
+        if (oldPosition == null || newPosition == null) {
+            logger.warn("Cannot update vertices: positions are null");
+            return;
+        }
+
+        try {
+            float epsilon = 0.0001f;
+            int updatedCount = 0;
+
+            for (int i = 0; i < vertexCount; i++) {
+                int posIndex = i * 3;
+
+                Vector3f vertexPos = new Vector3f(
+                    vertexPositions[posIndex + 0],
+                    vertexPositions[posIndex + 1],
+                    vertexPositions[posIndex + 2]
+                );
+
+                if (vertexPos.distance(oldPosition) < epsilon) {
+                    // Found matching vertex - update it
+                    updateVertexPosition(i, newPosition);
+                    updatedCount++;
+                }
+            }
+
+            logger.trace("Updated {} vertices from ({}, {}, {}) to ({}, {}, {})",
+                    updatedCount,
+                    String.format("%.2f", oldPosition.x),
+                    String.format("%.2f", oldPosition.y),
+                    String.format("%.2f", oldPosition.z),
+                    String.format("%.2f", newPosition.x),
+                    String.format("%.2f", newPosition.y),
+                    String.format("%.2f", newPosition.z));
+
+        } catch (Exception e) {
+            logger.error("Error updating vertices by position", e);
+        }
+    }
+
     // Getters and setters
 
     public boolean isEnabled() {

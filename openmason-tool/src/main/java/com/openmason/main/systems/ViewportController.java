@@ -47,6 +47,7 @@ public class ViewportController {
     private final RenderingState renderingState;
     private final TransformState transformState;
     private final VertexSelectionState vertexSelectionState;
+    private final com.openmason.main.systems.viewport.state.EdgeSelectionState edgeSelectionState;
 
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
@@ -74,6 +75,7 @@ public class ViewportController {
         this.renderingState = new RenderingState();
         this.transformState = new TransformState();
         this.vertexSelectionState = new VertexSelectionState();
+        this.edgeSelectionState = new com.openmason.main.systems.viewport.state.EdgeSelectionState();
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
@@ -158,6 +160,10 @@ public class ViewportController {
             inputHandler.setVertexSelectionState(vertexSelectionState);
             logger.debug("Vertex selection state connected to input handler");
 
+            // Connect edge selection state for edge manipulation
+            inputHandler.setEdgeSelectionState(edgeSelectionState);
+            logger.debug("Edge selection state connected to input handler");
+
             // Connect transform state for model matrix access in hover detection
             inputHandler.setTransformState(transformState);
             logger.debug("Transform state connected to input handler");
@@ -175,6 +181,22 @@ public class ViewportController {
                 );
                 inputHandler.setVertexTranslationHandler(translationHandler);
                 logger.debug("Vertex translation handler created and connected");
+            }
+
+            // Create and connect edge translation handler
+            if (renderPipeline.getEdgeRenderer() != null && renderPipeline.getVertexRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
+                com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler edgeTranslationHandler =
+                    new com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler(
+                        edgeSelectionState,
+                        renderPipeline.getEdgeRenderer(),
+                        renderPipeline.getVertexRenderer(),  // Pass vertexRenderer for updating connected vertices
+                        renderPipeline.getBlockModelRenderer(),  // Pass blockModelRenderer for cube face updates
+                        viewportState,
+                        renderPipeline,  // Pass renderPipeline for caching control
+                        transformState   // Pass transformState for world/model space conversion
+                    );
+                inputHandler.setEdgeTranslationHandler(edgeTranslationHandler);
+                logger.debug("Edge translation handler created and connected");
             }
 
             viewportState.setViewportInitialized(true);

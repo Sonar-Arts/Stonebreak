@@ -50,6 +50,12 @@ public class ViewportInputHandler {
     // Edge renderer for edge hover detection
     private EdgeRenderer edgeRenderer = null;
 
+    // Edge selection state for edge manipulation
+    private com.openmason.main.systems.viewport.state.EdgeSelectionState edgeSelectionState = null;
+
+    // Edge translation handler for drag operations
+    private com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler edgeTranslationHandler = null;
+
     // Transform state for model matrix access
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
 
@@ -124,6 +130,24 @@ public class ViewportInputHandler {
     public void setEdgeRenderer(EdgeRenderer edgeRenderer) {
         this.edgeRenderer = edgeRenderer;
         logger.debug("Edge renderer set in ViewportInputHandler");
+    }
+
+    /**
+     * Set the edge selection state for edge manipulation.
+     * This should be called after viewport initialization.
+     */
+    public void setEdgeSelectionState(com.openmason.main.systems.viewport.state.EdgeSelectionState edgeSelectionState) {
+        this.edgeSelectionState = edgeSelectionState;
+        logger.debug("Edge selection state set in ViewportInputHandler");
+    }
+
+    /**
+     * Set the edge translation handler for drag operations.
+     * This should be called after viewport initialization.
+     */
+    public void setEdgeTranslationHandler(com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler edgeTranslationHandler) {
+        this.edgeTranslationHandler = edgeTranslationHandler;
+        logger.debug("Edge translation handler set in ViewportInputHandler");
     }
 
     /**
@@ -389,6 +413,109 @@ public class ViewportInputHandler {
             }
         }
 
+        // ========== Edge Selection & Translation Handling (Priority 3) ==========
+        // Handle edge selection and translation - gets priority after vertices but before camera.
+        // Vertices have higher priority than edges (more specific selection).
+        boolean edgeHandledInput = false;
+
+        if (edgeRenderer != null && edgeRenderer.isInitialized() && edgeRenderer.isEnabled() &&
+            edgeSelectionState != null && !gizmoHandledInput && !vertexHandledInput) {
+
+            // Update translation handler camera if available
+            if (edgeTranslationHandler != null) {
+                edgeTranslationHandler.updateCamera(
+                    viewportCamera.getViewMatrix(),
+                    viewportCamera.getProjectionMatrix(),
+                    (int) imageWidth,
+                    (int) imageHeight
+                );
+            }
+
+            // Handle ESC key to cancel drag or deselect edge
+            if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+                if (edgeTranslationHandler != null && edgeTranslationHandler.isDragging()) {
+                    // Cancel active drag
+                    edgeTranslationHandler.cancelDrag();
+                    logger.debug("Edge drag cancelled (ESC key pressed)");
+                    edgeHandledInput = true;
+                } else if (edgeSelectionState.hasSelection()) {
+                    // Clear selection
+                    edgeSelectionState.clearSelection();
+                    edgeRenderer.clearSelection();
+                    logger.debug("Edge selection cleared (ESC key pressed)");
+                    edgeHandledInput = true;
+                }
+            }
+
+            // Handle edge translation (dragging)
+            if (edgeTranslationHandler != null) {
+                if (edgeTranslationHandler.isDragging()) {
+                    // Continue dragging
+                    edgeTranslationHandler.handleMouseMove(viewportMouseX, viewportMouseY);
+                    edgeHandledInput = true;
+
+                    // End drag on mouse release
+                    if (ImGui.isMouseReleased(0)) {
+                        edgeTranslationHandler.handleMouseRelease(viewportMouseX, viewportMouseY);
+                        logger.debug("Edge drag ended");
+                    }
+                } else {
+                    // Start drag on selected edge
+                    if (mouseInBounds && ImGui.isMouseClicked(0) && edgeSelectionState.hasSelection()) {
+                        int selectedEdge = edgeRenderer.getSelectedEdgeIndex();
+                        int hoveredEdge = edgeRenderer.getHoveredEdgeIndex();
+
+                        // Check if clicking on the selected edge
+                        if (selectedEdge >= 0 && selectedEdge == hoveredEdge) {
+                            // Start dragging the selected edge
+                            if (edgeTranslationHandler.handleMousePress(viewportMouseX, viewportMouseY)) {
+                                logger.debug("Started dragging edge {}", selectedEdge);
+                                edgeHandledInput = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle mouse click for edge selection (if not dragging)
+            // Only select if NOT hovering over a vertex (vertices have priority)
+            if (!edgeHandledInput && mouseInBounds && ImGui.isMouseClicked(0)) {
+                int hoveredVertex = (vertexRenderer != null) ? vertexRenderer.getHoveredVertexIndex() : -1;
+                int hoveredEdge = edgeRenderer.getHoveredEdgeIndex();
+
+                // PRIORITY: Only select edge if no vertex is hovered
+                if (hoveredVertex < 0 && hoveredEdge >= 0) {
+                    // Clicking on a hovered edge (and no vertex) - select it
+                    Vector3f[] endpoints = edgeRenderer.getEdgeEndpoints(hoveredEdge);
+                    if (endpoints != null && endpoints.length == 2) {
+                        edgeSelectionState.selectEdge(hoveredEdge, endpoints[0], endpoints[1]);
+                        edgeRenderer.setSelectedEdge(hoveredEdge);
+                        logger.debug("Edge {} selected with endpoints ({}, {}, {}) - ({}, {}, {})",
+                                hoveredEdge,
+                                String.format("%.2f", endpoints[0].x), String.format("%.2f", endpoints[0].y), String.format("%.2f", endpoints[0].z),
+                                String.format("%.2f", endpoints[1].x), String.format("%.2f", endpoints[1].y), String.format("%.2f", endpoints[1].z));
+                        edgeHandledInput = true;
+
+                        // Clear vertex selection when selecting an edge
+                        if (vertexSelectionState != null && vertexSelectionState.hasSelection()) {
+                            vertexSelectionState.clearSelection();
+                            if (vertexRenderer != null) {
+                                vertexRenderer.clearSelection();
+                            }
+                        }
+                    }
+                } else {
+                    // Clicking on empty space (no vertex, no edge) - deselect edge if something was selected
+                    if (hoveredVertex < 0 && hoveredEdge < 0 && edgeSelectionState.hasSelection()) {
+                        edgeSelectionState.clearSelection();
+                        edgeRenderer.clearSelection();
+                        logger.debug("Edge selection cleared (clicked on empty space)");
+                        edgeHandledInput = true;
+                    }
+                }
+            }
+        }
+
         // ========== Vertex Hover Detection ==========
         // Handle vertex hover using the same pattern as gizmo
         if (vertexRenderer != null && vertexRenderer.isInitialized() && vertexRenderer.isEnabled()) {
@@ -430,12 +557,13 @@ public class ViewportInputHandler {
         }
 
         // ========== Camera Input Handling (Fallthrough) ==========
-        // Only process camera input if gizmo or vertex didn't capture the input.
-        // This ensures gizmo and vertex selection have priority over camera controls.
+        // Only process camera input if gizmo, vertex, or edge didn't capture the input.
+        // This ensures proper priority: gizmo > vertex > edge > camera.
         // Camera will only activate when:
         // - Gizmo is disabled OR not active, AND
-        // - Vertex selection didn't handle the input
-        if (!gizmoHandledInput && !vertexHandledInput) {
+        // - Vertex selection didn't handle the input, AND
+        // - Edge selection didn't handle the input
+        if (!gizmoHandledInput && !vertexHandledInput && !edgeHandledInput) {
             boolean mouseClicked = ImGui.isMouseClicked(0);
 
             // Start camera dragging when left mouse button is pressed within viewport bounds

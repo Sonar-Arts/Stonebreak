@@ -41,6 +41,10 @@ public class EdgeRenderer {
     private int hoveredEdgeIndex = -1; // -1 means no edge is hovered
     private float[] edgePositions = null; // Store positions for hit testing
 
+    // Selection state
+    private int selectedEdgeIndex = -1; // -1 means no edge is selected
+    private final Vector3f selectedEdgeColor = new Vector3f(1.0f, 1.0f, 1.0f); // White for selected
+
     // Edge extraction (Single Responsibility)
     private final EdgeExtractor edgeExtractor = new EdgeExtractor();
 
@@ -326,6 +330,148 @@ public class EdgeRenderer {
 
     public boolean isInitialized() {
         return initialized;
+    }
+
+    /**
+     * Get the index of the currently hovered edge.
+     *
+     * @return hovered edge index, or -1 if no edge is hovered
+     */
+    public int getHoveredEdgeIndex() {
+        return hoveredEdgeIndex;
+    }
+
+    /**
+     * Get the index of the currently selected edge.
+     *
+     * @return selected edge index, or -1 if no edge is selected
+     */
+    public int getSelectedEdgeIndex() {
+        return selectedEdgeIndex;
+    }
+
+    /**
+     * Set the selected edge by index.
+     *
+     * @param edgeIndex the index of the edge to select, or -1 to clear selection
+     */
+    public void setSelectedEdge(int edgeIndex) {
+        if (edgeIndex < -1 || edgeIndex >= edgeCount) {
+            logger.warn("Invalid edge index: {}, valid range is -1 to {}", edgeIndex, edgeCount - 1);
+            return;
+        }
+
+        this.selectedEdgeIndex = edgeIndex;
+
+        if (edgeIndex >= 0) {
+            logger.debug("Selected edge {}", edgeIndex);
+        } else {
+            logger.debug("Cleared edge selection");
+        }
+    }
+
+    /**
+     * Clear the edge selection.
+     */
+    public void clearSelection() {
+        this.selectedEdgeIndex = -1;
+    }
+
+    /**
+     * Get the endpoint positions of an edge.
+     *
+     * @param edgeIndex the index of the edge
+     * @return array containing [point1, point2], or null if invalid index
+     */
+    public Vector3f[] getEdgeEndpoints(int edgeIndex) {
+        if (edgeIndex < 0 || edgeIndex >= edgeCount) {
+            return null;
+        }
+
+        if (edgePositions == null) {
+            return null;
+        }
+
+        int posIndex = edgeIndex * 6; // 6 floats per edge (2 points × 3 coords)
+
+        if (posIndex + 5 >= edgePositions.length) {
+            return null;
+        }
+
+        Vector3f point1 = new Vector3f(
+            edgePositions[posIndex + 0],
+            edgePositions[posIndex + 1],
+            edgePositions[posIndex + 2]
+        );
+
+        Vector3f point2 = new Vector3f(
+            edgePositions[posIndex + 3],
+            edgePositions[posIndex + 4],
+            edgePositions[posIndex + 5]
+        );
+
+        return new Vector3f[] { point1, point2 };
+    }
+
+    /**
+     * Update the position of a specific edge.
+     *
+     * @param edgeIndex the index of the edge to update
+     * @param point1 the new position of the first endpoint
+     * @param point2 the new position of the second endpoint
+     */
+    public void updateEdgePosition(int edgeIndex, Vector3f point1, Vector3f point2) {
+        if (!initialized) {
+            logger.warn("Cannot update edge position: renderer not initialized");
+            return;
+        }
+
+        if (edgeIndex < 0 || edgeIndex >= edgeCount) {
+            logger.warn("Invalid edge index: {}", edgeIndex);
+            return;
+        }
+
+        if (edgePositions == null || point1 == null || point2 == null) {
+            logger.warn("Cannot update edge position: null data");
+            return;
+        }
+
+        try {
+            int posIndex = edgeIndex * 6; // 6 floats per edge
+
+            // Update in-memory array
+            edgePositions[posIndex + 0] = point1.x;
+            edgePositions[posIndex + 1] = point1.y;
+            edgePositions[posIndex + 2] = point1.z;
+            edgePositions[posIndex + 3] = point2.x;
+            edgePositions[posIndex + 4] = point2.y;
+            edgePositions[posIndex + 5] = point2.z;
+
+            // Update VBO (interleaved: position + color)
+            // Each endpoint: 6 floats (3 position + 3 color)
+            int dataIndex1 = edgeIndex * 12; // First endpoint
+            int dataIndex2 = edgeIndex * 12 + 6; // Second endpoint
+
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+            // Update first endpoint position
+            float[] posData1 = new float[] { point1.x, point1.y, point1.z };
+            glBufferSubData(GL_ARRAY_BUFFER, dataIndex1 * Float.BYTES, posData1);
+
+            // Update second endpoint position
+            float[] posData2 = new float[] { point2.x, point2.y, point2.z };
+            glBufferSubData(GL_ARRAY_BUFFER, dataIndex2 * Float.BYTES, posData2);
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.trace("Updated edge {} position to ({}, {}, {}) - ({}, {}, {})",
+                    edgeIndex,
+                    String.format("%.2f", point1.x), String.format("%.2f", point1.y), String.format("%.2f", point1.z),
+                    String.format("%.2f", point2.x), String.format("%.2f", point2.y), String.format("%.2f", point2.z));
+
+        } catch (Exception e) {
+            logger.error("Error updating edge position", e);
+        }
     }
 
     /**
