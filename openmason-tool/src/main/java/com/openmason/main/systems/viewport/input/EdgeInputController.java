@@ -1,0 +1,233 @@
+package com.openmason.main.systems.viewport.input;
+
+import com.openmason.main.systems.viewport.state.EdgeSelectionState;
+import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
+import imgui.ImGui;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Handles all edge selection and manipulation input for the viewport.
+ *
+ * Responsibilities:
+ * - Update edge hover detection via raycasting
+ * - Handle edge selection (click to select, but ONLY if no vertex is hovered)
+ * - Handle edge translation (drag to move)
+ * - Handle ESC key (cancel drag or clear selection)
+ * - Delegates translation to EdgeTranslationHandler
+ *
+ * Design:
+ * - Single Responsibility: Edge interaction only
+ * - Delegation: EdgeRenderer for hover, EdgeTranslationHandler for drag
+ * - Priority: High (blocks gizmo and camera, but lower than vertex)
+ * - CRITICAL: Checks vertex hover before selecting edge (vertices have higher priority)
+ * - Returns true if input was handled (edge selected, dragging, etc.)
+ */
+public class EdgeInputController {
+
+    private static final Logger logger = LoggerFactory.getLogger(EdgeInputController.class);
+
+    private EdgeRenderer edgeRenderer = null;
+    private EdgeSelectionState edgeSelectionState = null;
+    private EdgeTranslationHandler edgeTranslationHandler = null;
+    private com.openmason.main.systems.viewport.state.TransformState transformState = null;
+    private VertexRenderer vertexRenderer = null; // For priority check!
+
+    /**
+     * Set the edge renderer for hover detection.
+     */
+    public void setEdgeRenderer(EdgeRenderer edgeRenderer) {
+        this.edgeRenderer = edgeRenderer;
+        logger.debug("Edge renderer set in EdgeInputController");
+    }
+
+    /**
+     * Set the edge selection state for selection management.
+     */
+    public void setEdgeSelectionState(EdgeSelectionState edgeSelectionState) {
+        this.edgeSelectionState = edgeSelectionState;
+        logger.debug("Edge selection state set in EdgeInputController");
+    }
+
+    /**
+     * Set the edge translation handler for drag operations.
+     */
+    public void setEdgeTranslationHandler(EdgeTranslationHandler edgeTranslationHandler) {
+        this.edgeTranslationHandler = edgeTranslationHandler;
+        logger.debug("Edge translation handler set in EdgeInputController");
+    }
+
+    /**
+     * Set the transform state for model matrix access.
+     */
+    public void setTransformState(com.openmason.main.systems.viewport.state.TransformState transformState) {
+        this.transformState = transformState;
+        logger.debug("Transform state set in EdgeInputController");
+    }
+
+    /**
+     * Set the vertex renderer for priority checking.
+     * CRITICAL: Edge controller needs to check if a vertex is hovered before selecting an edge.
+     */
+    public void setVertexRenderer(VertexRenderer vertexRenderer) {
+        this.vertexRenderer = vertexRenderer;
+        logger.debug("Vertex renderer set in EdgeInputController for priority checking");
+    }
+
+    /**
+     * Handle edge input.
+     *
+     * Priority: High (lower than vertex, higher than gizmo and camera)
+     * - Vertex controller processes first (higher priority)
+     * - Edge only selects if no vertex is hovered
+     *
+     * @param context Input context with mouse state
+     * @return True if edge input was handled (blocks gizmo and camera)
+     */
+    public boolean handleInput(InputContext context) {
+        if (edgeRenderer == null || !edgeRenderer.isInitialized() || !edgeRenderer.isEnabled() ||
+            edgeSelectionState == null) {
+            return false; // Edge system not available
+        }
+
+        // Update edge hover detection
+        updateEdgeHover(context);
+
+        // Update translation handler camera if available
+        if (edgeTranslationHandler != null) {
+            edgeTranslationHandler.updateCamera(
+                    context.viewMatrix,
+                    context.projectionMatrix,
+                    context.viewportWidth,
+                    context.viewportHeight
+            );
+        }
+
+        // Handle ESC key to cancel drag or deselect edge
+        if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            if (edgeTranslationHandler != null && edgeTranslationHandler.isDragging()) {
+                // Cancel active drag
+                edgeTranslationHandler.cancelDrag();
+                logger.debug("Edge drag cancelled (ESC key pressed)");
+                return true;
+            } else if (edgeSelectionState.hasSelection()) {
+                // Clear selection
+                edgeSelectionState.clearSelection();
+                edgeRenderer.clearSelection();
+                logger.debug("Edge selection cleared (ESC key pressed)");
+                return true;
+            }
+        }
+
+        // Handle edge translation (dragging)
+        if (edgeTranslationHandler != null && edgeTranslationHandler.isDragging()) {
+            // Continue dragging
+            edgeTranslationHandler.handleMouseMove(context.mouseX, context.mouseY);
+
+            // End drag on mouse release
+            if (context.mouseReleased) {
+                edgeTranslationHandler.handleMouseRelease(context.mouseX, context.mouseY);
+                logger.debug("Edge drag ended");
+            }
+
+            return true; // Block lower-priority controllers while dragging
+        }
+
+        // Start drag on selected edge
+        if (context.mouseInBounds && context.mouseClicked && edgeSelectionState.hasSelection()) {
+            int selectedEdge = edgeRenderer.getSelectedEdgeIndex();
+            int hoveredEdge = edgeRenderer.getHoveredEdgeIndex();
+
+            // Check if clicking on the selected edge
+            if (selectedEdge >= 0 && selectedEdge == hoveredEdge) {
+                // Start dragging the selected edge
+                if (edgeTranslationHandler != null &&
+                    edgeTranslationHandler.handleMousePress(context.mouseX, context.mouseY)) {
+                    logger.debug("Started dragging edge {}", selectedEdge);
+                    return true;
+                }
+            }
+        }
+
+        // Handle mouse click for edge selection (if not dragging)
+        // CRITICAL: Only select edge if NOT hovering over a vertex (vertices have priority)
+        if (context.mouseInBounds && context.mouseClicked) {
+            int hoveredVertex = (vertexRenderer != null) ? vertexRenderer.getHoveredVertexIndex() : -1;
+            int hoveredEdge = edgeRenderer.getHoveredEdgeIndex();
+
+            // PRIORITY: Only select edge if no vertex is hovered
+            if (hoveredVertex < 0 && hoveredEdge >= 0) {
+                // Clicking on a hovered edge (and no vertex) - select it
+                Vector3f[] endpoints = edgeRenderer.getEdgeEndpoints(hoveredEdge);
+                if (endpoints != null && endpoints.length == 2) {
+                    edgeSelectionState.selectEdge(hoveredEdge, endpoints[0], endpoints[1]);
+                    edgeRenderer.setSelectedEdge(hoveredEdge);
+                    logger.debug("Edge {} selected with endpoints ({}, {}, {}) - ({}, {}, {})",
+                            hoveredEdge,
+                            String.format("%.2f", endpoints[0].x), String.format("%.2f", endpoints[0].y), String.format("%.2f", endpoints[0].z),
+                            String.format("%.2f", endpoints[1].x), String.format("%.2f", endpoints[1].y), String.format("%.2f", endpoints[1].z));
+
+                    // Clear vertex selection when selecting an edge
+                    clearVertexSelection();
+
+                    return true; // Block lower-priority controllers
+                }
+            } else {
+                // Clicking on empty space (no vertex, no edge) - deselect edge if something was selected
+                if (hoveredVertex < 0 && hoveredEdge < 0 && edgeSelectionState.hasSelection()) {
+                    edgeSelectionState.clearSelection();
+                    edgeRenderer.clearSelection();
+                    logger.debug("Edge selection cleared (clicked on empty space)");
+                    return true; // Block lower-priority controllers
+                }
+            }
+        }
+
+        return false; // No edge input handled
+    }
+
+    /**
+     * Update edge hover detection.
+     */
+    private void updateEdgeHover(InputContext context) {
+        if (edgeRenderer == null || !edgeRenderer.isInitialized() || !edgeRenderer.isEnabled()) {
+            return;
+        }
+
+        // Get model matrix for proper edge transformation
+        Matrix4f modelMatrix = (transformState != null)
+                ? transformState.getTransformMatrix()
+                : new Matrix4f(); // Identity if no transform state
+
+        // Update edge hover with camera matrices AND model matrix for raycasting
+        edgeRenderer.handleMouseMove(
+                context.mouseX,
+                context.mouseY,
+                context.viewMatrix,
+                context.projectionMatrix,
+                modelMatrix,
+                context.viewportWidth,
+                context.viewportHeight
+        );
+    }
+
+    /**
+     * Clear vertex selection when selecting an edge.
+     * This maintains mutual exclusivity between vertex and edge selection.
+     */
+    private void clearVertexSelection() {
+        if (vertexRenderer != null && vertexRenderer.isInitialized()) {
+            com.openmason.main.systems.viewport.state.VertexSelectionState vertexSelectionState =
+                    new com.openmason.main.systems.viewport.state.VertexSelectionState();
+            if (vertexSelectionState.hasSelection()) {
+                vertexSelectionState.clearSelection();
+                vertexRenderer.clearSelection();
+            }
+        }
+    }
+}
