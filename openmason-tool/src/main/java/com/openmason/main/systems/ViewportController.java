@@ -22,6 +22,7 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -48,6 +49,7 @@ public class ViewportController {
     private final TransformState transformState;
     private final VertexSelectionState vertexSelectionState;
     private final com.openmason.main.systems.viewport.state.EdgeSelectionState edgeSelectionState;
+    private final com.openmason.main.systems.viewport.state.FaceSelectionState faceSelectionState;
 
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
@@ -76,6 +78,7 @@ public class ViewportController {
         this.transformState = new TransformState();
         this.vertexSelectionState = new VertexSelectionState();
         this.edgeSelectionState = new com.openmason.main.systems.viewport.state.EdgeSelectionState();
+        this.faceSelectionState = new com.openmason.main.systems.viewport.state.FaceSelectionState();
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
@@ -155,6 +158,9 @@ public class ViewportController {
             if (renderPipeline.getEdgeRenderer() != null) {
                 inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
             }
+            if (renderPipeline.getFaceRenderer() != null) {
+                inputHandler.setFaceRenderer(renderPipeline.getFaceRenderer());
+            }
 
             // Connect vertex selection state for vertex manipulation
             inputHandler.setVertexSelectionState(vertexSelectionState);
@@ -163,6 +169,10 @@ public class ViewportController {
             // Connect edge selection state for edge manipulation
             inputHandler.setEdgeSelectionState(edgeSelectionState);
             logger.debug("Edge selection state connected to input handler");
+
+            // Connect face selection state for face manipulation
+            inputHandler.setFaceSelectionState(faceSelectionState);
+            logger.debug("Face selection state connected to input handler");
 
             // Connect transform state for model matrix access in hover detection
             inputHandler.setTransformState(transformState);
@@ -197,6 +207,24 @@ public class ViewportController {
                     );
                 inputHandler.setEdgeTranslationHandler(edgeTranslationHandler);
                 logger.debug("Edge translation handler created and connected");
+            }
+
+            // Create and connect face translation handler
+            if (renderPipeline.getFaceRenderer() != null && renderPipeline.getVertexRenderer() != null &&
+                renderPipeline.getEdgeRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
+                FaceTranslationHandler faceTranslationHandler =
+                    new FaceTranslationHandler(
+                        faceSelectionState,
+                        renderPipeline.getFaceRenderer(),
+                        renderPipeline.getVertexRenderer(),  // Pass vertexRenderer for updating face vertices
+                        renderPipeline.getEdgeRenderer(),    // Pass edgeRenderer for updating connected edges
+                        renderPipeline.getBlockModelRenderer(),  // Pass blockModelRenderer for cube face updates
+                        viewportState,
+                        renderPipeline,  // Pass renderPipeline for caching control
+                        transformState   // Pass transformState for world/model space conversion
+                    );
+                inputHandler.setFaceTranslationHandler(faceTranslationHandler);
+                logger.debug("Face translation handler created and connected");
             }
 
             viewportState.setViewportInitialized(true);
