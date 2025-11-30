@@ -1,5 +1,6 @@
 package com.openmason.main.systems.rendering.model.blockmodel;
 
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +33,9 @@ public class BlockModelRenderer {
     private int textureId = 0;
     private boolean hasTransparency = false;
     private UVMode currentUVMode = UVMode.CUBE_NET;  // Default to cube net
+
+    // Original face normals for inversion detection (calculated once at init)
+    private Vector3f[] originalFaceNormals = null;
 
     /**
      * UV mapping mode for texture coordinates.
@@ -93,6 +97,39 @@ public class BlockModelRenderer {
         // Unbind
         glBindVertexArray(0);
 
+        // Calculate original face normals for inversion detection
+        originalFaceNormals = new Vector3f[FACES];
+        int VERTICES_PER_FACE = 4;
+
+        for (int face = 0; face < FACES; face++) {
+            int baseVertex = face * VERTICES_PER_FACE;
+            int baseIndex = baseVertex * FLOATS_PER_VERTEX;
+
+            // Extract first 3 vertices of face for normal calculation
+            Vector3f v0 = new Vector3f(
+                    vertices[baseIndex + 0],
+                    vertices[baseIndex + 1],
+                    vertices[baseIndex + 2]
+            );
+            Vector3f v1 = new Vector3f(
+                    vertices[baseIndex + 5],
+                    vertices[baseIndex + 6],
+                    vertices[baseIndex + 7]
+            );
+            Vector3f v2 = new Vector3f(
+                    vertices[baseIndex + 10],
+                    vertices[baseIndex + 11],
+                    vertices[baseIndex + 12]
+            );
+
+            originalFaceNormals[face] = FaceNormalCalculator.calculateNormal(v0, v1, v2);
+            logger.trace("Calculated original normal for face {}: ({}, {}, {})",
+                    face,
+                    String.format("%.3f", originalFaceNormals[face].x),
+                    String.format("%.3f", originalFaceNormals[face].y),
+                    String.format("%.3f", originalFaceNormals[face].z));
+        }
+
         initialized = true;
         logger.info("BlockModelRenderer initialized successfully");
     }
@@ -112,10 +149,17 @@ public class BlockModelRenderer {
             return;
         }
 
+        // Validate inputs
         if (uniqueVertexPositions == null || uniqueVertexPositions.length != 24) {
             logger.error("Invalid unique vertex positions array: expected 24 floats (8 vertices × 3 coords), got {}",
                     uniqueVertexPositions == null ? "null" : uniqueVertexPositions.length);
             return;
+        }
+
+        // Validate normals initialized
+        if (originalFaceNormals == null || originalFaceNormals.length != FACES) {
+            logger.warn("Original face normals not initialized, rendering may be incorrect");
+            // Continue anyway - generateCorrectedIndices() will use default
         }
 
         try {
@@ -168,16 +212,106 @@ public class BlockModelRenderer {
                 }
             }
 
+            // Generate corrected indices with dynamic winding for inverted faces
+            int[] correctedIndices = generateCorrectedIndices(fullMesh);
+
             // Upload updated mesh to GPU
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, fullMesh, GL_DYNAMIC_DRAW); // Use DYNAMIC_DRAW for editable mesh
+
+            // Upload corrected indices to EBO
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, correctedIndices, GL_DYNAMIC_DRAW);
+
             glBindBuffer(GL_ARRAY_BUFFER, 0);
+            // Note: Don't unbind EBO while VAO is bound (VAO tracks EBO binding)
 
             logger.trace("Updated BlockModelRenderer vertex positions from 8 unique vertices");
 
         } catch (Exception e) {
             logger.error("Error updating vertex positions", e);
         }
+    }
+
+    /**
+     * Generate corrected indices with dynamic winding order based on face orientation.
+     * Detects inverted faces and flips triangle winding to maintain proper rendering.
+     *
+     * @param meshVertices Full mesh vertices (position + UV, interleaved)
+     * @return Corrected index array with flipped winding for inverted faces
+     */
+    private int[] generateCorrectedIndices(float[] meshVertices) {
+        if (originalFaceNormals == null) {
+            logger.warn("Original normals not initialized, using default indices");
+            return CubeNetMeshGenerator.generateIndices();
+        }
+
+        int[] indices = new int[TOTAL_INDICES];
+        int idx = 0;
+        int invertedCount = 0;
+        int VERTICES_PER_FACE = 4;
+
+        for (int face = 0; face < FACES; face++) {
+            int baseVertex = face * VERTICES_PER_FACE;
+
+            // Extract first 3 vertices of this face (x, y, z only)
+            int v0Index = baseVertex * FLOATS_PER_VERTEX;
+            int v1Index = (baseVertex + 1) * FLOATS_PER_VERTEX;
+            int v2Index = (baseVertex + 2) * FLOATS_PER_VERTEX;
+
+            Vector3f v0 = new Vector3f(
+                    meshVertices[v0Index + 0],
+                    meshVertices[v0Index + 1],
+                    meshVertices[v0Index + 2]
+            );
+            Vector3f v1 = new Vector3f(
+                    meshVertices[v1Index + 0],
+                    meshVertices[v1Index + 1],
+                    meshVertices[v1Index + 2]
+            );
+            Vector3f v2 = new Vector3f(
+                    meshVertices[v2Index + 0],
+                    meshVertices[v2Index + 1],
+                    meshVertices[v2Index + 2]
+            );
+
+            // Calculate current face normal
+            Vector3f currentNormal = FaceNormalCalculator.calculateNormal(v0, v1, v2);
+
+            // Check if face is inverted
+            boolean inverted = FaceNormalCalculator.isFaceInverted(currentNormal, originalFaceNormals[face]);
+
+            if (inverted) {
+                invertedCount++;
+                // INVERTED: Flip winding order (CCW → CW)
+                // Triangle 1: 0, 2, 1 (instead of 0, 1, 2)
+                indices[idx++] = baseVertex + 0;
+                indices[idx++] = baseVertex + 2;
+                indices[idx++] = baseVertex + 1;
+
+                // Triangle 2: 2, 0, 3 (instead of 2, 3, 0)
+                indices[idx++] = baseVertex + 2;
+                indices[idx++] = baseVertex + 0;
+                indices[idx++] = baseVertex + 3;
+            } else {
+                // NORMAL: Standard CCW winding
+                // Triangle 1: 0, 1, 2
+                indices[idx++] = baseVertex + 0;
+                indices[idx++] = baseVertex + 1;
+                indices[idx++] = baseVertex + 2;
+
+                // Triangle 2: 2, 3, 0
+                indices[idx++] = baseVertex + 2;
+                indices[idx++] = baseVertex + 3;
+                indices[idx++] = baseVertex + 0;
+            }
+        }
+
+        if (invertedCount > 0) {
+            logger.debug("Generated corrected indices: {} of {} faces inverted", invertedCount, FACES);
+        }
+
+        return indices;
     }
 
     /**
@@ -248,6 +382,36 @@ public class BlockModelRenderer {
             vertices = FlatTextureMeshGenerator.generateVertices();
         }
 
+        // CRITICAL: Recalculate original normals for new vertex layout
+        // Different UV modes may have different vertex orderings
+        if (originalFaceNormals != null) {
+            int VERTICES_PER_FACE = 4;
+
+            for (int face = 0; face < FACES; face++) {
+                int baseVertex = face * VERTICES_PER_FACE;
+                int baseIndex = baseVertex * FLOATS_PER_VERTEX;
+
+                Vector3f v0 = new Vector3f(
+                        vertices[baseIndex + 0],
+                        vertices[baseIndex + 1],
+                        vertices[baseIndex + 2]
+                );
+                Vector3f v1 = new Vector3f(
+                        vertices[baseIndex + 5],
+                        vertices[baseIndex + 6],
+                        vertices[baseIndex + 7]
+                );
+                Vector3f v2 = new Vector3f(
+                        vertices[baseIndex + 10],
+                        vertices[baseIndex + 11],
+                        vertices[baseIndex + 12]
+                );
+
+                originalFaceNormals[face] = FaceNormalCalculator.calculateNormal(v0, v1, v2);
+            }
+            logger.debug("Recalculated original normals for UV mode: {}", currentUVMode);
+        }
+
         // Update vertex buffer
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW);
@@ -295,6 +459,7 @@ public class BlockModelRenderer {
         vao = 0;
         vbo = 0;
         ebo = 0;
+        originalFaceNormals = null;
         initialized = false;
 
         logger.info("BlockModelRenderer cleaned up");
