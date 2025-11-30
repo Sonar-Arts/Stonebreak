@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.blockmodel;
+package com.openmason.main.systems.rendering.model.miscComponents;
 
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import com.openmason.main.systems.menus.textureCreator.io.OMTDeserializer;

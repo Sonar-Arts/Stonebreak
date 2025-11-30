@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.face;
 
-import com.openmason.main.systems.rendering.model.blockmodel.BlockModelRenderer;
+import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.gizmo.interaction.RaycastUtil;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
@@ -31,7 +31,7 @@ public class FaceTranslationHandler {
     private final FaceRenderer faceRenderer;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
-    private final BlockModelRenderer blockModelRenderer;
+    private final ModelRenderer modelRenderer;
     private ViewportUIState viewportState;
     private final RenderPipeline renderPipeline;
     private final TransformState transformState;
@@ -54,7 +54,7 @@ public class FaceTranslationHandler {
      * @param faceRenderer The face renderer for visual updates
      * @param vertexRenderer The vertex renderer for updating connected vertices
      * @param edgeRenderer The edge renderer for updating connected edges
-     * @param blockModelRenderer The block model renderer for updating the solid mesh
+     * @param modelRenderer The block model renderer for updating the solid mesh
      * @param viewportState The viewport state for grid snapping settings
      * @param renderPipeline The render pipeline for marking data dirty
      * @param transformState The transform state for model space conversions
@@ -63,7 +63,7 @@ public class FaceTranslationHandler {
                                    FaceRenderer faceRenderer,
                                    VertexRenderer vertexRenderer,
                                    EdgeRenderer edgeRenderer,
-                                   BlockModelRenderer blockModelRenderer,
+                                   ModelRenderer modelRenderer,
                                    ViewportUIState viewportState,
                                    RenderPipeline renderPipeline,
                                    TransformState transformState) {
@@ -79,7 +79,7 @@ public class FaceTranslationHandler {
         if (edgeRenderer == null) {
             throw new IllegalArgumentException("EdgeRenderer cannot be null");
         }
-        if (blockModelRenderer == null) {
+        if (modelRenderer == null) {
             throw new IllegalArgumentException("BlockModelRenderer cannot be null");
         }
         if (renderPipeline == null) {
@@ -93,7 +93,7 @@ public class FaceTranslationHandler {
         this.faceRenderer = faceRenderer;
         this.vertexRenderer = vertexRenderer;
         this.edgeRenderer = edgeRenderer;
-        this.blockModelRenderer = blockModelRenderer;
+        this.modelRenderer = modelRenderer;
         this.viewportState = viewportState;
         this.renderPipeline = renderPipeline;
         this.transformState = transformState;
@@ -297,8 +297,8 @@ public class FaceTranslationHandler {
 
             // Update block model mesh with reverted vertex positions
             float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && blockModelRenderer != null) {
-                blockModelRenderer.updateVertexPositions(allVertexPositions);
+            if (allVertexPositions != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(allVertexPositions);
             }
         }
 
@@ -346,8 +346,8 @@ public class FaceTranslationHandler {
         // Step 4: CRITICAL - Update BlockModelRenderer mesh (the actual textured cube faces)
         // This ensures the solid mesh stays synchronized with vertex/edge positions
         float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-        if (allVertexPositions != null && blockModelRenderer != null) {
-            blockModelRenderer.updateVertexPositions(allVertexPositions);
+        if (allVertexPositions != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(allVertexPositions);
         }
 
         logger.trace("Updated face {} and all connected geometry (vertices, edges, mesh)", faceIndex);

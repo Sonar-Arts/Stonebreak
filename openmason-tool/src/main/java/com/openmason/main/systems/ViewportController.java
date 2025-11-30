@@ -4,9 +4,9 @@ import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
-import com.openmason.main.systems.rendering.model.blockmodel.BlockModelRenderer;
-import com.openmason.main.systems.rendering.model.blockmodel.OMTTextureLoader;
-import com.openmason.main.systems.rendering.model.blockmodel.TextureLoadResult;
+import com.openmason.main.systems.rendering.model.ModelRenderer;
+import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
+import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import com.openmason.main.systems.viewport.ViewportCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
 import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
@@ -54,7 +54,7 @@ public class ViewportController {
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
-    private final BlockModelRenderer blockModelRenderer;
+    private final ModelRenderer modelRenderer;
 
     // ========== Gizmo ==========
     private final GizmoState gizmoState;
@@ -93,7 +93,7 @@ public class ViewportController {
 
         this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
-        this.blockModelRenderer = new BlockModelRenderer();
+        this.modelRenderer = new ModelRenderer();
 
         this.omtTextureLoader = new OMTTextureLoader();
         this.currentBlockModel = null;
@@ -124,7 +124,7 @@ public class ViewportController {
             if (!ItemManager.isInitialized()) ItemManager.initialize();
             itemRenderer.initialize();
 
-            blockModelRenderer.initialize();
+            modelRenderer.initialize();
             gizmoRenderer.initialize();
 
             inputHandler.setGizmoRenderer(gizmoRenderer);
@@ -136,7 +136,7 @@ public class ViewportController {
             this.renderPipeline = new RenderPipeline(
                 renderContext, resourceManager, shaderManager,
                 blockRenderer, itemRenderer,
-                blockModelRenderer, gizmoRenderer
+                    modelRenderer, gizmoRenderer
             );
 
             // Load vertex point size from config
@@ -328,19 +328,19 @@ public class ViewportController {
 
             if (result.isSuccess()) {
                 if (result.isCubeNet()) {
-                    blockModelRenderer.setUVMode(BlockModelRenderer.UVMode.CUBE_NET);
+                    modelRenderer.setUVMode(ModelRenderer.UVMode.CUBE_NET);
                     logger.debug("Auto-detected CUBE_NET UV mode");
                 } else if (result.isFlat16x16()) {
-                    blockModelRenderer.setUVMode(BlockModelRenderer.UVMode.FLAT);
+                    modelRenderer.setUVMode(ModelRenderer.UVMode.FLAT);
                     logger.debug("Auto-detected FLAT UV mode");
                 } else {
-                    blockModelRenderer.setUVMode(BlockModelRenderer.UVMode.FLAT);
+                    modelRenderer.setUVMode(ModelRenderer.UVMode.FLAT);
                     logger.warn("Non-standard texture size ({}x{}), defaulting to FLAT UV mode",
                         result.getWidth(), result.getHeight());
                 }
 
                 currentBlockModelTextureId = result.getTextureId();
-                blockModelRenderer.setTexture(result);
+                modelRenderer.setTexture(result);
                 logger.info("Loaded BlockModel texture: {}", result);
             } else {
                 logger.error("Failed to load texture from: {}", texturePath);

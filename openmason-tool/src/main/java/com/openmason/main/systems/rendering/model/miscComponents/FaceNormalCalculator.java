@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.blockmodel;
+package com.openmason.main.systems.rendering.model.miscComponents;
 
 import org.joml.Vector3f;
 

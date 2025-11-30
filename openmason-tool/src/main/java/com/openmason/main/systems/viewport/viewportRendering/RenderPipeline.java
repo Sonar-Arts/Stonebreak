@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
-import com.openmason.main.systems.rendering.model.blockmodel.BlockModelRenderer;
+import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
@@ -46,7 +46,7 @@ public class RenderPipeline {
     private final ItemRenderer itemRenderer;
 
     // BlockModel renderer (.OMO editable models)
-    private final BlockModelRenderer blockModelRenderer;
+    private final ModelRenderer modelRenderer;
 
     // Gizmo renderer
     private final GizmoRenderer gizmoRenderer;
@@ -72,7 +72,7 @@ public class RenderPipeline {
      */
     public RenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
                           BlockRenderer blockRenderer, ItemRenderer itemRenderer,
-                          BlockModelRenderer blockModelRenderer,
+                          ModelRenderer modelRenderer,
                           GizmoRenderer gizmoRenderer) {
         this.context = context;
         this.resources = resources;
@@ -83,7 +83,7 @@ public class RenderPipeline {
         this.faceRenderer = new FaceRenderer();
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
-        this.blockModelRenderer = blockModelRenderer;
+        this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
     }
 
@@ -255,7 +255,7 @@ public class RenderPipeline {
      */
     private void renderBlockModel(TransformState transformState) {
         try {
-            if (!blockModelRenderer.isInitialized()) {
+            if (!modelRenderer.isInitialized()) {
                 logger.warn("BlockModelRenderer not initialized");
                 return;
             }
@@ -280,7 +280,7 @@ public class RenderPipeline {
             matrixShader.setBool("uUseTexture", true);
 
             // Render (no state management needed - pipeline handles it)
-            blockModelRenderer.render();
+            modelRenderer.render();
 
         } catch (Exception e) {
             logger.error("Error rendering BlockModel", e);
@@ -505,8 +505,8 @@ public class RenderPipeline {
     /**
      * Gets the block model renderer for external access (vertex editing, etc.).
      */
-    public BlockModelRenderer getBlockModelRenderer() {
-        return blockModelRenderer;
+    public ModelRenderer getBlockModelRenderer() {
+        return modelRenderer;
     }
 
     /**

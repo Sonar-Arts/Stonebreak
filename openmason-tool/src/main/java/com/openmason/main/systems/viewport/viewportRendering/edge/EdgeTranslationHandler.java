@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.edge;
 
-import com.openmason.main.systems.rendering.model.blockmodel.BlockModelRenderer;
+import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.gizmo.interaction.RaycastUtil;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
@@ -28,7 +28,7 @@ public class EdgeTranslationHandler {
     private final EdgeSelectionState selectionState;
     private final EdgeRenderer edgeRenderer;
     private final VertexRenderer vertexRenderer;
-    private final BlockModelRenderer blockModelRenderer;
+    private final ModelRenderer modelRenderer;
     private ViewportUIState viewportState;
     private final RenderPipeline renderPipeline;
     private final TransformState transformState;
@@ -51,7 +51,7 @@ public class EdgeTranslationHandler {
      * @param selectionState The edge selection state
      * @param edgeRenderer The edge renderer for visual updates
      * @param vertexRenderer The vertex renderer for updating connected vertices
-     * @param blockModelRenderer The block model renderer for updating the solid mesh
+     * @param modelRenderer The block model renderer for updating the solid mesh
      * @param viewportState The viewport state for grid snapping settings
      * @param renderPipeline The render pipeline for marking data dirty
      * @param transformState The transform state for model space conversions
@@ -59,7 +59,7 @@ public class EdgeTranslationHandler {
     public EdgeTranslationHandler(EdgeSelectionState selectionState,
                                    EdgeRenderer edgeRenderer,
                                    VertexRenderer vertexRenderer,
-                                   BlockModelRenderer blockModelRenderer,
+                                   ModelRenderer modelRenderer,
                                    ViewportUIState viewportState,
                                    RenderPipeline renderPipeline,
                                    TransformState transformState) {
@@ -72,7 +72,7 @@ public class EdgeTranslationHandler {
         if (vertexRenderer == null) {
             throw new IllegalArgumentException("VertexRenderer cannot be null");
         }
-        if (blockModelRenderer == null) {
+        if (modelRenderer == null) {
             throw new IllegalArgumentException("BlockModelRenderer cannot be null");
         }
         if (renderPipeline == null) {
@@ -85,7 +85,7 @@ public class EdgeTranslationHandler {
         this.selectionState = selectionState;
         this.edgeRenderer = edgeRenderer;
         this.vertexRenderer = vertexRenderer;
-        this.blockModelRenderer = blockModelRenderer;
+        this.modelRenderer = modelRenderer;
         this.viewportState = viewportState;
         this.renderPipeline = renderPipeline;
         this.transformState = transformState;
@@ -281,8 +281,8 @@ public class EdgeTranslationHandler {
 
             // Update block model mesh with reverted vertex positions
             float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && blockModelRenderer != null) {
-                blockModelRenderer.updateVertexPositions(allVertexPositions);
+            if (allVertexPositions != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(allVertexPositions);
             }
         }
 
@@ -330,8 +330,8 @@ public class EdgeTranslationHandler {
         // Step 5: CRITICAL - Update BlockModelRenderer mesh (the actual textured cube faces)
         // This ensures the solid mesh stays synchronized with vertex/edge positions
         float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-        if (allVertexPositions != null && blockModelRenderer != null) {
-            blockModelRenderer.updateVertexPositions(allVertexPositions);
+        if (allVertexPositions != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(allVertexPositions);
         }
 
         logger.trace("Updated edge {} and all connected geometry (vertices, edges, faces)", edgeIndex);

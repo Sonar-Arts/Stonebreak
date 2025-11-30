@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
-import com.openmason.main.systems.rendering.model.blockmodel.BlockModelRenderer;
+import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import com.openmason.main.systems.viewport.gizmo.interaction.RaycastUtil;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
@@ -28,7 +28,7 @@ public class VertexTranslationHandler {
     private final VertexSelectionState selectionState;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
-    private final BlockModelRenderer blockModelRenderer;
+    private final ModelRenderer modelRenderer;
     private ViewportUIState viewportState;
     private final RenderPipeline renderPipeline;
     private final TransformState transformState;
@@ -50,7 +50,7 @@ public class VertexTranslationHandler {
      * @param selectionState The vertex selection state
      * @param vertexRenderer The vertex renderer for visual updates
      * @param edgeRenderer The edge renderer for updating edge endpoints
-     * @param blockModelRenderer The block model renderer for updating the solid cube mesh
+     * @param modelRenderer The block model renderer for updating the solid cube mesh
      * @param viewportState The viewport state for grid snapping settings
      * @param renderPipeline The render pipeline for marking edge data dirty
      * @param transformState The transform state for model space conversions
@@ -58,7 +58,7 @@ public class VertexTranslationHandler {
     public VertexTranslationHandler(VertexSelectionState selectionState,
                                     VertexRenderer vertexRenderer,
                                     EdgeRenderer edgeRenderer,
-                                    BlockModelRenderer blockModelRenderer,
+                                    ModelRenderer modelRenderer,
                                     ViewportUIState viewportState,
                                     RenderPipeline renderPipeline,
                                     TransformState transformState) {
@@ -71,7 +71,7 @@ public class VertexTranslationHandler {
         if (edgeRenderer == null) {
             throw new IllegalArgumentException("EdgeRenderer cannot be null");
         }
-        if (blockModelRenderer == null) {
+        if (modelRenderer == null) {
             throw new IllegalArgumentException("BlockModelRenderer cannot be null");
         }
         if (renderPipeline == null) {
@@ -84,7 +84,7 @@ public class VertexTranslationHandler {
         this.selectionState = selectionState;
         this.vertexRenderer = vertexRenderer;
         this.edgeRenderer = edgeRenderer;
-        this.blockModelRenderer = blockModelRenderer;
+        this.modelRenderer = modelRenderer;
         this.viewportState = viewportState;
         this.renderPipeline = renderPipeline;
         this.transformState = transformState;
@@ -204,8 +204,8 @@ public class VertexTranslationHandler {
             // CRITICAL: Update BlockModelRenderer mesh (the actual solid cube faces)
             // This ensures the textured cube mesh moves with the dragged vertices
             float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && blockModelRenderer != null) {
-                blockModelRenderer.updateVertexPositions(allVertexPositions);
+            if (allVertexPositions != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(allVertexPositions);
             }
 
             logger.trace("Dragging vertex {} to world ({}, {}, {}) → model ({}, {}, {})",

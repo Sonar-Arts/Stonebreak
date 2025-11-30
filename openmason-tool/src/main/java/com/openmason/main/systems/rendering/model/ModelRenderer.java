@@ -1,5 +1,9 @@
-package com.openmason.main.systems.rendering.model.blockmodel;
+package com.openmason.main.systems.rendering.model;
 
+import com.openmason.main.systems.rendering.model.miscComponents.CubeNetMeshGenerator;
+import com.openmason.main.systems.rendering.model.miscComponents.FaceNormalCalculator;
+import com.openmason.main.systems.rendering.model.miscComponents.FlatTextureMeshGenerator;
+import com.openmason.main.systems.rendering.model.miscComponents.TextureLoadResult;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,9 +17,9 @@ import static org.lwjgl.opengl.GL30.*;
 /**
  * Renderer for BlockModel instances (editable .OMO models).
  */
-public class BlockModelRenderer {
+public class ModelRenderer {
 
-    private static final Logger logger = LoggerFactory.getLogger(BlockModelRenderer.class);
+    private static final Logger logger = LoggerFactory.getLogger(ModelRenderer.class);
 
     // OpenGL buffer IDs
     private int vao;  // Vertex Array Object
@@ -50,7 +54,7 @@ public class BlockModelRenderer {
     /**
      * Creates a new BlockModel renderer.
      */
-    public BlockModelRenderer() {
+    public ModelRenderer() {
         logger.debug("BlockModelRenderer created");
     }
 

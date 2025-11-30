@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.blockmodel;
+package com.openmason.main.systems.rendering.model.miscComponents;
 
 /**
  * Generates cube meshes with proper UV mapping for 64x48 cube net textures.
