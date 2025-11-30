@@ -30,5 +30,11 @@ public enum ShaderType {
      *           uGridLineWidth, uFadeDistance, uMaxDistance, uPrimaryColor,
      *           uSecondaryColor, uAxisXColor, uAxisZColor, uFogColor
      */
-    INFINITE_GRID
+    INFINITE_GRID,
+
+    /**
+     * Face selection shader with alpha transparency support for overlay rendering.
+     * Uniforms: uMVPMatrix, uColor, uAlpha
+     */
+    FACE
 }

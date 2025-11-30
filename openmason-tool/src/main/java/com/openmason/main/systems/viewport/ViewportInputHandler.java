@@ -18,11 +18,12 @@ import org.slf4j.LoggerFactory;
  * Main controller for viewport input handling.
  * Orchestrates specialized sub-controllers using priority-based routing.
  *
- * Priority System: vertex > edge > gizmo > camera
- * - Vertex editing has highest priority (most precise)
+ * Priority System: camera (if dragging) > vertex > edge > gizmo > camera (fallback)
+ * - Active camera drag maintains priority (prevents interruption)
+ * - Vertex editing has highest priority for new input (most precise)
  * - Edge editing has second priority (precise editing)
  * - Gizmo has third priority (general transformation)
- * - Camera has lowest priority (fallback)
+ * - Camera has lowest priority as fallback (navigation)
  */
 public class ViewportInputHandler {
 
@@ -172,36 +173,28 @@ public class ViewportInputHandler {
 
         // ========== Priority-Based Input Routing ==========
 
+        // CRITICAL: If camera is already dragging, it maintains priority until drag ends
+        // This prevents other controllers from interrupting an active camera drag
+        if (cameraController.isDragging()) {
+            cameraController.handleInput(context);
+            return; // Camera drag in progress, block all other controllers
+        }
+
         // Priority 1: Vertex (highest)
         // Vertex selection and manipulation gets highest priority (most precise editing)
         if (vertexController.handleInput(context)) {
-            // Release camera mouse capture if vertex editing is active
-            if (cameraController.isDragging()) {
-                logger.debug("Releasing camera mouse capture - vertex editing active");
-                cameraController.stopDragging();
-            }
             return; // Vertex handled input, block all lower-priority controllers
         }
 
         // Priority 2: Edge
         // Edge selection and manipulation (precise editing, but lower than vertex)
         if (edgeController.handleInput(context)) {
-            // Release camera mouse capture if edge editing is active
-            if (cameraController.isDragging()) {
-                logger.debug("Releasing camera mouse capture - edge editing active");
-                cameraController.stopDragging();
-            }
             return; // Edge handled input, block gizmo and camera
         }
 
         // Priority 3: Gizmo
         // Gizmo transformation (general tool, lower priority than precise editing)
         if (gizmoController.handleInput(context)) {
-            // Release camera mouse capture if gizmo is active
-            if (cameraController.isDragging()) {
-                logger.debug("Releasing camera mouse capture - gizmo is active");
-                cameraController.stopDragging();
-            }
             return; // Gizmo handled input, block camera
         }
 

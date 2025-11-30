@@ -33,6 +33,7 @@ public class ShaderManager {
             shaderPrograms.put(ShaderType.BASIC, createBasicShader());
             shaderPrograms.put(ShaderType.MATRIX, createMatrixShader());
             shaderPrograms.put(ShaderType.GIZMO, createGizmoShader());
+            shaderPrograms.put(ShaderType.FACE, createFaceShader());
             shaderPrograms.put(ShaderType.INFINITE_GRID, createInfiniteGridShader());
 
             initialized = true;
@@ -215,6 +216,51 @@ public class ShaderManager {
 
         logger.debug("GIZMO shader created - program: {}, mvp: {}, color: {}", program, mvpLocation, colorLocation);
         return new ShaderProgram(ShaderType.GIZMO, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
+    }
+
+    /**
+     * Create face selection shader with alpha transparency support.
+     * Used for rendering face overlays with hover and selection highlighting.
+     */
+    private ShaderProgram createFaceShader() {
+        logger.debug("Creating FACE shader program");
+
+        String vertexShaderSource = """
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+
+            uniform mat4 uMVPMatrix;
+            uniform vec3 uColor;
+
+            out vec3 vertexColor;
+
+            void main() {
+                gl_Position = uMVPMatrix * vec4(aPos, 1.0);
+                vertexColor = uColor;
+            }
+            """;
+
+        String fragmentShaderSource = """
+            #version 330 core
+            in vec3 vertexColor;
+            out vec4 FragColor;
+
+            uniform float uAlpha;  // Alpha transparency for face overlays
+
+            void main() {
+                FragColor = vec4(vertexColor, uAlpha);
+            }
+            """;
+
+        int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource, "FACE_VERTEX");
+        int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource, "FACE_FRAGMENT");
+        int program = linkProgram(vertexShader, fragmentShader);
+
+        int mvpLocation = glGetUniformLocation(program, "uMVPMatrix");
+        int colorLocation = glGetUniformLocation(program, "uColor");
+
+        logger.debug("FACE shader created - program: {}, mvp: {}, color: {}", program, mvpLocation, colorLocation);
+        return new ShaderProgram(ShaderType.FACE, program, vertexShader, fragmentShader, mvpLocation, colorLocation);
     }
 
     /**
