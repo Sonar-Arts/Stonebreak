@@ -2,7 +2,7 @@ package com.openmason.main.systems.viewport.input;
 
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -16,13 +16,13 @@ import org.slf4j.LoggerFactory;
  * Responsibilities:
  * - Update vertex hover detection via raycasting
  * - Handle vertex selection (click to select)
- * - Handle vertex translation (drag to move)
+ * - Handle vertex translation (drag to move via TranslationCoordinator)
  * - Handle ESC key (cancel drag or clear selection)
- * - Delegates translation to VertexTranslationHandler
+ * - Delegates translation to TranslationCoordinator for mutual exclusion
  *
  * Design:
  * - Single Responsibility: Vertex interaction only
- * - Delegation: VertexRenderer for hover, VertexTranslationHandler for drag
+ * - Delegation: VertexRenderer for hover, TranslationCoordinator for drag
  * - Priority: Highest (most precise editing, blocks all other input)
  * - Returns true if input was handled (vertex selected, dragging, etc.)
  */
@@ -32,7 +32,7 @@ public class VertexInputController {
 
     private VertexRenderer vertexRenderer = null;
     private VertexSelectionState vertexSelectionState = null;
-    private VertexTranslationHandler vertexTranslationHandler = null;
+    private TranslationCoordinator translationCoordinator = null;
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
 
     /**
@@ -52,11 +52,12 @@ public class VertexInputController {
     }
 
     /**
-     * Set the vertex translation handler for drag operations.
+     * Set the translation coordinator for drag operations.
+     * The coordinator ensures mutual exclusion between vertex/edge/face translation.
      */
-    public void setVertexTranslationHandler(VertexTranslationHandler vertexTranslationHandler) {
-        this.vertexTranslationHandler = vertexTranslationHandler;
-        logger.debug("Vertex translation handler set in VertexInputController");
+    public void setTranslationCoordinator(TranslationCoordinator translationCoordinator) {
+        this.translationCoordinator = translationCoordinator;
+        logger.debug("Translation coordinator set in VertexInputController");
     }
 
     /**
@@ -82,22 +83,12 @@ public class VertexInputController {
         // Update vertex hover detection
         updateVertexHover(context);
 
-        // Update translation handler camera if available
-        if (vertexTranslationHandler != null) {
-            vertexTranslationHandler.updateCamera(
-                    context.viewMatrix,
-                    context.projectionMatrix,
-                    context.viewportWidth,
-                    context.viewportHeight
-            );
-        }
-
         // Handle ESC key to cancel drag or deselect vertex
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            if (vertexTranslationHandler != null && vertexTranslationHandler.isDragging()) {
-                // Cancel active drag
-                vertexTranslationHandler.cancelDrag();
-                logger.debug("Vertex drag cancelled (ESC key pressed)");
+            if (translationCoordinator != null && translationCoordinator.isDragging()) {
+                // Cancel active drag (coordinator handles all translation types)
+                translationCoordinator.cancelDrag();
+                logger.debug("Translation drag cancelled (ESC key pressed)");
                 return true;
             } else if (vertexSelectionState.hasSelection()) {
                 // Clear selection
@@ -109,14 +100,14 @@ public class VertexInputController {
         }
 
         // Handle vertex translation (dragging)
-        if (vertexTranslationHandler != null && vertexTranslationHandler.isDragging()) {
-            // Continue dragging
-            vertexTranslationHandler.handleMouseMove(context.mouseX, context.mouseY);
+        if (translationCoordinator != null && translationCoordinator.isDragging()) {
+            // Continue dragging via coordinator
+            translationCoordinator.handleMouseMove(context.mouseX, context.mouseY);
 
             // End drag on mouse release
             if (context.mouseReleased) {
-                vertexTranslationHandler.handleMouseRelease(context.mouseX, context.mouseY);
-                logger.debug("Vertex drag ended");
+                translationCoordinator.handleMouseRelease(context.mouseX, context.mouseY);
+                logger.debug("Translation drag ended");
             }
 
             return true; // Block lower-priority controllers while dragging
@@ -129,10 +120,10 @@ public class VertexInputController {
 
             // Check if clicking on the selected vertex
             if (selectedVertex >= 0 && selectedVertex == hoveredVertex) {
-                // Start dragging the selected vertex
-                if (vertexTranslationHandler != null &&
-                    vertexTranslationHandler.handleMousePress(context.mouseX, context.mouseY)) {
-                    logger.debug("Started dragging vertex {}", selectedVertex);
+                // Start dragging via coordinator (ensures mutual exclusion)
+                if (translationCoordinator != null &&
+                    translationCoordinator.handleMousePress(context.mouseX, context.mouseY)) {
+                    logger.debug("Started translation drag on vertex {}", selectedVertex);
                     return true;
                 }
             }

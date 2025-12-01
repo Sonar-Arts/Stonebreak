@@ -9,9 +9,7 @@ import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import imgui.ImVec2;
 import org.slf4j.Logger;
@@ -20,14 +18,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Main controller for viewport input handling.
  * Orchestrates specialized sub-controllers using priority-based routing.
- *
- * Priority System: camera (if dragging) > vertex > edge > face > gizmo > camera (fallback)
- * - Active camera drag maintains priority (prevents interruption)
- * - Vertex editing has highest priority for new input (most precise)
- * - Edge editing has second priority (precise editing)
- * - Face editing has third priority (surface editing)
- * - Gizmo has fourth priority (general transformation)
- * - Camera has lowest priority as fallback (navigation)
  */
 public class ViewportInputHandler {
 
@@ -43,6 +33,9 @@ public class ViewportInputHandler {
     private final VertexInputController vertexController;
     private final EdgeInputController edgeController;
     private final FaceInputController faceController;
+
+    // Translation coordinator for mutual exclusion
+    private TranslationCoordinator translationCoordinator;
 
     public ViewportInputHandler(ViewportCamera viewportCamera) {
         this.viewportCamera = viewportCamera;
@@ -87,10 +80,18 @@ public class ViewportInputHandler {
     }
 
     /**
-     * Set the vertex translation handler for drag operations.
+     * Set the translation coordinator to manage all translation handlers.
+     * The coordinator is passed to each input controller to ensure mutual exclusion.
      */
-    public void setVertexTranslationHandler(VertexTranslationHandler vertexTranslationHandler) {
-        vertexController.setVertexTranslationHandler(vertexTranslationHandler);
+    public void setTranslationCoordinator(TranslationCoordinator translationCoordinator) {
+        this.translationCoordinator = translationCoordinator;
+
+        // Pass coordinator to individual controllers (they will use it for mutual exclusion)
+        vertexController.setTranslationCoordinator(translationCoordinator);
+        edgeController.setTranslationCoordinator(translationCoordinator);
+        faceController.setTranslationCoordinator(translationCoordinator);
+
+        logger.debug("Translation coordinator set and distributed to input controllers");
     }
 
     /**
@@ -106,13 +107,6 @@ public class ViewportInputHandler {
      */
     public void setEdgeSelectionState(EdgeSelectionState edgeSelectionState) {
         edgeController.setEdgeSelectionState(edgeSelectionState);
-    }
-
-    /**
-     * Set the edge translation handler for drag operations.
-     */
-    public void setEdgeTranslationHandler(EdgeTranslationHandler edgeTranslationHandler) {
-        edgeController.setEdgeTranslationHandler(edgeTranslationHandler);
     }
 
     /**
@@ -136,13 +130,6 @@ public class ViewportInputHandler {
      */
     public void setFaceSelectionState(FaceSelectionState faceSelectionState) {
         faceController.setFaceSelectionState(faceSelectionState);
-    }
-
-    /**
-     * Set the face translation handler for drag operations.
-     */
-    public void setFaceTranslationHandler(FaceTranslationHandler faceTranslationHandler) {
-        faceController.setFaceTranslationHandler(faceTranslationHandler);
     }
 
     /**
@@ -183,6 +170,16 @@ public class ViewportInputHandler {
                 cameraController.stopDragging();
             }
             return;
+        }
+
+        // Update translation coordinator camera matrices if available
+        if (translationCoordinator != null) {
+            translationCoordinator.updateCamera(
+                    viewportCamera.getViewMatrix(),
+                    viewportCamera.getProjectionMatrix(),
+                    (int) imageWidth,
+                    (int) imageHeight
+            );
         }
 
         // Build input context for sub-controllers
@@ -249,13 +246,6 @@ public class ViewportInputHandler {
     }
 
     /**
-     * Force release mouse capture. Useful for escape key handling.
-     */
-    public void forceReleaseMouse() {
-        cameraController.stopDragging();
-    }
-
-    /**
      * Reset the input handler state.
      */
     public void reset() {
@@ -275,23 +265,4 @@ public class ViewportInputHandler {
         return cameraController.isDragging();
     }
 
-    public boolean isMouseCaptured() {
-        return mouseCaptureManager.isMouseCaptured();
-    }
-
-    public boolean isRawMouseMotionSupported() {
-        return mouseCaptureManager.isRawMouseMotionSupported();
-    }
-
-    public double getSavedCursorX() {
-        return mouseCaptureManager.getSavedCursorX();
-    }
-
-    public double getSavedCursorY() {
-        return mouseCaptureManager.getSavedCursorY();
-    }
-
-    public long getWindowHandle() {
-        return mouseCaptureManager.getWindowHandle();
-    }
 }

@@ -22,7 +22,9 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -178,53 +180,58 @@ public class ViewportController {
             inputHandler.setTransformState(transformState);
             logger.debug("Transform state connected to input handler");
 
-            // Create and connect vertex translation handler
-            if (renderPipeline.getVertexRenderer() != null && renderPipeline.getEdgeRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
-                VertexTranslationHandler translationHandler = new VertexTranslationHandler(
+            // Create translation handlers and coordinator
+            if (renderPipeline.getVertexRenderer() != null && renderPipeline.getEdgeRenderer() != null &&
+                renderPipeline.getFaceRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
+
+                // Create vertex translation handler
+                VertexTranslationHandler vertexTranslationHandler = new VertexTranslationHandler(
                     vertexSelectionState,
                     renderPipeline.getVertexRenderer(),
-                    renderPipeline.getEdgeRenderer(),  // Pass edgeRenderer for direct edge updates
-                    renderPipeline.getBlockModelRenderer(),  // Pass blockModelRenderer for cube face updates
+                    renderPipeline.getEdgeRenderer(),
+                    renderPipeline.getBlockModelRenderer(),
                     viewportState,
-                    renderPipeline,  // Pass renderPipeline for caching control
-                    transformState   // Pass transformState for world/model space conversion
+                    renderPipeline,
+                    transformState
                 );
-                inputHandler.setVertexTranslationHandler(translationHandler);
-                logger.debug("Vertex translation handler created and connected");
-            }
+                logger.debug("Vertex translation handler created");
 
-            // Create and connect edge translation handler
-            if (renderPipeline.getEdgeRenderer() != null && renderPipeline.getVertexRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
-                com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler edgeTranslationHandler =
-                    new com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler(
-                        edgeSelectionState,
-                        renderPipeline.getEdgeRenderer(),
-                        renderPipeline.getVertexRenderer(),  // Pass vertexRenderer for updating connected vertices
-                        renderPipeline.getBlockModelRenderer(),  // Pass blockModelRenderer for cube face updates
-                        viewportState,
-                        renderPipeline,  // Pass renderPipeline for caching control
-                        transformState   // Pass transformState for world/model space conversion
-                    );
-                inputHandler.setEdgeTranslationHandler(edgeTranslationHandler);
-                logger.debug("Edge translation handler created and connected");
-            }
+                // Create edge translation handler
+                EdgeTranslationHandler edgeTranslationHandler = new EdgeTranslationHandler(
+                    edgeSelectionState,
+                    renderPipeline.getEdgeRenderer(),
+                    renderPipeline.getVertexRenderer(),
+                    renderPipeline.getBlockModelRenderer(),
+                    viewportState,
+                    renderPipeline,
+                    transformState
+                );
+                logger.debug("Edge translation handler created");
 
-            // Create and connect face translation handler
-            if (renderPipeline.getFaceRenderer() != null && renderPipeline.getVertexRenderer() != null &&
-                renderPipeline.getEdgeRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
-                FaceTranslationHandler faceTranslationHandler =
-                    new FaceTranslationHandler(
-                        faceSelectionState,
-                        renderPipeline.getFaceRenderer(),
-                        renderPipeline.getVertexRenderer(),  // Pass vertexRenderer for updating face vertices
-                        renderPipeline.getEdgeRenderer(),    // Pass edgeRenderer for updating connected edges
-                        renderPipeline.getBlockModelRenderer(),  // Pass blockModelRenderer for cube face updates
-                        viewportState,
-                        renderPipeline,  // Pass renderPipeline for caching control
-                        transformState   // Pass transformState for world/model space conversion
-                    );
-                inputHandler.setFaceTranslationHandler(faceTranslationHandler);
-                logger.debug("Face translation handler created and connected");
+                // Create face translation handler
+                FaceTranslationHandler faceTranslationHandler = new FaceTranslationHandler(
+                    faceSelectionState,
+                    renderPipeline.getFaceRenderer(),
+                    renderPipeline.getVertexRenderer(),
+                    renderPipeline.getEdgeRenderer(),
+                    renderPipeline.getBlockModelRenderer(),
+                    viewportState,
+                    renderPipeline,
+                    transformState
+                );
+                logger.debug("Face translation handler created");
+
+                // Create coordinator to manage mutual exclusion between handlers
+                TranslationCoordinator translationCoordinator = new TranslationCoordinator(
+                    vertexTranslationHandler,
+                    edgeTranslationHandler,
+                    faceTranslationHandler
+                );
+                logger.debug("Translation coordinator created");
+
+                // Connect coordinator to input handler
+                inputHandler.setTranslationCoordinator(translationCoordinator);
+                logger.debug("Translation coordinator connected to input handler");
             }
 
             viewportState.setViewportInitialized(true);

@@ -4,7 +4,7 @@ import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -18,13 +18,13 @@ import org.slf4j.LoggerFactory;
  * Responsibilities:
  * - Update face hover detection via raycasting
  * - Handle face selection (click to select, but ONLY if no vertex/edge is hovered)
- * - Handle face translation (drag to move)
+ * - Handle face translation (drag to move via TranslationCoordinator)
  * - Handle ESC key (cancel drag or clear selection)
- * - Delegates translation to FaceTranslationHandler
+ * - Delegates translation to TranslationCoordinator for mutual exclusion
  *
  * Design:
  * - Single Responsibility: Face interaction only
- * - Delegation: FaceRenderer for hover, FaceTranslationHandler for drag
+ * - Delegation: FaceRenderer for hover, TranslationCoordinator for drag
  * - Priority: Medium (lower than vertex/edge, higher than gizmo and camera)
  * - CRITICAL: Checks vertex/edge hover before selecting face (vertices/edges have higher priority)
  * - Returns true if input was handled (face selected, dragging, etc.)
@@ -35,7 +35,7 @@ public class FaceInputController {
 
     private FaceRenderer faceRenderer = null;
     private FaceSelectionState faceSelectionState = null;
-    private FaceTranslationHandler faceTranslationHandler = null;
+    private TranslationCoordinator translationCoordinator = null;
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
     private VertexRenderer vertexRenderer = null; // For priority check!
     private EdgeRenderer edgeRenderer = null; // For priority check!
@@ -57,11 +57,12 @@ public class FaceInputController {
     }
 
     /**
-     * Set the face translation handler for drag operations.
+     * Set the translation coordinator for drag operations.
+     * The coordinator ensures mutual exclusion between vertex/edge/face translation.
      */
-    public void setFaceTranslationHandler(FaceTranslationHandler faceTranslationHandler) {
-        this.faceTranslationHandler = faceTranslationHandler;
-        logger.debug("Face translation handler set in FaceInputController");
+    public void setTranslationCoordinator(TranslationCoordinator translationCoordinator) {
+        this.translationCoordinator = translationCoordinator;
+        logger.debug("Translation coordinator set in FaceInputController");
     }
 
     /**
@@ -110,22 +111,12 @@ public class FaceInputController {
         // Update face hover detection
         updateFaceHover(context);
 
-        // Update translation handler camera if available
-        if (faceTranslationHandler != null) {
-            faceTranslationHandler.updateCamera(
-                    context.viewMatrix,
-                    context.projectionMatrix,
-                    context.viewportWidth,
-                    context.viewportHeight
-            );
-        }
-
         // Handle ESC key to cancel drag or deselect face
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            if (faceTranslationHandler != null && faceTranslationHandler.isDragging()) {
-                // Cancel active drag
-                faceTranslationHandler.cancelDrag();
-                logger.debug("Face drag cancelled (ESC key pressed)");
+            if (translationCoordinator != null && translationCoordinator.isDragging()) {
+                // Cancel active drag (coordinator handles all translation types)
+                translationCoordinator.cancelDrag();
+                logger.debug("Translation drag cancelled (ESC key pressed)");
                 return true;
             } else if (faceSelectionState.hasSelection()) {
                 // Clear selection
@@ -137,14 +128,14 @@ public class FaceInputController {
         }
 
         // Handle face translation (dragging)
-        if (faceTranslationHandler != null && faceTranslationHandler.isDragging()) {
-            // Continue dragging
-            faceTranslationHandler.handleMouseMove(context.mouseX, context.mouseY);
+        if (translationCoordinator != null && translationCoordinator.isDragging()) {
+            // Continue dragging via coordinator
+            translationCoordinator.handleMouseMove(context.mouseX, context.mouseY);
 
             // End drag on mouse release
             if (context.mouseReleased) {
-                faceTranslationHandler.handleMouseRelease(context.mouseX, context.mouseY);
-                logger.debug("Face drag ended");
+                translationCoordinator.handleMouseRelease(context.mouseX, context.mouseY);
+                logger.debug("Translation drag ended");
             }
 
             return true; // Block lower-priority controllers while dragging
@@ -157,10 +148,10 @@ public class FaceInputController {
 
             // Check if clicking on the selected face
             if (selectedFace >= 0 && selectedFace == hoveredFace) {
-                // Start dragging the selected face
-                if (faceTranslationHandler != null &&
-                    faceTranslationHandler.handleMousePress(context.mouseX, context.mouseY)) {
-                    logger.debug("Started dragging face {}", selectedFace);
+                // Start dragging via coordinator (ensures mutual exclusion)
+                if (translationCoordinator != null &&
+                    translationCoordinator.handleMousePress(context.mouseX, context.mouseY)) {
+                    logger.debug("Started translation drag on face {}", selectedFace);
                     return true;
                 }
             }

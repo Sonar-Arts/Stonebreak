@@ -3,7 +3,7 @@ package com.openmason.main.systems.viewport.input;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -17,13 +17,13 @@ import org.slf4j.LoggerFactory;
  * Responsibilities:
  * - Update edge hover detection via raycasting
  * - Handle edge selection (click to select, but ONLY if no vertex is hovered)
- * - Handle edge translation (drag to move)
+ * - Handle edge translation (drag to move via TranslationCoordinator)
  * - Handle ESC key (cancel drag or clear selection)
- * - Delegates translation to EdgeTranslationHandler
+ * - Delegates translation to TranslationCoordinator for mutual exclusion
  *
  * Design:
  * - Single Responsibility: Edge interaction only
- * - Delegation: EdgeRenderer for hover, EdgeTranslationHandler for drag
+ * - Delegation: EdgeRenderer for hover, TranslationCoordinator for drag
  * - Priority: High (blocks gizmo and camera, but lower than vertex)
  * - CRITICAL: Checks vertex hover before selecting edge (vertices have higher priority)
  * - Returns true if input was handled (edge selected, dragging, etc.)
@@ -34,7 +34,7 @@ public class EdgeInputController {
 
     private EdgeRenderer edgeRenderer = null;
     private EdgeSelectionState edgeSelectionState = null;
-    private EdgeTranslationHandler edgeTranslationHandler = null;
+    private TranslationCoordinator translationCoordinator = null;
     private com.openmason.main.systems.viewport.state.TransformState transformState = null;
     private VertexRenderer vertexRenderer = null; // For priority check!
 
@@ -55,11 +55,12 @@ public class EdgeInputController {
     }
 
     /**
-     * Set the edge translation handler for drag operations.
+     * Set the translation coordinator for drag operations.
+     * The coordinator ensures mutual exclusion between vertex/edge/face translation.
      */
-    public void setEdgeTranslationHandler(EdgeTranslationHandler edgeTranslationHandler) {
-        this.edgeTranslationHandler = edgeTranslationHandler;
-        logger.debug("Edge translation handler set in EdgeInputController");
+    public void setTranslationCoordinator(TranslationCoordinator translationCoordinator) {
+        this.translationCoordinator = translationCoordinator;
+        logger.debug("Translation coordinator set in EdgeInputController");
     }
 
     /**
@@ -98,22 +99,12 @@ public class EdgeInputController {
         // Update edge hover detection
         updateEdgeHover(context);
 
-        // Update translation handler camera if available
-        if (edgeTranslationHandler != null) {
-            edgeTranslationHandler.updateCamera(
-                    context.viewMatrix,
-                    context.projectionMatrix,
-                    context.viewportWidth,
-                    context.viewportHeight
-            );
-        }
-
         // Handle ESC key to cancel drag or deselect edge
         if (ImGui.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            if (edgeTranslationHandler != null && edgeTranslationHandler.isDragging()) {
-                // Cancel active drag
-                edgeTranslationHandler.cancelDrag();
-                logger.debug("Edge drag cancelled (ESC key pressed)");
+            if (translationCoordinator != null && translationCoordinator.isDragging()) {
+                // Cancel active drag (coordinator handles all translation types)
+                translationCoordinator.cancelDrag();
+                logger.debug("Translation drag cancelled (ESC key pressed)");
                 return true;
             } else if (edgeSelectionState.hasSelection()) {
                 // Clear selection
@@ -125,14 +116,14 @@ public class EdgeInputController {
         }
 
         // Handle edge translation (dragging)
-        if (edgeTranslationHandler != null && edgeTranslationHandler.isDragging()) {
-            // Continue dragging
-            edgeTranslationHandler.handleMouseMove(context.mouseX, context.mouseY);
+        if (translationCoordinator != null && translationCoordinator.isDragging()) {
+            // Continue dragging via coordinator
+            translationCoordinator.handleMouseMove(context.mouseX, context.mouseY);
 
             // End drag on mouse release
             if (context.mouseReleased) {
-                edgeTranslationHandler.handleMouseRelease(context.mouseX, context.mouseY);
-                logger.debug("Edge drag ended");
+                translationCoordinator.handleMouseRelease(context.mouseX, context.mouseY);
+                logger.debug("Translation drag ended");
             }
 
             return true; // Block lower-priority controllers while dragging
@@ -145,10 +136,10 @@ public class EdgeInputController {
 
             // Check if clicking on the selected edge
             if (selectedEdge >= 0 && selectedEdge == hoveredEdge) {
-                // Start dragging the selected edge
-                if (edgeTranslationHandler != null &&
-                    edgeTranslationHandler.handleMousePress(context.mouseX, context.mouseY)) {
-                    logger.debug("Started dragging edge {}", selectedEdge);
+                // Start dragging via coordinator (ensures mutual exclusion)
+                if (translationCoordinator != null &&
+                    translationCoordinator.handleMousePress(context.mouseX, context.mouseY)) {
+                    logger.debug("Started translation drag on edge {}", selectedEdge);
                     return true;
                 }
             }
