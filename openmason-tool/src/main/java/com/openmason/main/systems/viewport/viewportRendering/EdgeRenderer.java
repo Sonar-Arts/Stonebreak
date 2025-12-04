@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
+import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
@@ -45,8 +46,8 @@ public class EdgeRenderer {
     private int selectedEdgeIndex = -1; // -1 means no edge is selected
     private final Vector3f selectedEdgeColor = new Vector3f(1.0f, 1.0f, 1.0f); // White for selected
 
-    // Edge extraction (Single Responsibility)
-    private final EdgeExtractor edgeExtractor = new EdgeExtractor();
+    // Edge extraction (Single Responsibility) - uses interface for polymorphism
+    private final IGeometryExtractor geometryExtractor = new EdgeExtractor();
 
     /**
      * Initialize the edge renderer.
@@ -110,8 +111,8 @@ public class EdgeRenderer {
         }
 
         try {
-            // Extract edges using EdgeExtractor (Single Responsibility)
-            edgePositions = edgeExtractor.extractEdges(parts, transformMatrix);
+            // Extract edges using interface method (polymorphism + validation)
+            edgePositions = geometryExtractor.extractGeometry(parts, transformMatrix);
 
             // Edge positions are [x1,y1,z1, x2,y2,z2, ...] (2 endpoints per edge)
             edgeCount = edgePositions.length / 6; // 6 floats per edge (2 endpoints × 3 coords)

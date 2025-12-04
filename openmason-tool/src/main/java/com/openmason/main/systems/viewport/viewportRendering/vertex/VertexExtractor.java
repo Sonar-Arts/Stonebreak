@@ -26,6 +26,7 @@ public class VertexExtractor implements IGeometryExtractor {
     /**
      * Extract vertices from a collection of model parts with transformation applied.
      * Generic method that works with ANY model type - cow, cube, sheep, etc.
+     * Interface implementation that validates inputs using common utilities.
      *
      * @param parts Model parts to extract from
      * @param globalTransform Global transformation matrix to apply
@@ -33,14 +34,23 @@ public class VertexExtractor implements IGeometryExtractor {
      */
     @Override
     public float[] extractGeometry(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        // Validate input parameters using shared utility
+        GeometryExtractionUtils.validateExtractionParams(parts, globalTransform);
+
+        if (parts.isEmpty()) {
+            return new float[0];
+        }
+
         return extractVertices(parts, globalTransform);
     }
 
     /**
      * Extract vertices from a collection of model parts with transformation applied.
      * Generic method that works with ANY model type - cow, cube, sheep, etc.
+     * Note: Callers should use extractGeometry() for validation, or ensure inputs are valid.
      */
     public float[] extractVertices(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        // Note: Validation done in extractGeometry(), but we keep it here for direct callers
         if (parts == null || parts.isEmpty()) {
             return new float[0];
         }
@@ -102,6 +112,7 @@ public class VertexExtractor implements IGeometryExtractor {
      * @return Array of unique vertex positions [x1,y1,z1, x2,y2,z2, ...]
      */
     public float[] extractUniqueVertices(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        // Note: Validation handled by extractVertices()
         if (parts == null || parts.isEmpty()) {
             return new float[0];
         }

@@ -22,6 +22,7 @@ public class EdgeExtractor implements IGeometryExtractor {
     /**
      * Extract edges from a collection of model parts with transformation applied.
      * Each face (4 vertices) generates 4 edges forming a quad outline.
+     * Interface implementation that validates inputs using common utilities.
      *
      * @param parts Model parts to extract from
      * @param globalTransform Global transformation matrix to apply
@@ -29,14 +30,23 @@ public class EdgeExtractor implements IGeometryExtractor {
      */
     @Override
     public float[] extractGeometry(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        // Validate input parameters using shared utility
+        GeometryExtractionUtils.validateExtractionParams(parts, globalTransform);
+
+        if (parts.isEmpty()) {
+            return new float[0];
+        }
+
         return extractEdges(parts, globalTransform);
     }
 
     /**
      * Extract edges from a collection of model parts with transformation applied.
      * Each face (4 vertices) generates 4 edges forming a quad outline.
+     * Note: Callers should use extractGeometry() for validation, or ensure inputs are valid.
      */
     public float[] extractEdges(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        // Note: Validation done in extractGeometry(), but we keep it here for direct callers
         if (parts == null || parts.isEmpty()) {
             return new float[0];
         }

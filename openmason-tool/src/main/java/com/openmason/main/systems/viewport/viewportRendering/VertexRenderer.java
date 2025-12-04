@@ -1,5 +1,6 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
+import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
@@ -50,8 +51,9 @@ public class VertexRenderer {
     private Map<Integer, List<Integer>> uniqueToMeshMapping = new HashMap<>(); // Maps unique vertex index to mesh vertex indices
     private float[] allMeshVertices = null; // Store ALL mesh vertices for mapping
 
-    // Vertex extraction (Single Responsibility)
-    private final VertexExtractor vertexExtractor = new VertexExtractor();
+    // Vertex extraction (Single Responsibility) - uses interface for polymorphism
+    private final IGeometryExtractor geometryExtractor = new VertexExtractor();
+    private final VertexExtractor vertexExtractor = new VertexExtractor(); // Keep for unique vertices method
 
     /**
      * Initialize the vertex renderer.
@@ -118,10 +120,10 @@ public class VertexRenderer {
         }
 
         try {
-            // Extract ALL mesh vertices (24 for cube) for mapping
-            allMeshVertices = vertexExtractor.extractVertices(parts, transformMatrix);
+            // Extract ALL mesh vertices (24 for cube) for mapping - uses interface method
+            allMeshVertices = geometryExtractor.extractGeometry(parts, transformMatrix);
 
-            // Extract UNIQUE vertices only (8 for cube) for rendering
+            // Extract UNIQUE vertices only (8 for cube) for rendering - uses specific method
             float[] uniquePositions = vertexExtractor.extractUniqueVertices(parts, transformMatrix);
 
             // Store unique positions for hit testing
