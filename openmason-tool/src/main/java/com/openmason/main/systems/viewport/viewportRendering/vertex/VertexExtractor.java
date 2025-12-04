@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
+import com.openmason.main.systems.viewport.viewportRendering.common.GeometryExtractionUtils;
+import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -13,11 +15,26 @@ import java.util.List;
 
 /**
  * Extracts vertices from model data and applies transformations.
+ * Implements IGeometryExtractor for consistency with EdgeExtractor.
+ * Uses GeometryExtractionUtils for shared functionality (DRY principle).
  * Follows Blender's approach: vertices stored in local space, rendered in world space.
  */
-public class VertexExtractor {
+public class VertexExtractor implements IGeometryExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(VertexExtractor.class);
+
+    /**
+     * Extract vertices from a collection of model parts with transformation applied.
+     * Generic method that works with ANY model type - cow, cube, sheep, etc.
+     *
+     * @param parts Model parts to extract from
+     * @param globalTransform Global transformation matrix to apply
+     * @return Array of vertex positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    @Override
+    public float[] extractGeometry(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        return extractVertices(parts, globalTransform);
+    }
 
     /**
      * Extract vertices from a collection of model parts with transformation applied.
@@ -28,13 +45,8 @@ public class VertexExtractor {
             return new float[0];
         }
 
-        // Count total vertices first for efficient array allocation
-        int totalVertices = 0;
-        for (ModelDefinition.ModelPart part : parts) {
-            if (part != null) {
-                totalVertices += part.getVerticesAtOrigin().length;
-            }
-        }
+        // Count total vertices using shared utility
+        int totalVertices = GeometryExtractionUtils.countTotalVertices(parts);
 
         if (totalVertices == 0) {
             return new float[0];
@@ -58,16 +70,12 @@ public class VertexExtractor {
                 // Get part's local transformation matrix
                 Matrix4f partTransform = part.getTransformationMatrix();
 
-                // Combine global and local transforms (matches Blender: local -> world)
-                Matrix4f finalTransform = new Matrix4f(globalTransform).mul(partTransform);
+                // Combine global and local transforms using shared utility
+                Matrix4f finalTransform = GeometryExtractionUtils.createFinalTransform(globalTransform, partTransform);
 
-                // Transform each vertex
+                // Transform each vertex using shared utility
                 for (int i = 0; i < localVertices.length; i += 3) {
-                    // Set vertex position (w=1.0 for position transform)
-                    vertex.set(localVertices[i], localVertices[i + 1], localVertices[i + 2], 1.0f);
-
-                    // Apply transformation
-                    finalTransform.transform(vertex);
+                    GeometryExtractionUtils.transformVertex(localVertices, i, finalTransform, vertex);
 
                     // Store transformed position
                     result[offset++] = vertex.x;

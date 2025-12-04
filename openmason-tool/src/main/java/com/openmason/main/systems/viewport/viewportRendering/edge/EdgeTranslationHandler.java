@@ -2,26 +2,23 @@ package com.openmason.main.systems.viewport.viewportRendering.edge;
 
 import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
-import com.openmason.main.systems.viewport.gizmo.interaction.RaycastUtil;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
-import com.openmason.main.systems.viewport.util.SnappingUtil;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
-import org.joml.Matrix4f;
+import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Handles edge translation through plane-constrained dragging.
- * Follows the same pattern as VertexTranslationHandler (DRY, SOLID).
+ * Extends TranslationHandlerBase for shared functionality (DRY, SOLID).
  * Uses Blender-style plane-constrained movement for intuitive 3D editing.
  */
-public class EdgeTranslationHandler {
+public class EdgeTranslationHandler extends TranslationHandlerBase {
 
     private static final Logger logger = LoggerFactory.getLogger(EdgeTranslationHandler.class);
 
@@ -29,20 +26,9 @@ public class EdgeTranslationHandler {
     private final EdgeRenderer edgeRenderer;
     private final VertexRenderer vertexRenderer;
     private final ModelRenderer modelRenderer;
-    private ViewportUIState viewportState;
     private final RenderPipeline renderPipeline;
-    private final TransformState transformState;
 
-    // Cached camera matrices
-    private Matrix4f viewMatrix = new Matrix4f();
-    private Matrix4f projectionMatrix = new Matrix4f();
-    private int viewportWidth = 1;
-    private int viewportHeight = 1;
-
-    // Drag state
-    private boolean isDragging = false;
-    private float dragStartMouseX = 0.0f;
-    private float dragStartMouseY = 0.0f;
+    // Edge-specific drag state
     private Vector3f dragStartDelta = new Vector3f(); // Track accumulated translation
 
     /**
@@ -63,6 +49,8 @@ public class EdgeTranslationHandler {
                                    ViewportUIState viewportState,
                                    RenderPipeline renderPipeline,
                                    TransformState transformState) {
+        super(viewportState, transformState);
+
         if (selectionState == null) {
             throw new IllegalArgumentException("EdgeSelectionState cannot be null");
         }
@@ -78,50 +66,15 @@ public class EdgeTranslationHandler {
         if (renderPipeline == null) {
             throw new IllegalArgumentException("RenderPipeline cannot be null");
         }
-        if (transformState == null) {
-            throw new IllegalArgumentException("TransformState cannot be null");
-        }
 
         this.selectionState = selectionState;
         this.edgeRenderer = edgeRenderer;
         this.vertexRenderer = vertexRenderer;
         this.modelRenderer = modelRenderer;
-        this.viewportState = viewportState;
         this.renderPipeline = renderPipeline;
-        this.transformState = transformState;
     }
 
-    /**
-     * Update viewport state for snapping settings.
-     */
-    public void updateViewportState(ViewportUIState viewportState) {
-        this.viewportState = viewportState;
-    }
-
-    /**
-     * Updates the camera matrices used for raycasting.
-     */
-    public void updateCamera(Matrix4f view, Matrix4f projection, int width, int height) {
-        if (view == null || projection == null) {
-            throw new IllegalArgumentException("Matrices cannot be null");
-        }
-        if (width <= 0 || height <= 0) {
-            throw new IllegalArgumentException("Viewport dimensions must be positive");
-        }
-
-        this.viewMatrix.set(view);
-        this.projectionMatrix.set(projection);
-        this.viewportWidth = width;
-        this.viewportHeight = height;
-    }
-
-    /**
-     * Handles mouse press to start edge drag.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @return true if drag was started, false otherwise
-     */
+    @Override
     public boolean handleMousePress(float mouseX, float mouseY) {
         if (!selectionState.hasSelection()) {
             return false;
@@ -136,7 +89,7 @@ public class EdgeTranslationHandler {
         dragStartMouseY = mouseY;
         dragStartDelta.set(0, 0, 0);
 
-        // Calculate working plane based on camera orientation
+        // Calculate working plane based on camera orientation (from base class)
         Vector3f cameraDirection = getCameraDirection();
         Vector3f edgeMidpoint = selectionState.getMidpoint();
 
@@ -161,12 +114,7 @@ public class EdgeTranslationHandler {
         return true;
     }
 
-    /**
-     * Handles mouse movement during drag.
-     *
-     * @param mouseX Current mouse X position
-     * @param mouseY Current mouse Y position
-     */
+    @Override
     public void handleMouseMove(float mouseX, float mouseY) {
         if (!isDragging || !selectionState.isDragging()) {
             return;
@@ -196,9 +144,9 @@ public class EdgeTranslationHandler {
 
             Vector3f delta = new Vector3f(worldSpacePosition).sub(originalMidpoint);
 
-            // Apply grid snapping to the delta if enabled
+            // Apply grid snapping to the delta if enabled (from base class)
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
-                delta = applyGridSnapping(delta);
+                delta = applyGridSnappingToDelta(delta);
             }
 
             // Convert delta to model space
@@ -226,9 +174,7 @@ public class EdgeTranslationHandler {
         }
     }
 
-    /**
-     * Handles mouse release to end drag.
-     */
+    @Override
     public void handleMouseRelease(float mouseX, float mouseY) {
         if (!isDragging) {
             return;
@@ -240,15 +186,7 @@ public class EdgeTranslationHandler {
         logger.debug("Ended edge drag at edge {}", selectionState.getSelectedEdgeIndex());
     }
 
-    /**
-     * Cancels the current drag operation, reverting to original position.
-     * Reverts all changes made during the drag:
-     * 1. Selected edge position
-     * 2. Both endpoint vertices (and all duplicates)
-     * 3. All edges connected to those vertices
-     * 4. Block model mesh
-     * This mirrors VertexTranslationHandler approach but handles edge-specific updates.
-     */
+    @Override
     public void cancelDrag() {
         if (!isDragging) {
             return;
@@ -338,25 +276,6 @@ public class EdgeTranslationHandler {
     }
 
     /**
-     * Selects the optimal working plane based on camera direction.
-     */
-    private Vector3f selectOptimalPlane(Vector3f cameraDirection) {
-        Vector3f absDir = new Vector3f(
-                Math.abs(cameraDirection.x),
-                Math.abs(cameraDirection.y),
-                Math.abs(cameraDirection.z)
-        );
-
-        if (absDir.x > absDir.y && absDir.x > absDir.z) {
-            return new Vector3f(1, 0, 0); // YZ plane
-        } else if (absDir.y > absDir.z) {
-            return new Vector3f(0, 1, 0); // XZ plane
-        } else {
-            return new Vector3f(0, 0, 1); // XY plane
-        }
-    }
-
-    /**
      * Calculates the new edge midpoint position by intersecting mouse ray with working plane.
      */
     private Vector3f calculateEdgePosition(float mouseX, float mouseY) {
@@ -368,88 +287,10 @@ public class EdgeTranslationHandler {
             return null;
         }
 
-        // Create ray from mouse position
-        CoordinateSystem.Ray ray = CoordinateSystem.createWorldRayFromScreen(
-                mouseX, mouseY,
-                viewportWidth, viewportHeight,
-                viewMatrix, projectionMatrix
-        );
+        // Create ray using base class utility
+        CoordinateSystem.Ray ray = createMouseRay(mouseX, mouseY);
 
-        // Intersect ray with working plane
-        float t = RaycastUtil.intersectRayPlane(ray, planePoint, planeNormal);
-
-        if (Float.isInfinite(t) || t < 0) {
-            // No intersection - keep current position
-            return selectionState.getMidpoint();
-        }
-
-        // Get intersection point
-        Vector3f newPosition = RaycastUtil.getPointOnRay(ray, t);
-
-        // Fallback for parallel planes
-        Vector3f cameraDirection = getCameraDirection();
-        if (cameraDirection != null) {
-            float dotProduct = Math.abs(planeNormal.dot(cameraDirection));
-            if (dotProduct < 0.1f) {
-                planeNormal = new Vector3f(0, 0, 1);
-                t = RaycastUtil.intersectRayPlane(ray, planePoint, planeNormal);
-                if (!Float.isInfinite(t) && t >= 0) {
-                    newPosition = RaycastUtil.getPointOnRay(ray, t);
-                }
-            }
-        }
-
-        return newPosition;
-    }
-
-    /**
-     * Applies grid snapping to a delta vector.
-     */
-    private Vector3f applyGridSnapping(Vector3f delta) {
-        if (viewportState == null) {
-            return delta;
-        }
-
-        float increment = viewportState.getGridSnappingIncrement().get();
-
-        return new Vector3f(
-                SnappingUtil.snapToGrid(delta.x, increment),
-                SnappingUtil.snapToGrid(delta.y, increment),
-                SnappingUtil.snapToGrid(delta.z, increment)
-        );
-    }
-
-    /**
-     * Gets the camera's forward direction vector from the view matrix.
-     */
-    private Vector3f getCameraDirection() {
-        if (viewMatrix == null) {
-            return null;
-        }
-
-        Matrix4f invView = new Matrix4f(viewMatrix).invert();
-        return new Vector3f(-invView.m20(), -invView.m21(), -invView.m22()).normalize();
-    }
-
-    /**
-     * Converts a world-space delta to model-space delta.
-     * Only transforms the direction, not the position.
-     */
-    private Vector3f worldToModelSpaceDelta(Vector3f worldDelta) {
-        Matrix4f modelMatrix = transformState.getTransformMatrix();
-        Matrix4f inverseModelMatrix = new Matrix4f(modelMatrix).invert();
-
-        // Transform delta as a direction (w=0)
-        Vector4f worldDelta4 = new Vector4f(worldDelta.x, worldDelta.y, worldDelta.z, 0.0f);
-        Vector4f modelDelta4 = inverseModelMatrix.transform(worldDelta4);
-
-        return new Vector3f(modelDelta4.x, modelDelta4.y, modelDelta4.z);
-    }
-
-    /**
-     * Check if currently dragging an edge.
-     */
-    public boolean isDragging() {
-        return isDragging;
+        // Intersect ray with plane using base class utility
+        return intersectRayPlane(ray, planePoint, planeNormal, selectionState.getMidpoint());
     }
 }

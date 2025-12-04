@@ -2,26 +2,23 @@ package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
 import com.openmason.main.systems.rendering.model.ModelRenderer;
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
-import com.openmason.main.systems.viewport.gizmo.interaction.RaycastUtil;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
-import com.openmason.main.systems.viewport.util.SnappingUtil;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
-import org.joml.Matrix4f;
+import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Handles vertex translation through plane-constrained dragging.
- * Similar to GizmoInteractionHandler but for direct vertex manipulation.
+ * Extends TranslationHandlerBase for shared functionality (DRY, SOLID).
  * Uses Blender-style plane-constrained movement for intuitive 3D editing.
  */
-public class VertexTranslationHandler {
+public class VertexTranslationHandler extends TranslationHandlerBase {
 
     private static final Logger logger = LoggerFactory.getLogger(VertexTranslationHandler.class);
 
@@ -29,20 +26,7 @@ public class VertexTranslationHandler {
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
     private final ModelRenderer modelRenderer;
-    private ViewportUIState viewportState;
     private final RenderPipeline renderPipeline;
-    private final TransformState transformState;
-
-    // Cached camera matrices
-    private Matrix4f viewMatrix = new Matrix4f();
-    private Matrix4f projectionMatrix = new Matrix4f();
-    private int viewportWidth = 1;
-    private int viewportHeight = 1;
-
-    // Drag state
-    private boolean isDragging = false;
-    private float dragStartMouseX = 0.0f;
-    private float dragStartMouseY = 0.0f;
 
     /**
      * Creates a new VertexTranslationHandler.
@@ -62,6 +46,8 @@ public class VertexTranslationHandler {
                                     ViewportUIState viewportState,
                                     RenderPipeline renderPipeline,
                                     TransformState transformState) {
+        super(viewportState, transformState);
+
         if (selectionState == null) {
             throw new IllegalArgumentException("VertexSelectionState cannot be null");
         }
@@ -77,52 +63,15 @@ public class VertexTranslationHandler {
         if (renderPipeline == null) {
             throw new IllegalArgumentException("RenderPipeline cannot be null");
         }
-        if (transformState == null) {
-            throw new IllegalArgumentException("TransformState cannot be null");
-        }
 
         this.selectionState = selectionState;
         this.vertexRenderer = vertexRenderer;
         this.edgeRenderer = edgeRenderer;
         this.modelRenderer = modelRenderer;
-        this.viewportState = viewportState;
         this.renderPipeline = renderPipeline;
-        this.transformState = transformState;
     }
 
-    /**
-     * Update viewport state for snapping settings.
-     * Should be called whenever viewport state changes.
-     */
-    public void updateViewportState(ViewportUIState viewportState) {
-        this.viewportState = viewportState;
-    }
-
-    /**
-     * Updates the camera matrices used for raycasting.
-     * Should be called each frame before processing input.
-     */
-    public void updateCamera(Matrix4f view, Matrix4f projection, int width, int height) {
-        if (view == null || projection == null) {
-            throw new IllegalArgumentException("Matrices cannot be null");
-        }
-        if (width <= 0 || height <= 0) {
-            throw new IllegalArgumentException("Viewport dimensions must be positive");
-        }
-
-        this.viewMatrix.set(view);
-        this.projectionMatrix.set(projection);
-        this.viewportWidth = width;
-        this.viewportHeight = height;
-    }
-
-    /**
-     * Handles mouse press to start vertex drag.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @return true if drag was started, false otherwise
-     */
+    @Override
     public boolean handleMousePress(float mouseX, float mouseY) {
         if (!selectionState.hasSelection()) {
             return false;
@@ -136,7 +85,7 @@ public class VertexTranslationHandler {
         dragStartMouseX = mouseX;
         dragStartMouseY = mouseY;
 
-        // Calculate working plane based on camera orientation
+        // Calculate working plane based on camera orientation (from base class)
         Vector3f cameraDirection = getCameraDirection();
         Vector3f vertexPosition = selectionState.getCurrentPosition();
 
@@ -161,12 +110,7 @@ public class VertexTranslationHandler {
         return true;
     }
 
-    /**
-     * Handles mouse movement during drag.
-     *
-     * @param mouseX Current mouse X position
-     * @param mouseY Current mouse Y position
-     */
+    @Override
     public void handleMouseMove(float mouseX, float mouseY) {
         if (!isDragging || !selectionState.isDragging()) {
             return;
@@ -176,13 +120,12 @@ public class VertexTranslationHandler {
         Vector3f worldSpacePosition = calculateVertexPosition(mouseX, mouseY);
 
         if (worldSpacePosition != null) {
-            // Apply grid snapping if enabled (in world space)
+            // Apply grid snapping if enabled (from base class)
             if (viewportState != null && viewportState.getGridSnappingEnabled().get()) {
                 worldSpacePosition = applyGridSnapping(worldSpacePosition);
             }
 
-            // Convert from world space to model space
-            // Vertices are stored in model space and transformed by model matrix in shader
+            // Convert from world space to model space (from base class)
             Vector3f modelSpacePosition = worldToModelSpace(worldSpacePosition);
 
             // Get old position BEFORE updating (needed for edge update)
@@ -219,12 +162,7 @@ public class VertexTranslationHandler {
         }
     }
 
-    /**
-     * Handles mouse release to end drag.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     */
+    @Override
     public void handleMouseRelease(float mouseX, float mouseY) {
         if (!isDragging) {
             return;
@@ -239,9 +177,7 @@ public class VertexTranslationHandler {
                 String.format("%.2f", selectionState.getCurrentPosition().z));
     }
 
-    /**
-     * Cancels the current drag operation, reverting to original position.
-     */
+    @Override
     public void cancelDrag() {
         if (!isDragging) {
             return;
@@ -262,42 +198,9 @@ public class VertexTranslationHandler {
     }
 
     /**
-     * Selects the optimal working plane based on camera direction.
-     * Uses Blender-style plane selection: choose plane perpendicular to dominant camera axis.
-     *
-     * @param cameraDirection The camera's forward direction vector
-     * @return Normal vector of the optimal working plane
-     */
-    private Vector3f selectOptimalPlane(Vector3f cameraDirection) {
-        // Find dominant camera axis by checking absolute values
-        Vector3f absDir = new Vector3f(
-                Math.abs(cameraDirection.x),
-                Math.abs(cameraDirection.y),
-                Math.abs(cameraDirection.z)
-        );
-
-        // Choose plane perpendicular to dominant axis
-        // If camera faces +X, use YZ plane (normal = X axis)
-        // If camera faces +Y, use XZ plane (normal = Y axis)
-        // If camera faces +Z, use XY plane (normal = Z axis)
-        if (absDir.x > absDir.y && absDir.x > absDir.z) {
-            return new Vector3f(1, 0, 0); // YZ plane
-        } else if (absDir.y > absDir.z) {
-            return new Vector3f(0, 1, 0); // XZ plane
-        } else {
-            return new Vector3f(0, 0, 1); // XY plane
-        }
-    }
-
-    /**
      * Calculates the new vertex position by intersecting mouse ray with working plane.
-     *
-     * @param mouseX Mouse X position
-     * @param mouseY Mouse Y position
-     * @return New vertex position, or null if no intersection
      */
     private Vector3f calculateVertexPosition(float mouseX, float mouseY) {
-        // Get working plane from selection state
         Vector3f planeNormal = selectionState.getPlaneNormal();
         Vector3f planePoint = selectionState.getPlanePoint();
 
@@ -306,108 +209,10 @@ public class VertexTranslationHandler {
             return null;
         }
 
-        // Create ray from mouse position
-        CoordinateSystem.Ray ray = CoordinateSystem.createWorldRayFromScreen(
-                mouseX, mouseY,
-                viewportWidth, viewportHeight,
-                viewMatrix, projectionMatrix
-        );
+        // Create ray using base class utility
+        CoordinateSystem.Ray ray = createMouseRay(mouseX, mouseY);
 
-        // Intersect ray with working plane
-        float t = RaycastUtil.intersectRayPlane(ray, planePoint, planeNormal);
-
-        if (Float.isInfinite(t) || t < 0) {
-            // No intersection or behind camera - keep current position
-            return selectionState.getCurrentPosition();
-        }
-
-        // Get intersection point (new vertex position)
-        Vector3f newPosition = RaycastUtil.getPointOnRay(ray, t);
-
-        // Fallback check: if plane is nearly parallel to view direction, use fallback plane
-        Vector3f cameraDirection = getCameraDirection();
-        if (cameraDirection != null) {
-            float dotProduct = Math.abs(planeNormal.dot(cameraDirection));
-            if (dotProduct < 0.1f) {
-                // Plane is nearly parallel to camera - use XY plane as fallback
-                logger.trace("Plane parallel to camera (dot={}), using XY fallback", String.format("%.3f", dotProduct));
-                planeNormal = new Vector3f(0, 0, 1);
-                t = RaycastUtil.intersectRayPlane(ray, planePoint, planeNormal);
-                if (!Float.isInfinite(t) && t >= 0) {
-                    newPosition = RaycastUtil.getPointOnRay(ray, t);
-                }
-            }
-        }
-
-        return newPosition;
-    }
-
-    /**
-     * Applies grid snapping to a position.
-     *
-     * @param position The position to snap
-     * @return Snapped position
-     */
-    private Vector3f applyGridSnapping(Vector3f position) {
-        if (viewportState == null) {
-            return position;
-        }
-
-        float increment = viewportState.getGridSnappingIncrement().get();
-
-        return new Vector3f(
-                SnappingUtil.snapToGrid(position.x, increment),
-                SnappingUtil.snapToGrid(position.y, increment),
-                SnappingUtil.snapToGrid(position.z, increment)
-        );
-    }
-
-    /**
-     * Gets the camera's forward direction vector from the view matrix.
-     *
-     * @return Camera forward direction, or null if view matrix is not set
-     */
-    private Vector3f getCameraDirection() {
-        if (viewMatrix == null) {
-            return null;
-        }
-
-        // Extract forward vector from view matrix (negative Z axis in view space)
-        // View matrix inverse gives camera world transform
-        Matrix4f invView = new Matrix4f(viewMatrix).invert();
-
-        // Forward direction is -Z column of camera transform
-        return new Vector3f(-invView.m20(), -invView.m21(), -invView.m22()).normalize();
-    }
-
-    /**
-     * Converts a world-space position to model-space.
-     * Applies the inverse of the model transform matrix.
-     *
-     * @param worldPos Position in world space
-     * @return Position in model space
-     */
-    private Vector3f worldToModelSpace(Vector3f worldPos) {
-        // Get the model transform matrix
-        Matrix4f modelMatrix = transformState.getTransformMatrix();
-
-        // Invert the model matrix to go from world space to model space
-        Matrix4f inverseModelMatrix = new Matrix4f(modelMatrix).invert();
-
-        // Transform the world position to model space
-        Vector4f worldPos4 = new Vector4f(worldPos.x, worldPos.y, worldPos.z, 1.0f);
-        Vector4f modelPos4 = inverseModelMatrix.transform(worldPos4);
-
-        // Return as Vector3f (perspective divide by w if needed, but w should be 1.0)
-        return new Vector3f(modelPos4.x, modelPos4.y, modelPos4.z);
-    }
-
-    /**
-     * Check if currently dragging a vertex.
-     *
-     * @return true if dragging, false otherwise
-     */
-    public boolean isDragging() {
-        return isDragging;
+        // Intersect ray with plane using base class utility
+        return intersectRayPlane(ray, planePoint, planeNormal, selectionState.getCurrentPosition());
     }
 }

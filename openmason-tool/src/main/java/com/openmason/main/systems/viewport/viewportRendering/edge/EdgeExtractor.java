@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering.edge;
 
+import com.openmason.main.systems.viewport.viewportRendering.common.GeometryExtractionUtils;
+import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -10,11 +12,25 @@ import java.util.Collection;
 
 /**
  * Extracts edges from model data and applies transformations.
- * Mirrors VertexExtractor pattern for consistency.
+ * Implements IGeometryExtractor for consistency with VertexExtractor.
+ * Uses GeometryExtractionUtils for shared functionality (DRY principle).
  */
-public class EdgeExtractor {
+public class EdgeExtractor implements IGeometryExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(EdgeExtractor.class);
+
+    /**
+     * Extract edges from a collection of model parts with transformation applied.
+     * Each face (4 vertices) generates 4 edges forming a quad outline.
+     *
+     * @param parts Model parts to extract from
+     * @param globalTransform Global transformation matrix to apply
+     * @return Array of edge endpoint positions [x1,y1,z1, x2,y2,z2, ...]
+     */
+    @Override
+    public float[] extractGeometry(Collection<ModelDefinition.ModelPart> parts, Matrix4f globalTransform) {
+        return extractEdges(parts, globalTransform);
+    }
 
     /**
      * Extract edges from a collection of model parts with transformation applied.
@@ -25,13 +41,8 @@ public class EdgeExtractor {
             return new float[0];
         }
 
-        // Count total edges: each face (4 vertices) has 4 edges
-        int totalVertices = 0;
-        for (ModelDefinition.ModelPart part : parts) {
-            if (part != null) {
-                totalVertices += part.getVerticesAtOrigin().length;
-            }
-        }
+        // Count total vertices using shared utility
+        int totalVertices = GeometryExtractionUtils.countTotalVertices(parts);
 
         if (totalVertices == 0) {
             return new float[0];
@@ -64,21 +75,15 @@ public class EdgeExtractor {
                 // Get part's local transformation matrix
                 Matrix4f partTransform = part.getTransformationMatrix();
 
-                // Combine global and local transforms
-                Matrix4f finalTransform = new Matrix4f(globalTransform).mul(partTransform);
+                // Combine global and local transforms using shared utility
+                Matrix4f finalTransform = GeometryExtractionUtils.createFinalTransform(globalTransform, partTransform);
 
                 // Process each face (4 vertices = 1 quad face)
                 for (int faceStart = 0; faceStart < localVertices.length; faceStart += 12) {
-                    // Transform the 4 vertices of this face
+                    // Transform the 4 vertices of this face using shared utility
                     for (int i = 0; i < 4; i++) {
                         int vertexIndex = faceStart + (i * 3);
-                        vertex.set(
-                            localVertices[vertexIndex],
-                            localVertices[vertexIndex + 1],
-                            localVertices[vertexIndex + 2],
-                            1.0f
-                        );
-                        finalTransform.transform(vertex);
+                        GeometryExtractionUtils.transformVertex(localVertices, vertexIndex, finalTransform, vertex);
                         faceVertices[i].set(vertex);
                     }
 
