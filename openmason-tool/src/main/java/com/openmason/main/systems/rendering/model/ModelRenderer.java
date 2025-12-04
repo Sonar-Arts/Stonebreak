@@ -41,6 +41,10 @@ public class ModelRenderer {
     // Original face normals for inversion detection (calculated once at init)
     private Vector3f[] originalFaceNormals = null;
 
+    // Index caching to avoid regenerating unchanged indices during drag operations
+    private int[] cachedIndices = null;
+    private int cachedInversionPattern = 0; // Bitfield: bit N = face N is inverted
+
     /**
      * UV mapping mode for texture coordinates.
      */
@@ -217,15 +221,20 @@ public class ModelRenderer {
             }
 
             // Generate corrected indices with dynamic winding for inverted faces
+            int previousInversionPattern = cachedInversionPattern;
             int[] correctedIndices = generateCorrectedIndices(fullMesh);
+            boolean indicesChanged = (previousInversionPattern != cachedInversionPattern);
 
-            // Upload updated mesh to GPU
+            // Upload updated mesh to GPU (vertex positions always change during drag)
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, fullMesh, GL_DYNAMIC_DRAW); // Use DYNAMIC_DRAW for editable mesh
 
-            // Upload corrected indices to EBO
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, correctedIndices, GL_DYNAMIC_DRAW);
+            // OPTIMIZATION: Only upload indices if winding changed
+            if (indicesChanged) {
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, correctedIndices, GL_DYNAMIC_DRAW);
+                logger.trace("Uploaded new indices to GPU (inversion pattern changed)");
+            }
 
             glBindBuffer(GL_ARRAY_BUFFER, 0);
             // Note: Don't unbind EBO while VAO is bound (VAO tracks EBO binding)
@@ -240,6 +249,7 @@ public class ModelRenderer {
     /**
      * Generate corrected indices with dynamic winding order based on face orientation.
      * Detects inverted faces and flips triangle winding to maintain proper rendering.
+     * OPTIMIZED: Uses caching to avoid regenerating indices when inversion pattern unchanged.
      *
      * @param meshVertices Full mesh vertices (position + UV, interleaved)
      * @return Corrected index array with flipped winding for inverted faces
@@ -250,9 +260,8 @@ public class ModelRenderer {
             return CubeNetMeshGenerator.generateIndices();
         }
 
-        int[] indices = new int[TOTAL_INDICES];
-        int idx = 0;
-        int invertedCount = 0;
+        // OPTIMIZATION: First pass - calculate current inversion pattern (bitfield)
+        int currentInversionPattern = 0;
         int VERTICES_PER_FACE = 4;
 
         for (int face = 0; face < FACES; face++) {
@@ -282,11 +291,30 @@ public class ModelRenderer {
             // Calculate current face normal
             Vector3f currentNormal = FaceNormalCalculator.calculateNormal(v0, v1, v2);
 
-            // Check if face is inverted
+            // Check if face is inverted and set bit in pattern
             boolean inverted = FaceNormalCalculator.isFaceInverted(currentNormal, originalFaceNormals[face]);
 
             if (inverted) {
-                invertedCount++;
+                currentInversionPattern |= (1 << face); // Set bit for this face
+            }
+        }
+
+        // OPTIMIZATION: Check if inversion pattern changed
+        if (cachedIndices != null && currentInversionPattern == cachedInversionPattern) {
+            logger.trace("Reusing cached indices (inversion pattern unchanged: 0b{}", Integer.toBinaryString(currentInversionPattern));
+            return cachedIndices;
+        }
+
+        // Pattern changed - regenerate indices
+        int[] indices = new int[TOTAL_INDICES];
+        int idx = 0;
+        int invertedCount = Integer.bitCount(currentInversionPattern);
+
+        for (int face = 0; face < FACES; face++) {
+            int baseVertex = face * VERTICES_PER_FACE;
+            boolean inverted = (currentInversionPattern & (1 << face)) != 0;
+
+            if (inverted) {
                 // INVERTED: Flip winding order (CCW → CW)
                 // Triangle 1: 0, 2, 1 (instead of 0, 1, 2)
                 indices[idx++] = baseVertex + 0;
@@ -311,8 +339,13 @@ public class ModelRenderer {
             }
         }
 
+        // Cache the results for future calls
+        cachedIndices = indices;
+        cachedInversionPattern = currentInversionPattern;
+
         if (invertedCount > 0) {
-            logger.debug("Generated corrected indices: {} of {} faces inverted", invertedCount, FACES);
+            logger.trace("Generated corrected indices: {} of {} faces inverted (pattern: 0b{})",
+                invertedCount, FACES, Integer.toBinaryString(currentInversionPattern));
         }
 
         return indices;
@@ -365,6 +398,10 @@ public class ModelRenderer {
 
         logger.info("Changing UV mode from {} to {}", this.currentUVMode, uvMode);
         this.currentUVMode = uvMode;
+
+        // Invalidate index cache since UV mode change requires regeneration
+        cachedIndices = null;
+        cachedInversionPattern = 0;
 
         // Regenerate vertex buffer if initialized
         if (initialized) {

@@ -363,6 +363,14 @@ public class RenderPipeline {
                     if (edgeDataNeedsUpdate) {
                         Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
                         edgeRenderer.updateEdgeData(cubeParts, identityTransform);
+
+                        // FIX: Build edge-to-vertex mapping to prevent unification bug
+                        float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                        if (uniqueVertexPositions != null) {
+                            edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
+                            logger.trace("Built edge-to-vertex mapping for unification prevention");
+                        }
+
                         edgeDataNeedsUpdate = false;
                         logger.trace("Edge data extracted in model space");
                     }

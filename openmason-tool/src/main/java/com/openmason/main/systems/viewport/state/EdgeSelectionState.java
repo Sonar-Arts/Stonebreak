@@ -17,6 +17,11 @@ public class EdgeSelectionState {
     // Selection state
     private int selectedEdgeIndex = -1;  // -1 means no selection
 
+    // Edge endpoint vertex indices (unique vertex indices, NOT mesh indices)
+    // FIX: Track indices to prevent vertex unification bug
+    private int vertexIndex1 = -1;  // Unique vertex index for endpoint 1
+    private int vertexIndex2 = -1;  // Unique vertex index for endpoint 2
+
     // Edge endpoints (2 vertices)
     private Vector3f originalPoint1 = null;
     private Vector3f originalPoint2 = null;
@@ -38,22 +43,30 @@ public class EdgeSelectionState {
     }
 
     /**
-     * Select an edge by index.
+     * Select an edge by index with endpoint vertex indices.
+     * FIX: Now tracks vertex indices to prevent unification bug.
      *
      * @param edgeIndex the index of the edge to select
      * @param point1    the world-space position of the first endpoint
      * @param point2    the world-space position of the second endpoint
-     * @throws IllegalArgumentException if edgeIndex is negative or positions are null
+     * @param vertIdx1  the unique vertex index for endpoint 1
+     * @param vertIdx2  the unique vertex index for endpoint 2
+     * @throws IllegalArgumentException if indices are negative or positions are null
      */
-    public synchronized void selectEdge(int edgeIndex, Vector3f point1, Vector3f point2) {
+    public synchronized void selectEdge(int edgeIndex, Vector3f point1, Vector3f point2, int vertIdx1, int vertIdx2) {
         if (edgeIndex < 0) {
             throw new IllegalArgumentException("Edge index cannot be negative: " + edgeIndex);
         }
         if (point1 == null || point2 == null) {
             throw new IllegalArgumentException("Edge endpoint positions cannot be null");
         }
+        if (vertIdx1 < 0 || vertIdx2 < 0) {
+            throw new IllegalArgumentException("Vertex indices cannot be negative: " + vertIdx1 + ", " + vertIdx2);
+        }
 
         this.selectedEdgeIndex = edgeIndex;
+        this.vertexIndex1 = vertIdx1;
+        this.vertexIndex2 = vertIdx2;
         this.originalPoint1 = new Vector3f(point1);
         this.originalPoint2 = new Vector3f(point2);
         this.currentPoint1 = new Vector3f(point1);
@@ -63,8 +76,8 @@ public class EdgeSelectionState {
         this.planeNormal = null;
         this.planePoint = null;
 
-        logger.debug("Edge {} selected with endpoints ({}, {}, {}) - ({}, {}, {})",
-                edgeIndex,
+        logger.debug("Edge {} selected (vertices {}, {}) with endpoints ({}, {}, {}) - ({}, {}, {})",
+                edgeIndex, vertIdx1, vertIdx2,
                 String.format("%.2f", point1.x), String.format("%.2f", point1.y), String.format("%.2f", point1.z),
                 String.format("%.2f", point2.x), String.format("%.2f", point2.y), String.format("%.2f", point2.z));
     }
@@ -78,6 +91,8 @@ public class EdgeSelectionState {
         }
 
         this.selectedEdgeIndex = -1;
+        this.vertexIndex1 = -1;
+        this.vertexIndex2 = -1;
         this.originalPoint1 = null;
         this.originalPoint2 = null;
         this.currentPoint1 = null;
@@ -211,6 +226,26 @@ public class EdgeSelectionState {
      */
     public synchronized int getSelectedEdgeIndex() {
         return selectedEdgeIndex;
+    }
+
+    /**
+     * Get the unique vertex index for endpoint 1.
+     * FIX: Used for index-based updates to prevent vertex unification.
+     *
+     * @return the vertex index, or -1 if no selection
+     */
+    public synchronized int getVertexIndex1() {
+        return vertexIndex1;
+    }
+
+    /**
+     * Get the unique vertex index for endpoint 2.
+     * FIX: Used for index-based updates to prevent vertex unification.
+     *
+     * @return the vertex index, or -1 if no selection
+     */
+    public synchronized int getVertexIndex2() {
+        return vertexIndex2;
     }
 
     /**

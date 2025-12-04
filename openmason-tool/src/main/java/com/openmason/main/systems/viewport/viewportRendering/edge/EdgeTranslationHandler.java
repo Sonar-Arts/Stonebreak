@@ -159,9 +159,8 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             Vector3f newPoint1 = selectionState.getCurrentPoint1();
             Vector3f newPoint2 = selectionState.getCurrentPoint2();
 
-            // Update geometry: OLD (from renderer) → NEW (calculated)
-            // This is critical - we update from LAST position, not ORIGINAL position
-            updateEdgeAndConnectedGeometry(oldPoint1, oldPoint2, newPoint1, newPoint2, edgeIndex);
+            // FIX: Update geometry using index-based methods (prevents unification)
+            updateEdgeAndConnectedGeometry(newPoint1, newPoint2, edgeIndex);
 
             dragStartDelta.set(modelSpaceDelta);
 
@@ -180,6 +179,14 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
+        // COMMIT: Update ModelRenderer mesh with final vertex positions (once!)
+        // This is the only GPU upload for the entire drag operation
+        float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
+        if (allVertexPositions != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(allVertexPositions);
+            logger.debug("Committed edge drag to ModelRenderer (final GPU upload)");
+        }
+
         selectionState.endDrag();
         isDragging = false;
 
@@ -192,9 +199,9 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // Get positions before cancelling
-        Vector3f currentPoint1 = selectionState.getCurrentPoint1();
-        Vector3f currentPoint2 = selectionState.getCurrentPoint2();
+        // Get vertex indices and original positions
+        int vertexIndex1 = selectionState.getVertexIndex1();
+        int vertexIndex2 = selectionState.getVertexIndex2();
 
         // Revert to original position in selection state
         selectionState.cancelDrag();
@@ -202,25 +209,19 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         // Get original positions (after cancel, current = original)
         Vector3f originalPoint1 = selectionState.getOriginalPoint1();
         Vector3f originalPoint2 = selectionState.getOriginalPoint2();
-        int edgeIndex = selectionState.getSelectedEdgeIndex();
 
-        if (originalPoint1 != null && originalPoint2 != null && currentPoint1 != null && currentPoint2 != null && edgeIndex >= 0) {
-            // Revert ALL vertices at endpoint 1 (current → original)
-            vertexRenderer.updateVerticesByPosition(currentPoint1, originalPoint1);
+        if (originalPoint1 != null && originalPoint2 != null && vertexIndex1 >= 0 && vertexIndex2 >= 0) {
+            // FIX: Revert specific vertices by index (prevents unification)
+            vertexRenderer.updateVerticesByIndices(vertexIndex1, originalPoint1, vertexIndex2, originalPoint2);
 
-            // Revert ALL vertices at endpoint 2 (current → original)
-            vertexRenderer.updateVerticesByPosition(currentPoint2, originalPoint2);
+            // FIX: Revert edges by vertex indices (prevents unification)
+            edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, originalPoint1, vertexIndex2, originalPoint2);
 
-            // Revert ALL edges connected to endpoint 1
-            edgeRenderer.updateEdgesConnectedToVertex(currentPoint1, originalPoint1);
-
-            // Revert ALL edges connected to endpoint 2
-            edgeRenderer.updateEdgesConnectedToVertex(currentPoint2, originalPoint2);
-
-            // Update block model mesh with reverted vertex positions
+            // REVERT: Update ModelRenderer with original positions (once!)
             float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
             if (allVertexPositions != null && modelRenderer != null) {
                 modelRenderer.updateVertexPositions(allVertexPositions);
+                logger.debug("Reverted ModelRenderer to original positions (cancel)");
             }
         }
 
@@ -230,49 +231,40 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
 
     /**
      * Update edge and all connected geometry (vertices, edges, faces).
-     * This unified method ensures updates happen in the correct order:
-     * 1. Update ALL vertices at both old endpoint positions → new positions (handles duplicates)
-     * 2. Update ALL edges connected to those vertices (handles face-based edge cloning)
-     * 3. Update block model mesh (textured cube faces)
+     * FIX: Now uses index-based updates to prevent vertex unification bug.
+     * Updates only the specific unique vertices for this edge, not all vertices at those positions.
      *
-     * CRITICAL: Uses OLD positions from renderer (not original), so incremental updates work correctly.
-     *
-     * @param oldPoint1 Current position of endpoint 1 (from renderer)
-     * @param oldPoint2 Current position of endpoint 2 (from renderer)
      * @param newPoint1 New position of endpoint 1 (calculated)
      * @param newPoint2 New position of endpoint 2 (calculated)
      * @param edgeIndex Index of the selected edge
      */
-    private void updateEdgeAndConnectedGeometry(Vector3f oldPoint1, Vector3f oldPoint2,
-                                                 Vector3f newPoint1, Vector3f newPoint2,
-                                                 int edgeIndex) {
-        if (oldPoint1 == null || oldPoint2 == null || newPoint1 == null || newPoint2 == null) {
+    private void updateEdgeAndConnectedGeometry(Vector3f newPoint1, Vector3f newPoint2, int edgeIndex) {
+        if (newPoint1 == null || newPoint2 == null) {
             logger.warn("Cannot update geometry: null positions");
             return;
         }
 
-        // Step 1: Update ALL vertices at endpoint 1 position (handles duplicate vertices across faces)
-        vertexRenderer.updateVerticesByPosition(oldPoint1, newPoint1);
+        // Get the unique vertex indices for this edge from selection state
+        int vertexIndex1 = selectionState.getVertexIndex1();
+        int vertexIndex2 = selectionState.getVertexIndex2();
 
-        // Step 2: Update ALL vertices at endpoint 2 position (handles duplicate vertices across faces)
-        vertexRenderer.updateVerticesByPosition(oldPoint2, newPoint2);
-
-        // Step 3: Update ALL edges connected to endpoint 1
-        // This finds all edge endpoints at the old position and updates them to the new position
-        // Handles the fact that a cube has 24 edge instances (4 per face × 6 faces)
-        edgeRenderer.updateEdgesConnectedToVertex(oldPoint1, newPoint1);
-
-        // Step 4: Update ALL edges connected to endpoint 2
-        edgeRenderer.updateEdgesConnectedToVertex(oldPoint2, newPoint2);
-
-        // Step 5: CRITICAL - Update BlockModelRenderer mesh (the actual textured cube faces)
-        // This ensures the solid mesh stays synchronized with vertex/edge positions
-        float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-        if (allVertexPositions != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(allVertexPositions);
+        if (vertexIndex1 < 0 || vertexIndex2 < 0) {
+            logger.warn("Cannot update geometry: invalid vertex indices {}, {}", vertexIndex1, vertexIndex2);
+            return;
         }
 
-        logger.trace("Updated edge {} and all connected geometry (vertices, edges, faces)", edgeIndex);
+        // FIX: Update specific vertices by index (prevents unification)
+        vertexRenderer.updateVerticesByIndices(vertexIndex1, newPoint1, vertexIndex2, newPoint2);
+
+        // FIX: Update edges by vertex indices (prevents unification)
+        edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, newPoint1, vertexIndex2, newPoint2);
+
+        // NOTE: ModelRenderer update deferred to handleMouseRelease() for performance
+        // During drag, only update lightweight vertex/edge renderers (points and lines)
+        // This avoids expensive GPU uploads and mesh regeneration on every frame
+
+        logger.trace("Updated edge {} and connected geometry using indices {} and {} (prevents unification)",
+                edgeIndex, vertexIndex1, vertexIndex2);
     }
 
     /**

@@ -608,6 +608,50 @@ public class VertexRenderer {
         }
     }
 
+    /**
+     * Update multiple unique vertices by their indices and new positions.
+     * FIX: Index-based update prevents vertex unification bug.
+     * Uses uniqueToMeshMapping to update all mesh instances correctly.
+     *
+     * @param vertexIndex1 First unique vertex index
+     * @param newPosition1 New position for first vertex
+     * @param vertexIndex2 Second unique vertex index
+     * @param newPosition2 New position for second vertex
+     */
+    public void updateVerticesByIndices(int vertexIndex1, Vector3f newPosition1,
+                                        int vertexIndex2, Vector3f newPosition2) {
+        if (!initialized || vertexPositions == null || vertexCount == 0) {
+            logger.warn("Cannot update vertices: renderer not initialized or no vertices");
+            return;
+        }
+
+        if (newPosition1 == null || newPosition2 == null) {
+            logger.warn("Cannot update vertices: positions are null");
+            return;
+        }
+
+        if (vertexIndex1 < 0 || vertexIndex1 >= vertexCount ||
+            vertexIndex2 < 0 || vertexIndex2 >= vertexCount) {
+            logger.warn("Cannot update vertices: invalid indices {}, {} (count: {})",
+                    vertexIndex1, vertexIndex2, vertexCount);
+            return;
+        }
+
+        try {
+            // Update first vertex using index-based method
+            updateVertexPosition(vertexIndex1, newPosition1);
+
+            // Update second vertex using index-based method
+            updateVertexPosition(vertexIndex2, newPosition2);
+
+            logger.trace("Updated vertices {} and {} to new positions (index-based)",
+                    vertexIndex1, vertexIndex2);
+
+        } catch (Exception e) {
+            logger.error("Error updating vertices by indices", e);
+        }
+    }
+
     // Getters and setters
 
     public boolean isEnabled() {

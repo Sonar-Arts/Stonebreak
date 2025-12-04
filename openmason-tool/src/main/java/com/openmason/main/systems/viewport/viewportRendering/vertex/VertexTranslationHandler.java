@@ -144,12 +144,9 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
                 edgeRenderer.updateEdgesConnectedToVertex(oldModelSpacePosition, modelSpacePosition);
             }
 
-            // CRITICAL: Update BlockModelRenderer mesh (the actual solid cube faces)
-            // This ensures the textured cube mesh moves with the dragged vertices
-            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-            if (allVertexPositions != null && modelRenderer != null) {
-                modelRenderer.updateVertexPositions(allVertexPositions);
-            }
+            // NOTE: ModelRenderer update deferred to handleMouseRelease() for performance
+            // During drag, only update lightweight vertex/edge renderers (points and lines)
+            // This avoids expensive GPU uploads and mesh regeneration on every frame
 
             logger.trace("Dragging vertex {} to world ({}, {}, {}) → model ({}, {}, {})",
                     vertexIndex,
@@ -166,6 +163,14 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
     public void handleMouseRelease(float mouseX, float mouseY) {
         if (!isDragging) {
             return;
+        }
+
+        // COMMIT: Update ModelRenderer mesh with final vertex positions (once!)
+        // This is the only GPU upload for the entire drag operation
+        float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
+        if (allVertexPositions != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(allVertexPositions);
+            logger.debug("Committed vertex drag to ModelRenderer (final GPU upload)");
         }
 
         selectionState.endDrag();
@@ -186,11 +191,26 @@ public class VertexTranslationHandler extends TranslationHandlerBase {
         // Revert to original position
         selectionState.cancelDrag();
 
-        // Update visual to original position
+        // Get current and original positions for reversion
         int vertexIndex = selectionState.getSelectedVertexIndex();
         Vector3f originalPosition = selectionState.getOriginalPosition();
+        Vector3f currentPosition = vertexRenderer.getVertexPosition(vertexIndex);
+
+        // Update visual to original position
         if (originalPosition != null) {
             vertexRenderer.updateVertexPosition(vertexIndex, originalPosition);
+
+            // Revert connected edges
+            if (currentPosition != null) {
+                edgeRenderer.updateEdgesConnectedToVertex(currentPosition, originalPosition);
+            }
+
+            // REVERT: Update ModelRenderer with original positions (once!)
+            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
+            if (allVertexPositions != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(allVertexPositions);
+                logger.debug("Reverted ModelRenderer to original positions (cancel)");
+            }
         }
 
         isDragging = false;

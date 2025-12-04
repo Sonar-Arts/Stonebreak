@@ -46,6 +46,11 @@ public class EdgeRenderer {
     private int selectedEdgeIndex = -1; // -1 means no edge is selected
     private final Vector3f selectedEdgeColor = new Vector3f(1.0f, 1.0f, 1.0f); // White for selected
 
+    // Edge-to-vertex mapping (FIX: prevents vertex unification bug)
+    // Maps edge index → pair of unique vertex indices (v1, v2)
+    // For cube: 12 edges connecting 8 unique vertices
+    private int[][] edgeToVertexMapping = null; // [edgeIndex][0] = v1, [edgeIndex][1] = v2
+
     // Edge extraction (Single Responsibility) - uses interface for polymorphism
     private final IGeometryExtractor geometryExtractor = new EdgeExtractor();
 
@@ -144,6 +149,84 @@ public class EdgeRenderer {
         } catch (Exception e) {
             logger.error("Error updating edge data", e);
         }
+    }
+
+    /**
+     * Build edge-to-vertex mapping from unique vertex positions.
+     * FIX: Creates mapping needed for index-based updates to prevent vertex unification.
+     * Matches edge endpoints to unique vertices using epsilon comparison.
+     *
+     * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
+     */
+    public void buildEdgeToVertexMapping(float[] uniqueVertexPositions) {
+        if (edgePositions == null || edgeCount == 0) {
+            logger.warn("Cannot build edge mapping: no edge data");
+            edgeToVertexMapping = null;
+            return;
+        }
+
+        if (uniqueVertexPositions == null || uniqueVertexPositions.length < 3) {
+            logger.warn("Cannot build edge mapping: invalid unique vertex data");
+            edgeToVertexMapping = null;
+            return;
+        }
+
+        int uniqueVertexCount = uniqueVertexPositions.length / 3;
+        edgeToVertexMapping = new int[edgeCount][2];
+        float epsilon = 0.0001f;
+
+        // For each edge, find which unique vertices it connects
+        for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
+            int edgePosIdx = edgeIdx * 6; // 6 floats per edge (2 endpoints × 3 coords)
+
+            // Edge endpoint 1
+            Vector3f endpoint1 = new Vector3f(
+                edgePositions[edgePosIdx + 0],
+                edgePositions[edgePosIdx + 1],
+                edgePositions[edgePosIdx + 2]
+            );
+
+            // Edge endpoint 2
+            Vector3f endpoint2 = new Vector3f(
+                edgePositions[edgePosIdx + 3],
+                edgePositions[edgePosIdx + 4],
+                edgePositions[edgePosIdx + 5]
+            );
+
+            // Find matching unique vertices
+            int vertexIndex1 = -1;
+            int vertexIndex2 = -1;
+
+            for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
+                int vPosIdx = vIdx * 3;
+                Vector3f uniqueVertex = new Vector3f(
+                    uniqueVertexPositions[vPosIdx + 0],
+                    uniqueVertexPositions[vPosIdx + 1],
+                    uniqueVertexPositions[vPosIdx + 2]
+                );
+
+                if (vertexIndex1 == -1 && endpoint1.distance(uniqueVertex) < epsilon) {
+                    vertexIndex1 = vIdx;
+                }
+                if (vertexIndex2 == -1 && endpoint2.distance(uniqueVertex) < epsilon) {
+                    vertexIndex2 = vIdx;
+                }
+
+                if (vertexIndex1 != -1 && vertexIndex2 != -1) {
+                    break; // Found both
+                }
+            }
+
+            edgeToVertexMapping[edgeIdx][0] = vertexIndex1;
+            edgeToVertexMapping[edgeIdx][1] = vertexIndex2;
+
+            if (vertexIndex1 == -1 || vertexIndex2 == -1) {
+                logger.warn("Edge {} has unmatched endpoints: v1={}, v2={}",
+                    edgeIdx, vertexIndex1, vertexIndex2);
+            }
+        }
+
+        logger.debug("Built edge-to-vertex mapping for {} edges", edgeCount);
     }
 
     /**
@@ -552,6 +635,125 @@ public class EdgeRenderer {
 
         } catch (Exception e) {
             logger.error("Error updating edge endpoints", e);
+        }
+    }
+
+    /**
+     * Get the unique vertex indices for a given edge.
+     * FIX: Returns which unique vertices this edge connects.
+     *
+     * @param edgeIndex The edge index
+     * @return Array of [vertexIndex1, vertexIndex2], or null if not available
+     */
+    public int[] getEdgeVertexIndices(int edgeIndex) {
+        if (edgeToVertexMapping == null || edgeIndex < 0 || edgeIndex >= edgeToVertexMapping.length) {
+            return null;
+        }
+        return new int[] { edgeToVertexMapping[edgeIndex][0], edgeToVertexMapping[edgeIndex][1] };
+    }
+
+    /**
+     * Update edges connected to specific vertex indices.
+     * FIX: Index-based update prevents vertex unification bug.
+     * Only updates edges that connect to the specified unique vertex indices.
+     *
+     * @param vertexIndex1 First unique vertex index
+     * @param newPosition1 New position for first vertex
+     * @param vertexIndex2 Second unique vertex index
+     * @param newPosition2 New position for second vertex
+     */
+    public void updateEdgesByVertexIndices(int vertexIndex1, Vector3f newPosition1,
+                                           int vertexIndex2, Vector3f newPosition2) {
+        if (!initialized) {
+            logger.warn("Cannot update edges: renderer not initialized");
+            return;
+        }
+
+        if (edgePositions == null || edgeCount == 0) {
+            logger.warn("Cannot update edges: no edge data");
+            return;
+        }
+
+        if (edgeToVertexMapping == null) {
+            logger.warn("Cannot update edges: mapping not built. Call buildEdgeToVertexMapping() first");
+            return;
+        }
+
+        if (newPosition1 == null || newPosition2 == null) {
+            logger.warn("Cannot update edges: positions are null");
+            return;
+        }
+
+        try {
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            int updatedCount = 0;
+
+            // Scan all edges and update those connected to either vertex
+            for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
+                int v1 = edgeToVertexMapping[edgeIdx][0];
+                int v2 = edgeToVertexMapping[edgeIdx][1];
+
+                // Check if this edge connects to either of the moved vertices
+                boolean endpoint1Updated = false;
+                boolean endpoint2Updated = false;
+
+                Vector3f newEndpoint1 = null;
+                Vector3f newEndpoint2 = null;
+
+                // Determine new positions for this edge's endpoints
+                if (v1 == vertexIndex1) {
+                    newEndpoint1 = newPosition1;
+                    endpoint1Updated = true;
+                } else if (v1 == vertexIndex2) {
+                    newEndpoint1 = newPosition2;
+                    endpoint1Updated = true;
+                }
+
+                if (v2 == vertexIndex1) {
+                    newEndpoint2 = newPosition1;
+                    endpoint2Updated = true;
+                } else if (v2 == vertexIndex2) {
+                    newEndpoint2 = newPosition2;
+                    endpoint2Updated = true;
+                }
+
+                // Update this edge if either endpoint changed
+                if (endpoint1Updated || endpoint2Updated) {
+                    int edgePosIdx = edgeIdx * 6;
+
+                    // Update endpoint 1 if changed
+                    if (endpoint1Updated && newEndpoint1 != null) {
+                        int dataIdx1 = edgeIdx * 12; // 2 endpoints × 6 floats (3 pos + 3 color)
+                        float[] posData1 = new float[] { newEndpoint1.x, newEndpoint1.y, newEndpoint1.z };
+                        glBufferSubData(GL_ARRAY_BUFFER, dataIdx1 * Float.BYTES, posData1);
+
+                        edgePositions[edgePosIdx + 0] = newEndpoint1.x;
+                        edgePositions[edgePosIdx + 1] = newEndpoint1.y;
+                        edgePositions[edgePosIdx + 2] = newEndpoint1.z;
+                    }
+
+                    // Update endpoint 2 if changed
+                    if (endpoint2Updated && newEndpoint2 != null) {
+                        int dataIdx2 = edgeIdx * 12 + 6; // Second endpoint offset
+                        float[] posData2 = new float[] { newEndpoint2.x, newEndpoint2.y, newEndpoint2.z };
+                        glBufferSubData(GL_ARRAY_BUFFER, dataIdx2 * Float.BYTES, posData2);
+
+                        edgePositions[edgePosIdx + 3] = newEndpoint2.x;
+                        edgePositions[edgePosIdx + 4] = newEndpoint2.y;
+                        edgePositions[edgePosIdx + 5] = newEndpoint2.z;
+                    }
+
+                    updatedCount++;
+                }
+            }
+
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            logger.trace("Updated {} edges connected to vertices {} and {} (index-based)",
+                    updatedCount, vertexIndex1, vertexIndex2);
+
+        } catch (Exception e) {
+            logger.error("Error updating edges by vertex indices", e);
         }
     }
 
