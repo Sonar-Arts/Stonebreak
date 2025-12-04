@@ -1,14 +1,13 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
-import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Coordinates translation operations between vertex, edge, and face handlers.
+ * Coordinates translation operations between vertex and edge handlers.
  * Ensures mutual exclusion - only one handler can be active at a time.
  * Prevents conflicts and maintains consistency across translation operations.
  *
@@ -32,7 +31,6 @@ public class TranslationCoordinator {
 
     private final VertexTranslationHandler vertexHandler;
     private final EdgeTranslationHandler edgeHandler;
-    private final FaceTranslationHandler faceHandler;
 
     // Track which handler is currently active
     private ActiveHandler activeHandler = ActiveHandler.NONE;
@@ -43,8 +41,7 @@ public class TranslationCoordinator {
     private enum ActiveHandler {
         NONE,
         VERTEX,
-        EDGE,
-        FACE
+        EDGE
     }
 
     /**
@@ -52,24 +49,18 @@ public class TranslationCoordinator {
      *
      * @param vertexHandler The vertex translation handler
      * @param edgeHandler The edge translation handler
-     * @param faceHandler The face translation handler
      */
     public TranslationCoordinator(VertexTranslationHandler vertexHandler,
-                                   EdgeTranslationHandler edgeHandler,
-                                   FaceTranslationHandler faceHandler) {
+                                   EdgeTranslationHandler edgeHandler) {
         if (vertexHandler == null) {
             throw new IllegalArgumentException("VertexTranslationHandler cannot be null");
         }
         if (edgeHandler == null) {
             throw new IllegalArgumentException("EdgeTranslationHandler cannot be null");
         }
-        if (faceHandler == null) {
-            throw new IllegalArgumentException("FaceTranslationHandler cannot be null");
-        }
 
         this.vertexHandler = vertexHandler;
         this.edgeHandler = edgeHandler;
-        this.faceHandler = faceHandler;
     }
 
     /**
@@ -84,7 +75,6 @@ public class TranslationCoordinator {
     public void updateCamera(Matrix4f view, Matrix4f projection, int width, int height) {
         vertexHandler.updateCamera(view, projection, width, height);
         edgeHandler.updateCamera(view, projection, width, height);
-        faceHandler.updateCamera(view, projection, width, height);
     }
 
     /**
@@ -118,14 +108,6 @@ public class TranslationCoordinator {
             return true;
         }
 
-        // Try face handler last (least specific)
-        if (faceHandler.handleMousePress(mouseX, mouseY)) {
-            activeHandler = ActiveHandler.FACE;
-            cancelOtherHandlers(ActiveHandler.FACE);
-            logger.debug("Face translation started");
-            return true;
-        }
-
         return false;
     }
 
@@ -142,9 +124,6 @@ public class TranslationCoordinator {
                 break;
             case EDGE:
                 edgeHandler.handleMouseMove(mouseX, mouseY);
-                break;
-            case FACE:
-                faceHandler.handleMouseMove(mouseX, mouseY);
                 break;
             case NONE:
                 // No active handler, nothing to do
@@ -165,9 +144,6 @@ public class TranslationCoordinator {
                 break;
             case EDGE:
                 edgeHandler.handleMouseRelease(mouseX, mouseY);
-                break;
-            case FACE:
-                faceHandler.handleMouseRelease(mouseX, mouseY);
                 break;
             case NONE:
                 // No active handler, nothing to do
@@ -196,9 +172,6 @@ public class TranslationCoordinator {
                 break;
             case EDGE:
                 edgeHandler.cancelDrag();
-                break;
-            case FACE:
-                faceHandler.cancelDrag();
                 break;
             case NONE:
                 break;
@@ -240,10 +213,6 @@ public class TranslationCoordinator {
             edgeHandler.cancelDrag();
             logger.trace("Cancelled edge handler (switching to {})", except);
         }
-        if (except != ActiveHandler.FACE && faceHandler.isDragging()) {
-            faceHandler.cancelDrag();
-            logger.trace("Cancelled face handler (switching to {})", except);
-        }
     }
 
     /**
@@ -264,15 +233,5 @@ public class TranslationCoordinator {
      */
     public EdgeTranslationHandler getEdgeHandler() {
         return edgeHandler;
-    }
-
-    /**
-     * Gets the face translation handler.
-     * Useful for direct access when needed.
-     *
-     * @return The face translation handler
-     */
-    public FaceTranslationHandler getFaceHandler() {
-        return faceHandler;
     }
 }

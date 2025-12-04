@@ -3,11 +3,9 @@ package com.openmason.main.systems.viewport;
 import com.openmason.main.systems.viewport.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
-import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
@@ -32,7 +30,6 @@ public class ViewportInputHandler {
     private final GizmoInputController gizmoController;
     private final VertexInputController vertexController;
     private final EdgeInputController edgeController;
-    private final FaceInputController faceController;
 
     // Translation coordinator for mutual exclusion
     private TranslationCoordinator translationCoordinator;
@@ -46,7 +43,6 @@ public class ViewportInputHandler {
         this.gizmoController = new GizmoInputController();
         this.vertexController = new VertexInputController();
         this.edgeController = new EdgeInputController();
-        this.faceController = new FaceInputController();
     }
 
     /**
@@ -69,7 +65,6 @@ public class ViewportInputHandler {
     public void setVertexRenderer(VertexRenderer vertexRenderer) {
         vertexController.setVertexRenderer(vertexRenderer);
         edgeController.setVertexRenderer(vertexRenderer); // Edge controller needs vertex renderer for priority
-        faceController.setVertexRenderer(vertexRenderer); // Face controller needs vertex renderer for priority
     }
 
     /**
@@ -89,7 +84,6 @@ public class ViewportInputHandler {
         // Pass coordinator to individual controllers (they will use it for mutual exclusion)
         vertexController.setTranslationCoordinator(translationCoordinator);
         edgeController.setTranslationCoordinator(translationCoordinator);
-        faceController.setTranslationCoordinator(translationCoordinator);
 
         logger.debug("Translation coordinator set and distributed to input controllers");
     }
@@ -99,7 +93,6 @@ public class ViewportInputHandler {
      */
     public void setEdgeRenderer(EdgeRenderer edgeRenderer) {
         edgeController.setEdgeRenderer(edgeRenderer);
-        faceController.setEdgeRenderer(edgeRenderer); // Face controller needs edge renderer for priority
     }
 
     /**
@@ -115,30 +108,14 @@ public class ViewportInputHandler {
     public void setTransformState(TransformState transformState) {
         vertexController.setTransformState(transformState);
         edgeController.setTransformState(transformState);
-        faceController.setTransformState(transformState);
-    }
-
-    /**
-     * Set the face renderer for face hover detection.
-     */
-    public void setFaceRenderer(FaceRenderer faceRenderer) {
-        faceController.setFaceRenderer(faceRenderer);
-    }
-
-    /**
-     * Set the face selection state for face manipulation.
-     */
-    public void setFaceSelectionState(FaceSelectionState faceSelectionState) {
-        faceController.setFaceSelectionState(faceSelectionState);
     }
 
     /**
      * Handle input for camera controls with priority-based routing.
      *
-     * Priority System: vertex > edge > face > gizmo > camera
+     * Priority System: vertex > edge > gizmo > camera
      * - Vertex editing (highest): Most precise manipulation
      * - Edge editing: Precise edge manipulation
-     * - Face editing: Surface manipulation
      * - Gizmo: General transformation tool
      * - Camera (lowest): Fallback for navigation
      */
@@ -217,22 +194,16 @@ public class ViewportInputHandler {
         // Priority 2: Edge
         // Edge selection and manipulation (precise editing, but lower than vertex)
         if (edgeController.handleInput(context)) {
-            return; // Edge handled input, block face, gizmo and camera
+            return; // Edge handled input, block gizmo and camera
         }
 
-        // Priority 3: Face
-        // Face selection and manipulation (surface editing, lower than vertex/edge)
-        if (faceController.handleInput(context)) {
-            return; // Face handled input, block gizmo and camera
-        }
-
-        // Priority 4: Gizmo
+        // Priority 3: Gizmo
         // Gizmo transformation (general tool, lower priority than precise editing)
         if (gizmoController.handleInput(context)) {
             return; // Gizmo handled input, block camera
         }
 
-        // Priority 5: Camera (lowest, fallthrough)
+        // Priority 4: Camera (lowest, fallthrough)
         // Camera is always available as fallback if no other controller handled input
         cameraController.handleInput(context);
     }
