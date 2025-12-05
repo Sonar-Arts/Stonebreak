@@ -66,9 +66,9 @@ class ChunkPersistenceTest {
             }
         }
 
-        Map<String, ChunkData.WaterBlockData> water = new HashMap<>();
-        water.put("3,62,3", new ChunkData.WaterBlockData(4, true));
-        water.put("7,63,7", new ChunkData.WaterBlockData(2, false));
+        Map<Long, ChunkData.WaterBlockData> water = new HashMap<>();
+        water.put(3L << 32 | 62L << 16 | 3L, new ChunkData.WaterBlockData(4, true));
+        water.put(7L << 32 | 63L << 16 | 7L, new ChunkData.WaterBlockData(2, false));
 
         List<EntityData> entities = new ArrayList<>();
         entities.add(EntityData.builder()

@@ -34,6 +34,9 @@ public class TerrainGeneratorFactory {
         return switch(type) {
             case LEGACY -> new LegacyTerrainGenerator(seed, config);
             case SPLINE -> new SplineTerrainGenerator(seed, config, use3DDensity);
+            case HYBRID_SDF -> new com.stonebreak.world.generation.sdf.HybridSdfTerrainGenerator(
+                seed, config, com.stonebreak.world.generation.sdf.SdfTerrainConfig.getDefault()
+            );
         };
     }
 
