@@ -63,6 +63,9 @@ public class ChunkManager {
             threadCount,  // corePoolSize
             threadCount,  // maximumPoolSize
             0L, TimeUnit.MILLISECONDS,  // keepAliveTime
+            // IMPORTANT: Tasks MUST be submitted with execute() NOT submit()
+            // submit() wraps tasks in FutureTask which breaks Comparable contract
+            // execute() places ChunkLoadTask directly in queue for proper priority ordering
             new PriorityBlockingQueue<Runnable>(),  // Priority queue for distance-based ordering
             new java.util.concurrent.ThreadFactory() {
                 private int threadId = 0;
@@ -195,7 +198,7 @@ public class ChunkManager {
                         }
                     }
                 });
-                chunkExecutor.submit(unloadTask);
+                chunkExecutor.execute(unloadTask);
                 unloadedCount = batchSize;
             }
 
@@ -258,7 +261,7 @@ public class ChunkManager {
                         stateManager.removeState(CcoChunkState.UNLOADING);
                     }
                 });
-            chunkExecutor.submit(saveUnloadTask);
+            chunkExecutor.execute(saveUnloadTask);
 
         } catch (Exception e) {
             System.err.println("ChunkManager: Error initiating save-then-unload for chunk (" + pos.getX() + ", " + pos.getZ() + "): " + e.getMessage());
@@ -321,7 +324,7 @@ public class ChunkManager {
                         }
                     });
 
-                    chunkExecutor.submit(task);
+                    chunkExecutor.execute(task);
                 }
             }
         }
@@ -344,11 +347,19 @@ public class ChunkManager {
                         boolean isPopulated = stateManager.hasState(CcoChunkState.FEATURES_POPULATED);
                         boolean isMeshReady = stateManager.isRenderable();
                         boolean isMeshGenerating = stateManager.hasState(CcoChunkState.MESH_GENERATING);
+                        boolean isMeshCpuReady = stateManager.hasState(CcoChunkState.MESH_CPU_READY);
 
-                        if (isPopulated && !isMeshReady && !isMeshGenerating) {
-                            // Found an invisible chunk - force immediate retry
-                            System.out.println("CCO-VALIDATION: Chunk (" + x + ", " + z + ") populated but not renderable. Scheduling mesh generation.");
+                        // Case 1: Populated but no mesh activity (silent failure)
+                        if (isPopulated && !isMeshReady && !isMeshGenerating && !isMeshCpuReady) {
+                            System.out.println("CCO-VALIDATION: Chunk (" + x + ", " + z +
+                                ") STUCK - populated but no mesh state. States: " +
+                                stateManager.getCurrentStates() + ". Scheduling recovery.");
                             world.ensureChunkIsReadyForRender(x, z);
+                        }
+                        // Case 2: CPU ready but not uploaded (GL upload queue issue)
+                        else if (isMeshCpuReady && !isMeshReady) {
+                            System.err.println("CCO-VALIDATION: Chunk (" + x + ", " + z +
+                                ") STUCK in MESH_CPU_READY - waiting for GL upload");
                         }
                     }
                 }
@@ -365,6 +376,10 @@ public class ChunkManager {
     private static final float GL_LOW_FRAME_TIME_MS = 14.0f; // Increase uploads if below
 
     public static int getOptimizedGLBatchSize() {
+        return getOptimizedGLBatchSize(0);
+    }
+
+    public static int getOptimizedGLBatchSize(int queueDepth) {
         if (!optimizationsEnabled) {
             return 32;
         }
@@ -374,9 +389,19 @@ public class ChunkManager {
         // Get current frame time
         float deltaTimeMs = Game.getDeltaTime() * 1000.0f;
 
-        // Adaptive adjustment based on frame time
-        if (deltaTimeMs > GL_HIGH_FRAME_TIME_MS) {
-            // Frame time too high - reduce GL uploads per frame
+        // CRITICAL: Queue-aware adaptive sizing
+        // When queue is backed up, prioritize clearing it over frame time optimization
+        if (queueDepth > 150) {
+            // Severe backlog - upload aggressively regardless of frame time
+            currentGLBatchSize = Math.min(MAX_GL_BATCH_SIZE, currentGLBatchSize + 8);
+        } else if (queueDepth > 100) {
+            // Large backlog - increase uploads quickly
+            currentGLBatchSize = Math.min(MAX_GL_BATCH_SIZE, currentGLBatchSize + 4);
+        } else if (queueDepth > 50) {
+            // Moderate backlog - increase uploads
+            currentGLBatchSize = Math.min(MAX_GL_BATCH_SIZE, currentGLBatchSize + 2);
+        } else if (deltaTimeMs > GL_HIGH_FRAME_TIME_MS && queueDepth < 20) {
+            // Only reduce if queue is small AND frame time is high
             currentGLBatchSize = Math.max(MIN_GL_BATCH_SIZE, currentGLBatchSize - 2);
         } else if (deltaTimeMs < GL_LOW_FRAME_TIME_MS) {
             // Frame time good - can increase GL uploads

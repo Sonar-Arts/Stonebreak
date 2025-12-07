@@ -292,6 +292,11 @@ public class World {
 
         Chunk chunk = getChunkAt(chunkX, chunkZ);
 
+        // Null check to prevent crash when chunk is unloaded or still loading
+        if (chunk == null) {
+            return false;
+        }
+
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
 
@@ -354,6 +359,14 @@ public class World {
      */
     public float getTemperatureAt(int x, int z) {
         return terrainSystem.generateTemperature(x, z);
+    }
+
+    /**
+     * Gets the mesh pipeline for diagnostics.
+     * Package-private for ChunkManager access.
+     */
+    MmsMeshPipeline getMeshPipeline() {
+        return meshPipeline;
     }
 
     /**

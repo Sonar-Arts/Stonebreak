@@ -55,14 +55,25 @@ public final class CcoAtomicStateManager {
             return false;
         }
 
-        return stateSet.updateAndGet(current -> {
+        boolean[] wasRejected = {false};  // Capture flag from lambda
+        boolean result = stateSet.updateAndGet(current -> {
             if (!CcoStateTransition.canCoexistWith(state, current)) {
+                wasRejected[0] = true;
                 return current; // Can't add, return unchanged
             }
             EnumSet<CcoChunkState> updated = EnumSet.copyOf(current);
             updated.add(state);
             return updated;
         }).contains(state);
+
+        // Log rejected transitions (critical for debugging stuck chunks)
+        if (wasRejected[0]) {
+            System.err.println("STATE_TRANSITION_REJECTED: Cannot add " + state +
+                " to current states " + stateSet.get() +
+                " (mutex conflict - mesh states are mutually exclusive)");
+        }
+
+        return result;
     }
 
     /**
@@ -207,13 +218,18 @@ public final class CcoAtomicStateManager {
 
     /**
      * Checks if chunk is ready for rendering.
+     * Note: This only checks state, not if a mesh handle actually exists.
+     * Chunk.render() should verify the handle exists before rendering.
      *
-     * @return true if mesh uploaded and not unloading
+     * @return true if mesh uploaded (or regenerating with old mesh) and not unloading
      */
     public boolean isRenderable() {
         Set<CcoChunkState> current = stateSet.get();
-        return current.contains(CcoChunkState.MESH_GPU_UPLOADED) &&
-               !current.contains(CcoChunkState.UNLOADING);
+        // Can render if mesh is uploaded, OR if regenerating (keep old mesh visible)
+        boolean hasMesh = current.contains(CcoChunkState.MESH_GPU_UPLOADED) ||
+                         current.contains(CcoChunkState.MESH_GENERATING) ||
+                         current.contains(CcoChunkState.MESH_CPU_READY);
+        return hasMesh && !current.contains(CcoChunkState.UNLOADING);
     }
 
     /**

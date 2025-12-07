@@ -90,7 +90,7 @@ public class BlockRenderer {
         
         // Enable polygon offset to prevent z-fighting
         glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-1.0f, -1.0f);
+        glPolygonOffset(1.0f, 1.0f); // Positive pulls towards camera, preventing z-fighting
         
         // Use shader program
         shaderProgram.bind();
@@ -121,10 +121,10 @@ public class BlockRenderer {
         Matrix4f modelMatrix = new Matrix4f()
             .translate(breakingBlock.x, breakingBlock.y, breakingBlock.z)
             .scale(1.002f); // Slightly larger to avoid z-fighting
-        
-        // Combine view and model matrices
-        Matrix4f modelViewMatrix = new Matrix4f(player.getViewMatrix()).mul(modelMatrix);
-        shaderProgram.setUniform("viewMatrix", modelViewMatrix);
+
+        // Pass view and model matrices separately (shader expects separate matrices, not combined)
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("modelMatrix", modelMatrix);
         
         // Set color with some transparency
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.8f));
@@ -133,18 +133,30 @@ public class BlockRenderer {
         GL30.glBindVertexArray(blockOverlayVao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
         GL30.glBindVertexArray(0);
-        
-        // Restore state
+
+        // Restore OpenGL state
         glDepthMask(true);
         glDisable(GL_BLEND);
         glDisable(GL_POLYGON_OFFSET_FILL);
-        glBindTexture(GL_TEXTURE_2D, 0);
 
-        // Reset shader state
+        // Reset ALL shader uniforms that were modified
         shaderProgram.setUniform("u_transformUVsForItem", false);
-        shaderProgram.setUniform("u_isUIElement", false); // Restore world rendering state
+        shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f)); // Reset to white
 
-        shaderProgram.unbind();
+        // Restore world uniforms for subsequent rendering
+        Player playerRef = Game.getPlayer();
+        if (playerRef != null) {
+            shaderProgram.setUniform("viewMatrix", playerRef.getViewMatrix());
+            shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity
+        }
+
+        // Re-bind texture atlas (crack overlay may have contaminated it)
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, Game.getRenderer().getTextureAtlas().getTextureId());
+
+        // DO NOT unbind shader - let next renderer manage shader binding
+        // This prevents PlayerArmRenderer from having undefined shader state
     }
     
     /**

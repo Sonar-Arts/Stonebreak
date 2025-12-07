@@ -13,6 +13,7 @@ import com.stonebreak.rendering.UI.UIRenderer;
 import org.lwjgl.nanovg.NVGColor;
 import org.lwjgl.system.MemoryStack;
 
+import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.nanovg.NanoVG.*;
 import static org.lwjgl.system.MemoryStack.stackPush;
 
@@ -131,6 +132,12 @@ public class HotbarRenderer {
                 // End NanoVG frame temporarily to draw 3D item
                 uiRenderer.endFrame();
 
+                // Save critical OpenGL state before 3D rendering
+                int[] savedViewport = new int[4];
+                glGetIntegerv(GL_VIEWPORT, savedViewport);
+                boolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+                boolean blendWasEnabled = glIsEnabled(GL_BLEND);
+
                 // Calculate icon size and padding using layout calculator
                 int iconPadding = HotbarLayoutCalculator.calculateIconPadding();
                 int iconSize = HotbarLayoutCalculator.calculateIconSize();
@@ -145,6 +152,11 @@ public class HotbarRenderer {
                     uiRenderer.renderItemIcon(position.x + iconPadding, position.y + iconPadding,
                                             iconSize, iconSize, item, textureAtlas);
                 }
+
+                // Restore OpenGL state before restarting NanoVG
+                glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
+                if (!depthTestWasEnabled) glDisable(GL_DEPTH_TEST);
+                if (!blendWasEnabled) glDisable(GL_BLEND);
 
                 // Restart NanoVG frame
                 uiRenderer.beginFrame(com.stonebreak.core.Game.getWindowWidth(),

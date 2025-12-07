@@ -2,6 +2,7 @@ package com.stonebreak.rendering.player;
 
 // JOML Math Library
 import org.joml.Matrix4f;
+import org.joml.Vector2f;
 import org.joml.Vector4f;
 
 // LWJGL OpenGL Classes
@@ -84,6 +85,20 @@ public class PlayerArmRenderer {
     public void renderPlayerArm(Player player) {
         shaderProgram.bind();
 
+        // Defensively reset ALL relevant uniforms to prevent contamination from previous rendering passes
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(0.0f, 0.0f));
+        shaderProgram.setUniform("u_atlasUVScale", new Vector2f(1.0f, 1.0f));
+
+        // Explicitly bind texture atlas with correct sampler
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        shaderProgram.setUniform("texture_sampler", 0);
+
         // Enable depth testing for proper rendering
         glEnable(GL_DEPTH_TEST);
         glDepthMask(true);
@@ -116,7 +131,15 @@ public class PlayerArmRenderer {
         
         // Clean up state
         GL30.glBindVertexArray(0);
+
+        // Reset uniforms that may have been set by HandItemRenderer
         shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+
+        // Restore blend state properly
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
         shaderProgram.unbind();
     }
     

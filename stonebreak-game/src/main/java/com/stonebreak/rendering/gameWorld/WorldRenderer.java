@@ -10,6 +10,7 @@ import org.joml.Vector3f;
 
 // LWJGL OpenGL Classes
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL30;
 
 // LWJGL OpenGL Static Imports
 import static org.lwjgl.opengl.GL11.*;
@@ -135,6 +136,19 @@ public class WorldRenderer {
         // Restore OpenGL state after passes
         restoreGLStateAfterPasses();
 
+        // Ensure clean state for overlays and subsequent rendering
+        shaderProgram.bind();
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_renderPass", 0);
+        shaderProgram.setUniform("u_waterDepthOffset", 0.0f);
+
+        // Re-bind texture atlas with correct filtering
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureAtlas.getTextureId());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
         // Render world-specific overlays and effects
         renderWorldOverlays(player);
 
@@ -143,6 +157,10 @@ public class WorldRenderer {
 
         // Render player arm last (if not paused) to appear in front of entities
         renderPlayerArm(player);
+
+        // Final cleanup - ensure clean state for next frame
+        shaderProgram.unbind();
+        GL30.glBindVertexArray(0);
     }
     
     /**

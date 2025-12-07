@@ -250,6 +250,12 @@ public final class MmsMeshPipeline {
             meshData = MmsAPI.getInstance().generateChunkMesh(chunk);
             success = meshData != null && !meshData.isEmpty();
 
+            // Log when mesh is empty (all-air chunks)
+            if (meshData != null && meshData.isEmpty()) {
+                System.out.println("MESH_GEN_EMPTY: Chunk (" + chunk.getChunkX() + ", " +
+                    chunk.getChunkZ() + ") generated empty mesh (all air blocks)");
+            }
+
             if (success) {
                 // Get priority for this chunk (default to world generation priority)
                 int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
@@ -259,12 +265,25 @@ public final class MmsMeshPipeline {
 
                 // Mark chunk state as CPU ready
                 synchronized (chunk) {
+                    // CRITICAL: Remove MESH_GENERATING before adding MESH_CPU_READY (mutex conflict prevention)
+                    chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GENERATING);
                     chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
                     chunk.getCcoDirtyTracker().clearMeshDirty();
                 }
             }
 
         } catch (Exception e) {
+            // Enhanced diagnostics for debugging stuck chunks
+            String chunkState = chunk.getCcoStateManager() != null ?
+                chunk.getCcoStateManager().getCurrentStates().toString() : "UNKNOWN";
+            boolean isMeshDirty = chunk.getCcoDirtyTracker() != null &&
+                chunk.getCcoDirtyTracker().isMeshDirty();
+
+            System.err.println("MESH_GEN_FAILURE: Chunk (" + chunk.getChunkX() + ", " +
+                chunk.getChunkZ() + ") - States: " + chunkState +
+                ", MeshDirty: " + isMeshDirty +
+                ", Exception: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+
             errorReporter.reportMeshBuildError(chunk, e,
                 "MMS mesh generation failed for chunk (" +
                 chunk.getChunkX() + ", " + chunk.getChunkZ() + ")");
@@ -329,16 +348,25 @@ public final class MmsMeshPipeline {
             return;
         }
 
+        int queueDepth = meshesReadyForGLUpload.size();
+
         // Debug: Log first few calls
         if (debugGLUploadCount < 3) {
             System.out.println("[MmsMeshPipeline.applyPendingGLUpdates] Called with " +
-                meshesReadyForGLUpload.size() + " meshes ready for upload");
+                queueDepth + " meshes ready for upload");
             debugGLUploadCount++;
+        }
+
+        // Warn if GL upload queue is getting backed up
+        if (queueDepth > 50) {
+            System.err.println("GL_UPLOAD_BACKLOG: Queue depth is " + queueDepth +
+                " (meshes waiting for GPU upload). Frame time: " +
+                (Game.getDeltaTime() * 1000.0f) + "ms");
         }
 
         MeshUploadTask task;
         int updatesThisFrame = 0;
-        int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize();
+        int maxUpdatesPerFrame = ChunkManager.getOptimizedGLBatchSize(queueDepth);
 
         while ((task = meshesReadyForGLUpload.poll()) != null) {
             // Player modifications bypass batch limit for instant feedback
@@ -506,6 +534,18 @@ public final class MmsMeshPipeline {
         }
 
         synchronized (chunk) {
+            // If chunk already has a GPU mesh, just remove the state
+            // IMPORTANT: Keep the old mesh visible until new mesh is ready to replace it
+            // This prevents flickering when there's a GL upload queue backlog
+            if (chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GPU_UPLOADED)) {
+                // Remove GPU uploaded state before adding generating state
+                // (prevents state mutex conflicts - MESH_GPU_UPLOADED and MESH_GENERATING are mutually exclusive)
+                chunk.getCcoStateManager().removeState(CcoChunkState.MESH_GPU_UPLOADED);
+
+                // Old mesh handle stays in chunk and will be cleaned up when new mesh uploads
+            }
+
+            // Now safe to add MESH_GENERATING state
             chunk.getCcoStateManager().addState(CcoChunkState.MESH_GENERATING);
         }
     }

@@ -90,13 +90,17 @@ public class HandItemRenderer {
         int blockSpecificVao = handBlockGeometry.getHandBlockVao(blockType);
         GL30.glBindVertexArray(blockSpecificVao);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 indices for a cube
-        
-        // Re-enable blending for other elements (restore standard UI blending)
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        GL30.glBindVertexArray(0); // Explicit VAO unbind
 
-        // Restore world rendering state
+        // Restore shader state FIRST (before OpenGL state changes)
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+
+        // Then restore OpenGL state
+        if (!glIsEnabled(GL_BLEND)) {
+            glEnable(GL_BLEND);
+        }
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     
     /**
@@ -130,9 +134,17 @@ public class HandItemRenderer {
         CBRResourceManager.BlockRenderResource resource = blockRenderer.getFlowerCrossResource(flowerType);
         resource.getMesh().bind();
         glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
+        GL30.glBindVertexArray(0); // Explicit VAO unbind
 
-        // Restore world rendering state
+        // Restore shader state FIRST
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+
+        // Blend state is already enabled, ensure it stays that way
+        if (!glIsEnabled(GL_BLEND)) {
+            glEnable(GL_BLEND);
+        }
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     
     /**
@@ -267,12 +279,18 @@ public class HandItemRenderer {
         
         // Create temporary VAO for the item quad
         ArmGeometry.createTemporaryQuad(vertices, indices);
-        
-        // Restore OpenGL state
-        glEnable(GL_CULL_FACE);
+        GL30.glBindVertexArray(0); // Explicit VAO unbind
 
-        // Restore world rendering state
+        // Restore shader state FIRST
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+
+        // Then restore OpenGL state
+        glEnable(GL_CULL_FACE);
+        if (!glIsEnabled(GL_BLEND)) {
+            glEnable(GL_BLEND);
+        }
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     
     /**
