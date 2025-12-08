@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.FloatBuffer;
 import java.util.Collection;
+import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -227,6 +228,54 @@ public class EdgeRenderer {
         }
 
         logger.debug("Built edge-to-vertex mapping for {} edges", edgeCount);
+    }
+
+    /**
+     * Remap edge vertex indices after vertices have been merged.
+     * Updates the edge-to-vertex mapping to use new vertex indices.
+     *
+     * @param oldToNewIndexMap Mapping of old vertex indices to new vertex indices
+     */
+    public void remapEdgeVertexIndices(Map<Integer, Integer> oldToNewIndexMap) {
+        if (edgeToVertexMapping == null || edgeCount == 0) {
+            logger.warn("Cannot remap edge indices: no edge-to-vertex mapping");
+            return;
+        }
+
+        if (oldToNewIndexMap == null || oldToNewIndexMap.isEmpty()) {
+            logger.warn("Cannot remap edge indices: invalid index map");
+            return;
+        }
+
+        int remappedEdges = 0;
+
+        for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
+            int oldVertexIndex1 = edgeToVertexMapping[edgeIdx][0];
+            int oldVertexIndex2 = edgeToVertexMapping[edgeIdx][1];
+
+            // Skip edges with invalid indices
+            if (oldVertexIndex1 == -1 || oldVertexIndex2 == -1) {
+                continue;
+            }
+
+            // Remap to new indices
+            Integer newVertexIndex1 = oldToNewIndexMap.get(oldVertexIndex1);
+            Integer newVertexIndex2 = oldToNewIndexMap.get(oldVertexIndex2);
+
+            if (newVertexIndex1 != null && newVertexIndex2 != null) {
+                edgeToVertexMapping[edgeIdx][0] = newVertexIndex1;
+                edgeToVertexMapping[edgeIdx][1] = newVertexIndex2;
+                remappedEdges++;
+
+                logger.trace("Remapped edge {} vertices: ({}, {}) -> ({}, {})",
+                    edgeIdx, oldVertexIndex1, oldVertexIndex2, newVertexIndex1, newVertexIndex2);
+            } else {
+                logger.warn("Edge {} has vertices not in remap: v1={}, v2={}",
+                    edgeIdx, oldVertexIndex1, oldVertexIndex2);
+            }
+        }
+
+        logger.debug("Remapped {} edges to new vertex indices", remappedEdges);
     }
 
     /**

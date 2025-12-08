@@ -179,12 +179,35 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             return;
         }
 
-        // COMMIT: Update ModelRenderer mesh with final vertex positions (once!)
-        // This is the only GPU upload for the entire drag operation
-        float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
-        if (allVertexPositions != null && modelRenderer != null) {
-            modelRenderer.updateVertexPositions(allVertexPositions);
-            logger.debug("Committed edge drag to ModelRenderer (final GPU upload)");
+        // TRUE MERGE: Remove duplicate vertices that ended up at the same position
+        float mergeEpsilon = 0.001f; // 1mm threshold for merging
+        java.util.Map<Integer, Integer> indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
+
+        if (!indexRemapping.isEmpty()) {
+            // Remap edge vertex indices to use new vertex indices
+            edgeRenderer.remapEdgeVertexIndices(indexRemapping);
+
+            // Rebuild edge-to-vertex mapping with new vertex data
+            float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+            if (uniqueVertexPositions != null) {
+                edgeRenderer.buildEdgeToVertexMapping(uniqueVertexPositions);
+                logger.debug("Merged vertices and rebuilt edge mapping after edge drag");
+            }
+
+            // COMMIT: Update ModelRenderer with EXPANDED vertex positions (8 vertices for cube)
+            // Expand merged vertices to 8 for ModelRenderer compatibility
+            float[] expandedPositions = vertexRenderer.getExpandedVertexPositions(indexRemapping);
+            if (expandedPositions != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(expandedPositions);
+                logger.debug("Committed merged edge drag to ModelRenderer with expanded positions");
+            }
+        } else {
+            // No merge occurred, use regular positions
+            float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
+            if (allVertexPositions != null && modelRenderer != null) {
+                modelRenderer.updateVertexPositions(allVertexPositions);
+                logger.debug("Committed edge drag to ModelRenderer (no merge)");
+            }
         }
 
         selectionState.endDrag();
