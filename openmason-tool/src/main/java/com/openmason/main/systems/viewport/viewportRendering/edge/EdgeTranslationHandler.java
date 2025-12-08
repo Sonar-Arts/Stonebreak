@@ -184,6 +184,9 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         java.util.Map<Integer, Integer> indexRemapping = vertexRenderer.mergeOverlappingVertices(mergeEpsilon);
 
         if (!indexRemapping.isEmpty()) {
+            // Remap selection state vertex indices FIRST (before using them)
+            selectionState.remapVertexIndices(indexRemapping);
+
             // Remap edge vertex indices to use new vertex indices
             edgeRenderer.remapEdgeVertexIndices(indexRemapping);
 

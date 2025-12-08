@@ -51,6 +51,9 @@ public class VertexRenderer {
     private Map<Integer, List<Integer>> uniqueToMeshMapping = new HashMap<>(); // Maps unique vertex index to mesh vertex indices
     private float[] allMeshVertices = null; // Store ALL mesh vertices for mapping
 
+    // Persistent vertex merge tracking (for multi-stage merges)
+    private Map<Integer, Integer> originalToCurrentMapping = new HashMap<>(); // Maps original cube vertex (0-7) to current unique vertex
+
     // Vertex extraction (Single Responsibility) - uses interface for polymorphism
     private final IGeometryExtractor geometryExtractor = new VertexExtractor();
     private final VertexExtractor vertexExtractor = new VertexExtractor(); // Keep for unique vertices method
@@ -132,6 +135,13 @@ public class VertexRenderer {
 
             // Build mapping from unique vertex index to mesh vertex indices
             buildUniqueToMeshMapping(uniquePositions, allMeshVertices);
+
+            // Initialize original-to-current mapping (identity for fresh load)
+            // For a cube, this maps original vertices 0-7 to themselves initially
+            originalToCurrentMapping.clear();
+            for (int i = 0; i < vertexCount; i++) {
+                originalToCurrentMapping.put(i, i);
+            }
 
             // Create interleaved vertex data (position + color) using UNIQUE vertices
             // Color varies based on state: selected (white), modified (yellow), default (orange)
@@ -749,6 +759,9 @@ public class VertexRenderer {
         int targetVertexCount = 8;
         float[] expandedPositions = new float[targetVertexCount * 3];
 
+        logger.debug("Expanding {} unique vertices to {} for ModelRenderer", vertexCount, targetVertexCount);
+        logger.debug("Index remapping: {}", indexRemapping);
+
         for (int oldIdx = 0; oldIdx < targetVertexCount; oldIdx++) {
             Integer newIdx = indexRemapping.get(oldIdx);
             if (newIdx != null && newIdx < vertexCount) {
@@ -758,6 +771,12 @@ public class VertexRenderer {
                 expandedPositions[expandedPosIdx + 0] = vertexPositions[newPosIdx + 0];
                 expandedPositions[expandedPosIdx + 1] = vertexPositions[newPosIdx + 1];
                 expandedPositions[expandedPosIdx + 2] = vertexPositions[newPosIdx + 2];
+
+                logger.debug("  Vertex {} -> {} at ({}, {}, {})",
+                    oldIdx, newIdx,
+                    String.format("%.3f", expandedPositions[expandedPosIdx + 0]),
+                    String.format("%.3f", expandedPositions[expandedPosIdx + 1]),
+                    String.format("%.3f", expandedPositions[expandedPosIdx + 2]));
             } else {
                 // Shouldn't happen, but use default position as fallback
                 logger.warn("Missing mapping for vertex {}, using zero position", oldIdx);
@@ -767,7 +786,6 @@ public class VertexRenderer {
             }
         }
 
-        logger.trace("Expanded {} vertices to {} for ModelRenderer compatibility", vertexCount, targetVertexCount);
         return expandedPositions;
     }
 
@@ -840,14 +858,32 @@ public class VertexRenderer {
             newIndex++;
         }
 
-        // If no vertices were merged, return identity mapping
+        // If no vertices were merged, return original-to-current mapping
         if (verticesToKeep.size() == vertexCount) {
             logger.debug("No overlapping vertices found to merge");
-            for (int i = 0; i < vertexCount; i++) {
-                oldToNewIndex.put(i, i);
-            }
-            return oldToNewIndex;
+            // Return the persistent mapping (accounts for previous merges)
+            return new HashMap<>(originalToCurrentMapping);
         }
+
+        // Update persistent original-to-current mapping
+        // This ensures we track where ALL original cube vertices (0-7) are now
+        Map<Integer, Integer> newOriginalToCurrentMapping = new HashMap<>();
+        for (Map.Entry<Integer, Integer> entry : originalToCurrentMapping.entrySet()) {
+            int originalIdx = entry.getKey();
+            int currentIdx = entry.getValue();
+
+            // Remap current index through the new merge
+            Integer newCurrentIdx = oldToNewIndex.get(currentIdx);
+            if (newCurrentIdx != null) {
+                newOriginalToCurrentMapping.put(originalIdx, newCurrentIdx);
+            } else {
+                logger.warn("Lost mapping for original vertex {} (was at current {})", originalIdx, currentIdx);
+                newOriginalToCurrentMapping.put(originalIdx, currentIdx); // Keep old mapping as fallback
+            }
+        }
+        originalToCurrentMapping = newOriginalToCurrentMapping;
+
+        logger.debug("Updated persistent mapping after merge: {}", originalToCurrentMapping);
 
         // Build new vertex position array with only kept vertices
         int newVertexCount = verticesToKeep.size();
@@ -934,7 +970,8 @@ public class VertexRenderer {
         logger.info("Merged {} duplicate vertices, {} unique vertices remaining",
             mergedCount, newVertexCount);
 
-        return oldToNewIndex;
+        // Return the persistent original-to-current mapping (all 8 original vertices)
+        return new HashMap<>(originalToCurrentMapping);
     }
 
     /**

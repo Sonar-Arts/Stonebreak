@@ -249,6 +249,36 @@ public class EdgeSelectionState {
     }
 
     /**
+     * Remap vertex indices after a vertex merge operation.
+     * Updates the stored vertex indices to reflect the new merged vertex positions.
+     *
+     * @param indexRemapping Mapping from old vertex indices to new vertex indices
+     */
+    public synchronized void remapVertexIndices(java.util.Map<Integer, Integer> indexRemapping) {
+        if (!hasSelection() || indexRemapping == null || indexRemapping.isEmpty()) {
+            return;
+        }
+
+        // Remap vertex indices through the merge
+        Integer newVertexIndex1 = indexRemapping.get(vertexIndex1);
+        Integer newVertexIndex2 = indexRemapping.get(vertexIndex2);
+
+        if (newVertexIndex1 != null && newVertexIndex2 != null) {
+            int oldVertexIndex1 = vertexIndex1;
+            int oldVertexIndex2 = vertexIndex2;
+
+            vertexIndex1 = newVertexIndex1;
+            vertexIndex2 = newVertexIndex2;
+
+            logger.debug("Remapped selected edge vertices: ({}, {}) -> ({}, {})",
+                oldVertexIndex1, oldVertexIndex2, vertexIndex1, vertexIndex2);
+        } else {
+            logger.warn("Cannot remap edge vertices: old indices ({}, {}) not in mapping",
+                vertexIndex1, vertexIndex2);
+        }
+    }
+
+    /**
      * Get the original first endpoint position.
      *
      * @return copy of original point1, or null if no selection
