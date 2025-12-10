@@ -12,6 +12,8 @@ import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;

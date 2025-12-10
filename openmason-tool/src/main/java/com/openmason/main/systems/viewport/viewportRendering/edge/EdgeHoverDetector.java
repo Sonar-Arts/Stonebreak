@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering;
+package com.openmason.main.systems.viewport.viewportRendering.edge;
 
 import org.joml.Matrix4f;
 import org.joml.Vector2f;

@@ -1,7 +1,7 @@
-package com.openmason.main.systems.viewport.viewportRendering;
+package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
+import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
-import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;

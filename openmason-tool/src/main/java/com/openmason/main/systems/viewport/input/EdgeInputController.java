@@ -1,8 +1,8 @@
 package com.openmason.main.systems.viewport.input;
 
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
-import com.openmason.main.systems.viewport.viewportRendering.EdgeRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import imgui.ImGui;
 import org.joml.Matrix4f;
