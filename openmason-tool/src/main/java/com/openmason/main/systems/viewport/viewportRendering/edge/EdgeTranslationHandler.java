@@ -284,9 +284,12 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         // FIX: Update edges by vertex indices (prevents unification)
         edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, newPoint1, vertexIndex2, newPoint2);
 
-        // NOTE: ModelRenderer update deferred to handleMouseRelease() for performance
-        // During drag, only update lightweight vertex/edge renderers (points and lines)
-        // This avoids expensive GPU uploads and mesh regeneration on every frame
+        // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
+        // This provides visual feedback showing how the final cube will look
+        float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
+        if (allVertexPositions != null && modelRenderer != null) {
+            modelRenderer.updateVertexPositions(allVertexPositions);
+        }
 
         logger.trace("Updated edge {} and connected geometry using indices {} and {} (prevents unification)",
                 edgeIndex, vertexIndex1, vertexIndex2);
