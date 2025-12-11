@@ -3,6 +3,9 @@ package com.openmason.main.systems.viewport.viewportRendering.vertex;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.operations.VertexDataTransformer;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.operations.VertexMerger;
+import com.openmason.main.systems.viewport.viewportRendering.vertex.operations.VertexPositionUpdater;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -152,7 +155,7 @@ public class VertexRenderer {
                 int dataIndex = i * 6;
 
                 // Copy position from unique vertices
-                vertexData[dataIndex + 0] = uniquePositions[posIndex + 0];
+                vertexData[dataIndex] = uniquePositions[posIndex];
                 vertexData[dataIndex + 1] = uniquePositions[posIndex + 1];
                 vertexData[dataIndex + 2] = uniquePositions[posIndex + 2];
 
@@ -201,7 +204,7 @@ public class VertexRenderer {
         for (int meshIndex = 0; meshIndex < meshVertexCount; meshIndex++) {
             int meshPosIndex = meshIndex * 3;
             Vector3f meshPos = new Vector3f(
-                    meshPositions[meshPosIndex + 0],
+                    meshPositions[meshPosIndex],
                     meshPositions[meshPosIndex + 1],
                     meshPositions[meshPosIndex + 2]
             );
@@ -210,7 +213,7 @@ public class VertexRenderer {
             for (int uniqueIndex = 0; uniqueIndex < uniqueVertexCount; uniqueIndex++) {
                 int uniquePosIndex = uniqueIndex * 3;
                 Vector3f uniquePos = new Vector3f(
-                        uniquePositions[uniquePosIndex + 0],
+                        uniquePositions[uniquePosIndex],
                         uniquePositions[uniquePosIndex + 1],
                         uniquePositions[uniquePosIndex + 2]
                 );
@@ -238,14 +241,6 @@ public class VertexRenderer {
     /**
      * Handle mouse movement for vertex hover detection.
      * Follows the same pattern as GizmoRenderer.handleMouseMove().
-     *
-     * @param mouseX Mouse X coordinate in viewport space
-     * @param mouseY Mouse Y coordinate in viewport space
-     * @param viewMatrix Camera view matrix
-     * @param projectionMatrix Camera projection matrix
-     * @param modelMatrix Model transformation matrix
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
      */
     public void handleMouseMove(float mouseX, float mouseY,
                                Matrix4f viewMatrix, Matrix4f projectionMatrix,
@@ -397,14 +392,6 @@ public class VertexRenderer {
     }
 
     /**
-     * Get the number of vertices.
-     * @return Number of vertices
-     */
-    public int getVertexCount() {
-        return vertexCount;
-    }
-
-    /**
      * Set the selected vertex index.
      * @param index Vertex index to select, or -1 to clear selection
      */
@@ -437,27 +424,6 @@ public class VertexRenderer {
     }
 
     /**
-     * Set which vertices are modified (unsaved changes).
-     * @param indices Set of modified vertex indices
-     */
-    public void setModifiedVertices(Set<Integer> indices) {
-        if (indices == null) {
-            modifiedVertices.clear();
-        } else {
-            modifiedVertices = new HashSet<>(indices);
-        }
-        logger.debug("Modified vertices updated: {} vertices marked as modified", modifiedVertices.size());
-    }
-
-    /**
-     * Get the set of modified vertex indices.
-     * @return Copy of modified vertices set
-     */
-    public Set<Integer> getModifiedVertices() {
-        return new HashSet<>(modifiedVertices);
-    }
-
-    /**
      * Update a single UNIQUE vertex position (for live preview during drag).
      * This updates ALL mesh instances of this vertex to eliminate duplication.
      * For example, when dragging corner vertex 0 on a cube, all 3 mesh instances
@@ -472,62 +438,16 @@ public class VertexRenderer {
             return;
         }
 
-        if (uniqueIndex < 0 || uniqueIndex >= vertexCount) {
-            logger.warn("Invalid vertex index for position update: {} (max: {})", uniqueIndex, vertexCount - 1);
-            return;
-        }
+        // Delegate to VertexPositionUpdater (Single Responsibility)
+        VertexPositionUpdater updater = new VertexPositionUpdater(
+                vertexPositions,
+                allMeshVertices,
+                uniqueToMeshMapping,
+                vbo,
+                vertexCount
+        );
 
-        if (position == null) {
-            logger.warn("Cannot update vertex position: position is null");
-            return;
-        }
-
-        try {
-            // Update in-memory position array (unique vertices)
-            int posIndex = uniqueIndex * 3;
-            vertexPositions[posIndex + 0] = position.x;
-            vertexPositions[posIndex + 1] = position.y;
-            vertexPositions[posIndex + 2] = position.z;
-
-            // Update VBO for the unique vertex display
-            int dataIndex = uniqueIndex * 6; // 6 floats per vertex (x,y,z, r,g,b)
-            long offset = dataIndex * Float.BYTES;
-
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-            // Create temporary array with just position data
-            float[] positionData = new float[] { position.x, position.y, position.z };
-
-            // Update only position floats in VBO (leave color unchanged)
-            glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
-
-            // CRITICAL FIX: Update ALL mesh instances of this unique vertex
-            // This prevents the "cloning" bug where old vertex stays visible
-            List<Integer> meshIndices = uniqueToMeshMapping.get(uniqueIndex);
-            if (meshIndices != null && allMeshVertices != null) {
-                for (Integer meshIndex : meshIndices) {
-                    int meshPosIndex = meshIndex * 3;
-                    if (meshPosIndex + 2 < allMeshVertices.length) {
-                        allMeshVertices[meshPosIndex + 0] = position.x;
-                        allMeshVertices[meshPosIndex + 1] = position.y;
-                        allMeshVertices[meshPosIndex + 2] = position.z;
-                    }
-                }
-                logger.trace("Updated {} mesh instances for unique vertex {}",
-                        meshIndices.size(), uniqueIndex);
-            }
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            logger.trace("Updated unique vertex {} position to ({}, {}, {})",
-                    uniqueIndex,
-                    String.format("%.2f", position.x),
-                    String.format("%.2f", position.y),
-                    String.format("%.2f", position.z));
-
-        } catch (Exception e) {
-            logger.error("Error updating vertex position for index {}", uniqueIndex, e);
-        }
+        updater.updatePosition(uniqueIndex, position);
     }
 
     /**
@@ -550,7 +470,7 @@ public class VertexRenderer {
 
         int posIndex = index * 3;
         return new Vector3f(
-            vertexPositions[posIndex + 0],
+            vertexPositions[posIndex],
             vertexPositions[posIndex + 1],
             vertexPositions[posIndex + 2]
         );
@@ -564,58 +484,6 @@ public class VertexRenderer {
      */
     public float[] getAllVertexPositions() {
         return vertexPositions;
-    }
-
-    /**
-     * Update all vertices that match an old position to a new position.
-     * Used for edge translation to update connected vertices.
-     *
-     * @param oldPosition The original vertex position
-     * @param newPosition The new vertex position
-     */
-    public void updateVerticesByPosition(Vector3f oldPosition, Vector3f newPosition) {
-        if (!initialized || vertexPositions == null || vertexCount == 0) {
-            logger.warn("Cannot update vertices: renderer not initialized or no vertices");
-            return;
-        }
-
-        if (oldPosition == null || newPosition == null) {
-            logger.warn("Cannot update vertices: positions are null");
-            return;
-        }
-
-        try {
-            float epsilon = 0.0001f;
-            int updatedCount = 0;
-
-            for (int i = 0; i < vertexCount; i++) {
-                int posIndex = i * 3;
-
-                Vector3f vertexPos = new Vector3f(
-                    vertexPositions[posIndex + 0],
-                    vertexPositions[posIndex + 1],
-                    vertexPositions[posIndex + 2]
-                );
-
-                if (vertexPos.distance(oldPosition) < epsilon) {
-                    // Found matching vertex - update it
-                    updateVertexPosition(i, newPosition);
-                    updatedCount++;
-                }
-            }
-
-            logger.trace("Updated {} vertices from ({}, {}, {}) to ({}, {}, {})",
-                    updatedCount,
-                    String.format("%.2f", oldPosition.x),
-                    String.format("%.2f", oldPosition.y),
-                    String.format("%.2f", oldPosition.z),
-                    String.format("%.2f", newPosition.x),
-                    String.format("%.2f", newPosition.y),
-                    String.format("%.2f", newPosition.z));
-
-        } catch (Exception e) {
-            logger.error("Error updating vertices by position", e);
-        }
     }
 
     /**
@@ -663,85 +531,6 @@ public class VertexRenderer {
     }
 
     /**
-     * Auto-weld vertices that are at the same position (within epsilon).
-     * Called after drag release to merge overlapping vertices.
-     * Snaps all matching vertices to the average position.
-     *
-     * @param epsilon Distance threshold for merging
-     * @return Number of vertex groups that were welded
-     */
-    public int autoWeldOverlappingVertices(float epsilon) {
-        if (!initialized || vertexPositions == null || vertexCount == 0) {
-            return 0;
-        }
-
-        int weldedGroups = 0;
-        boolean[] processed = new boolean[vertexCount];
-
-        for (int i = 0; i < vertexCount; i++) {
-            if (processed[i]) continue;
-
-            // Find all vertices at the same position as vertex i
-            List<Integer> group = new ArrayList<>();
-            group.add(i);
-
-            Vector3f pos1 = new Vector3f(
-                vertexPositions[i * 3 + 0],
-                vertexPositions[i * 3 + 1],
-                vertexPositions[i * 3 + 2]
-            );
-
-            for (int j = i + 1; j < vertexCount; j++) {
-                if (processed[j]) continue;
-
-                Vector3f pos2 = new Vector3f(
-                    vertexPositions[j * 3 + 0],
-                    vertexPositions[j * 3 + 1],
-                    vertexPositions[j * 3 + 2]
-                );
-
-                if (pos1.distance(pos2) < epsilon) {
-                    group.add(j);
-                    processed[j] = true;
-                }
-            }
-
-            // If we found overlapping vertices, weld them to average position
-            if (group.size() > 1) {
-                Vector3f avgPos = new Vector3f();
-                for (int idx : group) {
-                    avgPos.add(
-                        vertexPositions[idx * 3 + 0],
-                        vertexPositions[idx * 3 + 1],
-                        vertexPositions[idx * 3 + 2]
-                    );
-                }
-                avgPos.div(group.size());
-
-                // Snap all vertices in group to average position
-                for (int idx : group) {
-                    updateVertexPosition(idx, avgPos);
-                }
-
-                weldedGroups++;
-                logger.debug("Welded {} vertices at position ({}, {}, {})",
-                    group.size(),
-                    String.format("%.3f", avgPos.x),
-                    String.format("%.3f", avgPos.y),
-                    String.format("%.3f", avgPos.z));
-            }
-
-            processed[i] = true;
-        }
-
-        if (weldedGroups > 0) {
-            logger.info("Auto-welded {} groups of overlapping vertices", weldedGroups);
-        }
-
-        return weldedGroups;
-    }
-
-    /**
      * Get expanded vertex positions for ModelRenderer compatibility.
      * After merging, we may have fewer than 8 vertices, but ModelRenderer expects 8.
      * This method expands the merged vertices back to 8 using the index remapping.
@@ -750,43 +539,9 @@ public class VertexRenderer {
      * @return 8 vertex positions (24 floats) for ModelRenderer
      */
     public float[] getExpandedVertexPositions(Map<Integer, Integer> indexRemapping) {
-        if (vertexPositions == null || vertexCount == 0 || indexRemapping == null) {
-            return getAllVertexPositions();
-        }
-
-        // ModelRenderer expects exactly 8 vertices (cube corners)
-        // If we have fewer due to merging, expand using the remapping
-        int targetVertexCount = 8;
-        float[] expandedPositions = new float[targetVertexCount * 3];
-
-        logger.debug("Expanding {} unique vertices to {} for ModelRenderer", vertexCount, targetVertexCount);
-        logger.debug("Index remapping: {}", indexRemapping);
-
-        for (int oldIdx = 0; oldIdx < targetVertexCount; oldIdx++) {
-            Integer newIdx = indexRemapping.get(oldIdx);
-            if (newIdx != null && newIdx < vertexCount) {
-                // This vertex was merged or kept - use its position
-                int newPosIdx = newIdx * 3;
-                int expandedPosIdx = oldIdx * 3;
-                expandedPositions[expandedPosIdx + 0] = vertexPositions[newPosIdx + 0];
-                expandedPositions[expandedPosIdx + 1] = vertexPositions[newPosIdx + 1];
-                expandedPositions[expandedPosIdx + 2] = vertexPositions[newPosIdx + 2];
-
-                logger.debug("  Vertex {} -> {} at ({}, {}, {})",
-                    oldIdx, newIdx,
-                    String.format("%.3f", expandedPositions[expandedPosIdx + 0]),
-                    String.format("%.3f", expandedPositions[expandedPosIdx + 1]),
-                    String.format("%.3f", expandedPositions[expandedPosIdx + 2]));
-            } else {
-                // Shouldn't happen, but use default position as fallback
-                logger.warn("Missing mapping for vertex {}, using zero position", oldIdx);
-                expandedPositions[oldIdx * 3 + 0] = 0.0f;
-                expandedPositions[oldIdx * 3 + 1] = 0.0f;
-                expandedPositions[oldIdx * 3 + 2] = 0.0f;
-            }
-        }
-
-        return expandedPositions;
+        // Delegate to VertexDataTransformer (Single Responsibility)
+        VertexDataTransformer transformer = new VertexDataTransformer(vertexPositions, vertexCount);
+        return transformer.expandToCubeFormat(indexRemapping);
     }
 
     /**
@@ -804,171 +559,41 @@ public class VertexRenderer {
             return new HashMap<>();
         }
 
-        // Build merge groups: vertices that should be merged together
-        List<List<Integer>> mergeGroups = new ArrayList<>();
-        boolean[] processed = new boolean[vertexCount];
+        // Step 1: Perform the merge operation (Single Responsibility)
+        VertexMerger merger = new VertexMerger(
+                vertexPositions,
+                allMeshVertices,
+                vertexCount,
+                epsilon,
+                originalToCurrentMapping
+        );
 
-        for (int i = 0; i < vertexCount; i++) {
-            if (processed[i]) continue;
+        VertexMerger.MergeResult result = merger.merge();
 
-            List<Integer> group = new ArrayList<>();
-            group.add(i);
-
-            Vector3f pos1 = new Vector3f(
-                vertexPositions[i * 3 + 0],
-                vertexPositions[i * 3 + 1],
-                vertexPositions[i * 3 + 2]
-            );
-
-            // Find all other vertices at the same position
-            for (int j = i + 1; j < vertexCount; j++) {
-                if (processed[j]) continue;
-
-                Vector3f pos2 = new Vector3f(
-                    vertexPositions[j * 3 + 0],
-                    vertexPositions[j * 3 + 1],
-                    vertexPositions[j * 3 + 2]
-                );
-
-                if (pos1.distance(pos2) < epsilon) {
-                    group.add(j);
-                    processed[j] = true;
-                }
-            }
-
-            mergeGroups.add(group);
-            processed[i] = true;
-        }
-
-        // Build index remapping: old index -> new index
-        // For each group, all vertices map to the first vertex in the group
-        Map<Integer, Integer> oldToNewIndex = new HashMap<>();
-        List<Integer> verticesToKeep = new ArrayList<>();
-        int newIndex = 0;
-
-        for (List<Integer> group : mergeGroups) {
-            int keepIndex = group.get(0); // Keep first vertex in group
-            verticesToKeep.add(keepIndex);
-
-            // Map all vertices in this group to the kept vertex's new index
-            for (int oldIndex : group) {
-                oldToNewIndex.put(oldIndex, newIndex);
-            }
-
-            newIndex++;
-        }
-
-        // If no vertices were merged, return original-to-current mapping
-        if (verticesToKeep.size() == vertexCount) {
-            logger.debug("No overlapping vertices found to merge");
-            // Return the persistent mapping (accounts for previous merges)
+        // If no merge occurred, return existing mapping
+        if (result == null) {
             return new HashMap<>(originalToCurrentMapping);
         }
 
-        // Update persistent original-to-current mapping
-        // This ensures we track where ALL original cube vertices (0-7) are now
-        Map<Integer, Integer> newOriginalToCurrentMapping = new HashMap<>();
-        for (Map.Entry<Integer, Integer> entry : originalToCurrentMapping.entrySet()) {
-            int originalIdx = entry.getKey();
-            int currentIdx = entry.getValue();
+        // Step 2: Update renderer state with merge results (Single Responsibility)
+        RendererStateUpdater.UpdateContext context = new RendererStateUpdater.UpdateContext(
+                allMeshVertices,
+                uniqueToMeshMapping
+        );
 
-            // Remap current index through the new merge
-            Integer newCurrentIdx = oldToNewIndex.get(currentIdx);
-            if (newCurrentIdx != null) {
-                newOriginalToCurrentMapping.put(originalIdx, newCurrentIdx);
-            } else {
-                logger.warn("Lost mapping for original vertex {} (was at current {})", originalIdx, currentIdx);
-                newOriginalToCurrentMapping.put(originalIdx, currentIdx); // Keep old mapping as fallback
-            }
-        }
-        originalToCurrentMapping = newOriginalToCurrentMapping;
+        RendererStateUpdater stateUpdater = new RendererStateUpdater(
+                context,
+                this::rebuildVBO,
+                this::buildUniqueToMeshMapping
+        );
 
-        logger.debug("Updated persistent mapping after merge: {}", originalToCurrentMapping);
+        RendererStateUpdater.UpdateContext updatedContext = stateUpdater.applyMergeResult(result);
 
-        // Build new vertex position array with only kept vertices
-        int newVertexCount = verticesToKeep.size();
-        float[] newVertexPositions = new float[newVertexCount * 3];
-
-        for (int i = 0; i < newVertexCount; i++) {
-            int oldIndex = verticesToKeep.get(i);
-            int oldPosIndex = oldIndex * 3;
-            int newPosIndex = i * 3;
-
-            // Calculate average position for this group
-            List<Integer> group = mergeGroups.get(i);
-            Vector3f avgPos = new Vector3f();
-            for (int vertexIdx : group) {
-                avgPos.add(
-                    vertexPositions[vertexIdx * 3 + 0],
-                    vertexPositions[vertexIdx * 3 + 1],
-                    vertexPositions[vertexIdx * 3 + 2]
-                );
-            }
-            avgPos.div(group.size());
-
-            newVertexPositions[newPosIndex + 0] = avgPos.x;
-            newVertexPositions[newPosIndex + 1] = avgPos.y;
-            newVertexPositions[newPosIndex + 2] = avgPos.z;
-
-            if (group.size() > 1) {
-                logger.debug("Merged {} vertices at position ({}, {}, {}) -> new index {}",
-                    group.size(),
-                    String.format("%.3f", avgPos.x),
-                    String.format("%.3f", avgPos.y),
-                    String.format("%.3f", avgPos.z),
-                    i);
-            }
-        }
-
-        // Update vertex arrays
-        vertexPositions = newVertexPositions;
-        vertexCount = newVertexCount;
-
-        // Update mesh vertices in allMeshVertices array
-        if (allMeshVertices != null) {
-            int meshVertexCount = allMeshVertices.length / 3;
-            for (int meshIdx = 0; meshIdx < meshVertexCount; meshIdx++) {
-                int meshPosIdx = meshIdx * 3;
-                Vector3f meshPos = new Vector3f(
-                    allMeshVertices[meshPosIdx + 0],
-                    allMeshVertices[meshPosIdx + 1],
-                    allMeshVertices[meshPosIdx + 2]
-                );
-
-                // Find which new vertex this mesh vertex should reference
-                for (int newIdx = 0; newIdx < newVertexCount; newIdx++) {
-                    Vector3f newPos = new Vector3f(
-                        newVertexPositions[newIdx * 3 + 0],
-                        newVertexPositions[newIdx * 3 + 1],
-                        newVertexPositions[newIdx * 3 + 2]
-                    );
-
-                    if (meshPos.distance(newPos) < epsilon) {
-                        allMeshVertices[meshPosIdx + 0] = newPos.x;
-                        allMeshVertices[meshPosIdx + 1] = newPos.y;
-                        allMeshVertices[meshPosIdx + 2] = newPos.z;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Rebuild unique-to-mesh mapping
-        if (allMeshVertices != null) {
-            buildUniqueToMeshMapping(newVertexPositions, allMeshVertices);
-        }
-
-        // Clear selection if it referenced a deleted vertex
-        if (selectedVertexIndex >= newVertexCount) {
-            selectedVertexIndex = -1;
-        }
-
-        // Rebuild VBO with new vertex data
-        rebuildVBO();
-
-        int mergedCount = vertexCount - newVertexCount;
-        logger.info("Merged {} duplicate vertices, {} unique vertices remaining",
-            mergedCount, newVertexCount);
+        // Step 3: Apply updated state back to renderer
+        this.vertexPositions = updatedContext.vertexPositions;
+        this.vertexCount = updatedContext.vertexCount;
+        this.originalToCurrentMapping = updatedContext.originalToCurrentMapping;
+        this.selectedVertexIndex = updatedContext.selectedVertexIndex;
 
         // Return the persistent original-to-current mapping (all 8 original vertices)
         return new HashMap<>(originalToCurrentMapping);
@@ -991,7 +616,7 @@ public class VertexRenderer {
             int dataIndex = i * 6;
 
             // Copy position
-            vertexData[dataIndex + 0] = vertexPositions[posIndex + 0];
+            vertexData[dataIndex] = vertexPositions[posIndex];
             vertexData[dataIndex + 1] = vertexPositions[posIndex + 1];
             vertexData[dataIndex + 2] = vertexPositions[posIndex + 2];
 
