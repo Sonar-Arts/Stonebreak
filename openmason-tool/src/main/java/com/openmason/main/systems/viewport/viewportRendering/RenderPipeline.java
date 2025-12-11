@@ -60,15 +60,12 @@ public class RenderPipeline {
 
     // Vertex data caching to prevent unnecessary updates
     private boolean vertexDataNeedsUpdate = true;
-    private Matrix4f lastTransformMatrix = new Matrix4f();
 
     // Edge data caching to prevent unnecessary updates (same pattern as vertices)
     private boolean edgeDataNeedsUpdate = true;
-    private Matrix4f lastTransformMatrixEdges = new Matrix4f();
 
     // Face data caching to prevent unnecessary updates (same pattern as edges)
     private boolean faceDataNeedsUpdate = true;
-    private Matrix4f lastTransformMatrixFaces = new Matrix4f();
 
     /**
      * Create render pipeline with all required dependencies.
@@ -522,33 +519,6 @@ public class RenderPipeline {
      */
     public ModelRenderer getBlockModelRenderer() {
         return modelRenderer;
-    }
-
-    /**
-     * Mark vertex data as needing update.
-     * Call this when the model changes to force vertex re-extraction.
-     */
-    public void markVertexDataDirty() {
-        vertexDataNeedsUpdate = true;
-        logger.debug("Vertex data marked as dirty - will update on next frame");
-    }
-
-    /**
-     * Mark edge data as needing update.
-     * Call this when vertices are modified to force edge re-extraction.
-     */
-    public void markEdgeDataDirty() {
-        edgeDataNeedsUpdate = true;
-        logger.debug("Edge data marked as dirty - will update on next frame");
-    }
-
-    /**
-     * Mark face data as needing update.
-     * Call this when vertices are modified to force face re-extraction.
-     */
-    public void markFaceDataDirty() {
-        faceDataNeedsUpdate = true;
-        logger.debug("Face data marked as dirty - will update on next frame");
     }
 
     /**

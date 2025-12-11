@@ -8,31 +8,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Coordinates translation operations between vertex, edge, and face handlers.
- * Ensures mutual exclusion - only one handler can be active at a time.
- * Prevents conflicts and maintains consistency across translation operations.
- *
- * <p>Design Principles:</p>
- * <ul>
- *   <li><b>Single Responsibility</b>: Coordinates translation state across handlers</li>
- *   <li><b>Open/Closed</b>: Extensible for new handler types without modification</li>
- *   <li><b>Dependency Inversion</b>: Depends on handler abstractions, not concrete implementations</li>
- * </ul>
- *
- * <p>State Management:</p>
- * <ul>
- *   <li>Only one handler can be dragging at a time (mutual exclusion)</li>
- *   <li>Automatic cancellation of other handlers when one starts dragging</li>
- *   <li>Unified camera and viewport state updates</li>
- * </ul>
- *
- * <p>Priority Order:</p>
- * <ul>
- *   <li>Vertex (Highest Priority)</li>
- *   <li>Edge (High Priority)</li>
- *   <li>Face (Lowest Priority)</li>
- * </ul>
- */
+  * Coordinates vertex, edge, and face translation handlers.
+  * Ensures mutual exclusion (only one active handler) and cancels others when a drag starts.
+  * Priority order: Vertex > Edge > Face.
+  */
 public class TranslationCoordinator {
 
     private static final Logger logger = LoggerFactory.getLogger(TranslationCoordinator.class);
@@ -225,15 +204,6 @@ public class TranslationCoordinator {
     }
 
     /**
-     * Gets the currently active handler type.
-     *
-     * @return The active handler type
-     */
-    public String getActiveHandlerType() {
-        return activeHandler.name();
-    }
-
-    /**
      * Cancels all handlers except the specified one.
      * Ensures mutual exclusion between handlers.
      *
@@ -252,35 +222,5 @@ public class TranslationCoordinator {
             faceHandler.cancelDrag();
             logger.trace("Cancelled face handler (switching to {})", except);
         }
-    }
-
-    /**
-     * Gets the vertex translation handler.
-     * Useful for direct access when needed.
-     *
-     * @return The vertex translation handler
-     */
-    public VertexTranslationHandler getVertexHandler() {
-        return vertexHandler;
-    }
-
-    /**
-     * Gets the edge translation handler.
-     * Useful for direct access when needed.
-     *
-     * @return The edge translation handler
-     */
-    public EdgeTranslationHandler getEdgeHandler() {
-        return edgeHandler;
-    }
-
-    /**
-     * Gets the face translation handler.
-     * Useful for direct access when needed.
-     *
-     * @return The face translation handler
-     */
-    public FaceTranslationHandler getFaceHandler() {
-        return faceHandler;
     }
 }
