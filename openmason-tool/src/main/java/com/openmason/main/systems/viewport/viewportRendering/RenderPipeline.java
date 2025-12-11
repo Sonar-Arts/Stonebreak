@@ -14,6 +14,7 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
@@ -41,6 +42,7 @@ public class RenderPipeline {
     private final GridRenderer gridRenderer;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
+    private final FaceRenderer faceRenderer;
 
     // External renderers (blocks, items)
     private final BlockRenderer blockRenderer;
@@ -64,6 +66,10 @@ public class RenderPipeline {
     private boolean edgeDataNeedsUpdate = true;
     private Matrix4f lastTransformMatrixEdges = new Matrix4f();
 
+    // Face data caching to prevent unnecessary updates (same pattern as edges)
+    private boolean faceDataNeedsUpdate = true;
+    private Matrix4f lastTransformMatrixFaces = new Matrix4f();
+
     /**
      * Create render pipeline with all required dependencies.
      */
@@ -77,6 +83,7 @@ public class RenderPipeline {
         this.gridRenderer = new GridRenderer();
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
+        this.faceRenderer = new FaceRenderer();
         this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
         this.modelRenderer = modelRenderer;
@@ -130,10 +137,11 @@ public class RenderPipeline {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             }
 
-            // PASS 3: Render mesh (vertices + edges, debug overlay, Blender-style)
+            // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
             if (viewportState.getShowVertices().get()) {
                 renderVertices(renderingState, transformState);
                 renderEdges(renderingState, transformState);
+                renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
             }
 
             // PASS 4: Render gizmo (after content, always in fill mode)
@@ -399,6 +407,62 @@ public class RenderPipeline {
         }
     }
 
+    /**
+     * Render faces pass (semi-transparent overlays for hover/selection).
+     * Renders LAST for proper blending on top of model.
+     */
+    private void renderFaces(RenderingState renderingState, TransformState transformState) {
+        try {
+            // Initialize face renderer if needed
+            if (!faceRenderer.isInitialized()) {
+                faceRenderer.initialize();
+            }
+
+            // Render faces based on current rendering mode (mirrors edge rendering)
+            switch (renderingState.getMode()) {
+                case BLOCK_MODEL:
+                    // Editable .OMO block model rendering (simple cube)
+                    Collection<ModelDefinition.ModelPart> cubeParts = createCubeParts();
+
+                    // Only extract face data ONCE (in MODEL SPACE, no transform)
+                    // Faces will be transformed by model matrix in shader (like BlockModelRenderer)
+                    if (faceDataNeedsUpdate) {
+                        Matrix4f identityTransform = new Matrix4f(); // Identity = no transform
+                        faceRenderer.updateFaceData(cubeParts, identityTransform);
+
+                        // Build face-to-vertex mapping to prevent unification bug
+                        float[] uniqueVertexPositions = vertexRenderer.getAllVertexPositions();
+                        if (uniqueVertexPositions != null) {
+                            faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
+                            logger.trace("Built face-to-vertex mapping for unification prevention");
+                        }
+
+                        faceDataNeedsUpdate = false;
+                        logger.trace("Face data extracted in model space");
+                    }
+
+                    ShaderProgram basicShaderBlockModel = shaderManager.getShaderProgram(ShaderType.BASIC);
+                    faceRenderer.render(basicShaderBlockModel, context, transformState.getTransformMatrix());
+                    break;
+
+                case BLOCK:
+                    // Single block rendering
+                    // TODO: Implement face extraction for Block rendering
+                    logger.trace("BLOCK mode - faces not yet supported");
+                    break;
+
+                case ITEM:
+                    // Item rendering
+                    // TODO: Implement face extraction for Item rendering
+                    logger.trace("ITEM mode - faces not yet supported");
+                    break;
+            }
+
+        } catch (Exception e) {
+            logger.error("Error rendering faces", e);
+        }
+    }
+
 
     /**
      * Create a simple 1x1x1 cube model part.
@@ -447,6 +511,13 @@ public class RenderPipeline {
     }
 
     /**
+     * Gets the face renderer for external access (preferences, etc.).
+     */
+    public FaceRenderer getFaceRenderer() {
+        return faceRenderer;
+    }
+
+    /**
      * Gets the block model renderer for external access (vertex editing, etc.).
      */
     public ModelRenderer getBlockModelRenderer() {
@@ -472,6 +543,15 @@ public class RenderPipeline {
     }
 
     /**
+     * Mark face data as needing update.
+     * Call this when vertices are modified to force face re-extraction.
+     */
+    public void markFaceDataDirty() {
+        faceDataNeedsUpdate = true;
+        logger.debug("Face data marked as dirty - will update on next frame");
+    }
+
+    /**
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
@@ -483,6 +563,9 @@ public class RenderPipeline {
         }
         if (edgeRenderer.isInitialized()) {
             edgeRenderer.cleanup();
+        }
+        if (faceRenderer.isInitialized()) {
+            faceRenderer.cleanup();
         }
         logger.debug("RenderPipeline cleanup complete");
     }

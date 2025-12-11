@@ -7,6 +7,7 @@ import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.RenderPipeline;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.common.TranslationHandlerBase;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
     private final EdgeSelectionState selectionState;
     private final EdgeRenderer edgeRenderer;
     private final VertexRenderer vertexRenderer;
+    private final FaceRenderer faceRenderer;
     private final ModelRenderer modelRenderer;
     private final RenderPipeline renderPipeline;
 
@@ -36,6 +38,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
      * @param selectionState The edge selection state
      * @param edgeRenderer The edge renderer for visual updates
      * @param vertexRenderer The vertex renderer for updating connected vertices
+     * @param faceRenderer The face renderer for updating face overlays
      * @param modelRenderer The block model renderer for updating the solid mesh
      * @param viewportState The viewport state for grid snapping settings
      * @param renderPipeline The render pipeline for marking data dirty
@@ -44,6 +47,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
     public EdgeTranslationHandler(EdgeSelectionState selectionState,
                                    EdgeRenderer edgeRenderer,
                                    VertexRenderer vertexRenderer,
+                                   FaceRenderer faceRenderer,
                                    ModelRenderer modelRenderer,
                                    ViewportUIState viewportState,
                                    RenderPipeline renderPipeline,
@@ -59,6 +63,9 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         if (vertexRenderer == null) {
             throw new IllegalArgumentException("VertexRenderer cannot be null");
         }
+        if (faceRenderer == null) {
+            throw new IllegalArgumentException("FaceRenderer cannot be null");
+        }
         if (modelRenderer == null) {
             throw new IllegalArgumentException("BlockModelRenderer cannot be null");
         }
@@ -69,6 +76,7 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         this.selectionState = selectionState;
         this.edgeRenderer = edgeRenderer;
         this.vertexRenderer = vertexRenderer;
+        this.faceRenderer = faceRenderer;
         this.modelRenderer = modelRenderer;
         this.renderPipeline = renderPipeline;
     }
@@ -196,6 +204,31 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
                 logger.debug("Merged vertices and rebuilt edge mapping after edge drag");
             }
 
+            // Rebuild face-to-vertex mapping with new vertex data
+            if (uniqueVertexPositions != null && faceRenderer != null) {
+                faceRenderer.buildFaceToVertexMapping(uniqueVertexPositions);
+                logger.debug("Rebuilt face-to-vertex mapping after edge vertex merge");
+
+                // Update all face overlays with new positions after merge
+                for (int faceIdx = 0; faceIdx < faceRenderer.getFaceCount(); faceIdx++) {
+                    int[] faceVertexIndices = faceRenderer.getFaceVertexIndices(faceIdx);
+                    if (faceVertexIndices != null && faceVertexIndices.length == 4) {
+                        Vector3f[] newPositions = new Vector3f[4];
+                        boolean allValid = true;
+                        for (int i = 0; i < 4; i++) {
+                            newPositions[i] = vertexRenderer.getVertexPosition(faceVertexIndices[i]);
+                            if (newPositions[i] == null) {
+                                allValid = false;
+                                break;
+                            }
+                        }
+                        if (allValid) {
+                            faceRenderer.updateFaceByVertexIndices(faceIdx, faceVertexIndices, newPositions);
+                        }
+                    }
+                }
+            }
+
             // COMMIT: Update ModelRenderer with EXPANDED vertex positions (8 vertices for cube)
             // Expand merged vertices to 8 for ModelRenderer compatibility
             float[] expandedPositions = vertexRenderer.getExpandedVertexPositions(indexRemapping);
@@ -242,6 +275,9 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
             // FIX: Revert edges by vertex indices (prevents unification)
             edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, originalPoint1, vertexIndex2, originalPoint2);
 
+            // Revert all face overlays that use these vertices
+            updateAffectedFaceOverlays(vertexIndex1, vertexIndex2);
+
             // REVERT: Update ModelRenderer with original positions (once!)
             float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
             if (allVertexPositions != null && modelRenderer != null) {
@@ -284,6 +320,9 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
         // FIX: Update edges by vertex indices (prevents unification)
         edgeRenderer.updateEdgesByVertexIndices(vertexIndex1, newPoint1, vertexIndex2, newPoint2);
 
+        // Update all face overlays that use these vertices (ensures overlays morph with geometry)
+        updateAffectedFaceOverlays(vertexIndex1, vertexIndex2);
+
         // REALTIME VISUAL UPDATE: Update ModelRenderer during drag (no merging)
         // This provides visual feedback showing how the final cube will look
         float[] allVertexPositions = vertexRenderer.getAllVertexPositions();
@@ -312,5 +351,61 @@ public class EdgeTranslationHandler extends TranslationHandlerBase {
 
         // Intersect ray with plane using base class utility
         return intersectRayPlane(ray, planePoint, planeNormal, selectionState.getMidpoint());
+    }
+
+    /**
+     * Update all face overlays that use either vertex of the modified edge.
+     * This ensures face overlays morph to match the new geometry shape.
+     *
+     * @param vertexIndex1 The index of the first vertex of the edge
+     * @param vertexIndex2 The index of the second vertex of the edge
+     */
+    private void updateAffectedFaceOverlays(int vertexIndex1, int vertexIndex2) {
+        if (faceRenderer == null || !faceRenderer.isInitialized()) {
+            return;
+        }
+
+        int faceCount = faceRenderer.getFaceCount();
+        if (faceCount == 0) {
+            return;
+        }
+
+        // Iterate through all faces and update those that use either vertex
+        for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
+            int[] faceVertexIndices = faceRenderer.getFaceVertexIndices(faceIdx);
+
+            if (faceVertexIndices == null || faceVertexIndices.length != 4) {
+                continue;
+            }
+
+            // Check if this face uses either vertex
+            boolean faceUsesVertex = false;
+            for (int vIdx : faceVertexIndices) {
+                if (vIdx == vertexIndex1 || vIdx == vertexIndex2) {
+                    faceUsesVertex = true;
+                    break;
+                }
+            }
+
+            if (faceUsesVertex) {
+                // Get current positions of all 4 vertices of this face
+                Vector3f[] newPositions = new Vector3f[4];
+                for (int i = 0; i < 4; i++) {
+                    newPositions[i] = vertexRenderer.getVertexPosition(faceVertexIndices[i]);
+                    if (newPositions[i] == null) {
+                        logger.warn("Cannot update face {}: vertex {} position is null", faceIdx, faceVertexIndices[i]);
+                        break;
+                    }
+                }
+
+                // Update the face overlay with new vertex positions
+                if (newPositions[0] != null && newPositions[1] != null &&
+                    newPositions[2] != null && newPositions[3] != null) {
+                    faceRenderer.updateFaceByVertexIndices(faceIdx, faceVertexIndices, newPositions);
+                    logger.trace("Updated face {} overlay due to edge vertices {}, {} modification",
+                                faceIdx, vertexIndex1, vertexIndex2);
+                }
+            }
+        }
     }
 }

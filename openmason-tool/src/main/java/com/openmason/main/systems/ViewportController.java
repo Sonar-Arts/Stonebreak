@@ -20,9 +20,11 @@ import com.openmason.main.systems.viewport.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.main.systems.viewport.state.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
+import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeTranslationHandler;
+import com.openmason.main.systems.viewport.viewportRendering.face.FaceTranslationHandler;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
@@ -50,6 +52,7 @@ public class ViewportController {
     private final TransformState transformState;
     private final VertexSelectionState vertexSelectionState;
     private final com.openmason.main.systems.viewport.state.EdgeSelectionState edgeSelectionState;
+    private final FaceSelectionState faceSelectionState;
 
     // ========== Renderers ==========
     private final BlockRenderer blockRenderer;
@@ -78,6 +81,7 @@ public class ViewportController {
         this.transformState = new TransformState();
         this.vertexSelectionState = new VertexSelectionState();
         this.edgeSelectionState = new com.openmason.main.systems.viewport.state.EdgeSelectionState();
+        this.faceSelectionState = new FaceSelectionState();
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
@@ -157,6 +161,9 @@ public class ViewportController {
             if (renderPipeline.getEdgeRenderer() != null) {
                 inputHandler.setEdgeRenderer(renderPipeline.getEdgeRenderer());
             }
+            if (renderPipeline.getFaceRenderer() != null) {
+                inputHandler.setFaceRenderer(renderPipeline.getFaceRenderer());
+            }
 
             // Connect vertex selection state for vertex manipulation
             inputHandler.setVertexSelectionState(vertexSelectionState);
@@ -166,19 +173,24 @@ public class ViewportController {
             inputHandler.setEdgeSelectionState(edgeSelectionState);
             logger.debug("Edge selection state connected to input handler");
 
+            // Connect face selection state for face manipulation
+            inputHandler.setFaceSelectionState(faceSelectionState);
+            logger.debug("Face selection state connected to input handler");
+
             // Connect transform state for model matrix access in hover detection
             inputHandler.setTransformState(transformState);
             logger.debug("Transform state connected to input handler");
 
             // Create translation handlers and coordinator
             if (renderPipeline.getVertexRenderer() != null && renderPipeline.getEdgeRenderer() != null &&
-                renderPipeline.getBlockModelRenderer() != null) {
+                renderPipeline.getFaceRenderer() != null && renderPipeline.getBlockModelRenderer() != null) {
 
                 // Create vertex translation handler
                 VertexTranslationHandler vertexTranslationHandler = new VertexTranslationHandler(
                     vertexSelectionState,
                     renderPipeline.getVertexRenderer(),
                     renderPipeline.getEdgeRenderer(),
+                    renderPipeline.getFaceRenderer(),
                     renderPipeline.getBlockModelRenderer(),
                     viewportState,
                     renderPipeline,
@@ -191,6 +203,7 @@ public class ViewportController {
                     edgeSelectionState,
                     renderPipeline.getEdgeRenderer(),
                     renderPipeline.getVertexRenderer(),
+                    renderPipeline.getFaceRenderer(),
                     renderPipeline.getBlockModelRenderer(),
                     viewportState,
                     renderPipeline,
@@ -198,10 +211,24 @@ public class ViewportController {
                 );
                 logger.debug("Edge translation handler created");
 
+                // Create face translation handler
+                FaceTranslationHandler faceTranslationHandler = new FaceTranslationHandler(
+                    faceSelectionState,
+                    renderPipeline.getFaceRenderer(),
+                    renderPipeline.getVertexRenderer(),
+                    renderPipeline.getEdgeRenderer(),
+                    renderPipeline.getBlockModelRenderer(),
+                    viewportState,
+                    renderPipeline,
+                    transformState
+                );
+                logger.debug("Face translation handler created");
+
                 // Create coordinator to manage mutual exclusion between handlers
                 TranslationCoordinator translationCoordinator = new TranslationCoordinator(
                     vertexTranslationHandler,
-                    edgeTranslationHandler
+                    edgeTranslationHandler,
+                    faceTranslationHandler
                 );
                 logger.debug("Translation coordinator created");
 
@@ -439,6 +466,9 @@ public class ViewportController {
         }
         if (renderPipeline != null && renderPipeline.getEdgeRenderer() != null) {
             renderPipeline.getEdgeRenderer().setEnabled(showVertices);
+        }
+        if (renderPipeline != null && renderPipeline.getFaceRenderer() != null) {
+            renderPipeline.getFaceRenderer().setEnabled(showVertices);
         }
     }
 
