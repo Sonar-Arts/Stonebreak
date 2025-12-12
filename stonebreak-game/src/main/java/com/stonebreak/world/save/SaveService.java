@@ -45,7 +45,9 @@ public class SaveService implements AutoCloseable {
     public SaveService(String worldPath) {
         this.worldPath = Objects.requireNonNull(worldPath, "worldPath");
         this.repository = new FileSaveRepository(worldPath);
-        this.ioExecutor = Executors.newSingleThreadExecutor(r -> {
+        // Use fixed thread pool to allow concurrent save/load operations
+        // Single thread executor caused deadlock when .join() was called while another task was queued
+        this.ioExecutor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "Save-IO");
             t.setDaemon(true);
             return t;
@@ -157,6 +159,23 @@ public class SaveService implements AutoCloseable {
             .thenRun(() -> System.out.printf("[SAVE] Saved %d dirty chunks%n", chunkTasks.size()));
     }
 
+    /**
+     * Saves only world metadata (spawn position, time, etc.) without saving chunks or player.
+     * Used when spawn position is calculated for a new world.
+     */
+    public CompletableFuture<Void> saveWorldDataOnly(WorldData worldData) {
+        this.worldData = worldData;  // Update cached world data
+        return CompletableFuture.runAsync(() -> {
+            try {
+                repository.saveWorld(worldData);
+                System.out.println("[SAVE] World metadata saved");
+            } catch (IOException e) {
+                System.err.println("[SAVE] Failed to save world metadata: " + e.getMessage());
+                throw new RuntimeException(e);
+            }
+        }, ioExecutor);
+    }
+
     public CompletableFuture<LoadResult> loadWorld() {
         long start = System.currentTimeMillis();
         return CompletableFuture.supplyAsync(() -> {
@@ -167,7 +186,7 @@ public class SaveService implements AutoCloseable {
                 }
                 WorldData data = worldOpt.get();
                 var playerOpt = repository.loadPlayer();
-                PlayerData playerData = playerOpt.orElse(PlayerData.createDefault(data.getWorldName()));
+                PlayerData playerData = playerOpt.orElse(null);  // Don't fabricate data - return what was found or null
                 System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
                 return new LoadResult(true, null, data, playerData);
             } catch (IOException e) {
@@ -178,18 +197,37 @@ public class SaveService implements AutoCloseable {
     }
 
     public CompletableFuture<Chunk> loadChunk(int chunkX, int chunkZ) {
+        System.out.println("[SAVE-SERVICE] loadChunk called for (" + chunkX + ", " + chunkZ + "), world=" + (world != null ? "NOT NULL" : "NULL"));
+        System.out.println("[SAVE-SERVICE] ioExecutor=" + (ioExecutor != null ? "NOT NULL" : "NULL"));
+        System.out.println("[SAVE-SERVICE] ioExecutor.isShutdown=" + (ioExecutor != null ? ioExecutor.isShutdown() : "N/A"));
+        System.out.println("[SAVE-SERVICE] ioExecutor.isTerminated=" + (ioExecutor != null ? ioExecutor.isTerminated() : "N/A"));
+
         return CompletableFuture.supplyAsync(() -> {
+            System.out.println("[SAVE-SERVICE-EXECUTOR] Task started executing for chunk (" + chunkX + ", " + chunkZ + ") on thread " + Thread.currentThread().getName());
             try {
+                System.out.println("[SAVE-SERVICE-EXECUTOR] Calling repository.loadChunk for (" + chunkX + ", " + chunkZ + ")");
                 var dataOpt = repository.loadChunk(chunkX, chunkZ);
+                System.out.println("[SAVE-SERVICE-EXECUTOR] repository.loadChunk completed, isEmpty=" + dataOpt.isEmpty());
                 if (dataOpt.isEmpty()) {
+                    System.out.println("[SAVE-SERVICE-EXECUTOR] Chunk not found on disk, returning null for (" + chunkX + ", " + chunkZ + ")");
                     return null;
                 }
                 if (world == null) {
+                    System.err.println("[SAVE-SERVICE-EXECUTOR] CRITICAL: World is null! Cannot create chunk from data");
                     throw new IllegalStateException("World not initialized");
                 }
-                return StateConverter.createChunkFromData(dataOpt.get(), world);
+                System.out.println("[SAVE-SERVICE-EXECUTOR] Creating chunk from data for (" + chunkX + ", " + chunkZ + ")");
+                Chunk result = StateConverter.createChunkFromData(dataOpt.get(), world);
+                System.out.println("[SAVE-SERVICE-EXECUTOR] Chunk created successfully from data for (" + chunkX + ", " + chunkZ + ")");
+                return result;
             } catch (IOException e) {
+                System.err.println("[SAVE-SERVICE-EXECUTOR] IOException loading chunk (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
+                e.printStackTrace();
                 throw new RuntimeException("Failed to load chunk (" + chunkX + "," + chunkZ + ")", e);
+            } catch (Exception e) {
+                System.err.println("[SAVE-SERVICE-EXECUTOR] Unexpected exception loading chunk (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
+                e.printStackTrace();
+                throw e;
             }
         }, ioExecutor);
     }

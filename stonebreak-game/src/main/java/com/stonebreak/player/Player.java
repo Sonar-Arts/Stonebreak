@@ -1718,8 +1718,8 @@ public class Player {      // Player settings
     public void giveStartingItems() {
         // Only reset position and state for NEW players (not loaded from save)
         if (!isLoadedFromSave) {
-            // Reset position to spawn
-            position.set(0, 100, 0);
+            // Position will be set to surface height after chunk generation in Game.performInitialWorldGeneration()
+            // Keep constructor default (0, 100, 0) as temporary value
 
             // Reset velocity and physics state
             velocity.set(0, 0, 0);

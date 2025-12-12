@@ -37,7 +37,13 @@ public final class WorldData {
             @JsonProperty("use3DDensity") Boolean use3DDensity) {
         this.seed = seed;
         this.worldName = worldName;
-        this.spawnPosition = new Vector3f(spawnPosition);
+        // Null-safety guard: if deserialization fails, use sentinel value for spawn calculation
+        if (spawnPosition == null) {
+            System.err.println("[WorldData] WARNING: Null spawnPosition during deserialization, using sentinel value");
+        }
+        this.spawnPosition = (spawnPosition != null)
+            ? new Vector3f(spawnPosition)
+            : new Vector3f(0, -999, 0);  // Sentinel - spawn will be calculated
         this.createdTime = createdTime;
         this.lastPlayed = lastPlayed;
         this.totalPlayTimeMillis = totalPlayTimeMillis;
@@ -102,7 +108,7 @@ public final class WorldData {
     public static final class Builder {
         private long seed;
         private String worldName;
-        private Vector3f spawnPosition = new Vector3f(0, 100, 0);
+        private Vector3f spawnPosition = new Vector3f(0, -999, 0);  // Sentinel - spawn will be calculated on first load
         private LocalDateTime createdTime = LocalDateTime.now();
         private LocalDateTime lastPlayed = LocalDateTime.now();
         private long totalPlayTimeMillis = 0;
@@ -111,7 +117,9 @@ public final class WorldData {
         private String generatorType = "SPLINE"; // PHASE 2: Default to SPLINE for dramatic terrain
         private boolean use3DDensity = true; // PHASE 2: Enable 3D density by default
 
-        public Builder() {}
+        public Builder() {
+            System.out.println("[WorldData.Builder()] DEFAULT spawn initialized to: " + this.spawnPosition);
+        }
 
         public Builder(WorldData data) {
             this.seed = data.seed;
@@ -138,6 +146,7 @@ public final class WorldData {
 
         public Builder spawnPosition(Vector3f spawnPosition) {
             this.spawnPosition = new Vector3f(spawnPosition);
+            System.out.println("[WorldData.Builder] spawnPosition set to: " + spawnPosition);
             return this;
         }
 
@@ -180,6 +189,7 @@ public final class WorldData {
             if (worldName == null || worldName.isEmpty()) {
                 throw new IllegalStateException("World name cannot be null or empty");
             }
+            System.out.println("[WorldData.Builder.build()] Building WorldData with spawnPosition: " + this.spawnPosition);
             return new WorldData(this);
         }
     }

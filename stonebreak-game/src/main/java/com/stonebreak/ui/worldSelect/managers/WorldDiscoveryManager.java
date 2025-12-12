@@ -3,6 +3,7 @@ package com.stonebreak.ui.worldSelect.managers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.stonebreak.world.save.model.WorldData;
+import com.stonebreak.world.save.serialization.JsonWorldSerializer;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +23,7 @@ public class WorldDiscoveryManager {
     private static final String WORLD_DATA_FILENAME = "world.json";
 
     private final ObjectMapper objectMapper;
+    private final JsonWorldSerializer worldSerializer;
 
     // Cache for world data to avoid repeated file reads
     private final Map<String, WorldData> worldDataCache = new HashMap<>();
@@ -31,6 +33,7 @@ public class WorldDiscoveryManager {
     public WorldDiscoveryManager() {
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
+        this.worldSerializer = new JsonWorldSerializer();
     }
 
     // ===== WORLD DISCOVERY =====
@@ -166,7 +169,9 @@ public class WorldDiscoveryManager {
                 return null;
             }
 
-            return objectMapper.readValue(worldDataPath.toFile(), WorldData.class);
+            // Use JsonWorldSerializer to properly deserialize Vector3f fields
+            byte[] fileBytes = Files.readAllBytes(worldDataPath);
+            return worldSerializer.deserialize(fileBytes);
 
         } catch (IOException e) {
             System.err.println("Error loading world data for world '" + worldName + "': " + e.getMessage());

@@ -277,9 +277,6 @@ public class TerrainGenerationSystem {
                 }
 
                 // STEP 5: Generate blocks for this column
-                // Track surface height for caching (highest non-air block)
-                int surfaceHeight = 0;
-
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
@@ -315,14 +312,37 @@ public class TerrainGenerationSystem {
                     // Biome only affects materials, NOT height
                     BlockType blockType = determineBlockType(worldX, y, worldZ, height, biome);
                     chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
+                }
+            }
+        }
 
-                    // Update surface height (highest solid block)
-                    surfaceHeight = y;
+        // STEP 6: Rebuild surface height cache to reflect actual post-cave/feature surface
+        // This ensures spawn calculation and feature placement use the TRUE surface, not pre-cave terrain
+        updateLoadingProgress("Building Surface Cache");
+        System.out.println("[SURFACE-CACHE] Starting surface cache rebuild for chunk (" + chunkX + ", " + chunkZ + ")");
+        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
+            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
+                int actualSurface = -1;
+
+                // Scan from top down to find first solid, non-water block
+                for (int y = WORLD_HEIGHT - 1; y >= 0; y--) {
+                    BlockType block = chunk.getBlock(x, y, z);
+                    if (block != null && block != BlockType.AIR && block != BlockType.WATER) {
+                        actualSurface = y;
+                        break;
+                    }
                 }
 
-                // Cache the surface height for this column
-                surfaceHeightCache[x][z] = surfaceHeight;
+                // Store actual surface (or -1 if column is all air/water)
+                surfaceHeightCache[x][z] = actualSurface;
             }
+        }
+
+        System.out.println("[SURFACE-CACHE] Finished surface cache rebuild for chunk (" + chunkX + ", " + chunkZ + ")");
+
+        // Add debug logging for spawn chunk (0, 0) to verify surface detection
+        if (chunkX == 0 && chunkZ == 0) {
+            System.out.println("[SPAWN] Spawn chunk surface at (0,0): Y=" + surfaceHeightCache[0][0]);
         }
 
         // Set the surface height cache on the chunk

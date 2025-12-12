@@ -91,7 +91,7 @@ public class TerrainActionHandler {
                 .worldName(worldName)
                 .seed(seed)
                 .generatorType(stateManager.getSelectedGeneratorType().name())
-                .spawnPosition(new Vector3f(0, 100, 0))
+                .spawnPosition(new Vector3f(0, -999, 0))  // Sentinel value - will be calculated during first load
                 .createdTime(LocalDateTime.now())
                 .lastPlayed(LocalDateTime.now())
                 .totalPlayTimeMillis(0)

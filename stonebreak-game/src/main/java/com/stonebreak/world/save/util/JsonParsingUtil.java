@@ -171,7 +171,9 @@ public class JsonParsingUtil {
             float z = Float.parseFloat(m.group(3));
             return new Vector3f(x, y, z);
         }
-        return new Vector3f(0, 100, 0); // Default position
+        // Fallback: use sentinel value to trigger spawn calculation
+        System.err.println("[JsonParsingUtil] WARNING: Failed to parse Vector3f for key '" + key + "', using sentinel value");
+        return new Vector3f(0, -999, 0); // Sentinel - spawn will be calculated
     }
 
     /**

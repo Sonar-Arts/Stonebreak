@@ -226,6 +226,20 @@ public class World {
     }
 
     /**
+     * Gets the chunk at the specified position, blocking until generation completes.
+     * This is intended for use during world initialization when chunks are needed immediately.
+     *
+     * @param x Chunk X coordinate
+     * @param z Chunk Z coordinate
+     * @return The loaded or generated chunk, or null if generation failed
+     */
+    public Chunk getChunkAtBlocking(int x, int z) {
+        if (chunkStore == null) return null; // Test mode - no chunk store
+
+        return chunkStore.getOrCreateChunkBlocking(x, z);
+    }
+
+    /**
      * Checks if a chunk exists at the specified position.
      */
     public boolean hasChunkAt(int x, int z) {

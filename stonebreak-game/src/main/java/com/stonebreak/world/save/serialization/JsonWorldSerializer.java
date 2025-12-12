@@ -14,12 +14,14 @@ public class JsonWorldSerializer {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     public byte[] serialize(WorldData world) {
+        Vector3f spawn = world.getSpawnPosition();
+        System.out.println("[JsonWorldSerializer.serialize()] Serializing spawn position: " + spawn);
+
         StringBuilder json = new StringBuilder();
         json.append("{\n");
         json.append("  \"seed\": ").append(world.getSeed()).append(",\n");
         json.append("  \"worldName\": \"").append(JsonParsingUtil.escapeJson(world.getWorldName())).append("\",\n");
 
-        Vector3f spawn = world.getSpawnPosition();
         json.append("  \"spawnPosition\": {\n");
         json.append("    \"x\": ").append(spawn.x).append(",\n");
         json.append("    \"y\": ").append(spawn.y).append(",\n");

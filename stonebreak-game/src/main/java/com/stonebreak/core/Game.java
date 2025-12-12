@@ -22,6 +22,7 @@ import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.util.*;
 import com.stonebreak.world.*;
+import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.model.WorldData;
@@ -1685,7 +1686,8 @@ public class Game {
             // Generate initial chunks around spawn point (0, 0)
             if (world != null && player != null) {
                 // Try to load existing player data before setting default position
-                org.joml.Vector3f playerPosition = new org.joml.Vector3f(0, 100, 0); // Default position
+                org.joml.Vector3f playerPosition = new org.joml.Vector3f(0, 100, 0); // Temporary default
+                boolean isNewPlayer = false; // Track if this is a first-time spawn
 
                 if (saveService != null) {
                     try {
@@ -1718,7 +1720,8 @@ public class Game {
                                 System.out.println("[TIME-SYSTEM] ✓ Loaded world time: " + savedTimeTicks + " ticks (" + timeOfDay.getTimeString() + ")");
                             }
                         } else {
-                            // No existing player data, give starting items and initialize time at noon
+                            // No existing player data - mark as new player
+                            isNewPlayer = true;
                             player.giveStartingItems();
                             timeOfDay = new TimeOfDay(TimeOfDay.NOON);
                             System.out.println("[PLAYER-DATA] ✓ No existing player data found for world '" + currentWorldName + "' - treating as new world, giving starting items");
@@ -1733,11 +1736,13 @@ public class Game {
                         System.err.println("[SAVE-SYSTEM] Error details: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                         e.printStackTrace();
 
+                        isNewPlayer = true;
                         player.giveStartingItems();
                         System.out.println("[PLAYER-DATA] Save system failed, giving starting items as fallback: " + e.getMessage());
                     }
                 } else {
                     // No save system available, give starting items and use defaults
+                    isNewPlayer = true;
                     player.giveStartingItems();
                     // Initialize time at noon for new worlds
                     timeOfDay = new TimeOfDay(TimeOfDay.NOON);
@@ -1792,6 +1797,27 @@ public class Game {
                     }
                 }
 
+                // Calculate surface-based spawn position for new players
+                if (isNewPlayer) {
+                    // Wait for spawn chunk terrain and surface cache to be ready
+                    if (!waitForChunkTerrain(world, 0, 0, 5000, true)) {
+                        System.err.println("[SPAWN] Warning: Spawn chunk terrain not ready after 5000ms");
+                    }
+
+                    // Validate spawn chunk is fully ready
+                    Chunk spawnChunk = world.getChunkAt(0, 0);
+                    if (!validateSpawnChunkReadiness(spawnChunk)) {
+                        System.err.println("[SPAWN] Warning: Spawn chunk validation failed, spawn calculation may be inaccurate");
+                    }
+
+                    // Calculate spawn height
+                    int spawnY = findSpawnSurfaceHeight(world);
+                    playerPosition.set(0, spawnY, 0);
+                    player.getPosition().set(0, spawnY, 0);
+                    System.out.println("[SPAWN] New player spawn position set: (" +
+                        playerPosition.x + ", " + playerPosition.y + ", " + playerPosition.z + ")");
+                }
+
                 // Give time for all chunks to finish processing
                 Thread.sleep(500);
 
@@ -1808,6 +1834,247 @@ public class Game {
             // Still complete the generation to avoid being stuck
             completeWorldGeneration();
         }
+    }
+
+    /**
+     * Tries to find a surface height at a specific block column within a chunk.
+     * @param chunk The chunk to search
+     * @param localX Local X coordinate within chunk (0-15)
+     * @param localZ Local Z coordinate within chunk (0-15)
+     * @return Y coordinate of surface, or -1 if column is all air
+     */
+    private int findSurfaceHeightAt(Chunk chunk, int localX, int localZ) {
+        if (chunk == null) {
+            return -1;
+        }
+
+        // Try cache first if available
+        int[][] surfaceCache = chunk.getSurfaceHeightCache();
+        if (surfaceCache != null && localX >= 0 && localX < 16 && localZ >= 0 && localZ < 16) {
+            int cacheValue = surfaceCache[localX][localZ];
+            if (cacheValue >= 0) {
+                return cacheValue + 1; // +1 for air block above surface
+            }
+        }
+
+        // Manual scan
+        for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
+            BlockType block = chunk.getBlock(localX, y, localZ);
+            if (block != null && block != BlockType.AIR && block != BlockType.WATER) {
+                return y + 1; // +1 for air block above surface
+            }
+        }
+
+        return -1; // Column is all air
+    }
+
+    /**
+     * Finds the surface height at world coordinates (0, 0) for spawn placement.
+     * Uses surface height cache if available, falls back to manual scan.
+     * If spawn column is entirely air, searches nearby columns.
+     *
+     * @param world The world instance
+     * @return Y coordinate of first air block above surface, or 100 if column is empty
+     */
+    private int findSpawnSurfaceHeight(World world) {
+        System.out.println("[SPAWN] Calculating spawn height at chunk (0, 0)...");
+
+        // Get spawn chunk at (0, 0)
+        Chunk spawnChunk = world.getChunkAt(0, 0);
+        if (spawnChunk == null) {
+            System.err.println("[SPAWN] Calculation method: DEFAULT - Failed to get spawn chunk at (0, 0), using Y=100");
+            System.err.println("[SPAWN] Final calculated spawn position: (0, 100, 0)");
+            return 100;
+        }
+
+        // Log chunk state for debugging
+        boolean hasStateManager = spawnChunk.getCcoStateManager() != null;
+        boolean blocksPopulated = hasStateManager && spawnChunk.getCcoStateManager().hasState(
+            com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState.BLOCKS_POPULATED
+        );
+        int[][] surfaceCache = spawnChunk.getSurfaceHeightCache();
+        System.out.println("[SPAWN] Chunk state before calculation: BLOCKS_POPULATED=" + blocksPopulated +
+                          ", cache=" + (surfaceCache != null ? "exists" : "null") +
+                          (surfaceCache != null ? ", cache[0][0]=" + surfaceCache[0][0] : ""));
+
+        // Try surface height at (0, 0) first
+        int surfaceHeight = findSurfaceHeightAt(spawnChunk, 0, 0);
+        if (surfaceHeight >= 0) {
+            System.out.println("[SPAWN] Calculation method: PRIMARY - Using spawn column (0, 0), Y=" + surfaceHeight);
+            System.out.println("[SPAWN] Final calculated spawn position: (0, " + surfaceHeight + ", 0)");
+            return surfaceHeight;
+        }
+
+        // Edge case: Column (0, 0) is all air - search nearby columns
+        System.err.println("[SPAWN] Spawn column (0, 0) is entirely air, searching nearby columns...");
+
+        // Search pattern: expanding radius up to 3 blocks
+        int[][] searchOffsets = {
+            {1, 0}, {0, 1}, {-1, 0}, {0, -1},      // Adjacent (distance 1)
+            {1, 1}, {-1, 1}, {-1, -1}, {1, -1},    // Diagonal (distance √2)
+            {2, 0}, {0, 2}, {-2, 0}, {0, -2},      // Distance 2
+            {2, 1}, {1, 2}, {-1, 2}, {-2, 1},
+            {-2, -1}, {-1, -2}, {1, -2}, {2, -1},
+            {3, 0}, {0, 3}, {-3, 0}, {0, -3}       // Distance 3
+        };
+
+        for (int[] offset : searchOffsets) {
+            int localX = offset[0];
+            int localZ = offset[1];
+
+            // All offsets are within the same chunk (0, 0) since max offset is 3
+            if (localX >= 0 && localX < 16 && localZ >= 0 && localZ < 16) {
+                surfaceHeight = findSurfaceHeightAt(spawnChunk, localX, localZ);
+                if (surfaceHeight >= 0) {
+                    System.out.println("[SPAWN] Calculation method: NEARBY - Found surface at offset (" + localX + ", " + localZ + "), Y=" + surfaceHeight);
+                    System.out.println("[SPAWN] Final calculated spawn position: (0, " + surfaceHeight + ", 0)");
+                    return surfaceHeight;
+                }
+            }
+        }
+
+        // No solid ground found within 3-block radius - calculate intelligent fallback
+        System.err.println("[SPAWN] No solid ground found, calculating intelligent fallback...");
+
+        int[][] cache = spawnChunk.getSurfaceHeightCache();
+        if (cache != null) {
+            int totalHeight = 0;
+            int validColumns = 0;
+
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    if (cache[x][z] >= 0) {
+                        totalHeight += cache[x][z];
+                        validColumns++;
+                    }
+                }
+            }
+
+            if (validColumns > 0) {
+                int avgHeight = totalHeight / validColumns;
+                int fallbackY = avgHeight + 1;
+                System.out.println("[SPAWN] Calculation method: AVERAGE - Using chunk average surface height: Y=" + fallbackY + " (avg of " + validColumns + " columns)");
+                System.out.println("[SPAWN] Final calculated spawn position: (0, " + fallbackY + ", 0)");
+                return fallbackY;
+            }
+        }
+
+        // Final fallback if cache unavailable or all columns are air
+        System.err.println("[SPAWN] Calculation method: DEFAULT - Using default fallback Y=100");
+        System.err.println("[SPAWN] Final calculated spawn position: (0, 100, 0)");
+        return 100;
+    }
+
+    /**
+     * Waits for a chunk to have terrain generated, with timeout.
+     * @param world The world containing the chunk
+     * @param chunkX The chunk X coordinate
+     * @param chunkZ The chunk Z coordinate
+     * @param maxWaitMs Maximum time to wait in milliseconds
+     * @param requireSurfaceCache If true, also waits for surface height cache to be initialized
+     * @return true if chunk terrain was generated within timeout
+     */
+    private boolean waitForChunkTerrain(World world, int chunkX, int chunkZ, int maxWaitMs, boolean requireSurfaceCache) {
+        long startTime = System.currentTimeMillis();
+        int attempts = 0;
+
+        System.out.println("[SPAWN] Waiting for chunk (" + chunkX + ", " + chunkZ + ") terrain (timeout: " + maxWaitMs + "ms, requireCache: " + requireSurfaceCache + ")...");
+
+        while (System.currentTimeMillis() - startTime < maxWaitMs) {
+            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
+            if (chunk != null && chunk.getCcoStateManager() != null) {
+                // Check if blocks have been populated (terrain generated)
+                boolean blocksPopulated = chunk.getCcoStateManager().hasState(com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState.BLOCKS_POPULATED);
+
+                // Check surface cache if required
+                boolean cacheReady = true;
+                if (requireSurfaceCache) {
+                    int[][] surfaceCache = chunk.getSurfaceHeightCache();
+                    cacheReady = surfaceCache != null;
+
+                    // Log state every 20 attempts (every 1 second)
+                    if (attempts % 20 == 0) {
+                        System.out.println("[SPAWN] Chunk state: BLOCKS_POPULATED=" + blocksPopulated + ", cache=" + (cacheReady ? "exists" : "null"));
+                    }
+                }
+
+                if (blocksPopulated && cacheReady) {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    System.out.println("[SPAWN] Chunk (" + chunkX + ", " + chunkZ + ") terrain ready after " + elapsed + "ms (state: BLOCKS_POPULATED, cache: " + (requireSurfaceCache ? "validated" : "not checked") + ")");
+                    return true;
+                }
+            }
+
+            attempts++;
+            try {
+                Thread.sleep(50); // Poll every 50ms
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+
+        System.err.println("[SPAWN] Timeout waiting for chunk (" + chunkX + ", " + chunkZ + ") terrain generation after "
+            + attempts + " attempts (" + maxWaitMs + "ms)");
+        return false;
+    }
+
+    /**
+     * Overloaded version for backward compatibility - defaults to not requiring surface cache.
+     */
+    private boolean waitForChunkTerrain(World world, int chunkX, int chunkZ, int maxWaitMs) {
+        return waitForChunkTerrain(world, chunkX, chunkZ, maxWaitMs, false);
+    }
+
+    /**
+     * Validates that the spawn chunk is fully ready for spawn calculation.
+     * @param spawnChunk The chunk at spawn coordinates (0, 0)
+     * @return true if chunk is ready for spawn calculation
+     */
+    private boolean validateSpawnChunkReadiness(Chunk spawnChunk) {
+        System.out.println("[SPAWN] Validating spawn chunk readiness...");
+
+        if (spawnChunk == null) {
+            System.err.println("[SPAWN] Validation FAILED: spawn chunk is null");
+            return false;
+        }
+
+        if (spawnChunk.getCcoStateManager() == null) {
+            System.err.println("[SPAWN] Validation FAILED: chunk state manager is null");
+            return false;
+        }
+
+        boolean blocksPopulated = spawnChunk.getCcoStateManager().hasState(
+            com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoChunkState.BLOCKS_POPULATED
+        );
+        if (!blocksPopulated) {
+            System.err.println("[SPAWN] Validation FAILED: chunk not in BLOCKS_POPULATED state");
+            return false;
+        }
+
+        int[][] surfaceCache = spawnChunk.getSurfaceHeightCache();
+        if (surfaceCache == null) {
+            System.err.println("[SPAWN] Validation FAILED: surface height cache is null");
+            return false;
+        }
+
+        int cacheValue = surfaceCache[0][0];
+        if (cacheValue < 0) {
+            System.err.println("[SPAWN] Validation FAILED: invalid cache value at [0][0]: " + cacheValue);
+            return false;
+        }
+
+        System.out.println("[SPAWN] Validation PASSED: chunk ready (BLOCKS_POPULATED=true, cache exists, cache[0][0]=" + cacheValue + ")");
+        return true;
+    }
+
+    /**
+     * Checks if the spawn position needs to be calculated (i.e., was not yet determined).
+     * @param spawnPos The spawn position from WorldData
+     * @return true if spawn needs calculation
+     */
+    private boolean needsSpawnCalculation(Vector3f spawnPos) {
+        return spawnPos == null || spawnPos.y <= -900;  // Y=-999 or similar sentinel
     }
 
     /**
@@ -1850,6 +2117,44 @@ public class Game {
                                 World newWorld = createFreshWorldInstance(worldData.getSeed(), generatorType);
                                 replaceWorldInstance(newWorld);
                                 System.out.println("[WORLD-ISOLATION] Created fresh World instance for loading with seed: " + worldData.getSeed() + ", generator: " + generatorType);
+
+                                // Check if spawn needs calculation (new world with sentinel value)
+                                if (needsSpawnCalculation(worldData.getSpawnPosition())) {
+                                    System.out.println("[SPAWN] New world detected - calculating spawn position");
+
+                                    // Generate spawn chunk using blocking method (waits for generation to complete)
+                                    System.out.println("[SPAWN] Generating spawn chunk at (0, 0)...");
+                                    Chunk spawnChunk = newWorld.getChunkAtBlocking(0, 0);
+
+                                    if (spawnChunk == null) {
+                                        System.err.println("[SPAWN] CRITICAL: Failed to generate spawn chunk - using default spawn");
+                                    } else if (!validateSpawnChunkReadiness(spawnChunk)) {
+                                        System.err.println("[SPAWN] Warning: Spawn chunk validation failed, spawn calculation may be inaccurate");
+                                    } else {
+                                        System.out.println("[SPAWN] Spawn chunk generated successfully");
+                                    }
+
+                                    // Calculate spawn height
+                                    int spawnY = findSpawnSurfaceHeight(newWorld);
+                                    Vector3f calculatedSpawn = new Vector3f(0, spawnY, 0);
+
+                                    // Update world data with calculated spawn
+                                    worldData = new WorldData.Builder(worldData)
+                                        .spawnPosition(calculatedSpawn)
+                                        .build();
+
+                                    // Save updated world data with proper spawn
+                                    saveService.saveWorldDataOnly(worldData).join();  // Block until save completes
+                                    System.out.println("[SPAWN] Saved calculated spawn position to disk: " + calculatedSpawn);
+                                }
+
+                                // CRITICAL: Apply calculated spawn to Player instance before player becomes visible
+                                // This ensures player spawns at surface height, not y=100 default from constructor
+                                Vector3f spawnPos = worldData.getSpawnPosition();
+                                if (spawnPos != null && this.player != null) {
+                                    this.player.setPosition(spawnPos);
+                                    System.out.println("[SPAWN] Applied calculated spawn position to Player: " + spawnPos);
+                                }
 
                                 // Apply spawn position to the new world
                                 if (worldData.getSpawnPosition() != null) {
@@ -1904,6 +2209,7 @@ public class Game {
                                         Thread.currentThread().interrupt();
                                     }
                                 } else {
+                                    // No player data - this is a new player in an existing world
                                     this.player.giveStartingItems();
                                     // Initialize time at noon for new worlds without player data
                                     if (this.timeOfDay == null) {
@@ -1911,6 +2217,37 @@ public class Game {
                                         System.out.println("[TIME-SYSTEM] ✓ Initialized new world time at noon (no player data)");
                                     }
                                     System.out.println("[PLAYER-DATA] No player data found - giving starting items");
+
+                                    // Generate spawn chunk and calculate surface height for new player
+                                    this.world.getChunkAt(0, 0); // Ensure spawn chunk exists
+                                    if (!waitForChunkTerrain(this.world, 0, 0, 2000)) {
+                                        System.err.println("[SPAWN] Warning: Spawn chunk terrain not ready, spawn calculation may be inaccurate");
+                                    }
+                                    int spawnY = findSpawnSurfaceHeight(this.world);
+                                    this.player.getPosition().set(0, spawnY, 0);
+                                    System.out.println("[SPAWN] New player spawning at surface: (0, " + spawnY + ", 0)");
+
+                                    // Generate chunks around spawn position
+                                    int renderDistance = 4;
+                                    if (loadingScreen != null) {
+                                        loadingScreen.updateProgress("Generating chunks around spawn...");
+                                    }
+
+                                    for (int ring = 0; ring <= renderDistance; ring++) {
+                                        for (int x = -ring; x <= ring; x++) {
+                                            for (int z = -ring; z <= ring; z++) {
+                                                if (ring == 0 || x == -ring || x == ring || z == -ring || z == ring) {
+                                                    this.world.getChunkAt(x, z);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    try {
+                                        Thread.sleep(300); // Brief wait for chunks to process
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                    }
                                 }
 
                                 // Start auto-save

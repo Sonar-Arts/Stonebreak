@@ -189,7 +189,7 @@ public class WorldActionHandler {
             WorldData worldData = WorldData.builder()
                 .worldName(worldName)
                 .seed(seed)
-                .spawnPosition(new Vector3f(0, 100, 0))
+                .spawnPosition(new Vector3f(0, -999, 0))  // Sentinel value - will be calculated during first load
                 .createdTime(LocalDateTime.now())
                 .lastPlayed(LocalDateTime.now())
                 .totalPlayTimeMillis(0)

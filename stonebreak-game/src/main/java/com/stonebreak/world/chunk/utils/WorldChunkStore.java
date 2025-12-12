@@ -132,6 +132,75 @@ public class WorldChunkStore {
     }
 
     /**
+     * Gets or creates a chunk, blocking until the chunk is ready.
+     * This method is intended for use during world initialization (spawn calculation)
+     * when we need a chunk immediately and cannot rely on "next frame" async completion.
+     *
+     * @param x Chunk X coordinate
+     * @param z Chunk Z coordinate
+     * @return The loaded or generated chunk, or null if generation failed
+     */
+    public Chunk getOrCreateChunkBlocking(int x, int z) {
+        System.out.println("[BLOCKING-CHUNK] Starting blocking chunk generation for (" + x + ", " + z + ")");
+        ChunkPosition pos = positionCache.get(x, z);
+
+        // Fast path: chunk already loaded
+        Chunk chunk = chunks.get(pos);
+        if (chunk != null) {
+            System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") already loaded");
+            return chunk;
+        }
+
+        // Check if chunk is currently being loaded
+        CompletableFuture<Chunk> pendingLoad = pendingChunkLoads.get(pos);
+        if (pendingLoad != null) {
+            System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") already loading, waiting for completion...");
+            // Chunk is loading asynchronously - wait for it
+            try {
+                chunk = pendingLoad.join(); // Block until complete
+                System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") load completed from pending");
+                return chunk;
+            } catch (Exception e) {
+                System.err.println("CRITICAL: Failed to load chunk (" + x + ", " + z + ") - " + e.getMessage());
+                e.printStackTrace();
+                throw new RuntimeException("Chunk load failed for (" + x + ", " + z + ")", e);
+            }
+        }
+
+        System.out.println("[BLOCKING-CHUNK] Starting async load for chunk (" + x + ", " + z + ")...");
+        // Start async chunk load and wait for completion
+        CompletableFuture<Chunk> loadFuture = loadOrGenerateAsync(x, z)
+            .thenApply(loadedChunk -> {
+                System.out.println("[BLOCKING-CHUNK] loadOrGenerateAsync completed for (" + x + ", " + z + "), chunk=" + (loadedChunk != null ? "NOT NULL" : "NULL"));
+                if (loadedChunk != null) {
+                    // Store chunk and finalize on completion
+                    chunks.put(pos, loadedChunk);
+                    System.out.println("[BLOCKING-CHUNK] Finalizing chunk load for (" + x + ", " + z + ")...");
+                    finalizeChunkLoad(pos, loadedChunk);
+                    System.out.println("[BLOCKING-CHUNK] Chunk finalized for (" + x + ", " + z + ")");
+                }
+                // Remove from pending loads
+                pendingChunkLoads.remove(pos);
+                return loadedChunk;
+            });
+
+        // Track this pending load
+        pendingChunkLoads.put(pos, loadFuture);
+
+        System.out.println("[BLOCKING-CHUNK] Waiting for chunk (" + x + ", " + z + ") to complete...");
+        // Block until chunk generation completes
+        try {
+            chunk = loadFuture.join();
+            System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") blocking call completed successfully");
+            return chunk;
+        } catch (Exception e) {
+            System.err.println("CRITICAL: Failed to generate chunk (" + x + ", " + z + ") - " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Chunk generation failed for (" + x + ", " + z + ")", e);
+        }
+    }
+
+    /**
      * Finalizes chunk loading by setting up feature population and notifying listeners.
      * Called when async chunk load completes.
      */
@@ -349,33 +418,43 @@ public class WorldChunkStore {
      * Returns CompletableFuture that completes when chunk is ready.
      */
     private CompletableFuture<Chunk> loadOrGenerateAsync(int x, int z) {
+        System.out.println("[ASYNC-LOAD] loadOrGenerateAsync called for (" + x + ", " + z + ")");
         SaveService saveService = getSaveService();
+        System.out.println("[ASYNC-LOAD] SaveService is " + (saveService != null ? "NOT NULL" : "NULL"));
 
         // Try loading from disk first (async)
         if (saveService != null) {
+            System.out.println("[ASYNC-LOAD] Submitting loadChunk to SaveService for (" + x + ", " + z + ")");
             return saveService.loadChunk(x, z)
                 .thenApply(loaded -> {
+                    System.out.println("[ASYNC-LOAD] SaveService.loadChunk completed for (" + x + ", " + z + "), loaded=" + (loaded != null ? "NOT NULL" : "NULL"));
                     if (loaded != null) {
                         prepareLoadedChunk(loaded);
+                        System.out.println("[ASYNC-LOAD] Chunk (" + x + ", " + z + ") loaded from disk");
                         return loaded;
                     }
                     // Chunk not on disk, generate new one
+                    System.out.println("[ASYNC-LOAD] Chunk not on disk, calling generate() for (" + x + ", " + z + ")");
                     return generate(x, z);
                 });
                 // NO exception handling - let corruption errors crash immediately with full stack trace
         }
 
         // No save service, generate immediately
+        System.out.println("[ASYNC-LOAD] No save service, generating chunk immediately for (" + x + ", " + z + ")");
         return CompletableFuture.completedFuture(generate(x, z));
     }
 
     private Chunk generate(int x, int z) {
+        System.out.println("[GENERATE] Starting terrain generation for chunk (" + x + ", " + z + ")");
         try {
             MemoryProfiler.getInstance().incrementAllocation("Chunk");
 
             // Generate terrain ONLY - features will be populated later via queue
             // This prevents recursive chunk generation during mesh building
+            System.out.println("[GENERATE] Calling terrainSystem.generateTerrainOnly for (" + x + ", " + z + ")");
             Chunk chunk = terrainSystem.generateTerrainOnly(x, z);
+            System.out.println("[GENERATE] terrainSystem.generateTerrainOnly completed for (" + x + ", " + z + "), chunk=" + (chunk != null ? "NOT NULL" : "NULL"));
             if (chunk == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;
