@@ -1,4 +1,4 @@
-package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
+package com.openmason.main.systems.viewport.util;
 
 import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
 import org.joml.Matrix4f;
