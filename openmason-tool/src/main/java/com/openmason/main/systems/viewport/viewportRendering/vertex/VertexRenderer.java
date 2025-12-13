@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.vertex;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
+import com.openmason.main.systems.viewport.viewportRendering.mesh.MeshManager;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.operations.VertexDataTransformer;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.operations.VertexMerger;
@@ -50,16 +51,15 @@ public class VertexRenderer {
     private int selectedVertexIndex = -1; // -1 means no vertex is selected
     private Set<Integer> modifiedVertices = new HashSet<>(); // Indices of modified vertices
 
-    // Mesh instance mapping (fixes vertex duplication bug)
-    private Map<Integer, List<Integer>> uniqueToMeshMapping = new HashMap<>(); // Maps unique vertex index to mesh vertex indices
-    private float[] allMeshVertices = null; // Store ALL mesh vertices for mapping
-
     // Persistent vertex merge tracking (for multi-stage merges)
     private Map<Integer, Integer> originalToCurrentMapping = new HashMap<>(); // Maps original cube vertex (0-7) to current unique vertex
 
     // Vertex extraction (Single Responsibility) - uses interface for polymorphism
     private final IGeometryExtractor geometryExtractor = new VertexExtractor();
     private final VertexExtractor vertexExtractor = new VertexExtractor(); // Keep for unique vertices method
+
+    // Mesh management - delegate to MeshManager
+    private final MeshManager meshManager = MeshManager.getInstance();
 
     /**
      * Initialize the vertex renderer.
@@ -120,14 +120,13 @@ public class VertexRenderer {
         if (parts == null || parts.isEmpty()) {
             vertexCount = 0;
             vertexPositions = null;
-            allMeshVertices = null;
-            uniqueToMeshMapping.clear();
+            meshManager.clearMeshData();
             return;
         }
 
         try {
             // Extract ALL mesh vertices (24 for cube) for mapping - uses interface method
-            allMeshVertices = geometryExtractor.extractGeometry(parts, transformMatrix);
+            float[] allMeshVertices = geometryExtractor.extractGeometry(parts, transformMatrix);
 
             // Extract UNIQUE vertices only (8 for cube) for rendering - uses specific method
             float[] uniquePositions = vertexExtractor.extractUniqueVertices(parts, transformMatrix);
@@ -136,8 +135,9 @@ public class VertexRenderer {
             vertexPositions = uniquePositions;
             vertexCount = uniquePositions.length / 3;
 
-            // Build mapping from unique vertex index to mesh vertex indices
-            buildUniqueToMeshMapping(uniquePositions, allMeshVertices);
+            // Delegate mesh management to MeshManager
+            meshManager.setMeshVertices(allMeshVertices);
+            meshManager.buildUniqueToMeshMapping(uniquePositions, allMeshVertices);
 
             // Initialize original-to-current mapping (identity for fresh load)
             // For a cube, this maps original vertices 0-7 to themselves initially
@@ -185,58 +185,6 @@ public class VertexRenderer {
         }
     }
 
-    /**
-     * Build mapping from unique vertex indices to mesh vertex indices.
-     * For a cube: Each of the 8 unique corner vertices maps to 3 mesh vertex instances.
-     *
-     * @param uniquePositions Array of unique vertex positions
-     * @param meshPositions Array of ALL mesh vertex positions
-     */
-    private void buildUniqueToMeshMapping(float[] uniquePositions, float[] meshPositions) {
-        uniqueToMeshMapping.clear();
-
-        float epsilon = 0.0001f; // Same epsilon as VertexExtractor
-
-        // For each mesh vertex, find its matching unique vertex
-        int meshVertexCount = meshPositions.length / 3;
-        int uniqueVertexCount = uniquePositions.length / 3;
-
-        for (int meshIndex = 0; meshIndex < meshVertexCount; meshIndex++) {
-            int meshPosIndex = meshIndex * 3;
-            Vector3f meshPos = new Vector3f(
-                    meshPositions[meshPosIndex],
-                    meshPositions[meshPosIndex + 1],
-                    meshPositions[meshPosIndex + 2]
-            );
-
-            // Find which unique vertex this mesh vertex matches
-            for (int uniqueIndex = 0; uniqueIndex < uniqueVertexCount; uniqueIndex++) {
-                int uniquePosIndex = uniqueIndex * 3;
-                Vector3f uniquePos = new Vector3f(
-                        uniquePositions[uniquePosIndex],
-                        uniquePositions[uniquePosIndex + 1],
-                        uniquePositions[uniquePosIndex + 2]
-                );
-
-                if (meshPos.distance(uniquePos) < epsilon) {
-                    // Found matching unique vertex - add to mapping
-                    uniqueToMeshMapping.computeIfAbsent(uniqueIndex, k -> new ArrayList<>()).add(meshIndex);
-                    break;
-                }
-            }
-        }
-
-        logger.debug("Built vertex mapping: {} unique vertices → {} mesh vertices",
-                uniqueVertexCount, meshVertexCount);
-
-        // Log mapping for debugging (only for small models like cube)
-        if (uniqueVertexCount <= 10) {
-            for (Map.Entry<Integer, List<Integer>> entry : uniqueToMeshMapping.entrySet()) {
-                logger.trace("Unique vertex {} → mesh vertices {}",
-                        entry.getKey(), entry.getValue());
-            }
-        }
-    }
 
     /**
      * Handle mouse movement for vertex hover detection.
@@ -441,8 +389,8 @@ public class VertexRenderer {
         // Delegate to VertexPositionUpdater (Single Responsibility)
         VertexPositionUpdater updater = new VertexPositionUpdater(
                 vertexPositions,
-                allMeshVertices,
-                uniqueToMeshMapping,
+                meshManager.getAllMeshVertices(),
+                meshManager.getUniqueToMeshMapping(),
                 vbo,
                 vertexCount
         );
@@ -562,7 +510,7 @@ public class VertexRenderer {
         // Step 1: Perform the merge operation (Single Responsibility)
         VertexMerger merger = new VertexMerger(
                 vertexPositions,
-                allMeshVertices,
+                meshManager.getAllMeshVertices(),
                 vertexCount,
                 epsilon,
                 originalToCurrentMapping
@@ -577,14 +525,14 @@ public class VertexRenderer {
 
         // Step 2: Update renderer state with merge results (Single Responsibility)
         RendererStateUpdater.UpdateContext context = new RendererStateUpdater.UpdateContext(
-                allMeshVertices,
-                uniqueToMeshMapping
+                meshManager.getAllMeshVertices(),
+                meshManager.getUniqueToMeshMapping()
         );
 
         RendererStateUpdater stateUpdater = new RendererStateUpdater(
                 context,
                 () -> {}, // Empty VBO rebuilder - we'll rebuild after updating fields
-                this::buildUniqueToMeshMapping
+                meshManager::buildUniqueToMeshMapping
         );
 
         RendererStateUpdater.UpdateContext updatedContext = stateUpdater.applyMergeResult(result);
