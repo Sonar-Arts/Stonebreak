@@ -95,11 +95,11 @@ public class SplineTerrainGenerator implements TerrainGenerator {
             // erosion=-1.0 → 1.4x, erosion=-0.5 → 1.2x, erosion=0.0 → 1.0x
             erosionFactor = 1.0f - (params.erosion * 0.4f);
         } else {
-            // Plains: Quadratic dampening for LEGACY-level flatness
+            // Plains: Quadratic dampening for maximum flatness
             // erosion=0.3 → 0.928x (7% flatter)
             // erosion=0.5 → 0.8x (20% flatter)
             // erosion=0.7 → 0.608x (39% flatter)
-            // erosion=1.0 → 0.2x (80% flatter) ← LEGACY-level flat plains
+            // erosion=1.0 → 0.2x (80% flatter) ← extremely flat plains
             erosionFactor = 1.0f - (params.erosion * params.erosion * 0.8f);
         }
 

@@ -9,21 +9,6 @@ package com.stonebreak.world.generation;
  */
 public enum TerrainGeneratorType {
     /**
-     * Original multi-noise terrain generation system with terrain hints.
-     * <p>
-     * Uses a sequential parameter application approach:
-     * <ul>
-     *   <li>Base height from continentalness spline</li>
-     *   <li>Terrain hint classification (MESA, SHARP_PEAKS, GENTLE_HILLS, FLAT_PLAINS, NORMAL)</li>
-     *   <li>Hint-specific terrain generation logic</li>
-     *   <li>Erosion, peaks & valleys, and weirdness application</li>
-     * </ul>
-     * <p>
-     * Recommended for: Existing worlds, stable production use.
-     */
-    LEGACY("Legacy Generator", "Original multi-noise terrain system with terrain hints"),
-
-    /**
      * Spline-based multi-parameter terrain generation system.
      * <p>
      * Uses unified multi-dimensional spline interpolation inspired by Minecraft 1.18+:
@@ -33,7 +18,7 @@ public enum TerrainGeneratorType {
      *   <li>More flexible and expressive terrain shapes</li>
      * </ul>
      * <p>
-     * Recommended for: New worlds, experimental/testing purposes.
+     * Recommended for: Worlds requiring flexible terrain shapes.
      */
     SPLINE("Spline Generator", "Multi-parameter spline-based system (Minecraft 1.18+ style)"),
 
@@ -49,7 +34,7 @@ public enum TerrainGeneratorType {
      *   <li>More complex features: intricate cave systems, dramatic overhangs, natural arches</li>
      * </ul>
      * <p>
-     * Recommended for: New worlds requiring high performance with complex terrain features.
+     * Recommended for: New worlds requiring high performance with complex terrain features (default).
      */
     HYBRID_SDF("Hybrid SDF Generator", "Spline terrain + SDF features (high performance, complex caves)");
 
@@ -64,7 +49,7 @@ public enum TerrainGeneratorType {
     /**
      * Get the human-readable display name for this generator type.
      *
-     * @return Display name (e.g., "Legacy Generator")
+     * @return Display name (e.g., "Hybrid SDF Generator")
      */
     public String getDisplayName() {
         return displayName;

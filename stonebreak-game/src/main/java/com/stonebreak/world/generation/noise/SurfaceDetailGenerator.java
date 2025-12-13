@@ -1,4 +1,4 @@
-package com.stonebreak.world.generation.heightmap;
+package com.stonebreak.world.generation.noise;
 
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;

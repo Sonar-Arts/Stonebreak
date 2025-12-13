@@ -3,7 +3,7 @@ package com.stonebreak.world.generation.terrain;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainNoiseWeights;
-import com.stonebreak.world.generation.heightmap.Noise3D;
+import com.stonebreak.world.generation.noise.Noise3D;
 
 /**
  * Creates dramatic cliff faces with subtle overhangs.

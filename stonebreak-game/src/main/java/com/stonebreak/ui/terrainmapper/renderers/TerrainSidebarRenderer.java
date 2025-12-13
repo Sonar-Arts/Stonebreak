@@ -194,7 +194,7 @@ public class TerrainSidebarRenderer {
             // Draw description in smaller font below
             nvgFontSize(vg, 11);
             nvgFillColor(vg, uiRenderer.nvgRGBA(180, 180, 180, 255, NVGColor.malloc(stack)));
-            String description = type == TerrainGeneratorType.LEGACY ? "(Stable)" : "(Experimental)";
+            String description = type == TerrainGeneratorType.HYBRID_SDF ? "(Recommended)" : "(Alternative)";
             nvgText(vg, TerrainMapperConfig.PADDING + TerrainMapperConfig.INPUT_FIELD_WIDTH - 85,
                     generatorY + generatorHeight / 2.0f, description);
 

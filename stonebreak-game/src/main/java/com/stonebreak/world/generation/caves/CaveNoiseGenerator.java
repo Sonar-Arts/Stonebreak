@@ -2,7 +2,7 @@ package com.stonebreak.world.generation.caves;
 
 import com.stonebreak.world.generation.config.NoiseConfig;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
-import com.stonebreak.world.generation.heightmap.Noise3D;
+import com.stonebreak.world.generation.noise.Noise3D;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**

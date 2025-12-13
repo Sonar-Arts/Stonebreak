@@ -7,14 +7,14 @@ import com.stonebreak.world.generation.noise.MultiNoiseParameters;
  * <p>
  * This abstraction allows for multiple terrain generation algorithms to coexist
  * in the same codebase, enabling users to choose between different generation
- * styles (legacy multi-noise, spline-based, amplified, flat, etc.).
+ * styles (spline-based, hybrid SDF, etc.).
  * <p>
  * Each implementation is responsible for converting 6D multi-noise parameters
  * (continentalness, erosion, peaks & valleys, weirdness, temperature, humidity)
  * into a final terrain height value.
  *
- * @see com.stonebreak.world.generation.legacy.LegacyTerrainGenerator
  * @see com.stonebreak.world.generation.spline.SplineTerrainGenerator
+ * @see com.stonebreak.world.generation.sdf.HybridSdfTerrainGenerator
  */
 public interface TerrainGenerator {
 
@@ -32,7 +32,7 @@ public interface TerrainGenerator {
     /**
      * Get the name/identifier for this terrain generator.
      *
-     * @return Human-readable name (e.g., "Legacy Multi-Noise Generator")
+     * @return Human-readable name (e.g., "Hybrid SDF Generator")
      */
     String getName();
 
@@ -53,7 +53,7 @@ public interface TerrainGenerator {
     /**
      * Get the terrain generator type.
      *
-     * @return The terrain generator type (LEGACY, SPLINE, etc.)
+     * @return The terrain generator type (SPLINE, HYBRID_SDF, etc.)
      */
     TerrainGeneratorType getType();
 
@@ -64,7 +64,7 @@ public interface TerrainGenerator {
      * @param x World X coordinate
      * @param z World Z coordinate
      * @param params The 6D noise parameters sampled at this position
-     * @return Generator-specific debug information (LegacyDebugInfo or SplineDebugInfo)
+     * @return Generator-specific debug information (SplineDebugInfo, HybridSdfDebugInfo, etc.)
      */
     com.stonebreak.world.generation.debug.HeightCalculationDebugInfo getHeightCalculationDebugInfo(
             int x, int z, MultiNoiseParameters params);

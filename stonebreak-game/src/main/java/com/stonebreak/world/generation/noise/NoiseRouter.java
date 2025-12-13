@@ -3,10 +3,6 @@ package com.stonebreak.world.generation.noise;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.config.NoiseConfigFactory;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
-import com.stonebreak.world.generation.heightmap.ErosionNoiseGenerator;
-import com.stonebreak.world.generation.heightmap.SurfaceDetailGenerator;
-import com.stonebreak.world.generation.heightmap.PeaksValleysNoiseGenerator;
-import com.stonebreak.world.generation.heightmap.WeirdnessNoiseGenerator;
 import com.stonebreak.world.generation.noise.interpolation.BilinearParameterInterpolator;
 import com.stonebreak.world.generation.noise.interpolation.ParameterInterpolator;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -37,7 +33,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
 public class NoiseRouter {
 
     private final NoiseGenerator continentalnessNoise;
-    private final ErosionNoiseGenerator erosionNoise;
+    private final NoiseGenerator erosionNoise;
     private final SurfaceDetailGenerator surfaceDetailGenerator;
     private final PeaksValleysNoiseGenerator peaksValleysNoise;
     private final WeirdnessNoiseGenerator weirdnessNoise;
@@ -75,7 +71,7 @@ public class NoiseRouter {
 
         // Initialize noise generators with different seed offsets for independence
         this.continentalnessNoise = new NoiseGenerator(seed + 2, NoiseConfigFactory.continentalness());
-        this.erosionNoise = new ErosionNoiseGenerator(seed + 3, NoiseConfigFactory.erosion());
+        this.erosionNoise = new NoiseGenerator(seed + 3, NoiseConfigFactory.erosion());
         this.surfaceDetailGenerator = new SurfaceDetailGenerator(seed + 10, config);
         this.peaksValleysNoise = new PeaksValleysNoiseGenerator(seed + 11, NoiseConfigFactory.terrainPeaksValleys());
         this.weirdnessNoise = new WeirdnessNoiseGenerator(seed + 12, NoiseConfigFactory.terrainWeirdness());

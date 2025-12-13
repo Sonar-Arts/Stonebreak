@@ -11,7 +11,6 @@ import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.terrain.TerrainFeatureRegistry;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.SnowLayerManager;
@@ -72,25 +71,25 @@ public class TerrainGenerationSystem {
      * Creates a new terrain generation system with the given seed.
      * Initializes all subsystem generators with default configuration.
      * Uses null progress reporter (no progress updates).
-     * Defaults to LEGACY generator for backwards compatibility.
+     * Defaults to HYBRID_SDF generator for optimal performance.
      *
      * @param seed World seed for deterministic generation
      */
     public TerrainGenerationSystem(long seed) {
-        this(seed, TerrainGenerationConfig.defaultConfig(), "LEGACY", LoadingProgressReporter.NULL);
+        this(seed, TerrainGenerationConfig.defaultConfig(), "HYBRID_SDF", LoadingProgressReporter.NULL);
     }
 
     /**
      * Creates a new terrain generation system with the given seed and configuration.
      * Initializes all subsystem generators with the provided configuration.
      * Uses null progress reporter (no progress updates).
-     * Defaults to LEGACY generator for backwards compatibility.
+     * Defaults to HYBRID_SDF generator for optimal performance.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
      */
     public TerrainGenerationSystem(long seed, TerrainGenerationConfig config) {
-        this(seed, config, "LEGACY", LoadingProgressReporter.NULL);
+        this(seed, config, "HYBRID_SDF", LoadingProgressReporter.NULL);
     }
 
     /**
@@ -101,7 +100,7 @@ public class TerrainGenerationSystem {
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
-     * @param generatorType Terrain generator type (e.g., "LEGACY", "SPLINE")
+     * @param generatorType Terrain generator type (e.g., "HYBRID_SDF", "SPLINE")
      * @param progressReporter Progress reporter for loading screen updates
      */
     public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, String generatorType, LoadingProgressReporter progressReporter) {
@@ -112,8 +111,7 @@ public class TerrainGenerationSystem {
 
         // Initialize specialized generators with injected configuration
         // Multi-Noise System: TerrainGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
-        // PHASE 2: Enable 3D density for SPLINE generator (caves, overhangs, arches, floating islands)
-        // LEGACY generator remains 2D for backwards compatibility
+        // PHASE 2: Enable 3D density for all generators (caves, overhangs, arches, floating islands)
         this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config, true);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
@@ -131,7 +129,7 @@ public class TerrainGenerationSystem {
     /**
      * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
      * Initializes all subsystem generators with the provided configuration.
-     * Defaults to LEGACY generator for backwards compatibility.
+     * Defaults to HYBRID_SDF generator for optimal performance.
      *
      * Multi-Noise System: Terrain and biomes generate independently using shared parameters.
      *
@@ -140,7 +138,7 @@ public class TerrainGenerationSystem {
      * @param progressReporter Progress reporter for loading screen updates
      */
     public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, LoadingProgressReporter progressReporter) {
-        this(seed, config, "LEGACY", progressReporter);
+        this(seed, config, "HYBRID_SDF", progressReporter);
     }
 
     /**
@@ -163,21 +161,6 @@ public class TerrainGenerationSystem {
         return terrainGenerator;
     }
 
-    /**
-     * Gets the height map generator for height queries (legacy compatibility).
-     * This method is deprecated and will only work if using the LEGACY generator.
-     *
-     * @return The height map generator (only available with LEGACY generator)
-     * @deprecated Use {@link #getTerrainGenerator()} instead
-     * @throws UnsupportedOperationException if not using LEGACY generator
-     */
-    @Deprecated
-    public HeightMapGenerator getHeightMapGenerator() {
-        if (terrainGenerator instanceof com.stonebreak.world.generation.legacy.LegacyTerrainGenerator legacy) {
-            return legacy.getHeightMapGenerator();
-        }
-        throw new UnsupportedOperationException("HeightMapGenerator is only available with LEGACY terrain generator");
-    }
 
     /**
      * Gets the world seed.
@@ -255,8 +238,8 @@ public class TerrainGenerationSystem {
                 MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleInterpolatedParameters(worldX, worldZ, SEA_LEVEL);
 
                 // STEP 2: PASS 1 - Generate base terrain height
-                // LEGACY: Uses terrain hints (mesa, peaks, hills, plains)
                 // SPLINE: Uses unified multi-parameter spline interpolation
+                // HYBRID_SDF: Uses spline interpolation + analytical SDF features
                 // Terrain generation happens BEFORE biome selection
                 int baseHeight = terrainGenerator.generateHeight(worldX, worldZ, params);
 
@@ -647,7 +630,7 @@ public class TerrainGenerationSystem {
     // Public API - Terrain Query Methods
     // ========================================
     // These methods provide a unified interface for querying terrain properties.
-    // They delegate to the appropriate subsystem generators (BiomeManager, HeightMapGenerator).
+    // They delegate to the appropriate subsystem generators (BiomeManager, TerrainGenerator).
 
     /**
      * Gets the continentalness value at the specified world position.
@@ -720,8 +703,7 @@ public class TerrainGenerationSystem {
      */
     public int getBaseHeightBeforeErosion(int x, int z) {
         // Sample parameters at sea level and generate height
-        // For LEGACY generator, this will use just continentalness (hint will be NORMAL)
-        // For SPLINE generator, this will use all parameters
+        // All generators use multi-noise parameters (continentalness, erosion, PV, weirdness)
         MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleParameters(x, z, SEA_LEVEL);
         return terrainGenerator.generateHeight(x, z, params);
     }

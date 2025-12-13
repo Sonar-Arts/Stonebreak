@@ -90,8 +90,8 @@ public class TerrainStateManager {
         this.selectedVisualizationMode = VisualizationMode.TERRAIN_HEIGHT;
         this.visualizationActive = false;
 
-        // Initialize generator type (default to LEGACY for safety)
-        this.selectedGeneratorType = TerrainGeneratorType.LEGACY;
+        // Initialize generator type (default to HYBRID_SDF for optimal performance)
+        this.selectedGeneratorType = TerrainGeneratorType.HYBRID_SDF;
     }
 
     /**
@@ -116,7 +116,7 @@ public class TerrainStateManager {
         selectedVisualizationMode = VisualizationMode.TERRAIN_HEIGHT;
         visualizationActive = false;
 
-        selectedGeneratorType = TerrainGeneratorType.LEGACY;
+        selectedGeneratorType = TerrainGeneratorType.HYBRID_SDF;
     }
 
     // Getters and setters for text input fields

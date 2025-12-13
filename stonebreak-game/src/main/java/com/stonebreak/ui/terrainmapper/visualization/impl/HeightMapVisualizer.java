@@ -2,7 +2,9 @@ package com.stonebreak.ui.terrainmapper.visualization.impl;
 
 import com.stonebreak.ui.terrainmapper.visualization.NoiseVisualizer;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.TerrainGenerator;
+import com.stonebreak.world.generation.sdf.HybridSdfTerrainGenerator;
+import com.stonebreak.world.generation.sdf.SdfTerrainConfig;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -18,7 +20,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *
  * Sampling Process:
  * 1. Sample all 6 parameters via NoiseRouter
- * 2. Generate height from parameters via HeightMapGenerator
+ * 2. Generate height from parameters via TerrainGenerator (HYBRID_SDF)
  * 3. Return height in range [0, 256] (world height bounds)
  *
  * Visualization:
@@ -26,22 +28,22 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * - Gray (0.5): Mid-elevation (around height 128)
  * - White (1.0): Maximum elevation (height 256)
  *
- * Thread Safety: Safe for concurrent use (NoiseRouter and HeightMapGenerator are thread-safe)
+ * Thread Safety: Safe for concurrent use (NoiseRouter and TerrainGenerator are thread-safe)
  */
 public class HeightMapVisualizer implements NoiseVisualizer {
 
     private final NoiseRouter noiseRouter;
-    private final HeightMapGenerator heightGenerator;
+    private final TerrainGenerator terrainGenerator;
 
     /**
-     * Creates a new height map visualizer.
+     * Creates a new height map visualizer using HYBRID_SDF terrain generator.
      *
      * @param seed World seed for deterministic generation
      * @param config Terrain generation configuration
      */
     public HeightMapVisualizer(long seed, TerrainGenerationConfig config) {
         this.noiseRouter = new NoiseRouter(seed, config);
-        this.heightGenerator = new HeightMapGenerator(seed, config);
+        this.terrainGenerator = new HybridSdfTerrainGenerator(seed, config, SdfTerrainConfig.getDefault());
     }
 
     /**
@@ -60,8 +62,8 @@ public class HeightMapVisualizer implements NoiseVisualizer {
         // Sample all 6 parameters at this position
         MultiNoiseParameters params = noiseRouter.sampleParameters(worldX, worldZ);
 
-        // Generate height from parameters
-        int height = heightGenerator.generateHeight(worldX, worldZ, params);
+        // Generate height from parameters using HYBRID_SDF generator
+        int height = terrainGenerator.generateHeight(worldX, worldZ, params);
 
         return height;
     }

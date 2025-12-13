@@ -50,7 +50,7 @@ public class World {
     }
 
     public World(WorldConfiguration config, long seed) {
-        this(config, seed, "LEGACY", false);
+        this(config, seed, "HYBRID_SDF", false);
     }
 
     /**
@@ -58,7 +58,7 @@ public class World {
      *
      * @param config World configuration
      * @param seed World generation seed
-     * @param generatorType Terrain generator type (e.g., "LEGACY", "SPLINE")
+     * @param generatorType Terrain generator type (e.g., "HYBRID_SDF", "SPLINE")
      */
     public World(WorldConfiguration config, long seed, String generatorType) {
         this(config, seed, generatorType, false);
@@ -74,7 +74,7 @@ public class World {
      * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
-        this(config, seed, "LEGACY", testMode);
+        this(config, seed, "HYBRID_SDF", testMode);
     }
 
     /**
@@ -83,7 +83,7 @@ public class World {
      *
      * @param config World configuration
      * @param seed World generation seed
-     * @param generatorType Terrain generator type (e.g., "LEGACY", "SPLINE")
+     * @param generatorType Terrain generator type (e.g., "HYBRID_SDF", "SPLINE")
      * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
      */
     protected World(WorldConfiguration config, long seed, String generatorType, boolean testMode) {

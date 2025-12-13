@@ -1330,12 +1330,12 @@ public class Game {
 
     /**
      * Creates a fresh World instance with the specified seed for complete world isolation.
-     * Defaults to LEGACY generator for backwards compatibility.
+     * Defaults to HYBRID_SDF generator for optimal performance.
      *
      * NOTE: MmsAPI should already be initialized in initCoreComponents().
      */
     private World createFreshWorldInstance(long seed) {
-        return createFreshWorldInstance(seed, "LEGACY");
+        return createFreshWorldInstance(seed, "HYBRID_SDF");
     }
 
     /**

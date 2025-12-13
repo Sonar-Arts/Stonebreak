@@ -10,10 +10,10 @@ import java.util.Map;
  *
  * Phase 2 Enhancement: Biome-Specific Height Modifiers
  *
- * This registry coordinates the application of biome modifiers after terrain hint generation,
+ * This registry coordinates the application of biome modifiers after terrain generation,
  * creating a two-pass terrain generation system:
  *
- * Pass 1: HeightMapGenerator + Terrain Hints → Base terrain shape
+ * Pass 1: TerrainGenerator (SPLINE/HYBRID_SDF) → Base terrain shape
  * Pass 2: BiomeTerrainModifierRegistry → Fine-tuned biome features
  *
  * Architecture:
@@ -58,14 +58,14 @@ public class BiomeTerrainModifierRegistry {
      * Applies the appropriate terrain modifier for the given biome.
      *
      * Two-pass generation:
-     * 1. baseHeight comes from HeightMapGenerator (with terrain hints applied)
+     * 1. baseHeight comes from TerrainGenerator (with multi-noise parameters applied)
      * 2. This method applies biome-specific modifiers (if any)
      *
      * If no modifier exists for the biome, returns baseHeight unchanged.
      * If modifier exists but shouldApplyModifier returns false, returns baseHeight unchanged.
      *
      * @param biome The biome type at this location
-     * @param baseHeight The height after terrain hint generation
+     * @param baseHeight The height after terrain generation
      * @param params The multi-noise parameters at this location
      * @param x World X coordinate
      * @param z World Z coordinate
