@@ -2,6 +2,7 @@ package com.openmason.main.systems.viewport.viewportRendering.face;
 
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
+import com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
@@ -60,6 +61,9 @@ public class FaceRenderer {
     // Face extraction (Single Responsibility) - uses interface for polymorphism
     private final IGeometryExtractor geometryExtractor = new FaceExtractor();
 
+    // Face update operation (Single Responsibility)
+    private final FaceUpdateOperation faceUpdateOperation = new FaceUpdateOperation();
+
     /**
      * Initialize the face renderer.
      */
@@ -81,8 +85,8 @@ public class FaceRenderer {
             glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
 
             // Configure vertex attributes (interleaved: position + color with alpha)
-            // Stride = 7 floats (3 for position, 4 for color RGBA)
-            int stride = 7 * Float.BYTES;
+            // Stride = FLOATS_PER_VERTEX (3 for position, 4 for color RGBA)
+            int stride = FaceUpdateOperation.FLOATS_PER_VERTEX * Float.BYTES;
 
             // Position attribute (location = 0)
             glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
@@ -109,6 +113,7 @@ public class FaceRenderer {
     /**
      * Update face data from a collection of model parts with transformation.
      * Generic method that works with ANY model type.
+     * Delegates to FaceUpdateOperation for DRY compliance.
      */
     public void updateFaceData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
@@ -128,65 +133,16 @@ public class FaceRenderer {
             facePositions = geometryExtractor.extractGeometry(parts, transformMatrix);
 
             // Face positions are [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z, v3x,v3y,v3z, ...] (4 vertices per face)
-            faceCount = facePositions.length / 12; // 12 floats per face (4 corners × 3 coords)
+            faceCount = facePositions.length / FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
 
-            // Create interleaved vertex data for triangles (2 triangles per quad face)
-            // Each quad becomes 2 triangles = 6 vertices (with shared vertices)
-            // Each vertex: 7 floats (3 position + 4 color RGBA)
-            int triangleVertexCount = faceCount * 6; // 2 triangles × 3 vertices per face
-            float[] vertexData = new float[triangleVertexCount * 7];
-
-            // Process each face
-            for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
-                int faceStart = faceIdx * 12; // 12 floats per face in facePositions
-                int dataStart = faceIdx * 42; // 6 vertices × 7 floats per vertex
-
-                // Get 4 corners of quad face
-                Vector3f v0 = new Vector3f(facePositions[faceStart + 0], facePositions[faceStart + 1], facePositions[faceStart + 2]);
-                Vector3f v1 = new Vector3f(facePositions[faceStart + 3], facePositions[faceStart + 4], facePositions[faceStart + 5]);
-                Vector3f v2 = new Vector3f(facePositions[faceStart + 6], facePositions[faceStart + 7], facePositions[faceStart + 8]);
-                Vector3f v3 = new Vector3f(facePositions[faceStart + 9], facePositions[faceStart + 10], facePositions[faceStart + 11]);
-
-                // Split quad into 2 triangles
-                // Triangle 1: v0, v1, v2
-                // Triangle 2: v0, v2, v3
-
-                // Triangle 1
-                addVertexToData(vertexData, dataStart + 0, v0, defaultFaceColor);
-                addVertexToData(vertexData, dataStart + 7, v1, defaultFaceColor);
-                addVertexToData(vertexData, dataStart + 14, v2, defaultFaceColor);
-
-                // Triangle 2
-                addVertexToData(vertexData, dataStart + 21, v0, defaultFaceColor);
-                addVertexToData(vertexData, dataStart + 28, v2, defaultFaceColor);
-                addVertexToData(vertexData, dataStart + 35, v3, defaultFaceColor);
-            }
-
-            // Upload to GPU
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertexData, GL_DYNAMIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            // Delegate bulk VBO creation to operation class (DRY + Single Responsibility)
+            faceUpdateOperation.updateAllFaces(vbo, facePositions, faceCount, defaultFaceColor);
 
             logger.debug("Updated face data: {} faces ({} floats)", faceCount, facePositions.length);
 
         } catch (Exception e) {
             logger.error("Error updating face data", e);
         }
-    }
-
-    /**
-     * Helper method to add vertex data to interleaved array.
-     */
-    private void addVertexToData(float[] data, int startIdx, Vector3f position, Vector4f color) {
-        // Position
-        data[startIdx + 0] = position.x;
-        data[startIdx + 1] = position.y;
-        data[startIdx + 2] = position.z;
-        // Color RGBA
-        data[startIdx + 3] = color.x;
-        data[startIdx + 4] = color.y;
-        data[startIdx + 5] = color.z;
-        data[startIdx + 6] = color.w; // Alpha
     }
 
     /**
@@ -215,14 +171,14 @@ public class FaceRenderer {
 
         // For each face, find which 4 unique vertices it connects
         for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
-            int facePosIdx = faceIdx * 12; // 12 floats per face (4 vertices × 3 coords)
+            int facePosIdx = faceIdx * FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
             int[] vertexIndices = new int[4];
 
             // Find matching unique vertex for each corner
             for (int corner = 0; corner < 4; corner++) {
                 int cornerPosIdx = facePosIdx + (corner * 3);
                 Vector3f faceVertex = new Vector3f(
-                    facePositions[cornerPosIdx + 0],
+                    facePositions[cornerPosIdx],
                     facePositions[cornerPosIdx + 1],
                     facePositions[cornerPosIdx + 2]
                 );
@@ -232,7 +188,7 @@ public class FaceRenderer {
                 for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
                     int vPosIdx = vIdx * 3;
                     Vector3f uniqueVertex = new Vector3f(
-                        uniqueVertexPositions[vPosIdx + 0],
+                        uniqueVertexPositions[vPosIdx],
                         uniqueVertexPositions[vPosIdx + 1],
                         uniqueVertexPositions[vPosIdx + 2]
                     );
@@ -280,9 +236,9 @@ public class FaceRenderer {
             return null;
         }
 
-        int posIndex = faceIndex * 12; // 12 floats per face
+        int posIndex = faceIndex * FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
 
-        if (posIndex + 11 >= facePositions.length) {
+        if (posIndex + (FaceUpdateOperation.FLOATS_PER_FACE_POSITION - 1) >= facePositions.length) {
             return null;
         }
 
@@ -290,7 +246,7 @@ public class FaceRenderer {
         for (int i = 0; i < 4; i++) {
             int idx = posIndex + (i * 3);
             vertices[i] = new Vector3f(
-                facePositions[idx + 0],
+                facePositions[idx],
                 facePositions[idx + 1],
                 facePositions[idx + 2]
             );
@@ -301,6 +257,7 @@ public class FaceRenderer {
 
     /**
      * Update face position by vertex indices (index-based update to prevent unification).
+     * Delegates to FaceUpdateOperation for clean separation of concerns.
      *
      * @param faceIndex the face index
      * @param vertexIndices array of 4 unique vertex indices
@@ -312,59 +269,8 @@ public class FaceRenderer {
             return;
         }
 
-        if (faceIndex < 0 || faceIndex >= faceCount) {
-            logger.warn("Invalid face index: {}", faceIndex);
-            return;
-        }
-
-        if (vertexIndices == null || vertexIndices.length != 4) {
-            logger.warn("Invalid vertex indices array");
-            return;
-        }
-
-        if (newPositions == null || newPositions.length != 4) {
-            logger.warn("Invalid positions array");
-            return;
-        }
-
-        try {
-            // Update in-memory face positions
-            int posIndex = faceIndex * 12;
-            for (int i = 0; i < 4; i++) {
-                int idx = posIndex + (i * 3);
-                facePositions[idx + 0] = newPositions[i].x;
-                facePositions[idx + 1] = newPositions[i].y;
-                facePositions[idx + 2] = newPositions[i].z;
-            }
-
-            // Update VBO (2 triangles = 6 vertices)
-            // Each vertex: 7 floats (3 position + 4 color RGBA)
-            int dataStart = faceIndex * 42; // 6 vertices × 7 floats
-
-            Vector3f v0 = newPositions[0];
-            Vector3f v1 = newPositions[1];
-            Vector3f v2 = newPositions[2];
-            Vector3f v3 = newPositions[3];
-
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-            // Triangle 1: v0, v1, v2 (positions only, leave colors unchanged)
-            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 0) * Float.BYTES, new float[] { v0.x, v0.y, v0.z });
-            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 7) * Float.BYTES, new float[] { v1.x, v1.y, v1.z });
-            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 14) * Float.BYTES, new float[] { v2.x, v2.y, v2.z });
-
-            // Triangle 2: v0, v2, v3 (positions only, leave colors unchanged)
-            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 21) * Float.BYTES, new float[] { v0.x, v0.y, v0.z });
-            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 28) * Float.BYTES, new float[] { v2.x, v2.y, v2.z });
-            glBufferSubData(GL_ARRAY_BUFFER, (dataStart + 35) * Float.BYTES, new float[] { v3.x, v3.y, v3.z });
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            logger.trace("Updated face {} overlay position", faceIndex);
-
-        } catch (Exception e) {
-            logger.error("Error updating face position", e);
-        }
+        // Delegate to operation class (Single Responsibility Principle)
+        faceUpdateOperation.updateFace(vbo, facePositions, faceCount, faceIndex, vertexIndices, newPositions);
     }
 
     /**
@@ -513,32 +419,32 @@ public class FaceRenderer {
 
     /**
      * Helper method to render a single face with a specific color.
+     * Uses shared constants from FaceUpdateOperation for DRY compliance.
      */
     private void renderFaceWithColor(int faceIndex, Vector4f color) {
         // Update color in VBO for this face (6 vertices = 2 triangles)
-        int dataStart = faceIndex * 42; // 6 vertices × 7 floats
-        int stride = 7 * Float.BYTES;
+        int dataStart = faceIndex * FaceUpdateOperation.FLOATS_PER_FACE_VBO;
         int colorOffset = 3 * Float.BYTES; // Skip position
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
         // Update color for all 6 vertices of this face
         float[] colorData = new float[] { color.x, color.y, color.z, color.w };
-        for (int i = 0; i < 6; i++) {
-            int vboOffset = (dataStart + (i * 7)) * Float.BYTES + colorOffset;
+        for (int i = 0; i < FaceUpdateOperation.VERTICES_PER_FACE; i++) {
+            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffset;
             glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         // Render the 2 triangles for this face
-        glDrawArrays(GL_TRIANGLES, faceIndex * 6, 6);
+        glDrawArrays(GL_TRIANGLES, faceIndex * FaceUpdateOperation.VERTICES_PER_FACE, FaceUpdateOperation.VERTICES_PER_FACE);
 
         // Restore default (transparent) color
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         float[] defaultColorData = new float[] { defaultFaceColor.x, defaultFaceColor.y, defaultFaceColor.z, defaultFaceColor.w };
-        for (int i = 0; i < 6; i++) {
-            int vboOffset = (dataStart + (i * 7)) * Float.BYTES + colorOffset;
+        for (int i = 0; i < FaceUpdateOperation.VERTICES_PER_FACE; i++) {
+            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffset;
             glBufferSubData(GL_ARRAY_BUFFER, vboOffset, defaultColorData);
         }
         glBindBuffer(GL_ARRAY_BUFFER, 0);
