@@ -21,16 +21,46 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Renders semi-transparent face overlays without modifying base face color.
- * Follows the same pattern as EdgeRenderer and VertexRenderer for consistency.
+ * Renders semi-transparent face overlays for interactive highlighting.
  *
- * Uses two-pass rendering:
- * 1. Model renders first (solid, textured)
- * 2. Face overlays render second (semi-transparent, colored)
+ * <p>This renderer provides visual feedback for face selection and hover states
+ * by drawing colored overlays on model faces. The renderer follows SOLID principles
+ * with clear separation of concerns and delegates data operations to
+ * {@link com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation}.
+ *
+ * <h2>Rendering Strategy</h2>
+ * <p>Uses two-pass rendering for clean visual separation:
+ * <ol>
+ *   <li>Model renders first (solid, textured)</li>
+ *   <li>Face overlays render second (semi-transparent, colored)</li>
+ * </ol>
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li>Hover detection with ray-triangle intersection</li>
+ *   <li>Selection highlighting with distinct colors</li>
+ *   <li>Transparent default state (KISS principle)</li>
+ *   <li>Face-to-vertex mapping for precise updates</li>
+ * </ul>
+ *
+ * <h2>Architecture</h2>
+ * <p>Follows the same pattern as EdgeRenderer and VertexRenderer for consistency.
+ * Uses OpenGL VBO with interleaved vertex data (position + color RGBA).
+ *
+ * @see com.openmason.main.systems.viewport.viewportRendering.face.operations.FaceUpdateOperation
+ * @see FaceHoverDetector
+ * @see FaceExtractor
  */
 public class FaceRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(FaceRenderer.class);
+
+    // Layout constants
+    private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
+    private static final int COMPONENTS_PER_COLOR = 4; // r, g, b, a
+    private static final int CORNERS_PER_FACE = 4; // quad face
+    private static final float VERTEX_MATCH_EPSILON = 0.0001f;
+    private static final int COLOR_OFFSET_FLOATS = COMPONENTS_PER_POSITION; // Color data starts after position
 
     // OpenGL resources
     private int vao = 0;
@@ -65,7 +95,12 @@ public class FaceRenderer {
     private final FaceUpdateOperation faceUpdateOperation = new FaceUpdateOperation();
 
     /**
-     * Initialize the face renderer.
+     * Initialize the face renderer with OpenGL resources.
+     * Creates VAO and VBO, configures vertex attributes for interleaved data.
+     *
+     * <p>Vertex layout: [position(x,y,z), color(r,g,b,a)] = 7 floats per vertex
+     *
+     * @throws RuntimeException if initialization fails
      */
     public void initialize() {
         if (initialized) {
@@ -89,11 +124,11 @@ public class FaceRenderer {
             int stride = FaceUpdateOperation.FLOATS_PER_VERTEX * Float.BYTES;
 
             // Position attribute (location = 0)
-            glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+            glVertexAttribPointer(0, COMPONENTS_PER_POSITION, GL_FLOAT, false, stride, 0);
             glEnableVertexAttribArray(0);
 
             // Color attribute (location = 1) - 4 components for RGBA
-            glVertexAttribPointer(1, 4, GL_FLOAT, false, stride, 3 * Float.BYTES);
+            glVertexAttribPointer(1, 4, GL_FLOAT, false, stride, COMPONENTS_PER_POSITION * Float.BYTES);
             glEnableVertexAttribArray(1);
 
             // Unbind
@@ -111,9 +146,17 @@ public class FaceRenderer {
     }
 
     /**
-     * Update face data from a collection of model parts with transformation.
-     * Generic method that works with ANY model type.
-     * Delegates to FaceUpdateOperation for DRY compliance.
+     * Update face data from model parts with transformation applied.
+     *
+     * <p>Extracts face geometry from model parts, applies transformation,
+     * and uploads vertex data to GPU. Delegates to FaceUpdateOperation
+     * for DRY compliance and single responsibility.
+     *
+     * <p>This method works with any model type through polymorphic
+     * geometry extraction via {@link IGeometryExtractor}.
+     *
+     * @param parts collection of model parts to extract faces from
+     * @param transformMatrix transformation to apply to face positions
      */
     public void updateFaceData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
@@ -159,57 +202,99 @@ public class FaceRenderer {
             return;
         }
 
-        if (uniqueVertexPositions == null || uniqueVertexPositions.length < 3) {
+        if (uniqueVertexPositions == null || uniqueVertexPositions.length < COMPONENTS_PER_POSITION) {
             logger.warn("Cannot build face mapping: invalid unique vertex data");
             faceToVertexMapping.clear();
             return;
         }
 
-        int uniqueVertexCount = uniqueVertexPositions.length / 3;
+        int uniqueVertexCount = uniqueVertexPositions.length / COMPONENTS_PER_POSITION;
         faceToVertexMapping.clear();
-        float epsilon = 0.0001f;
 
-        // For each face, find which 4 unique vertices it connects
+        // For each face, find which unique vertices it connects
         for (int faceIdx = 0; faceIdx < faceCount; faceIdx++) {
-            int facePosIdx = faceIdx * FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
-            int[] vertexIndices = new int[4];
-
-            // Find matching unique vertex for each corner
-            for (int corner = 0; corner < 4; corner++) {
-                int cornerPosIdx = facePosIdx + (corner * 3);
-                Vector3f faceVertex = new Vector3f(
-                    facePositions[cornerPosIdx],
-                    facePositions[cornerPosIdx + 1],
-                    facePositions[cornerPosIdx + 2]
-                );
-
-                // Find matching unique vertex
-                int matchedIndex = -1;
-                for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
-                    int vPosIdx = vIdx * 3;
-                    Vector3f uniqueVertex = new Vector3f(
-                        uniqueVertexPositions[vPosIdx],
-                        uniqueVertexPositions[vPosIdx + 1],
-                        uniqueVertexPositions[vPosIdx + 2]
-                    );
-
-                    if (faceVertex.distance(uniqueVertex) < epsilon) {
-                        matchedIndex = vIdx;
-                        break;
-                    }
-                }
-
-                vertexIndices[corner] = matchedIndex;
-
-                if (matchedIndex == -1) {
-                    logger.warn("Face {} corner {} has unmatched vertex", faceIdx, corner);
-                }
-            }
-
+            int[] vertexIndices = findVertexIndicesForFace(faceIdx, uniqueVertexPositions, uniqueVertexCount);
             faceToVertexMapping.put(faceIdx, vertexIndices);
         }
 
         logger.debug("Built face-to-vertex mapping for {} faces", faceCount);
+    }
+
+    /**
+     * Find vertex indices for a specific face by matching positions.
+     *
+     * @param faceIdx the face index
+     * @param uniqueVertexPositions array of unique vertex positions
+     * @param uniqueVertexCount number of unique vertices
+     * @return array of 4 vertex indices for the face corners
+     */
+    private int[] findVertexIndicesForFace(int faceIdx, float[] uniqueVertexPositions, int uniqueVertexCount) {
+        int facePosIdx = faceIdx * FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
+        int[] vertexIndices = new int[CORNERS_PER_FACE];
+
+        for (int corner = 0; corner < CORNERS_PER_FACE; corner++) {
+            Vector3f faceVertex = extractFaceCornerPosition(facePosIdx, corner);
+            int matchedIndex = findMatchingVertexIndex(faceVertex, uniqueVertexPositions, uniqueVertexCount);
+
+            vertexIndices[corner] = matchedIndex;
+
+            if (matchedIndex == -1) {
+                logger.warn("Face {} corner {} has unmatched vertex", faceIdx, corner);
+            }
+        }
+
+        return vertexIndices;
+    }
+
+    /**
+     * Extract position of a face corner.
+     *
+     * @param facePosIdx starting index of face in positions array
+     * @param corner corner index (0-3)
+     * @return position vector
+     */
+    private Vector3f extractFaceCornerPosition(int facePosIdx, int corner) {
+        int cornerPosIdx = facePosIdx + (corner * COMPONENTS_PER_POSITION);
+        return new Vector3f(
+            facePositions[cornerPosIdx],
+            facePositions[cornerPosIdx + 1],
+            facePositions[cornerPosIdx + 2]
+        );
+    }
+
+    /**
+     * Find the index of a unique vertex that matches the given position.
+     *
+     * @param position the position to match
+     * @param uniqueVertexPositions array of unique vertex positions
+     * @param uniqueVertexCount number of unique vertices
+     * @return index of matching vertex, or -1 if no match found
+     */
+    private int findMatchingVertexIndex(Vector3f position, float[] uniqueVertexPositions, int uniqueVertexCount) {
+        for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
+            Vector3f uniqueVertex = extractVertexPosition(uniqueVertexPositions, vIdx);
+
+            if (position.distance(uniqueVertex) < VERTEX_MATCH_EPSILON) {
+                return vIdx;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Extract a vertex position from the positions array.
+     *
+     * @param positions the positions array
+     * @param vertexIdx the vertex index
+     * @return position vector
+     */
+    private Vector3f extractVertexPosition(float[] positions, int vertexIdx) {
+        int vPosIdx = vertexIdx * COMPONENTS_PER_POSITION;
+        return new Vector3f(
+            positions[vPosIdx],
+            positions[vPosIdx + 1],
+            positions[vPosIdx + 2]
+        );
     }
 
     /**
@@ -242,14 +327,9 @@ public class FaceRenderer {
             return null;
         }
 
-        Vector3f[] vertices = new Vector3f[4];
-        for (int i = 0; i < 4; i++) {
-            int idx = posIndex + (i * 3);
-            vertices[i] = new Vector3f(
-                facePositions[idx],
-                facePositions[idx + 1],
-                facePositions[idx + 2]
-            );
+        Vector3f[] vertices = new Vector3f[CORNERS_PER_FACE];
+        for (int i = 0; i < CORNERS_PER_FACE; i++) {
+            vertices[i] = extractFaceCornerPosition(posIndex, i);
         }
 
         return vertices;
@@ -334,81 +414,19 @@ public class FaceRenderer {
      * @param modelMatrix The model transformation matrix
      */
     public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
-        if (!initialized) {
-            logger.warn("FaceRenderer not initialized");
+        if (!shouldRender()) {
             return;
-        }
-
-        if (!enabled) {
-            return;
-        }
-
-        if (faceCount == 0) {
-            return;
-        }
-
-        // Only render if there's something to show
-        if (hoveredFaceIndex < 0 && selectedFaceIndex < 0) {
-            return; // Nothing to render
         }
 
         try {
-            // Use shader
-            shader.use();
+            setupShaderAndMatrices(shader, context, modelMatrix);
+            RenderState previousState = setupRenderState();
 
-            // Calculate MVP matrix
-            Matrix4f viewMatrix = context.getCamera().getViewMatrix();
-            Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
-            Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
-
-            // Upload MVP matrix
-            shader.setMat4("uMVPMatrix", mvpMatrix);
-            shader.setFloat("uIntensity", 1.0f);
-
-            // Enable blending for transparency
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-            // Depth test but don't write (render on top of model)
-            int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
-            boolean prevDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK);
-            glDepthFunc(GL_LEQUAL);
-            glDepthMask(false);
-
-            // Disable backface culling to render both sides
-            boolean prevCullFace = glGetBoolean(GL_CULL_FACE);
-            if (prevCullFace) {
-                glDisable(GL_CULL_FACE);
-            }
-
-            // Enable polygon offset to prevent z-fighting with model geometry
-            // Negative factor pulls overlay slightly toward camera
-            glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffset(-1.0f, -1.0f);
-
-            // Bind VAO
             glBindVertexArray(vao);
-
-            // Render hovered face (if any)
-            if (hoveredFaceIndex >= 0) {
-                renderFaceWithColor(hoveredFaceIndex, hoverFaceColor);
-            }
-
-            // Render selected face (if any and different from hovered)
-            if (selectedFaceIndex >= 0 && selectedFaceIndex != hoveredFaceIndex) {
-                renderFaceWithColor(selectedFaceIndex, selectedFaceColor);
-            }
-
+            renderVisibleFaces();
             glBindVertexArray(0);
 
-            // Restore state
-            glDisable(GL_POLYGON_OFFSET_FILL);
-            glDepthMask(prevDepthMask);
-            glDepthFunc(prevDepthFunc);
-            if (prevCullFace) {
-                glEnable(GL_CULL_FACE);
-            }
-            glDisable(GL_BLEND);
+            restoreRenderState(previousState);
 
         } catch (Exception e) {
             logger.error("Error rendering faces", e);
@@ -418,40 +436,166 @@ public class FaceRenderer {
     }
 
     /**
-     * Helper method to render a single face with a specific color.
+     * Check if rendering should proceed.
+     *
+     * @return true if should render, false otherwise
+     */
+    private boolean shouldRender() {
+        if (!initialized) {
+            logger.warn("FaceRenderer not initialized");
+            return false;
+        }
+
+        if (!enabled || faceCount == 0) {
+            return false;
+        }
+
+        // Only render if there's something to show
+        return hoveredFaceIndex >= 0 || selectedFaceIndex >= 0;
+    }
+
+    /**
+     * Setup shader and upload matrices.
+     *
+     * @param shader The shader program
+     * @param context The render context
+     * @param modelMatrix The model transformation matrix
+     */
+    private void setupShaderAndMatrices(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
+        shader.use();
+
+        // Calculate and upload MVP matrix
+        Matrix4f viewMatrix = context.getCamera().getViewMatrix();
+        Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
+        Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
+
+        shader.setMat4("uMVPMatrix", mvpMatrix);
+        shader.setFloat("uIntensity", 1.0f);
+    }
+
+    /**
+     * Setup OpenGL render state for face overlay rendering.
+     *
+     * @return previous render state for restoration
+     */
+    private RenderState setupRenderState() {
+        // Save previous state
+        int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
+        boolean prevDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK);
+        boolean prevCullFace = glGetBoolean(GL_CULL_FACE);
+
+        // Enable blending for transparency
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Depth test but don't write (render on top of model)
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(false);
+
+        // Disable backface culling to render both sides
+        if (prevCullFace) {
+            glDisable(GL_CULL_FACE);
+        }
+
+        // Enable polygon offset to prevent z-fighting
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
+
+        return new RenderState(prevDepthFunc, prevDepthMask, prevCullFace);
+    }
+
+    /**
+     * Render visible faces (hovered and/or selected).
+     */
+    private void renderVisibleFaces() {
+        if (hoveredFaceIndex >= 0) {
+            renderFaceWithColor(hoveredFaceIndex, hoverFaceColor);
+        }
+
+        if (selectedFaceIndex >= 0 && selectedFaceIndex != hoveredFaceIndex) {
+            renderFaceWithColor(selectedFaceIndex, selectedFaceColor);
+        }
+    }
+
+    /**
+     * Restore OpenGL render state.
+     *
+     * @param state Previous render state to restore
+     */
+    private void restoreRenderState(RenderState state) {
+        glDisable(GL_POLYGON_OFFSET_FILL);
+        glDepthMask(state.depthMask);
+        glDepthFunc(state.depthFunc);
+
+        if (state.cullFace) {
+            glEnable(GL_CULL_FACE);
+        }
+
+        glDisable(GL_BLEND);
+    }
+
+    /**
+     * Holds previous OpenGL render state for restoration.
+     */
+    private static class RenderState {
+        final int depthFunc;
+        final boolean depthMask;
+        final boolean cullFace;
+
+        RenderState(int depthFunc, boolean depthMask, boolean cullFace) {
+            this.depthFunc = depthFunc;
+            this.depthMask = depthMask;
+            this.cullFace = cullFace;
+        }
+    }
+
+    /**
+     * Render a single face with a specific color.
+     * Updates VBO color data, renders the face, then restores default color.
      * Uses shared constants from FaceUpdateOperation for DRY compliance.
+     *
+     * @param faceIndex the face index to render
+     * @param color the color to use (RGBA with alpha for transparency)
      */
     private void renderFaceWithColor(int faceIndex, Vector4f color) {
-        // Update color in VBO for this face (6 vertices = 2 triangles)
         int dataStart = faceIndex * FaceUpdateOperation.FLOATS_PER_FACE_VBO;
-        int colorOffset = 3 * Float.BYTES; // Skip position
+        int colorOffsetBytes = COLOR_OFFSET_FLOATS * Float.BYTES;
 
+        // Update color in VBO
+        updateFaceColors(dataStart, colorOffsetBytes, color);
+
+        // Render the face (2 triangles = 6 vertices)
+        glDrawArrays(GL_TRIANGLES, faceIndex * FaceUpdateOperation.VERTICES_PER_FACE, FaceUpdateOperation.VERTICES_PER_FACE);
+
+        // Restore default color
+        updateFaceColors(dataStart, colorOffsetBytes, defaultFaceColor);
+    }
+
+    /**
+     * Update color data for all vertices of a face in the VBO.
+     *
+     * @param dataStart starting offset in the VBO
+     * @param colorOffsetBytes byte offset to color data within each vertex
+     * @param color the color to set
+     */
+    private void updateFaceColors(int dataStart, int colorOffsetBytes, Vector4f color) {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-        // Update color for all 6 vertices of this face
         float[] colorData = new float[] { color.x, color.y, color.z, color.w };
         for (int i = 0; i < FaceUpdateOperation.VERTICES_PER_FACE; i++) {
-            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffset;
+            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffsetBytes;
             glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-        // Render the 2 triangles for this face
-        glDrawArrays(GL_TRIANGLES, faceIndex * FaceUpdateOperation.VERTICES_PER_FACE, FaceUpdateOperation.VERTICES_PER_FACE);
-
-        // Restore default (transparent) color
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        float[] defaultColorData = new float[] { defaultFaceColor.x, defaultFaceColor.y, defaultFaceColor.z, defaultFaceColor.w };
-        for (int i = 0; i < FaceUpdateOperation.VERTICES_PER_FACE; i++) {
-            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffset;
-            glBufferSubData(GL_ARRAY_BUFFER, vboOffset, defaultColorData);
-        }
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
     /**
-     * Clean up OpenGL resources.
+     * Clean up OpenGL resources (RAII pattern).
+     * Deletes VAO and VBO, clears all state data.
+     *
+     * <p>Should be called when the renderer is no longer needed
+     * to prevent resource leaks.
      */
     public void cleanup() {
         if (vao != 0) {
