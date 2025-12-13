@@ -4,7 +4,6 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.util.MemoryProfiler;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.features.FeatureQueue;
@@ -246,10 +245,6 @@ public class WorldChunkStore {
         return new ArrayList<>(chunks.values());
     }
 
-    public Set<ChunkPosition> getAllChunkPositions() {
-        return new HashSet<>(chunks.keySet());
-    }
-
     public List<Chunk> getDirtyChunks() {
         List<Chunk> dirty = new ArrayList<>();
         for (Chunk chunk : chunks.values()) {
@@ -342,24 +337,10 @@ public class WorldChunkStore {
         return positionCache.get(x, z);
     }
 
-    public void cleanupPositionCacheIfNeeded(int loadedChunks) {
-        if (positionCache.size() > loadedChunks * 2) {
-            positionCache.cleanup(chunks.keySet());
-            System.out.println("Position cache cleaned: " + loadedChunks + " chunks loaded");
-        }
-    }
-
-    public void clearPositionCacheIfLarge(int threshold) {
-        if (positionCache.size() > threshold) {
-            positionCache.clear();
-        }
-    }
-
     // Dynamic feature population limit state
     private int currentFeaturePopulationLimit = 40; // Aggressive default for maximum loading speed
     private static final int MIN_FEATURE_POPULATION_LIMIT = 10;
     private static final int MAX_FEATURE_POPULATION_LIMIT = 80;
-    private static final float FEATURE_TARGET_FRAME_TIME_MS = 16.0f;
 
     /**
      * Adjusts feature population limit based on current frame time.
@@ -591,17 +572,6 @@ public class WorldChunkStore {
         }
     }
 
-    private boolean shouldMesh(int chunkX, int chunkZ) {
-        Player player = Game.getPlayer();
-        if (player == null) return true;
-
-        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        int distance = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
-
-        return distance <= config.getBorderChunkDistance();
-    }
-
     /**
      * Saves dirty chunk asynchronously using CCO integration.
      * SaveService internally uses chunk.createSnapshot() via StateConverter.
@@ -677,10 +647,6 @@ public class WorldChunkStore {
 
         void clear() {
             cache.clear();
-        }
-
-        int size() {
-            return cache.size();
         }
 
         void cleanup(Set<ChunkPosition> loadedPositions) {
