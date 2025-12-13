@@ -204,12 +204,4 @@ public class BiomeManager {
         return noiseRouter;
     }
 
-    /**
-     * Gets the biome parameter table (for debugging/visualization).
-     *
-     * @return The biome parameter table
-     */
-    public BiomeParameterTable getParameterTable() {
-        return parameterTable;
-    }
 }

@@ -1,5 +1,6 @@
-package com.stonebreak.world.generation.biomes;
+package com.stonebreak.world.generation.biomes.modifiers;
 
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 
 /**

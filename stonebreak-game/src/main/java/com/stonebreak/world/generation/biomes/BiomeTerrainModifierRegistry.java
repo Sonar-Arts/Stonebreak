@@ -1,5 +1,9 @@
 package com.stonebreak.world.generation.biomes;
 
+import com.stonebreak.world.generation.biomes.modifiers.BadlandsMesaModifier;
+import com.stonebreak.world.generation.biomes.modifiers.BiomeTerrainModifier;
+import com.stonebreak.world.generation.biomes.modifiers.DesertDunesModifier;
+import com.stonebreak.world.generation.biomes.modifiers.StonyPeaksModifier;
 import com.stonebreak.world.generation.noise.MultiNoiseParameters;
 
 import java.util.EnumMap;
