@@ -63,7 +63,6 @@ public class TerrainGenerationSystem {
     private final long seed;
     private final Random animalRandom;
     private final DeterministicRandom deterministicRandom;
-    private final Object animalRandomLock = new Object();
 
     /**
      * Creates a new terrain generation system with the given seed, configuration, generator type, and progress reporter.
@@ -96,42 +95,6 @@ public class TerrainGenerationSystem {
         // Note: CaveSystemFeature is now replaced by integrated cave density
         this.terrainFeatureRegistry = TerrainFeatureRegistry.withDefaults(seed);
     }
-
-    /**
-     * Creates a new terrain generation system with the given seed, configuration, and progress reporter.
-     * Initializes all subsystem generators with the provided configuration.
-     * Defaults to HYBRID_SDF generator for optimal performance.
-     *
-     * Multi-Noise System: Terrain and biomes generate independently using shared parameters.
-     *
-     * @param seed World seed for deterministic generation
-     * @param config Terrain generation configuration
-     * @param progressReporter Progress reporter for loading screen updates
-     */
-    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config, LoadingProgressReporter progressReporter) {
-        this(seed, config, "HYBRID_SDF", progressReporter);
-    }
-
-    /**
-     * Gets the biome manager for biome queries.
-     * Consumers can directly query biomes, temperature, and moisture.
-     *
-     * @return The biome manager
-     */
-    public BiomeManager getBiomeManager() {
-        return biomeManager;
-    }
-
-    /**
-     * Gets the terrain generator for height queries.
-     * Consumers can directly query terrain height.
-     *
-     * @return The terrain generator
-     */
-    public TerrainGenerator getTerrainGenerator() {
-        return terrainGenerator;
-    }
-
 
     /**
      * Gets the world seed.
@@ -192,8 +155,16 @@ public class TerrainGenerationSystem {
         final int chunkWorldX = chunkX * chunkSize;
         final int chunkWorldZ = chunkZ * chunkSize;
 
-        // Initialize surface height cache (16x16 array, set after generation)
+        // Initialize surface height cache (16x16 array, built during generation)
         int[][] surfaceHeightCache = new int[chunkSize][chunkSize];
+        // Initialize with -1 (no surface found yet)
+        for (int x = 0; x < chunkSize; x++) {
+            java.util.Arrays.fill(surfaceHeightCache[x], -1);
+        }
+
+        // Cache terrain heights and biomes for flood-fill (avoids recalculation)
+        int[][] terrainHeights = new int[chunkSize][chunkSize];
+        BiomeType[][] biomeCache = new BiomeType[chunkSize][chunkSize];
 
         // Generate terrain using multi-noise system
         for (int x = 0; x < chunkSize; x++) {
@@ -214,7 +185,14 @@ public class TerrainGenerationSystem {
                 // PASS 2: Apply biome-specific terrain modifiers
                 int height = modifierRegistry.applyModifier(biome, baseHeight, params, worldX, worldZ);
 
-                // Generate blocks for this column
+                // Cache for flood-fill (eliminates redundant recalculation)
+                terrainHeights[x][z] = height;
+                biomeCache[x][z] = biome;
+
+                // Track actual surface height for this column (updated as we generate)
+                int actualSurfaceY = -1;
+
+                // Generate blocks for this column (bottom-up for cache efficiency)
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
@@ -248,26 +226,15 @@ public class TerrainGenerationSystem {
                     // Biome only affects materials, NOT height
                     BlockType blockType = determineBlockType(worldX, y, worldZ, height, biome);
                     chunk.setBlock(x, y, z, blockType); // Uses CCO BlockWriter internally
-                }
-            }
-        }
 
-        // Rebuild surface height cache to reflect actual post-cave/feature surface
-        updateLoadingProgress("Building Surface Cache");
-        for (int x = 0; x < chunkSize; x++) {
-            for (int z = 0; z < chunkSize; z++) {
-                int actualSurface = -1;
-
-                // Scan top-down for first solid, non-water block
-                for (int y = WORLD_HEIGHT - 1; y >= 0; y--) {
-                    BlockType block = chunk.getBlock(x, y, z);
-                    if (block != null && block != BlockType.AIR && block != BlockType.WATER) {
-                        actualSurface = y;
-                        break;
+                    // Update surface height (track highest solid non-water block)
+                    if (blockType != BlockType.WATER) {
+                        actualSurfaceY = y;
                     }
                 }
 
-                surfaceHeightCache[x][z] = actualSurface;
+                // Store surface height for this column
+                surfaceHeightCache[x][z] = actualSurfaceY;
             }
         }
 
@@ -275,8 +242,9 @@ public class TerrainGenerationSystem {
         chunk.setSurfaceHeightCache(surfaceHeightCache);
 
         // Flood-fill ocean water from surface (keeps caves dry)
+        // Pass cached data to avoid recalculating heights/biomes
         updateLoadingProgress("Filling Ocean Water");
-        floodFillOceanWater(chunk);
+        floodFillOceanWater(chunk, terrainHeights, biomeCache);
 
         // Features will be populated after chunk registration to avoid recursion
         chunk.setFeaturesPopulated(false);
@@ -400,9 +368,13 @@ public class TerrainGenerationSystem {
      * 2. BFS flood-fill from entry points through connected air blocks
      * 3. Fill reachable air blocks that are NOT caves with water
      *
+     * OPTIMIZATION: Uses cached terrain heights and biomes to avoid recalculation
+     *
      * @param chunk The chunk to fill with ocean water
+     * @param terrainHeights Cached terrain heights from generation
+     * @param biomeCache Cached biomes from generation
      */
-    private void floodFillOceanWater(Chunk chunk) {
+    private void floodFillOceanWater(Chunk chunk, int[][] terrainHeights, BiomeType[][] biomeCache) {
         int chunkSize = WorldConfiguration.CHUNK_SIZE;
         boolean[][][] visited = new boolean[chunkSize][SEA_LEVEL + 1][chunkSize];
         Queue<int[]> queue = new ArrayDeque<>(256);
@@ -416,12 +388,8 @@ public class TerrainGenerationSystem {
             for (int z = 0; z < chunkSize; z++) {
                 // Check if this column has air at sea level
                 if (chunk.getBlock(x, SEA_LEVEL, z) == BlockType.AIR) {
-                    // Calculate world coordinates for biome check
-                    int worldX = chunkWorldX + x;
-                    int worldZ = chunkWorldZ + z;
-
-                    // Check if this position is in an ocean biome
-                    BiomeType biome = biomeManager.getBiome(worldX, worldZ);
+                    // Use cached biome (no recalculation!)
+                    BiomeType biome = biomeCache[x][z];
                     if (biome != BiomeType.OCEAN && biome != BiomeType.DEEP_OCEAN && biome != BiomeType.FROZEN_OCEAN) {
                         // Not an ocean biome - skip this position (prevents ocean water in non-ocean biomes)
                         continue;
@@ -462,9 +430,8 @@ public class TerrainGenerationSystem {
             // Check if this position is a cave (don't fill caves with water)
             boolean isCave = false;
             if (caveGenerator.canGenerateCaves(y)) {
-                // Get terrain height at this position for cave density calculation
-                MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleInterpolatedParameters(worldX, worldZ, SEA_LEVEL);
-                int height = terrainGenerator.generateHeight(worldX, worldZ, params);
+                // Use cached terrain height (no recalculation!)
+                int height = terrainHeights[x][z];
                 float caveDensity = caveGenerator.sampleCaveDensity(worldX, y, worldZ, height);
                 isCave = caveDensity > 0.0f;
             }

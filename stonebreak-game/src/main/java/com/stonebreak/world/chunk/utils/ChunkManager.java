@@ -38,6 +38,9 @@ public class ChunkManager {
     private final Set<ChunkPosition> activeChunkPositions = Collections.synchronizedSet(new HashSet<>());
     private float updateTimer = 0.0f;
 
+    // Diagnostic: Track chunk load order to verify priority-based loading
+    private static volatile int debugChunkLoadCount = 0;
+
     // Use configurable thread pool size (4-6 threads typical)
     // Dynamically calculated based on CPU cores, min 2, max 8
     private final ExecutorService chunkExecutor;
@@ -298,15 +301,27 @@ public class ChunkManager {
                     int distance = Math.max(Math.abs(pos.getX() - playerChunkX), Math.abs(pos.getZ() - playerChunkZ));
 
                     // Wrap in priority task for distance-based ordering in executor queue
+                    // IMPORTANT: world.getChunkAtBlocking() blocks until chunk is ready (synchronous)
+                    // This ensures chunks load in priority order (closest to player first)
                     ChunkLoadTask task = new ChunkLoadTask(pos, distance, () -> {
                         try {
                             long startTime = System.currentTimeMillis();
-                            Chunk chunk = world.getChunkAt(pos.getX(), pos.getZ());
+                            Chunk chunk = world.getChunkAtBlocking(pos.getX(), pos.getZ()); // Blocks until ready
                             long endTime = System.currentTimeMillis();
+                            long loadTime = endTime - startTime;
+
+                            // Diagnostic: Log first 10 chunk loads to verify priority ordering
+                            if (debugChunkLoadCount < 10) {
+                                System.out.println("[CHUNK-LOAD-ORDER] #" + debugChunkLoadCount +
+                                    " Chunk (" + pos.getX() + ", " + pos.getZ() +
+                                    ") distance=" + distance +
+                                    " loaded in " + loadTime + "ms by " + Thread.currentThread().getName());
+                                debugChunkLoadCount++;
+                            }
 
                             // Log slow chunk loading (only for nearby chunks)
-                            if (endTime - startTime > 500 && distance <= 3) { // More than 500ms for nearby chunks
-                                System.err.println("SLOW CHUNK LOAD: Chunk (" + pos.getX() + ", " + pos.getZ() + ") distance=" + distance + " took " + (endTime - startTime) + "ms");
+                            if (loadTime > 500 && distance <= 3) { // More than 500ms for nearby chunks
+                                System.err.println("SLOW CHUNK LOAD: Chunk (" + pos.getX() + ", " + pos.getZ() + ") distance=" + distance + " took " + loadTime + "ms");
                                 System.err.println("Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024 + "MB used");
                             }
 
@@ -375,7 +390,6 @@ public class ChunkManager {
     private static int currentGLBatchSize = 32; // Aggressive default for maximum loading speed
     private static final int MIN_GL_BATCH_SIZE = 4;
     private static final int MAX_GL_BATCH_SIZE = 128;
-    private static final float GL_TARGET_FRAME_TIME_MS = 16.0f; // 60 FPS target
     private static final float GL_HIGH_FRAME_TIME_MS = 18.0f; // Reduce uploads if above
     private static final float GL_LOW_FRAME_TIME_MS = 14.0f; // Increase uploads if below
 
@@ -480,30 +494,6 @@ public class ChunkManager {
         } else if (!highMemoryPressure && previousPressure) {
             System.out.println("ChunkManager: Memory pressure relieved, resuming normal batch sizes.");
         }
-    }
-
-    /**
-     * Determines if distant chunk mesh generation should be skipped.
-     * Uses CCO state management for accurate chunk state queries.
-     */
-    public static boolean shouldSkipDistantChunkMesh(Chunk chunk, int playerChunkX, int playerChunkZ) {
-        if (!optimizationsEnabled) {
-            return false;
-        }
-
-        updateMemoryPressure();
-
-        if (highMemoryPressure) {
-            // Check if chunk is already being unloaded using CCO state
-            if (chunk.getCcoStateManager().hasState(CcoChunkState.UNLOADING)) {
-                return true; // Don't generate mesh for unloading chunks
-            }
-
-            int distance = Math.max(Math.abs(chunk.getChunkX() - playerChunkX), Math.abs(chunk.getChunkZ() - playerChunkZ));
-            return distance > 6;
-        }
-
-        return false;
     }
 
     public static boolean isHighMemoryPressure() {

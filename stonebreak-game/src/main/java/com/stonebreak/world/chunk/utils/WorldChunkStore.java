@@ -74,6 +74,17 @@ public class WorldChunkStore {
         return chunks.get(positionCache.get(x, z));
     }
 
+    /**
+     * Gets or creates a chunk asynchronously.
+     * Returns immediately with the chunk if loaded, or null if still loading.
+     * Used by rendering and other systems that can't block.
+     *
+     * For priority-ordered blocking behavior, use getOrCreateChunkBlocking().
+     *
+     * @param x Chunk X coordinate
+     * @param z Chunk Z coordinate
+     * @return The chunk if loaded, null if still loading
+     */
     public Chunk getOrCreateChunk(int x, int z) {
         ChunkPosition pos = positionCache.get(x, z);
 
@@ -133,70 +144,74 @@ public class WorldChunkStore {
 
     /**
      * Gets or creates a chunk, blocking until the chunk is ready.
-     * This method is intended for use during world initialization (spawn calculation)
-     * when we need a chunk immediately and cannot rely on "next frame" async completion.
+     * This method is used by:
+     * 1. Spawn calculation (world initialization)
+     * 2. ChunkManager's priority-ordered worker threads
+     *
+     * Thread-safe: Multiple threads can request the same chunk.
+     * First thread to acquire lock will load, others will wait.
      *
      * @param x Chunk X coordinate
      * @param z Chunk Z coordinate
-     * @return The loaded or generated chunk, or null if generation failed
+     * @return The loaded or generated chunk
      */
     public Chunk getOrCreateChunkBlocking(int x, int z) {
-        System.out.println("[BLOCKING-CHUNK] Starting blocking chunk generation for (" + x + ", " + z + ")");
         ChunkPosition pos = positionCache.get(x, z);
 
         // Fast path: chunk already loaded
         Chunk chunk = chunks.get(pos);
         if (chunk != null) {
-            System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") already loaded");
             return chunk;
         }
 
-        // Check if chunk is currently being loaded
-        CompletableFuture<Chunk> pendingLoad = pendingChunkLoads.get(pos);
-        if (pendingLoad != null) {
-            System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") already loading, waiting for completion...");
-            // Chunk is loading asynchronously - wait for it
-            try {
-                chunk = pendingLoad.join(); // Block until complete
-                System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") load completed from pending");
+        // Coordination lock to prevent duplicate generation
+        // Use pendingChunkLoads as a per-chunk lock registry
+        CompletableFuture<Chunk> ourFuture;
+        CompletableFuture<Chunk> existingFuture;
+
+        synchronized (pendingChunkLoads) {
+            // Double-check after acquiring lock
+            chunk = chunks.get(pos);
+            if (chunk != null) {
                 return chunk;
+            }
+
+            // Check if another thread is already loading this chunk
+            existingFuture = pendingChunkLoads.get(pos);
+            if (existingFuture != null) {
+                // Another thread is loading, we'll wait for it outside the lock
+                ourFuture = null;
+            } else {
+                // We're the first thread to request this chunk
+                ourFuture = new CompletableFuture<>();
+                pendingChunkLoads.put(pos, ourFuture);
+            }
+        }
+
+        // If another thread is loading, wait for it
+        if (ourFuture == null) {
+            try {
+                return existingFuture.join(); // Block until other thread completes
             } catch (Exception e) {
-                System.err.println("CRITICAL: Failed to load chunk (" + x + ", " + z + ") - " + e.getMessage());
-                e.printStackTrace();
                 throw new RuntimeException("Chunk load failed for (" + x + ", " + z + ")", e);
             }
         }
 
-        System.out.println("[BLOCKING-CHUNK] Starting async load for chunk (" + x + ", " + z + ")...");
-        // Start async chunk load and wait for completion
-        CompletableFuture<Chunk> loadFuture = loadOrGenerateAsync(x, z)
-            .thenApply(loadedChunk -> {
-                System.out.println("[BLOCKING-CHUNK] loadOrGenerateAsync completed for (" + x + ", " + z + "), chunk=" + (loadedChunk != null ? "NOT NULL" : "NULL"));
-                if (loadedChunk != null) {
-                    // Store chunk and finalize on completion
-                    chunks.put(pos, loadedChunk);
-                    System.out.println("[BLOCKING-CHUNK] Finalizing chunk load for (" + x + ", " + z + ")...");
-                    finalizeChunkLoad(pos, loadedChunk);
-                    System.out.println("[BLOCKING-CHUNK] Chunk finalized for (" + x + ", " + z + ")");
-                }
-                // Remove from pending loads
-                pendingChunkLoads.remove(pos);
-                return loadedChunk;
-            });
-
-        // Track this pending load
-        pendingChunkLoads.put(pos, loadFuture);
-
-        System.out.println("[BLOCKING-CHUNK] Waiting for chunk (" + x + ", " + z + ") to complete...");
-        // Block until chunk generation completes
+        // We're the thread that will load this chunk
+        // Load/generate synchronously (outside lock to allow parallelism)
         try {
-            chunk = loadFuture.join();
-            System.out.println("[BLOCKING-CHUNK] Chunk (" + x + ", " + z + ") blocking call completed successfully");
+            chunk = loadOrGenerateSync(x, z);
+            if (chunk != null) {
+                chunks.put(pos, chunk);
+                finalizeChunkLoad(pos, chunk);
+            }
+            ourFuture.complete(chunk);
             return chunk;
         } catch (Exception e) {
-            System.err.println("CRITICAL: Failed to generate chunk (" + x + ", " + z + ") - " + e.getMessage());
-            e.printStackTrace();
+            ourFuture.completeExceptionally(e);
             throw new RuntimeException("Chunk generation failed for (" + x + ", " + z + ")", e);
+        } finally {
+            pendingChunkLoads.remove(pos);
         }
     }
 
@@ -413,9 +428,46 @@ public class WorldChunkStore {
     // ========== Private Implementation ==========
 
     /**
+     * Loads chunk from save or generates new one synchronously.
+     * Uses CCO snapshots via SaveService.
+     * Features are deferred via queue to prevent recursive chunk generation.
+     *
+     * This method blocks until the chunk is ready and is called from
+     * priority-ordered worker threads in ChunkManager.
+     *
+     * @param x Chunk X coordinate
+     * @param z Chunk Z coordinate
+     * @return Loaded or generated chunk
+     */
+    private Chunk loadOrGenerateSync(int x, int z) {
+        SaveService saveService = getSaveService();
+
+        // Try loading from disk first
+        if (saveService != null) {
+            try {
+                // Block until load completes
+                Chunk loaded = saveService.loadChunk(x, z).join();
+                if (loaded != null) {
+                    prepareLoadedChunk(loaded);
+                    return loaded;
+                }
+            } catch (Exception e) {
+                // Load failed, fall through to generation
+                System.err.println("Failed to load chunk (" + x + ", " + z + ") from disk, generating new: " + e.getMessage());
+            }
+        }
+
+        // Chunk not on disk or load failed, generate new one
+        return generate(x, z);
+    }
+
+    /**
      * Loads chunk from save or generates new one asynchronously. Uses CCO snapshots via SaveService.
      * Features are deferred via queue to prevent recursive chunk generation.
      * Returns CompletableFuture that completes when chunk is ready.
+     *
+     * NOTE: This method is now only used by getOrCreateChunkBlocking for spawn calculation.
+     * Regular chunk loading uses the synchronous loadOrGenerateSync method.
      */
     private CompletableFuture<Chunk> loadOrGenerateAsync(int x, int z) {
         SaveService saveService = getSaveService();
