@@ -23,11 +23,16 @@ import static org.lwjgl.opengl.GL11.*;
  * hotbar, pause menu, etc.
  */
 public class DepthCurtainRenderer {
-    
+
     private final ShaderProgram shaderProgram;
     private final int windowWidth;
     private final int windowHeight;
     private final Matrix4f projectionMatrix;
+
+    // Cached matrices to eliminate per-frame allocations (performance optimization)
+    private final Matrix4f cachedOrthoProjection;
+    private final Matrix4f cachedIdentityView;
+    private final Matrix4f cachedIdentityModel;
     
     // UI screen dimensions (matching InventoryScreen calculations)
     private static final int SLOT_SIZE = 40;
@@ -44,6 +49,22 @@ public class DepthCurtainRenderer {
         this.windowWidth = windowWidth;
         this.windowHeight = windowHeight;
         this.projectionMatrix = projectionMatrix;
+
+        // Initialize cached matrices once to eliminate per-frame allocations
+        this.cachedOrthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
+        this.cachedIdentityView = new Matrix4f().identity();
+        this.cachedIdentityModel = new Matrix4f().identity();
+    }
+
+    /**
+     * Updates cached matrices when window size changes.
+     * Should be called when the window is resized.
+     *
+     * @param newWidth New window width
+     * @param newHeight New window height
+     */
+    public void updateWindowSize(int newWidth, int newHeight) {
+        cachedOrthoProjection.identity().ortho(0, newWidth, newHeight, 0, -1, 1);
     }
     
     /**
@@ -53,24 +74,19 @@ public class DepthCurtainRenderer {
     public void renderInventoryDepthCurtain() {
         // Save current GL state
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
+
         // Set up depth curtain rendering state
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
         glDepthMask(true);          // Write to depth buffer (this is key!)
         glDisable(GL_BLEND);        // No blending needed for invisible quad
         glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
+
+        // Bind shader and set uniforms (using cached matrices)
         shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        shaderProgram.setUniform("projectionMatrix", cachedOrthoProjection);
+        shaderProgram.setUniform("viewMatrix", cachedIdentityView);
+        shaderProgram.setUniform("modelMatrix", cachedIdentityModel);
         shaderProgram.setUniform("u_useSolidColor", true);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
@@ -112,24 +128,19 @@ public class DepthCurtainRenderer {
     public void renderHotbarDepthCurtain() {
         // Save current GL state
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
+
         // Set up depth curtain rendering state
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
         glDepthMask(true);          // Write to depth buffer (this is key!)
         glDisable(GL_BLEND);        // No blending needed for invisible quad
         glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
+
+        // Bind shader and set uniforms (using cached matrices)
         shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        shaderProgram.setUniform("projectionMatrix", cachedOrthoProjection);
+        shaderProgram.setUniform("viewMatrix", cachedIdentityView);
+        shaderProgram.setUniform("modelMatrix", cachedIdentityModel);
         shaderProgram.setUniform("u_useSolidColor", true);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
@@ -280,17 +291,12 @@ public class DepthCurtainRenderer {
         glDepthMask(true);          // FORCE write to depth buffer
         glColorMask(false, false, false, false); // Invisible (no color writing)
         glDisable(GL_CULL_FACE);    // Disable culling to ensure all faces render
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
+
+        // Bind shader and set uniforms (using cached matrices)
         shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        shaderProgram.setUniform("projectionMatrix", cachedOrthoProjection);
+        shaderProgram.setUniform("viewMatrix", cachedIdentityView);
+        shaderProgram.setUniform("modelMatrix", cachedIdentityModel);
         shaderProgram.setUniform("u_useSolidColor", true);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
@@ -331,24 +337,19 @@ public class DepthCurtainRenderer {
     public void renderWorkbenchDepthCurtain() {
         // Save current GL state
         boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
+
         // Set up depth curtain rendering state
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
         glDepthMask(true);          // Write to depth buffer (this is key!)
         glDisable(GL_BLEND);        // No blending needed for invisible quad
         glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
+
+        // Bind shader and set uniforms (using cached matrices)
         shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
+        shaderProgram.setUniform("projectionMatrix", cachedOrthoProjection);
+        shaderProgram.setUniform("viewMatrix", cachedIdentityView);
+        shaderProgram.setUniform("modelMatrix", cachedIdentityModel);
         shaderProgram.setUniform("u_useSolidColor", true);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));

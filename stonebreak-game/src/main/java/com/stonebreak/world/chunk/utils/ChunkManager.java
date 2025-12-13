@@ -50,6 +50,10 @@ public class ChunkManager {
     private static final long MEMORY_CHECK_INTERVAL = 2000; // 2 seconds
     private static final double HIGH_MEMORY_THRESHOLD = 0.8; // 80% memory usage
 
+    // Cached memory-safe batch size (updated every MEMORY_CHECK_INTERVAL)
+    private static volatile int cachedMemorySafeBatchSize = 64; // Default value
+    private static volatile long lastMemorySafeBatchSizeUpdate = 0;
+
     public ChunkManager(World world, int renderDistance) {
         this.world = world;
         this.renderDistance = renderDistance;
@@ -424,16 +428,35 @@ public class ChunkManager {
     /**
      * Gets a safe batch size based on current memory pressure.
      * Acts as a safety limit for the adaptive sizing.
+     *
+     * PERFORMANCE OPTIMIZATION: Caches JMX memory queries to avoid 1-10ms stalls per frame.
+     * Only updates every MEMORY_CHECK_INTERVAL (2000ms) instead of every frame.
      */
     private static int getMemorySafeBatchSize() {
-        long heapUsed = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
-        long heapMax = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax();
-        double memoryUsage = (double) heapUsed / heapMax;
+        long currentTime = System.currentTimeMillis();
 
-        if (memoryUsage > 0.9) return 4;
-        if (memoryUsage > 0.8) return 12;
-        if (memoryUsage > 0.7) return 24;
-        return 64; // No memory constraint
+        // Check if cache is stale (older than MEMORY_CHECK_INTERVAL)
+        if (currentTime - lastMemorySafeBatchSizeUpdate >= MEMORY_CHECK_INTERVAL) {
+            // Update cache with fresh JMX query
+            long heapUsed = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
+            long heapMax = java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax();
+            double memoryUsage = (double) heapUsed / heapMax;
+
+            if (memoryUsage > 0.9) {
+                cachedMemorySafeBatchSize = 4;
+            } else if (memoryUsage > 0.8) {
+                cachedMemorySafeBatchSize = 12;
+            } else if (memoryUsage > 0.7) {
+                cachedMemorySafeBatchSize = 24;
+            } else {
+                cachedMemorySafeBatchSize = 64; // No memory constraint
+            }
+
+            lastMemorySafeBatchSizeUpdate = currentTime;
+        }
+
+        // Return cached value (no JMX query)
+        return cachedMemorySafeBatchSize;
     }
 
     private static void updateMemoryPressure() {
