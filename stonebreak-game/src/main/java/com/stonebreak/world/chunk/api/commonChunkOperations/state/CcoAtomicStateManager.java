@@ -55,25 +55,14 @@ public final class CcoAtomicStateManager {
             return false;
         }
 
-        boolean[] wasRejected = {false};  // Capture flag from lambda
-        boolean result = stateSet.updateAndGet(current -> {
+        return stateSet.updateAndGet(current -> {
             if (!CcoStateTransition.canCoexistWith(state, current)) {
-                wasRejected[0] = true;
                 return current; // Can't add, return unchanged
             }
             EnumSet<CcoChunkState> updated = EnumSet.copyOf(current);
             updated.add(state);
             return updated;
         }).contains(state);
-
-        // Log rejected transitions (critical for debugging stuck chunks)
-        if (wasRejected[0]) {
-            System.err.println("STATE_TRANSITION_REJECTED: Cannot add " + state +
-                " to current states " + stateSet.get() +
-                " (mutex conflict - mesh states are mutually exclusive)");
-        }
-
-        return result;
     }
 
     /**

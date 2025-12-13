@@ -226,10 +226,6 @@ public final class MmsMeshPipeline {
         // If between LOW and HIGH, keep current value
     }
 
-    private static int debugProcessCallCount = 0;
-    private static int debugGLUploadCount = 0;
-    private static int debugGLUploadSuccessCount = 0;
-
     /**
      * Mesh generation worker task.
      * Runs on worker thread pool.
@@ -349,20 +345,6 @@ public final class MmsMeshPipeline {
         }
 
         int queueDepth = meshesReadyForGLUpload.size();
-
-        // Debug: Log first few calls
-        if (debugGLUploadCount < 3) {
-            System.out.println("[MmsMeshPipeline.applyPendingGLUpdates] Called with " +
-                queueDepth + " meshes ready for upload");
-            debugGLUploadCount++;
-        }
-
-        // Warn if GL upload queue is getting backed up
-        if (queueDepth > 50) {
-            System.err.println("GL_UPLOAD_BACKLOG: Queue depth is " + queueDepth +
-                " (meshes waiting for GPU upload). Frame time: " +
-                (Game.getDeltaTime() * 1000.0f) + "ms");
-        }
 
         MeshUploadTask task;
         int updatesThisFrame = 0;

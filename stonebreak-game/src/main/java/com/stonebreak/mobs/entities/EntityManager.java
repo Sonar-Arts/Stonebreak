@@ -585,20 +585,29 @@ public class EntityManager {
             return;
         }
 
+        // Check if executor is shut down - prevents RejectedExecutionException during world transitions
+        if (entityDeserializationExecutor.isShutdown()) {
+            return;
+        }
+
         // Submit deserialization to background thread
-        entityDeserializationExecutor.submit(() -> {
-            try {
-                for (com.stonebreak.world.save.model.EntityData entityData : entityDataList) {
-                    Entity entity = com.stonebreak.world.save.serialization.EntitySerializer.deserialize(entityData, world);
-                    if (entity != null) {
-                        // Queue for batched addition on main thread
-                        pendingEntityAdditions.offer(entity);
+        try {
+            entityDeserializationExecutor.submit(() -> {
+                try {
+                    for (com.stonebreak.world.save.model.EntityData entityData : entityDataList) {
+                        Entity entity = com.stonebreak.world.save.serialization.EntitySerializer.deserialize(entityData, world);
+                        if (entity != null) {
+                            // Queue for batched addition on main thread
+                            pendingEntityAdditions.offer(entity);
+                        }
                     }
+                } catch (Exception e) {
+                    System.err.println("Error deserializing entities for chunk (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
                 }
-            } catch (Exception e) {
-                System.err.println("Error deserializing entities for chunk (" + chunkX + ", " + chunkZ + "): " + e.getMessage());
-            }
-        });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // Executor was shut down between the isShutdown check and submit - safe to ignore
+        }
     }
 
     /**
