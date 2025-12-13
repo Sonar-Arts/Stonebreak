@@ -20,7 +20,7 @@ class HybridSdfIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        config = new TerrainGenerationConfig();
+        config = TerrainGenerationConfig.defaultConfig();
         generator = new HybridSdfTerrainGenerator(seed, config, SdfTerrainConfig.getDefault());
     }
 

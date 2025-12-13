@@ -66,31 +66,6 @@ public class TerrainGenerationSystem {
     private final Object animalRandomLock = new Object();
 
     /**
-     * Creates a new terrain generation system with the given seed.
-     * Initializes all subsystem generators with default configuration.
-     * Uses null progress reporter (no progress updates).
-     * Defaults to HYBRID_SDF generator for optimal performance.
-     *
-     * @param seed World seed for deterministic generation
-     */
-    public TerrainGenerationSystem(long seed) {
-        this(seed, TerrainGenerationConfig.defaultConfig(), "HYBRID_SDF", LoadingProgressReporter.NULL);
-    }
-
-    /**
-     * Creates a new terrain generation system with the given seed and configuration.
-     * Initializes all subsystem generators with the provided configuration.
-     * Uses null progress reporter (no progress updates).
-     * Defaults to HYBRID_SDF generator for optimal performance.
-     *
-     * @param seed World seed for deterministic generation
-     * @param config Terrain generation configuration
-     */
-    public TerrainGenerationSystem(long seed, TerrainGenerationConfig config) {
-        this(seed, config, "HYBRID_SDF", LoadingProgressReporter.NULL);
-    }
-
-    /**
      * Creates a new terrain generation system with the given seed, configuration, generator type, and progress reporter.
      * Initializes all subsystem generators with the provided configuration.
      *
@@ -109,7 +84,6 @@ public class TerrainGenerationSystem {
 
         // Initialize specialized generators with injected configuration
         // Multi-Noise System: TerrainGenerator and BiomeManager use shared NoiseRouter (via BiomeManager)
-        // PHASE 2: Enable 3D density for all generators (caves, overhangs, arches, floating islands)
         this.terrainGenerator = TerrainGeneratorFactory.createFromString(generatorType, seed, config, true);
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
@@ -213,50 +187,34 @@ public class TerrainGenerationSystem {
         updateLoadingProgress("Generating Multi-Noise Terrain");
         Chunk chunk = new Chunk(chunkX, chunkZ);
 
-        // Initialize surface height cache (16x16 array)
-        // Caches highest non-air block Y coordinate for each X,Z column
-        // Eliminates ~131,000 redundant block accesses during feature generation
-        int[][] surfaceHeightCache = new int[WorldConfiguration.CHUNK_SIZE][WorldConfiguration.CHUNK_SIZE];
+        // Extract constants for performance (reduces field access and multiplication overhead)
+        final int chunkSize = WorldConfiguration.CHUNK_SIZE;
+        final int chunkWorldX = chunkX * chunkSize;
+        final int chunkWorldZ = chunkZ * chunkSize;
+
+        // Initialize surface height cache (16x16 array, set after generation)
+        int[][] surfaceHeightCache = new int[chunkSize][chunkSize];
 
         // Generate terrain using multi-noise system
-        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
-            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
+        for (int x = 0; x < chunkSize; x++) {
+            for (int z = 0; z < chunkSize; z++) {
                 // Calculate absolute world coordinates
-                int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + x;
-                int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + z;
+                int worldX = chunkWorldX + x;
+                int worldZ = chunkWorldZ + z;
 
-                // Update progress indicators
-                if (x == 0 && z == 0) {
-                    updateLoadingProgress("Sampling Noise Parameters");
-                }
-
-                // STEP 1: Sample all 6 parameters at this position using interpolation for performance
-                // Interpolation reduces noise sampling by 94% (grid sampling + bilinear interpolation)
+                // Sample multi-noise parameters (interpolated for 94% reduction)
                 MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleInterpolatedParameters(worldX, worldZ, SEA_LEVEL);
 
-                // STEP 2: PASS 1 - Generate base terrain height
-                // SPLINE: Uses unified multi-parameter spline interpolation
-                // HYBRID_SDF: Uses spline interpolation + analytical SDF features
-                // Terrain generation happens BEFORE biome selection
+                // PASS 1: Generate base terrain height
                 int baseHeight = terrainGenerator.generateHeight(worldX, worldZ, params);
 
-                // STEP 3: Select biome using parameters
-                // Reuse params since temperature is noise-based only (no altitude adjustment needed)
+                // Select biome using sampled parameters
                 BiomeType biome = biomeManager.getBiomeAtHeight(worldX, worldZ, baseHeight);
 
-                // STEP 4: PASS 2 - Apply biome-specific modifiers
-                // Modifiers add fine-tuned features AFTER biome selection:
-                // - Badlands: Canyon carving, hoodoo/spire generation
-                // - Stony Peaks: Vertical amplification, rocky outcrops
-                // - Desert: Rolling dune patterns
+                // PASS 2: Apply biome-specific terrain modifiers
                 int height = modifierRegistry.applyModifier(biome, baseHeight, params, worldX, worldZ);
 
-                // Update progress mid-chunk
-                if (x == 8 && z == 8) {
-                    updateLoadingProgress("Applying Surface Materials");
-                }
-
-                // STEP 5: Generate blocks for this column
+                // Generate blocks for this column
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
@@ -294,15 +252,13 @@ public class TerrainGenerationSystem {
             }
         }
 
-        // STEP 6: Rebuild surface height cache to reflect actual post-cave/feature surface
-        // This ensures spawn calculation and feature placement use the TRUE surface, not pre-cave terrain
+        // Rebuild surface height cache to reflect actual post-cave/feature surface
         updateLoadingProgress("Building Surface Cache");
-        System.out.println("[SURFACE-CACHE] Starting surface cache rebuild for chunk (" + chunkX + ", " + chunkZ + ")");
-        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
-            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
+        for (int x = 0; x < chunkSize; x++) {
+            for (int z = 0; z < chunkSize; z++) {
                 int actualSurface = -1;
 
-                // Scan from top down to find first solid, non-water block
+                // Scan top-down for first solid, non-water block
                 for (int y = WORLD_HEIGHT - 1; y >= 0; y--) {
                     BlockType block = chunk.getBlock(x, y, z);
                     if (block != null && block != BlockType.AIR && block != BlockType.WATER) {
@@ -311,33 +267,21 @@ public class TerrainGenerationSystem {
                     }
                 }
 
-                // Store actual surface (or -1 if column is all air/water)
                 surfaceHeightCache[x][z] = actualSurface;
             }
         }
 
-        System.out.println("[SURFACE-CACHE] Finished surface cache rebuild for chunk (" + chunkX + ", " + chunkZ + ")");
-
-        // Add debug logging for spawn chunk (0, 0) to verify surface detection
-        if (chunkX == 0 && chunkZ == 0) {
-            System.out.println("[SPAWN] Spawn chunk surface at (0,0): Y=" + surfaceHeightCache[0][0]);
-        }
-
-        // Set the surface height cache on the chunk
-        // This cache will be used by VegetationGenerator and SurfaceDecorationGenerator
-        // to avoid ~131,000 redundant block accesses per chunk
+        // Set surface height cache (eliminates ~131,000 block accesses during feature generation)
         chunk.setSurfaceHeightCache(surfaceHeightCache);
 
-        // Flood-fill ocean water from surface
-        // This ensures caves stay dry while ocean water fills properly
+        // Flood-fill ocean water from surface (keeps caves dry)
         updateLoadingProgress("Filling Ocean Water");
         floodFillOceanWater(chunk);
 
         // Features will be populated after chunk registration to avoid recursion
         chunk.setFeaturesPopulated(false);
 
-        // Clear parameter interpolation cache to prevent memory accumulation
-        // Cache is typically small (~5-10 entries per chunk) but should be cleared regularly
+        // Clear parameter interpolation cache (~5-10 entries per chunk)
         biomeManager.getNoiseRouter().clearInterpolationCache();
 
         // Mesh generation happens automatically via CCO dirty tracking when chunk is rendered

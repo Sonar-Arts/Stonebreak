@@ -418,43 +418,33 @@ public class WorldChunkStore {
      * Returns CompletableFuture that completes when chunk is ready.
      */
     private CompletableFuture<Chunk> loadOrGenerateAsync(int x, int z) {
-        System.out.println("[ASYNC-LOAD] loadOrGenerateAsync called for (" + x + ", " + z + ")");
         SaveService saveService = getSaveService();
-        System.out.println("[ASYNC-LOAD] SaveService is " + (saveService != null ? "NOT NULL" : "NULL"));
 
         // Try loading from disk first (async)
         if (saveService != null) {
-            System.out.println("[ASYNC-LOAD] Submitting loadChunk to SaveService for (" + x + ", " + z + ")");
             return saveService.loadChunk(x, z)
                 .thenApply(loaded -> {
-                    System.out.println("[ASYNC-LOAD] SaveService.loadChunk completed for (" + x + ", " + z + "), loaded=" + (loaded != null ? "NOT NULL" : "NULL"));
                     if (loaded != null) {
                         prepareLoadedChunk(loaded);
-                        System.out.println("[ASYNC-LOAD] Chunk (" + x + ", " + z + ") loaded from disk");
                         return loaded;
                     }
                     // Chunk not on disk, generate new one
-                    System.out.println("[ASYNC-LOAD] Chunk not on disk, calling generate() for (" + x + ", " + z + ")");
                     return generate(x, z);
                 });
                 // NO exception handling - let corruption errors crash immediately with full stack trace
         }
 
         // No save service, generate immediately
-        System.out.println("[ASYNC-LOAD] No save service, generating chunk immediately for (" + x + ", " + z + ")");
         return CompletableFuture.completedFuture(generate(x, z));
     }
 
     private Chunk generate(int x, int z) {
-        System.out.println("[GENERATE] Starting terrain generation for chunk (" + x + ", " + z + ")");
         try {
             MemoryProfiler.getInstance().incrementAllocation("Chunk");
 
             // Generate terrain ONLY - features will be populated later via queue
             // This prevents recursive chunk generation during mesh building
-            System.out.println("[GENERATE] Calling terrainSystem.generateTerrainOnly for (" + x + ", " + z + ")");
             Chunk chunk = terrainSystem.generateTerrainOnly(x, z);
-            System.out.println("[GENERATE] terrainSystem.generateTerrainOnly completed for (" + x + ", " + z + "), chunk=" + (chunk != null ? "NOT NULL" : "NULL"));
             if (chunk == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;
