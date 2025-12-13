@@ -3,6 +3,11 @@ package com.openmason.main.systems.viewport.viewportRendering.edge;
 import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
 import com.openmason.main.systems.viewport.viewportRendering.common.IGeometryExtractor;
 import com.openmason.main.systems.viewport.shaders.ShaderProgram;
+import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeBufferUpdater;
+import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeVertexRemapper;
+import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeSelectionManager;
+import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgeGeometryQuery;
+import com.openmason.main.systems.viewport.viewportRendering.edge.operations.EdgePositionUpdater;
 import com.stonebreak.model.ModelDefinition;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -20,43 +25,181 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Renders model edges as lines, complementing VertexRenderer.
- * Mirrors VertexRenderer pattern for consistency.
+ * Renders model edges as lines in the 3D viewport.
+ * Provides edge visualization, selection, and hover detection for model editing.
+ *
+ * <p>This renderer complements the VertexRenderer by displaying edges as lines,
+ * allowing users to select and manipulate edges during model editing operations.
+ * Supports hover highlighting, selection feedback, and real-time position updates
+ * in response to vertex transformations.
+ *
+ * <p><b>Key Features:</b>
+ * <ul>
+ *   <li>Renders edges as GL_LINES with configurable width and colors</li>
+ *   <li>Hover detection with orange highlight feedback</li>
+ *   <li>Selection support with white highlight feedback</li>
+ *   <li>Edge-to-vertex mapping for precise position updates</li>
+ *   <li>Supports both position-based and index-based edge updates</li>
+ *   <li>Integrates with viewport input controllers for interaction</li>
+ * </ul>
+ *
+ * <p><b>Rendering Pipeline:</b>
+ * <ol>
+ *   <li>Initialize OpenGL resources (VAO, VBO) with {@link #initialize()}</li>
+ *   <li>Update edge data from model parts with {@link #updateEdgeData}</li>
+ *   <li>Build edge-to-vertex mapping with {@link #buildEdgeToVertexMapping}</li>
+ *   <li>Render edges each frame with {@link #render}</li>
+ *   <li>Clean up resources on shutdown with {@link #cleanup()}</li>
+ * </ol>
+ *
+ * <p><b>Thread Safety:</b> This class is not thread-safe. All methods must be called
+ * from the OpenGL context thread.
+ *
+ * <p><b>Data Format:</b> Edges are stored in an interleaved VBO format with 6 floats
+ * per vertex (x, y, z, r, g, b). Edge positions are cached separately for hover detection.
+ *
+ * @see com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer
+ * @see com.openmason.main.systems.viewport.viewportRendering.edge.operations
  */
 public class EdgeRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(EdgeRenderer.class);
 
+    // Constants for edge rendering
+    /** Default line width for edge rendering in pixels. */
+    private static final float DEFAULT_LINE_WIDTH = 1.5f;
+
+    /** Normal intensity for edge rendering. */
+    private static final float NORMAL_INTENSITY = 1.0f;
+
+    /** Number of vertices per edge (start and end points). */
+    private static final int VERTICES_PER_EDGE = 2;
+
+    /** Number of floats per edge position (2 endpoints × 3 coordinates). */
+    private static final int FLOATS_PER_EDGE = 6;
+
+    /** Vertex attribute stride in bytes (position + color: 6 floats). */
+    private static final int VERTEX_STRIDE_BYTES = 6 * Float.BYTES;
+
+    /** Color attribute offset in bytes (after 3 position floats). */
+    private static final int COLOR_OFFSET_BYTES = 3 * Float.BYTES;
+
+    /** Number of components in position attribute (x, y, z). */
+    private static final int POSITION_COMPONENTS = 3;
+
+    /** Number of components in color attribute (r, g, b). */
+    private static final int COLOR_COMPONENTS = 3;
+
+    /** Epsilon tolerance for vertex position matching. */
+    private static final float POSITION_EPSILON = 0.0001f;
+
+    /** Minimum valid length for vertex position array (one vertex). */
+    private static final int MIN_VERTEX_ARRAY_LENGTH = 3;
+
+    /** Index value indicating no edge is selected or hovered. */
+    private static final int NO_EDGE_SELECTED = -1;
+
     // OpenGL resources
+    /** Vertex Array Object handle. */
     private int vao = 0;
+
+    /** Vertex Buffer Object handle. */
     private int vbo = 0;
+
+    /** Number of edges currently loaded. */
     private int edgeCount = 0;
+
+    /** Whether the renderer has been initialized. */
     private boolean initialized = false;
 
     // Rendering state
+    /** Whether edge rendering is enabled. */
     private boolean enabled = false;
-    private float lineWidth = 1.5f;
-    private final Vector3f edgeColor = new Vector3f(0.0f, 0.0f, 0.0f); // Black
-    private final Vector3f hoverEdgeColor = new Vector3f(1.0f, 0.6f, 0.0f); // Orange for hover (same as vertices)
+
+    /** Line width for edge rendering in pixels. */
+    private float lineWidth = DEFAULT_LINE_WIDTH;
+
+    /** Default edge color (black). */
+    private final Vector3f edgeColor = new Vector3f(0.0f, 0.0f, 0.0f);
+
+    /** Hover edge color (orange, matching vertex renderer). */
+    private final Vector3f hoverEdgeColor = new Vector3f(1.0f, 0.6f, 0.0f);
+
+    /** Selected edge color (white for high visibility). */
+    private final Vector3f selectedEdgeColor = new Vector3f(1.0f, 1.0f, 1.0f);
 
     // Hover state
-    private int hoveredEdgeIndex = -1; // -1 means no edge is hovered
-    private float[] edgePositions = null; // Store positions for hit testing
+    /** Index of currently hovered edge, or -1 if no edge is hovered. */
+    private int hoveredEdgeIndex = NO_EDGE_SELECTED;
+
+    /** Cached edge positions for hover detection [x1,y1,z1, x2,y2,z2, ...]. */
+    private float[] edgePositions = null;
 
     // Selection state
-    private int selectedEdgeIndex = -1; // -1 means no edge is selected
-    private final Vector3f selectedEdgeColor = new Vector3f(1.0f, 1.0f, 1.0f); // White for selected
+    /** Index of currently selected edge, or -1 if no edge is selected. */
+    private int selectedEdgeIndex = NO_EDGE_SELECTED;
 
-    // Edge-to-vertex mapping (FIX: prevents vertex unification bug)
-    // Maps edge index → pair of unique vertex indices (v1, v2)
-    // For cube: 12 edges connecting 8 unique vertices
-    private int[][] edgeToVertexMapping = null; // [edgeIndex][0] = v1, [edgeIndex][1] = v2
+    // Edge-to-vertex mapping for precise updates
+    /**
+     * Maps edge index to unique vertex indices.
+     * Format: edgeToVertexMapping[edgeIndex][0] = vertexIndex1,
+     *         edgeToVertexMapping[edgeIndex][1] = vertexIndex2.
+     * Prevents vertex unification bugs during edge position updates.
+     * For a cube: 12 edges connecting 8 unique vertices.
+     */
+    private int[][] edgeToVertexMapping = null;
 
-    // Edge extraction (Single Responsibility) - uses interface for polymorphism
+    // Operation delegates (Single Responsibility Pattern)
+    /**
+     * Extracts edge geometry from model parts.
+     * Uses interface for polymorphism and testability.
+     */
     private final IGeometryExtractor geometryExtractor = new EdgeExtractor();
 
     /**
-     * Initialize the edge renderer.
+     * Handles vertex data building and GPU buffer uploads.
+     * Creates interleaved VBO data from edge positions.
+     */
+    private final EdgeBufferUpdater bufferUpdater = new EdgeBufferUpdater();
+
+    /**
+     * Handles edge-to-vertex mapping updates after vertex merging.
+     * Remaps edge indices when vertices are consolidated.
+     */
+    private final EdgeVertexRemapper vertexRemapper = new EdgeVertexRemapper();
+
+    /**
+     * Manages edge selection state and validation.
+     * Validates selection indices and tracks state changes.
+     */
+    private final EdgeSelectionManager selectionManager = new EdgeSelectionManager();
+
+    /**
+     * Queries edge geometry data.
+     * Retrieves edge endpoints and vertex index mappings.
+     */
+    private final EdgeGeometryQuery geometryQuery = new EdgeGeometryQuery();
+
+    /**
+     * Updates edge positions for vertex transformations.
+     * Supports position-based and index-based update strategies.
+     */
+    private final EdgePositionUpdater positionUpdater = new EdgePositionUpdater();
+
+    /**
+     * Initializes the edge renderer and allocates OpenGL resources.
+     * Creates a VAO and VBO with interleaved vertex attributes (position + color).
+     *
+     * <p>This method must be called before any rendering operations.
+     * It is safe to call multiple times; subsequent calls are ignored.
+     *
+     * <p><b>OpenGL State:</b> Creates and configures a VAO with two vertex attributes:
+     * <ul>
+     *   <li>Attribute 0: Position (vec3)</li>
+     *   <li>Attribute 1: Color (vec3)</li>
+     * </ul>
+     *
+     * @throws RuntimeException if OpenGL resource allocation fails
      */
     public void initialize() {
         if (initialized) {
@@ -76,15 +219,12 @@ public class EdgeRenderer {
             glBufferData(GL_ARRAY_BUFFER, 0, GL_DYNAMIC_DRAW);
 
             // Configure vertex attributes (interleaved: position + color)
-            // Stride = 6 floats (3 for position, 3 for color)
-            int stride = 6 * Float.BYTES;
-
             // Position attribute (location = 0)
-            glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+            glVertexAttribPointer(0, POSITION_COMPONENTS, GL_FLOAT, false, VERTEX_STRIDE_BYTES, 0);
             glEnableVertexAttribArray(0);
 
             // Color attribute (location = 1)
-            glVertexAttribPointer(1, 3, GL_FLOAT, false, stride, 3 * Float.BYTES);
+            glVertexAttribPointer(1, COLOR_COMPONENTS, GL_FLOAT, false, VERTEX_STRIDE_BYTES, COLOR_OFFSET_BYTES);
             glEnableVertexAttribArray(1);
 
             // Unbind
@@ -101,8 +241,21 @@ public class EdgeRenderer {
     }
 
     /**
-     * Update edge data from a collection of model parts with transformation.
-     * Generic method that works with ANY model type.
+     * Updates edge data from a collection of model parts with transformation.
+     * Extracts edges from model geometry and uploads to GPU buffer.
+     *
+     * <p>This method works with any model type by using the IGeometryExtractor interface.
+     * The transformation matrix is applied to all edge positions during extraction.
+     *
+     * <p><b>Side Effects:</b>
+     * <ul>
+     *   <li>Updates the VBO with new edge data</li>
+     *   <li>Updates edgeCount and edgePositions fields</li>
+     *   <li>Invalidates edge-to-vertex mapping (must be rebuilt)</li>
+     * </ul>
+     *
+     * @param parts collection of model parts to extract edges from
+     * @param transformMatrix transformation matrix to apply to edge positions
      */
     public void updateEdgeData(Collection<ModelDefinition.ModelPart> parts, Matrix4f transformMatrix) {
         if (!initialized) {
@@ -118,34 +271,19 @@ public class EdgeRenderer {
 
         try {
             // Extract edges using interface method (polymorphism + validation)
-            edgePositions = geometryExtractor.extractGeometry(parts, transformMatrix);
+            float[] extractedPositions = geometryExtractor.extractGeometry(parts, transformMatrix);
 
-            // Edge positions are [x1,y1,z1, x2,y2,z2, ...] (2 endpoints per edge)
-            edgeCount = edgePositions.length / 6; // 6 floats per edge (2 endpoints × 3 coords)
+            // Update buffer with extracted edge data (delegated to EdgeBufferUpdater)
+            EdgeBufferUpdater.UpdateResult result = bufferUpdater.updateBuffer(vbo, extractedPositions, edgeColor);
 
-            // Create interleaved vertex data (position + color) for each endpoint
-            int vertexCount = edgeCount * 2; // 2 endpoints per edge
-            float[] vertexData = new float[vertexCount * 6]; // 3 for position, 3 for color
-
-            for (int i = 0; i < vertexCount; i++) {
-                int posIndex = i * 3;
-                int dataIndex = i * 6;
-
-                // Copy position
-                vertexData[dataIndex + 0] = edgePositions[posIndex + 0];
-                vertexData[dataIndex + 1] = edgePositions[posIndex + 1];
-                vertexData[dataIndex + 2] = edgePositions[posIndex + 2];
-
-                // Set color (black - same pattern as vertices)
-                vertexData[dataIndex + 3] = edgeColor.x;
-                vertexData[dataIndex + 4] = edgeColor.y;
-                vertexData[dataIndex + 5] = edgeColor.z;
+            if (result != null) {
+                edgeCount = result.getEdgeCount();
+                edgePositions = result.getEdgePositions();
+            } else {
+                logger.warn("Buffer update failed, clearing edge data");
+                edgeCount = 0;
+                edgePositions = null;
             }
-
-            // Upload to GPU
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertexData, GL_DYNAMIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         } catch (Exception e) {
             logger.error("Error updating edge data", e);
@@ -153,11 +291,22 @@ public class EdgeRenderer {
     }
 
     /**
-     * Build edge-to-vertex mapping from unique vertex positions.
-     * FIX: Creates mapping needed for index-based updates to prevent vertex unification.
-     * Matches edge endpoints to unique vertices using epsilon comparison.
+     * Builds edge-to-vertex mapping from unique vertex positions.
+     * Creates a mapping that identifies which unique vertices each edge connects.
      *
-     * @param uniqueVertexPositions Array of unique vertex positions [x0,y0,z0, x1,y1,z1, ...]
+     * <p>This mapping is essential for index-based edge position updates, which prevent
+     * vertex unification bugs when multiple edges share the same spatial position but
+     * represent different logical connections.
+     *
+     * <p>The algorithm matches edge endpoints to unique vertices using epsilon-based
+     * floating-point comparison for robustness against numerical precision issues.
+     *
+     * <p><b>Prerequisites:</b> {@link #updateEdgeData} must be called first to populate edge data.
+     *
+     * <p><b>Time Complexity:</b> O(E × V) where E is edge count and V is vertex count.
+     * For typical models, this completes in milliseconds.
+     *
+     * @param uniqueVertexPositions array of unique vertex positions in format [x0,y0,z0, x1,y1,z1, ...]
      */
     public void buildEdgeToVertexMapping(float[] uniqueVertexPositions) {
         if (edgePositions == null || edgeCount == 0) {
@@ -166,19 +315,18 @@ public class EdgeRenderer {
             return;
         }
 
-        if (uniqueVertexPositions == null || uniqueVertexPositions.length < 3) {
+        if (uniqueVertexPositions == null || uniqueVertexPositions.length < MIN_VERTEX_ARRAY_LENGTH) {
             logger.warn("Cannot build edge mapping: invalid unique vertex data");
             edgeToVertexMapping = null;
             return;
         }
 
-        int uniqueVertexCount = uniqueVertexPositions.length / 3;
+        int uniqueVertexCount = uniqueVertexPositions.length / POSITION_COMPONENTS;
         edgeToVertexMapping = new int[edgeCount][2];
-        float epsilon = 0.0001f;
 
         // For each edge, find which unique vertices it connects
         for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-            int edgePosIdx = edgeIdx * 6; // 6 floats per edge (2 endpoints × 3 coords)
+            int edgePosIdx = edgeIdx * FLOATS_PER_EDGE;
 
             // Edge endpoint 1
             Vector3f endpoint1 = new Vector3f(
@@ -199,17 +347,17 @@ public class EdgeRenderer {
             int vertexIndex2 = -1;
 
             for (int vIdx = 0; vIdx < uniqueVertexCount; vIdx++) {
-                int vPosIdx = vIdx * 3;
+                int vPosIdx = vIdx * POSITION_COMPONENTS;
                 Vector3f uniqueVertex = new Vector3f(
                     uniqueVertexPositions[vPosIdx + 0],
                     uniqueVertexPositions[vPosIdx + 1],
                     uniqueVertexPositions[vPosIdx + 2]
                 );
 
-                if (vertexIndex1 == -1 && endpoint1.distance(uniqueVertex) < epsilon) {
+                if (vertexIndex1 == NO_EDGE_SELECTED && endpoint1.distance(uniqueVertex) < POSITION_EPSILON) {
                     vertexIndex1 = vIdx;
                 }
-                if (vertexIndex2 == -1 && endpoint2.distance(uniqueVertex) < epsilon) {
+                if (vertexIndex2 == NO_EDGE_SELECTED && endpoint2.distance(uniqueVertex) < POSITION_EPSILON) {
                     vertexIndex2 = vIdx;
                 }
 
@@ -221,7 +369,7 @@ public class EdgeRenderer {
             edgeToVertexMapping[edgeIdx][0] = vertexIndex1;
             edgeToVertexMapping[edgeIdx][1] = vertexIndex2;
 
-            if (vertexIndex1 == -1 || vertexIndex2 == -1) {
+            if (vertexIndex1 == NO_EDGE_SELECTED || vertexIndex2 == NO_EDGE_SELECTED) {
                 logger.warn("Edge {} has unmatched endpoints: v1={}, v2={}",
                     edgeIdx, vertexIndex1, vertexIndex2);
             }
@@ -231,105 +379,48 @@ public class EdgeRenderer {
     }
 
     /**
-     * Remap edge vertex indices after vertices have been merged.
-     * Updates the edge-to-vertex mapping to use new vertex indices.
+     * Remaps edge vertex indices after vertices have been merged.
+     * Updates the edge-to-vertex mapping to use new vertex indices post-consolidation.
      *
-     * @param oldToNewIndexMap Mapping of old vertex indices to new vertex indices
+     * <p>This method is typically called after vertex merging operations that consolidate
+     * duplicate or nearby vertices. It ensures edges correctly reference the updated
+     * vertex indices.
+     *
+     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called
+     * to create the initial mapping.
+     *
+     * @param oldToNewIndexMap mapping from old vertex indices to new vertex indices
      */
     public void remapEdgeVertexIndices(Map<Integer, Integer> oldToNewIndexMap) {
-        if (edgeToVertexMapping == null || edgeCount == 0) {
-            logger.warn("Cannot remap edge indices: no edge-to-vertex mapping");
-            return;
-        }
-
-        if (oldToNewIndexMap == null || oldToNewIndexMap.isEmpty()) {
-            logger.warn("Cannot remap edge indices: invalid index map");
-            return;
-        }
-
-        int remappedEdges = 0;
-
-        for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-            int oldVertexIndex1 = edgeToVertexMapping[edgeIdx][0];
-            int oldVertexIndex2 = edgeToVertexMapping[edgeIdx][1];
-
-            // Skip edges with invalid indices
-            if (oldVertexIndex1 == -1 || oldVertexIndex2 == -1) {
-                continue;
-            }
-
-            // Remap to new indices
-            Integer newVertexIndex1 = oldToNewIndexMap.get(oldVertexIndex1);
-            Integer newVertexIndex2 = oldToNewIndexMap.get(oldVertexIndex2);
-
-            if (newVertexIndex1 != null && newVertexIndex2 != null) {
-                edgeToVertexMapping[edgeIdx][0] = newVertexIndex1;
-                edgeToVertexMapping[edgeIdx][1] = newVertexIndex2;
-                remappedEdges++;
-
-                logger.trace("Remapped edge {} vertices: ({}, {}) -> ({}, {})",
-                    edgeIdx, oldVertexIndex1, oldVertexIndex2, newVertexIndex1, newVertexIndex2);
-            } else {
-                logger.warn("Edge {} has vertices not in remap: v1={}, v2={}",
-                    edgeIdx, oldVertexIndex1, oldVertexIndex2);
-            }
-        }
-
-        logger.debug("Remapped {} edges to new vertex indices", remappedEdges);
+        vertexRemapper.remapIndices(edgeToVertexMapping, edgeCount, oldToNewIndexMap);
     }
 
     /**
-     * Handle mouse movement for edge hover detection.
-     * Follows the same pattern as VertexRenderer.handleMouseMove().
+     * Renders edges as lines with hover highlighting.
+     * Renders all edges with appropriate colors and highlights the hovered edge if present.
      *
-     * @param mouseX Mouse X coordinate in viewport space
-     * @param mouseY Mouse Y coordinate in viewport space
-     * @param viewMatrix Camera view matrix
-     * @param projectionMatrix Camera projection matrix
-     * @param modelMatrix Model transformation matrix
-     * @param viewportWidth Viewport width in pixels
-     * @param viewportHeight Viewport height in pixels
-     */
-    public void handleMouseMove(float mouseX, float mouseY,
-                               Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                               Matrix4f modelMatrix,
-                               int viewportWidth, int viewportHeight) {
-        if (!initialized || !enabled) {
-            return;
-        }
-
-        if (edgePositions == null || edgeCount == 0) {
-            return;
-        }
-
-        // Detect hovered edge using screen-space point-to-line distance detection
-        // Pass model matrix so edges in model space are properly transformed
-        int newHoveredEdge = EdgeHoverDetector.detectHoveredEdge(
-            mouseX, mouseY,
-            viewportWidth, viewportHeight,
-            viewMatrix, projectionMatrix, modelMatrix,
-            edgePositions,
-            edgeCount,
-            lineWidth  // Use actual line width for accurate detection
-        );
-
-        // Update hover state if changed (same pattern as vertices)
-        if (newHoveredEdge != hoveredEdgeIndex) {
-            int previousHover = hoveredEdgeIndex;
-            hoveredEdgeIndex = newHoveredEdge;
-
-            logger.debug("Edge hover changed: {} -> {} (total edges: {})",
-                        previousHover, hoveredEdgeIndex, edgeCount);
-        }
-    }
-
-    /**
-     * Render edges as lines with hover highlighting.
-     * KISS: Simple rendering with intensity-based highlighting (same pattern as vertices).
+     * <p>This method implements a simple rendering strategy:
+     * <ul>
+     *   <li>Renders non-hovered edges in default color (black)</li>
+     *   <li>Temporarily updates hovered edge color to orange</li>
+     *   <li>Renders hovered edge with highlight</li>
+     *   <li>Restores original color for next frame</li>
+     * </ul>
      *
-     * @param shader The shader program to use
-     * @param context The render context
-     * @param modelMatrix The model transformation matrix (for gizmo transforms)
+     * <p><b>Rendering Strategy:</b> Uses GL_LINES mode with per-frame color updates
+     * for hover highlighting. This approach keeps edge rendering simple (KISS principle)
+     * while providing visual feedback consistent with vertex renderer behavior.
+     *
+     * <p><b>OpenGL State:</b>
+     * <ul>
+     *   <li>Temporarily modifies depth function to GL_LEQUAL</li>
+     *   <li>Sets line width before rendering</li>
+     *   <li>Restores previous depth function after rendering</li>
+     * </ul>
+     *
+     * @param shader the shader program to use for rendering
+     * @param context the render context containing camera matrices
+     * @param modelMatrix the model transformation matrix (for gizmo transforms)
      */
     public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
         if (!initialized) {
@@ -368,21 +459,20 @@ public class EdgeRenderer {
             glBindVertexArray(vao);
 
             // Set normal intensity for all edges
-            shader.setFloat("uIntensity", 1.0f);
+            shader.setFloat("uIntensity", NORMAL_INTENSITY);
 
             // Render all edges at once with appropriate color
             if (hoveredEdgeIndex >= 0) {
                 // Render non-hovered edges normally (black)
                 for (int i = 0; i < edgeCount; i++) {
                     if (i != hoveredEdgeIndex) {
-                        glDrawArrays(GL_LINES, i * 2, 2);
+                        glDrawArrays(GL_LINES, i * VERTICES_PER_EDGE, VERTICES_PER_EDGE);
                     }
                 }
 
                 // Update hovered edge color to orange temporarily
-                int hoveredVertexStart = hoveredEdgeIndex * 2; // 2 vertices per edge
-                int stride = 6 * Float.BYTES; // position + color
-                int colorOffset = 3 * Float.BYTES; // Skip position, start at color
+                int hoveredVertexStart = hoveredEdgeIndex * VERTICES_PER_EDGE;
+                int vboOffset = (hoveredVertexStart * VERTEX_STRIDE_BYTES) + COLOR_OFFSET_BYTES;
 
                 // Create buffer with orange color for both vertices of the edge
                 FloatBuffer orangeBuffer = BufferUtils.createFloatBuffer(6);
@@ -392,35 +482,34 @@ public class EdgeRenderer {
 
                 // Update VBO with orange color for hovered edge
                 glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                int vboOffset = (hoveredVertexStart * stride) + colorOffset;
 
-                // Update first vertex color (3 floats)
+                // Update first vertex color
                 glBufferSubData(GL_ARRAY_BUFFER, vboOffset, new float[] {
                     hoverEdgeColor.x, hoverEdgeColor.y, hoverEdgeColor.z
                 });
 
-                // Update second vertex color (3 floats)
-                glBufferSubData(GL_ARRAY_BUFFER, vboOffset + stride, new float[] {
+                // Update second vertex color
+                glBufferSubData(GL_ARRAY_BUFFER, vboOffset + VERTEX_STRIDE_BYTES, new float[] {
                     hoverEdgeColor.x, hoverEdgeColor.y, hoverEdgeColor.z
                 });
 
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
 
                 // Render hovered edge with orange color
-                glDrawArrays(GL_LINES, hoveredEdgeIndex * 2, 2);
+                glDrawArrays(GL_LINES, hoveredEdgeIndex * VERTICES_PER_EDGE, VERTICES_PER_EDGE);
 
                 // Restore black color for next frame
                 glBindBuffer(GL_ARRAY_BUFFER, vbo);
                 glBufferSubData(GL_ARRAY_BUFFER, vboOffset, new float[] {
                     edgeColor.x, edgeColor.y, edgeColor.z
                 });
-                glBufferSubData(GL_ARRAY_BUFFER, vboOffset + stride, new float[] {
+                glBufferSubData(GL_ARRAY_BUFFER, vboOffset + VERTEX_STRIDE_BYTES, new float[] {
                     edgeColor.x, edgeColor.y, edgeColor.z
                 });
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
             } else {
                 // No hover - render all edges normally (black)
-                glDrawArrays(GL_LINES, 0, edgeCount * 2);
+                glDrawArrays(GL_LINES, 0, edgeCount * VERTICES_PER_EDGE);
             }
 
             glBindVertexArray(0);
@@ -436,7 +525,14 @@ public class EdgeRenderer {
     }
 
     /**
-     * Clean up OpenGL resources.
+     * Cleans up OpenGL resources.
+     * Deletes the VAO and VBO, freeing GPU memory.
+     *
+     * <p>This method should be called when the renderer is no longer needed.
+     * After calling cleanup, {@link #initialize()} must be called again before
+     * rendering can resume.
+     *
+     * <p>It is safe to call this method multiple times or when not initialized.
      */
     public void cleanup() {
         if (vao != 0) {
@@ -453,20 +549,35 @@ public class EdgeRenderer {
 
     // Getters and setters
 
+    /**
+     * Returns whether edge rendering is enabled.
+     *
+     * @return true if edge rendering is enabled
+     */
     public boolean isEnabled() {
         return enabled;
     }
 
+    /**
+     * Sets whether edge rendering is enabled.
+     *
+     * @param enabled true to enable edge rendering, false to disable
+     */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
 
+    /**
+     * Returns whether the renderer has been initialized.
+     *
+     * @return true if initialized
+     */
     public boolean isInitialized() {
         return initialized;
     }
 
     /**
-     * Get the index of the currently hovered edge.
+     * Returns the index of the currently hovered edge.
      *
      * @return hovered edge index, or -1 if no edge is hovered
      */
@@ -475,7 +586,54 @@ public class EdgeRenderer {
     }
 
     /**
-     * Get the index of the currently selected edge.
+     * Sets the hovered edge index.
+     * Called by input controller after hover detection via raycasting.
+     *
+     * <p>When the hover changes, logs a debug message for tracing user interaction.
+     *
+     * @param edgeIndex the index of the edge to set as hovered, or -1 to clear hover
+     */
+    public void setHoveredEdgeIndex(int edgeIndex) {
+        if (edgeIndex != hoveredEdgeIndex) {
+            int previousHover = hoveredEdgeIndex;
+            hoveredEdgeIndex = edgeIndex;
+
+            logger.debug("Edge hover changed: {} -> {} (total edges: {})",
+                    previousHover, hoveredEdgeIndex, edgeCount);
+        }
+    }
+
+    /**
+     * Returns the edge positions array for hover detection.
+     * Used by input controller to perform screen-space raycasting.
+     *
+     * @return edge positions array in format [x1,y1,z1, x2,y2,z2, ...], or null if no edges
+     */
+    public float[] getEdgePositions() {
+        return edgePositions;
+    }
+
+    /**
+     * Returns the number of edges currently loaded.
+     *
+     * @return number of edges
+     */
+    public int getEdgeCount() {
+        return edgeCount;
+    }
+
+    /**
+     * Returns the line width used for edge rendering.
+     * Used by input controller for accurate hover detection based on visual line thickness.
+     *
+     * @return line width in pixels
+     */
+    public float getLineWidth() {
+        return lineWidth;
+    }
+
+    /**
+     * Returns the index of the currently selected edge.
      *
      * @return selected edge index, or -1 if no edge is selected
      */
@@ -484,137 +642,55 @@ public class EdgeRenderer {
     }
 
     /**
-     * Set the selected edge by index.
+     * Sets the selected edge by index.
+     * Delegates to EdgeSelectionManager for validation and state management.
      *
      * @param edgeIndex the index of the edge to select, or -1 to clear selection
      */
     public void setSelectedEdge(int edgeIndex) {
-        if (edgeIndex < -1 || edgeIndex >= edgeCount) {
-            logger.warn("Invalid edge index: {}, valid range is -1 to {}", edgeIndex, edgeCount - 1);
-            return;
-        }
+        EdgeSelectionManager.SelectionResult result =
+            selectionManager.setSelectedEdge(edgeIndex, selectedEdgeIndex, edgeCount);
 
-        this.selectedEdgeIndex = edgeIndex;
-
-        if (edgeIndex >= 0) {
-            logger.debug("Selected edge {}", edgeIndex);
-        } else {
-            logger.debug("Cleared edge selection");
+        if (result != null) {
+            this.selectedEdgeIndex = result.getSelectedIndex();
         }
     }
 
     /**
-     * Clear the edge selection.
+     * Clears the edge selection.
+     * Delegates to EdgeSelectionManager for state management.
      */
     public void clearSelection() {
-        this.selectedEdgeIndex = -1;
+        EdgeSelectionManager.SelectionResult result =
+            selectionManager.clearSelection(selectedEdgeIndex);
+
+        if (result != null) {
+            this.selectedEdgeIndex = result.getSelectedIndex();
+        }
     }
 
     /**
-     * Get the endpoint positions of an edge.
+     * Returns the endpoint positions of an edge.
+     * Delegates to EdgeGeometryQuery for data retrieval.
      *
-     * @param edgeIndex the index of the edge
-     * @return array containing [point1, point2], or null if invalid index
+     * @param edgeIndex the index of the edge to query
+     * @return array containing [endpoint1, endpoint2], or null if index is invalid
      */
     public Vector3f[] getEdgeEndpoints(int edgeIndex) {
-        if (edgeIndex < 0 || edgeIndex >= edgeCount) {
-            return null;
-        }
-
-        if (edgePositions == null) {
-            return null;
-        }
-
-        int posIndex = edgeIndex * 6; // 6 floats per edge (2 points × 3 coords)
-
-        if (posIndex + 5 >= edgePositions.length) {
-            return null;
-        }
-
-        Vector3f point1 = new Vector3f(
-            edgePositions[posIndex + 0],
-            edgePositions[posIndex + 1],
-            edgePositions[posIndex + 2]
-        );
-
-        Vector3f point2 = new Vector3f(
-            edgePositions[posIndex + 3],
-            edgePositions[posIndex + 4],
-            edgePositions[posIndex + 5]
-        );
-
-        return new Vector3f[] { point1, point2 };
+        return geometryQuery.getEdgeEndpoints(edgeIndex, edgePositions, edgeCount);
     }
 
     /**
-     * Update the position of a specific edge.
+     * Updates all edge endpoints that match a dragged vertex position.
+     * Uses position-based matching strategy via EdgePositionUpdater.
      *
-     * @param edgeIndex the index of the edge to update
-     * @param point1 the new position of the first endpoint
-     * @param point2 the new position of the second endpoint
-     */
-    public void updateEdgePosition(int edgeIndex, Vector3f point1, Vector3f point2) {
-        if (!initialized) {
-            logger.warn("Cannot update edge position: renderer not initialized");
-            return;
-        }
-
-        if (edgeIndex < 0 || edgeIndex >= edgeCount) {
-            logger.warn("Invalid edge index: {}", edgeIndex);
-            return;
-        }
-
-        if (edgePositions == null || point1 == null || point2 == null) {
-            logger.warn("Cannot update edge position: null data");
-            return;
-        }
-
-        try {
-            int posIndex = edgeIndex * 6; // 6 floats per edge
-
-            // Update in-memory array
-            edgePositions[posIndex + 0] = point1.x;
-            edgePositions[posIndex + 1] = point1.y;
-            edgePositions[posIndex + 2] = point1.z;
-            edgePositions[posIndex + 3] = point2.x;
-            edgePositions[posIndex + 4] = point2.y;
-            edgePositions[posIndex + 5] = point2.z;
-
-            // Update VBO (interleaved: position + color)
-            // Each endpoint: 6 floats (3 position + 3 color)
-            int dataIndex1 = edgeIndex * 12; // First endpoint
-            int dataIndex2 = edgeIndex * 12 + 6; // Second endpoint
-
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-            // Update first endpoint position
-            float[] posData1 = new float[] { point1.x, point1.y, point1.z };
-            glBufferSubData(GL_ARRAY_BUFFER, dataIndex1 * Float.BYTES, posData1);
-
-            // Update second endpoint position
-            float[] posData2 = new float[] { point2.x, point2.y, point2.z };
-            glBufferSubData(GL_ARRAY_BUFFER, dataIndex2 * Float.BYTES, posData2);
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            logger.trace("Updated edge {} position to ({}, {}, {}) - ({}, {}, {})",
-                    edgeIndex,
-                    String.format("%.2f", point1.x), String.format("%.2f", point1.y), String.format("%.2f", point1.z),
-                    String.format("%.2f", point2.x), String.format("%.2f", point2.y), String.format("%.2f", point2.z));
-
-        } catch (Exception e) {
-            logger.error("Error updating edge position", e);
-        }
-    }
-
-    /**
-     * Update all edge endpoints that match a dragged vertex position.
-     * Searches through ALL edge endpoints and updates any that were at the old vertex position.
-     * This handles the fact that EdgeExtractor creates 24 face-based edges (4 per face × 6 faces)
-     * instead of 12 unique edges, so multiple edge endpoints share the same vertex position.
+     * <p>This method delegates to {@link EdgePositionUpdater#updateByPosition} which
+     * searches through all edge endpoints and updates any that were at the old vertex position.
+     * This handles models where EdgeExtractor creates face-based edges (e.g., 24 edges for a cube:
+     * 4 per face × 6 faces) instead of 12 unique edges, so multiple edge endpoints share positions.
      *
-     * @param oldPosition The original position of the vertex before dragging
-     * @param newPosition The new position of the vertex after dragging
+     * @param oldPosition the original position of the vertex before dragging
+     * @param newPosition the new position of the vertex after dragging
      */
     public void updateEdgesConnectedToVertex(Vector3f oldPosition, Vector3f newPosition) {
         if (!initialized) {
@@ -622,94 +698,36 @@ public class EdgeRenderer {
             return;
         }
 
-        if (edgePositions == null || edgeCount == 0) {
-            logger.warn("Cannot update edge endpoints: no edge data");
-            return;
-        }
-
-        if (oldPosition == null || newPosition == null) {
-            logger.warn("Cannot update edge endpoints: positions are null");
-            return;
-        }
-
-        try {
-            float epsilon = 0.0001f; // Same epsilon as VertexExtractor for consistency
-            int updatedCount = 0;
-
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-            // Search through ALL edge endpoints (2 endpoints per edge)
-            int totalEndpoints = edgeCount * 2;
-            for (int endpointIdx = 0; endpointIdx < totalEndpoints; endpointIdx++) {
-                int posIndex = endpointIdx * 3; // 3 floats per position (x,y,z)
-
-                // Check if this endpoint matches the old vertex position
-                if (posIndex + 2 < edgePositions.length) {
-                    Vector3f endpointPos = new Vector3f(
-                            edgePositions[posIndex + 0],
-                            edgePositions[posIndex + 1],
-                            edgePositions[posIndex + 2]
-                    );
-
-                    if (endpointPos.distance(oldPosition) < epsilon) {
-                        // Found a matching endpoint - update it!
-
-                        // Update VBO (interleaved: position + color)
-                        int dataIndex = endpointIdx * 6; // 6 floats per endpoint (x,y,z, r,g,b)
-                        long offset = dataIndex * Float.BYTES;
-
-                        float[] positionData = new float[] { newPosition.x, newPosition.y, newPosition.z };
-                        glBufferSubData(GL_ARRAY_BUFFER, offset, positionData);
-
-                        // Update in-memory array
-                        edgePositions[posIndex + 0] = newPosition.x;
-                        edgePositions[posIndex + 1] = newPosition.y;
-                        edgePositions[posIndex + 2] = newPosition.z;
-
-                        updatedCount++;
-                    }
-                }
-            }
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            logger.trace("Updated {} edge endpoints from ({}, {}, {}) to ({}, {}, {})",
-                    updatedCount,
-                    String.format("%.2f", oldPosition.x),
-                    String.format("%.2f", oldPosition.y),
-                    String.format("%.2f", oldPosition.z),
-                    String.format("%.2f", newPosition.x),
-                    String.format("%.2f", newPosition.y),
-                    String.format("%.2f", newPosition.z));
-
-        } catch (Exception e) {
-            logger.error("Error updating edge endpoints", e);
-        }
+        positionUpdater.updateByPosition(vbo, edgePositions, edgeCount, oldPosition, newPosition);
     }
 
     /**
-     * Get the unique vertex indices for a given edge.
-     * FIX: Returns which unique vertices this edge connects.
+     * Returns the unique vertex indices for a given edge.
+     * Delegates to EdgeGeometryQuery to retrieve which unique vertices this edge connects.
      *
-     * @param edgeIndex The edge index
-     * @return Array of [vertexIndex1, vertexIndex2], or null if not available
+     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
+     *
+     * @param edgeIndex the edge index to query
+     * @return array of [vertexIndex1, vertexIndex2], or null if mapping is not available
      */
     public int[] getEdgeVertexIndices(int edgeIndex) {
-        if (edgeToVertexMapping == null || edgeIndex < 0 || edgeIndex >= edgeToVertexMapping.length) {
-            return null;
-        }
-        return new int[] { edgeToVertexMapping[edgeIndex][0], edgeToVertexMapping[edgeIndex][1] };
+        return geometryQuery.getEdgeVertexIndices(edgeIndex, edgeToVertexMapping);
     }
 
     /**
-     * Update edges connected to specific vertex indices.
-     * FIX: Index-based update prevents vertex unification bug.
-     * Only updates edges that connect to the specified unique vertex indices.
+     * Updates edges connected to specific vertex indices.
+     * Uses index-based matching strategy via EdgePositionUpdater to prevent vertex unification bugs.
      *
-     * @param vertexIndex1 First unique vertex index
-     * @param newPosition1 New position for first vertex
-     * @param vertexIndex2 Second unique vertex index
-     * @param newPosition2 New position for second vertex
+     * <p>This method delegates to {@link EdgePositionUpdater#updateByIndices} which only
+     * updates edges that connect to the specified unique vertex indices. This is more precise
+     * than position-based updates and prevents unintended modifications when vertices share positions.
+     *
+     * <p><b>Prerequisites:</b> {@link #buildEdgeToVertexMapping} must have been called.
+     *
+     * @param vertexIndex1 the first unique vertex index that was moved
+     * @param newPosition1 the new position for the first vertex
+     * @param vertexIndex2 the second unique vertex index that was moved
+     * @param newPosition2 the new position for the second vertex
      */
     public void updateEdgesByVertexIndices(int vertexIndex1, Vector3f newPosition1,
                                            int vertexIndex2, Vector3f newPosition2) {
@@ -718,92 +736,8 @@ public class EdgeRenderer {
             return;
         }
 
-        if (edgePositions == null || edgeCount == 0) {
-            logger.warn("Cannot update edges: no edge data");
-            return;
-        }
-
-        if (edgeToVertexMapping == null) {
-            logger.warn("Cannot update edges: mapping not built. Call buildEdgeToVertexMapping() first");
-            return;
-        }
-
-        if (newPosition1 == null || newPosition2 == null) {
-            logger.warn("Cannot update edges: positions are null");
-            return;
-        }
-
-        try {
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            int updatedCount = 0;
-
-            // Scan all edges and update those connected to either vertex
-            for (int edgeIdx = 0; edgeIdx < edgeCount; edgeIdx++) {
-                int v1 = edgeToVertexMapping[edgeIdx][0];
-                int v2 = edgeToVertexMapping[edgeIdx][1];
-
-                // Check if this edge connects to either of the moved vertices
-                boolean endpoint1Updated = false;
-                boolean endpoint2Updated = false;
-
-                Vector3f newEndpoint1 = null;
-                Vector3f newEndpoint2 = null;
-
-                // Determine new positions for this edge's endpoints
-                if (v1 == vertexIndex1) {
-                    newEndpoint1 = newPosition1;
-                    endpoint1Updated = true;
-                } else if (v1 == vertexIndex2) {
-                    newEndpoint1 = newPosition2;
-                    endpoint1Updated = true;
-                }
-
-                if (v2 == vertexIndex1) {
-                    newEndpoint2 = newPosition1;
-                    endpoint2Updated = true;
-                } else if (v2 == vertexIndex2) {
-                    newEndpoint2 = newPosition2;
-                    endpoint2Updated = true;
-                }
-
-                // Update this edge if either endpoint changed
-                if (endpoint1Updated || endpoint2Updated) {
-                    int edgePosIdx = edgeIdx * 6;
-
-                    // Update endpoint 1 if changed
-                    if (endpoint1Updated && newEndpoint1 != null) {
-                        int dataIdx1 = edgeIdx * 12; // 2 endpoints × 6 floats (3 pos + 3 color)
-                        float[] posData1 = new float[] { newEndpoint1.x, newEndpoint1.y, newEndpoint1.z };
-                        glBufferSubData(GL_ARRAY_BUFFER, dataIdx1 * Float.BYTES, posData1);
-
-                        edgePositions[edgePosIdx + 0] = newEndpoint1.x;
-                        edgePositions[edgePosIdx + 1] = newEndpoint1.y;
-                        edgePositions[edgePosIdx + 2] = newEndpoint1.z;
-                    }
-
-                    // Update endpoint 2 if changed
-                    if (endpoint2Updated && newEndpoint2 != null) {
-                        int dataIdx2 = edgeIdx * 12 + 6; // Second endpoint offset
-                        float[] posData2 = new float[] { newEndpoint2.x, newEndpoint2.y, newEndpoint2.z };
-                        glBufferSubData(GL_ARRAY_BUFFER, dataIdx2 * Float.BYTES, posData2);
-
-                        edgePositions[edgePosIdx + 3] = newEndpoint2.x;
-                        edgePositions[edgePosIdx + 4] = newEndpoint2.y;
-                        edgePositions[edgePosIdx + 5] = newEndpoint2.z;
-                    }
-
-                    updatedCount++;
-                }
-            }
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            logger.trace("Updated {} edges connected to vertices {} and {} (index-based)",
-                    updatedCount, vertexIndex1, vertexIndex2);
-
-        } catch (Exception e) {
-            logger.error("Error updating edges by vertex indices", e);
-        }
+        positionUpdater.updateByIndices(vbo, edgePositions, edgeCount, edgeToVertexMapping,
+                                        vertexIndex1, newPosition1, vertexIndex2, newPosition2);
     }
 
 }

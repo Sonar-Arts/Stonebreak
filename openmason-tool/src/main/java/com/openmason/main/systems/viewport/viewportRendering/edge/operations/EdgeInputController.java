@@ -1,6 +1,8 @@
-package com.openmason.main.systems.viewport.input;
+package com.openmason.main.systems.viewport.viewportRendering.edge.operations;
 
+import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
+import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeHoverDetector;
 import com.openmason.main.systems.viewport.viewportRendering.edge.EdgeRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordinator;
@@ -187,9 +189,19 @@ public class EdgeInputController {
 
     /**
      * Update edge hover detection.
+     * Performs hover detection and updates the renderer's hover state.
      */
     private void updateEdgeHover(InputContext context) {
         if (edgeRenderer == null || !edgeRenderer.isInitialized() || !edgeRenderer.isEnabled()) {
+            return;
+        }
+
+        // Get edge data from renderer
+        float[] edgePositions = edgeRenderer.getEdgePositions();
+        int edgeCount = edgeRenderer.getEdgeCount();
+        float lineWidth = edgeRenderer.getLineWidth();
+
+        if (edgePositions == null || edgeCount == 0) {
             return;
         }
 
@@ -198,16 +210,22 @@ public class EdgeInputController {
                 ? transformState.getTransformMatrix()
                 : new Matrix4f(); // Identity if no transform state
 
-        // Update edge hover with camera matrices AND model matrix for raycasting
-        edgeRenderer.handleMouseMove(
+        // Detect hovered edge using screen-space point-to-line distance detection
+        int newHoveredEdge = EdgeHoverDetector.detectHoveredEdge(
                 context.mouseX,
                 context.mouseY,
+                context.viewportWidth,
+                context.viewportHeight,
                 context.viewMatrix,
                 context.projectionMatrix,
                 modelMatrix,
-                context.viewportWidth,
-                context.viewportHeight
+                edgePositions,
+                edgeCount,
+                lineWidth
         );
+
+        // Update renderer's hover state
+        edgeRenderer.setHoveredEdgeIndex(newHoveredEdge);
     }
 
     /**

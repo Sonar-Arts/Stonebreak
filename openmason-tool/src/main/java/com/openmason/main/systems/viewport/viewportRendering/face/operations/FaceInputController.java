@@ -1,5 +1,6 @@
-package com.openmason.main.systems.viewport.input;
+package com.openmason.main.systems.viewport.viewportRendering.face.operations;
 
+import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.viewportRendering.face.FaceRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.vertex.VertexRenderer;
