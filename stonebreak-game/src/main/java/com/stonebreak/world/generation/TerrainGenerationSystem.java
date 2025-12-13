@@ -4,7 +4,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeTerrainModifierRegistry;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.caves.AquiferGenerator;
 import com.stonebreak.world.generation.caves.CaveNoiseGenerator;
 import com.stonebreak.world.generation.config.TerrainGenerationConfig;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -52,7 +51,6 @@ public class TerrainGenerationSystem {
     private final BiomeManager biomeManager;
     private final BiomeTerrainModifierRegistry modifierRegistry;  // Phase 2: Biome-specific modifiers
     private final CaveNoiseGenerator caveGenerator;  // Ridged noise-based cave system
-    private final AquiferGenerator aquiferGenerator;  // Underground water/lava pools
     private final OreGenerator oreGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -116,7 +114,6 @@ public class TerrainGenerationSystem {
         this.biomeManager = new BiomeManager(seed, config);
         this.modifierRegistry = new BiomeTerrainModifierRegistry(seed);  // Phase 2: Initialize modifier registry
         this.caveGenerator = new CaveNoiseGenerator(seed);  // Ridged noise cave system (cheese + spaghetti)
-        this.aquiferGenerator = new AquiferGenerator(seed);  // Underground water/lava pools
         this.oreGenerator = new OreGenerator(seed);
         this.vegetationGenerator = new VegetationGenerator(seed);
         this.decorationGenerator = new SurfaceDecorationGenerator(seed);
@@ -263,7 +260,6 @@ public class TerrainGenerationSystem {
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     // Check if below height (default solid)
                     boolean shouldBeSolid = y < height;
-                    boolean isCave = false;  // Track if this is a cave for aquifer application
 
                     // Check cave density if potentially underground
                     // Caves are integrated into terrain generation (Minecraft 1.18+ approach)
@@ -272,7 +268,6 @@ public class TerrainGenerationSystem {
                         // High cave density carves out the block
                         if (caveDensity > 0.0f) {
                             shouldBeSolid = false; // Cave removes this block
-                            isCave = true;  // Mark as cave for aquifer
                         }
                     }
 
@@ -452,14 +447,14 @@ public class TerrainGenerationSystem {
      * Flood-fills ocean water from the surface down through connected air blocks.
      *
      * This algorithm ensures that:
-     * - Ocean water fills from sea level down to ocean floor
-     * - Caves and enclosed air pockets stay dry (not connected to surface)
-     * - Coastal caves that open to ocean will fill with water (realistic)
+     * - Ocean water fills from sea level down to ocean floor in ocean biomes
+     * - Caves stay dry (water does not fill cave-carved spaces)
+     * - Only fills natural ocean basins, not cave systems
      *
      * Algorithm:
-     * 1. Identify ocean entry points (air at sea level with terrain below)
+     * 1. Identify ocean entry points (air at sea level in ocean biomes)
      * 2. BFS flood-fill from entry points through connected air blocks
-     * 3. Fill all reachable air blocks at or below sea level with water
+     * 3. Fill reachable air blocks that are NOT caves with water
      *
      * @param chunk The chunk to fill with ocean water
      */
@@ -472,19 +467,19 @@ public class TerrainGenerationSystem {
         int chunkWorldX = chunk.getChunkX() * chunkSize;
         int chunkWorldZ = chunk.getChunkZ() * chunkSize;
 
-        // Find all ocean entry points (air at sea level with low continentalness)
+        // Find all ocean entry points (air at sea level in ocean biomes)
         for (int x = 0; x < chunkSize; x++) {
             for (int z = 0; z < chunkSize; z++) {
                 // Check if this column has air at sea level
                 if (chunk.getBlock(x, SEA_LEVEL, z) == BlockType.AIR) {
-                    // Calculate world coordinates for continentalness check
+                    // Calculate world coordinates for biome check
                     int worldX = chunkWorldX + x;
                     int worldZ = chunkWorldZ + z;
 
-                    // Check continentalness to verify this is actually ocean, not a floating island
-                    float continentalness = biomeManager.getNoiseRouter().getContinentalness(worldX, worldZ);
-                    if (continentalness >= -0.45f) {
-                        // Not ocean - skip this position (prevents flooding under floating islands)
+                    // Check if this position is in an ocean biome
+                    BiomeType biome = biomeManager.getBiome(worldX, worldZ);
+                    if (biome != BiomeType.OCEAN && biome != BiomeType.DEEP_OCEAN && biome != BiomeType.FROZEN_OCEAN) {
+                        // Not an ocean biome - skip this position (prevents ocean water in non-ocean biomes)
                         continue;
                     }
 
@@ -516,8 +511,22 @@ public class TerrainGenerationSystem {
             int[] pos = queue.poll();
             int x = pos[0], y = pos[1], z = pos[2];
 
-            // Fill this block with water (if it's air and at or below sea level)
-            if (y <= SEA_LEVEL && chunk.getBlock(x, y, z) == BlockType.AIR) {
+            // Calculate world coordinates for cave density check
+            int worldX = chunkWorldX + x;
+            int worldZ = chunkWorldZ + z;
+
+            // Check if this position is a cave (don't fill caves with water)
+            boolean isCave = false;
+            if (caveGenerator.canGenerateCaves(y)) {
+                // Get terrain height at this position for cave density calculation
+                MultiNoiseParameters params = biomeManager.getNoiseRouter().sampleInterpolatedParameters(worldX, worldZ, SEA_LEVEL);
+                int height = terrainGenerator.generateHeight(worldX, worldZ, params);
+                float caveDensity = caveGenerator.sampleCaveDensity(worldX, y, worldZ, height);
+                isCave = caveDensity > 0.0f;
+            }
+
+            // Fill this block with water (if it's air, at or below sea level, and NOT a cave)
+            if (y <= SEA_LEVEL && chunk.getBlock(x, y, z) == BlockType.AIR && !isCave) {
                 chunk.setBlock(x, y, z, BlockType.WATER);
             }
 
