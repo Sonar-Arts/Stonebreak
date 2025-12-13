@@ -57,10 +57,8 @@ public class FaceRenderer {
 
     // Layout constants
     private static final int COMPONENTS_PER_POSITION = 3; // x, y, z
-    private static final int COMPONENTS_PER_COLOR = 4; // r, g, b, a
     private static final int CORNERS_PER_FACE = 4; // quad face
     private static final float VERTEX_MATCH_EPSILON = 0.0001f;
-    private static final int COLOR_OFFSET_FLOATS = COMPONENTS_PER_POSITION; // Color data starts after position
 
     // OpenGL resources
     private int vao = 0;
@@ -71,10 +69,8 @@ public class FaceRenderer {
     // Rendering state
     private boolean enabled = false;
 
-    // Colors with alpha for transparency
-    private final Vector4f defaultFaceColor = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f); // Transparent (invisible)
-    private final Vector4f hoverFaceColor = new Vector4f(1.0f, 0.6f, 0.0f, 0.3f); // Orange with 30% alpha
-    private final Vector4f selectedFaceColor = new Vector4f(1.0f, 1.0f, 1.0f, 0.3f); // White with 30% alpha
+    // Overlay renderer (Single Responsibility)
+    private final FaceOverlayRenderer overlayRenderer = new FaceOverlayRenderer();
 
     // Hover state
     private int hoveredFaceIndex = -1; // -1 means no face is hovered
@@ -179,7 +175,7 @@ public class FaceRenderer {
             faceCount = facePositions.length / FaceUpdateOperation.FLOATS_PER_FACE_POSITION;
 
             // Delegate bulk VBO creation to operation class (DRY + Single Responsibility)
-            faceUpdateOperation.updateAllFaces(vbo, facePositions, faceCount, defaultFaceColor);
+            faceUpdateOperation.updateAllFaces(vbo, facePositions, faceCount, overlayRenderer.getDefaultFaceColor());
 
             logger.debug("Updated face data: {} faces ({} floats)", faceCount, facePositions.length);
 
@@ -408,186 +404,25 @@ public class FaceRenderer {
     /**
      * Render face overlays with semi-transparent highlighting.
      * KISS: Only render hovered/selected faces, skip default (transparent) faces.
+     * Delegates to FaceOverlayRenderer for clean separation of concerns.
      *
      * @param shader The shader program to use
      * @param context The render context
      * @param modelMatrix The model transformation matrix
      */
     public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
-        if (!shouldRender()) {
+        if (!initialized) {
+            logger.warn("FaceRenderer not initialized");
             return;
         }
 
-        try {
-            setupShaderAndMatrices(shader, context, modelMatrix);
-            RenderState previousState = setupRenderState();
-
-            glBindVertexArray(vao);
-            renderVisibleFaces();
-            glBindVertexArray(0);
-
-            restoreRenderState(previousState);
-
-        } catch (Exception e) {
-            logger.error("Error rendering faces", e);
-        } finally {
-            glUseProgram(0);
-        }
-    }
-
-    /**
-     * Check if rendering should proceed.
-     *
-     * @return true if should render, false otherwise
-     */
-    private boolean shouldRender() {
-        if (!initialized) {
-            logger.warn("FaceRenderer not initialized");
-            return false;
+        if (!enabled) {
+            return;
         }
 
-        if (!enabled || faceCount == 0) {
-            return false;
-        }
-
-        // Only render if there's something to show
-        return hoveredFaceIndex >= 0 || selectedFaceIndex >= 0;
-    }
-
-    /**
-     * Setup shader and upload matrices.
-     *
-     * @param shader The shader program
-     * @param context The render context
-     * @param modelMatrix The model transformation matrix
-     */
-    private void setupShaderAndMatrices(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
-        shader.use();
-
-        // Calculate and upload MVP matrix
-        Matrix4f viewMatrix = context.getCamera().getViewMatrix();
-        Matrix4f projectionMatrix = context.getCamera().getProjectionMatrix();
-        Matrix4f mvpMatrix = new Matrix4f(projectionMatrix).mul(viewMatrix).mul(modelMatrix);
-
-        shader.setMat4("uMVPMatrix", mvpMatrix);
-        shader.setFloat("uIntensity", 1.0f);
-    }
-
-    /**
-     * Setup OpenGL render state for face overlay rendering.
-     *
-     * @return previous render state for restoration
-     */
-    private RenderState setupRenderState() {
-        // Save previous state
-        int prevDepthFunc = glGetInteger(GL_DEPTH_FUNC);
-        boolean prevDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK);
-        boolean prevCullFace = glGetBoolean(GL_CULL_FACE);
-
-        // Enable blending for transparency
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        // Depth test but don't write (render on top of model)
-        glDepthFunc(GL_LEQUAL);
-        glDepthMask(false);
-
-        // Disable backface culling to render both sides
-        if (prevCullFace) {
-            glDisable(GL_CULL_FACE);
-        }
-
-        // Enable polygon offset to prevent z-fighting
-        glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-1.0f, -1.0f);
-
-        return new RenderState(prevDepthFunc, prevDepthMask, prevCullFace);
-    }
-
-    /**
-     * Render visible faces (hovered and/or selected).
-     */
-    private void renderVisibleFaces() {
-        if (hoveredFaceIndex >= 0) {
-            renderFaceWithColor(hoveredFaceIndex, hoverFaceColor);
-        }
-
-        if (selectedFaceIndex >= 0 && selectedFaceIndex != hoveredFaceIndex) {
-            renderFaceWithColor(selectedFaceIndex, selectedFaceColor);
-        }
-    }
-
-    /**
-     * Restore OpenGL render state.
-     *
-     * @param state Previous render state to restore
-     */
-    private void restoreRenderState(RenderState state) {
-        glDisable(GL_POLYGON_OFFSET_FILL);
-        glDepthMask(state.depthMask);
-        glDepthFunc(state.depthFunc);
-
-        if (state.cullFace) {
-            glEnable(GL_CULL_FACE);
-        }
-
-        glDisable(GL_BLEND);
-    }
-
-    /**
-     * Holds previous OpenGL render state for restoration.
-     */
-    private static class RenderState {
-        final int depthFunc;
-        final boolean depthMask;
-        final boolean cullFace;
-
-        RenderState(int depthFunc, boolean depthMask, boolean cullFace) {
-            this.depthFunc = depthFunc;
-            this.depthMask = depthMask;
-            this.cullFace = cullFace;
-        }
-    }
-
-    /**
-     * Render a single face with a specific color.
-     * Updates VBO color data, renders the face, then restores default color.
-     * Uses shared constants from FaceUpdateOperation for DRY compliance.
-     *
-     * @param faceIndex the face index to render
-     * @param color the color to use (RGBA with alpha for transparency)
-     */
-    private void renderFaceWithColor(int faceIndex, Vector4f color) {
-        int dataStart = faceIndex * FaceUpdateOperation.FLOATS_PER_FACE_VBO;
-        int colorOffsetBytes = COLOR_OFFSET_FLOATS * Float.BYTES;
-
-        // Update color in VBO
-        updateFaceColors(dataStart, colorOffsetBytes, color);
-
-        // Render the face (2 triangles = 6 vertices)
-        glDrawArrays(GL_TRIANGLES, faceIndex * FaceUpdateOperation.VERTICES_PER_FACE, FaceUpdateOperation.VERTICES_PER_FACE);
-
-        // Restore default color
-        updateFaceColors(dataStart, colorOffsetBytes, defaultFaceColor);
-    }
-
-    /**
-     * Update color data for all vertices of a face in the VBO.
-     *
-     * @param dataStart starting offset in the VBO
-     * @param colorOffsetBytes byte offset to color data within each vertex
-     * @param color the color to set
-     */
-    private void updateFaceColors(int dataStart, int colorOffsetBytes, Vector4f color) {
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-        float[] colorData = new float[] { color.x, color.y, color.z, color.w };
-        for (int i = 0; i < FaceUpdateOperation.VERTICES_PER_FACE; i++) {
-            int vboOffset = (dataStart + (i * FaceUpdateOperation.FLOATS_PER_VERTEX)) * Float.BYTES + colorOffsetBytes;
-            glBufferSubData(GL_ARRAY_BUFFER, vboOffset, colorData);
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // Delegate to overlay renderer (Single Responsibility Principle)
+        overlayRenderer.render(vao, vbo, shader, context, modelMatrix,
+                             hoveredFaceIndex, selectedFaceIndex, faceCount);
     }
 
     /**
